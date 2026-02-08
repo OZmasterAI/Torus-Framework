@@ -1,0 +1,33 @@
+# Credentials & secrets
+.credentials.json
+mcp.json
+
+# Session & runtime state
+history.jsonl
+hooks/state_*.json
+hooks/.memory_last_queried
+hooks/__pycache__/
+hooks/gates/__pycache__/
+hooks/shared/__pycache__/
+
+# Python venv
+hooks/venv/
+
+# Transient directories
+cache/
+debug/
+downloads/
+file-history/
+session-env/
+shell-snapshots/
+tasks/
+teams/
+telemetry/
+todos/
+plans/
+projects/
+backups/
+archive/
+
+# Local settings (machine-specific)
+settings.local.json
