@@ -1,27 +1,38 @@
 # Session Handoff
 
-## Session 1 — Replace Subagent References with Agent Teams
+## Session 1 — Framework Documentation + MCP Fix
 
 ### What Was Done
-- Updated CLAUDE.md: replaced "subagent" behavioral rules with team-based workflow (TeamCreate/TaskCreate/SendMessage pattern)
-- Added new TEAM WORKFLOW section to CLAUDE.md with 5-step lifecycle (Create → Tasks → Assign → Coordinate → Shutdown)
-- Updated SATISFACTION FORMULA from "Parallel Agents" to "Agent Teams"
-- Updated audit skill (SKILL.md): replaced "Spawn parallel agents" with named team agents (security-scan, dependency-check, test-coverage)
-- Updated docstrings/comments in enforcer.py, shared/state.py, boot.py: "subagent" → "team member"
-- All 88 framework tests pass — no logic changes, documentation only
 
-### Files Modified
-- `/home/crab/CLAUDE.md` — behavioral rules, new TEAM WORKFLOW section, satisfaction formula
-- `~/.claude/skills/audit/SKILL.md` — team-based audit workflow
-- `~/.claude/hooks/enforcer.py` — docstring update (line 10)
-- `~/.claude/hooks/shared/state.py` — docstring/comment updates (lines 4, 27, 85, 95)
-- `~/.claude/hooks/boot.py` — comment update (line 72)
+**Part 1: Replace subagent references with agent teams**
+- Updated CLAUDE.md: replaced "subagent" behavioral rules with team-based workflow (TeamCreate/TaskCreate/SendMessage)
+- Added new TEAM WORKFLOW section to CLAUDE.md with 5-step lifecycle
+- Updated SATISFACTION FORMULA from "Parallel Agents" to "Agent Teams"
+- Updated audit skill (SKILL.md): team-based audit with named agents (security-scan, dependency-check, test-coverage)
+- Updated docstrings/comments in enforcer.py, shared/state.py, boot.py: "subagent" → "team member"
+
+**Part 2: CLAUDE.md into .claude repo**
+- Moved CLAUDE.md from /home/crab/ into ~/.claude/ (now version-controlled)
+- Created symlink /home/crab/CLAUDE.md → ~/.claude/CLAUDE.md so Claude Code still finds it
+
+**Part 3: Fixed MCP memory server**
+- Root cause: .claude.json had stale path (~/.claude/memory/server.py — didn't exist)
+- Fixed to correct path: ~/.claude/hooks/memory_server.py
+- Enabled mcp.json server: set enabledMcpjsonServers to ["memory"]
+- Server verified working: chromadb 1.4.1, mcp 1.26.0, 5 tools registered
+- Memory tools will be available on next session start
+
+### Commits
+- `b343ba1` — Replace subagent references with agent team terminology
+- `2e640ec` — Add CLAUDE.md to repo and fix MCP memory server path
+
+### All 88 framework tests pass
 
 ### What's Next
-- No pending work from this session
-- Consider updating any future skills that reference parallel agent patterns to use team workflow
-- Memory database is empty — consider seeding with project knowledge
+- Start next session and verify MCP memory tools are available (search_knowledge, remember_this, etc.)
+- Seed memory database with project knowledge (currently 0 entries)
+- Watch for future skills that still reference old subagent patterns
 
-### Warnings
-- No git repo at `/home/crab/` — CLAUDE.md changes are only on disk, not version-controlled
-- The `.claude/` repo has uncommitted changes (pending commit)
+### Known Issues
+- Memory database is empty (0 entries) — will populate as work proceeds
+- MCP fix requires session restart to take effect
