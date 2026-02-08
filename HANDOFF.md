@@ -1,72 +1,47 @@
 # Session Handoff
 
-## Session 2 — MCP Verification + Memory Seeding
+## Session 3 — OpenClaw Pony Alpha Model Fix
 
-### What Was Done
-
-**Part 1: Verified MCP memory server**
-- Confirmed server is healthy: ChromaDB operational, all 5 tools functional
-- Semantic search verified working (cosine similarity returns relevant results with different query wording)
-- Both Session 1 known issues RESOLVED
-
-**Part 2: Seeded memory database (0 → 11 entries)**
-- Framework architecture overview
-- Enforcer hook system design
-- All 8 quality gates (3-tier classification)
-- MCP memory server details
-- Skills system (5 skills with usage stats)
-- Test framework structure (88 tests)
-- Key design patterns (8 patterns)
-- File locations map
-- Session 1 history & commits
-- Subagent scan results
-- Session 2 summary
-
-**Part 3: Subagent reference audit**
-- All 6 framework files fixed in Session 1 confirmed clean
-- 6 remaining references found in .openclaw/ (separate tool, not our framework — no action needed)
-- handler.ts in .openclaw has a runtime string match ':subagent:' — do NOT change (would break functionality)
-
-**Part 4: Agent teams verified**
-- Full lifecycle tested: TeamCreate → TaskCreate → spawn agents → assign tasks → receive results → shutdown → TeamDelete
-- Used team "session2-setup" with 2 agents (codebase-explorer, subagent-scanner) running in parallel
-
-### No new commits (no code changes this session — operational/verification work only)
-
-### All 88 framework tests still passing (no changes to test-covered code)
-
-### What's Next
-- Memory database is live and growing — will accumulate knowledge organically as work proceeds
-- Consider adding new skills or gates as project needs evolve
-- .openclaw/ subagent references are NOT our concern (confirmed by user)
-- Framework is stable — ready for new feature work or project tasks
-
-### Known Issues
-- None — all previous issues resolved
+**Date:** 2026-02-09
+**Status:** Completed
+**Project:** Self-Healing Claude Framework
 
 ---
 
-## Session 1 — Framework Documentation + MCP Fix
+## What Was Done
 
-### What Was Done
+### Session 3: Fixed OpenRouter Pony Alpha model in OpenClaw
 
-**Part 1: Replace subagent references with agent teams**
-- Updated CLAUDE.md: replaced "subagent" behavioral rules with team-based workflow (TeamCreate/TaskCreate/SendMessage)
-- Added new TEAM WORKFLOW section to CLAUDE.md with 5-step lifecycle
-- Updated SATISFACTION FORMULA from "Parallel Agents" to "Agent Teams"
-- Updated audit skill (SKILL.md): team-based audit with named agents (security-scan, dependency-check, test-coverage)
-- Updated docstrings/comments in enforcer.py, shared/state.py, boot.py: "subagent" → "team member"
+**Problem:** The Pony Alpha model from OpenRouter was failing to resolve in OpenClaw. When configured as `openrouter/pony-alpha`, the model ID sent to the API was just `pony-alpha` (missing the `openrouter/` prefix), causing API errors.
 
-**Part 2: CLAUDE.md into .claude repo**
-- Moved CLAUDE.md from /home/crab/ into ~/.claude/ (now version-controlled)
-- Created symlink /home/crab/CLAUDE.md → ~/.claude/CLAUDE.md so Claude Code still finds it
+**Root Cause:** OpenClaw's `parseModelRef()` function splits the model reference on the first `/` only. So `openrouter/pony-alpha` gets parsed as provider=`openrouter`, model=`pony-alpha`. The model ID sent to the API is just the part after the first slash. To send `openrouter/pony-alpha` as the actual model ID to the API, you need `openrouter/openrouter/pony-alpha` (double prefix).
 
-**Part 3: Fixed MCP memory server**
-- Root cause: .claude.json had stale path (~/.claude/memory/server.py — didn't exist)
-- Fixed to correct path: ~/.claude/hooks/memory_server.py
-- Enabled mcp.json server: set enabledMcpjsonServers to ["memory"]
-- Server verified working: chromadb 1.4.1, mcp 1.26.0, 5 tools registered
+**Fix Applied:**
+1. Added `openrouter` provider to `models.providers` in `/home/crab/.openclaw/openclaw.json` with the pony-alpha model definition (200K context, 131K max tokens, free tier)
+2. Fixed model reference keys in `agents.defaults.models` to use the double-prefix format (`openrouter/openrouter/pony-alpha`)
+3. Added `openrouter` provider to `/home/crab/.openclaw/agents/main/agent/models.json`
 
-### Commits
-- `b343ba1` — Replace subagent references with agent team terminology
-- `2e640ec` — Add CLAUDE.md to repo and fix MCP memory server path
+**Verification:** Fix confirmed working -- Pony Alpha model resolves and responds correctly.
+
+### Previous Sessions
+- **Session 1:** Framework documentation setup + MCP memory server fix
+- **Session 2:** MCP verification + memory seeding with framework knowledge
+
+---
+
+## What's Next
+
+- The Self-Healing Claude Framework is fully operational
+- Pony Alpha model is available via OpenRouter in OpenClaw
+- Memory system is seeded and functional
+- No known issues or blockers
+
+---
+
+## Service Status
+
+| Service       | Status  | Notes                              |
+|---------------|---------|-------------------------------------|
+| MCP Memory    | OK      | Operational, knowledge base seeded  |
+| OpenClaw      | OK      | Pony Alpha model working            |
+| Framework     | OK      | All quality gates active            |
