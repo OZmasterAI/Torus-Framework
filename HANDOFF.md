@@ -1,5 +1,51 @@
 # Session Handoff
 
+## Session 2 — MCP Verification + Memory Seeding
+
+### What Was Done
+
+**Part 1: Verified MCP memory server**
+- Confirmed server is healthy: ChromaDB operational, all 5 tools functional
+- Semantic search verified working (cosine similarity returns relevant results with different query wording)
+- Both Session 1 known issues RESOLVED
+
+**Part 2: Seeded memory database (0 → 11 entries)**
+- Framework architecture overview
+- Enforcer hook system design
+- All 8 quality gates (3-tier classification)
+- MCP memory server details
+- Skills system (5 skills with usage stats)
+- Test framework structure (88 tests)
+- Key design patterns (8 patterns)
+- File locations map
+- Session 1 history & commits
+- Subagent scan results
+- Session 2 summary
+
+**Part 3: Subagent reference audit**
+- All 6 framework files fixed in Session 1 confirmed clean
+- 6 remaining references found in .openclaw/ (separate tool, not our framework — no action needed)
+- handler.ts in .openclaw has a runtime string match ':subagent:' — do NOT change (would break functionality)
+
+**Part 4: Agent teams verified**
+- Full lifecycle tested: TeamCreate → TaskCreate → spawn agents → assign tasks → receive results → shutdown → TeamDelete
+- Used team "session2-setup" with 2 agents (codebase-explorer, subagent-scanner) running in parallel
+
+### No new commits (no code changes this session — operational/verification work only)
+
+### All 88 framework tests still passing (no changes to test-covered code)
+
+### What's Next
+- Memory database is live and growing — will accumulate knowledge organically as work proceeds
+- Consider adding new skills or gates as project needs evolve
+- .openclaw/ subagent references are NOT our concern (confirmed by user)
+- Framework is stable — ready for new feature work or project tasks
+
+### Known Issues
+- None — all previous issues resolved
+
+---
+
 ## Session 1 — Framework Documentation + MCP Fix
 
 ### What Was Done
@@ -20,19 +66,7 @@
 - Fixed to correct path: ~/.claude/hooks/memory_server.py
 - Enabled mcp.json server: set enabledMcpjsonServers to ["memory"]
 - Server verified working: chromadb 1.4.1, mcp 1.26.0, 5 tools registered
-- Memory tools will be available on next session start
 
 ### Commits
 - `b343ba1` — Replace subagent references with agent team terminology
 - `2e640ec` — Add CLAUDE.md to repo and fix MCP memory server path
-
-### All 88 framework tests pass
-
-### What's Next
-- Start next session and verify MCP memory tools are available (search_knowledge, remember_this, etc.)
-- Seed memory database with project knowledge (currently 0 entries)
-- Watch for future skills that still reference old subagent patterns
-
-### Known Issues
-- Memory database is empty (0 entries) — will populate as work proceeds
-- MCP fix requires session restart to take effect
