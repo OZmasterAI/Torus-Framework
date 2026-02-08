@@ -7,7 +7,7 @@ on PreToolUse and PostToolUse events.
 PreToolUse: Checks gates BEFORE a tool executes. Can block via sys.exit(1).
 PostToolUse: Tracks state AFTER a tool executes (what files were read, etc.).
 
-Each agent (main or subagent) gets its own state file, keyed by the session_id
+Each agent (main or team member) gets its own state file, keyed by the session_id
 that Claude Code passes in the hook data. This prevents parallel agents from
 contaminating each other's gate checks.
 

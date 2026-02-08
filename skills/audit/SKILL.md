@@ -5,10 +5,11 @@ When the user says "audit", "review", "check everything", or wants a comprehensi
 
 ## Steps
 1. **MEMORY CHECK** — deep_query("project issues bugs warnings") for known problems
-2. **CODE AUDIT** — Spawn parallel agents for:
-   - **Security scan**: Look for hardcoded secrets, SQL injection, XSS, command injection
-   - **Dependency check**: Review requirements.txt / package.json for outdated or vulnerable packages
-   - **Test coverage**: Run tests and note failures or missing coverage
+2. **CODE AUDIT** — Create an audit team (`TeamCreate` name: "audit-team") with named agents:
+   - **security-scan** agent: Look for hardcoded secrets, SQL injection, XSS, command injection
+   - **dependency-check** agent: Review requirements.txt / package.json for outdated or vulnerable packages
+   - **test-coverage** agent: Run tests and note failures or missing coverage
+   Create tasks via `TaskCreate`, assign to agents via `TaskUpdate`, coordinate via `SendMessage`.
 3. **INFRASTRUCTURE AUDIT**:
    - Check Dockerfile / docker-compose for issues
    - Review environment variables and configs

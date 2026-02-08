@@ -69,7 +69,7 @@ def load_live_state():
 def reset_enforcement_state():
     """Reset all gate enforcement state files for a new session.
 
-    Cleans up per-agent state files from the previous session (each subagent
+    Cleans up per-agent state files from the previous session (each team member
     had its own state_*.json file) and the legacy shared state.json.
     The new session's main agent will create its own state file on first tool use.
     """

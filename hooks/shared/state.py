@@ -1,7 +1,7 @@
 """Shared state management for the enforcer gate system.
 
 State is persisted to per-session JSON files with atomic writes to prevent
-corruption. Each Claude Code agent (main or subagent) gets its own state file,
+corruption. Each Claude Code agent (main or team member) gets its own state file,
 keyed by session_id, ensuring parallel agents don't contaminate each other's
 gate checks.
 
@@ -24,7 +24,7 @@ MAX_FILES_READ = 200
 def state_file_for(session_id="main"):
     """Get the state file path for a specific session/agent.
 
-    Each Claude Code session (main agent or subagent) gets its own state file.
+    Each Claude Code session (main agent or team member) gets its own state file.
     This prevents parallel agents from overwriting each other's state.
     """
     # Sanitize session_id for use in filenames
@@ -82,7 +82,7 @@ def save_state(state, session_id="main"):
 def get_memory_last_queried(state):
     """Get the most recent memory query timestamp.
 
-    For subagents (session_id != "main"), only the per-agent enforcer
+    For team members (session_id != "main"), only the per-agent enforcer
     timestamp is used. This prevents the global sideband file (written by
     the MCP server) from letting one agent's memory query satisfy Gate 4
     for a different agent.
@@ -92,7 +92,7 @@ def get_memory_last_queried(state):
     """
     enforcer_ts = state.get("memory_last_queried", 0)
 
-    # Subagents use only their own per-agent state (no sideband leakage)
+    # Team members use only their own per-agent state (no sideband leakage)
     session_id = state.get("_session_id", "main")
     if session_id != "main":
         return enforcer_ts
