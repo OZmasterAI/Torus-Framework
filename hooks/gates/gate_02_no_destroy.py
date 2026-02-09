@@ -25,6 +25,8 @@ from shared.gate_result import GateResult
 GATE_NAME = "GATE 2: NO DESTROY"
 
 # Patterns to block in Bash commands
+# Each tuple: (regex_pattern, description)
+# The description string is used as a key for SAFE_EXCEPTIONS below.
 DANGEROUS_PATTERNS = [
     # rm with recursive+force in any flag order, including split flags and full paths
     (r"(?:/[^\s]*/)?rm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b", "rm -rf (recursive force delete)"),
@@ -70,6 +72,47 @@ DANGEROUS_PATTERNS = [
     (r"git\s+checkout\s+--\s+\.", "git checkout -- . (discard all changes)"),
     (r"git\s+stash\s+drop", "git stash drop (destroy stashed changes)"),
 ]
+
+# Safe exceptions: when a dangerous pattern matches, these overrides are checked.
+# If the command also matches a safe exception for that pattern, it is allowed through.
+# Format: (exact_description_from_DANGEROUS_PATTERNS, safe_regex_pattern)
+# NOTE: Bypass vectors (eval, bash -c, sh -c, pipe-to-shell) have NO exceptions.
+SAFE_EXCEPTIONS = [
+    # source: allow venv activation and common shell profile sourcing
+    ("source (execute script in current shell)",
+     r"\bsource\s+\S*(?:activate|\.bashrc|\.bash_profile|\.profile|\.zshrc|\.zprofile|\.envrc)\b"),
+    # exec: allow common interpreter replacements (Docker entrypoints, process hand-off)
+    ("exec (replace current process)",
+     r"\bexec\s+(?:python[23]?|node|ruby|java|perl|npm|npx|cargo\s+run|go\s+run)\b"),
+    # DELETE FROM: allow targeted SQL deletes that include a WHERE clause
+    ("DELETE FROM (SQL mass deletion)",
+     r"\bDELETE\s+FROM\s+\S+\s+WHERE\b"),
+    # git stash drop: allow dropping a specific numbered stash reference
+    ("git stash drop (destroy stashed changes)",
+     r"git\s+stash\s+drop\s+stash@\{\d+\}"),
+]
+
+
+def _is_safe_exception(command, description):
+    """Check if a command that matched a dangerous pattern is actually a known-safe usage.
+
+    Uses SAFE_EXCEPTIONS for regex-based overrides and special-case logic
+    for patterns (like <<<) that need more sophisticated analysis.
+    """
+    # Check regex-based exceptions
+    for exc_desc, exc_pattern in SAFE_EXCEPTIONS:
+        if exc_desc == description and re.search(exc_pattern, command, re.IGNORECASE):
+            return True
+
+    # Special case: <<< here-strings are safe when not feeding to a shell
+    if description == "heredoc execution":
+        # Extract the command word immediately before <<<
+        # Handles: wc -w <<< "hello", grep -c "x" <<< "$var"
+        m = re.search(r"\b(\w+)\b[^|;&]*<<<", command)
+        if m and m.group(1).lower() not in ("bash", "sh", "zsh", "eval", "exec"):
+            return True
+
+    return False
 
 
 def _rm_has_recursive_and_force(command):
@@ -122,6 +165,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     for pattern, description in DANGEROUS_PATTERNS:
         if re.search(pattern, command, re.IGNORECASE):
+            # Check if this matches a known-safe exception before blocking
+            if _is_safe_exception(command, description):
+                continue
             return GateResult(
                 blocked=True,
                 message=f"[{GATE_NAME}] BLOCKED: Detected '{description}' in command. This is a destructive operation.",
