@@ -1,47 +1,58 @@
 # Session Handoff
 
-## Session 3 — OpenClaw Pony Alpha Model Fix
-
+## Session 7 — Self-Healing Framework Audit & Hardening
 **Date:** 2026-02-09
-**Status:** Completed
-**Project:** Self-Healing Claude Framework
-
----
+**Project:** ~/.claude/ self-healing framework
 
 ## What Was Done
 
-### Session 3: Fixed OpenRouter Pony Alpha model in OpenClaw
+### 1. Full Security Audit (53 findings)
+- 3-agent parallel audit (engine, gates, infrastructure)
+- 5 CRITICAL, 10 HIGH, 15 MEDIUM, 17 LOW, 6 INFO
 
-**Problem:** The Pony Alpha model from OpenRouter was failing to resolve in OpenClaw. When configured as `openrouter/pony-alpha`, the model ID sent to the API was just `pony-alpha` (missing the `openrouter/` prefix), causing API errors.
+### 2. Phase 1 — Critical Fixes
+- **Fail-closed on malformed input** (enforcer.py): PreToolUse exits 1 on bad JSON, missing tool_name/tool_input
+- **Sideband timestamp clamping** (state.py): Future timestamps clamped to prevent Gate 4/7/8 bypass
+- **Gate 2 hardening** (gate_02): eval, bash -c, sh -c, pipe-to-shell, <<<, exec, source, DELETE FROM, git checkout --, git stash drop patterns + shlex rm flag detection
 
-**Root Cause:** OpenClaw's `parseModelRef()` function splits the model reference on the first `/` only. So `openrouter/pony-alpha` gets parsed as provider=`openrouter`, model=`pony-alpha`. The model ID sent to the API is just the part after the first slash. To send `openrouter/pony-alpha` as the actual model ID to the API, you need `openrouter/openrouter/pony-alpha` (double prefix).
+### 3. Phase 2 — Gate Fixes
+- NotebookEdit added to Gates 1, 5, 7, 8
+- Gate 3 exit code check (blocks deploy after failed tests)
+- Boot sideband reset (deletes .memory_last_queried on session start)
+- Gate 4 hooks/ exemption removed
+- Gate 1 path normalization (os.path.normpath)
 
-**Fix Applied:**
-1. Added `openrouter` provider to `models.providers` in `/home/crab/.openclaw/openclaw.json` with the pony-alpha model definition (200K context, 131K max tokens, free tier)
-2. Fixed model reference keys in `agents.defaults.models` to use the double-prefix format (`openrouter/openrouter/pony-alpha`)
-3. Added `openrouter` provider to `/home/crab/.openclaw/agents/main/agent/models.json`
+### 4. Phase 3 — Tests, Docs, Config
+- 15 new tests for Gates 5-8
+- CLAUDE.md updated (Gate 6 documented as advisory)
+- requirements.txt created (chromadb, mcp pinned)
+- mcp.json now tracked in git
 
-**Verification:** Fix confirmed working -- Pony Alpha model resolves and responds correctly.
+### 5. Post-Fix Verification Audit
+- 3-agent verification: all 12 fixes CONFIRMED working
+- 4 new false positive issues identified (NEW-1 through NEW-4)
 
-### Previous Sessions
-- **Session 1:** Framework documentation setup + MCP memory server fix
-- **Session 2:** MCP verification + memory seeding with framework knowledge
+### 6. Gate 2 False Positive Tuning
+- Added SAFE_EXCEPTIONS allowlist with _is_safe_exception() helper
+- 5 exception categories: source (venv/profiles), exec (interpreters), <<< (non-shell), DELETE FROM (with WHERE), git stash drop (specific refs)
+- Bypass vectors (eval, bash -c, sh -c, pipe-to-shell) remain fully blocked
+- 23 new tests added
 
----
+## Commits
+- `14d27ea` — Security audit: harden enforcer, gates, and test coverage (15 files, +275/-16)
+- `6639a97` — Gate 2: add safe-exception allowlist to reduce false positives (2 files, +87)
 
-## What's Next
+## Test Status
+126/126 passing (0 failures)
 
-- The Self-Healing Claude Framework is fully operational
-- Pony Alpha model is available via OpenRouter in OpenClaw
-- Memory system is seeded and functional
-- No known issues or blockers
+## What's Next (Prioritized)
+1. **M3 — verified_fixes cap**: List grows unbounded; add MAX_VERIFIED_FIXES cap
+2. **G1-2 — Extension coverage**: Gate 1 only guards .py/.js/.ts; missing .rs, .go, .java, etc.
+3. **G3-2 — Deploy pattern gaps**: Gate 3 missing docker push, helm install, kubectl apply
+4. **G7-3 — Critical file patterns**: Gate 7 missing SSH keys, sudoers, crontab
+5. **X1 — Write-then-execute bypass**: Write a .sh file, then `bash script.sh` bypasses Gate 2
+6. **G7-4 — .env.example**: Gate 7 blocks .env.example (false positive)
 
----
-
-## Service Status
-
-| Service       | Status  | Notes                              |
-|---------------|---------|-------------------------------------|
-| MCP Memory    | OK      | Operational, knowledge base seeded  |
-| OpenClaw      | OK      | Pony Alpha model working            |
-| Framework     | OK      | All quality gates active            |
+## Backups
+- Pre-commit backup: `~/.claude/backups/gate2-tuning-20260209-130300/`
+- Pre-audit backup: `~/.claude/backups/PreModificationBackup/`

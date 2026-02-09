@@ -1,19 +1,20 @@
 {
-  "session_count": 3,
-  "status": "completed",
-  "project": "Self-Healing Claude Framework",
-  "last_session": {
-    "task": "Fix OpenRouter Pony Alpha model in OpenClaw",
-    "result": "success",
-    "files_modified": 2,
-    "commits": [],
-    "memory_entries_added": 4
-  },
-  "active_tasks": [],
-  "known_issues": [],
-  "recent_fixes": [
-    "Fixed Pony Alpha model ID: openrouter/openrouter/pony-alpha (double-prefix for OpenRouter models)",
-    "Added openrouter provider to models.providers in openclaw.json and models.json",
-    "Fixed broken openrouter/auto alias entry"
+  "session_count": 7,
+  "status": "idle",
+  "project": "self-healing-framework",
+  "last_session": "2026-02-09",
+  "commits": ["14d27ea", "6639a97"],
+  "test_status": "126/126 passing",
+  "residual_issues": [
+    "M3: verified_fixes unbounded list",
+    "G1-2: extension coverage gaps",
+    "G3-2: deploy pattern gaps",
+    "G7-3: SSH/sudoers patterns",
+    "X1: write-then-execute bypass",
+    "G7-4: .env.example false positive"
+  ],
+  "backups": [
+    "~/.claude/backups/gate2-tuning-20260209-130300/",
+    "~/.claude/backups/PreModificationBackup/"
   ]
 }
