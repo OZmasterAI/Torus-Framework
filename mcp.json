@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "/usr/bin/python3",
+      "args": ["/home/crab/.claude/hooks/memory_server.py"],
+      "cwd": "/home/crab"
+    }
+  }
+}

@@ -135,6 +135,13 @@ def main():
     # Reset state
     reset_enforcement_state()
 
+    # Reset sideband memory timestamp file
+    sideband_file = os.path.join(os.path.dirname(__file__), ".memory_last_queried")
+    try:
+        os.remove(sideband_file)
+    except OSError:
+        pass
+
 
 if __name__ == "__main__":
     main()

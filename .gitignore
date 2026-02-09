@@ -1,6 +1,5 @@
 # Credentials & secrets
 .credentials.json
-mcp.json
 
 # Session & runtime state
 history.jsonl

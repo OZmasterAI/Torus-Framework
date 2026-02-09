@@ -34,10 +34,11 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if tool_name not in ("Edit", "Write"):
+    if tool_name not in ("Edit", "Write", "NotebookEdit"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    file_path = tool_input.get("file_path", "")
+    file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    file_path = os.path.normpath(file_path)
     _, ext = os.path.splitext(file_path)
     ext = ext.lower()
 

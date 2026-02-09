@@ -16,6 +16,7 @@ executed accidentally by an AI assistant.
 
 import os
 import re
+import shlex
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -55,7 +56,59 @@ DANGEROUS_PATTERNS = [
     (r"\bshred\b", "shred (secure file destruction)"),
     # Dangerous rsync (can delete target contents)
     (r"\brsync\b.*--delete\b", "rsync --delete (can remove target files)"),
+    # Shell wrapping / indirection (can hide any destructive command)
+    (r"\beval\s+", "eval (shell command indirection)"),
+    (r"\bbash\s+-c\s+", "bash -c (shell command wrapping)"),
+    (r"\bsh\s+-c\s+", "sh -c (shell command wrapping)"),
+    (r"\|\s*(ba)?sh\b", "pipe to shell (command indirection)"),
+    (r"<<<\s*", "heredoc execution"),
+    (r"\bexec\s+", "exec (replace current process)"),
+    (r"\bsource\s+", "source (execute script in current shell)"),
+    # SQL mass deletion without WHERE clause
+    (r"\bDELETE\s+FROM\s+", "DELETE FROM (SQL mass deletion)"),
+    # Git destructive operations (additional)
+    (r"git\s+checkout\s+--\s+\.", "git checkout -- . (discard all changes)"),
+    (r"git\s+stash\s+drop", "git stash drop (destroy stashed changes)"),
 ]
+
+
+def _rm_has_recursive_and_force(command):
+    """Check if an rm command has both recursive and force flags anywhere in its arguments.
+
+    Uses shlex tokenization to handle flag ordering like: rm -r somedir -f
+    """
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        # If shlex can't parse it, fall back to simple split
+        tokens = command.split()
+
+    # Find rm commands (including with full path like /usr/bin/rm)
+    for i, token in enumerate(tokens):
+        basename = os.path.basename(token)
+        if basename != "rm":
+            continue
+        # Check remaining tokens for both -r/--recursive and -f/--force
+        rest = tokens[i + 1:]
+        has_recursive = False
+        has_force = False
+        for arg in rest:
+            if arg == "--":
+                break  # End of flags
+            if arg.startswith("-") and not arg.startswith("--"):
+                # Short flags like -r, -f, -v, or combined like -rv
+                flags = arg[1:]
+                if "r" in flags:
+                    has_recursive = True
+                if "f" in flags:
+                    has_force = True
+            elif arg == "--recursive":
+                has_recursive = True
+            elif arg == "--force":
+                has_force = True
+        if has_recursive and has_force:
+            return True
+    return False
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
@@ -74,5 +127,13 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
                 message=f"[{GATE_NAME}] BLOCKED: Detected '{description}' in command. This is a destructive operation.",
                 gate_name=GATE_NAME,
             )
+
+    # Check for rm with split recursive+force flags (e.g., rm -r dir -f)
+    if _rm_has_recursive_and_force(command):
+        return GateResult(
+            blocked=True,
+            message=f"[{GATE_NAME}] BLOCKED: Detected 'rm with -r and -f flags' in command. This is a destructive operation.",
+            gate_name=GATE_NAME,
+        )
 
     return GateResult(blocked=False, gate_name=GATE_NAME)

@@ -22,15 +22,19 @@ AFTER any fix or decision: remember_this(content, context, tags)
 6. **No destructive commands** — rm -rf, force push, reset --hard are blocked (Gate 2)
 
 ## QUALITY GATES (Enforced by hooks)
-The following gates physically block tool calls via sys.exit(1):
+The following gates are checked via enforcer.py. Blocking gates exit with code 1 to prevent the tool call. Advisory gates warn but never block.
+
+**Blocking gates** (sys.exit(1) on violation):
 - Gate 1: READ BEFORE EDIT — Must read .py files before editing
 - Gate 2: NO DESTROY — Blocks rm -rf, DROP TABLE, force push, reset --hard
 - Gate 3: TEST BEFORE DEPLOY — Must run tests before deploying
 - Gate 4: MEMORY FIRST — Must query memory before editing
 - Gate 5: PROOF BEFORE FIXED — Verify changes before making more
-- Gate 6: SAVE VERIFIED FIX — Save successful fixes to memory
 - Gate 7: CRITICAL FILE GUARD — Extra checks for high-risk files
 - Gate 8: TEMPORAL AWARENESS — Extra caution during late-night hours
+
+**Advisory gate** (warns only, never blocks):
+- Gate 6: SAVE VERIFIED FIX — WARNS only when verified fixes not saved to memory
 
 ## SESSION START (Non-Negotiable)
 At the start of every new session, BEFORE doing anything else:

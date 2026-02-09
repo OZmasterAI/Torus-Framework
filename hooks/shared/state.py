@@ -104,6 +104,8 @@ def get_memory_last_queried(state):
             with open(MEMORY_TIMESTAMP_FILE) as f:
                 data = json.load(f)
             sideband_ts = data.get("timestamp", 0)
+            # Clamp to current time: prevent future timestamps from permanently bypassing gates
+            sideband_ts = min(sideband_ts, time.time())
     except (json.JSONDecodeError, IOError, OSError):
         pass
     return max(enforcer_ts, sideband_ts)

@@ -123,11 +123,13 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main"):
     """Track state after a tool call completes."""
     state["tool_call_count"] = state.get("tool_call_count", 0) + 1
 
-    # Track file reads
+    # Track file reads (normalize paths to prevent bypass via ./foo vs foo)
     if tool_name == "Read":
         file_path = tool_input.get("file_path", "")
-        if file_path and file_path not in state.get("files_read", []):
-            state["files_read"].append(file_path)
+        if file_path:
+            file_path = os.path.normpath(file_path)
+            if file_path not in state.get("files_read", []):
+                state["files_read"].append(file_path)
 
     # Track memory queries
     if is_memory_tool(tool_name):
@@ -138,6 +140,11 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main"):
         command = tool_input.get("command", "")
         if any(kw in command for kw in ["pytest", "python -m pytest", "npm test", "cargo test", "go test"]):
             state["last_test_run"] = time.time()
+            # Capture exit code from PostToolUse data (Claude Code may provide it)
+            exit_code = tool_input.get("exit_code",
+                        tool_input.get("exitCode",
+                        tool_input.get("status", 0)))
+            state["last_test_exit_code"] = exit_code
 
     # Track edits for pending verification (including NotebookEdit)
     if tool_name in ("Edit", "Write", "NotebookEdit"):
@@ -190,13 +197,28 @@ def main():
     try:
         data = json.load(sys.stdin)
     except (json.JSONDecodeError, EOFError):
-        # If no data on stdin, nothing to enforce
+        # Fail-closed for PreToolUse: malformed input must not bypass gates
+        if args.event == "PreToolUse":
+            print("[ENFORCER] BLOCKED: Malformed or missing JSON input", file=sys.stderr)
+            sys.exit(1)
+        # PostToolUse is non-critical tracking — safe to skip
         sys.exit(0)
 
     tool_name = data.get("tool_name", "")
     if not tool_name:
+        # Fail-closed for PreToolUse: missing tool_name must not bypass gates
+        if args.event == "PreToolUse":
+            print("[ENFORCER] BLOCKED: Missing or empty tool_name", file=sys.stderr)
+            sys.exit(1)
         sys.exit(0)
     tool_input = data.get("tool_input", {})
+
+    # Fail-closed for write-like tools with missing/empty tool_input in PreToolUse
+    if args.event == "PreToolUse" and tool_name in ("Bash", "Edit", "Write", "NotebookEdit"):
+        if not tool_input:
+            print(f"[ENFORCER] BLOCKED: Missing or empty tool_input for {tool_name}", file=sys.stderr)
+            sys.exit(1)
+
     session_id = data.get("session_id", "main")
 
     state = load_state(session_id=session_id)

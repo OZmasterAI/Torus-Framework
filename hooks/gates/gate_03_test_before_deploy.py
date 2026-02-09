@@ -75,4 +75,13 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             msg = f"[{GATE_NAME}] BLOCKED: No tests have been run this session. Run tests before deploying."
         return GateResult(blocked=True, message=msg, gate_name=GATE_NAME)
 
+    # Check if last test run actually passed
+    last_exit_code = state.get("last_test_exit_code", None)
+    if last_exit_code is not None and last_exit_code != 0:
+        return GateResult(
+            blocked=True,
+            message=f"[{GATE_NAME}] BLOCKED: Last test run failed (exit code: {last_exit_code}). Fix tests before deploying.",
+            gate_name=GATE_NAME,
+        )
+
     return GateResult(blocked=False, gate_name=GATE_NAME)

@@ -413,6 +413,150 @@ with open(os.path.expanduser("~/.claude/mcp.json")) as f:
 test("mcp.json has memory server", "memory" in mcp_config.get("mcpServers", {}))
 
 # ─────────────────────────────────────────────────
+# Test: Gate 5 — Proof Before Fixed
+# ─────────────────────────────────────────────────
+print("\n--- Gate 5: Proof Before Fixed ---")
+
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+
+# Setup: Read files + query memory so Gates 1 & 4 don't interfere
+for fp in ["/tmp/file_a.py", "/tmp/file_b.py", "/tmp/file_c.py", "/tmp/file_d.py"]:
+    run_enforcer("PostToolUse", "Read", {"file_path": fp})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+
+# Edit 3 files to build up pending_verification
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_a.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_b.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_c.py"})
+
+# Editing a 4th different file should be BLOCKED (3 unverified)
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/file_d.py"})
+test("Gate 5: 3 unverified edits blocks 4th file", code != 0, f"code={code}")
+test("Gate 5: block message mentions GATE 5", "GATE 5" in msg, msg)
+
+# Re-editing file_a.py should be ALLOWED (same-file exemption)
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/file_a.py"})
+test("Gate 5: re-edit same file allowed (same-file exemption)", code == 0, msg)
+
+# Running a Bash command (verification) should clear pending, then Edit allowed
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+for fp in ["/tmp/file_a.py", "/tmp/file_b.py", "/tmp/file_c.py", "/tmp/file_d.py"]:
+    run_enforcer("PostToolUse", "Read", {"file_path": fp})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_a.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_b.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_c.py"})
+# Run a test (broad test suite clears all pending)
+run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/file_d.py"})
+test("Gate 5: after verification, editing 4th file allowed", code == 0, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Gate 6 — Save Verified Fix (advisory only)
+# ─────────────────────────────────────────────────
+print("\n--- Gate 6: Save Verified Fix ---")
+
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+
+# Build up 2+ verified fixes in state
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/fix_a.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/fix_a.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/fix_b.py"})
+run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})  # moves pending -> verified
+
+state = load_state(session_id=MAIN_SESSION)
+test("Gate 6 setup: verified_fixes populated", len(state.get("verified_fixes", [])) >= 2,
+     f"verified_fixes={state.get('verified_fixes', [])}")
+
+# Edit with 2+ verified_fixes — should NOT block (advisory only)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/next_file.py"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/next_file.py"})
+test("Gate 6: never blocks (advisory only)", code == 0, msg)
+test("Gate 6: warning emitted to stderr", "GATE 6" in msg or "WARNING" in msg, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Gate 7 — Critical File Guard
+# ─────────────────────────────────────────────────
+print("\n--- Gate 7: Critical File Guard ---")
+
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+
+# Edit a critical file (auth_handler.py) without recent memory query → BLOCKED
+# Note: Gate 4 (memory-first, 5min window) fires before Gate 7 (critical, 3min window),
+# so the block may come from either gate. Both are correct behavior.
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/auth_handler.py"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/auth_handler.py"})
+test("Gate 7: edit auth_handler.py without memory → blocked", code != 0, f"code={code}")
+test("Gate 7: block message mentions gate or memory",
+     "GATE 4" in msg or "GATE 7" in msg or "memory" in msg.lower(), msg)
+
+# Edit a non-critical file → ALLOWED (only need Gate 4 memory)
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/regular_utils.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/regular_utils.py"})
+test("Gate 7: edit regular_utils.py (non-critical) → allowed", code == 0, msg)
+
+# Edit .env without memory → BLOCKED
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/project/.env"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/project/.env"})
+test("Gate 7: edit .env without memory → blocked", code != 0, f"code={code}")
+
+# Edit critical file WITH recent memory query → ALLOWED
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/auth_handler.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "auth handler"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/auth_handler.py"})
+test("Gate 7: edit auth_handler.py WITH memory → allowed", code == 0, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Gate 8 — Temporal Awareness
+# ─────────────────────────────────────────────────
+print("\n--- Gate 8: Temporal Awareness ---")
+
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+
+from datetime import datetime
+
+current_hour = datetime.now().hour
+
+# Test long-session advisory: set session_start to 4+ hours ago
+state = load_state(session_id=MAIN_SESSION)
+state["session_start"] = time.time() - (4 * 3600)  # 4 hours ago
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/long_session.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/long_session.py"})
+# Gate 8 long-session is advisory (prints warning, doesn't block)
+# During normal hours this should pass; during late night it might block for late-night reason
+if 1 <= current_hour < 5:
+    test("Gate 8: long session (skipped — late night hours)", True)
+else:
+    test("Gate 8: long session advisory doesn't block during normal hours", code == 0, msg)
+    test("Gate 8: long session advisory emits warning", "GATE 8" in msg or "session" in msg.lower(), msg)
+
+# Test normal-hours pass: during normal hours, Edit should pass (with memory satisfied)
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/normal_edit.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/normal_edit.py"})
+if 1 <= current_hour < 5:
+    test("Gate 8: normal hours test (skipped — currently late night)", True)
+else:
+    test("Gate 8: edit during normal hours passes", code == 0, msg)
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()
