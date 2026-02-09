@@ -1,25 +1,31 @@
 {
-  "session_count": 8,
-  "status": "idle",
-  "project": "self-healing-framework",
-  "last_session": "2026-02-09",
-  "commits": ["14d27ea", "6639a97"],
-  "uncommitted_changes": 7,
-  "test_status": "132/132 passing",
-  "audit_status": "0 critical, 6 high, 12 medium (50 total)",
-  "fixes_applied": ["H4", "M1", "M2", "H6", "M8", "M9", "M11"],
-  "residual_issues": [
-    "M4: Gate 1 extension gaps (.c/.cpp/.rb/.php/.sh/.sql/.tf)",
-    "M5: Gate 3 deploy gaps (helm/terraform/pulumi)",
-    "M6: Gate 7 critical file gaps (SSH/sudoers/crontab)",
-    "M10: string comparison for time filtering",
-    "M12: memory_stats always healthy",
-    "H2: write-then-execute bypass (architectural)",
-    "H3: interpreter one-liner bypass (architectural)",
-    "H1: race condition in state (accepted for single-agent)"
+  "session_count": 11,
+  "status": "release_published_cluster_verified",
+  "project": "ProjectDawn Eclipse L2",
+  "branch": "projectdawn-eclipse",
+  "github_branch": "projectdawn-l2",
+  "github_url": "https://github.com/project-dawn-l2-chain/agave-dawn",
+  "github_release": "https://github.com/project-dawn-l2-chain/agave-dawn/releases/tag/v0.1.0-eclipse",
+  "working_dir": "/home/crab/eclipse-agave",
+  "commit": "4734adc73d",
+  "phases_complete": ["P0", "P1", "P2", "P3", "P4", "P5", "P6"],
+  "tests_passing": 723,
+  "test_failures": 0,
+  "cluster_tests_passing": 3,
+  "binaries_built": ["agave-validator", "solana", "solana-genesis", "solana-keygen"],
+  "next_priority": "testnet-launch",
+  "known_issues": [
+    "GovernanceUnlock is stub",
+    "No fuzz testing",
+    "gh CLI tokens show invalid in keyring but API calls work",
+    "Feature keypair needed for activation (deterministic pubkey)"
   ],
-  "backups": [
-    "~/.claude/backups/gate2-tuning-20260209-130300/",
-    "~/.claude/backups/PreModificationBackup/"
+  "github_auth_account": "OZmasterAI",
+  "session_11_completed": [
+    "GitHub Release v0.1.0-eclipse with 4 binaries",
+    "README.md pushed",
+    "Repo renamed agave-empty -> agave-dawn",
+    "3/3 multi-validator cluster tests passed",
+    "Linux binaries rebuilt (incremental)"
   ]
 }
