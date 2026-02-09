@@ -158,7 +158,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main"):
     if tool_name == "Bash":
         command = tool_input.get("command", "")
         verify_keywords = ["pytest", "python -m pytest", "npm test", "cargo test", "go test",
-                          "python ", "node ", "curl ", "systemctl status"]
+                          "python ", "node "]
         if any(kw in command for kw in verify_keywords):
             # Only clear files that are referenced in the command, or all if running a broad test suite
             broad_test_commands = ["pytest", "python -m pytest", "npm test", "cargo test", "go test"]

@@ -31,7 +31,6 @@ EXEMPT_BASENAMES = {"state.json", "HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md"}
 
 # Directories exempt by normalized path prefix
 EXEMPT_DIRS = [
-    os.path.join(os.path.expanduser("~"), ".claude", "hooks"),
     os.path.join(os.path.expanduser("~"), ".claude", "skills"),
 ]
 

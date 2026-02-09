@@ -91,6 +91,7 @@ def search_knowledge(query: str, top_k: int = 15) -> dict:
         query: What to search for (semantic search)
         top_k: Number of results to return (default 15)
     """
+    top_k = max(1, min(top_k, 500))
     count = collection.count()
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty. Start building knowledge with remember_this()."}
@@ -151,6 +152,7 @@ def deep_query(query: str, top_k: int = 50) -> dict:
         query: What to search for
         top_k: Number of results (default 50)
     """
+    top_k = max(1, min(top_k, 500))
     count = collection.count()
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty."}
@@ -176,6 +178,7 @@ def get_recent_activity(hours: int = 48) -> dict:
     Args:
         hours: How far back to look (default 48 hours)
     """
+    hours = max(1, min(hours, 8760))
     count = collection.count()
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty."}

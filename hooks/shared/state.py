@@ -17,8 +17,10 @@ import time
 STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 MEMORY_TIMESTAMP_FILE = os.path.join(STATE_DIR, ".memory_last_queried")
 
-# Cap files_read to prevent unbounded growth (W4 fix)
+# Cap lists to prevent unbounded growth
 MAX_FILES_READ = 200
+MAX_VERIFIED_FIXES = 100
+MAX_PENDING_VERIFICATION = 50
 
 
 def state_file_for(session_id="main"):
@@ -66,10 +68,18 @@ def load_state(session_id="main"):
 
 def save_state(state, session_id="main"):
     """Save state for a specific session/agent with atomic write."""
-    # Cap files_read to prevent unbounded growth (W4 fix)
+    # Cap lists to prevent unbounded growth
     files_read = state.get("files_read", [])
     if len(files_read) > MAX_FILES_READ:
         state["files_read"] = files_read[-MAX_FILES_READ:]
+
+    verified = state.get("verified_fixes", [])
+    if len(verified) > MAX_VERIFIED_FIXES:
+        state["verified_fixes"] = verified[-MAX_VERIFIED_FIXES:]
+
+    pending = state.get("pending_verification", [])
+    if len(pending) > MAX_PENDING_VERIFICATION:
+        state["pending_verification"] = pending[-MAX_PENDING_VERIFICATION:]
 
     state_file = state_file_for(session_id)
     os.makedirs(os.path.dirname(state_file), exist_ok=True)

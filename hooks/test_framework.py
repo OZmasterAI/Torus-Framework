@@ -285,7 +285,7 @@ run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/app.py"})
 # Edit without memory query → BLOCKED
 code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/app.py"})
 test("Edit without memory query → blocked", code != 0, msg)
-test("Block message mentions memory or GATE 4", "GATE 4" in msg or "memory" in msg.lower(), msg)
+test("Block message mentions GATE 4", "GATE 4" in msg, msg)
 
 # Query memory → then edit → ALLOWED
 run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
@@ -527,14 +527,16 @@ print("\n--- Gate 7: Critical File Guard ---")
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 
-# Edit a critical file (auth_handler.py) without recent memory query → BLOCKED
-# Note: Gate 4 (memory-first, 5min window) fires before Gate 7 (critical, 3min window),
-# so the block may come from either gate. Both are correct behavior.
+# Edit a critical file (auth_handler.py) with stale memory → BLOCKED by Gate 7
+# Set memory_last_queried to 4 minutes ago: within Gate 4's 5-min window but
+# outside Gate 7's 3-min window, isolating Gate 7's behavior.
 run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/auth_handler.py"})
+state = load_state(session_id=MAIN_SESSION)
+state["memory_last_queried"] = time.time() - 240  # 4 minutes ago
+save_state(state, session_id=MAIN_SESSION)
 code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/auth_handler.py"})
-test("Gate 7: edit auth_handler.py without memory → blocked", code != 0, f"code={code}")
-test("Gate 7: block message mentions gate or memory",
-     "GATE 4" in msg or "GATE 7" in msg or "memory" in msg.lower(), msg)
+test("Gate 7: edit auth_handler.py with stale memory → blocked", code != 0, f"code={code}")
+test("Gate 7: block message specifically mentions GATE 7", "GATE 7" in msg, msg)
 
 # Edit a non-critical file → ALLOWED (only need Gate 4 memory)
 cleanup_test_states()
@@ -596,6 +598,77 @@ if 1 <= current_hour < 5:
     test("Gate 8: normal hours test (skipped — currently late night)", True)
 else:
     test("Gate 8: edit during normal hours passes", code == 0, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Fixes H4, M1, M2, H6, M8
+# ─────────────────────────────────────────────────
+print("\n--- Fix Verification: H4, M1, M2, H6, M8 ---")
+
+# H4: Gate 5 no longer exempts hooks/ directory
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+hooks_dir = os.path.expanduser("~/.claude/hooks")
+for i in range(4):
+    fp = f"/tmp/h4_file_{i}.py"
+    run_enforcer("PostToolUse", "Read", {"file_path": fp})
+run_enforcer("PostToolUse", "Read", {"file_path": os.path.join(hooks_dir, "enforcer.py")})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+# Edit 3 non-hooks files to fill pending_verification
+for i in range(3):
+    run_enforcer("PostToolUse", "Edit", {"file_path": f"/tmp/h4_file_{i}.py"})
+# Now editing a hooks/ file should be BLOCKED (no longer exempt from Gate 5)
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": os.path.join(hooks_dir, "enforcer.py")})
+test("H4: hooks/ file blocked by Gate 5 (no longer exempt)", code != 0, f"code={code}")
+
+# H4: Gate 8 no longer exempts hooks/ — during late night, hooks/ edits require fresh memory
+# (Can only test during 1-5 AM; skip otherwise)
+if 1 <= current_hour < 5:
+    cleanup_test_states()
+    reset_state(session_id=MAIN_SESSION)
+    run_enforcer("PostToolUse", "Read", {"file_path": os.path.join(hooks_dir, "enforcer.py")})
+    # Don't query memory — Gate 8 should block
+    code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": os.path.join(hooks_dir, "enforcer.py")})
+    test("H4: hooks/ file blocked by Gate 8 late-night (no longer exempt)", code != 0, f"code={code}")
+else:
+    test("H4: Gate 8 hooks/ late-night test (skipped — not late night)", True)
+
+# M1: verified_fixes cap at 100
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["verified_fixes"] = [f"/tmp/fix_{i}.py" for i in range(150)]
+save_state(state, session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+test("M1: verified_fixes capped at 100", len(state["verified_fixes"]) <= 100,
+     f"len={len(state['verified_fixes'])}")
+
+# M2: pending_verification cap at 50
+state = load_state(session_id=MAIN_SESSION)
+state["pending_verification"] = [f"/tmp/pending_{i}.py" for i in range(80)]
+save_state(state, session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+test("M2: pending_verification capped at 50", len(state["pending_verification"]) <= 50,
+     f"len={len(state['pending_verification'])}")
+
+# M8: curl no longer counts as verification
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/m8_test.py"})
+run_enforcer("PostToolUse", "Bash", {"command": "curl http://example.com"})
+state = load_state(session_id=MAIN_SESSION)
+test("M8: curl does not clear pending verification",
+     "/tmp/m8_test.py" in state.get("pending_verification", []),
+     f"pending={state.get('pending_verification', [])}")
+
+# M8: python still clears targeted verification
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/m8_test.py"})
+run_enforcer("PostToolUse", "Bash", {"command": "python /tmp/m8_test.py"})
+state = load_state(session_id=MAIN_SESSION)
+test("M8: python clears targeted pending verification",
+     "/tmp/m8_test.py" not in state.get("pending_verification", []),
+     f"pending={state.get('pending_verification', [])}")
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

@@ -1,57 +1,56 @@
 # Session Handoff
 
-## Session 7 — Self-Healing Framework Audit & Hardening
+## Session 8 — Fresh Audit + 7 Fixes
 **Date:** 2026-02-09
 **Project:** ~/.claude/ self-healing framework
 
 ## What Was Done
 
-### 1. Full Security Audit (53 findings)
-- 3-agent parallel audit (engine, gates, infrastructure)
-- 5 CRITICAL, 10 HIGH, 15 MEDIUM, 17 LOW, 6 INFO
+### 1. Fresh 3-Agent Audit (50 findings)
+- 3 parallel auditors: engine-auditor, gates-auditor, infra-auditor
+- 0 CRITICAL, 6 HIGH, 12 MEDIUM, 17 LOW, 15 INFO
+- All 5 critical fixes from Session 7 confirmed holding
+- No new critical bypass vectors found
 
-### 2. Phase 1 — Critical Fixes
-- **Fail-closed on malformed input** (enforcer.py): PreToolUse exits 1 on bad JSON, missing tool_name/tool_input
-- **Sideband timestamp clamping** (state.py): Future timestamps clamped to prevent Gate 4/7/8 bypass
-- **Gate 2 hardening** (gate_02): eval, bash -c, sh -c, pipe-to-shell, <<<, exec, source, DELETE FROM, git checkout --, git stash drop patterns + shlex rm flag detection
+### 2. Seven Fixes Applied & Verified
+- **H4 — hooks/ exemption removed from Gates 5 & 8**: Security infrastructure now subject to proof-before-fixed and temporal awareness (matching Gate 4's prior fix)
+- **M1 — verified_fixes capped**: MAX_VERIFIED_FIXES=100 in state.py save_state()
+- **M2 — pending_verification capped**: MAX_PENDING_VERIFICATION=50 in state.py save_state()
+- **H6 — Memory server input validation**: top_k clamped [1,500], hours clamped [1,8760]
+- **M8 — Verification keywords tightened**: Removed "curl " and "systemctl status" from verify_keywords (not code verification)
+- **M9 — requirements.txt fixed**: chromadb>=1.0,<2.0 and mcp>=1.0,<2.0 (matches installed 1.4.1 / 1.26.0)
+- **M11 — Test assertions tightened**: Gate 4 test checks specifically for "GATE 4"; Gate 7 test isolates via 4-min-ago memory timestamp
 
-### 3. Phase 2 — Gate Fixes
-- NotebookEdit added to Gates 1, 5, 7, 8
-- Gate 3 exit code check (blocks deploy after failed tests)
-- Boot sideband reset (deletes .memory_last_queried on session start)
-- Gate 4 hooks/ exemption removed
-- Gate 1 path normalization (os.path.normpath)
-
-### 4. Phase 3 — Tests, Docs, Config
-- 15 new tests for Gates 5-8
-- CLAUDE.md updated (Gate 6 documented as advisory)
-- requirements.txt created (chromadb, mcp pinned)
-- mcp.json now tracked in git
-
-### 5. Post-Fix Verification Audit
-- 3-agent verification: all 12 fixes CONFIRMED working
-- 4 new false positive issues identified (NEW-1 through NEW-4)
-
-### 6. Gate 2 False Positive Tuning
-- Added SAFE_EXCEPTIONS allowlist with _is_safe_exception() helper
-- 5 exception categories: source (venv/profiles), exec (interpreters), <<< (non-shell), DELETE FROM (with WHERE), git stash drop (specific refs)
-- Bypass vectors (eval, bash -c, sh -c, pipe-to-shell) remain fully blocked
-- 23 new tests added
+### 3. Verification
+- 132/132 tests passing (126 original + 6 new fix-verification tests)
+- All gates live-tested (Gate 1, 2, 4, 5 blocking; safe exceptions passing; fail-closed on malformed input)
+- Boot system, memory server, and sideband all confirmed working
 
 ## Commits
-- `14d27ea` — Security audit: harden enforcer, gates, and test coverage (15 files, +275/-16)
-- `6639a97` — Gate 2: add safe-exception allowlist to reduce false positives (2 files, +87)
+- `14d27ea` — Security audit: harden enforcer, gates, and test coverage
+- `6639a97` — Gate 2: add safe-exception allowlist to reduce false positives
+- (Session 8 changes uncommitted — ready to commit)
 
 ## Test Status
-126/126 passing (0 failures)
+132/132 passing (0 failures)
+
+## Files Modified (Session 8)
+- `hooks/gates/gate_05_proof_before_fixed.py` — removed hooks/ from EXEMPT_DIRS
+- `hooks/gates/gate_08_temporal.py` — removed hooks/ from EXEMPT_DIRS
+- `hooks/shared/state.py` — added MAX_VERIFIED_FIXES, MAX_PENDING_VERIFICATION caps
+- `hooks/enforcer.py` — removed curl/systemctl from verify_keywords
+- `hooks/memory_server.py` — input validation on top_k, hours
+- `hooks/requirements.txt` — corrected version constraints
+- `hooks/test_framework.py` — tightened assertions, 6 new tests
 
 ## What's Next (Prioritized)
-1. **M3 — verified_fixes cap**: List grows unbounded; add MAX_VERIFIED_FIXES cap
-2. **G1-2 — Extension coverage**: Gate 1 only guards .py/.js/.ts; missing .rs, .go, .java, etc.
-3. **G3-2 — Deploy pattern gaps**: Gate 3 missing docker push, helm install, kubectl apply
-4. **G7-3 — Critical file patterns**: Gate 7 missing SSH keys, sudoers, crontab
-5. **X1 — Write-then-execute bypass**: Write a .sh file, then `bash script.sh` bypasses Gate 2
-6. **G7-4 — .env.example**: Gate 7 blocks .env.example (false positive)
+1. **Commit Session 8 changes** — 7 files modified, ready to commit
+2. **M4 — Gate 1 extension coverage**: Add .c, .cpp, .rb, .php, .sh, .sql, .tf, .kt, .swift
+3. **M5 — Gate 3 deploy patterns**: Add helm, terraform, pulumi, serverless, cdk
+4. **M6 — Gate 7 critical files**: Add SSH keys, sudoers, crontab, *.pem, *.key, kubeconfig
+5. **M10 — Memory server time filtering**: Fix string comparison to numeric for session_time
+6. **M12 — memory_stats health check**: Replace always-true check with actual health validation
+7. **H2/H3 — Architectural**: Write-then-execute + interpreter one-liner bypasses (design decision needed)
 
 ## Backups
 - Pre-commit backup: `~/.claude/backups/gate2-tuning-20260209-130300/`

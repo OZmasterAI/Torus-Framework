@@ -1,17 +1,22 @@
 {
-  "session_count": 7,
+  "session_count": 8,
   "status": "idle",
   "project": "self-healing-framework",
   "last_session": "2026-02-09",
   "commits": ["14d27ea", "6639a97"],
-  "test_status": "126/126 passing",
+  "uncommitted_changes": 7,
+  "test_status": "132/132 passing",
+  "audit_status": "0 critical, 6 high, 12 medium (50 total)",
+  "fixes_applied": ["H4", "M1", "M2", "H6", "M8", "M9", "M11"],
   "residual_issues": [
-    "M3: verified_fixes unbounded list",
-    "G1-2: extension coverage gaps",
-    "G3-2: deploy pattern gaps",
-    "G7-3: SSH/sudoers patterns",
-    "X1: write-then-execute bypass",
-    "G7-4: .env.example false positive"
+    "M4: Gate 1 extension gaps (.c/.cpp/.rb/.php/.sh/.sql/.tf)",
+    "M5: Gate 3 deploy gaps (helm/terraform/pulumi)",
+    "M6: Gate 7 critical file gaps (SSH/sudoers/crontab)",
+    "M10: string comparison for time filtering",
+    "M12: memory_stats always healthy",
+    "H2: write-then-execute bypass (architectural)",
+    "H3: interpreter one-liner bypass (architectural)",
+    "H1: race condition in state (accepted for single-agent)"
   ],
   "backups": [
     "~/.claude/backups/gate2-tuning-20260209-130300/",
