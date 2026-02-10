@@ -1,41 +1,37 @@
-# Session 11 Handoff — Causal Fix Tracking System
+# Session 12 Handoff — OpenClaw Auth Fix + Model Switch
 
 ## What Was Done
-- Implemented causal fix tracking system: 5 features across 7 files
-- **error_normalizer.py** (NEW) — Strips paths/UUIDs/timestamps/numbers, FNV-1a hashing for stable error fingerprints
-- **3 MCP tools** — `record_attempt`, `record_outcome`, `query_fix_history` with fix_outcomes ChromaDB collection
-- **Gate 9: STRATEGY BAN** (NEW) — Blocks Edit/Write when current strategy is proven ineffective
-- **Temporal decay** — 30-day half-life on fix confidence scores
-- **Enforcer + State integration** — 4 new state fields, 3 PostToolUse handlers, Gate 6 pending chain warnings
-- All implemented via 7-agent team in parallel
-- Tests: 174/175 passing (1 expected HANDOFF.md failure now resolved)
+- Diagnosed OpenClaw gateway errors: both Anthropic OAuth tokens (`anthropic:crab` auth revoked, `anthropic:vpsica` timeout)
+- Switched primary model from `anthropic/claude-opus-4-6` to `anthropic/claude-sonnet-4-5-20250929` (direct Anthropic API)
+- Set fallback to `openrouter/anthropic/claude-haiku-4-5-20251001`
+- Switched auth profile from `anthropic:crab` (revoked) to `anthropic:vpsica` (working)
+- Added Sonnet 4.5 and Haiku 4.5 model definitions to both OpenRouter and Anthropic providers
+- Cleared vpsica cooldown, set as `lastGood` in auth-profiles.json
+- Gateway restarted and verified healthy
 
-## Files Modified (7)
-- `~/.claude/hooks/shared/error_normalizer.py` (NEW, 43 lines)
-- `~/.claude/hooks/shared/state.py` (+12 lines: 4 fields, 2 caps)
-- `~/.claude/hooks/gates/gate_09_strategy_ban.py` (NEW, 42 lines)
-- `~/.claude/hooks/memory_server.py` (+150 lines: collection, 3 tools, 2 helpers)
-- `~/.claude/hooks/enforcer.py` (+55 lines: Gate 9 registration, 3 PostToolUse handlers)
-- `~/.claude/hooks/gates/gate_06_save_fix.py` (+7 lines: pending chain warning)
-- `~/.claude/CLAUDE.md` (+8 lines: Gate 9 docs, CAUSAL CHAIN WORKFLOW section)
+## Files Modified (3)
+- `/home/crab/.openclaw/openclaw.json` — Model definitions, primary/fallback model, agent model aliases
+- `/home/crab/.openclaw/agents/main/agent/models.json` — Anthropic provider API key (vpsica token), model list
+- `/home/crab/.openclaw/agents/main/agent/auth-profiles.json` — lastGood set to vpsica, cooldown cleared
 
 ## What's Next
-1. **MCP server restart** — memory_server.py was modified; restart needed for new tools to appear
-2. **Live testing** — Use the causal chain on a real error to validate end-to-end flow
-3. **Session 12 planning** — Consider: confidence dashboard skill, auto-query on error detection, or audit the new features
-4. **Remaining audit items** — Gate 1 extension gaps, Gate 3 deploy gaps, Gate 7 critical file gaps (from Session 8 audit)
+1. **Monitor vpsica token** — If it also gets revoked, will need new Anthropic credentials or full OpenRouter fallback
+2. **MCP server restart** — memory_server.py was modified in Session 11; restart needed for new causal tracking tools
+3. **Live test causal tracking** — Use the causal chain on a real error to validate end-to-end flow
+4. **Remaining audit items** — Gate 1 extension gaps, Gate 3 deploy gaps, Gate 7 critical file gaps (from Session 8)
 
 ## Architecture Notes
-- Gate 9 is Tier 2 (non-safety) — crashes logged but don't block
-- fix_outcomes collection is isolated from knowledge collection
-- Chain IDs are deterministic: `{error_hash}_{strategy_hash}`
-- Laplace smoothing `(s+1)/(n+2)` for confidence, ban threshold: attempts>=2 AND confidence<0.18
-- All enforcer PostToolUse handlers are defensive (try/except, never crash)
+- OpenClaw gateway hot-syncs models.json from memory — must stop gateway before editing apiKey, then restart
+- Auth-profiles.json `lastGood` field controls which credential is used per provider
+- The `anthropic:crab` token is confirmed revoked (HTTP 403) — do not reuse without new token
+- Gateway does not use systemd user bus on this system — use manual kill+restart
 
-## Test Status
-- 174 passing, 1 expected failure (HANDOFF.md — now resolved)
-- Run: `python3 ~/.claude/hooks/test_framework.py`
+## Service Status
+- **OpenClaw Gateway:** Running (PID active), port 18789, Telegram connected (@Clawzy_op_bot)
+- **Primary model:** `anthropic/claude-sonnet-4-5-20250929` via `anthropic:vpsica` profile
+- **Fallback:** `openrouter/anthropic/claude-haiku-4-5-20251001`
+- **Framework tests:** 175/175 passing (from Session 11)
 
 ## Warnings
-- MCP server needs restart after memory_server.py changes
-- Late night mode was active during this session (Gate 8)
+- `anthropic:crab` OAuth token is revoked — do not switch back without new credentials
+- Gateway overwrites models.json on shutdown — edit only while stopped

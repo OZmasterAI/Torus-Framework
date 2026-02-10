@@ -1,33 +1,31 @@
 {
-  "session_count": 11,
+  "session_count": 12,
   "status": "complete",
   "project": "self-healing-claude-framework",
   "last_session": "2026-02-10",
   "active_tasks": [],
   "completed_this_session": [
-    "error_normalizer.py",
-    "state.py causal fields",
-    "gate_09_strategy_ban.py",
-    "memory_server.py MCP tools",
-    "enforcer.py Gate 9 + handlers",
-    "gate_06 pending chain warnings",
-    "CLAUDE.md documentation",
-    "18 new tests"
+    "OpenClaw auth diagnosis (revoked anthropic:crab token)",
+    "Model switch to claude-sonnet-4-5-20250929",
+    "Auth profile switch to anthropic:vpsica",
+    "Gateway restart and verification"
   ],
   "known_issues": [
-    "MCP server needs restart for new tools",
-    "HANDOFF.md file check was expected failure (now resolved)",
+    "MCP server needs restart for new causal tracking tools (Session 11)",
+    "anthropic:crab OAuth token revoked — do not reuse",
+    "Gateway overwrites models.json on shutdown",
     "Gate 1/3/7 extension/deploy/critical file gaps (Session 8 residual)"
   ],
   "recent_fixes": [
-    "Causal fix tracking: error normalizer + 3 MCP tools + Gate 9 + enforcer integration"
+    "OpenClaw: switched from revoked anthropic:crab to working anthropic:vpsica profile",
+    "OpenClaw: primary model changed from opus-4-6 to sonnet-4-5 with haiku-4-5 fallback"
   ],
   "test_status": {
     "total": 175,
     "passing": 175,
     "failing": 0,
-    "note": "HANDOFF.md now exists, expected failure resolved"
+    "note": "Framework tests from Session 11 — no code changes this session"
   },
   "gate_count": 9,
-  "memory_count": 94
+  "memory_count": 96
 }
