@@ -1327,6 +1327,104 @@ code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec node server.js"
 test("H1: exec node server.js (no -e) → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
+# Test: E2 — Tier 1 fail-to-load path (gate file missing)
+# ─────────────────────────────────────────────────
+print("\n--- E2: Tier 1 Fail-to-Load Path ---")
+
+import shutil
+_gate_01_path = os.path.join(os.path.dirname(__file__), "gates", "gate_01_read_before_edit.py")
+_gate_01_hidden = _gate_01_path + ".hidden"
+
+try:
+    os.rename(_gate_01_path, _gate_01_hidden)
+    code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/load_test.py"})
+    test("E2: Tier 1 gate missing → blocked (fail-closed)", code != 0, f"code={code}")
+    test("E2: message mentions 'failed to load'", "failed to load" in msg.lower(), msg)
+finally:
+    os.rename(_gate_01_hidden, _gate_01_path)
+
+# ─────────────────────────────────────────────────
+# Test: E1 — Tier 1 fail-closed crash path (gate crashes during check)
+# ─────────────────────────────────────────────────
+print("\n--- E1: Tier 1 Fail-Closed Crash Path ---")
+
+_gate_01_backup = _gate_01_path + ".bak"
+shutil.copy2(_gate_01_path, _gate_01_backup)
+try:
+    # Replace gate_01 with a version that crashes in check()
+    with open(_gate_01_path, "w") as f:
+        f.write('GATE_NAME = "GATE 1: READ BEFORE EDIT"\n')
+        f.write('def check(tool_name, tool_input, state, event_type="PreToolUse"):\n')
+        f.write('    raise TypeError("Simulated Tier 1 gate crash")\n')
+    cleanup_test_states()
+    reset_state(session_id=MAIN_SESSION)
+    run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+    code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/crash_test.py"})
+    test("E1: Tier 1 gate crash → blocked (fail-closed)", code != 0, f"code={code}")
+    test("E1: crash message mentions gate crash", "crashed" in msg.lower() or "BLOCKED" in msg, msg)
+finally:
+    shutil.move(_gate_01_backup, _gate_01_path)
+
+# ─────────────────────────────────────────────────
+# Test: G2-1 — rm with split flags detection
+# ─────────────────────────────────────────────────
+print("\n--- G2-1: rm Split Flags Detection ---")
+
+_split_rm_blocked = [
+    ("rm -r /tmp/data -f", "rm -r dir -f"),
+    ("rm --recursive somedir --force", "rm --recursive dir --force"),
+    ("rm -r -f important/", "rm -r -f (split)"),
+    ("/usr/bin/rm -r mydir -f", "/usr/bin/rm -r dir -f"),
+]
+
+for cmd, desc in _split_rm_blocked:
+    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    test(f"G2-1: {desc} → blocked", code != 0, f"code={code}")
+
+# rm -r without -f should be allowed
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": "rm -r /tmp/olddir"})
+test("G2-1: rm -r without -f → allowed", code == 0, msg)
+
+# ─────────────────────────────────────────────────
+# Test: M1 — exec flag-interleaving bypass fixed (shlex-based)
+# ─────────────────────────────────────────────────
+print("\n--- M1: exec Flag-Interleaving Fix ---")
+
+# These should now be BLOCKED (were bypassing the regex lookahead)
+_exec_interleave_blocked = [
+    ('exec python3 -W default -c "import os"', "exec python3 -W default -c"),
+    ('exec python3 --verbose -c "import os"', "exec python3 --verbose -c"),
+    ('exec node --inspect -e "process.exit()"', "exec node --inspect -e"),
+]
+
+for cmd, desc in _exec_interleave_blocked:
+    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    test(f"M1: {desc} → blocked", code != 0, f"code={code}")
+
+# These should still be ALLOWED (legitimate hand-offs)
+_exec_safe_allowed = [
+    ("exec python3 app.py", "exec python3 app.py"),
+    ("exec node server.js", "exec node server.js"),
+    ("exec cargo run", "exec cargo run"),
+    ("exec go run main.go", "exec go run main.go"),
+]
+
+for cmd, desc in _exec_safe_allowed:
+    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    test(f"M1: {desc} → allowed", code == 0, f"BLOCKED: {msg}")
+
+# ─────────────────────────────────────────────────
+# Test: M2 — exec with heredoc << now blocked
+# ─────────────────────────────────────────────────
+print("\n--- M2: exec Heredoc Bypass Fixed ---")
+
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec python3 << 'EOF'\nimport os\nEOF"})
+test("M2: exec python3 << 'EOF' → blocked", code != 0, f"code={code}")
+
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec ruby <<SCRIPT\nputs 1\nSCRIPT"})
+test("M2: exec ruby <<SCRIPT → blocked", code != 0, f"code={code}")
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

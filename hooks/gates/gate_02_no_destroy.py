@@ -81,10 +81,8 @@ SAFE_EXCEPTIONS = [
     # source: allow venv activation and common shell profile sourcing
     ("source (execute script in current shell)",
      r"\bsource\s+\S*(?:activate|\.bashrc|\.bash_profile|\.profile|\.zshrc|\.zprofile|\.envrc)\b"),
-    # exec: allow common interpreter replacements (Docker entrypoints, process hand-off)
-    # Negative lookahead blocks -c/-e flags (interpreter one-liner bypass)
-    ("exec (replace current process)",
-     r"\bexec\s+(?:python[23]?|node|ruby|java|perl|npm|npx|cargo\s+run|go\s+run)\b(?!\s+-[ce]\b)"),
+    # exec: handled by _exec_is_safe() below (shlex-based, not regex)
+    # Removed regex — shlex tokenization catches flag interleaving and heredoc
     # DELETE FROM: allow targeted SQL deletes that include a WHERE clause
     ("DELETE FROM (SQL mass deletion)",
      r"\bDELETE\s+FROM\s+\S+\s+WHERE\b"),
@@ -104,6 +102,10 @@ def _is_safe_exception(command, description):
     for exc_desc, exc_pattern in SAFE_EXCEPTIONS:
         if exc_desc == description and re.search(exc_pattern, command, re.IGNORECASE):
             return True
+
+    # Special case: exec interpreter hand-off (shlex-based tokenization)
+    if description == "exec (replace current process)":
+        return _exec_is_safe(command)
 
     # Special case: <<< here-strings are safe when not feeding to a shell
     if description == "heredoc execution":
@@ -152,6 +154,60 @@ def _rm_has_recursive_and_force(command):
                 has_force = True
         if has_recursive and has_force:
             return True
+    return False
+
+
+def _exec_is_safe(command):
+    """Check if an exec command is a safe interpreter hand-off.
+
+    Uses shlex tokenization to detect -c/-e flags and heredoc << anywhere
+    in the argument list, not just immediately after the interpreter name.
+    This fixes the flag-interleaving bypass where 'exec python3 -W default -c "code"'
+    would slip past a regex-based negative lookahead.
+
+    Allows: exec python3 app.py, exec node server.js, exec cargo run
+    Blocks: exec python3 -c "code", exec python3 -W default -c "code",
+            exec python3 << 'EOF', exec node -e "code"
+    """
+    SAFE_INTERPRETERS = {
+        "python", "python2", "python3", "node", "ruby", "java",
+        "perl", "npm", "npx",
+    }
+    SAFE_MULTI_WORD = {("cargo", "run"), ("go", "run")}
+    DANGEROUS_FLAGS = {"-c", "-e"}
+
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+
+    for i, token in enumerate(tokens):
+        if token != "exec":
+            continue
+        rest = tokens[i + 1:]
+        if not rest:
+            return False
+
+        interpreter = rest[0]
+        args_start = 1
+
+        # Check single-word interpreters
+        if interpreter not in SAFE_INTERPRETERS:
+            # Check multi-word interpreters (cargo run, go run)
+            if len(rest) > 1 and (interpreter, rest[1]) in SAFE_MULTI_WORD:
+                args_start = 2
+            else:
+                return False
+
+        # Scan ALL remaining args for dangerous flags or heredoc input
+        for arg in rest[args_start:]:
+            if arg in DANGEROUS_FLAGS:
+                return False
+            if arg.startswith("<<"):
+                return False
+
+        return True
+
     return False
 
 

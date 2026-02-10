@@ -82,9 +82,11 @@ def load_gates():
             mod = importlib.import_module(module_name)
             if hasattr(mod, "check"):
                 gates.append(mod)
-        except ImportError:
-            # Gate not yet installed — skip silently
-            pass
+        except ImportError as e:
+            # Non-Tier-1 gate: log warning so missing gates are visible
+            # Tier 1 missing gates are caught by the check below (fail-closed)
+            if module_name not in TIER1_SAFETY_GATES:
+                print(f"[ENFORCER] Warning: Gate '{module_name}' failed to load: {e}", file=sys.stderr)
 
     # Verify all Tier 1 safety gates loaded successfully (fail-closed)
     loaded_names = {gate.__name__ for gate in gates}
