@@ -38,6 +38,7 @@ GATE_MODULES = [
     "gates.gate_06_save_fix",
     "gates.gate_07_critical_file_guard",
     "gates.gate_08_temporal",
+    "gates.gate_09_strategy_ban",
 ]
 
 # Tier 1 safety gates that MUST fail-closed (exceptions = block, not pass)
@@ -119,7 +120,32 @@ def handle_pre_tool_use(tool_name, tool_input, state):
             print(f"[ENFORCER] Warning: Gate error in {gate.__name__}: {e}", file=sys.stderr)
 
 
-def handle_post_tool_use(tool_name, tool_input, state, session_id="main"):
+def _detect_errors(tool_input, tool_response, state):
+    """Scan Bash output for error patterns, track in state."""
+    ERROR_PATTERNS = [
+        "Traceback", "SyntaxError:", "ImportError:", "ModuleNotFoundError:",
+        "Permission denied", "npm ERR!", "fatal:", "error[E", "FAILED",
+        "command not found", "No such file or directory",
+        "ConnectionRefusedError", "OSError:",
+    ]
+    # Handle both string and dict tool_response defensively
+    if isinstance(tool_response, dict):
+        output = tool_response.get("stdout", "") + tool_response.get("stderr", "")
+    else:
+        output = str(tool_response)
+
+    command = tool_input.get("command", "")
+    for pattern in ERROR_PATTERNS:
+        if pattern in output:
+            entry = {"pattern": pattern, "command": command, "timestamp": time.time()}
+            state.setdefault("unlogged_errors", []).append(entry)
+            # Track pattern recurrence for repair loop detection
+            counts = state.setdefault("error_pattern_counts", {})
+            counts[pattern] = counts.get(pattern, 0) + 1
+            break  # One entry per Bash tool call max
+
+
+def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_response=None):
     """Track state after a tool call completes."""
     state["tool_call_count"] = state.get("tool_call_count", 0) + 1
 
@@ -134,6 +160,10 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main"):
     # Track memory queries
     if is_memory_tool(tool_name):
         state["memory_last_queried"] = time.time()
+
+    if tool_name == "mcp__memory__remember_this":
+        state["unlogged_errors"] = []
+        state["error_pattern_counts"] = {}
 
     # Track test runs
     if tool_name == "Bash":
@@ -185,6 +215,66 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main"):
                         remaining.append(filepath)
                 state["pending_verification"] = remaining
 
+    # Detect errors in Bash output
+    if tool_name == "Bash" and tool_response is not None:
+        _detect_errors(tool_input, tool_response, state)
+
+    # Causal fix tracking: record_attempt
+    if tool_name == "mcp__memory__record_attempt":
+        try:
+            from shared.error_normalizer import error_signature, fnv1a_hash
+            error_text = tool_input.get("error_text", "")
+            strategy_id = tool_input.get("strategy_id", "")
+            if error_text and strategy_id:
+                _, error_hash = error_signature(error_text)
+                strategy_hash = fnv1a_hash(strategy_id)
+                chain_id = f"{error_hash}_{strategy_hash}"
+                state["current_strategy_id"] = strategy_id
+                state["current_error_signature"] = error_hash
+                pending = state.setdefault("pending_chain_ids", [])
+                if chain_id not in pending:
+                    pending.append(chain_id)
+        except Exception:
+            pass  # Defensive: don't crash PostToolUse
+
+    # Causal fix tracking: record_outcome
+    if tool_name == "mcp__memory__record_outcome":
+        try:
+            resp = tool_response if isinstance(tool_response, dict) else {}
+            if isinstance(tool_response, str):
+                try:
+                    resp = json.loads(tool_response)
+                except (json.JSONDecodeError, TypeError):
+                    resp = {}
+            if resp.get("banned"):
+                strategy_id = resp.get("strategy_id", "")
+                if strategy_id:
+                    bans = state.setdefault("active_bans", [])
+                    if strategy_id not in bans:
+                        bans.append(strategy_id)
+            state["pending_chain_ids"] = []
+            state["current_strategy_id"] = ""
+        except Exception:
+            pass
+
+    # Causal fix tracking: query_fix_history
+    if tool_name == "mcp__memory__query_fix_history":
+        try:
+            resp = tool_response if isinstance(tool_response, dict) else {}
+            if isinstance(tool_response, str):
+                try:
+                    resp = json.loads(tool_response)
+                except (json.JSONDecodeError, TypeError):
+                    resp = {}
+            banned_list = resp.get("banned", [])
+            bans = state.setdefault("active_bans", [])
+            for entry in banned_list:
+                sid = entry.get("strategy_id", "") if isinstance(entry, dict) else ""
+                if sid and sid not in bans:
+                    bans.append(sid)
+        except Exception:
+            pass
+
     save_state(state, session_id=session_id)
 
 
@@ -227,7 +317,8 @@ def main():
     if args.event == "PreToolUse":
         handle_pre_tool_use(tool_name, tool_input, state)
     elif args.event == "PostToolUse":
-        handle_post_tool_use(tool_name, tool_input, state, session_id=session_id)
+        tool_response = data.get("tool_response")
+        handle_post_tool_use(tool_name, tool_input, state, session_id=session_id, tool_response=tool_response)
 
 
 if __name__ == "__main__":

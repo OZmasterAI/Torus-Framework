@@ -21,6 +21,10 @@ MEMORY_TIMESTAMP_FILE = os.path.join(STATE_DIR, ".memory_last_queried")
 MAX_FILES_READ = 200
 MAX_VERIFIED_FIXES = 100
 MAX_PENDING_VERIFICATION = 50
+MAX_UNLOGGED_ERRORS = 20
+MAX_ERROR_PATTERNS = 50
+MAX_ACTIVE_BANS = 50
+MAX_PENDING_CHAINS = 10
 
 
 def state_file_for(session_id="main"):
@@ -46,6 +50,12 @@ def default_state():
         "session_start": time.time(),
         "edits_locked": False,
         "tool_call_count": 0,
+        "unlogged_errors": [],
+        "error_pattern_counts": {},
+        "pending_chain_ids": [],
+        "current_strategy_id": "",
+        "current_error_signature": "",
+        "active_bans": [],
     }
 
 
@@ -80,6 +90,26 @@ def save_state(state, session_id="main"):
     pending = state.get("pending_verification", [])
     if len(pending) > MAX_PENDING_VERIFICATION:
         state["pending_verification"] = pending[-MAX_PENDING_VERIFICATION:]
+
+    unlogged = state.get("unlogged_errors", [])
+    if len(unlogged) > MAX_UNLOGGED_ERRORS:
+        state["unlogged_errors"] = unlogged[-MAX_UNLOGGED_ERRORS:]
+
+    # Cap error_pattern_counts dict — keep top N by count
+    pattern_counts = state.get("error_pattern_counts", {})
+    if len(pattern_counts) > MAX_ERROR_PATTERNS:
+        sorted_patterns = sorted(pattern_counts.items(), key=lambda x: x[1], reverse=True)
+        state["error_pattern_counts"] = dict(sorted_patterns[:MAX_ERROR_PATTERNS])
+
+    # Cap active_bans list
+    bans = state.get("active_bans", [])
+    if len(bans) > MAX_ACTIVE_BANS:
+        state["active_bans"] = bans[-MAX_ACTIVE_BANS:]
+
+    # Cap pending_chain_ids list
+    chains = state.get("pending_chain_ids", [])
+    if len(chains) > MAX_PENDING_CHAINS:
+        state["pending_chain_ids"] = chains[-MAX_PENDING_CHAINS:]
 
     state_file = state_file_for(session_id)
     os.makedirs(os.path.dirname(state_file), exist_ok=True)

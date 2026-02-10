@@ -27,6 +27,11 @@ MEMORY_TIMESTAMP_FILE = os.path.join(
     os.path.expanduser("~"), ".claude", "hooks", ".memory_last_queried"
 )
 
+# Add shared module path for error_normalizer
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(__file__))
+from shared.error_normalizer import normalize_error, fnv1a_hash, error_signature
+
 
 def _touch_memory_timestamp():
     """Write the current timestamp to the sideband file (atomic)."""
@@ -45,6 +50,11 @@ os.makedirs(MEMORY_DIR, exist_ok=True)
 client = chromadb.PersistentClient(path=MEMORY_DIR)
 collection = client.get_or_create_collection(
     name="knowledge",
+    metadata={"hnsw:space": "cosine"},
+)
+
+fix_outcomes = client.get_or_create_collection(
+    name="fix_outcomes",
     metadata={"hnsw:space": "cosine"},
 )
 
@@ -81,6 +91,21 @@ def format_results(results) -> list[dict]:
         formatted.append(entry)
 
     return formatted
+
+
+def _compute_confidence(successes, attempts):
+    """Laplace-smoothed confidence: (s+1)/(n+2)."""
+    return (successes + 1) / (attempts + 2)
+
+
+def _temporal_decay(confidence, timestamp_str):
+    """Apply temporal decay with 30-day half-life."""
+    try:
+        age_seconds = time.time() - float(timestamp_str)
+        age_days = max(0, age_seconds / 86400)
+        return confidence * (0.5 ** (age_days / 30))
+    except (ValueError, TypeError):
+        return confidence
 
 
 @mcp.tool()
@@ -238,6 +263,203 @@ def memory_stats() -> dict:
         "storage_path": MEMORY_DIR,
         "collection_name": "knowledge",
         "status": "healthy" if count >= 0 else "error",
+    }
+
+
+@mcp.tool()
+def record_attempt(error_text: str, strategy_id: str) -> dict:
+    """Record a fix attempt for causal tracking.
+
+    Args:
+        error_text: The error message being fixed
+        strategy_id: A short name for the fix strategy (e.g., "fix-type-cast")
+    """
+    normalized, error_hash = error_signature(error_text)
+    strategy_hash = fnv1a_hash(strategy_id)
+    chain_id = f"{error_hash}_{strategy_hash}"
+
+    # Check for existing record
+    attempts = 1
+    successes = 0
+    try:
+        existing = fix_outcomes.get(ids=[chain_id])
+        if existing and existing.get("documents") and len(existing["documents"]) > 0:
+            meta = existing["metadatas"][0] if existing.get("metadatas") else {}
+            attempts = int(meta.get("attempts", 0)) + 1
+            successes = int(meta.get("successes", 0))
+    except Exception:
+        pass
+
+    confidence = _compute_confidence(successes, attempts)
+
+    fix_outcomes.upsert(
+        documents=[normalized],
+        metadatas=[{
+            "error_hash": error_hash,
+            "strategy_id": strategy_id,
+            "chain_id": chain_id,
+            "outcome": "pending",
+            "confidence": str(round(confidence, 4)),
+            "attempts": str(attempts),
+            "successes": str(successes),
+            "timestamp": str(time.time()),
+            "last_outcome_time": "",
+        }],
+        ids=[chain_id],
+    )
+
+    _touch_memory_timestamp()
+
+    return {
+        "chain_id": chain_id,
+        "error_hash": error_hash,
+        "normalized_error": normalized,
+        "attempts": attempts,
+    }
+
+
+@mcp.tool()
+def record_outcome(chain_id: str, outcome: str) -> dict:
+    """Record the outcome of a fix attempt.
+
+    Args:
+        chain_id: The chain_id returned by record_attempt
+        outcome: "success" or "failure"
+    """
+    if outcome not in ("success", "failure"):
+        return {"error": "outcome must be 'success' or 'failure'"}
+
+    try:
+        existing = fix_outcomes.get(ids=[chain_id])
+        if not existing or not existing.get("documents") or len(existing["documents"]) == 0:
+            return {"error": f"No record found for chain_id: {chain_id}"}
+
+        meta = existing["metadatas"][0] if existing.get("metadatas") else {}
+        attempts = int(meta.get("attempts", 1))
+        successes = int(meta.get("successes", 0))
+        strategy_id = meta.get("strategy_id", "")
+
+        if outcome == "success":
+            successes += 1
+
+        confidence = _compute_confidence(successes, attempts)
+        banned = attempts >= 2 and confidence < 0.18
+
+        fix_outcomes.update(
+            ids=[chain_id],
+            metadatas=[{
+                **meta,
+                "outcome": outcome,
+                "confidence": str(round(confidence, 4)),
+                "successes": str(successes),
+                "banned": str(banned),
+                "last_outcome_time": str(time.time()),
+            }],
+        )
+
+        _touch_memory_timestamp()
+
+        return {
+            "confidence": round(confidence, 4),
+            "banned": banned,
+            "strategy_id": strategy_id,
+            "chain_id": chain_id,
+            "attempts": attempts,
+            "successes": successes,
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def query_fix_history(error_text: str, top_k: int = 10) -> dict:
+    """Query fix history for a given error to find what strategies worked or failed.
+
+    Args:
+        error_text: The error message to look up
+        top_k: Maximum number of results (default 10)
+    """
+    top_k = max(1, min(top_k, 100))
+    normalized, error_hash = error_signature(error_text)
+
+    results_by_chain = {}
+
+    # Semantic search
+    try:
+        count = fix_outcomes.count()
+        if count > 0:
+            semantic = fix_outcomes.query(
+                query_texts=[normalized],
+                n_results=min(top_k, count),
+            )
+            if semantic and semantic.get("documents"):
+                docs = semantic["documents"][0]
+                metas = semantic["metadatas"][0] if semantic.get("metadatas") else []
+                for i, doc in enumerate(docs):
+                    meta = metas[i] if i < len(metas) else {}
+                    cid = meta.get("chain_id", "")
+                    if cid:
+                        results_by_chain[cid] = meta
+    except Exception:
+        pass
+
+    # Exact hash match
+    try:
+        exact = fix_outcomes.get(where={"error_hash": error_hash})
+        if exact and exact.get("documents"):
+            metas = exact.get("metadatas", [])
+            for meta in metas:
+                cid = meta.get("chain_id", "")
+                if cid:
+                    results_by_chain[cid] = meta
+    except Exception:
+        pass
+
+    # Categorize with temporal decay
+    recommended = []
+    banned = []
+    pending = []
+
+    for chain_id, meta in results_by_chain.items():
+        confidence = float(meta.get("confidence", 0))
+        timestamp = meta.get("timestamp", "")
+        attempts = int(meta.get("attempts", 0))
+        outcome = meta.get("outcome", "pending")
+
+        decayed = _temporal_decay(confidence, timestamp)
+
+        entry = {
+            "chain_id": chain_id,
+            "strategy_id": meta.get("strategy_id", ""),
+            "confidence": round(decayed, 4),
+            "raw_confidence": round(confidence, 4),
+            "attempts": attempts,
+            "successes": int(meta.get("successes", 0)),
+            "outcome": outcome,
+        }
+
+        if outcome == "pending":
+            pending.append(entry)
+        elif decayed > 0.5:
+            recommended.append(entry)
+        elif decayed < 0.18 and attempts >= 2:
+            banned.append(entry)
+        else:
+            # Neither recommended nor banned — include in recommended with low confidence
+            recommended.append(entry)
+
+    # Sort recommended by confidence descending
+    recommended.sort(key=lambda x: x["confidence"], reverse=True)
+
+    _touch_memory_timestamp()
+
+    return {
+        "recommended": recommended,
+        "banned": banned,
+        "pending": pending,
+        "error_hash": error_hash,
+        "normalized_error": normalized,
     }
 
 

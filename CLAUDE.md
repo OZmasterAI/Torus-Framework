@@ -32,6 +32,7 @@ The following gates are checked via enforcer.py. Blocking gates exit with code 1
 - Gate 5: PROOF BEFORE FIXED — Verify changes before making more
 - Gate 7: CRITICAL FILE GUARD — Extra checks for high-risk files
 - Gate 8: TEMPORAL AWARENESS — Extra caution during late-night hours
+- Gate 9: STRATEGY BAN — Blocks banned fix strategies (proven ineffective)
 
 **Advisory gate** (warns only, never blocks):
 - Gate 6: SAVE VERIFIED FIX — WARNS only when verified fixes not saved to memory
@@ -72,3 +73,21 @@ SATISFACTION = (Agent Teams) x (Visual Output) x (Autonomy) x (Memory-First)
 - "still" — Your fix didn't work. Prove it this time.
 - "why" — Unexpected behavior. Investigate deeper.
 - ALL CAPS — Important point being missed. Re-read carefully.
+
+## MEMORY TAG CONVENTIONS
+Use structured tags when saving to memory for better searchability and promotion detection.
+
+**Type tags:** `type:error`, `type:learning`, `type:fix`, `type:feature-request`, `type:correction`, `type:decision`
+**Priority tags:** `priority:critical`, `priority:high`, `priority:medium`, `priority:low`
+**Area tags:** `area:frontend`, `area:backend`, `area:infra`, `area:framework`, `area:testing`, `area:docs`
+**Outcome tags:** `outcome:success`, `outcome:failed`
+**Correlation tags:** `error_pattern:Traceback`, `error_pattern:npm-ERR` (links errors to fixes)
+
+Example: `remember_this("Fixed auth token refresh loop", "debugging login flow", "type:fix,priority:high,area:backend")`
+
+## CAUSAL CHAIN WORKFLOW
+When fixing recurring errors, use the causal tracking chain:
+1. query_fix_history("error text") — Check what's been tried before
+2. record_attempt("error text", "strategy-name") — Log what you're about to try
+3. Apply the fix and verify it works
+4. record_outcome("chain_id", "success"|"failure") — Log the result

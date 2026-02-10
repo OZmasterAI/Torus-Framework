@@ -28,7 +28,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if tool_name not in ("Edit", "Write", "Task"):
+    if tool_name not in ("Edit", "Write", "Task", "Bash"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     verified_fixes = state.get("verified_fixes", [])
@@ -37,7 +37,40 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         # Print warning but don't block
         print(
             f"[{GATE_NAME}] WARNING: {len(verified_fixes)} verified fixes not saved to memory ({fix_list}). "
-            f"Consider using remember_this() to save what you learned.",
+            f"Consider using remember_this() with outcome:success tag to save what worked.",
+            file=sys.stderr,
+        )
+
+    # Also warn about unlogged errors
+    unlogged_errors = state.get("unlogged_errors", [])
+    if len(unlogged_errors) >= 1:
+        latest = unlogged_errors[-1]
+        pattern = latest.get("pattern", "unknown")
+        command = latest.get("command", "unknown")
+        print(
+            f"[{GATE_NAME}] WARNING: {len(unlogged_errors)} unlogged error(s) detected "
+            f"(latest: '{pattern}' from `{command}`). "
+            f"Consider using remember_this() with outcome:failed,error_pattern:{pattern} tags.",
+            file=sys.stderr,
+        )
+
+    # Repair loop detection — warn when the same error recurs 3+ times
+    pattern_counts = state.get("error_pattern_counts", {})
+    for pat, count in pattern_counts.items():
+        if count >= 3:
+            print(
+                f"[{GATE_NAME}] REPAIR LOOP: Error '{pat}' has occurred {count} times. "
+                f"Consider a different approach instead of retrying the same fix.",
+                file=sys.stderr,
+            )
+            break
+
+    # Causal tracking: warn about pending chains without recorded outcomes
+    pending_chains = state.get("pending_chain_ids", [])
+    if len(pending_chains) >= 1:
+        print(
+            f"[{GATE_NAME}] WARNING: {len(pending_chains)} fix attempt(s) without recorded outcome. "
+            f"Call record_outcome() to log whether the fix worked or failed.",
             file=sys.stderr,
         )
 

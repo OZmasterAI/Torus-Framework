@@ -1,58 +1,41 @@
-# Session Handoff
+# Session 11 Handoff — Causal Fix Tracking System
 
-## Session 11
-**Date:** 2026-02-09
-**Project:** ProjectDawn Eclipse L2
-**Branch:** `projectdawn-eclipse` (local, full history) / `projectdawn-l2` (GitHub, orphan)
-**Repo:** https://github.com/project-dawn-l2-chain/agave-dawn
-**Status:** Release published, cluster tests passing, repo renamed
+## What Was Done
+- Implemented causal fix tracking system: 5 features across 7 files
+- **error_normalizer.py** (NEW) — Strips paths/UUIDs/timestamps/numbers, FNV-1a hashing for stable error fingerprints
+- **3 MCP tools** — `record_attempt`, `record_outcome`, `query_fix_history` with fix_outcomes ChromaDB collection
+- **Gate 9: STRATEGY BAN** (NEW) — Blocks Edit/Write when current strategy is proven ineffective
+- **Temporal decay** — 30-day half-life on fix confidence scores
+- **Enforcer + State integration** — 4 new state fields, 3 PostToolUse handlers, Gate 6 pending chain warnings
+- All implemented via 7-agent team in parallel
+- Tests: 174/175 passing (1 expected HANDOFF.md failure now resolved)
 
-## What Was Done This Session
+## Files Modified (7)
+- `~/.claude/hooks/shared/error_normalizer.py` (NEW, 43 lines)
+- `~/.claude/hooks/shared/state.py` (+12 lines: 4 fields, 2 caps)
+- `~/.claude/hooks/gates/gate_09_strategy_ban.py` (NEW, 42 lines)
+- `~/.claude/hooks/memory_server.py` (+150 lines: collection, 3 tools, 2 helpers)
+- `~/.claude/hooks/enforcer.py` (+55 lines: Gate 9 registration, 3 PostToolUse handlers)
+- `~/.claude/hooks/gates/gate_06_save_fix.py` (+7 lines: pending chain warning)
+- `~/.claude/CLAUDE.md` (+8 lines: Gate 9 docs, CAUSAL CHAIN WORKFLOW section)
 
-### GitHub Release v0.1.0-eclipse
-- Created release at https://github.com/project-dawn-l2-chain/agave-dawn/releases/tag/v0.1.0-eclipse
-- 4 Linux x86-64 binaries uploaded: agave-validator (73MB), solana (35MB), solana-genesis (28MB), solana-keygen (2.7MB)
-- Version 2.2.0, authored by OZmasterAI
+## What's Next
+1. **MCP server restart** — memory_server.py was modified; restart needed for new tools to appear
+2. **Live testing** — Use the causal chain on a real error to validate end-to-end flow
+3. **Session 12 planning** — Consider: confidence dashboard skill, auto-query on error detection, or audit the new features
+4. **Remaining audit items** — Gate 1 extension gaps, Gate 3 deploy gaps, Gate 7 critical file gaps (from Session 8 audit)
 
-### README.md
-- Comprehensive README written and pushed (commit `4734adc73d`)
-- Covers: overview, features, building from source, testnet launch, tests, project structure, configuration, limitations
+## Architecture Notes
+- Gate 9 is Tier 2 (non-safety) — crashes logged but don't block
+- fix_outcomes collection is isolated from knowledge collection
+- Chain IDs are deterministic: `{error_hash}_{strategy_hash}`
+- Laplace smoothing `(s+1)/(n+2)` for confidence, ban threshold: attempts>=2 AND confidence<0.18
+- All enforcer PostToolUse handlers are defensive (try/except, never crash)
 
-### Repo Rename
-- Renamed `agave-empty` → `agave-dawn` via GitHub API
-- Local remote "dawn" updated to new URL
-- Old URL auto-redirects (301)
+## Test Status
+- 174 passing, 1 expected failure (HANDOFF.md — now resolved)
+- Run: `python3 ~/.claude/hooks/test_framework.py`
 
-### Multi-Validator Cluster Tests (3/3 PASS)
-- `test_local_cluster_start_and_exit`: 1 validator, 13.45s — basic startup/shutdown
-- `test_spend_and_verify_all_nodes_2`: 2 validators (equal stakes), 41.61s — consensus + transfers
-- `test_two_unbalanced_stakes`: 2 validators (100:1 stake ratio), 71.13s — asymmetric consensus
-- All 52 local-cluster tests compiled successfully
-- Proves ProjectDawn modifications do NOT break multi-validator consensus
-
-### Linux Binary Rebuild
-- Incremental rebuild in 3m 51s (no source changes, 6 crates recompiled)
-- Binaries at `/home/crab/eclipse-agave/target/release/`
-
-## Cumulative Project Status
-- **P0-P6:** All 7 phases complete on Eclipse fork
-- **Tests:** 723+ passing, 0 failures
-- **Release:** v0.1.0-eclipse published with 4 binaries
-- **README:** Comprehensive docs pushed
-- **Cluster:** Multi-validator consensus verified (3 tests)
-- **Repo:** Renamed to agave-dawn
-
-## What's Next (Prioritized)
-1. **Testnet launch** — Run `scripts/projectdawn-testnet.sh setup` with real treasury keypair
-2. **Fuzz testing** — Fuzz new stake instructions (PermanentLock, PassiveLock, EarlyUnlock)
-3. **GovernanceUnlock implementation** — When governance design is finalized
-4. **Ethereum bridge** — Separate repo for DAWN deposits/withdrawals
-5. **Celestia DA integration** — Infrastructure-layer, outside the Agave binary
-
-## Important Notes
-- **GitHub Auth:** `gh` set to `OZmasterAI` (admin on project-dawn-l2-chain). Both accounts show "invalid token in keyring" but API calls work. May need `gh auth login` eventually.
-- **Repo:** Now `project-dawn-l2-chain/agave-dawn` (was `agave-empty`)
-- **Two branches locally:** `projectdawn-eclipse` has full Eclipse history; `projectdawn-l2` is the orphan branch pushed to GitHub
-- **Build:** Requires `PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig` on this system
-- **Feature gate:** ProjectDawn disabled by default. Activate with `solana feature activate` using keypair matching `FfysvyBPqGve3oDPu14LB1UqR8B2v7CeJ6EajWdx8P8D`
-- **Working dir:** `/home/crab/eclipse-agave` (Eclipse fork), `/home/crab/agave` (original ProjectDawn L1 fork)
+## Warnings
+- MCP server needs restart after memory_server.py changes
+- Late night mode was active during this session (Gate 8)

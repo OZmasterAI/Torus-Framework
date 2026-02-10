@@ -35,14 +35,17 @@ def test(name, condition, detail=""):
         RESULTS.append(f"  FAIL  {name} — {detail}")
 
 
-def run_enforcer(event_type, tool_name, tool_input, session_id=MAIN_SESSION):
+def run_enforcer(event_type, tool_name, tool_input, session_id=MAIN_SESSION, tool_response=None):
     """Simulate running the enforcer and capture the result."""
     import subprocess
-    data = json.dumps({
+    payload = {
         "session_id": session_id,
         "tool_name": tool_name,
         "tool_input": tool_input,
-    })
+    }
+    if tool_response is not None:
+        payload["tool_response"] = tool_response
+    data = json.dumps(payload)
     result = subprocess.run(
         [sys.executable, os.path.join(os.path.dirname(__file__), "enforcer.py"),
          "--event", event_type],
@@ -423,6 +426,8 @@ required_files = [
     os.path.expanduser("~/.claude/hooks/gates/gate_06_save_fix.py"),
     os.path.expanduser("~/.claude/hooks/gates/gate_07_critical_file_guard.py"),
     os.path.expanduser("~/.claude/hooks/gates/gate_08_temporal.py"),
+    os.path.expanduser("~/.claude/hooks/gates/gate_09_strategy_ban.py"),
+    os.path.expanduser("~/.claude/hooks/shared/error_normalizer.py"),
     os.path.expanduser("~/.claude/hooks/memory_server.py"),
     os.path.expanduser("~/CLAUDE.md"),
     os.path.expanduser("~/.claude/skills/status/SKILL.md"),
@@ -430,6 +435,7 @@ required_files = [
     os.path.expanduser("~/.claude/skills/audit/SKILL.md"),
     os.path.expanduser("~/.claude/skills/wrap-up/SKILL.md"),
     os.path.expanduser("~/.claude/skills/deploy/SKILL.md"),
+    os.path.expanduser("~/.claude/hooks/user_prompt_check.sh"),
 ]
 
 for path in required_files:
@@ -669,6 +675,470 @@ state = load_state(session_id=MAIN_SESSION)
 test("M8: python clears targeted pending verification",
      "/tmp/m8_test.py" not in state.get("pending_verification", []),
      f"pending={state.get('pending_verification', [])}")
+
+# ─────────────────────────────────────────────────
+# Test: Feature 1 — Error Detection (5 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Error Detection ---")
+
+# Test: Bash with Traceback in tool_response → sets unlogged_errors
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
+             tool_response="Traceback (most recent call last):\n  File 'foo.py'\nNameError: x")
+state = load_state(session_id=MAIN_SESSION)
+test("Error detection: Traceback sets unlogged_errors",
+     len(state.get("unlogged_errors", [])) == 1,
+     f"unlogged_errors={state.get('unlogged_errors', [])}")
+
+# Test: Bash with clean output → no unlogged_errors
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "echo hello"},
+             tool_response="hello")
+state = load_state(session_id=MAIN_SESSION)
+test("Error detection: clean output → no unlogged_errors",
+     len(state.get("unlogged_errors", [])) == 0,
+     f"unlogged_errors={state.get('unlogged_errors', [])}")
+
+# Test: Non-Bash tool (Edit) with error-like response → no detection
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/test.py"},
+             tool_response="Traceback something")
+state = load_state(session_id=MAIN_SESSION)
+test("Error detection: non-Bash tool → no detection",
+     len(state.get("unlogged_errors", [])) == 0,
+     f"unlogged_errors={state.get('unlogged_errors', [])}")
+
+# Test: remember_this clears unlogged_errors
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
+             tool_response="Traceback (most recent call last):\nError")
+state = load_state(session_id=MAIN_SESSION)
+precondition_ok = len(state.get("unlogged_errors", [])) == 1
+run_enforcer("PostToolUse", "mcp__memory__remember_this",
+             {"content": "Fixed the error", "tags": "type:error"})
+state = load_state(session_id=MAIN_SESSION)
+test("Error detection: remember_this clears unlogged_errors",
+     precondition_ok and len(state.get("unlogged_errors", [])) == 0,
+     f"precondition={precondition_ok}, unlogged_errors={state.get('unlogged_errors', [])}")
+
+# Test: unlogged_errors cap enforced at 20
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["unlogged_errors"] = [{"pattern": f"error_{i}", "command": f"cmd_{i}", "timestamp": time.time()} for i in range(30)]
+save_state(state, session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+test("Error detection: unlogged_errors capped at 20",
+     len(state.get("unlogged_errors", [])) <= 20,
+     f"len={len(state.get('unlogged_errors', []))}")
+
+# ─────────────────────────────────────────────────
+# Test: Feature 2 — Enhanced Gate 6 (4 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Gate 6 Enhanced: Error Warnings ---")
+
+# Test: Gate 6 warns when unlogged_errors >= 1
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["unlogged_errors"] = [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate6_err.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate6_err.py"})
+test("Gate 6 enhanced: warns on unlogged_errors",
+     "error" in msg.lower() or "unlogged" in msg.lower(), msg)
+
+# Test: Gate 6 warns with both unlogged_errors AND verified_fixes
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["unlogged_errors"] = [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}]
+state["verified_fixes"] = ["/tmp/fix1.py", "/tmp/fix2.py"]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate6_both.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate6_both.py"})
+test("Gate 6 enhanced: warns on both errors and fixes", "GATE 6" in msg, msg)
+
+# Test: Gate 6 still never blocks (advisory only) even with errors
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["unlogged_errors"] = [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate6_noblock.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate6_noblock.py"})
+test("Gate 6 enhanced: never blocks even with errors", code == 0, f"code={code}")
+
+# Test: Gate 6 error warning mentions pattern name
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["unlogged_errors"] = [{"pattern": "npm ERR!", "command": "npm install", "timestamp": time.time()}]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate6_pattern.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate6_pattern.py"})
+test("Gate 6 enhanced: warning mentions error pattern",
+     "npm ERR!" in msg or "npm" in msg.lower(), msg)
+
+# ─────────────────────────────────────────────────
+# Test: Feature 3 — UserPromptSubmit (3 tests)
+# ─────────────────────────────────────────────────
+print("\n--- UserPromptSubmit ---")
+
+import subprocess as _sp
+_script_path = os.path.expanduser("~/.claude/hooks/user_prompt_check.sh")
+
+# Test: Correction pattern detected
+_result = _sp.run(["bash", _script_path],
+    input=json.dumps({"prompt": "no, that's wrong, try again"}),
+    capture_output=True, text=True, timeout=5)
+test("UserPromptSubmit: correction detected",
+     "<correction_detected>" in _result.stdout,
+     f"stdout={_result.stdout!r}")
+
+# Test: Feature request detected
+_result = _sp.run(["bash", _script_path],
+    input=json.dumps({"prompt": "can you add a dark mode feature?"}),
+    capture_output=True, text=True, timeout=5)
+test("UserPromptSubmit: feature request detected",
+     "<feature_request_detected>" in _result.stdout,
+     f"stdout={_result.stdout!r}")
+
+# Test: Normal prompt → clean output
+_result = _sp.run(["bash", _script_path],
+    input=json.dumps({"prompt": "please fix the login bug"}),
+    capture_output=True, text=True, timeout=5)
+test("UserPromptSubmit: normal prompt → clean output",
+     "<correction_detected>" not in _result.stdout and "<feature_request_detected>" not in _result.stdout,
+     f"stdout={_result.stdout!r}")
+
+# ─────────────────────────────────────────────────
+# Test: Feature 4 — Repair Loop Detection (4 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Repair Loop Detection ---")
+
+# Test: Single error → error_pattern_counts[pattern] == 1
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
+             tool_response="Traceback (most recent call last):\nError")
+state = load_state(session_id=MAIN_SESSION)
+test("Repair loop: single error → count == 1",
+     state.get("error_pattern_counts", {}).get("Traceback", 0) == 1,
+     f"counts={state.get('error_pattern_counts', {})}")
+
+# Test: Same error 3x → error_pattern_counts[pattern] == 3
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+for _ in range(3):
+    run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
+                 tool_response="Traceback (most recent call last):\nError")
+state = load_state(session_id=MAIN_SESSION)
+test("Repair loop: same error 3x → count == 3",
+     state.get("error_pattern_counts", {}).get("Traceback", 0) == 3,
+     f"counts={state.get('error_pattern_counts', {})}")
+
+# Test: remember_this clears error_pattern_counts
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+for _ in range(3):
+    run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
+                 tool_response="Traceback (most recent call last):\nError")
+run_enforcer("PostToolUse", "mcp__memory__remember_this",
+             {"content": "Fixed it", "tags": "type:fix"})
+state = load_state(session_id=MAIN_SESSION)
+test("Repair loop: remember_this clears pattern counts",
+     state.get("error_pattern_counts", {}) == {},
+     f"counts={state.get('error_pattern_counts', {})}")
+
+# Test: Gate 6 emits REPAIR LOOP warning when count >= 3
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["error_pattern_counts"] = {"Traceback": 5}
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/repair_loop.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/repair_loop.py"})
+test("Repair loop: Gate 6 emits REPAIR LOOP warning",
+     "REPAIR LOOP" in msg, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Feature 5 — Outcome Tag Suggestions (3 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Outcome Tag Suggestions ---")
+
+# Test: Gate 6 verified_fixes warning mentions outcome:success
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["verified_fixes"] = ["/tmp/fix1.py", "/tmp/fix2.py"]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/outcome_s.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/outcome_s.py"})
+test("Outcome tags: verified_fixes warning mentions outcome:success",
+     "outcome:success" in msg, msg)
+
+# Test: Gate 6 unlogged_errors warning mentions outcome:failed
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["unlogged_errors"] = [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/outcome_f.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/outcome_f.py"})
+test("Outcome tags: unlogged_errors warning mentions outcome:failed",
+     "outcome:failed" in msg, msg)
+
+# Test: Gate 6 unlogged_errors warning mentions error_pattern:
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["unlogged_errors"] = [{"pattern": "npm ERR!", "command": "npm install", "timestamp": time.time()}]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/outcome_ep.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/outcome_ep.py"})
+test("Outcome tags: unlogged_errors warning mentions error_pattern:",
+     "error_pattern:" in msg, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Feature 6 — Error Pattern Cap (2 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Error Pattern Cap ---")
+
+# Test: error_pattern_counts cap enforced at 50
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["error_pattern_counts"] = {f"pattern_{i}": i + 1 for i in range(60)}
+save_state(state, session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+test("Error pattern cap: capped at 50",
+     len(state.get("error_pattern_counts", {})) <= 50,
+     f"len={len(state.get('error_pattern_counts', {}))}")
+
+# Test: Pattern counts increment correctly across different patterns
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
+             tool_response="Traceback (most recent call last):\nError")
+run_enforcer("PostToolUse", "Bash", {"command": "npm install"},
+             tool_response="npm ERR! code ENOENT")
+run_enforcer("PostToolUse", "Bash", {"command": "python bar.py"},
+             tool_response="Traceback again:\nError")
+state = load_state(session_id=MAIN_SESSION)
+counts = state.get("error_pattern_counts", {})
+test("Error pattern cap: multiple patterns tracked correctly",
+     counts.get("Traceback", 0) == 2 and counts.get("npm ERR!", 0) == 1,
+     f"counts={counts}")
+
+# ─────────────────────────────────────────────────
+# Test: Error Normalizer (4 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Error Normalizer ---")
+
+from shared.error_normalizer import normalize_error, fnv1a_hash, error_signature
+
+# 1. Paths stripped correctly
+norm = normalize_error("TypeError at /home/user/project/app.py line 42")
+test("Normalizer: paths stripped", "<path>" in norm and "/home" not in norm, norm)
+
+# 2. UUIDs stripped correctly
+norm = normalize_error("Error for user 550e8400-e29b-41d4-a716-446655440000")
+test("Normalizer: UUIDs stripped", "<uuid>" in norm and "550e8400" not in norm, norm)
+
+# 3. Same error with different paths → same hash
+_, hash1 = error_signature("TypeError at /home/user/a.py line 10")
+_, hash2 = error_signature("TypeError at /opt/project/b.py line 99")
+test("Normalizer: same error different paths → same hash", hash1 == hash2, f"{hash1} vs {hash2}")
+
+# 4. Different errors → different hashes
+_, hash1 = error_signature("TypeError: cannot add str and int")
+_, hash2 = error_signature("ImportError: no module named foo")
+test("Normalizer: different errors → different hashes", hash1 != hash2, f"{hash1} vs {hash2}")
+
+# ─────────────────────────────────────────────────
+# Test: State — Causal Tracking Fields (3 tests)
+# ─────────────────────────────────────────────────
+print("\n--- State: Causal Tracking Fields ---")
+
+# 5. default_state has new causal fields
+ds = default_state()
+test("State: default has pending_chain_ids", "pending_chain_ids" in ds and ds["pending_chain_ids"] == [])
+
+test_has = all(k in ds for k in ["current_strategy_id", "current_error_signature", "active_bans"])
+test("State: default has all causal fields", test_has)
+
+# 6. active_bans capped at 50
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["active_bans"] = [f"strategy_{i}" for i in range(60)]
+save_state(state, session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+test("State: active_bans capped at 50", len(state["active_bans"]) <= 50,
+     f"len={len(state['active_bans'])}")
+
+# 7. pending_chain_ids capped at 10
+state["pending_chain_ids"] = [f"chain_{i}" for i in range(15)]
+save_state(state, session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+test("State: pending_chain_ids capped at 10", len(state["pending_chain_ids"]) <= 10,
+     f"len={len(state['pending_chain_ids'])}")
+
+# ─────────────────────────────────────────────────
+# Test: Gate 9 — Strategy Ban (4 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Gate 9: Strategy Ban ---")
+
+# 8. Edit with no strategy → allowed
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/g9_test.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g9_test.py"})
+test("Gate 9: Edit with no strategy → allowed", code == 0, msg)
+
+# 9. Edit with unbanned strategy → allowed
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["current_strategy_id"] = "try-different-import"
+state["active_bans"] = ["some-other-strategy"]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/g9_test.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g9_test.py"})
+test("Gate 9: Edit with unbanned strategy → allowed", code == 0, msg)
+
+# 10. Edit with banned strategy → BLOCKED
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["current_strategy_id"] = "reinstall-package"
+state["active_bans"] = ["reinstall-package", "other-ban"]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/g9_test.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g9_test.py"})
+test("Gate 9: Edit with banned strategy → BLOCKED", code != 0, f"code={code}")
+test("Gate 9: block message mentions GATE 9", "GATE 9" in msg, msg)
+
+# 11. Non-Edit tool with banned strategy → allowed
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["current_strategy_id"] = "reinstall-package"
+state["active_bans"] = ["reinstall-package"]
+save_state(state, session_id=MAIN_SESSION)
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": "echo hello"})
+test("Gate 9: Bash with banned strategy → allowed (only blocks Edit/Write)", code == 0, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Enforcer PostToolUse — Causal Tracking (4 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Enforcer PostToolUse: Causal Tracking ---")
+
+# 12. record_attempt sets current_strategy_id
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "mcp__memory__record_attempt",
+             {"error_text": "TypeError: cannot add", "strategy_id": "fix-type-cast"})
+state = load_state(session_id=MAIN_SESSION)
+test("Causal: record_attempt sets current_strategy_id",
+     state.get("current_strategy_id") == "fix-type-cast",
+     f"current_strategy_id={state.get('current_strategy_id')}")
+
+# 13. record_attempt adds to pending_chain_ids
+test("Causal: record_attempt adds to pending_chain_ids",
+     len(state.get("pending_chain_ids", [])) == 1,
+     f"pending_chain_ids={state.get('pending_chain_ids', [])}")
+
+# 14. record_outcome clears pending_chain_ids
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["pending_chain_ids"] = ["abc_def"]
+state["current_strategy_id"] = "fix-type-cast"
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "mcp__memory__record_outcome",
+             {"chain_id": "abc_def", "outcome": "success"},
+             tool_response='{"confidence": 0.67, "banned": false, "strategy_id": "fix-type-cast"}')
+state = load_state(session_id=MAIN_SESSION)
+test("Causal: record_outcome clears pending_chain_ids",
+     state.get("pending_chain_ids") == [],
+     f"pending_chain_ids={state.get('pending_chain_ids')}")
+
+# 15. record_outcome with banned=true adds to active_bans
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["pending_chain_ids"] = ["abc_def"]
+state["current_strategy_id"] = "reinstall-package"
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "mcp__memory__record_outcome",
+             {"chain_id": "abc_def", "outcome": "failure"},
+             tool_response='{"confidence": 0.1, "banned": true, "strategy_id": "reinstall-package"}')
+state = load_state(session_id=MAIN_SESSION)
+test("Causal: record_outcome banned=true adds to active_bans",
+     "reinstall-package" in state.get("active_bans", []),
+     f"active_bans={state.get('active_bans', [])}")
+
+# ─────────────────────────────────────────────────
+# Test: Gate 6 — Pending Chain Warnings (2 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Gate 6: Pending Chain Warnings ---")
+
+# 16. Gate 6 warns on pending_chain_ids
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["pending_chain_ids"] = ["chain_abc"]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/g6_chain.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g6_chain.py"})
+test("Gate 6: warns on pending_chain_ids",
+     "without recorded outcome" in msg or "record_outcome" in msg, msg)
+
+# 17. Gate 6 pending chain warning mentions record_outcome
+test("Gate 6: pending chain warning mentions record_outcome",
+     "record_outcome" in msg, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Integration — Full Causal Chain (1 test)
+# ─────────────────────────────────────────────────
+print("\n--- Integration: Full Causal Chain ---")
+
+# 18. Full chain: record_attempt → outcome with ban → Gate 9 blocks
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+# Step 1: record_attempt
+run_enforcer("PostToolUse", "mcp__memory__record_attempt",
+             {"error_text": "ModuleNotFoundError: foo", "strategy_id": "pip-install-foo"})
+# Step 2: record_outcome with ban
+run_enforcer("PostToolUse", "mcp__memory__record_outcome",
+             {"chain_id": "x", "outcome": "failure"},
+             tool_response='{"confidence": 0.1, "banned": true, "strategy_id": "pip-install-foo"}')
+# Step 3: Try another record_attempt with the SAME banned strategy
+run_enforcer("PostToolUse", "mcp__memory__record_attempt",
+             {"error_text": "ModuleNotFoundError: foo", "strategy_id": "pip-install-foo"})
+# Step 4: Gate 9 should block Edit
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/integration.py"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/integration.py"})
+test("Integration: banned strategy blocked by Gate 9", code != 0, f"code={code}, msg={msg}")
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files
