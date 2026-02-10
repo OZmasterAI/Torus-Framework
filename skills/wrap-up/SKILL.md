@@ -9,6 +9,11 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
    - Decisions made and why
    - New patterns discovered
    - Warnings for future sessions
+1b. **PROMOTION CHECK** — Search memory for recurring patterns:
+   - Query memory for `type:error` and `type:learning` entries
+   - If any topic appears 3+ times across sessions, suggest promoting to CLAUDE.md as a new rule
+   - Present promotion suggestions to user for approval before adding
+   - Never auto-promote without explicit user consent
 2. **UPDATE HANDOFF** — Use the Write tool to update ~/.claude/HANDOFF.md with:
    - Session number (increment from previous)
    - What was done this session

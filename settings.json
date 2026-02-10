@@ -42,6 +42,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/user_prompt_check.sh\"",
+            "timeout": 3000
+          }
+        ]
+      }
     ]
   }
 }
