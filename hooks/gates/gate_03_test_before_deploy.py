@@ -39,6 +39,11 @@ DEPLOY_PATTERNS = [
     r"\btwine\s+upload\b",                 # twine upload (PyPI)
     r"\bgcloud\s+(app\s+deploy|run\s+deploy)\b",  # gcloud deploy
     r"\baws\s+s3\s+sync\b",               # aws s3 sync
+    r"\bhelm\s+(upgrade|install)\b",       # helm deploy
+    r"\bterraform\s+apply\b",             # terraform deploy
+    r"\bpulumi\s+up\b",                   # pulumi deploy
+    r"\bserverless\s+deploy\b",           # serverless framework
+    r"\bcdk\s+deploy\b",                  # AWS CDK deploy
 ]
 
 

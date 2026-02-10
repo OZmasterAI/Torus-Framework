@@ -18,7 +18,10 @@ from shared.gate_result import GateResult
 GATE_NAME = "GATE 1: READ BEFORE EDIT"
 
 # File extensions that require read-before-edit
-GUARDED_EXTENSIONS = {".py", ".js", ".ts", ".jsx", ".tsx", ".rs", ".go", ".java"}
+GUARDED_EXTENSIONS = {
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".rs", ".go", ".java",
+    ".c", ".cpp", ".rb", ".php", ".sh", ".sql", ".tf",
+}
 
 # Files/patterns always allowed to write without reading
 EXEMPT_PATTERNS = [

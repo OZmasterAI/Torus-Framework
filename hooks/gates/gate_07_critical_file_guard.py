@@ -32,6 +32,14 @@ CRITICAL_PATTERNS = [
     r"requirements\.txt$",                    # Dependencies
     r"package\.json$",                        # Node dependencies
     r"Cargo\.toml$",                          # Rust dependencies
+    r"\.ssh/",                                 # SSH directory (keys, config)
+    r"authorized_keys$",                       # SSH authorized keys
+    r"id_(rsa|ed25519|ecdsa|dsa)(\.pub)?$",   # SSH key files
+    r"sudoers",                                # Sudo configuration
+    r"crontab$",                               # Cron schedule
+    r"cron\.d/",                               # Cron directory
+    r"\.pem$",                                 # PEM certificates/keys
+    r"\.key$",                                 # Private key files
 ]
 
 

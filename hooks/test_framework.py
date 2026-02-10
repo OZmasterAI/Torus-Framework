@@ -568,6 +568,103 @@ code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/auth_handler.
 test("Gate 7: edit auth_handler.py WITH memory → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
+# Test: Gate 1 — Extended Extensions (M4/G1-2)
+# ─────────────────────────────────────────────────
+print("\n--- Gate 1: Extended Extensions ---")
+
+new_extensions = [
+    ("/tmp/module.c", ".c"),
+    ("/tmp/module.cpp", ".cpp"),
+    ("/tmp/script.rb", ".rb"),
+    ("/tmp/page.php", ".php"),
+    ("/tmp/deploy.sh", ".sh"),
+    ("/tmp/query.sql", ".sql"),
+    ("/tmp/infra.tf", ".tf"),
+]
+
+for file_path, ext in new_extensions:
+    cleanup_test_states()
+    reset_state(session_id=MAIN_SESSION)
+    # Edit without read → BLOCKED
+    code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": file_path})
+    test(f"Gate 1: {ext} file without Read → blocked", code != 0, f"code={code}")
+
+# Verify read-then-edit works for new extensions
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/test.sh"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/test.sh"})
+test("Gate 1: .sh file after Read+Memory → allowed", code == 0, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Gate 3 — Extended Deploy Patterns (M5/G3-2)
+# ─────────────────────────────────────────────────
+print("\n--- Gate 3: Extended Deploy Patterns ---")
+
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+
+new_deploy_commands = [
+    ("helm upgrade my-release my-chart", "helm upgrade"),
+    ("helm install my-release my-chart", "helm install"),
+    ("terraform apply -auto-approve", "terraform apply"),
+    ("pulumi up --yes", "pulumi up"),
+    ("serverless deploy --stage prod", "serverless deploy"),
+    ("cdk deploy MyStack", "cdk deploy"),
+]
+
+for cmd, desc in new_deploy_commands:
+    cleanup_test_states()
+    reset_state(session_id=MAIN_SESSION)
+    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    test(f"Gate 3: {desc} without tests → blocked", code != 0, f"code={code}")
+    test(f"Gate 3: {desc} mentions GATE 3", "GATE 3" in msg, msg)
+
+# Verify deploy works after running tests
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": "terraform apply"})
+test("Gate 3: terraform apply after tests → allowed", code == 0, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Gate 7 — Extended Critical Patterns (M6/G7-3)
+# ─────────────────────────────────────────────────
+print("\n--- Gate 7: Extended Critical Patterns ---")
+
+new_critical_files = [
+    ("/home/user/.ssh/config", ".ssh/ directory"),
+    ("/home/user/.ssh/authorized_keys", "authorized_keys"),
+    ("/home/user/.ssh/id_rsa", "SSH private key"),
+    ("/home/user/.ssh/id_ed25519.pub", "SSH public key"),
+    ("/etc/sudoers", "sudoers"),
+    ("/etc/crontab", "crontab"),
+    ("/etc/cron.d/backup", "cron.d entry"),
+    ("/tmp/server.pem", ".pem certificate"),
+    ("/tmp/private.key", ".key file"),
+]
+
+for file_path, desc in new_critical_files:
+    cleanup_test_states()
+    reset_state(session_id=MAIN_SESSION)
+    # Set memory to 4 minutes ago (within Gate 4 but outside Gate 7)
+    run_enforcer("PostToolUse", "Read", {"file_path": file_path})
+    state = load_state(session_id=MAIN_SESSION)
+    state["memory_last_queried"] = time.time() - 240
+    save_state(state, session_id=MAIN_SESSION)
+    code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": file_path})
+    test(f"Gate 7: {desc} with stale memory → blocked", code != 0, f"code={code}")
+
+# Verify critical file edit works with fresh memory
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/home/user/.ssh/config"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "ssh config"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/home/user/.ssh/config"})
+test("Gate 7: .ssh/config WITH fresh memory → allowed", code == 0, msg)
+
+# ─────────────────────────────────────────────────
 # Test: Gate 8 — Temporal Awareness
 # ─────────────────────────────────────────────────
 print("\n--- Gate 8: Temporal Awareness ---")
