@@ -1238,6 +1238,95 @@ code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/integration.p
 test("Integration: banned strategy blocked by Gate 9", code != 0, f"code={code}, msg={msg}")
 
 # ─────────────────────────────────────────────────
+# Test: Audit Fix M4 — Gate 3 exit code from tool_response
+# ─────────────────────────────────────────────────
+print("\n--- Fix M4: Gate 3 Exit Code from tool_response ---")
+
+# Test: Failing test run (exit code 1) blocks deploy
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"},
+             tool_response='{"exit_code": 1}')
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": "scp app.py root@10.0.0.1:/opt/"})
+test("M4: deploy after failing tests (exit_code=1) → blocked", code != 0, f"code={code}")
+test("M4: block message mentions GATE 3", "GATE 3" in msg, msg)
+
+# Test: Passing test run (exit code 0) allows deploy
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"},
+             tool_response='{"exit_code": 0}')
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": "scp app.py root@10.0.0.1:/opt/"})
+test("M4: deploy after passing tests (exit_code=0) → allowed", code == 0, msg)
+
+# Test: Exit code captured from dict tool_response
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"},
+             tool_response={"exit_code": 2})
+state = load_state(session_id=MAIN_SESSION)
+test("M4: exit code captured from dict tool_response",
+     state.get("last_test_exit_code") == 2,
+     f"last_test_exit_code={state.get('last_test_exit_code')}")
+
+# ─────────────────────────────────────────────────
+# Test: Audit Fix M1 — Gate 1 guards .ipynb
+# ─────────────────────────────────────────────────
+print("\n--- Fix M1: Gate 1 Guards .ipynb ---")
+
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+code, msg = run_enforcer("PreToolUse", "NotebookEdit", {"notebook_path": "/tmp/analysis.ipynb"})
+test("M1: NotebookEdit .ipynb without Read → blocked", code != 0, f"code={code}")
+
+# After reading, should pass
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/analysis.ipynb"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "NotebookEdit", {"notebook_path": "/tmp/analysis.ipynb"})
+test("M1: NotebookEdit .ipynb after Read+Memory → allowed", code == 0, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Audit Fix M2 — Gate 9 guards NotebookEdit
+# ─────────────────────────────────────────────────
+print("\n--- Fix M2: Gate 9 Guards NotebookEdit ---")
+
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["current_strategy_id"] = "bad-strategy"
+state["active_bans"] = ["bad-strategy"]
+save_state(state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/notebook.ipynb"})
+run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+code, msg = run_enforcer("PreToolUse", "NotebookEdit", {"notebook_path": "/tmp/notebook.ipynb"})
+test("M2: NotebookEdit with banned strategy → BLOCKED", code != 0, f"code={code}")
+test("M2: block message mentions GATE 9", "GATE 9" in msg, msg)
+
+# ─────────────────────────────────────────────────
+# Test: H1 Mitigation — exec safe exception blocks -c/-e
+# ─────────────────────────────────────────────────
+print("\n--- H1 Mitigation: exec -c/-e blocked ---")
+
+# exec python3 -c should now be BLOCKED (no longer a safe exception)
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": 'exec python3 -c "import os"'})
+test("H1: exec python3 -c → blocked", code != 0, f"code={code}")
+
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": 'exec node -e "process.exit()"'})
+test("H1: exec node -e → blocked", code != 0, f"code={code}")
+
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": 'exec ruby -e "puts 1"'})
+test("H1: exec ruby -e → blocked", code != 0, f"code={code}")
+
+# exec python3 (without -c) should still be ALLOWED (legitimate process hand-off)
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec python3 app.py"})
+test("H1: exec python3 app.py (no -c) → allowed", code == 0, msg)
+
+code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec node server.js"})
+test("H1: exec node server.js (no -e) → allowed", code == 0, msg)
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

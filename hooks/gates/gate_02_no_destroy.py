@@ -82,8 +82,9 @@ SAFE_EXCEPTIONS = [
     ("source (execute script in current shell)",
      r"\bsource\s+\S*(?:activate|\.bashrc|\.bash_profile|\.profile|\.zshrc|\.zprofile|\.envrc)\b"),
     # exec: allow common interpreter replacements (Docker entrypoints, process hand-off)
+    # Negative lookahead blocks -c/-e flags (interpreter one-liner bypass)
     ("exec (replace current process)",
-     r"\bexec\s+(?:python[23]?|node|ruby|java|perl|npm|npx|cargo\s+run|go\s+run)\b"),
+     r"\bexec\s+(?:python[23]?|node|ruby|java|perl|npm|npx|cargo\s+run|go\s+run)\b(?!\s+-[ce]\b)"),
     # DELETE FROM: allow targeted SQL deletes that include a WHERE clause
     ("DELETE FROM (SQL mass deletion)",
      r"\bDELETE\s+FROM\s+\S+\s+WHERE\b"),

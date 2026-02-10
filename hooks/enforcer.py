@@ -170,10 +170,22 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         command = tool_input.get("command", "")
         if any(kw in command for kw in ["pytest", "python -m pytest", "npm test", "cargo test", "go test"]):
             state["last_test_run"] = time.time()
-            # Capture exit code from PostToolUse data (Claude Code may provide it)
-            exit_code = tool_input.get("exit_code",
-                        tool_input.get("exitCode",
-                        tool_input.get("status", 0)))
+            # Capture exit code from tool_response (Claude Code provides it there)
+            exit_code = 0
+            if tool_response is not None:
+                if isinstance(tool_response, dict):
+                    exit_code = tool_response.get("exit_code",
+                                tool_response.get("exitCode",
+                                tool_response.get("status", 0)))
+                elif isinstance(tool_response, str):
+                    try:
+                        resp = json.loads(tool_response)
+                        if isinstance(resp, dict):
+                            exit_code = resp.get("exit_code",
+                                        resp.get("exitCode",
+                                        resp.get("status", 0)))
+                    except (json.JSONDecodeError, TypeError):
+                        pass
             state["last_test_exit_code"] = exit_code
 
     # Track edits for pending verification (including NotebookEdit)

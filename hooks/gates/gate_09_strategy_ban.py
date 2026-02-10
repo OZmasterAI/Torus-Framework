@@ -22,7 +22,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if tool_name not in ("Edit", "Write"):
+    if tool_name not in ("Edit", "Write", "NotebookEdit"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     current_strategy = state.get("current_strategy_id", "")
