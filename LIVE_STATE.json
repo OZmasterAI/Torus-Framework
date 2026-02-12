@@ -1,30 +1,22 @@
 {
-  "session_count": 20,
+  "session_count": 21,
   "status": "restart_needed",
   "project": "self-healing-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "progressive-disclosure-hybrid-search-auto-injection",
+  "feature": "search-mode-parameter",
   "feature_status": "implemented_pending_mcp_restart",
-  "test_count": 302,
+  "test_count": 307,
   "test_failures": 0,
   "files_modified": [
     "hooks/memory_server.py",
-    "hooks/boot.py",
     "hooks/test_framework.py"
   ],
-  "new_features": {
-    "progressive_disclosure": "preview in metadata, metadata-only queries",
-    "hybrid_search": "FTS5Index class, auto-routing, search_by_tags tool",
-    "auto_injection": "inject_memories at boot, Gate 4 auto-satisfied"
-  },
   "mcp_tools": 13,
-  "curated_memories": 192,
-  "backup": "~/Desktop/Mega-Framework-v1.0.1.by-OZ/",
-  "blocker": "MCP server restart needed for FTS5/search_by_tags/auto-routing",
+  "curated_memories": 194,
+  "blocker": "MCP server restart needed for mode parameter",
   "next_steps": [
     "restart_mcp_server",
-    "verify_fts5_live",
-    "verify_gate4_bypass",
-    "consider_mode_parameter_exposure"
+    "verify_mode_parameter_live",
+    "consider_fts5_persistence_at_800_memories"
   ]
 }

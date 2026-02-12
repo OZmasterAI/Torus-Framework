@@ -685,19 +685,24 @@ def _compact_observations():
 
 
 @mcp.tool()
-def search_knowledge(query: str, top_k: int = 15) -> dict:
+def search_knowledge(query: str, top_k: int = 15, mode: str = "") -> dict:
     """Search memory for relevant information. Use before starting any task.
 
     Args:
         query: What to search for (semantic search)
         top_k: Number of results to return (default 15)
+        mode: Force search mode ("keyword", "semantic", "hybrid", "tags"). Empty = auto-detect.
     """
     top_k = max(1, min(top_k, 500))
     count = collection.count()
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty. Start building knowledge with remember_this()."}
 
-    mode = _detect_query_mode(query)
+    VALID_MODES = {"keyword", "semantic", "hybrid", "tags"}
+    if mode and mode not in VALID_MODES:
+        mode = ""  # Invalid mode falls back to auto-detect
+    if not mode:
+        mode = _detect_query_mode(query)
     actual_k = min(top_k, count)
 
     if mode == "tags":

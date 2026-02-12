@@ -3,6 +3,7 @@
 ## MEMORY FIRST (Non-Negotiable)
 You have amnesia every session. Memory doesn't.
 BEFORE building/fixing ANYTHING: search_knowledge("[what you're about to do]")
+When search_knowledge returns summaries, use get_memory(id) to retrieve full content for relevant entries.
 AFTER any fix or decision: remember_this(content, context, tags)
 
 ## THE LOOP
@@ -16,8 +17,8 @@ AFTER any fix or decision: remember_this(content, context, tags)
 ## BEHAVIORAL RULES
 1. **Prove it works** — Never claim "fixed" without evidence. Show test output.
 2. **Save to memory** — Every fix, discovery, and decision gets remember_this()
-3. **Agent teams for 3+ step tasks** — Create a team and assign tasks to named agents
-4. **Protect main context** — Delegate heavy operations to team members, not main thread
+3. **Smart agent delegation** — Use sub-agents for independent/parallel work; use agent teams for 6+ dependent steps or when real-time coordination is needed
+4. **Protect main context** — Delegate heavy operations to sub-agents or team members, not main thread
 5. **Read before edit** — Always Read a file before Edit/Write (enforced by Gate 1)
 6. **No destructive commands** — rm -rf, force push, reset --hard are blocked (Gate 2)
 
@@ -57,13 +58,34 @@ At the start of every new session, BEFORE doing anything else:
 - ~/.claude/LIVE_STATE.json — Machine-readable project state
 - Update both at session end (use /wrap-up)
 
-## TEAM WORKFLOW
-For tasks with 3+ independent steps, use agent teams:
+## AGENT DELEGATION GUIDE
+Choose the right approach based on task complexity:
+
+**Sub-agents** (Task tool, lightweight):
+- Best for: independent parallel work, research, exploration, 2-5 step tasks
+- Memory MCP gives sub-agents shared context (search_knowledge/remember_this)
+- Causal chain tracking shares fix history across agents automatically
+- Cheaper on tokens, no coordination overhead
+
+**Agent teams** (TeamCreate workflow, full coordination):
+- Best for: 6+ dependent steps, real-time coordination, dynamic re-planning
+- Use when agents need to message each other directly (push, not pull)
+- Use when work may discover new tasks mid-execution
+- Use when progress tracking visibility matters
+
+**Team workflow when used:**
 1. **TeamCreate** — Create a named team (e.g., "audit-team")
 2. **TaskCreate** — Define tasks with clear descriptions and acceptance criteria
 3. **Assign** — Spawn agents via Task tool with `team_name`, assign tasks with TaskUpdate
 4. **Coordinate** — Use SendMessage for inter-agent communication, TaskList to monitor progress
 5. **Shutdown** — Send shutdown_request to each agent when work is complete, then TeamDelete
+
+**Decision table:**
+- 2-5 steps, independent → Sub-agents (parallel Task calls)
+- 2-5 steps, dependent → Sub-agents (lead orchestrates, memory bridges gaps)
+- 5-7 steps, dependent → Either (teams preferred but sub-agents viable)
+- 7+ steps, dependent → Agent teams (real-time coordination essential)
+- Cross-session continuity → Sub-agents + memory (persists after TeamDelete)
 
 ## SATISFACTION FORMULA
 SATISFACTION = (Agent Teams) x (Visual Output) x (Autonomy) x (Memory-First)

@@ -2024,6 +2024,36 @@ test("search_knowledge returns mode field",
      "mode" in _sk_kw,
      "no mode field")
 
+# Test: mode override forces semantic for a single-word query (normally keyword)
+_sk_forced_sem = search_knowledge("ChromaDB", mode="semantic")
+test("mode='semantic' overrides auto-detect for single word",
+     _sk_forced_sem.get("mode") == "semantic",
+     f"mode={_sk_forced_sem.get('mode')}")
+
+# Test: mode override forces keyword for a long question (normally semantic)
+_sk_forced_kw = search_knowledge("how do I debug memory issues?", mode="keyword")
+test("mode='keyword' overrides auto-detect for question",
+     _sk_forced_kw.get("mode") == "keyword",
+     f"mode={_sk_forced_kw.get('mode')}")
+
+# Test: mode override forces hybrid
+_sk_forced_hyb = search_knowledge("ChromaDB", mode="hybrid")
+test("mode='hybrid' forces hybrid search",
+     _sk_forced_hyb.get("mode") == "hybrid",
+     f"mode={_sk_forced_hyb.get('mode')}")
+
+# Test: invalid mode falls back to auto-detect
+_sk_bad_mode = search_knowledge("ChromaDB", mode="invalid_mode")
+test("invalid mode falls back to auto-detect",
+     _sk_bad_mode.get("mode") == "keyword",
+     f"mode={_sk_bad_mode.get('mode')}")
+
+# Test: empty mode string uses auto-detect (backward compat)
+_sk_empty_mode = search_knowledge("ChromaDB", mode="")
+test("empty mode string uses auto-detect",
+     _sk_empty_mode.get("mode") == "keyword",
+     f"mode={_sk_empty_mode.get('mode')}")
+
 # ─────────────────────────────────────────────────
 # Phase 3: Auto-Injection at Boot
 # ─────────────────────────────────────────────────

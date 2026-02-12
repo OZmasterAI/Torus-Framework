@@ -130,7 +130,7 @@ def compress_observation(tool_name, tool_input, tool_response, session_id):
         "metadata": {
             "tool_name": tool_name,
             "session_id": session_id,
-            "session_time": str(now),
+            "session_time": now,
             "timestamp": timestamp,
             "has_error": "true" if has_error else "false",
             "error_pattern": error_pattern,
