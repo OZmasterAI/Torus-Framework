@@ -62,6 +62,11 @@ MEMORY_TOOL_PREFIXES = [
     "mcp_memory_",
 ]
 
+# Auto-capture constants
+CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit"}
+CAPTURE_QUEUE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
+MAX_QUEUE_LINES = 500
+
 
 def is_memory_tool(tool_name):
     for prefix in MEMORY_TOOL_PREFIXES:
@@ -145,6 +150,35 @@ def _detect_errors(tool_input, tool_response, state):
             counts = state.setdefault("error_pattern_counts", {})
             counts[pattern] = counts.get(pattern, 0) + 1
             break  # One entry per Bash tool call max
+
+
+def _capture_observation(tool_name, tool_input, tool_response, session_id, state):
+    """Append observation to queue file. Never raises — capture must not crash enforcer."""
+    try:
+        if tool_name not in CAPTURABLE_TOOLS:
+            return
+        from shared.observation import compress_observation
+        obs = compress_observation(tool_name, tool_input, tool_response, session_id)
+        with open(CAPTURE_QUEUE, "a") as f:
+            f.write(json.dumps(obs) + "\n")
+        # Cap check every 50 calls
+        if state.get("tool_call_count", 0) % 50 == 0:
+            _cap_queue_file()
+    except Exception:
+        pass  # Silent failure — never crash PostToolUse
+
+
+def _cap_queue_file():
+    """Truncate queue to last 300 lines if over 500."""
+    try:
+        with open(CAPTURE_QUEUE, "r") as f:
+            lines = f.readlines()
+        if len(lines) > MAX_QUEUE_LINES:
+            with open(CAPTURE_QUEUE + ".tmp", "w") as f:
+                f.writelines(lines[-300:])
+            os.replace(CAPTURE_QUEUE + ".tmp", CAPTURE_QUEUE)
+    except Exception:
+        pass
 
 
 def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_response=None):
@@ -288,6 +322,8 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                     bans.append(sid)
         except Exception:
             pass
+
+    _capture_observation(tool_name, tool_input, tool_response, session_id, state)
 
     save_state(state, session_id=session_id)
 

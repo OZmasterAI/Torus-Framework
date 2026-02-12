@@ -135,6 +135,39 @@ def main():
     # Reset state
     reset_enforcement_state()
 
+    # Flush stale capture queue from previous session (crash recovery)
+    capture_queue = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
+    try:
+        if os.path.exists(capture_queue) and os.path.getsize(capture_queue) > 0:
+            with open(capture_queue, "r") as f:
+                lines = f.readlines()
+            if lines:
+                import chromadb
+                memory_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
+                db = chromadb.PersistentClient(path=memory_dir)
+                obs_col = db.get_or_create_collection(
+                    name="observations", metadata={"hnsw:space": "cosine"}
+                )
+                docs, metas, ids = [], [], []
+                for line in lines:
+                    try:
+                        obs = json.loads(line.strip())
+                        if "document" in obs and "id" in obs:
+                            docs.append(obs["document"])
+                            metas.append(obs.get("metadata", {}))
+                            ids.append(obs["id"])
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+                if docs:
+                    obs_col.upsert(documents=docs, metadatas=metas, ids=ids)
+                    flushed = len(docs)
+                    print(f"  [BOOT] Flushed {flushed} stale observations from capture queue", file=sys.stderr)
+                # Clear the queue file
+                with open(capture_queue, "w") as f:
+                    pass
+    except Exception:
+        pass  # Boot must never crash
+
     # Reset sideband memory timestamp file
     sideband_file = os.path.join(os.path.dirname(__file__), ".memory_last_queried")
     try:

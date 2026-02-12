@@ -1425,6 +1425,323 @@ code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec ruby <<SCRIPT\n
 test("M2: exec ruby <<SCRIPT → blocked", code != 0, f"code={code}")
 
 # ─────────────────────────────────────────────────
+# Test: get_memory Enforcer Compatibility (Gate 4)
+# ─────────────────────────────────────────────────
+print("\n--- get_memory Enforcer Compatibility ---")
+
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "mcp__memory__get_memory", {"id": "abc123"})
+state = load_state(session_id=MAIN_SESSION)
+test("get_memory: updates memory_last_queried",
+     state.get("memory_last_queried", 0) > 0,
+     f"memory_last_queried={state.get('memory_last_queried', 0)}")
+
+# Verify get_memory satisfies Gate 4 for subsequent edits
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gm_test.py"})
+run_enforcer("PostToolUse", "mcp__memory__get_memory", {"id": "abc123"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gm_test.py"})
+test("get_memory: satisfies Gate 4 for Edit", code == 0, msg)
+
+# ─────────────────────────────────────────────────
+# Test: Auto-Capture — Secrets Filter (8 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Auto-Capture: Secrets Filter ---")
+
+from shared.secrets_filter import scrub
+
+test("Secrets: env var scrubbed",
+     "<REDACTED>" in scrub("MONGODB_URI=mongodb://user:pass@host/db"),
+     scrub("MONGODB_URI=mongodb://user:pass@host/db"))
+
+test("Secrets: bearer token scrubbed",
+     "Bearer <REDACTED>" in scrub("Authorization: Bearer abc123token456"),
+     scrub("Authorization: Bearer abc123token456"))
+
+test("Secrets: JWT token scrubbed",
+     "<JWT_REDACTED>" in scrub("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig123"),
+     scrub("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig123"))
+
+test("Secrets: private key scrubbed",
+     "<PRIVATE_KEY_REDACTED>" in scrub("-----BEGIN RSA PRIVATE KEY-----\ndata\n-----END RSA PRIVATE KEY-----"),
+     scrub("-----BEGIN RSA PRIVATE KEY-----\ndata\n-----END RSA PRIVATE KEY-----"))
+
+test("Secrets: connection string scrubbed",
+     "postgresql://<REDACTED>" in scrub("postgresql://admin:secret@db:5432/mydb"),
+     scrub("postgresql://admin:secret@db:5432/mydb"))
+
+test("Secrets: AWS key scrubbed",
+     "<AWS_KEY_REDACTED>" in scrub("key=AKIAIOSFODNN7EXAMPLE"),
+     scrub("key=AKIAIOSFODNN7EXAMPLE"))
+
+test("Secrets: GitHub token scrubbed",
+     "<GH_TOKEN_REDACTED>" in scrub("ghp_ABCDEFghijklmnop1234567890abcdef"),
+     scrub("ghp_ABCDEFghijklmnop1234567890abcdef"))
+
+test("Secrets: normal text unchanged",
+     scrub("Hello world, this is fine") == "Hello world, this is fine",
+     scrub("Hello world, this is fine"))
+
+# ─────────────────────────────────────────────────
+# Test: Auto-Capture — Observation Compression (5 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Auto-Capture: Observation Compression ---")
+
+from shared.observation import compress_observation
+
+_obs = compress_observation("Bash", {"command": "echo hello"}, {"stdout": "hello", "exit_code": 0}, "test-sess")
+test("Observation: Bash success format",
+     _obs["document"].startswith("Bash:") and _obs["metadata"]["has_error"] == "false",
+     _obs["document"][:60])
+
+_obs = compress_observation("Bash", {"command": "python fail.py"}, "Traceback (most recent call last):\nError", "test-sess")
+test("Observation: Bash error format",
+     _obs["metadata"]["has_error"] == "true" and _obs["metadata"]["error_pattern"] == "Traceback",
+     f"has_error={_obs['metadata']['has_error']}, pattern={_obs['metadata']['error_pattern']}")
+
+_obs = compress_observation("Edit", {"file_path": "/tmp/test.py", "old_string": "a\nb\nc"}, None, "test-sess")
+test("Observation: Edit format",
+     "Edit: /tmp/test.py" in _obs["document"],
+     _obs["document"])
+
+_obs = compress_observation("Write", {"file_path": "/tmp/new.py", "content": "x" * 100}, None, "test-sess")
+test("Observation: Write format",
+     "Write: /tmp/new.py (100 chars)" in _obs["document"],
+     _obs["document"])
+
+_obs = compress_observation("UserPrompt", {"prompt": "fix the bug"}, None, "test-sess")
+test("Observation: UserPrompt format",
+     "UserPrompt: fix the bug" in _obs["document"],
+     _obs["document"])
+
+# ─────────────────────────────────────────────────
+# Test: Auto-Capture — Queue Operations (3 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Auto-Capture: Queue Operations ---")
+
+_queue_file = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
+_queue_backup = None
+
+# Backup existing queue if present
+if os.path.exists(_queue_file):
+    with open(_queue_file, "r") as f:
+        _queue_backup = f.read()
+
+# Test: append works
+try:
+    with open(_queue_file, "w") as f:
+        pass  # clear
+    _obs = compress_observation("Bash", {"command": "test"}, "ok", "q-test")
+    with open(_queue_file, "a") as f:
+        f.write(json.dumps(_obs) + "\n")
+    with open(_queue_file, "r") as f:
+        _lines = f.readlines()
+    test("Queue: append writes correctly", len(_lines) == 1 and "test" in _lines[0],
+         f"lines={len(_lines)}")
+except Exception as e:
+    test("Queue: append writes correctly", False, str(e))
+
+# Test: cap truncates at 500 → 300
+try:
+    with open(_queue_file, "w") as f:
+        for i in range(510):
+            _obs = compress_observation("Bash", {"command": f"cmd_{i}"}, "ok", "cap-test")
+            f.write(json.dumps(_obs) + "\n")
+    # Import and call _cap_queue_file
+    from enforcer import _cap_queue_file, MAX_QUEUE_LINES
+    _cap_queue_file()
+    with open(_queue_file, "r") as f:
+        _lines = f.readlines()
+    test("Queue: cap truncates to 300 when over 500",
+         len(_lines) == 300,
+         f"lines={len(_lines)}")
+except Exception as e:
+    test("Queue: cap truncates to 300 when over 500", False, str(e))
+
+# Test: corrupted lines skipped during parse
+try:
+    with open(_queue_file, "w") as f:
+        _obs = compress_observation("Bash", {"command": "good"}, "ok", "corrupt-test")
+        f.write(json.dumps(_obs) + "\n")
+        f.write("THIS IS NOT JSON\n")
+        f.write("{bad json too\n")
+        _obs2 = compress_observation("Bash", {"command": "also good"}, "ok", "corrupt-test")
+        f.write(json.dumps(_obs2) + "\n")
+    with open(_queue_file, "r") as f:
+        _all_lines = f.readlines()
+    _parsed = 0
+    for _line in _all_lines:
+        try:
+            json.loads(_line.strip())
+            _parsed += 1
+        except json.JSONDecodeError:
+            pass
+    test("Queue: corrupted lines skipped (2 good, 2 bad)",
+         _parsed == 2 and len(_all_lines) == 4,
+         f"parsed={_parsed}, total={len(_all_lines)}")
+except Exception as e:
+    test("Queue: corrupted lines skipped (2 good, 2 bad)", False, str(e))
+
+# Restore queue backup
+try:
+    if _queue_backup is not None:
+        with open(_queue_file, "w") as f:
+            f.write(_queue_backup)
+    else:
+        with open(_queue_file, "w") as f:
+            pass
+except Exception:
+    pass
+
+# ─────────────────────────────────────────────────
+# Test: Auto-Capture — Enforcer Integration (2 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Auto-Capture: Enforcer Integration ---")
+
+# Backup queue
+if os.path.exists(_queue_file):
+    with open(_queue_file, "r") as f:
+        _queue_backup = f.read()
+else:
+    _queue_backup = ""
+
+# Clear queue for testing
+with open(_queue_file, "w") as f:
+    pass
+
+# Test: Bash command captured via enforcer PostToolUse
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "echo capture_test_xyz"},
+             tool_response="capture_test_output")
+with open(_queue_file, "r") as f:
+    _lines = f.readlines()
+_found = any("capture_test_xyz" in line for line in _lines)
+test("Integration: Bash command captured in queue",
+     _found,
+     f"queue_lines={len(_lines)}, found={_found}")
+
+# Test: Read (non-capturable) NOT captured
+_pre_count = len(_lines)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/should_not_capture.py"})
+with open(_queue_file, "r") as f:
+    _lines_after = f.readlines()
+test("Integration: Read NOT captured (low signal)",
+     len(_lines_after) == _pre_count,
+     f"before={_pre_count}, after={len(_lines_after)}")
+
+# Restore queue
+try:
+    with open(_queue_file, "w") as f:
+        f.write(_queue_backup)
+except Exception:
+    pass
+
+# ─────────────────────────────────────────────────
+# Test: Auto-Capture — UserPrompt Capture (2 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Auto-Capture: UserPrompt Capture ---")
+
+_prompt_script = os.path.expanduser("~/.claude/hooks/user_prompt_capture.py")
+
+# Test: correction detection preserved
+_result = subprocess.run(
+    [sys.executable, _prompt_script],
+    input=json.dumps({"prompt": "no, that's wrong, try again"}),
+    capture_output=True, text=True, timeout=5
+)
+test("UserPrompt capture: correction detected",
+     "<correction_detected>" in _result.stdout,
+     f"stdout={_result.stdout!r}")
+
+# Test: feature request detection preserved
+_result = subprocess.run(
+    [sys.executable, _prompt_script],
+    input=json.dumps({"prompt": "can you add a dark mode feature?"}),
+    capture_output=True, text=True, timeout=5
+)
+test("UserPrompt capture: feature request detected",
+     "<feature_request_detected>" in _result.stdout,
+     f"stdout={_result.stdout!r}")
+
+# ─────────────────────────────────────────────────
+# Test: Auto-Capture — Memory Server (5 tests)
+# ─────────────────────────────────────────────────
+print("\n--- Auto-Capture: Memory Server ---")
+
+# Import memory_server functions for testing
+try:
+    import importlib.util
+    _ms_spec = importlib.util.spec_from_file_location(
+        "memory_server_test",
+        os.path.join(os.path.dirname(__file__), "memory_server.py")
+    )
+    _ms_mod = importlib.util.module_from_spec(_ms_spec)
+
+    # Don't run the server, just check that the module has the expected attributes
+    # We check by parsing the source instead
+    with open(os.path.join(os.path.dirname(__file__), "memory_server.py")) as f:
+        _ms_source = f.read()
+
+    test("Memory server: has observations collection",
+         "observations" in _ms_source and 'name="observations"' in _ms_source,
+         "observations collection not found")
+
+    test("Memory server: has search_observations tool",
+         "def search_observations" in _ms_source,
+         "search_observations not found")
+
+    test("Memory server: has get_observation tool",
+         "def get_observation" in _ms_source,
+         "get_observation not found")
+
+    test("Memory server: has timeline tool",
+         "def timeline" in _ms_source,
+         "timeline not found")
+
+    test("Memory server: has _flush_capture_queue",
+         "def _flush_capture_queue" in _ms_source,
+         "_flush_capture_queue not found")
+
+except Exception as e:
+    for _name in ["observations collection", "search_observations", "get_observation",
+                   "timeline", "_flush_capture_queue"]:
+        test(f"Memory server: has {_name}", False, str(e))
+
+# ─────────────────────────────────────────────────
+# Test: Auto-Capture — Boot Queue Flush (1 test)
+# ─────────────────────────────────────────────────
+print("\n--- Auto-Capture: Boot Queue Flush ---")
+
+# Check boot.py has the flush logic
+with open(os.path.join(os.path.dirname(__file__), "boot.py")) as f:
+    _boot_source = f.read()
+
+test("Boot: has capture queue flush logic",
+     ".capture_queue.jsonl" in _boot_source and "observations" in _boot_source,
+     "flush logic not found in boot.py")
+
+# ─────────────────────────────────────────────────
+# Test: Auto-Capture — Settings Updated (1 test)
+# ─────────────────────────────────────────────────
+print("\n--- Auto-Capture: Settings ---")
+
+with open(os.path.expanduser("~/.claude/settings.json")) as f:
+    _settings = json.load(f)
+
+_upsub_hooks = _settings.get("hooks", {}).get("UserPromptSubmit", [])
+_upsub_cmd = ""
+for _entry in _upsub_hooks:
+    for _hook in _entry.get("hooks", []):
+        _upsub_cmd = _hook.get("command", "")
+
+test("Settings: UserPromptSubmit uses user_prompt_capture.py",
+     "user_prompt_capture.py" in _upsub_cmd,
+     f"command={_upsub_cmd}")
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

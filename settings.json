@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/user_prompt_check.sh\"",
+            "command": "python3 \"$HOME/.claude/hooks/user_prompt_capture.py\"",
             "timeout": 3000
           }
         ]

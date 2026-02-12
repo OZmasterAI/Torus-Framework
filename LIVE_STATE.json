@@ -1,33 +1,36 @@
 {
-  "session_count": 13,
-  "status": "complete",
-  "project": "self-healing-claude-framework",
-  "last_session": "2026-02-10",
-  "active_tasks": [],
-  "completed_this_session": [
-    "MCP causal tracking tools verified live",
-    "Gate 1: added .c, .cpp, .rb, .php, .sh, .sql, .tf extensions",
-    "Gate 3: added helm, terraform, pulumi, serverless, cdk deploy patterns",
-    "Gate 7: added SSH keys, sudoers, crontab, .pem, .key critical patterns",
-    "32 new tests added (207/207 passing)"
+  "session_count": 18,
+  "status": "restart_needed",
+  "project": "self-healing-framework",
+  "project_path": "/home/crab/.claude",
+  "feature": "auto-capture-system",
+  "feature_status": "implemented_pending_restart",
+  "test_count": 267,
+  "test_failures": 0,
+  "files_created": [
+    "hooks/shared/secrets_filter.py",
+    "hooks/shared/observation.py",
+    "hooks/user_prompt_capture.py"
   ],
-  "known_issues": [
-    "anthropic:crab OAuth token revoked — do not reuse",
-    "Gateway overwrites models.json on shutdown",
-    "H1 race condition in load_state/save_state (accepted for single-agent)",
-    "H2/H3 write-then-execute + interpreter bypass (architectural limitation)"
+  "files_modified": [
+    "hooks/enforcer.py",
+    "hooks/memory_server.py",
+    "hooks/boot.py",
+    "settings.json",
+    "hooks/test_framework.py"
   ],
-  "recent_fixes": [
-    "Gate 1: extension coverage gaps closed (M4/G1-2)",
-    "Gate 3: deploy pattern gaps closed (M5/G3-2)",
-    "Gate 7: critical file pattern gaps closed (M6/G7-3)"
+  "new_mcp_tools": [
+    "search_observations",
+    "get_observation",
+    "timeline"
   ],
-  "test_status": {
-    "total": 207,
-    "passing": 207,
-    "failing": 0,
-    "note": "32 new tests for extended gate patterns"
-  },
-  "gate_count": 9,
-  "memory_count": 97
+  "blocker": "MCP server restart needed for new tools",
+  "backup_path": "~/.claude/backups/Pre-Mega-Framework/",
+  "next_steps": [
+    "restart_session",
+    "verify_new_mcp_tools",
+    "manual_test_search_observations",
+    "manual_test_timeline",
+    "manual_test_compaction"
+  ]
 }

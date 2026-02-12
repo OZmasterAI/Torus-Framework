@@ -1,35 +1,56 @@
-# Session 13 Handoff — Audit Gap Closures + MCP Verification
+# Session 18 — Auto-Capture System Implementation
 
 ## What Was Done
-- Verified MCP causal tracking tools are live (`record_attempt`, `record_outcome`, `query_fix_history` all functional)
-- Expanded Gate 1 (read-before-edit) with 7 new extensions: `.c`, `.cpp`, `.rb`, `.php`, `.sh`, `.sql`, `.tf`
-- Expanded Gate 3 (test-before-deploy) with 5 new deploy patterns: `helm`, `terraform`, `pulumi`, `serverless`, `cdk`
-- Expanded Gate 7 (critical-file-guard) with 9 new patterns: SSH keys/config, `sudoers`, `crontab`/`cron.d`, `.pem`, `.key`
-- Added 32 new tests covering all new patterns
-- All 207/207 tests passing
+Implemented the full Auto-Capture System (Option 5 Full Hybrid) for the Self-Healing Framework. 7 phases, 8 files, 3 agents.
 
-## Files Modified (4)
-- `~/.claude/hooks/gates/gate_01_read_before_edit.py` — 7 new guarded extensions (8 -> 15 total)
-- `~/.claude/hooks/gates/gate_03_test_before_deploy.py` — 5 new deploy patterns (17 -> 22 total)
-- `~/.claude/hooks/gates/gate_07_critical_file_guard.py` — 9 new critical file patterns (13 -> 22 total)
-- `~/.claude/hooks/test_framework.py` — 32 new tests (175 -> 207 total)
+### Phase 0: Backups
+- `~/.claude/CLAUDE.md.Pre-Mega` — behavioral directives snapshot
+- `~/.claude/backups/Pre-Mega-Framework/` — full hooks + settings + restore.sh
+
+### Phase 1-2: Foundation Modules (NEW files)
+- `shared/secrets_filter.py` — SecretsScrubber with 8 regex pattern categories (private keys, JWT, bearer, AWS, GitHub, connection strings, env vars, long secrets). Order: specific-first.
+- `shared/observation.py` — compress_observation() for Bash/Edit/Write/NotebookEdit/UserPrompt. Applies secrets scrubbing. Returns {document, metadata, id}.
+
+### Phase 3: Enforcer Queue Writer (MODIFIED)
+- `enforcer.py` — Added `_capture_observation()` + `_cap_queue_file()` in PostToolUse. Appends to `.capture_queue.jsonl`. Cap at 500→300 lines. Never crashes enforcer.
+
+### Phase 4: UserPrompt Capture (NEW + MODIFIED)
+- `user_prompt_capture.py` — Replaces bash script. Preserves correction/feature-request detection + adds observation capture.
+- `settings.json` — UserPromptSubmit hook now uses Python script.
+
+### Phase 5: MCP Server Observations (MODIFIED — biggest phase)
+- `memory_server.py` — NEW: `observations` ChromaDB collection, `_flush_capture_queue()`, `_compact_observations()` (30-day TTL, 5K cap, digest generation). 3 NEW MCP tools: `search_observations()`, `get_observation()`, `timeline()`. Modified: `query_fix_history()` auto-surfaces observations as fallback. Modified: `memory_stats()` includes observation counts.
+
+### Phase 6: Boot Crash Recovery (MODIFIED)
+- `boot.py` — Flushes stale `.capture_queue.jsonl` to ChromaDB on SessionStart.
+
+### Phase 7: Tests
+- `test_framework.py` — 27 new tests added. **267 total, 0 failures.**
 
 ## What's Next
-1. **Live test causal tracking** — Use the causal chain on a real error to validate end-to-end flow
-2. **Monitor vpsica token** — If it gets revoked, will need new Anthropic credentials or full OpenRouter fallback
-3. **Remaining accepted risks** — H1 race condition (accepted for single-agent), H2/H3 write-then-execute bypass (architectural), H5 source symlink (design tradeoff)
-
-## Architecture Notes
-- MCP server reconnects each Claude Code session automatically — no manual restart needed after code changes
-- Gate 7 uses 3-minute memory freshness window (vs Gate 4's 5 minutes) for critical files
-- All audit findings M4, M5, M6 from Session 8 are now closed
+1. **RESTART SESSION** — MCP server needs restart to load new tools (search_observations, get_observation, timeline)
+2. **Verify new MCP tools** — After restart, run `memory_stats()` and confirm `total_observations` field appears
+3. **Manual test: search_observations** — Run a few Bash commands, then `search_observations("test")` to verify end-to-end
+4. **Manual test: timeline** — Run 3-4 commands, use `timeline()` to verify chronological order
+5. **Manual test: compaction** — Insert old-timestamp observations, trigger flush, verify digest in knowledge collection
+6. **Update auto-capture plan memory** — Mark outcome:pending → outcome:success
 
 ## Service Status
-- **Framework tests:** 207/207 passing
-- **Memory store:** 97 memories, healthy
-- **Gates active:** 9 (all enforced)
-- **MCP causal tracking:** Verified working
+- Memory MCP server: running (OLD code — needs restart for new tools)
+- Enforcer: active (new capture code already running)
+- Boot: active (new flush code ready)
+- Capture queue: accumulating observations (will flush on next boot/search)
+- Tests: 267 passing, 0 failures
+- ChromaDB: ~/data/memory/ — 181 curated memories, observations collection created
 
-## Warnings
-- `anthropic:crab` OAuth token is revoked — do not switch back without new credentials
-- Gateway overwrites models.json on shutdown — edit only while stopped
+## Key Files Changed
+| File | Action | Lines |
+|------|--------|-------|
+| `shared/secrets_filter.py` | CREATED | 66 |
+| `shared/observation.py` | CREATED | 119 |
+| `user_prompt_capture.py` | CREATED | 77 |
+| `enforcer.py` | MODIFIED | +35 |
+| `memory_server.py` | MODIFIED | +200 (~940 total) |
+| `boot.py` | MODIFIED | +30 (~181 total) |
+| `settings.json` | MODIFIED | 1 line |
+| `test_framework.py` | MODIFIED | +200 (~1668 total) |
