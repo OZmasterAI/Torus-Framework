@@ -56,6 +56,7 @@ def default_state():
         "current_strategy_id": "",
         "current_error_signature": "",
         "active_bans": [],
+        "last_exit_plan_mode": 0,
     }
 
 

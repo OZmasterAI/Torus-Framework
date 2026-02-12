@@ -73,6 +73,25 @@ MAX_OBSERVATIONS = 5000
 CAPTURE_QUEUE_FILE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
 DIGEST_TAGS = "type:digest,auto-generated,area:framework"
 
+# Ingestion filter: reject noise patterns
+MIN_CONTENT_LENGTH = 20
+NOISE_PATTERNS = [
+    "npm install", "pip install", "Successfully installed",
+    "already satisfied", "up to date", "added .* packages",
+    "removing .* packages", "npm WARN", "DEPRECATION",
+    "Collecting ", "Downloading ", "Installing collected",
+    "running setup.py", "Building wheel", "Using cached",
+]
+import re as _re
+NOISE_REGEXES = [_re.compile(p, _re.IGNORECASE) for p in NOISE_PATTERNS]
+
+# Near-dedup: cosine distance threshold
+DEDUP_THRESHOLD = 0.05  # distance < 0.05 means >95% similar
+
+# Observation promotion settings
+MAX_PROMOTIONS_PER_CYCLE = 10
+PROMOTION_TAGS = "type:auto-promoted,area:framework"
+
 
 def generate_id(content: str) -> str:
     """Generate a deterministic ID from content alone.
@@ -656,6 +675,35 @@ def _compact_observations():
                 ids=[digest_id],
             )
 
+            # Promote high-value expired observations to curated knowledge
+            promoted = 0
+            for i, doc in enumerate(exp_docs):
+                if promoted >= MAX_PROMOTIONS_PER_CYCLE:
+                    break
+                meta = exp_metas[i] if i < len(exp_metas) else {}
+                ep = meta.get("error_pattern", "")
+                has_error = meta.get("has_error", "false")
+                if ep or has_error == "true":
+                    promo_id = hashlib.sha256(
+                        f"promoted:{doc}".encode()
+                    ).hexdigest()[:16]
+                    promo_preview = doc[:SUMMARY_LENGTH].replace("\n", " ")
+                    if len(doc) > SUMMARY_LENGTH:
+                        promo_preview += "..."
+                    collection.upsert(
+                        documents=[doc],
+                        metadatas=[{
+                            "context": "auto-promoted from observation",
+                            "tags": PROMOTION_TAGS,
+                            "timestamp": datetime.now().isoformat(),
+                            "session_time": time.time(),
+                            "preview": promo_preview,
+                            "original_error_pattern": ep,
+                        }],
+                        ids=[promo_id],
+                    )
+                    promoted += 1
+
             # Delete expired observations
             if exp_ids:
                 batch_size = 100
@@ -748,6 +796,42 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
         context: What you were doing when you learned this
         tags: Comma-separated tags for categorization (e.g., "bug,fix,auth")
     """
+    # --- Ingestion filter: reject noise ---
+    if len(content.strip()) < MIN_CONTENT_LENGTH:
+        return {
+            "result": "Rejected: content too short (minimum 20 characters)",
+            "rejected": True,
+            "total_memories": collection.count(),
+        }
+
+    for noise_re in NOISE_REGEXES:
+        if noise_re.search(content):
+            return {
+                "result": f"Rejected: matches noise pattern ('{noise_re.pattern}')",
+                "rejected": True,
+                "total_memories": collection.count(),
+            }
+
+    # --- Near-dedup: skip if >95% similar entry already exists ---
+    try:
+        count = collection.count()
+        if count > 0:
+            similar = collection.query(
+                query_texts=[content], n_results=1,
+                include=["distances"],
+            )
+            if (similar and similar.get("distances") and similar["distances"][0]
+                    and similar["distances"][0][0] < DEDUP_THRESHOLD):
+                existing_id = similar["ids"][0][0]
+                return {
+                    "result": "Deduplicated: very similar memory already exists",
+                    "existing_id": existing_id,
+                    "distance": round(similar["distances"][0][0], 4),
+                    "total_memories": count,
+                }
+    except Exception:
+        pass  # Dedup failure falls through to normal save
+
     doc_id = generate_id(content)
     timestamp = datetime.now().isoformat()
 
