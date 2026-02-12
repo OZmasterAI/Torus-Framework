@@ -1742,6 +1742,361 @@ test("Settings: UserPromptSubmit uses user_prompt_capture.py",
      f"command={_upsub_cmd}")
 
 # ─────────────────────────────────────────────────
+# Test: session_time Type Regression (4 tests)
+# Ensures session_time is always float, never string
+# Regression for: ChromaDB $gte/$lte require numeric
+# ─────────────────────────────────────────────────
+print("\n--- session_time Type Regression ---")
+
+import chromadb as _chromadb
+import hashlib as _hashlib
+
+_client = _chromadb.PersistentClient(path=os.path.expanduser("~/data/memory"))
+_obs_col = _client.get_or_create_collection(name="observations", metadata={"hnsw:space": "cosine"})
+_know_col = _client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
+
+# Test 1: observation.py compress_observation returns float session_time
+from shared.observation import compress_observation
+_test_obs = compress_observation(
+    tool_name="Bash",
+    tool_input={"command": "echo regression_test"},
+    tool_response={"stdout": "regression_test", "stderr": "", "exit_code": 0},
+    session_id="regression-test",
+)
+test("Regression: compress_observation session_time is float",
+     isinstance(_test_obs["metadata"]["session_time"], float),
+     f"got {type(_test_obs['metadata']['session_time']).__name__}")
+
+# Test 2: Verify existing observations in ChromaDB have float session_time
+_sample_obs = _obs_col.get(limit=10, include=["metadatas"])
+_all_float = True
+_bad_type = ""
+for _m in _sample_obs.get("metadatas", []):
+    _st = _m.get("session_time")
+    if _st is not None and not isinstance(_st, (int, float)):
+        _all_float = False
+        _bad_type = type(_st).__name__
+        break
+test("Regression: stored observations have numeric session_time",
+     _all_float,
+     f"found {_bad_type}")
+
+# Test 3: Insert a test observation and verify it round-trips as float
+_reg_id = "obs_regression_float_" + _hashlib.sha256(b"regression").hexdigest()[:8]
+_reg_time = time.time()
+_obs_col.upsert(
+    documents=["Bash: echo regression_roundtrip → EXIT 0 |  | "],
+    metadatas=[{
+        "tool_name": "Bash",
+        "session_id": "regression-test",
+        "session_time": _reg_time,
+        "timestamp": "2026-01-01T00:00:00",
+        "has_error": "false",
+        "error_pattern": "",
+        "exit_code": "0",
+        "command_hash": "regtest1",
+    }],
+    ids=[_reg_id],
+)
+_roundtrip = _obs_col.get(ids=[_reg_id], include=["metadatas"])
+_rt_time = _roundtrip["metadatas"][0]["session_time"]
+test("Regression: observation session_time round-trips as float",
+     isinstance(_rt_time, (int, float)) and abs(_rt_time - _reg_time) < 0.01,
+     f"got type={type(_rt_time).__name__}, value={_rt_time}")
+# Cleanup test observation
+_obs_col.delete(ids=[_reg_id])
+
+# Test 4: Compaction creates digest with float session_time
+_compact_test_time = time.time() - (45 * 86400)  # 45 days ago
+_compact_ids = []
+for _ci in range(3):
+    _cid = f"obs_compact_regtest_{_ci}"
+    _compact_ids.append(_cid)
+    _obs_col.upsert(
+        documents=[f"Bash: echo compact_regtest_{_ci} → EXIT 0 |  | "],
+        metadatas=[{
+            "tool_name": "Bash",
+            "session_id": "compact-regression",
+            "session_time": _compact_test_time + _ci,
+            "timestamp": "2026-01-01T00:00:00",
+            "has_error": "false",
+            "error_pattern": "",
+            "exit_code": "0",
+            "command_hash": f"compregtest{_ci}",
+        }],
+        ids=[_cid],
+    )
+
+# Import and run compaction
+sys.path.insert(0, os.path.dirname(__file__))
+from memory_server import _compact_observations
+_compact_observations()
+
+# Verify: old observations deleted, digest created with float session_time
+_remaining = _obs_col.get(ids=_compact_ids)
+_deleted = len(_remaining["ids"]) == 0
+
+_digest_check = _know_col.get(
+    where={"context": "auto-capture compaction digest"},
+    limit=5,
+    include=["metadatas"],
+)
+_digest_float = False
+for _dm in _digest_check.get("metadatas", []):
+    _dst = _dm.get("session_time")
+    if isinstance(_dst, (int, float)):
+        _digest_float = True
+        break
+
+test("Regression: compaction deletes old obs + digest has float session_time",
+     _deleted and _digest_float,
+     f"deleted={_deleted}, digest_float={_digest_float}")
+
+# ─────────────────────────────────────────────────
+# Phase 1: Progressive Disclosure Optimization
+# ─────────────────────────────────────────────────
+print("\n--- Phase 1: Progressive Disclosure ---")
+
+# Test: remember_this stores preview in metadata
+from memory_server import (
+    remember_this, search_knowledge, format_summaries, _migrate_previews,
+    generate_id, collection, SUMMARY_LENGTH, fts_index, _detect_query_mode,
+    _merge_results, FTS5Index,
+)
+
+_test_content = "Test progressive disclosure: this is a long content string that exceeds the summary length to verify that preview truncation works correctly in the metadata."
+_test_result = remember_this(_test_content, "testing phase 1", "test:phase1")
+_test_id = _test_result["id"]
+_test_meta = collection.get(ids=[_test_id], include=["metadatas"])["metadatas"][0]
+test("remember_this stores preview in metadata",
+     "preview" in _test_meta and _test_meta["preview"].endswith("..."),
+     f"preview={'preview' in _test_meta}")
+
+# Test: format_summaries prefers metadata preview over doc truncation
+_test_query_result = {
+    "ids": [["test1"]],
+    "documents": [["Full document content here"]],
+    "metadatas": [[{"preview": "Custom stored preview", "tags": "t1", "timestamp": "2026-01-01"}]],
+    "distances": [[0.2]],
+}
+_fs = format_summaries(_test_query_result)
+test("format_summaries prefers metadata preview",
+     _fs[0]["preview"] == "Custom stored preview",
+     f"got: {_fs[0]['preview']}")
+
+# Test: format_summaries handles None documents (metadata-only path)
+_test_metaonly = {
+    "ids": [["id1", "id2"]],
+    "documents": None,
+    "metadatas": [[
+        {"preview": "Preview A", "tags": "a", "timestamp": "2026-01-01"},
+        {"preview": "Preview B", "tags": "b", "timestamp": "2026-01-02"},
+    ]],
+    "distances": [[0.1, 0.3]],
+}
+_fs_mo = format_summaries(_test_metaonly)
+test("format_summaries handles None documents",
+     len(_fs_mo) == 2 and _fs_mo[0]["preview"] == "Preview A",
+     f"count={len(_fs_mo)}")
+
+# Test: format_summaries falls back to doc truncation when no preview in meta
+_test_fallback = {
+    "ids": [["fb1"]],
+    "documents": [["Short doc"]],
+    "metadatas": [[{"tags": "x"}]],
+    "distances": [[0.5]],
+}
+_fs_fb = format_summaries(_test_fallback)
+test("format_summaries falls back to doc truncation",
+     _fs_fb[0]["preview"] == "Short doc",
+     f"got: {_fs_fb[0]['preview']}")
+
+# Test: migration adds preview to entries missing it (already ran at import)
+_sample = collection.get(limit=3, include=["metadatas"])
+_all_have_preview = all(m.get("preview") for m in _sample["metadatas"])
+test("Migration added preview to existing entries", _all_have_preview)
+
+# Test: search_knowledge works with metadata-only include
+_sk = search_knowledge("test framework")
+test("search_knowledge returns results with metadata-only",
+     len(_sk["results"]) > 0 and "preview" in _sk["results"][0])
+
+# ─────────────────────────────────────────────────
+# Phase 2: Hybrid Search (FTS5)
+# ─────────────────────────────────────────────────
+print("\n--- Phase 2: Hybrid Search (FTS5) ---")
+
+# Test: FTS5 build from ChromaDB returns correct count
+test("FTS5 index built from ChromaDB",
+     fts_index is not None and isinstance(fts_index, FTS5Index))
+
+# Test: FTS5 keyword search finds known terms
+_kw_results = fts_index.keyword_search("OBSERVATION_TTL_DAYS", top_k=5)
+test("FTS5 keyword search finds known terms",
+     len(_kw_results) > 0,
+     f"got {len(_kw_results)} results")
+
+# Test: FTS5 tag search (any mode)
+_tag_any = fts_index.tag_search(["type:fix"], match_all=False, top_k=20)
+test("FTS5 tag search (any) returns results",
+     len(_tag_any) > 0,
+     f"got {len(_tag_any)} results")
+
+# Test: FTS5 tag search (all mode) requires all tags present
+_tag_all = fts_index.tag_search(["type:fix", "area:framework"], match_all=True, top_k=20)
+_tag_all_valid = True
+for _tr in _tag_all:
+    _tags = _tr.get("tags", "")
+    if "type:fix" not in _tags or "area:framework" not in _tags:
+        _tag_all_valid = False
+        break
+test("FTS5 tag search (all) requires all tags",
+     _tag_all_valid and len(_tag_all) > 0,
+     f"got {len(_tag_all)} results, valid={_tag_all_valid}")
+
+# Test: FTS5 add_entry + upsert behavior
+_fts_test = FTS5Index()
+_fts_test.add_entry("test1", "hello world", "hello...", "tag1,tag2", "2026-01-01", 100.0)
+_fts_test.add_entry("test1", "updated world", "updated...", "tag1,tag3", "2026-01-02", 200.0)
+_fts_kw = _fts_test.keyword_search("updated", top_k=5)
+test("FTS5 add_entry upserts correctly",
+     len(_fts_kw) == 1 and _fts_kw[0]["id"] == "test1",
+     f"got {len(_fts_kw)} results")
+
+# Test: _detect_query_mode routing
+test("detect_mode: 'tag:type:fix' → tags",
+     _detect_query_mode("tag:type:fix") == "tags")
+test("detect_mode: 'ChromaDB' → keyword",
+     _detect_query_mode("ChromaDB") == "keyword")
+test("detect_mode: 'how do I fix auth' → semantic",
+     _detect_query_mode("how do I fix auth") == "semantic")
+test("detect_mode: 'framework gate fix' → hybrid",
+     _detect_query_mode("framework gate fix") == "hybrid")
+test("detect_mode: question mark → semantic",
+     _detect_query_mode("what is this?") == "semantic")
+
+# Test: Hybrid merge deduplicates and applies bonus
+_fts_res = [{"id": "a1", "preview": "P1", "tags": "t1", "timestamp": "2026-01-01", "fts_score": 5.0}]
+_chroma_res = [
+    {"id": "a1", "preview": "P1", "tags": "t1", "timestamp": "2026-01-01", "relevance": 0.8},
+    {"id": "b2", "preview": "P2", "tags": "t2", "timestamp": "2026-01-02", "relevance": 0.7},
+]
+_merged = _merge_results(_fts_res, _chroma_res, top_k=10)
+_a1 = [m for m in _merged if m["id"] == "a1"][0]
+test("Hybrid merge deduplicates and boosts",
+     len(_merged) == 2 and _a1["relevance"] == 0.9 and _a1.get("match") == "both",
+     f"count={len(_merged)}, a1_rel={_a1.get('relevance')}")
+
+# Test: search_knowledge mode=keyword uses FTS5
+_sk_kw = search_knowledge("OBSERVATION_TTL_DAYS")
+test("search_knowledge auto-detects keyword mode",
+     _sk_kw.get("mode") == "keyword",
+     f"mode={_sk_kw.get('mode')}")
+
+# Test: search_knowledge mode=semantic uses ChromaDB
+_sk_sem = search_knowledge("how do I debug memory issues?")
+test("search_knowledge auto-detects semantic mode",
+     _sk_sem.get("mode") == "semantic",
+     f"mode={_sk_sem.get('mode')}")
+
+# Test: search_by_tags returns correct results
+from memory_server import search_by_tags
+_sbt = search_by_tags("type:fix,area:framework")
+test("search_by_tags returns results",
+     _sbt["total_results"] > 0 and _sbt["match_mode"] == "any",
+     f"count={_sbt['total_results']}")
+
+# Test: FTS5 sanitize query handles special chars
+_sanitized = FTS5Index._sanitize_fts_query('test"AND(OR)special*chars')
+test("FTS5 sanitize query strips special chars",
+     '"' not in _sanitized and "(" not in _sanitized and "*" not in _sanitized,
+     f"got: {_sanitized}")
+
+# Test: Empty FTS5 index returns gracefully
+_empty_fts = FTS5Index()
+_empty_kw = _empty_fts.keyword_search("nothing", top_k=5)
+_empty_tag = _empty_fts.tag_search(["none"], top_k=5)
+test("Empty FTS5 index returns empty lists",
+     _empty_kw == [] and _empty_tag == [])
+
+# Test: mode parameter backward-compatible (auto is default)
+test("search_knowledge returns mode field",
+     "mode" in _sk_kw,
+     "no mode field")
+
+# ─────────────────────────────────────────────────
+# Phase 3: Auto-Injection at Boot
+# ─────────────────────────────────────────────────
+print("\n--- Phase 3: Auto-Injection ---")
+
+from boot import inject_memories, _write_sideband_timestamp, SIDEBAND_FILE
+import chromadb as _chromadb
+
+_boot_db = _chromadb.PersistentClient(path=os.path.join(os.path.expanduser("~"), "data", "memory"))
+_boot_col = _boot_db.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
+
+# Test: inject_memories returns results
+_handoff = "# Session 19\n## What's Next\n1. Verify timeline\n2. Test compaction"
+_lstate = {"project": "self-healing-framework", "feature": "memory-optimization"}
+_injected = inject_memories(_handoff, _lstate, _boot_col)
+test("inject_memories returns relevant memories",
+     len(_injected) > 0,
+     f"got {len(_injected)} results")
+
+# Test: inject_memories handles empty database
+_empty_col_db = _chromadb.Client()
+_empty_col = _empty_col_db.get_or_create_collection(name="empty_test")
+_empty_inject = inject_memories("handoff", {}, _empty_col)
+test("inject_memories handles empty database",
+     _empty_inject == [])
+
+# Test: inject_memories handles None collection
+_none_inject = inject_memories("handoff", {}, None)
+test("inject_memories handles None collection",
+     _none_inject == [])
+
+# Test: inject_memories filters low-relevance results (by checking count <= 5)
+test("inject_memories returns <= 5 results",
+     len(_injected) <= 5)
+
+# Test: Boot writes sideband timestamp
+_write_sideband_timestamp()
+test("Boot writes sideband timestamp",
+     os.path.exists(SIDEBAND_FILE))
+
+# Test: Sideband timestamp satisfies Gate 4
+_sideband_content = None
+try:
+    with open(SIDEBAND_FILE) as _sf:
+        _sideband_content = json.loads(_sf.read())
+except Exception:
+    pass
+test("Sideband timestamp has valid format",
+     _sideband_content is not None and "timestamp" in _sideband_content
+     and isinstance(_sideband_content["timestamp"], float))
+
+# Test: Boot dashboard includes MEMORY CONTEXT
+import subprocess as _sp
+_boot_result = _sp.run(
+    [sys.executable, os.path.join(os.path.dirname(__file__), "boot.py")],
+    capture_output=True, text=True, timeout=15
+)
+test("Boot dashboard includes MEMORY CONTEXT",
+     "MEMORY CONTEXT" in _boot_result.stderr,
+     f"stderr length={len(_boot_result.stderr)}")
+
+# Test: Boot completes within timeout
+test("Boot completes successfully (exit 0)",
+     _boot_result.returncode == 0,
+     f"exit={_boot_result.returncode}")
+
+# Cleanup test memory
+try:
+    collection.delete(ids=[_test_id])
+except Exception:
+    pass
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

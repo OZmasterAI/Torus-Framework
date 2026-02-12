@@ -1,36 +1,30 @@
 {
-  "session_count": 18,
+  "session_count": 20,
   "status": "restart_needed",
   "project": "self-healing-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "auto-capture-system",
-  "feature_status": "implemented_pending_restart",
-  "test_count": 267,
+  "feature": "progressive-disclosure-hybrid-search-auto-injection",
+  "feature_status": "implemented_pending_mcp_restart",
+  "test_count": 302,
   "test_failures": 0,
-  "files_created": [
-    "hooks/shared/secrets_filter.py",
-    "hooks/shared/observation.py",
-    "hooks/user_prompt_capture.py"
-  ],
   "files_modified": [
-    "hooks/enforcer.py",
     "hooks/memory_server.py",
     "hooks/boot.py",
-    "settings.json",
     "hooks/test_framework.py"
   ],
-  "new_mcp_tools": [
-    "search_observations",
-    "get_observation",
-    "timeline"
-  ],
-  "blocker": "MCP server restart needed for new tools",
-  "backup_path": "~/.claude/backups/Pre-Mega-Framework/",
+  "new_features": {
+    "progressive_disclosure": "preview in metadata, metadata-only queries",
+    "hybrid_search": "FTS5Index class, auto-routing, search_by_tags tool",
+    "auto_injection": "inject_memories at boot, Gate 4 auto-satisfied"
+  },
+  "mcp_tools": 13,
+  "curated_memories": 192,
+  "backup": "~/Desktop/Mega-Framework-v1.0.1.by-OZ/",
+  "blocker": "MCP server restart needed for FTS5/search_by_tags/auto-routing",
   "next_steps": [
-    "restart_session",
-    "verify_new_mcp_tools",
-    "manual_test_search_observations",
-    "manual_test_timeline",
-    "manual_test_compaction"
+    "restart_mcp_server",
+    "verify_fts5_live",
+    "verify_gate4_bypass",
+    "consider_mode_parameter_exposure"
   ]
 }

@@ -64,6 +64,9 @@ observations = client.get_or_create_collection(
     metadata={"hnsw:space": "cosine"},
 )
 
+# Progressive disclosure: preview length for search summaries
+SUMMARY_LENGTH = 120
+
 # Auto-capture settings
 OBSERVATION_TTL_DAYS = 30
 MAX_OBSERVATIONS = 5000
@@ -79,6 +82,331 @@ def generate_id(content: str) -> str:
     duplicate entries and unbounded database growth.
     """
     return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def _migrate_previews():
+    """One-time backfill: add preview field to all existing entries missing it.
+
+    Checks the first entry for a 'preview' key. If present, migration is
+    already done. Otherwise, batch-updates all entries in chunks of 100.
+    Called once at module load time.
+    """
+    count = collection.count()
+    if count == 0:
+        return 0
+
+    # Check if migration is needed by sampling first entry
+    sample = collection.get(limit=1, include=["metadatas"])
+    if sample and sample.get("metadatas") and sample["metadatas"][0].get("preview"):
+        return 0  # Already migrated
+
+    # Fetch all entries to backfill previews
+    all_data = collection.get(limit=count, include=["documents", "metadatas"])
+    if not all_data or not all_data.get("ids"):
+        return 0
+
+    ids = all_data["ids"]
+    docs = all_data.get("documents", [])
+    metas = all_data.get("metadatas", [])
+
+    migrated = 0
+    batch_size = 100
+    for start in range(0, len(ids), batch_size):
+        end = min(start + batch_size, len(ids))
+        batch_ids = []
+        batch_metas = []
+
+        for i in range(start, end):
+            meta = metas[i] if i < len(metas) else {}
+            if meta.get("preview"):
+                continue  # Already has preview
+
+            doc = docs[i] if i < len(docs) else ""
+            preview = doc[:SUMMARY_LENGTH].replace("\n", " ")
+            if len(doc) > SUMMARY_LENGTH:
+                preview += "..."
+
+            updated_meta = dict(meta) if meta else {}
+            updated_meta["preview"] = preview
+            batch_ids.append(ids[i])
+            batch_metas.append(updated_meta)
+
+        if batch_ids:
+            collection.update(ids=batch_ids, metadatas=batch_metas)
+            migrated += len(batch_ids)
+
+    return migrated
+
+
+# ──────────────────────────────────────────────────
+# FTS5 Hybrid Search Index
+# ──────────────────────────────────────────────────
+import sqlite3
+import re
+
+
+class FTS5Index:
+    """In-memory SQLite FTS5 index for keyword and tag search.
+
+    Rebuilt from ChromaDB on every server restart. ChromaDB remains
+    the source of truth; FTS5 is a read-optimized secondary index.
+    """
+
+    def __init__(self):
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self._create_tables()
+
+    def _create_tables(self):
+        c = self.conn
+        c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS mem_fts USING fts5(content, preview)")
+        c.execute("""CREATE TABLE IF NOT EXISTS mem_lookup (
+            fts_rowid INTEGER PRIMARY KEY,
+            memory_id TEXT UNIQUE,
+            tags TEXT,
+            timestamp TEXT,
+            session_time REAL
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS tags (
+            memory_id TEXT,
+            tag TEXT
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tags_mid ON tags(memory_id)")
+        c.commit()
+
+    def build_from_chromadb(self, chroma_collection):
+        """Populate FTS5 index from ChromaDB data. Returns entry count."""
+        count = chroma_collection.count()
+        if count == 0:
+            return 0
+
+        all_data = chroma_collection.get(
+            limit=count,
+            include=["documents", "metadatas"],
+        )
+        if not all_data or not all_data.get("ids"):
+            return 0
+
+        ids = all_data["ids"]
+        docs = all_data.get("documents", [])
+        metas = all_data.get("metadatas", [])
+
+        for i, mid in enumerate(ids):
+            doc = docs[i] if i < len(docs) else ""
+            meta = metas[i] if i < len(metas) else {}
+            preview = meta.get("preview", doc[:SUMMARY_LENGTH] if doc else "")
+            tags_str = meta.get("tags", "")
+            timestamp = meta.get("timestamp", "")
+            session_time = meta.get("session_time", 0.0)
+            if isinstance(session_time, str):
+                try:
+                    session_time = float(session_time)
+                except (ValueError, TypeError):
+                    session_time = 0.0
+
+            self._insert_entry(mid, doc, preview, tags_str, timestamp, session_time)
+
+        self.conn.commit()
+        return len(ids)
+
+    def _insert_entry(self, memory_id, content, preview, tags_str, timestamp, session_time):
+        """Insert a single entry into FTS5 + lookup + tags tables."""
+        c = self.conn
+        # Upsert: delete old entry if exists
+        existing = c.execute(
+            "SELECT fts_rowid FROM mem_lookup WHERE memory_id = ?", (memory_id,)
+        ).fetchone()
+        if existing:
+            c.execute("DELETE FROM mem_fts WHERE rowid = ?", (existing[0],))
+            c.execute("DELETE FROM mem_lookup WHERE memory_id = ?", (memory_id,))
+            c.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
+
+        c.execute("INSERT INTO mem_fts(content, preview) VALUES (?, ?)", (content, preview))
+        rowid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+        c.execute(
+            "INSERT INTO mem_lookup(fts_rowid, memory_id, tags, timestamp, session_time) VALUES (?,?,?,?,?)",
+            (rowid, memory_id, tags_str, timestamp, session_time),
+        )
+
+        # Normalize tags into tag table
+        if tags_str:
+            for tag in tags_str.split(","):
+                tag = tag.strip()
+                if tag:
+                    c.execute("INSERT INTO tags(memory_id, tag) VALUES (?, ?)", (memory_id, tag))
+
+    def add_entry(self, memory_id, content, preview, tags_str, timestamp, session_time):
+        """Add or update an entry (dual-write from remember_this)."""
+        self._insert_entry(memory_id, content, preview, tags_str, timestamp, session_time)
+        self.conn.commit()
+
+    def keyword_search(self, query, top_k=15):
+        """FTS5 keyword search with BM25 ranking."""
+        sanitized = self._sanitize_fts_query(query)
+        if not sanitized:
+            return []
+
+        try:
+            rows = self.conn.execute("""
+                SELECT l.memory_id, f.preview, l.tags, l.timestamp,
+                       rank * -1 as score
+                FROM mem_fts f
+                JOIN mem_lookup l ON l.fts_rowid = f.rowid
+                WHERE mem_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (sanitized, top_k)).fetchall()
+        except sqlite3.OperationalError:
+            return []
+
+        results = []
+        for row in rows:
+            results.append({
+                "id": row[0],
+                "preview": row[1],
+                "tags": row[2],
+                "timestamp": row[3],
+                "fts_score": round(row[4], 4),
+            })
+        return results
+
+    def tag_search(self, tags_list, match_all=False, top_k=15):
+        """Exact tag matching via normalized tag table."""
+        if not tags_list:
+            return []
+
+        if match_all:
+            # All tags must be present
+            placeholders = ",".join("?" * len(tags_list))
+            query = f"""
+                SELECT t.memory_id, l.tags, l.timestamp,
+                       (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
+                FROM tags t
+                JOIN mem_lookup l ON l.memory_id = t.memory_id
+                WHERE t.tag IN ({placeholders})
+                GROUP BY t.memory_id
+                HAVING COUNT(DISTINCT t.tag) = ?
+                LIMIT ?
+            """
+            rows = self.conn.execute(query, (*tags_list, len(tags_list), top_k)).fetchall()
+        else:
+            # Any tag matches
+            placeholders = ",".join("?" * len(tags_list))
+            query = f"""
+                SELECT DISTINCT t.memory_id, l.tags, l.timestamp,
+                       (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
+                FROM tags t
+                JOIN mem_lookup l ON l.memory_id = t.memory_id
+                WHERE t.tag IN ({placeholders})
+                LIMIT ?
+            """
+            rows = self.conn.execute(query, (*tags_list, top_k)).fetchall()
+
+        results = []
+        for row in rows:
+            results.append({
+                "id": row[0],
+                "tags": row[1],
+                "timestamp": row[2],
+                "preview": row[3] or "(no preview)",
+            })
+        return results
+
+    def get_preview(self, memory_id):
+        """Get preview + metadata for a single memory ID."""
+        row = self.conn.execute("""
+            SELECT l.tags, l.timestamp,
+                   (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
+            FROM mem_lookup l
+            WHERE l.memory_id = ?
+        """, (memory_id,)).fetchone()
+        if not row:
+            return None
+        return {"id": memory_id, "tags": row[0], "timestamp": row[1], "preview": row[2]}
+
+    @staticmethod
+    def _sanitize_fts_query(query):
+        """Strip FTS5 special characters to prevent query crashes."""
+        # Remove FTS5 operators that could cause syntax errors
+        sanitized = re.sub(r'[*(){}[\]^~"\'\\:;!@#$%&+=|<>]', " ", query)
+        # Collapse whitespace
+        sanitized = re.sub(r"\s+", " ", sanitized).strip()
+        return sanitized
+
+
+def _detect_query_mode(query):
+    """Route queries to the appropriate search engine.
+
+    Returns one of: 'tags', 'keyword', 'semantic', 'hybrid'.
+    """
+    q = query.strip()
+    ql = q.lower()
+
+    # Tag queries: explicit tag: or tags: prefix
+    if ql.startswith("tag:") or ql.startswith("tags:"):
+        return "tags"
+
+    # Keyword: quoted phrases or boolean operators
+    if '"' in q or " AND " in q or " OR " in q:
+        return "keyword"
+
+    words = q.split()
+
+    # Keyword: 1-2 word queries (likely identifiers or exact terms)
+    if len(words) <= 2:
+        return "keyword"
+
+    # Semantic: questions or long natural language
+    if ql.endswith("?") or ql.startswith(("how ", "why ", "what ", "when ", "where ", "which ")):
+        return "semantic"
+    if len(words) >= 5:
+        return "semantic"
+
+    # Hybrid: 3-4 word ambiguous queries
+    return "hybrid"
+
+
+def _merge_results(fts_results, chroma_summaries, top_k=15):
+    """Merge FTS5 and ChromaDB results, dedup by memory_id.
+
+    Entries appearing in both sources get a +0.1 relevance bonus.
+    """
+    seen = {}  # memory_id -> entry
+
+    # Add ChromaDB results first (they have relevance scores)
+    for entry in chroma_summaries:
+        mid = entry.get("id", "")
+        if mid:
+            seen[mid] = dict(entry)
+
+    # Merge FTS5 results
+    for entry in fts_results:
+        mid = entry.get("id", "")
+        if not mid:
+            continue
+        if mid in seen:
+            # Boost: appeared in both semantic + keyword
+            if "relevance" in seen[mid]:
+                seen[mid]["relevance"] = min(1.0, seen[mid]["relevance"] + 0.1)
+            seen[mid]["match"] = "both"
+        else:
+            seen[mid] = dict(entry)
+            seen[mid]["match"] = "keyword"
+
+    # Sort: items with relevance first (descending), then by fts_score
+    results = list(seen.values())
+    results.sort(key=lambda x: (x.get("relevance", 0), x.get("fts_score", 0)), reverse=True)
+
+    return results[:top_k]
+
+
+# Run preview migration on startup (idempotent — skips if already done)
+_preview_migrated = _migrate_previews()
+
+# Build FTS5 index from ChromaDB (rebuilt on every server restart)
+fts_index = FTS5Index()
+_fts_count = fts_index.build_from_chromadb(collection)
 
 
 def format_results(results) -> list[dict]:
@@ -105,9 +433,6 @@ def format_results(results) -> list[dict]:
     return formatted
 
 
-SUMMARY_LENGTH = 120
-
-
 def format_summaries(results) -> list[dict]:
     """Format ChromaDB query results into compact summaries (id + preview).
 
@@ -115,13 +440,14 @@ def format_summaries(results) -> list[dict]:
     to retrieve full content for specific entries.
 
     Handles both query() results (nested ids[0]) and get() results (flat ids).
+    Supports metadata-only queries (documents=None) by using stored preview field.
     """
     if not results:
         return []
 
     # Detect query() vs get() result structure
     ids_raw = results.get("ids", [])
-    docs_raw = results.get("documents", [])
+    docs_raw = results.get("documents")  # May be None for metadata-only queries
     metas_raw = results.get("metadatas", [])
     distances_raw = results.get("distances", [])
 
@@ -133,27 +459,37 @@ def format_summaries(results) -> list[dict]:
         distances = distances_raw[0] if distances_raw else []
     else:
         ids = ids_raw
-        docs = docs_raw
+        docs = docs_raw if docs_raw else []
         metas = metas_raw
         distances = []
 
-    if not docs:
+    if not ids:
         return []
 
     formatted = []
-    for i, doc in enumerate(docs):
-        preview = doc[:SUMMARY_LENGTH].replace("\n", " ")
-        if len(doc) > SUMMARY_LENGTH:
-            preview += "..."
+    for i in range(len(ids)):
+        meta = metas[i] if i < len(metas) and metas else {}
+
+        # Prefer stored preview from metadata; fall back to doc truncation
+        if meta and meta.get("preview"):
+            preview = meta["preview"]
+        elif i < len(docs) and docs[i]:
+            doc = docs[i]
+            preview = doc[:SUMMARY_LENGTH].replace("\n", " ")
+            if len(doc) > SUMMARY_LENGTH:
+                preview += "..."
+        else:
+            preview = "(no preview available)"
+
         entry = {
             "id": ids[i] if i < len(ids) else "",
             "preview": preview,
         }
         if i < len(distances) and distances:
             entry["relevance"] = round(1 - distances[i], 3)
-        if i < len(metas) and metas[i]:
-            entry["tags"] = metas[i].get("tags", "")
-            entry["timestamp"] = metas[i].get("timestamp", "")
+        if meta:
+            entry["tags"] = meta.get("tags", "")
+            entry["timestamp"] = meta.get("timestamp", "")
         formatted.append(entry)
 
     return formatted
@@ -239,7 +575,7 @@ def _compact_observations():
         if total == 0:
             return
 
-        cutoff = str(time.time() - (OBSERVATION_TTL_DAYS * 86400))
+        cutoff = time.time() - (OBSERVATION_TTL_DAYS * 86400)
 
         # Find expired observations
         try:
@@ -315,7 +651,7 @@ def _compact_observations():
                     "context": "auto-capture compaction digest",
                     "tags": DIGEST_TAGS,
                     "timestamp": datetime.now().isoformat(),
-                    "session_time": str(time.time()),
+                    "session_time": time.time(),
                 }],
                 ids=[digest_id],
             )
@@ -361,9 +697,32 @@ def search_knowledge(query: str, top_k: int = 15) -> dict:
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty. Start building knowledge with remember_this()."}
 
+    mode = _detect_query_mode(query)
     actual_k = min(top_k, count)
-    results = collection.query(query_texts=[query], n_results=actual_k)
-    formatted = format_summaries(results)
+
+    if mode == "tags":
+        # Strip tag:/tags: prefix and parse
+        tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)
+        tags_list = [t.strip() for t in tag_query.split(",") if t.strip()]
+        formatted = fts_index.tag_search(tags_list, match_all=False, top_k=actual_k)
+    elif mode == "keyword":
+        formatted = fts_index.keyword_search(query, top_k=actual_k)
+    elif mode == "hybrid":
+        # Both engines, merged
+        fts_results = fts_index.keyword_search(query, top_k=actual_k)
+        chroma_results = collection.query(
+            query_texts=[query], n_results=actual_k,
+            include=["metadatas", "distances"],
+        )
+        chroma_summaries = format_summaries(chroma_results)
+        formatted = _merge_results(fts_results, chroma_summaries, top_k=actual_k)
+    else:
+        # Semantic (default)
+        results = collection.query(
+            query_texts=[query], n_results=actual_k,
+            include=["metadatas", "distances"],
+        )
+        formatted = format_summaries(results)
 
     _touch_memory_timestamp()
 
@@ -371,6 +730,7 @@ def search_knowledge(query: str, top_k: int = 15) -> dict:
         "results": formatted,
         "total_memories": count,
         "query": query,
+        "mode": mode,
     }
 
 
@@ -386,16 +746,27 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
     doc_id = generate_id(content)
     timestamp = datetime.now().isoformat()
 
+    # Pre-compute preview for progressive disclosure (stored in metadata)
+    preview = content[:SUMMARY_LENGTH].replace("\n", " ")
+    if len(content) > SUMMARY_LENGTH:
+        preview += "..."
+
+    now = time.time()
+
     collection.upsert(
         documents=[content],
         metadatas=[{
             "context": context,
             "tags": tags,
             "timestamp": timestamp,
-            "session_time": str(time.time()),
+            "session_time": now,
+            "preview": preview,
         }],
         ids=[doc_id],
     )
+
+    # Dual-write: keep FTS5 index in sync
+    fts_index.add_entry(doc_id, content, preview, tags, timestamp, now)
 
     _touch_memory_timestamp()
 
@@ -423,7 +794,10 @@ def deep_query(query: str, top_k: int = 50) -> dict:
         return {"results": [], "total_memories": 0, "message": "Memory is empty."}
 
     actual_k = min(top_k, count)
-    results = collection.query(query_texts=[query], n_results=actual_k)
+    results = collection.query(
+        query_texts=[query], n_results=actual_k,
+        include=["metadatas", "distances"],
+    )
     formatted = format_summaries(results)
 
     _touch_memory_timestamp()
@@ -454,7 +828,7 @@ def get_recent_activity(hours: int = 48) -> dict:
     # Get all recent entries (ChromaDB where filter on metadata)
     try:
         results = collection.get(
-            where={"session_time": {"$gte": str(cutoff)}},
+            where={"session_time": {"$gte": cutoff}},
             limit=100,
         )
     except Exception:
@@ -462,6 +836,7 @@ def get_recent_activity(hours: int = 48) -> dict:
         results = collection.query(
             query_texts=["recent activity work session"],
             n_results=min(50, count),
+            include=["metadatas", "distances"],
         )
         return {
             "results": format_summaries(results),
@@ -541,7 +916,37 @@ def memory_stats() -> dict:
         "capture_queue_bytes": queue_size,
         "storage_path": MEMORY_DIR,
         "collections": ["knowledge", "observations", "fix_outcomes"],
+        "fts_index_count": _fts_count,
         "status": "healthy" if count >= 0 else "error",
+    }
+
+
+@mcp.tool()
+def search_by_tags(tags: str, match_all: bool = False, top_k: int = 15) -> dict:
+    """Search memories by exact tag matching.
+
+    Faster than semantic search for finding memories with specific tags.
+    Uses the FTS5 normalized tag index.
+
+    Args:
+        tags: Comma-separated tags to search for (e.g., "type:fix,area:framework")
+        match_all: If true, all tags must be present. If false, any tag matches (default false)
+        top_k: Maximum number of results (default 15)
+    """
+    tags_list = [t.strip() for t in tags.split(",") if t.strip()]
+    if not tags_list:
+        return {"results": [], "message": "No tags provided"}
+
+    top_k = max(1, min(top_k, 500))
+    results = fts_index.tag_search(tags_list, match_all=match_all, top_k=top_k)
+
+    _touch_memory_timestamp()
+
+    return {
+        "results": results,
+        "total_results": len(results),
+        "tags_searched": tags_list,
+        "match_mode": "all" if match_all else "any",
     }
 
 
@@ -570,7 +975,7 @@ def search_observations(query: str, top_k: int = 20, hours: int = 0) -> dict:
     actual_k = min(top_k, count)
 
     if hours > 0:
-        cutoff = str(time.time() - (hours * 3600))
+        cutoff = time.time() - (hours * 3600)
         try:
             results = observations.query(
                 query_texts=[query],
@@ -665,8 +1070,8 @@ def timeline(anchor_id: str = "", anchor_time: str = "", window_minutes: int = 1
 
     # Query window
     window_secs = window_minutes * 60
-    start = str(anchor_epoch - window_secs)
-    end = str(anchor_epoch + window_secs)
+    start = anchor_epoch - window_secs
+    end = anchor_epoch + window_secs
 
     limit = max(1, min(limit, 100))
 
