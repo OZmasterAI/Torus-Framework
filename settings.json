@@ -166,5 +166,10 @@
   "statusLine": {
     "type": "command",
     "command": "python3 \"$HOME/.claude/hooks/statusline.py\""
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
   }
 }
