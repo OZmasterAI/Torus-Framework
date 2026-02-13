@@ -209,6 +209,16 @@ def compress_observation(tool_name, tool_input, tool_response, session_id):
         context = {"url": url}
         document = f"WebFetch: {url}"
 
+    elif tool_name == "Task":
+        description = tool_input.get("description", "")
+        subagent_type = tool_input.get("subagent_type", "")
+        model = tool_input.get("model", "")
+        document = f"Task: {subagent_type} — {description[:80]}"
+        if model:
+            document += f" (model={model})"
+        context = {"subagent_type": subagent_type, "model": model}
+        priority = "medium"
+
     else:
         document = f"{tool_name}: (uncategorized)"
 

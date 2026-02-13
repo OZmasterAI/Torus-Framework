@@ -24,7 +24,7 @@ from shared.state import load_state, save_state
 from shared.error_normalizer import fnv1a_hash
 
 # Auto-capture constants — expanded to include read/search/skill tools
-CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "Skill", "WebSearch", "WebFetch"}
+CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "Skill", "WebSearch", "WebFetch", "Task"}
 CAPTURE_QUEUE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
 MAX_QUEUE_LINES = 500
 

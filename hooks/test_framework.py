@@ -89,8 +89,10 @@ def cleanup_test_states():
     """Remove test state files."""
     for sid in [MAIN_SESSION, SUB_SESSION_A, SUB_SESSION_B, "rich-context-test"]:
         path = state_file_for(sid)
-        if os.path.exists(path):
+        try:
             os.remove(path)
+        except FileNotFoundError:
+            pass
 
 
 print("=" * 70)
@@ -5960,6 +5962,43 @@ test("v2.2.0: pre_compact.py contains tool_stats_snapshot in metadata",
 test("v2.2.0: pre_compact.py contains Top tools: in document_parts",
      "Top tools:" in pre_compact_content,
      "Expected 'Top tools:' in document_parts in pre_compact.py")
+
+
+# ── v2.2.1 Features ──────────────────────────────────
+print("\n--- v2.2.1 Features ---")
+
+# Test 1: Task tool observation handler
+try:
+    with open("/home/crab/.claude/hooks/shared/observation.py") as f:
+        observation_content = f.read()
+except FileNotFoundError:
+    observation_content = ""
+
+test("v2.2.1: observation.py has Task tool handler",
+     '"Task":' in observation_content and 'description' in observation_content,
+     "Expected Task handler in compress_observation")
+
+# Test 2: Task tool in tracker
+try:
+    with open("/home/crab/.claude/hooks/tracker.py") as f:
+        tracker_content = f.read()
+except FileNotFoundError:
+    tracker_content = ""
+
+test("v2.2.1: tracker.py has Task in CAPTURABLE_TOOLS",
+     '"Task"' in tracker_content and 'CAPTURABLE_TOOLS' in tracker_content,
+     "Expected Task in CAPTURABLE_TOOLS set")
+
+# Test 3: Task tool in Gate 4
+try:
+    with open("/home/crab/.claude/hooks/gates/gate_04_memory_first.py") as f:
+        gate04_content = f.read()
+except FileNotFoundError:
+    gate04_content = ""
+
+test("v2.2.1: gate_04 has Task in GATED_TOOLS",
+     '"Task"' in gate04_content and 'GATED_TOOLS' in gate04_content,
+     "Expected Task in GATED_TOOLS set")
 
 
 # ─────────────────────────────────────────────────

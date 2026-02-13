@@ -22,7 +22,7 @@ GATE_NAME = "GATE 4: MEMORY FIRST"
 MEMORY_FRESHNESS_WINDOW = 300  # 5 minutes
 
 # Tools that require recent memory query
-GATED_TOOLS = {"Edit", "Write", "NotebookEdit"}
+GATED_TOOLS = {"Edit", "Write", "NotebookEdit", "Task"}
 
 # Files exempt by basename
 EXEMPT_BASENAMES = {"state.json", "HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md"}
