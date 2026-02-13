@@ -213,6 +213,7 @@ def parse_audit_line(line):
             "decision": entry.get("decision", ""),
             "reason": entry.get("reason", ""),
             "session_id": entry.get("session_id", ""),
+            "state_keys": entry.get("state_keys", []),
         }
 
     # Type A: event (has "event" key)

@@ -38,25 +38,62 @@ def main():
     verified_count = len(state.get("verified_fixes", []))
     elapsed = time.time() - state.get("session_start", time.time())
 
+    # Extract enriched state data (error and chain tracking)
+    error_pattern_counts = state.get("error_pattern_counts", {})
+    pending_chain_ids = state.get("pending_chain_ids", [])
+    active_bans = state.get("active_bans", [])
+    gate6_warn_count = state.get("gate6_warn_count", 0)
+    error_windows = state.get("error_windows", [])
+
     # Log snapshot to stderr (visible in Claude Code hook output)
+    error_patterns_summary = f"{len(error_pattern_counts)} patterns" if error_pattern_counts else "none"
+    chains_summary = f"{len(pending_chain_ids)} active" if pending_chain_ids else "none"
+    bans_summary = f"{len(active_bans)} active" if active_bans else "none"
+
     print(
         f"[PreCompact] Snapshot before compaction: "
         f"{tool_call_count} tool calls, "
         f"{files_read_count} files read, "
         f"{pending_count} pending verification, "
         f"{verified_count} verified fixes, "
-        f"{elapsed:.0f}s elapsed",
+        f"{elapsed:.0f}s elapsed | "
+        f"Errors: {error_patterns_summary}, "
+        f"Chains: {chains_summary}, "
+        f"Bans: {bans_summary}, "
+        f"Gate6 warns: {gate6_warn_count}",
         file=sys.stderr,
     )
 
     # Build observation document for capture queue
-    document = (
+    document_parts = [
         f"PreCompact snapshot: {tool_call_count} tool calls, "
         f"{files_read_count} files read, "
         f"{pending_count} pending, "
         f"{verified_count} verified, "
         f"{elapsed:.0f}s elapsed"
-    )
+    ]
+
+    # Add enriched state data
+    if error_pattern_counts:
+        top_errors = sorted(error_pattern_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+        error_summary = "; ".join([f"{pattern}: {count}" for pattern, count in top_errors])
+        document_parts.append(f"Error patterns: {error_summary}")
+
+    if pending_chain_ids:
+        document_parts.append(f"Active causal chains: {', '.join(pending_chain_ids)}")
+
+    if active_bans:
+        document_parts.append(f"Banned strategies: {', '.join(active_bans)}")
+
+    if gate6_warn_count > 0:
+        document_parts.append(f"Gate 6 warnings: {gate6_warn_count}")
+
+    if error_windows:
+        recent_errors = len([ts for ts in error_windows if time.time() - ts < 300])  # last 5 minutes
+        if recent_errors > 0:
+            document_parts.append(f"Recent errors (5m): {recent_errors}")
+
+    document = ". ".join(document_parts)
 
     timestamp = datetime.now().isoformat()
     obs_id = hashlib.sha256(document.encode()).hexdigest()[:16]
@@ -68,6 +105,7 @@ def main():
         "timestamp": timestamp,
         "has_error": "false",
         "error_pattern": "",
+        "snapshot_type": "enriched",
     }
 
     observation = {

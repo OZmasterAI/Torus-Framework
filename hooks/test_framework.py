@@ -4576,6 +4576,221 @@ else:
 
 
 # ─────────────────────────────────────────────────
+# v2.1.2 Features
+# ─────────────────────────────────────────────────
+print("\n--- v2.1.2 Features ---")
+
+# ── Pre-Compact Enriched Snapshot Tests ──
+pre_compact_path = os.path.join(os.path.dirname(__file__), "pre_compact.py")
+dashboard_dir = os.path.join(os.path.dirname(__file__), "..", "dashboard")
+server_path = os.path.join(dashboard_dir, "server.py")
+app_js_path = os.path.join(dashboard_dir, "static", "app.js")
+style_css_path = os.path.join(dashboard_dir, "static", "style.css")
+
+# 1. Pre-compact file exists and is valid Python
+if os.path.isfile(pre_compact_path):
+    test("v2.1.2: pre_compact.py exists", True)
+
+    # Try to compile it
+    try:
+        with open(pre_compact_path) as f:
+            compile(f.read(), pre_compact_path, 'exec')
+        test("v2.1.2: pre_compact.py is valid Python", True)
+    except SyntaxError as e:
+        test("v2.1.2: pre_compact.py is valid Python", False, f"syntax error: {e}")
+
+    # Read source for content tests
+    with open(pre_compact_path) as f:
+        pre_compact_src = f.read()
+
+    # 2. Contains error_pattern_counts reference
+    test("v2.1.2: pre_compact has error_pattern_counts",
+         "error_pattern_counts" in pre_compact_src,
+         "error_pattern_counts not found in source")
+
+    # 3. Contains pending_chain_ids reference
+    test("v2.1.2: pre_compact has pending_chain_ids",
+         "pending_chain_ids" in pre_compact_src,
+         "pending_chain_ids not found in source")
+
+    # 4. Contains active_bans reference
+    test("v2.1.2: pre_compact has active_bans",
+         "active_bans" in pre_compact_src,
+         "active_bans not found in source")
+
+    # 5. Contains gate6_warn_count reference
+    test("v2.1.2: pre_compact has gate6_warn_count",
+         "gate6_warn_count" in pre_compact_src,
+         "gate6_warn_count not found in source")
+
+    # 6. Contains error_windows reference
+    test("v2.1.2: pre_compact has error_windows",
+         "error_windows" in pre_compact_src,
+         "error_windows not found in source")
+
+    # 7. Metadata includes snapshot_type
+    test("v2.1.2: pre_compact metadata has snapshot_type",
+         '"snapshot_type"' in pre_compact_src or "'snapshot_type'" in pre_compact_src,
+         "snapshot_type not found in metadata")
+
+    # 8. Metadata sets snapshot_type to "enriched"
+    test("v2.1.2: pre_compact snapshot_type is enriched",
+         '"enriched"' in pre_compact_src or "'enriched'" in pre_compact_src,
+         "enriched value not found")
+
+    # 9. Fail-open pattern maintained (sys.exit(0))
+    test("v2.1.2: pre_compact has fail-open exit",
+         "sys.exit(0)" in pre_compact_src,
+         "sys.exit(0) not found - fail-open not maintained")
+
+    # 10. Has try/except wrapper for fail-open
+    test("v2.1.2: pre_compact has try/except wrapper",
+         "try:" in pre_compact_src and "except" in pre_compact_src and "finally:" in pre_compact_src,
+         "try/except/finally wrapper not found")
+
+    # 11. Loads state using load_state
+    test("v2.1.2: pre_compact loads state",
+         "load_state" in pre_compact_src,
+         "load_state call not found")
+
+    # 12. Writes to capture queue
+    test("v2.1.2: pre_compact writes to capture queue",
+         "CAPTURE_QUEUE" in pre_compact_src or ".capture_queue.jsonl" in pre_compact_src,
+         "capture queue reference not found")
+
+    # 13. Document includes enriched data sections
+    test("v2.1.2: pre_compact document includes error patterns",
+         "error_pattern" in pre_compact_src.lower() or "top_errors" in pre_compact_src,
+         "error pattern handling not found")
+
+    # 14. Document includes causal chain info
+    test("v2.1.2: pre_compact document includes chains",
+         "chain" in pre_compact_src.lower(),
+         "chain info not found in document")
+
+    # 15. Document includes ban info
+    test("v2.1.2: pre_compact document includes bans",
+         "ban" in pre_compact_src.lower(),
+         "ban info not found in document")
+else:
+    test("v2.1.2: pre_compact.py exists", False, "file not found")
+    test("v2.1.2: pre_compact.py is valid Python", False, "file not found")
+    test("v2.1.2: pre_compact has error_pattern_counts", False, "file not found")
+    test("v2.1.2: pre_compact has pending_chain_ids", False, "file not found")
+    test("v2.1.2: pre_compact has active_bans", False, "file not found")
+    test("v2.1.2: pre_compact has gate6_warn_count", False, "file not found")
+    test("v2.1.2: pre_compact has error_windows", False, "file not found")
+    test("v2.1.2: pre_compact metadata has snapshot_type", False, "file not found")
+    test("v2.1.2: pre_compact snapshot_type is enriched", False, "file not found")
+    test("v2.1.2: pre_compact has fail-open exit", False, "file not found")
+    test("v2.1.2: pre_compact has try/except wrapper", False, "file not found")
+    test("v2.1.2: pre_compact loads state", False, "file not found")
+    test("v2.1.2: pre_compact writes to capture queue", False, "file not found")
+    test("v2.1.2: pre_compact document includes error patterns", False, "file not found")
+    test("v2.1.2: pre_compact document includes chains", False, "file not found")
+    test("v2.1.2: pre_compact document includes bans", False, "file not found")
+
+# ── Audit State Keys Display Tests (server.py) ──
+if os.path.isfile(server_path):
+    with open(server_path) as f:
+        server_src = f.read()
+
+    # 16. parse_audit_line function exists
+    test("v2.1.2: server.py has parse_audit_line",
+         "def parse_audit_line" in server_src,
+         "parse_audit_line function not found")
+
+    # 17. parse_audit_line returns state_keys for gate entries
+    test("v2.1.2: parse_audit_line includes state_keys field",
+         '"state_keys"' in server_src or "'state_keys'" in server_src,
+         "state_keys field not found in parse_audit_line")
+
+    # 18. parse_audit_line handles missing state_keys (empty list default)
+    test("v2.1.2: parse_audit_line defaults state_keys to empty list",
+         'state_keys", []' in server_src or "state_keys', []" in server_src,
+         "state_keys empty list default not found")
+
+    # 19. Test actual parsing with mock data
+    try:
+        # Import parse_audit_line function
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("server_test", server_path)
+        server_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(server_module)
+        parse_audit_line = server_module.parse_audit_line
+
+        # Test with state_keys present
+        test_line_with_keys = '{"gate": "GATE 1", "decision": "pass", "tool": "Read", "state_keys": ["files_read", "memory_last_queried"], "timestamp": "2025-01-01T00:00:00Z"}'
+        result = parse_audit_line(test_line_with_keys)
+        test("v2.1.2: parse_audit_line parses state_keys correctly",
+             result and "state_keys" in result and len(result["state_keys"]) == 2,
+             f"expected 2 state_keys, got {result}")
+
+        # Test without state_keys
+        test_line_without_keys = '{"gate": "GATE 2", "decision": "block", "tool": "Bash", "timestamp": "2025-01-01T00:00:00Z"}'
+        result2 = parse_audit_line(test_line_without_keys)
+        test("v2.1.2: parse_audit_line handles missing state_keys",
+             result2 and "state_keys" in result2 and result2["state_keys"] == [],
+             f"expected empty list for state_keys, got {result2}")
+    except Exception as e:
+        test("v2.1.2: parse_audit_line parses state_keys correctly", False, f"import/parse error: {e}")
+        test("v2.1.2: parse_audit_line handles missing state_keys", False, f"import/parse error: {e}")
+else:
+    test("v2.1.2: server.py has parse_audit_line", False, "server.py not found")
+    test("v2.1.2: parse_audit_line includes state_keys field", False, "server.py not found")
+    test("v2.1.2: parse_audit_line defaults state_keys to empty list", False, "server.py not found")
+    test("v2.1.2: parse_audit_line parses state_keys correctly", False, "server.py not found")
+    test("v2.1.2: parse_audit_line handles missing state_keys", False, "server.py not found")
+
+# ── Dashboard UI Tests (app.js and style.css) ──
+if os.path.isfile(app_js_path):
+    with open(app_js_path) as f:
+        app_js_src = f.read()
+
+    # 20. app.js contains state-key-badge class reference
+    test("v2.1.2: app.js has state-key-badge class",
+         "state-key-badge" in app_js_src,
+         "state-key-badge class not found in app.js")
+
+    # 21. app.js contains audit-detail-popover functionality
+    test("v2.1.2: app.js has audit-detail-popover class",
+         "audit-detail-popover" in app_js_src,
+         "audit-detail-popover class not found in app.js")
+
+    # 22. app.js renders state_keys in timeline entries
+    test("v2.1.2: app.js renders state_keys in timeline",
+         "entry.state_keys" in app_js_src,
+         "entry.state_keys rendering not found")
+else:
+    test("v2.1.2: app.js has state-key-badge class", False, "app.js not found")
+    test("v2.1.2: app.js has audit-detail-popover class", False, "app.js not found")
+    test("v2.1.2: app.js renders state_keys in timeline", False, "app.js not found")
+
+if os.path.isfile(style_css_path):
+    with open(style_css_path) as f:
+        style_css_src = f.read()
+
+    # 23. style.css contains .state-key-badge styles
+    test("v2.1.2: style.css has .state-key-badge styles",
+         ".state-key-badge" in style_css_src,
+         "EXPECTED TO FAIL: .state-key-badge styles missing")
+
+    # 24. style.css contains .audit-detail-popover styles
+    test("v2.1.2: style.css has .audit-detail-popover styles",
+         ".audit-detail-popover" in style_css_src,
+         "EXPECTED TO FAIL: .audit-detail-popover styles missing")
+
+    # 25. style.css contains .popover-section styles
+    test("v2.1.2: style.css has .popover-section styles",
+         ".popover-section" in style_css_src,
+         "EXPECTED TO FAIL: .popover-section styles missing")
+else:
+    test("v2.1.2: style.css has .state-key-badge styles", False, "style.css not found")
+    test("v2.1.2: style.css has .audit-detail-popover styles", False, "style.css not found")
+    test("v2.1.2: style.css has .popover-section styles", False, "style.css not found")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

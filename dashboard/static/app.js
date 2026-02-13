@@ -298,7 +298,7 @@ function renderFilteredTimeline() {
 
 function renderTimelineEntry(entry) {
     const time = formatTime(entry.ts || entry.timestamp);
-    let badge, text;
+    let badge, text, stateKeysBadges = '';
 
     if (entry.type === 'gate') {
         const dec = entry.decision;
@@ -307,6 +307,13 @@ function renderTimelineEntry(entry) {
         badge = `<span class="timeline-badge ${badgeClass}">${dec}</span>`;
         const reason = entry.reason ? ` — ${entry.reason}` : '';
         text = `${entry.gate} [${entry.tool}]${reason}`;
+
+        // Render state_keys badges if present
+        if (entry.state_keys && entry.state_keys.length > 0) {
+            stateKeysBadges = entry.state_keys.map(key =>
+                `<span class="state-key-badge">${escapeHtml(key)}</span>`
+            ).join('');
+        }
     } else {
         const evt = entry.event || '';
         const isError = evt === 'PostToolUseFailure';
@@ -316,11 +323,15 @@ function renderTimelineEntry(entry) {
         text = Object.entries(d).map(([k, v]) => `${k}:${v}`).join(' ');
     }
 
+    // Serialize entry data for popover
+    const entryData = encodeURIComponent(JSON.stringify(entry));
+
     return `
-        <div class="timeline-entry">
+        <div class="timeline-entry" onclick="showAuditDetailPopover('${entryData}', event)">
             <span class="timeline-time">${time}</span>
             ${badge}
             <span class="timeline-text">${escapeHtml(text)}</span>
+            ${stateKeysBadges ? `<div class="state-keys-container">${stateKeysBadges}</div>` : ''}
         </div>`;
 }
 
@@ -346,6 +357,113 @@ function prependTimelineEntry(entry) {
         }
     }
 }
+
+// ── Audit Detail Popover ────────────────────────────────
+
+function showAuditDetailPopover(entryDataEncoded, event) {
+    event.stopPropagation();
+
+    try {
+        const entry = JSON.parse(decodeURIComponent(entryDataEncoded));
+
+        // Create or get popover element
+        let popover = document.getElementById('audit-detail-popover');
+        if (!popover) {
+            popover = document.createElement('div');
+            popover.id = 'audit-detail-popover';
+            popover.className = 'audit-detail-popover';
+            document.body.appendChild(popover);
+        }
+
+        // Build popover content
+        let content = '<div class="popover-close" onclick="hideAuditDetailPopover()">&times;</div>';
+
+        if (entry.type === 'gate') {
+            const decisionColor = entry.decision === 'pass' ? 'var(--green)' :
+                                entry.decision === 'block' ? 'var(--red)' : 'var(--yellow)';
+
+            content += `<div class="popover-section">
+                <div class="popover-gate-name">${escapeHtml(entry.gate)}</div>
+                <div class="popover-decision" style="color:${decisionColor}">
+                    Decision: <strong>${escapeHtml(entry.decision).toUpperCase()}</strong>
+                </div>
+            </div>`;
+
+            content += `<div class="popover-section">
+                <div class="popover-label">Tool:</div>
+                <div class="popover-value">${escapeHtml(entry.tool)}</div>
+            </div>`;
+
+            if (entry.reason) {
+                content += `<div class="popover-section">
+                    <div class="popover-label">Reason:</div>
+                    <div class="popover-reason">${escapeHtml(entry.reason)}</div>
+                </div>`;
+            }
+
+            if (entry.state_keys && entry.state_keys.length > 0) {
+                content += `<div class="popover-section">
+                    <div class="popover-label">State Keys Accessed:</div>
+                    <div class="popover-state-keys">
+                        ${entry.state_keys.map(key => `<span class="state-key-badge">${escapeHtml(key)}</span>`).join('')}
+                    </div>
+                </div>`;
+            }
+
+            content += `<div class="popover-section">
+                <div class="popover-label">Session ID:</div>
+                <div class="popover-value">${escapeHtml(entry.session_id || 'N/A')}</div>
+            </div>`;
+
+            content += `<div class="popover-section">
+                <div class="popover-label">Timestamp:</div>
+                <div class="popover-value">${escapeHtml(entry.timestamp || formatTime(entry.ts))}</div>
+            </div>`;
+        } else {
+            // Event type
+            content += `<div class="popover-section">
+                <div class="popover-gate-name">Event: ${escapeHtml(entry.event || 'Unknown')}</div>
+            </div>`;
+
+            if (entry.data && Object.keys(entry.data).length > 0) {
+                content += `<div class="popover-section">
+                    <div class="popover-label">Data:</div>
+                    <div class="popover-reason">${escapeHtml(JSON.stringify(entry.data, null, 2))}</div>
+                </div>`;
+            }
+
+            content += `<div class="popover-section">
+                <div class="popover-label">Timestamp:</div>
+                <div class="popover-value">${escapeHtml(entry.timestamp || formatTime(entry.ts))}</div>
+            </div>`;
+        }
+
+        popover.innerHTML = content;
+        popover.classList.remove('hidden');
+
+        // Position popover near click location
+        const rect = event.target.getBoundingClientRect();
+        popover.style.top = `${rect.top + window.scrollY + 30}px`;
+        popover.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 420)}px`;
+    } catch (e) {
+        console.error('Failed to show audit detail popover:', e);
+    }
+}
+
+function hideAuditDetailPopover() {
+    const popover = document.getElementById('audit-detail-popover');
+    if (popover) {
+        popover.classList.add('hidden');
+    }
+}
+
+// Close popover when clicking outside
+document.addEventListener('click', (e) => {
+    const popover = document.getElementById('audit-detail-popover');
+    if (popover && !popover.contains(e.target) && !e.target.closest('.timeline-entry')) {
+        hideAuditDetailPopover();
+    }
+});
 
 // ── Gate Filter ─────────────────────────────────────────
 

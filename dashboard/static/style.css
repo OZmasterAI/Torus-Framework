@@ -404,6 +404,124 @@ header {
     word-break: break-word;
 }
 
+.state-keys-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+    margin-left: 90px;
+}
+
+.state-key-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 9px;
+    font-family: var(--font-mono);
+    background: #334;
+    color: #8af;
+    white-space: nowrap;
+}
+
+/* ── Audit Detail Popover ────────────────────────────── */
+
+.audit-detail-popover {
+    position: absolute;
+    background: #1a1a2e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    padding: 16px;
+    max-width: 400px;
+    width: 400px;
+    z-index: 1000;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+.audit-detail-popover.hidden {
+    display: none;
+}
+
+.popover-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 20px;
+    color: var(--text-muted);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.popover-close:hover {
+    color: var(--accent);
+}
+
+.popover-section {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.popover-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.popover-gate-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--cyan);
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+}
+
+.popover-decision {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.popover-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.popover-value {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.popover-reason {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.2);
+    padding: 6px 8px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.popover-state-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.popover-state-keys .state-key-badge {
+    margin: 0;
+}
+
 /* ── Memory Browser ───────────────────────────────────── */
 
 .search-bar {
