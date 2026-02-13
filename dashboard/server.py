@@ -1043,6 +1043,21 @@ async def api_tool_stats(request):
     })
 
 
+async def api_gate_timing(request):
+    """Return per-gate execution timing stats."""
+    state = _read_latest_state()
+    timing = state.get("gate_timing_stats", {}) if state else {}
+    # Compute avg_ms for each gate
+    enriched = {}
+    for gate_name, stats in timing.items():
+        entry = dict(stats)  # copy
+        count = entry.get("count", 0)
+        total = entry.get("total_ms", 0.0)
+        entry["avg_ms"] = round(total / count, 2) if count > 0 else 0.0
+        enriched[gate_name] = entry
+    return JSONResponse({"gate_timing_stats": enriched})
+
+
 async def api_gate_deps(request):
     """Gate dependency graph: which state keys each gate reads/writes."""
     try:
@@ -1323,6 +1338,7 @@ routes = [
     Route("/api/audit/dates", api_audit_dates),
     Route("/api/gates", api_gates),
     Route("/api/gate-perf", api_gate_perf),
+    Route("/api/gate-timing", api_gate_timing),
     Route("/api/gate-deps", api_gate_deps),
     Route("/api/audit/query", api_audit_query),
     Route("/api/history/compare", api_history_compare),

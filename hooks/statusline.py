@@ -220,6 +220,23 @@ def get_most_used_tool():
         return None
 
 
+def get_session_age(state):
+    """Format session age from state's session_start timestamp."""
+    now = time.time()
+    session_start = state.get("session_start", now)
+    elapsed = int(now - session_start)
+    if elapsed < 60:
+        return "<1m"
+    total_minutes = elapsed // 60
+    hours = total_minutes // 60
+    minutes = total_minutes % 60
+    if hours == 0:
+        return f"{minutes}m"
+    if minutes == 0:
+        return f"{hours}h"
+    return f"{hours}h{minutes}m"
+
+
 def calculate_health(gate_count, mem_count):
     """Calculate framework health as a weighted percentage (0-100).
 
@@ -404,6 +421,14 @@ def main():
         tool_name, tool_count = tool_info
         tool_short = {"Bash": ">_", "Edit": "~", "Write": "+", "Read": "@", "Grep": "?", "Glob": "*"}.get(tool_name, tool_name[:2])
         parts.append(f"T:{tool_short}x{tool_count}")
+
+    # Session age
+    try:
+        with open(LIVE_STATE_FILE) as f:
+            live_state = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        live_state = {}
+    parts.append(f"A:{get_session_age(live_state)}")
 
     parts.append(cost_str)
 

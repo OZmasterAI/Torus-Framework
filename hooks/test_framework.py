@@ -6139,6 +6139,118 @@ test("v2.2.2: category counts sum correctly",
 
 
 # ─────────────────────────────────────────────────
+# Test: v2.2.3 — GateResult Duration, Session Age, Gate Timing API
+# ─────────────────────────────────────────────────
+print("\n--- v2.2.3: GateResult Duration, Session Age, Gate Timing API ---")
+
+# ── GateResult duration_ms ──
+
+from shared.gate_result import GateResult
+
+# Test 1: GateResult() without duration_ms → result.duration_ms is None
+gr1 = GateResult()
+test("v2.2.3: GateResult() without duration_ms defaults to None",
+     gr1.duration_ms is None,
+     f"Expected None, got {gr1.duration_ms!r}")
+
+# Test 2: GateResult(duration_ms=42.5) → result.duration_ms == 42.5
+gr2 = GateResult(duration_ms=42.5)
+test("v2.2.3: GateResult(duration_ms=42.5) stores value",
+     gr2.duration_ms == 42.5,
+     f"Expected 42.5, got {gr2.duration_ms!r}")
+
+# Test 3: GateResult(blocked=True, message="x") backward compat still works
+try:
+    gr3 = GateResult(blocked=True, message="x")
+    gr3_ok = gr3.blocked is True and gr3.message == "x" and gr3.duration_ms is None
+except Exception as e:
+    gr3_ok = False
+    gr3 = e
+test("v2.2.3: GateResult backward compat (blocked+message, no duration_ms)",
+     gr3_ok,
+     f"Expected blocked=True, message='x', duration_ms=None, got {gr3!r}")
+
+# ── StatusLine session age ──
+
+from statusline import get_session_age
+
+# Test 4: get_session_age exists and is callable
+test("v2.2.3: get_session_age exists and is callable",
+     callable(get_session_age),
+     "Expected get_session_age to be callable")
+
+# Test 5: session_start = time.time() - 30 → "<1m"
+age5 = get_session_age({"session_start": time.time() - 30})
+test("v2.2.3: session age 30s → '<1m'",
+     age5 == "<1m",
+     f"Expected '<1m', got {age5!r}")
+
+# Test 6: session_start = time.time() - 2700 (45 min) → "45m"
+age6 = get_session_age({"session_start": time.time() - 2700})
+test("v2.2.3: session age 45min → '45m'",
+     age6 == "45m",
+     f"Expected '45m', got {age6!r}")
+
+# Test 7: session_start = time.time() - 8100 (2h15m) → "2h15m"
+age7 = get_session_age({"session_start": time.time() - 8100})
+test("v2.2.3: session age 2h15m → '2h15m'",
+     age7 == "2h15m",
+     f"Expected '2h15m', got {age7!r}")
+
+# Test 8: session_start = time.time() - 7200 (exactly 2h) → "2h"
+age8 = get_session_age({"session_start": time.time() - 7200})
+test("v2.2.3: session age exactly 2h → '2h'",
+     age8 == "2h",
+     f"Expected '2h', got {age8!r}")
+
+# ── Dashboard gate timing API ──
+
+# Replicate the avg_ms computation logic from server.py api_gate_timing handler:
+#   count = entry.get("count", 0)
+#   total = entry.get("total_ms", 0.0)
+#   avg_ms = round(total / count, 2) if count > 0 else 0.0
+
+def compute_gate_timing_avg(gate_timing_stats):
+    """Replicate api_gate_timing avg_ms computation from server.py."""
+    enriched = {}
+    for gate_name, stats in gate_timing_stats.items():
+        entry = dict(stats)
+        count = entry.get("count", 0)
+        total = entry.get("total_ms", 0.0)
+        entry["avg_ms"] = round(total / count, 2) if count > 0 else 0.0
+        enriched[gate_name] = entry
+    return enriched
+
+# Test 9: avg_ms calculation: total_ms=100, count=4 → avg_ms=25.0
+timing9 = compute_gate_timing_avg({"gate_01": {"count": 4, "total_ms": 100.0}})
+test("v2.2.3: gate timing avg_ms = 100/4 = 25.0",
+     timing9["gate_01"]["avg_ms"] == 25.0,
+     f"Expected avg_ms=25.0, got {timing9['gate_01'].get('avg_ms')}")
+
+# Test 10: empty timing stats → returns empty dict
+timing10 = compute_gate_timing_avg({})
+test("v2.2.3: empty gate timing stats → empty dict",
+     timing10 == {},
+     f"Expected empty dict, got {timing10}")
+
+# Test 11: count=0 doesn't divide by zero → avg_ms=0.0
+timing11 = compute_gate_timing_avg({"gate_02": {"count": 0, "total_ms": 50.0}})
+test("v2.2.3: count=0 → avg_ms=0.0 (no divide by zero)",
+     timing11["gate_02"]["avg_ms"] == 0.0,
+     f"Expected avg_ms=0.0, got {timing11['gate_02'].get('avg_ms')}")
+
+# Test 12: multiple gates each get computed avg_ms
+timing12 = compute_gate_timing_avg({
+    "gate_01": {"count": 2, "total_ms": 10.0},
+    "gate_04": {"count": 5, "total_ms": 75.0},
+    "gate_07": {"count": 3, "total_ms": 9.0},
+})
+test("v2.2.3: multiple gates each get correct avg_ms",
+     timing12["gate_01"]["avg_ms"] == 5.0 and timing12["gate_04"]["avg_ms"] == 15.0 and timing12["gate_07"]["avg_ms"] == 3.0,
+     f"Expected 5.0/15.0/3.0, got {timing12['gate_01']['avg_ms']}/{timing12['gate_04']['avg_ms']}/{timing12['gate_07']['avg_ms']}")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()
