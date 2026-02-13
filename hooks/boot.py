@@ -12,6 +12,7 @@ Runs on SessionStart to:
 This ensures every session starts with full context rather than amnesia.
 """
 
+import glob
 import json
 import os
 import socket
@@ -29,6 +30,7 @@ HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 SIDEBAND_FILE = os.path.join(os.path.dirname(__file__), ".memory_last_queried")
+STATE_DIR = os.path.join(os.path.dirname(__file__))
 
 
 def read_file(path):
@@ -217,6 +219,44 @@ def _write_sideband_timestamp():
         pass
 
 
+def _extract_recent_errors():
+    """Extract top 5 error patterns from the most recent session state file.
+
+    This is called BEFORE reset_enforcement_state() wipes all state files.
+    Returns a list of strings like ["SyntaxError (3x)", "ImportError (2x)"].
+    """
+    try:
+        # Find all state_*.json files in the hooks directory
+        pattern = os.path.join(STATE_DIR, "state_*.json")
+        state_files = glob.glob(pattern)
+
+        if not state_files:
+            return []
+
+        # Get the most recent file by modification time
+        most_recent = max(state_files, key=os.path.getmtime)
+
+        # Read the state file
+        with open(most_recent) as f:
+            state_data = json.load(f)
+
+        # Extract error patterns from error_pattern_counts
+        error_counts = state_data.get("error_pattern_counts", {})
+        if not error_counts:
+            return []
+
+        # Sort by count (descending) and take top 5
+        sorted_errors = sorted(error_counts.items(), key=lambda x: x[1], reverse=True)
+        top_5 = sorted_errors[:5]
+
+        # Format as ["ErrorType (Nx)", ...]
+        return [f"{err_type} ({count}x)" for err_type, count in top_5]
+
+    except Exception:
+        # Boot must never crash
+        return []
+
+
 def main():
     now = datetime.now()
     hour = now.hour
@@ -260,6 +300,9 @@ def main():
     # Inject relevant memories
     injected = inject_memories(handoff, live_state, knowledge_col)
 
+    # Extract recent errors BEFORE reset_enforcement_state() wipes them
+    recent_errors = _extract_recent_errors()
+
     # Build dashboard
     dashboard = f"""
 +====================================================================+
@@ -284,6 +327,12 @@ def main():
         dashboard += f"\n|  MEMORY CONTEXT ({len(injected)} relevant):{'':>42}|"
         for line in injected:
             dashboard += f"\n|    {line:<64}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
+    if recent_errors:
+        dashboard += "\n|  RECENT ERRORS (from last session):                               |"
+        for err in recent_errors:
+            dashboard += f"\n|    - {err:<61}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
     dashboard += """

@@ -1930,7 +1930,7 @@ from memory_server import (
 
 _test_content = "Test progressive disclosure: this is a long content string that exceeds the summary length to verify that preview truncation works correctly in the metadata."
 _test_result = remember_this(_test_content, "testing phase 1", "test:phase1")
-_test_id = _test_result["id"]
+_test_id = _test_result.get("id") or _test_result.get("existing_id", "")
 _test_meta = collection.get(ids=[_test_id], include=["metadatas"])["metadatas"][0]
 test("remember_this stores preview in metadata",
      "preview" in _test_meta and _test_meta["preview"].endswith("..."),
@@ -4214,6 +4214,209 @@ else:
     test("Gate 10: RECOMMENDED_MODELS covers Explore, Plan, general-purpose, Bash", False, "gate_10_model_enforcement.py not found")
     test("Gate 10: has MODEL_SUGGESTIONS dict", False, "gate_10_model_enforcement.py not found")
     test("Gate 10: blocks Task calls without model parameter", False, "gate_10_model_enforcement.py not found")
+
+
+# ─────────────────────────────────────────────────
+# Test: v2.0.9 Features
+# ─────────────────────────────────────────────────
+print("\n--- v2.0.9 Features ---")
+
+# Read Gate 7 source
+_gate07_path = os.path.join(os.path.dirname(__file__), "gates", "gate_07_critical_file_guard.py")
+if os.path.isfile(_gate07_path):
+    with open(_gate07_path) as _g07f:
+        _gate07_src = _g07f.read()
+
+    # Gate 7 new patterns (3 tests)
+    test("v2.0.9: Gate 7 has .pgpass pattern",
+         ".pgpass" in _gate07_src,
+         ".pgpass pattern not found in gate_07")
+
+    test("v2.0.9: Gate 7 has .aws/credentials pattern",
+         ".aws/credentials" in _gate07_src,
+         ".aws/credentials pattern not found in gate_07")
+
+    test("v2.0.9: Gate 7 has .npmrc pattern",
+         ".npmrc" in _gate07_src,
+         ".npmrc pattern not found in gate_07")
+else:
+    test("v2.0.9: Gate 7 has .pgpass pattern", False, "gate_07_critical_file_guard.py not found")
+    test("v2.0.9: Gate 7 has .aws/credentials pattern", False, "gate_07_critical_file_guard.py not found")
+    test("v2.0.9: Gate 7 has .npmrc pattern", False, "gate_07_critical_file_guard.py not found")
+
+# Read Gate 1 source
+_gate01_path = os.path.join(os.path.dirname(__file__), "gates", "gate_01_read_before_edit.py")
+if os.path.isfile(_gate01_path):
+    with open(_gate01_path) as _g01f:
+        _gate01_src = _g01f.read()
+
+    # Gate 1 symlink fix (2 tests)
+    test("v2.0.9: Gate 1 has realpath for symlink resolution",
+         "realpath" in _gate01_src,
+         "realpath not found in gate_01")
+
+    test("v2.0.9: Gate 1 imports os module",
+         "import os" in _gate01_src,
+         "import os not found in gate_01")
+else:
+    test("v2.0.9: Gate 1 has realpath for symlink resolution", False, "gate_01_read_before_edit.py not found")
+    test("v2.0.9: Gate 1 imports os module", False, "gate_01_read_before_edit.py not found")
+
+# Read tracker.py source
+_tracker_path = os.path.join(os.path.dirname(__file__), "tracker.py")
+if os.path.isfile(_tracker_path):
+    with open(_tracker_path) as _trackf:
+        _tracker_src = _trackf.read()
+
+    # Tracker debug logging (3 tests)
+    test("v2.0.9: Tracker has TRACKER_DEBUG_LOG constant",
+         "TRACKER_DEBUG_LOG" in _tracker_src,
+         "TRACKER_DEBUG_LOG constant not found in tracker.py")
+
+    test("v2.0.9: Tracker has _log_debug function",
+         "def _log_debug" in _tracker_src,
+         "_log_debug function not found in tracker.py")
+
+    test("v2.0.9: Tracker logs capture_observation failures",
+         "capture_observation failed" in _tracker_src,
+         "capture_observation failed logging not found in tracker.py")
+else:
+    test("v2.0.9: Tracker has TRACKER_DEBUG_LOG constant", False, "tracker.py not found")
+    test("v2.0.9: Tracker has _log_debug function", False, "tracker.py not found")
+    test("v2.0.9: Tracker logs capture_observation failures", False, "tracker.py not found")
+
+# Read dashboard app.js
+_appjs_path = os.path.expanduser("~/.claude/dashboard/static/app.js")
+if os.path.isfile(_appjs_path):
+    with open(_appjs_path) as _appjsf:
+        _appjs_src = _appjsf.read()
+
+    # Toast severity (1 test)
+    test("v2.0.9: app.js showToast accepts severity parameter",
+         "severity" in _appjs_src,
+         "severity parameter not found in app.js showToast")
+else:
+    test("v2.0.9: app.js showToast accepts severity parameter", False, "dashboard/static/app.js not found")
+
+# Read dashboard style.css
+_stylecss_path = os.path.expanduser("~/.claude/dashboard/static/style.css")
+if os.path.isfile(_stylecss_path):
+    with open(_stylecss_path) as _stylef:
+        _style_src = _stylef.read()
+
+    # Toast severity (1 test)
+    test("v2.0.9: style.css has toast-critical class",
+         "toast-critical" in _style_src,
+         "toast-critical class not found in style.css")
+else:
+    test("v2.0.9: style.css has toast-critical class", False, "dashboard/static/style.css not found")
+
+# Read memory_server.py
+_memserver_path = os.path.join(os.path.dirname(__file__), "memory_server.py")
+if os.path.isfile(_memserver_path):
+    with open(_memserver_path) as _memsf:
+        _memserver_src = _memsf.read()
+
+    # N+1 fix (2 tests)
+    test("v2.0.9: suggest_promotions has batch fetch",
+         ("id_to_doc" in _memserver_src or "batch" in _memserver_src) and "suggest_promotions" in _memserver_src,
+         "batch fetch not found in suggest_promotions")
+
+    test("v2.0.9: suggest_promotions does NOT have N+1 pattern",
+         "collection.get(ids=[cid]" not in _memserver_src,
+         "Old N+1 pattern collection.get(ids=[cid] still present in suggest_promotions")
+else:
+    test("v2.0.9: suggest_promotions has batch fetch", False, "memory_server.py not found")
+    test("v2.0.9: suggest_promotions does NOT have N+1 pattern", False, "memory_server.py not found")
+
+
+# ─────────────────────────────────────────────────
+# Test: v2.1.0 Features
+# ─────────────────────────────────────────────────
+print("\n--- v2.1.0 Features ---")
+
+# Read boot.py source
+_boot_path = os.path.join(os.path.dirname(__file__), "boot.py")
+if os.path.isfile(_boot_path):
+    with open(_boot_path) as _bootf:
+        _boot_src = _bootf.read()
+
+    # Boot error injection (3 tests)
+    test("v2.1.0: boot.py reads error patterns from previous session",
+         "error_windows" in _boot_src or "error_pattern" in _boot_src,
+         "error pattern reading not found in boot.py")
+
+    test("v2.1.0: boot.py has RECENT ERRORS dashboard section",
+         "RECENT ERRORS" in _boot_src or "recent_errors" in _boot_src,
+         "RECENT ERRORS section not found in boot.py")
+
+    test("v2.1.0: boot.py imports glob module",
+         "import glob" in _boot_src or "from glob import" in _boot_src,
+         "glob import not found in boot.py")
+else:
+    test("v2.1.0: boot.py reads error patterns from previous session", False, "boot.py not found")
+    test("v2.1.0: boot.py has RECENT ERRORS dashboard section", False, "boot.py not found")
+    test("v2.1.0: boot.py imports glob module", False, "boot.py not found")
+
+# Read Gate 10 source (reuse from earlier if available, otherwise read again)
+_gate10_path_v21 = os.path.join(os.path.dirname(__file__), "gates", "gate_10_model_enforcement.py")
+if os.path.isfile(_gate10_path_v21):
+    with open(_gate10_path_v21) as _g10f_v21:
+        _gate10_src_v21 = _g10f_v21.read()
+
+    # Gate 10 expansion (3 tests)
+    test("v2.1.0: Gate 10 RECOMMENDED_MODELS has builder",
+         "builder" in _gate10_src_v21 and "RECOMMENDED_MODELS" in _gate10_src_v21,
+         "builder not found in RECOMMENDED_MODELS")
+
+    test("v2.1.0: Gate 10 RECOMMENDED_MODELS has researcher",
+         "researcher" in _gate10_src_v21 and "RECOMMENDED_MODELS" in _gate10_src_v21,
+         "researcher not found in RECOMMENDED_MODELS")
+
+    test("v2.1.0: Gate 10 MODEL_SUGGESTIONS has auditor",
+         "auditor" in _gate10_src_v21 and "MODEL_SUGGESTIONS" in _gate10_src_v21,
+         "auditor not found in MODEL_SUGGESTIONS")
+else:
+    test("v2.1.0: Gate 10 RECOMMENDED_MODELS has builder", False, "gate_10_model_enforcement.py not found")
+    test("v2.1.0: Gate 10 RECOMMENDED_MODELS has researcher", False, "gate_10_model_enforcement.py not found")
+    test("v2.1.0: Gate 10 MODEL_SUGGESTIONS has auditor", False, "gate_10_model_enforcement.py not found")
+
+# Read dashboard app.js (for v2.1.0 features)
+_appjs_v21_path = os.path.expanduser("~/.claude/dashboard/static/app.js")
+if os.path.isfile(_appjs_v21_path):
+    with open(_appjs_v21_path) as _appjs_v21f:
+        _appjs_v21_src = _appjs_v21f.read()
+
+    # Dashboard skill usage (1 test)
+    test("v2.1.0: app.js has skill-usage fetch call",
+         "skill-usage" in _appjs_v21_src or "skill_usage" in _appjs_v21_src,
+         "skill-usage fetch call not found in app.js")
+
+    # Dashboard persistence (2 tests)
+    test("v2.1.0: app.js uses localStorage for persistence",
+         "localStorage" in _appjs_v21_src,
+         "localStorage usage not found in app.js")
+
+    test("v2.1.0: app.js has audit query validation",
+         "720" in _appjs_v21_src or "hours" in _appjs_v21_src,
+         "audit query validation not found in app.js")
+else:
+    test("v2.1.0: app.js has skill-usage fetch call", False, "dashboard/static/app.js not found")
+    test("v2.1.0: app.js uses localStorage for persistence", False, "dashboard/static/app.js not found")
+    test("v2.1.0: app.js has audit query validation", False, "dashboard/static/app.js not found")
+
+# Read dashboard server.py
+_server_path = os.path.expanduser("~/.claude/dashboard/server.py")
+if os.path.isfile(_server_path):
+    with open(_server_path) as _serverf:
+        _server_src = _serverf.read()
+
+    # Dashboard skill usage (1 test)
+    test("v2.1.0: server.py has skill-usage endpoint",
+         "skill-usage" in _server_src or "skill_usage" in _server_src,
+         "skill-usage endpoint not found in server.py")
+else:
+    test("v2.1.0: server.py has skill-usage endpoint", False, "dashboard/server.py not found")
 
 
 # ─────────────────────────────────────────────────

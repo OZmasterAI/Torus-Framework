@@ -872,6 +872,28 @@ function renderComponentTab(tab) {
                 </div>`);
             break;
         case 'skills':
+            // Build skill usage chart
+            let chartHtml = '';
+            if (componentData._skillUsage) {
+                const usageEntries = Object.values(componentData._skillUsage).sort((a, b) => b.count - a.count);
+                if (usageEntries.length > 0) {
+                    const maxCount = Math.max(...usageEntries.map(s => s.count), 1);
+                    chartHtml = '<div class="skill-usage-section"><h4 style="margin:0 0 8px 0; font-size:13px; color:var(--text-muted); text-transform:uppercase;">Skill Usage</h4>';
+                    for (const skill of usageEntries) {
+                        const widthPct = (skill.count / maxCount) * 100;
+                        chartHtml += `
+                            <div class="skill-usage-bar-row">
+                                <span class="skill-usage-label">/${escapeHtml(skill.name)}</span>
+                                <div class="skill-usage-bar-container">
+                                    <div class="skill-usage-bar-fill" style="width:${widthPct}%; background:var(--cyan)"></div>
+                                </div>
+                                <span class="skill-usage-count-num">${skill.count}</span>
+                            </div>`;
+                    }
+                    chartHtml += '</div><div style="border-top:1px solid var(--border); margin:16px 0;"></div>';
+                }
+            }
+
             items = (componentData.skills || []).map(s => {
                 const usage = (componentData._skillUsage || {})[s.name];
                 let usageHtml = '';
@@ -888,6 +910,10 @@ function renderComponentTab(tab) {
                     ${s.purpose ? `<div class="component-purpose">${escapeHtml(s.purpose)}</div>` : ''}
                 </div>`;
             });
+            // Prepend chart to items
+            if (chartHtml) {
+                items = [chartHtml, ...items];
+            }
             break;
         case 'agents':
             items = (componentData.agents || []).map(a =>
@@ -1063,6 +1089,15 @@ let activeQueryFilters = {};
 async function applyTimelineFilters() {
     const gate = document.getElementById('timeline-gate-filter').value;
     const decision = document.getElementById('timeline-decision-filter').value;
+    const hoursInput = document.getElementById('timeline-hours-filter');
+    let hours = parseInt(hoursInput.value) || 24;
+
+    // Validate hours parameter
+    if (hours < 1 || hours > 720) {
+        showToast('Hours must be between 1 and 720 (30 days max)', 'error', 'warning');
+        hoursInput.value = Math.max(1, Math.min(720, hours)); // Clamp to valid range
+        hours = parseInt(hoursInput.value);
+    }
 
     // If no filters, fall back to regular timeline
     if (!gate && !decision) {
@@ -1075,7 +1110,7 @@ async function applyTimelineFilters() {
     const params = new URLSearchParams();
     if (gate) params.set('gate', gate);
     if (decision) params.set('decision', decision);
-    params.set('hours', '24');
+    params.set('hours', hours.toString());
 
     const data = await apiFetch(`/api/audit/query?${params.toString()}`);
     if (!data) return;
@@ -1403,14 +1438,30 @@ function setupOverlay() {
 
 function setupAutoRefresh() {
     const cb = document.getElementById('auto-refresh-cb');
+
+    // Restore from localStorage
+    const savedPref = localStorage.getItem('dashboardAutoRefresh');
+    if (savedPref === 'off') {
+        cb.checked = false;
+    } else {
+        cb.checked = true;
+    }
+
     cb.addEventListener('change', () => {
+        // Save to localStorage
+        localStorage.setItem('dashboardAutoRefresh', cb.checked ? 'on' : 'off');
+
         if (cb.checked) {
             startAutoRefresh();
         } else {
             stopAutoRefresh();
         }
     });
-    startAutoRefresh();
+
+    // Start auto-refresh if checkbox is checked
+    if (cb.checked) {
+        startAutoRefresh();
+    }
 }
 
 function startAutoRefresh() {

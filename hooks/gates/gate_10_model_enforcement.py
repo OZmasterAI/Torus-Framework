@@ -40,6 +40,12 @@ RECOMMENDED_MODELS = {
     "Plan":             {"haiku", "sonnet"},
     "general-purpose":  {"sonnet", "opus"},
     "Bash":             {"haiku", "sonnet"},
+    "builder":           {"sonnet", "opus"},      # needs Edit/Write, complex tasks
+    "researcher":        {"haiku", "sonnet"},      # read-only research
+    "auditor":           {"haiku", "sonnet"},      # read-only security review
+    "stress-tester":     {"haiku", "sonnet"},      # runs tests, read-heavy
+    "claude-code-guide": {"haiku"},                # documentation lookup only
+    "statusline-setup":  {"haiku"},                # simple config changes
 }
 
 # Human-readable suggestions per agent type (shown in warnings)
@@ -48,6 +54,12 @@ MODEL_SUGGESTIONS = {
     "Plan":             "haiku or sonnet (planning is read-only, save cost)",
     "general-purpose":  "sonnet or opus (needs Edit/Write — haiku may lack capability)",
     "Bash":             "haiku or sonnet (command execution doesn't need opus)",
+    "builder":           "sonnet or opus (full implementation agent needs Edit/Write)",
+    "researcher":        "haiku or sonnet (read-only exploration and analysis)",
+    "auditor":           "haiku or sonnet (code review is read-only)",
+    "stress-tester":     "haiku or sonnet (test execution doesn't need opus)",
+    "claude-code-guide": "haiku (documentation lookup only, minimal capability needed)",
+    "statusline-setup":  "haiku (simple config file edits only)",
 }
 
 
