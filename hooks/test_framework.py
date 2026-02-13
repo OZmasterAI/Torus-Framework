@@ -6764,6 +6764,129 @@ test("v2.2.7: Gate 9 passes with empty strategy",
 cleanup_test_states()
 
 
+print("\n--- v2.2.8: Edit Streak API, Boot Verification, StatusLine PM Warning ---")
+
+# ── Feature 1: Boot _extract_verification_quality ──
+
+from boot import _extract_verification_quality
+
+# Test 1: _extract_verification_quality returns None with no state files
+cleanup_test_states()
+vq1 = _extract_verification_quality()
+test("v2.2.8: _extract_verification_quality returns None with no state",
+     vq1 is None,
+     f"Expected None, got {vq1!r}")
+
+# Test 2: _extract_verification_quality reads verified and pending counts
+cleanup_test_states()
+_vq2_path = state_file_for(MAIN_SESSION)
+_vq2_data = {
+    "verified_fixes": ["/tmp/a.py", "/tmp/b.py"],
+    "pending_verification": ["/tmp/c.py"],
+    "session_start": time.time() - 300,
+}
+with open(_vq2_path, "w") as _f228:
+    json.dump(_vq2_data, _f228)
+vq2 = _extract_verification_quality()
+test("v2.2.8: _extract_verification_quality reads counts",
+     vq2 is not None and vq2["verified"] == 2 and vq2["pending"] == 1,
+     f"Expected verified=2 pending=1, got {vq2!r}")
+cleanup_test_states()
+
+# Test 3: _extract_verification_quality returns None when both empty
+cleanup_test_states()
+_vq3_data = {"verified_fixes": [], "pending_verification": [], "session_start": time.time()}
+with open(_vq2_path, "w") as _f228:
+    json.dump(_vq3_data, _f228)
+vq3 = _extract_verification_quality()
+test("v2.2.8: _extract_verification_quality returns None for empty lists",
+     vq3 is None,
+     f"Expected None, got {vq3!r}")
+cleanup_test_states()
+
+# Test 4: _extract_verification_quality only verified (no pending)
+cleanup_test_states()
+_vq4_data = {"verified_fixes": ["/tmp/x.py"], "session_start": time.time()}
+with open(_vq2_path, "w") as _f228:
+    json.dump(_vq4_data, _f228)
+vq4 = _extract_verification_quality()
+test("v2.2.8: _extract_verification_quality with only verified fixes",
+     vq4 is not None and vq4["verified"] == 1 and vq4["pending"] == 0,
+     f"Expected verified=1 pending=0, got {vq4!r}")
+cleanup_test_states()
+
+# ── Feature 2: StatusLine get_plan_mode_warns ──
+
+from statusline import get_plan_mode_warns
+
+# Test 5: get_plan_mode_warns returns 0 with no state files
+cleanup_test_states()
+pm5 = get_plan_mode_warns()
+test("v2.2.8: get_plan_mode_warns returns 0 with no state",
+     pm5 == 0,
+     f"Expected 0, got {pm5!r}")
+
+# Test 6: get_plan_mode_warns reads gate12_warn_count
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_pm6_state = load_state(session_id=MAIN_SESSION)
+_pm6_state["gate12_warn_count"] = 2
+save_state(_pm6_state, session_id=MAIN_SESSION)
+pm6 = get_plan_mode_warns()
+test("v2.2.8: get_plan_mode_warns reads gate12_warn_count",
+     pm6 == 2,
+     f"Expected 2, got {pm6!r}")
+
+# Test 7: get_plan_mode_warns returns 0 when gate12_warn_count not set
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+pm7 = get_plan_mode_warns()
+test("v2.2.8: get_plan_mode_warns returns 0 for default state",
+     pm7 == 0,
+     f"Expected 0, got {pm7!r}")
+
+# Test 8: get_plan_mode_warns reads high value
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_pm8_state = load_state(session_id=MAIN_SESSION)
+_pm8_state["gate12_warn_count"] = 5
+save_state(_pm8_state, session_id=MAIN_SESSION)
+pm8 = get_plan_mode_warns()
+test("v2.2.8: get_plan_mode_warns reads high value",
+     pm8 == 5,
+     f"Expected 5, got {pm8!r}")
+cleanup_test_states()
+
+# ── Feature 3: Dashboard api_edit_streak logic (unit test the classification) ──
+
+# Test 9: Edit streak risk_level classification — safe (0 hotspots)
+def _classify_risk(hotspot_count):
+    if hotspot_count == 0: return "safe"
+    elif hotspot_count <= 2: return "warning"
+    else: return "critical"
+
+test("v2.2.8: edit streak risk 0 hotspots → safe",
+     _classify_risk(0) == "safe",
+     f"Expected 'safe', got {_classify_risk(0)!r}")
+
+# Test 10: Edit streak risk_level — warning (1 hotspot)
+test("v2.2.8: edit streak risk 1 hotspot → warning",
+     _classify_risk(1) == "warning",
+     f"Expected 'warning', got {_classify_risk(1)!r}")
+
+# Test 11: Edit streak risk_level — warning (2 hotspots)
+test("v2.2.8: edit streak risk 2 hotspots → warning",
+     _classify_risk(2) == "warning",
+     f"Expected 'warning', got {_classify_risk(2)!r}")
+
+# Test 12: Edit streak risk_level — critical (3+ hotspots)
+test("v2.2.8: edit streak risk 3 hotspots → critical",
+     _classify_risk(3) == "critical",
+     f"Expected 'critical', got {_classify_risk(3)!r}")
+
+cleanup_test_states()
+
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────

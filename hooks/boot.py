@@ -299,6 +299,38 @@ def _extract_test_status():
         return None
 
 
+def _extract_verification_quality():
+    """Extract verification quality stats from the most recent session state file.
+
+    This is called BEFORE reset_enforcement_state() wipes all state files.
+    Returns {"verified": N, "pending": M} or None if no data found.
+    """
+    try:
+        pattern = os.path.join(STATE_DIR, "state_*.json")
+        state_files = glob.glob(pattern)
+
+        if not state_files:
+            return None
+
+        # Get the most recent file by modification time
+        most_recent = max(state_files, key=os.path.getmtime)
+
+        with open(most_recent) as f:
+            state_data = json.load(f)
+
+        verified_fixes = state_data.get("verified_fixes", [])
+        pending_verification = state_data.get("pending_verification", [])
+
+        if not verified_fixes and not pending_verification:
+            return None
+
+        return {"verified": len(verified_fixes), "pending": len(pending_verification)}
+
+    except Exception:
+        # Boot must never crash
+        return None
+
+
 def _extract_tool_activity():
     """Extract tool usage stats from the most recent session state file.
 
@@ -390,6 +422,9 @@ def main():
     # Extract test status from last session
     test_status = _extract_test_status()
 
+    # Extract verification quality from last session
+    verification = _extract_verification_quality()
+
     # Build dashboard
     dashboard = f"""
 +====================================================================+
@@ -429,6 +464,12 @@ def main():
         mins = test_status["minutes_ago"]
         test_line = f"Last test: {status_icon} ({fw}, {mins}m ago)"
         dashboard += f"\n|  {test_line:<66}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
+    # Verification quality from last session
+    if verification:
+        vq_line = f"VERIFICATION: {verification['verified']} verified, {verification['pending']} pending"
+        dashboard += f"\n|  {vq_line:<66}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
     # Tool activity from last session

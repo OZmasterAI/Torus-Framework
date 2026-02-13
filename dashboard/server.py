@@ -1121,6 +1121,39 @@ async def api_gate_timing(request):
     return JSONResponse({"gate_timing_stats": enriched})
 
 
+async def api_edit_streak(request):
+    """Edit streak hotspots: files edited >= 3 times in current session."""
+    state = _read_latest_state()
+    edit_streak = state.get("edit_streak", {}) if state else {}
+    total_files = len(edit_streak)
+
+    # Filter to hotspots (count >= 3)
+    hotspots = []
+    for path, count in edit_streak.items():
+        if isinstance(count, int) and count >= 3:
+            hotspots.append({
+                "file": os.path.basename(path),
+                "path": path,
+                "count": count,
+            })
+    # Sort by count descending
+    hotspots.sort(key=lambda x: x["count"], reverse=True)
+
+    num_hotspots = len(hotspots)
+    if num_hotspots == 0:
+        risk_level = "safe"
+    elif num_hotspots <= 2:
+        risk_level = "warning"
+    else:
+        risk_level = "critical"
+
+    return JSONResponse({
+        "hotspots": hotspots,
+        "total_files": total_files,
+        "risk_level": risk_level,
+    })
+
+
 async def api_gate_deps(request):
     """Gate dependency graph: which state keys each gate reads/writes."""
     try:
@@ -1403,6 +1436,7 @@ routes = [
     Route("/api/gates", api_gates),
     Route("/api/gate-perf", api_gate_perf),
     Route("/api/gate-timing", api_gate_timing),
+    Route("/api/edit-streak", api_edit_streak),
     Route("/api/gate-deps", api_gate_deps),
     Route("/api/audit/query", api_audit_query),
     Route("/api/history/compare", api_history_compare),
