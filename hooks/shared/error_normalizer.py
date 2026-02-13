@@ -13,6 +13,10 @@ _STRIP_PATTERNS = [
     (re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.I), '<uuid>'),  # UUIDs
     (re.compile(r'0x[0-9a-fA-F]+'), '<hex>'),                        # Hex addresses
     (re.compile(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\w.:+-]*'), '<ts>'),  # ISO timestamps
+    (re.compile(r'\b[0-9a-f]{40}\b'), '<git-hash>'),                 # Git commit hashes
+    (re.compile(r'\b[0-9a-f]{7}\b'), '<git-short>'),                 # Git short hashes
+    (re.compile(r'tmp[a-zA-Z0-9_]{6,10}'), '<tmp>'),                 # Temp directory suffixes
+    (re.compile(r'<\w+ object at (?:0x[0-9a-fA-F]+|<hex>)>'), '<obj-repr>'),   # Python object repr
     (re.compile(r'\d{2,}'), '<n>'),                                   # Multi-digit numbers
 ]
 

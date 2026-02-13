@@ -217,25 +217,24 @@ def load_state(session_id="main"):
     if os.path.exists(state_file):
         lock_path = state_file + ".lock"
         try:
-            lock_fd = open(lock_path, "a+")
-            try:
-                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_SH)
-                with open(state_file) as f:
-                    state = json.load(f)
-                # Ensure all expected keys exist (forward compat)
-                for key, val in default_state().items():
-                    if key not in state:
-                        state[key] = val
-                # Run migrations if needed
-                state = _run_migrations(state)
-                # Validate consistency
-                state = _validate_consistency(state)
-                return state
-            except (json.JSONDecodeError, IOError):
-                return default_state()
-            finally:
-                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
-                lock_fd.close()
+            with open(lock_path, "a+") as lock_fd:
+                try:
+                    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_SH)
+                    with open(state_file) as f:
+                        state = json.load(f)
+                    # Ensure all expected keys exist (forward compat)
+                    for key, val in default_state().items():
+                        if key not in state:
+                            state[key] = val
+                    # Run migrations if needed
+                    state = _run_migrations(state)
+                    # Validate consistency
+                    state = _validate_consistency(state)
+                    return state
+                except (json.JSONDecodeError, IOError):
+                    return default_state()
+                finally:
+                    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
         except OSError:
             # If we can't acquire the lock, fall back to unlocked read
             try:
@@ -293,16 +292,15 @@ def save_state(state, session_id="main"):
     state_file = state_file_for(session_id)
     os.makedirs(os.path.dirname(state_file), exist_ok=True)
     lock_path = state_file + ".lock"
-    lock_fd = open(lock_path, "a+")
-    try:
-        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
-        tmp = state_file + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(state, f, indent=2)
-        os.replace(tmp, state_file)
-    finally:
-        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
-        lock_fd.close()
+    with open(lock_path, "a+") as lock_fd:
+        try:
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+            tmp = state_file + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(state, f, indent=2)
+            os.replace(tmp, state_file)
+        finally:
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
 
 
 def get_memory_last_queried(state):

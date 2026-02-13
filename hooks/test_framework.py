@@ -5310,6 +5310,169 @@ except Exception as e:
 
 
 # ─────────────────────────────────────────────────
+# v2.1.5 Features
+# ─────────────────────────────────────────────────
+print("\n--- v2.1.5 Features ---")
+
+# 1. State lock fix (source checks)
+# Verify that state.py uses "with open" for lock file descriptor management
+state_py_source = None
+try:
+    with open("/home/crab/.claude/hooks/shared/state.py") as f:
+        state_py_source = f.read()
+except Exception as e:
+    state_py_source = None
+
+if state_py_source:
+    # Check load_state uses "with open" for lock
+    load_state_has_with_lock = 'with open(lock_path, "a+") as lock_fd:' in state_py_source and \
+                                 'def load_state(' in state_py_source
+    test("v2.1.5: state.py load_state uses 'with open' for lock",
+         load_state_has_with_lock,
+         "load_state should use 'with open(lock_path, \"a+\") as lock_fd:'")
+
+    # Check save_state uses "with open" for lock
+    save_state_has_with_lock = 'with open(lock_path, "a+") as lock_fd:' in state_py_source and \
+                                'def save_state(' in state_py_source
+    test("v2.1.5: state.py save_state uses 'with open' for lock",
+         save_state_has_with_lock,
+         "save_state should use 'with open(lock_path, \"a+\") as lock_fd:'")
+else:
+    test("v2.1.5: state.py load_state uses 'with open' for lock", False, "Could not read state.py")
+    test("v2.1.5: state.py save_state uses 'with open' for lock", False, "Could not read state.py")
+
+# 2. Error normalizer patterns (logic tests via subprocess)
+# Test full git hash normalization (must be exactly 40 hex chars)
+try:
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '/home/crab/.claude/hooks/shared'); "
+         "from error_normalizer import normalize_error; "
+         "print(normalize_error('commit 1234567890abcdef1234567890abcdef12345678 failed'))"],
+        capture_output=True, text=True, timeout=5
+    )
+    normalized = result.stdout.strip()
+    test("v2.1.5: normalize_error replaces full git hash with <git-hash>",
+         "<git-hash>" in normalized,
+         f"Expected '<git-hash>' in output, got: {normalized}")
+except Exception as e:
+    test("v2.1.5: normalize_error replaces full git hash with <git-hash>", False, f"subprocess failed: {e}")
+
+# Test short git hash normalization
+try:
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '/home/crab/.claude/hooks/shared'); "
+         "from error_normalizer import normalize_error; "
+         "print(normalize_error('cherry-pick abcdef1 failed'))"],
+        capture_output=True, text=True, timeout=5
+    )
+    normalized = result.stdout.strip()
+    test("v2.1.5: normalize_error replaces short git hash with <git-short>",
+         "<git-short>" in normalized,
+         f"Expected '<git-short>' in output, got: {normalized}")
+except Exception as e:
+    test("v2.1.5: normalize_error replaces short git hash with <git-short>", False, f"subprocess failed: {e}")
+
+# Test temp directory normalization (pattern matches suffix only)
+try:
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '/home/crab/.claude/hooks/shared'); "
+         "from error_normalizer import normalize_error; "
+         "print(normalize_error('error in tmpABC12345 directory'))"],
+        capture_output=True, text=True, timeout=5
+    )
+    normalized = result.stdout.strip()
+    test("v2.1.5: normalize_error replaces temp dir with <tmp>",
+         "<tmp>" in normalized,
+         f"Expected '<tmp>' in output, got: {normalized}")
+except Exception as e:
+    test("v2.1.5: normalize_error replaces temp dir with <tmp>", False, f"subprocess failed: {e}")
+
+# Test object repr normalization
+try:
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '/home/crab/.claude/hooks/shared'); "
+         "from error_normalizer import normalize_error; "
+         "print(normalize_error('<Foo object at 0x7f1234>'))"],
+        capture_output=True, text=True, timeout=5
+    )
+    normalized = result.stdout.strip()
+    test("v2.1.5: normalize_error replaces object repr with <obj-repr>",
+         "<obj-repr>" in normalized,
+         f"Expected '<obj-repr>' in output, got: {normalized}")
+except Exception as e:
+    test("v2.1.5: normalize_error replaces object repr with <obj-repr>", False, f"subprocess failed: {e}")
+
+# 3. Gate 7 framework self-protection (source checks)
+gate7_source = None
+try:
+    with open("/home/crab/.claude/hooks/gates/gate_07_critical_file_guard.py") as f:
+        gate7_source = f.read()
+except Exception as e:
+    gate7_source = None
+
+if gate7_source:
+    # Check for enforcer.py pattern
+    test("v2.1.5: Gate 7 protects enforcer.py",
+         r'enforcer\.py' in gate7_source,
+         "Gate 7 should contain pattern for enforcer.py")
+
+    # Check for state.py pattern
+    test("v2.1.5: Gate 7 protects state.py",
+         r'state\.py' in gate7_source,
+         "Gate 7 should contain pattern for state.py")
+
+    # Check for gate files pattern
+    test("v2.1.5: Gate 7 protects gate files",
+         r'gate_' in gate7_source,
+         "Gate 7 should contain pattern for gate files")
+
+    # Check for tracker.py pattern
+    test("v2.1.5: Gate 7 protects tracker.py",
+         r'tracker\.py' in gate7_source,
+         "Gate 7 should contain pattern for tracker.py")
+
+    # Check for boot.py pattern
+    test("v2.1.5: Gate 7 protects boot.py",
+         r'boot\.py' in gate7_source,
+         "Gate 7 should contain pattern for boot.py")
+
+    # Check for memory_server.py pattern
+    test("v2.1.5: Gate 7 protects memory_server.py",
+         r'memory_server\.py' in gate7_source,
+         "Gate 7 should contain pattern for memory_server.py")
+else:
+    test("v2.1.5: Gate 7 protects enforcer.py", False, "Could not read gate_07_critical_file_guard.py")
+    test("v2.1.5: Gate 7 protects state.py", False, "Could not read gate_07_critical_file_guard.py")
+    test("v2.1.5: Gate 7 protects gate files", False, "Could not read gate_07_critical_file_guard.py")
+    test("v2.1.5: Gate 7 protects tracker.py", False, "Could not read gate_07_critical_file_guard.py")
+    test("v2.1.5: Gate 7 protects boot.py", False, "Could not read gate_07_critical_file_guard.py")
+    test("v2.1.5: Gate 7 protects memory_server.py", False, "Could not read gate_07_critical_file_guard.py")
+
+# 4. Gate 7 logic test (via run_enforcer)
+# Reset state to ensure no recent memory query
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+
+# First read enforcer.py to bypass Gate 1
+run_enforcer("PostToolUse", "Read",
+            {"file_path": "/home/crab/.claude/hooks/enforcer.py"},
+            session_id=MAIN_SESSION)
+
+# Try to edit enforcer.py without memory query — should be blocked
+# (Gate 4 or Gate 7 will block; both enforce "memory first" for critical files)
+code, msg = run_enforcer("PreToolUse", "Edit",
+                        {"file_path": "/home/crab/.claude/hooks/enforcer.py", "old_string": "x", "new_string": "y"},
+                        session_id=MAIN_SESSION)
+test("v2.1.5: Gate 7 (or Gate 4) blocks editing enforcer.py without memory query",
+     code != 0 and ("GATE 7" in msg or "GATE 4" in msg or "MEMORY" in msg.upper()),
+     f"Expected memory gate block, got code={code}, msg={msg}")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

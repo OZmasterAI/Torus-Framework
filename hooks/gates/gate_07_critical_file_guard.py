@@ -47,6 +47,16 @@ CRITICAL_PATTERNS = [
     r"\.netrc$",                            # FTP/HTTP password file
     r"\.npmrc$",                            # npm auth tokens
     r"\.pypirc$",                           # PyPI auth tokens
+
+    # Self-Healing Framework core files (self-protection)
+    r"hooks/enforcer\.py$",                    # Core gate dispatcher
+    r"hooks/shared/state\.py$",                # State management
+    r"hooks/gates/gate_\d+.*\.py$",            # Individual gate files
+    r"hooks/tracker\.py$",                     # Post-tool tracking
+    r"hooks/boot\.py$",                        # Session initialization
+    r"hooks/memory_server\.py$",               # Memory MCP server
+    r"hooks/pre_compact\.py$",                 # Pre-compaction snapshots
+    r"dashboard/server\.py$",                  # Dashboard backend
 ]
 
 
