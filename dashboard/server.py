@@ -627,6 +627,190 @@ async def api_memories_graph(request):
         return JSONResponse({"nodes": [], "edges": [], "error": str(e)})
 
 
+async def api_memory_health(request):
+    """Memory health report: growth trends, stale count, tag distribution, health score."""
+    _, cols = _get_chroma()
+    if "knowledge" not in cols:
+        return JSONResponse({"error": "ChromaDB not available", "health_score": 0})
+
+    col = cols["knowledge"]
+    obs_col = cols.get("observations")
+    now = time.time()
+
+    try:
+        mem_count = col.count()
+        obs_count = obs_col.count() if obs_col else 0
+
+        if mem_count == 0:
+            return JSONResponse({
+                "total_memories": 0, "total_observations": obs_count,
+                "added_24h": 0, "added_7d": 0, "added_30d": 0,
+                "stale_count": 0, "top_tags": [], "avg_retrieval_count": 0,
+                "growth_rate_per_day": 0, "health_score": 0, "health_label": "empty",
+                "score_breakdown": {"recent_activity": 0, "retrieval_rate": 0, "tag_diversity": 0},
+            })
+
+        all_data = col.get(limit=mem_count, include=["metadatas"])
+        metas = all_data.get("metadatas", [])
+
+        cutoff_24h = now - 86400
+        cutoff_7d = now - 7 * 86400
+        cutoff_30d = now - 30 * 86400
+        cutoff_stale = now - 60 * 86400
+        added_24h = added_7d = added_30d = stale_count = 0
+        tag_freq = {}
+        total_retrieval = 0
+        retrieval_entries = 0
+
+        for meta in metas:
+            if not meta:
+                continue
+            session_time = meta.get("session_time")
+            if session_time is not None:
+                try:
+                    st = float(session_time)
+                    if st >= cutoff_24h:
+                        added_24h += 1
+                    if st >= cutoff_7d:
+                        added_7d += 1
+                    if st >= cutoff_30d:
+                        added_30d += 1
+                    rc = int(meta.get("retrieval_count", 0))
+                    if st < cutoff_stale and rc <= 2:
+                        stale_count += 1
+                except (ValueError, TypeError):
+                    pass
+            tags_str = meta.get("tags", "")
+            if tags_str:
+                for tag in tags_str.split(","):
+                    tag = tag.strip()
+                    if tag:
+                        tag_freq[tag] = tag_freq.get(tag, 0) + 1
+            rc = int(meta.get("retrieval_count", 0))
+            total_retrieval += rc
+            retrieval_entries += 1
+
+        top_tags = sorted(tag_freq.items(), key=lambda x: -x[1])[:10]
+        top_tags_list = [{"tag": t, "count": c} for t, c in top_tags]
+        avg_retrieval = round(total_retrieval / max(retrieval_entries, 1), 2)
+        unique_tags = len(tag_freq)
+
+        # Health score calculation
+        if added_7d >= 10:
+            recent_score = 1.0
+        elif added_7d >= 5:
+            recent_score = 0.8
+        elif added_7d >= 2:
+            recent_score = 0.6
+        elif added_7d >= 1:
+            recent_score = 0.4
+        else:
+            recent_score = 0.1
+
+        if avg_retrieval >= 3.0:
+            retrieval_score = 1.0
+        elif avg_retrieval >= 1.5:
+            retrieval_score = 0.8
+        elif avg_retrieval >= 0.5:
+            retrieval_score = 0.5
+        elif avg_retrieval >= 0.1:
+            retrieval_score = 0.3
+        else:
+            retrieval_score = 0.1
+
+        if unique_tags >= 20:
+            diversity_score = 1.0
+        elif unique_tags >= 10:
+            diversity_score = 0.7
+        elif unique_tags >= 5:
+            diversity_score = 0.5
+        elif unique_tags >= 2:
+            diversity_score = 0.3
+        else:
+            diversity_score = 0.1
+
+        health_score = int(recent_score * 40 + retrieval_score * 30 + diversity_score * 30)
+        health_score = max(0, min(100, health_score))
+        health_label = "healthy" if health_score > 70 else ("moderate" if health_score > 40 else "needs attention")
+        growth_rate = round(added_30d / 30, 2)
+
+        return JSONResponse({
+            "total_memories": mem_count, "total_observations": obs_count,
+            "added_24h": added_24h, "added_7d": added_7d, "added_30d": added_30d,
+            "stale_count": stale_count, "top_tags": top_tags_list,
+            "unique_tags": unique_tags, "avg_retrieval_count": avg_retrieval,
+            "growth_rate_per_day": growth_rate, "health_score": health_score,
+            "health_label": health_label,
+            "score_breakdown": {
+                "recent_activity": round(recent_score * 40, 1),
+                "retrieval_rate": round(retrieval_score * 30, 1),
+                "tag_diversity": round(diversity_score * 30, 1),
+            },
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e), "health_score": 0})
+
+
+async def api_observations_recent(request):
+    """Return last 50 observations from capture queue and/or ChromaDB."""
+    _, cols = _get_chroma()
+    obs_col = cols.get("observations")
+    results = []
+
+    # First try capture queue file for most recent data
+    capture_queue = os.path.join(HOOKS_DIR, ".capture_queue.jsonl")
+    if os.path.isfile(capture_queue):
+        try:
+            with open(capture_queue) as f:
+                lines = f.readlines()
+            for line in reversed(lines[-100:]):
+                try:
+                    obs = json.loads(line.strip())
+                    meta = obs.get("metadata", {})
+                    results.append({
+                        "timestamp": meta.get("timestamp", ""),
+                        "tool": meta.get("tool_name", "Unknown"),
+                        "summary": (obs.get("document", ""))[:150],
+                        "sentiment": meta.get("sentiment", ""),
+                        "priority": meta.get("priority", "low"),
+                        "has_error": meta.get("has_error", "false"),
+                        "session_time": meta.get("session_time", 0),
+                    })
+                except (json.JSONDecodeError, KeyError):
+                    continue
+        except OSError:
+            pass
+
+    # Supplement from ChromaDB observations if we need more
+    if obs_col and len(results) < 50:
+        try:
+            count = obs_col.count()
+            if count > 0:
+                needed = min(50 - len(results), count)
+                obs_data = obs_col.get(limit=needed, include=["documents", "metadatas"])
+                docs = obs_data.get("documents", [])
+                metas = obs_data.get("metadatas", [])
+                for i, doc in enumerate(docs):
+                    meta = metas[i] if i < len(metas) else {}
+                    results.append({
+                        "timestamp": meta.get("timestamp", ""),
+                        "tool": meta.get("tool_name", "Unknown"),
+                        "summary": (doc or "")[:150],
+                        "sentiment": meta.get("sentiment", ""),
+                        "priority": meta.get("priority", "low"),
+                        "has_error": meta.get("has_error", "false"),
+                        "session_time": meta.get("session_time", 0),
+                    })
+        except Exception:
+            pass
+
+    # Sort by session_time descending, take top 50
+    results.sort(key=lambda x: float(x.get("session_time", 0) or 0), reverse=True)
+    results = results[:50]
+
+    return JSONResponse({"observations": results, "total": len(results)})
+
+
 async def api_components(request):
     """Inventory of framework components: gates, hooks, skills, agents, plugins."""
     # Gates
@@ -1109,6 +1293,8 @@ routes = [
     Route("/api/gate-deps", api_gate_deps),
     Route("/api/audit/query", api_audit_query),
     Route("/api/history/compare", api_history_compare),
+    Route("/api/memory-health", api_memory_health),
+    Route("/api/observations/recent", api_observations_recent),
     Route("/api/memories", api_memories_search),
     Route("/api/memories/stats", api_memories_stats),
     Route("/api/memories/tags", api_memories_tags),

@@ -3425,9 +3425,9 @@ if _dash_imported:
     test("Dashboard: malformed audit line → None",
          _dash_bad is None)
 
-    # 11. Route count matches plan (22 API + 1 static mount = 23)
-    test("Dashboard: 23 routes configured",
-         len(_dash_mod.routes) == 23,
+    # 11. Route count matches plan (24 API + 1 static mount = 25)
+    test("Dashboard: 25 routes configured",
+         len(_dash_mod.routes) == 25,
          f"got {len(_dash_mod.routes)}")
 
     # 12. HTML has all 7 panels
@@ -3889,6 +3889,161 @@ test("v2.0.6: /profile skill exists",
 test("v2.0.6: /analyze-errors skill exists",
      os.path.isfile(_analyze_path),
      "skills/analyze-errors/SKILL.md not found")
+
+# ─────────────────────────────────────────────────
+# Test: v2.0.7 Features (Session 27)
+# ─────────────────────────────────────────────────
+print("\n--- v2.0.7 Features (Session 27) ---")
+
+# Source paths for v2.0.7
+_tracker_path_207 = os.path.join(os.path.dirname(__file__), "tracker.py")
+_obs_path_207 = os.path.join(os.path.dirname(__file__), "shared", "observation.py")
+_enforcer_path_207 = os.path.join(os.path.dirname(__file__), "enforcer.py")
+_server_path_207 = os.path.expanduser("~/.claude/dashboard/server.py")
+_appjs_path_207 = os.path.expanduser("~/.claude/dashboard/static/app.js")
+_indexhtml_path_207 = os.path.expanduser("~/.claude/dashboard/static/index.html")
+
+# 1. Context-aware observations in tracker
+if os.path.isfile(_tracker_path_207):
+    with open(_tracker_path_207) as _tf207:
+        _tracker_src_207 = _tf207.read()
+
+    test("v2.0.7: Tracker has context-aware observations",
+         "exit_code" in _tracker_src_207 or "cmd" in _tracker_src_207 or "priority" in _tracker_src_207,
+         "exit_code/cmd/priority not found in tracker.py")
+else:
+    test("v2.0.7: Tracker has context-aware observations", False, "tracker.py not found")
+
+# 2. observation.py exists
+test("v2.0.7: observation.py exists",
+     os.path.isfile(_obs_path_207),
+     "hooks/shared/observation.py not found")
+
+# 3. Gate dependency graph in enforcer
+if os.path.isfile(_enforcer_path_207):
+    with open(_enforcer_path_207) as _ef207:
+        _enforcer_src_207 = _ef207.read()
+
+    test("v2.0.7: Enforcer has gate dependency graph",
+         "GATE_DEPENDENCIES" in _enforcer_src_207,
+         "GATE_DEPENDENCIES not found in enforcer.py")
+
+    # 5. Hot-reload in enforcer
+    test("v2.0.7: Enforcer has hot-reload",
+         "reload" in _enforcer_src_207 or "mtime" in _enforcer_src_207,
+         "reload/mtime not found in enforcer.py")
+else:
+    test("v2.0.7: Enforcer has gate dependency graph", False, "enforcer.py not found")
+    test("v2.0.7: Enforcer has hot-reload", False, "enforcer.py not found")
+
+# 4. Gate deps endpoint in dashboard server
+if os.path.isfile(_server_path_207):
+    with open(_server_path_207) as _sf207:
+        _server_src_207 = _sf207.read()
+
+    test("v2.0.7: Dashboard has gate-deps endpoint",
+         "gate-deps" in _server_src_207 or "gate_deps" in _server_src_207,
+         "gate-deps/gate_deps not found in server.py")
+
+    # 8. Plugin discovery in dashboard server
+    test("v2.0.7: Dashboard has plugin discovery",
+         "installed_plugins" in _server_src_207,
+         "installed_plugins not found in server.py")
+else:
+    test("v2.0.7: Dashboard has gate-deps endpoint", False, "dashboard/server.py not found")
+    test("v2.0.7: Dashboard has plugin discovery", False, "dashboard/server.py not found")
+
+# 6. SSE enhancement in app.js
+if os.path.isfile(_appjs_path_207):
+    with open(_appjs_path_207) as _af207:
+        _appjs_src_207 = _af207.read()
+
+    test("v2.0.7: Dashboard has SSE event types",
+         "gate_event" in _appjs_src_207 or "memory_event" in _appjs_src_207,
+         "gate_event/memory_event not found in app.js")
+else:
+    test("v2.0.7: Dashboard has SSE event types", False, "dashboard/static/app.js not found")
+
+# 7. Notification badge in index.html
+if os.path.isfile(_indexhtml_path_207):
+    with open(_indexhtml_path_207) as _hf207:
+        _indexhtml_src_207 = _hf207.read()
+
+    test("v2.0.7: Dashboard has notification badge",
+         "notif" in _indexhtml_src_207,
+         "notif not found in index.html")
+else:
+    test("v2.0.7: Dashboard has notification badge", False, "dashboard/static/index.html not found")
+
+
+# ─────────────────────────────────────────────────
+# Test: Gate Bypass Regression Tests
+# ─────────────────────────────────────────────────
+print("\n--- Gate Bypass Regression Tests ---")
+
+_g02_path_reg = os.path.expanduser("~/.claude/hooks/gates/gate_02_no_destroy.py")
+_aa_path_reg = os.path.join(os.path.dirname(__file__), "auto_approve.py")
+
+# Read Gate 2 source
+if os.path.isfile(_g02_path_reg):
+    with open(_g02_path_reg) as _g02f_reg:
+        _g02_src_reg = _g02f_reg.read()
+
+    # 1. Gate 2 has rm -rf pattern
+    test("Bypass: Gate 2 has rm -rf pattern",
+         "rm" in _g02_src_reg and "rf" in _g02_src_reg,
+         "rm -rf pattern not found in gate_02")
+
+    # 2. Gate 2 has heredoc pattern
+    test("Bypass: Gate 2 has heredoc pattern",
+         "<<" in _g02_src_reg,
+         "heredoc << pattern not found in gate_02")
+
+    # 3. Gate 2 has exec -c detection
+    test("Bypass: Gate 2 has exec -c/-e detection",
+         "-c" in _g02_src_reg and "-e" in _g02_src_reg,
+         "-c/-e flag detection not found in gate_02")
+
+    # 4. Gate 2 has realpath symlink check
+    test("Bypass: Gate 2 has realpath symlink check",
+         "realpath" in _g02_src_reg,
+         "realpath not found in gate_02")
+else:
+    test("Bypass: Gate 2 has rm -rf pattern", False, "gate_02 file not found")
+    test("Bypass: Gate 2 has heredoc pattern", False, "gate_02 file not found")
+    test("Bypass: Gate 2 has exec -c/-e detection", False, "gate_02 file not found")
+    test("Bypass: Gate 2 has realpath symlink check", False, "gate_02 file not found")
+
+# Read auto_approve source
+if os.path.isfile(_aa_path_reg):
+    with open(_aa_path_reg) as _aaf_reg:
+        _aa_src_reg = _aaf_reg.read()
+
+    # 5. auto_approve has sudo denial
+    test("Bypass: auto_approve denies sudo",
+         "sudo" in _aa_src_reg,
+         "sudo not found in auto_approve deny patterns")
+
+    # 6. auto_approve has curl|bash denial
+    test("Bypass: auto_approve denies curl-pipe-bash",
+         "curl" in _aa_src_reg and "bash" in _aa_src_reg,
+         "curl/bash pipe pattern not found in auto_approve")
+
+    # 7. auto_approve has safe command list
+    test("Bypass: auto_approve has safe commands",
+         "git status" in _aa_src_reg or "pytest" in _aa_src_reg,
+         "git status/pytest not found in auto_approve safe commands")
+
+    # 8. auto_approve has fork bomb denial
+    test("Bypass: auto_approve denies fork bomb",
+         ":()" in _aa_src_reg or "fork" in _aa_src_reg,
+         "fork bomb pattern not found in auto_approve")
+else:
+    test("Bypass: auto_approve denies sudo", False, "auto_approve.py not found")
+    test("Bypass: auto_approve denies curl-pipe-bash", False, "auto_approve.py not found")
+    test("Bypass: auto_approve has safe commands", False, "auto_approve.py not found")
+    test("Bypass: auto_approve denies fork bomb", False, "auto_approve.py not found")
+
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

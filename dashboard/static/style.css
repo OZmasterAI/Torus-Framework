@@ -1422,3 +1422,178 @@ header {
     gap: 12px;
     margin-top: 3px;
 }
+
+/* ── Memory Health ───────────────────────────────────── */
+
+.memory-health-section {
+    margin-top: 16px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+}
+
+.memory-health-header {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.health-gauge {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.health-gauge-score {
+    font-size: 36px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    line-height: 1;
+}
+
+.health-gauge-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.health-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.health-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    padding: 2px 0;
+}
+
+.health-metric-label {
+    color: var(--text-muted);
+}
+
+.health-metric-value {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.health-stale-warn {
+    color: var(--red);
+    font-weight: 700;
+}
+
+.health-stale-ok {
+    color: var(--text-secondary);
+}
+
+.health-top-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.health-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 9px;
+    font-family: var(--font-mono);
+    background: rgba(0, 210, 255, 0.08);
+    color: var(--cyan);
+}
+
+.health-tag .tag-count {
+    color: var(--text-muted);
+    margin-left: 3px;
+}
+
+.card.collapsed .memory-health-section {
+    display: none !important;
+}
+
+/* ── Observation Timeline ────────────────────────────── */
+
+.observation-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(30, 58, 95, 0.4);
+    font-size: 12px;
+    animation: fadeIn 0.3s ease;
+}
+
+.observation-item.obs-error {
+    border-left: 3px solid var(--red);
+    padding-left: 6px;
+}
+
+.observation-item.obs-priority-high {
+    border-left: 3px solid var(--red);
+    padding-left: 6px;
+}
+
+.observation-item.obs-priority-medium {
+    border-left: 3px solid var(--orange);
+    padding-left: 6px;
+}
+
+.obs-tool-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 20px;
+    padding: 0 4px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    background: rgba(0, 210, 255, 0.12);
+    color: var(--cyan);
+    flex-shrink: 0;
+}
+
+.obs-time {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    white-space: nowrap;
+    min-width: 70px;
+    flex-shrink: 0;
+}
+
+.obs-summary {
+    color: var(--text-primary);
+    flex: 1;
+    word-break: break-word;
+}
+
+.obs-sentiment {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+}
+
+.obs-sentiment-frustration {
+    background: var(--red);
+}
+
+.obs-sentiment-confidence {
+    background: var(--green);
+}
+
+.obs-sentiment-uncertainty {
+    background: var(--yellow);
+}

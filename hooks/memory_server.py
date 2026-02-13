@@ -2144,6 +2144,182 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
 
 
 @mcp.tool()
+def memory_health_report() -> dict:
+    """Generate a comprehensive memory health report with metrics and trends.
+
+    Returns total counts, growth trends, stale memory count, tag distribution,
+    retrieval statistics, and an overall health score (0-100).
+    """
+    now = time.time()
+    now_dt = datetime.now()
+
+    # Total counts
+    mem_count = collection.count()
+    obs_count = observations.count()
+
+    if mem_count == 0:
+        return {
+            "total_memories": 0,
+            "total_observations": obs_count,
+            "added_24h": 0,
+            "added_7d": 0,
+            "added_30d": 0,
+            "stale_count": 0,
+            "top_tags": [],
+            "avg_retrieval_count": 0.0,
+            "health_score": 0,
+            "health_label": "empty",
+            "message": "Memory is empty. Start building knowledge with remember_this().",
+        }
+
+    # Fetch all metadata for analysis
+    all_data = collection.get(
+        limit=mem_count,
+        include=["metadatas"],
+    )
+    metas = all_data.get("metadatas", [])
+
+    # Growth trends: memories added in last 24h, 7d, 30d
+    cutoff_24h = now - 86400
+    cutoff_7d = now - 7 * 86400
+    cutoff_30d = now - 30 * 86400
+    added_24h = 0
+    added_7d = 0
+    added_30d = 0
+
+    # Stale count: unretrieved >60 days
+    cutoff_stale = now - 60 * 86400
+    stale_count = 0
+
+    # Tag frequency
+    tag_freq = {}
+
+    # Retrieval stats
+    total_retrieval = 0
+    retrieval_entries = 0
+
+    for meta in metas:
+        if not meta:
+            continue
+
+        # Growth: check session_time
+        session_time = meta.get("session_time")
+        if session_time is not None:
+            try:
+                st = float(session_time)
+                if st >= cutoff_24h:
+                    added_24h += 1
+                if st >= cutoff_7d:
+                    added_7d += 1
+                if st >= cutoff_30d:
+                    added_30d += 1
+
+                # Stale: old + low retrieval
+                rc = int(meta.get("retrieval_count", 0))
+                if st < cutoff_stale and rc <= 2:
+                    stale_count += 1
+            except (ValueError, TypeError):
+                pass
+
+        # Tags
+        tags_str = meta.get("tags", "")
+        if tags_str:
+            for tag in tags_str.split(","):
+                tag = tag.strip()
+                if tag:
+                    tag_freq[tag] = tag_freq.get(tag, 0) + 1
+
+        # Retrieval counts
+        rc = int(meta.get("retrieval_count", 0))
+        total_retrieval += rc
+        retrieval_entries += 1
+
+    # Top 10 tags
+    top_tags = sorted(tag_freq.items(), key=lambda x: -x[1])[:10]
+    top_tags_list = [{"tag": t, "count": c} for t, c in top_tags]
+
+    # Average retrieval count
+    avg_retrieval = round(total_retrieval / max(retrieval_entries, 1), 2)
+
+    # Unique tag count
+    unique_tags = len(tag_freq)
+
+    # Health score: 0-100
+    # recent_activity (40%): based on memories added in 7d
+    if added_7d >= 10:
+        recent_score = 1.0
+    elif added_7d >= 5:
+        recent_score = 0.8
+    elif added_7d >= 2:
+        recent_score = 0.6
+    elif added_7d >= 1:
+        recent_score = 0.4
+    else:
+        recent_score = 0.1
+
+    # retrieval_rate (30%): how often memories are actually used
+    if avg_retrieval >= 3.0:
+        retrieval_score = 1.0
+    elif avg_retrieval >= 1.5:
+        retrieval_score = 0.8
+    elif avg_retrieval >= 0.5:
+        retrieval_score = 0.5
+    elif avg_retrieval >= 0.1:
+        retrieval_score = 0.3
+    else:
+        retrieval_score = 0.1
+
+    # tag_diversity (30%): variety of tags used
+    if unique_tags >= 20:
+        diversity_score = 1.0
+    elif unique_tags >= 10:
+        diversity_score = 0.7
+    elif unique_tags >= 5:
+        diversity_score = 0.5
+    elif unique_tags >= 2:
+        diversity_score = 0.3
+    else:
+        diversity_score = 0.1
+
+    health_score = int(
+        recent_score * 40 + retrieval_score * 30 + diversity_score * 30
+    )
+    health_score = max(0, min(100, health_score))
+
+    if health_score > 70:
+        health_label = "healthy"
+    elif health_score > 40:
+        health_label = "moderate"
+    else:
+        health_label = "needs attention"
+
+    # Growth rate (memories per day over last 30 days)
+    growth_rate = round(added_30d / 30, 2) if added_30d > 0 else 0.0
+
+    _touch_memory_timestamp()
+
+    return {
+        "total_memories": mem_count,
+        "total_observations": obs_count,
+        "added_24h": added_24h,
+        "added_7d": added_7d,
+        "added_30d": added_30d,
+        "stale_count": stale_count,
+        "top_tags": top_tags_list,
+        "unique_tags": unique_tags,
+        "avg_retrieval_count": avg_retrieval,
+        "growth_rate_per_day": growth_rate,
+        "health_score": health_score,
+        "health_label": health_label,
+        "score_breakdown": {
+            "recent_activity": round(recent_score * 40, 1),
+            "retrieval_rate": round(retrieval_score * 30, 1),
+            "tag_diversity": round(diversity_score * 30, 1),
+        },
+    }
+
+
+@mcp.tool()
 def rebuild_tag_index() -> dict:
     """Force rebuild the tag co-occurrence matrix.
 

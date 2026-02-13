@@ -73,21 +73,32 @@
                 <span id="timeline-count" class="badge">0</span>
                 <span id="gate-filter-badge" class="filter-badge hidden"></span>
             </h2>
-            <div class="timeline-filters">
-                <select id="timeline-gate-filter" class="inline-select">
-                    <option value="">All Gates</option>
-                </select>
-                <select id="timeline-decision-filter" class="inline-select">
-                    <option value="">All Decisions</option>
-                    <option value="pass">Pass</option>
-                    <option value="block">Block</option>
-                    <option value="warn">Warn</option>
-                </select>
-                <button class="btn-sm" id="timeline-filter-btn">Filter</button>
-                <div id="timeline-active-filters"></div>
+            <div class="tab-bar" id="timeline-tabs">
+                <button class="tab active" data-timeline-tab="audit" onclick="switchTimelineTab('audit')">Audit</button>
+                <button class="tab" data-timeline-tab="observations" onclick="switchTimelineTab('observations')">Observations</button>
             </div>
-            <div id="timeline-content" class="panel-body timeline-scroll">
-                <div class="loading">Loading...</div>
+            <div id="timeline-audit-view">
+                <div class="timeline-filters">
+                    <select id="timeline-gate-filter" class="inline-select">
+                        <option value="">All Gates</option>
+                    </select>
+                    <select id="timeline-decision-filter" class="inline-select">
+                        <option value="">All Decisions</option>
+                        <option value="pass">Pass</option>
+                        <option value="block">Block</option>
+                        <option value="warn">Warn</option>
+                    </select>
+                    <button class="btn-sm" id="timeline-filter-btn">Filter</button>
+                    <div id="timeline-active-filters"></div>
+                </div>
+                <div id="timeline-content" class="panel-body timeline-scroll">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+            <div id="timeline-observations-view" style="display:none;">
+                <div id="observations-content" class="panel-body timeline-scroll">
+                    <div class="loading">Loading...</div>
+                </div>
             </div>
         </section>
 
@@ -107,6 +118,12 @@
             </div>
             <div id="memory-graph-container" class="memory-graph-container hidden">
                 <canvas id="memory-graph-canvas" width="600" height="400"></canvas>
+            </div>
+            <div class="memory-health-section">
+                <h3 class="memory-health-header">Memory Health</h3>
+                <div id="memory-health-content" class="panel-body">
+                    <div class="loading">Loading...</div>
+                </div>
             </div>
         </section>
 

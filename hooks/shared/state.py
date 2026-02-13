@@ -75,6 +75,10 @@ def default_state():
         "error_windows": [],
         "skill_usage": {},
         "recent_skills": [],
+        # v2.0.6 fields (gate upgrades)
+        "gate6_warn_count": 0,
+        "verification_scores": {},
+        "successful_strategies": {},
     }
 
 
@@ -89,6 +93,12 @@ def migrate_v1_to_v2(state):
         state["skill_usage"] = {}
     if "recent_skills" not in state:
         state["recent_skills"] = []
+    if "gate6_warn_count" not in state:
+        state["gate6_warn_count"] = 0
+    if "verification_scores" not in state:
+        state["verification_scores"] = {}
+    if "successful_strategies" not in state:
+        state["successful_strategies"] = {}
 
     state["_version"] = 2
     return state

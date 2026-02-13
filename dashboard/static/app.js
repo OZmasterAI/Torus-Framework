@@ -405,6 +405,59 @@ async function renderMemoryTags() {
     ).join('');
 }
 
+async function renderMemoryHealth() {
+    const data = await apiFetch('/api/memory-health');
+    if (!data) return;
+
+    const el = document.getElementById('memory-health-content');
+    if (!el) return;
+
+    const score = data.health_score || 0;
+    const scoreColor = score > 70 ? 'var(--green)' : (score > 40 ? 'var(--yellow)' : 'var(--red)');
+    const label = data.health_label || 'unknown';
+
+    let topTagsHtml = '';
+    if (data.top_tags && data.top_tags.length > 0) {
+        topTagsHtml = data.top_tags.map(t =>
+            `<span class="health-tag">${escapeHtml(t.tag)} <span class="tag-count">${t.count}</span></span>`
+        ).join('');
+    }
+
+    const staleWarning = (data.stale_count || 0) > 20
+        ? `<span class="health-stale-warn">! ${data.stale_count} stale</span>`
+        : `<span class="health-stale-ok">${data.stale_count || 0} stale</span>`;
+
+    el.innerHTML = `
+        <div class="health-gauge">
+            <div class="health-gauge-score" style="color:${scoreColor}">${score}</div>
+            <div class="health-gauge-label" style="color:${scoreColor}">${escapeHtml(label)}</div>
+        </div>
+        <div class="health-metrics">
+            <div class="health-metric-row">
+                <span class="health-metric-label">Growth</span>
+                <span class="health-metric-value">${data.growth_rate_per_day || 0}/day</span>
+            </div>
+            <div class="health-metric-row">
+                <span class="health-metric-label">24h / 7d / 30d</span>
+                <span class="health-metric-value">${data.added_24h || 0} / ${data.added_7d || 0} / ${data.added_30d || 0}</span>
+            </div>
+            <div class="health-metric-row">
+                <span class="health-metric-label">Avg Retrieval</span>
+                <span class="health-metric-value">${data.avg_retrieval_count || 0}</span>
+            </div>
+            <div class="health-metric-row">
+                <span class="health-metric-label">Stale</span>
+                <span class="health-metric-value">${staleWarning}</span>
+            </div>
+            <div class="health-metric-row">
+                <span class="health-metric-label">Tags</span>
+                <span class="health-metric-value">${data.unique_tags || 0} unique</span>
+            </div>
+        </div>
+        ${topTagsHtml ? `<div class="health-top-tags">${topTagsHtml}</div>` : ''}
+    `;
+}
+
 async function showMemoryDetail(id) {
     const data = await apiFetch(`/api/memories/${id}`);
     if (!data || data.error) return;
@@ -646,6 +699,75 @@ async function renderMemoryGraph() {
             }
         }
     };
+}
+
+// ── Timeline Tab Switching ───────────────────────────────
+
+function switchTimelineTab(tab) {
+    const auditView = document.getElementById('timeline-audit-view');
+    const obsView = document.getElementById('timeline-observations-view');
+    const tabs = document.querySelectorAll('#timeline-tabs .tab');
+
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.timelineTab === tab));
+
+    if (tab === 'observations') {
+        auditView.style.display = 'none';
+        obsView.style.display = '';
+        renderObservations();
+    } else {
+        auditView.style.display = '';
+        obsView.style.display = 'none';
+    }
+}
+
+// ── Observation Timeline ────────────────────────────────
+
+async function renderObservations() {
+    const data = await apiFetch('/api/observations/recent');
+    if (!data) return;
+
+    const el = document.getElementById('observations-content');
+    if (!el) return;
+
+    const obs = data.observations || [];
+    if (obs.length === 0) {
+        el.innerHTML = '<div class="no-data">No observations captured yet.</div>';
+        return;
+    }
+
+    const toolIcons = {
+        'Bash': '>_',
+        'Edit': '~',
+        'Write': '+',
+        'Read': '@',
+        'Grep': '?',
+        'Glob': '*',
+        'NotebookEdit': 'N',
+        'UserPrompt': 'U',
+        'Task': 'T',
+    };
+
+    el.innerHTML = obs.map(o => {
+        const icon = toolIcons[o.tool] || '#';
+        const isError = o.has_error === 'true' || o.has_error === true;
+        const priority = o.priority || 'low';
+        const priorityClass = priority === 'high' ? 'obs-priority-high' :
+                              priority === 'medium' ? 'obs-priority-medium' : '';
+        const errorClass = isError ? 'obs-error' : '';
+        const sentiment = o.sentiment || '';
+        const sentimentDot = sentiment === 'frustration' ? '<span class="obs-sentiment obs-sentiment-frustration"></span>' :
+                            sentiment === 'confidence' ? '<span class="obs-sentiment obs-sentiment-confidence"></span>' :
+                            sentiment === 'uncertainty' ? '<span class="obs-sentiment obs-sentiment-uncertainty"></span>' : '';
+        const time = formatTime(o.timestamp || o.session_time);
+        const summary = escapeHtml((o.summary || '').substring(0, 120));
+
+        return `<div class="observation-item ${priorityClass} ${errorClass}">
+            <span class="obs-tool-badge" title="${escapeHtml(o.tool)}">${icon}</span>
+            <span class="obs-time">${time}</span>
+            <span class="obs-summary">${summary}</span>
+            ${sentimentDot}
+        </div>`;
+    }).join('');
 }
 
 // ── Error Patterns ──────────────────────────────────────
@@ -1431,6 +1553,8 @@ async function init() {
         renderTimeline(),
         renderMemory(''),
         renderMemoryTags(),
+        renderMemoryHealth(),
+        renderObservations(),
         renderErrors(),
         renderComponents(),
         renderHistory(),
