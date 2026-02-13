@@ -1768,7 +1768,6 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
     return result
 
 
-@mcp.tool()
 def suggest_promotions(top_k: int = 5) -> dict:
     """Suggest memory entries that should be promoted to permanent rules.
 
@@ -1916,7 +1915,6 @@ def suggest_promotions(top_k: int = 5) -> dict:
     }
 
 
-@mcp.tool()
 def list_stale_memories(days: int = 60, top_k: int = 20) -> dict:
     """Find memories that haven't been retrieved recently.
 
@@ -2017,7 +2015,6 @@ def list_stale_memories(days: int = 60, top_k: int = 20) -> dict:
         return {"error": f"Failed to list stale memories: {str(e)}"}
 
 
-@mcp.tool()
 def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3) -> dict:
     """Group related memories into semantic clusters using ChromaDB distance queries.
 
@@ -2193,7 +2190,6 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
     }
 
 
-@mcp.tool()
 def memory_health_report() -> dict:
     """Generate a comprehensive memory health report with metrics and trends.
 
@@ -2369,7 +2365,6 @@ def memory_health_report() -> dict:
     }
 
 
-@mcp.tool()
 def rebuild_tag_index() -> dict:
     """Force rebuild the tag co-occurrence matrix.
 
@@ -2386,6 +2381,60 @@ def rebuild_tag_index() -> dict:
         }
     except Exception as e:
         return {"error": f"Failed to rebuild tag index: {str(e)}"}
+
+
+@mcp.tool()
+def maintenance(action: str, top_k: int | None = None, days: int | None = None,
+                min_cluster_size: int | None = None,
+                distance_threshold: float | None = None) -> dict:
+    """Run a maintenance action on the memory system.
+
+    Available actions:
+      - "promotions": Find recurring patterns worth promoting to CLAUDE.md rules.
+            Optional: top_k (default 5, range 1-50)
+      - "stale": Find old memories with low retrieval counts.
+            Optional: days (default 60), top_k (default 20)
+      - "cluster": Group related memories into semantic clusters.
+            Optional: min_cluster_size (default 3), distance_threshold (default 0.3)
+      - "health": Generate comprehensive memory health metrics and score.
+            No parameters.
+      - "rebuild_tags": Force rebuild the tag co-occurrence matrix.
+            No parameters.
+
+    Args:
+        action: The maintenance action to run (see above).
+        top_k: Max results (used by promotions, stale).
+        days: Age threshold in days (used by stale).
+        min_cluster_size: Min memories per cluster (used by cluster).
+        distance_threshold: Max cosine distance for clustering (used by cluster).
+    """
+    if action == "promotions":
+        return suggest_promotions(top_k=top_k if top_k is not None else 5)
+    elif action == "stale":
+        return list_stale_memories(
+            days=days if days is not None else 60,
+            top_k=top_k if top_k is not None else 20,
+        )
+    elif action == "cluster":
+        return cluster_knowledge(
+            min_cluster_size=min_cluster_size if min_cluster_size is not None else 3,
+            distance_threshold=distance_threshold if distance_threshold is not None else 0.3,
+        )
+    elif action == "health":
+        return memory_health_report()
+    elif action == "rebuild_tags":
+        return rebuild_tag_index()
+    else:
+        return {
+            "error": f"Unknown action: {action!r}",
+            "valid_actions": {
+                "promotions": "Find recurring patterns to promote to rules (top_k)",
+                "stale": "Find old unretrieved memories (days, top_k)",
+                "cluster": "Group related memories into clusters (min_cluster_size, distance_threshold)",
+                "health": "Generate memory health metrics (no params)",
+                "rebuild_tags": "Rebuild tag co-occurrence matrix (no params)",
+            },
+        }
 
 
 if __name__ == "__main__":

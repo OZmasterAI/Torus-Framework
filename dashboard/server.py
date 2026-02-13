@@ -1106,6 +1106,55 @@ async def api_tool_stats(request):
     })
 
 
+async def get_tool_usage(request):
+    """Return tool usage statistics from current session state."""
+    try:
+        import glob
+        # Find most recent state_*.json
+        pattern = os.path.join(HOOKS_DIR, "state_*.json")
+        files = glob.glob(pattern)
+        if not files:
+            return JSONResponse({
+                "total_calls": 0,
+                "tool_counts": {},
+                "top_tool": None,
+            })
+        files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+
+        # Read latest state
+        state = _read_json(files[0])
+        if not state:
+            return JSONResponse({
+                "total_calls": 0,
+                "tool_counts": {},
+                "top_tool": None,
+            })
+
+        # Extract tool_call_counts and total_tool_calls
+        tool_call_counts = state.get("tool_call_counts", {})
+        total_tool_calls = state.get("total_tool_calls", 0)
+
+        # Sort by count descending
+        sorted_counts = dict(sorted(tool_call_counts.items(), key=lambda x: x[1], reverse=True))
+
+        # Determine top tool
+        top_tool = None
+        if sorted_counts:
+            top_tool = next(iter(sorted_counts))
+
+        return JSONResponse({
+            "total_calls": total_tool_calls,
+            "tool_counts": sorted_counts,
+            "top_tool": top_tool,
+        })
+    except Exception:
+        return JSONResponse({
+            "total_calls": 0,
+            "tool_counts": {},
+            "top_tool": None,
+        })
+
+
 async def api_gate_timing(request):
     """Return per-gate execution timing stats."""
     state = _read_latest_state()
@@ -1486,6 +1535,7 @@ routes = [
     Route("/api/skill-usage", api_skill_usage),
     Route("/api/errors", api_errors),
     Route("/api/tool-stats", api_tool_stats),
+    Route("/api/tool-usage", get_tool_usage),
     Route("/api/history", api_history),
     Route("/api/history/{filename}", api_history_detail),
     Route("/api/stream", api_stream),

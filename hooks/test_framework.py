@@ -8118,6 +8118,139 @@ test("v2.4.0: Gate 12 warns for fresh plan exits",
 
 cleanup_test_states()
 
+print("\n--- v2.4.1: Dashboard Tool-Usage API, StatusLine Tool Calls, State Schema Update ---")
+
+# ── Feature 1: Dashboard /api/tool-usage endpoint ──
+
+# Test 1: get_tool_usage function exists in dashboard server
+_dash_server_path = os.path.join(os.path.dirname(__file__), "..", "dashboard", "server.py")
+_dash_source = open(_dash_server_path).read() if os.path.exists(_dash_server_path) else ""
+test("v2.4.1: Dashboard has get_tool_usage handler",
+     "async def get_tool_usage" in _dash_source,
+     "Expected get_tool_usage async handler in dashboard/server.py")
+
+# Test 2: Route registered for /api/tool-usage
+test("v2.4.1: Dashboard has /api/tool-usage route",
+     '"/api/tool-usage"' in _dash_source,
+     "Expected /api/tool-usage route in dashboard/server.py")
+
+# Test 3: Endpoint returns sorted tool counts
+test("v2.4.1: get_tool_usage sorts by count descending",
+     "sorted(tool_call_counts.items()" in _dash_source and "reverse=True" in _dash_source,
+     "Expected sorted descending logic in get_tool_usage")
+
+# Test 4: Endpoint has fail-open error handling
+test("v2.4.1: get_tool_usage has error handling",
+     "top_tool" in _dash_source and '"total_calls": 0' in _dash_source,
+     "Expected fail-open response structure in get_tool_usage")
+
+# ── Feature 2: StatusLine total tool calls ──
+
+# Test 5: get_total_tool_calls function exists
+from statusline import get_total_tool_calls as _gttc
+test("v2.4.1: get_total_tool_calls function exists",
+     callable(_gttc),
+     "Expected callable get_total_tool_calls")
+
+# Test 6: get_total_tool_calls returns int
+_ttc_result = _gttc()
+test("v2.4.1: get_total_tool_calls returns int",
+     isinstance(_ttc_result, int),
+     f"Expected int, got {type(_ttc_result)}")
+
+# Test 7: StatusLine main() source includes TC: display
+import inspect as _insp241
+_sl_main_src = _insp241.getsource(__import__("statusline").main)
+test("v2.4.1: StatusLine main includes TC: display",
+     "TC:" in _sl_main_src and "total_calls" in _sl_main_src,
+     "Expected TC:{total_calls} in statusline main()")
+
+# Test 8: get_total_tool_calls follows existing pattern
+_gttc_src = _insp241.getsource(_gttc)
+test("v2.4.1: get_total_tool_calls follows glob pattern",
+     "state_*.json" in _gttc_src and "total_tool_calls" in _gttc_src,
+     "Expected glob pattern and total_tool_calls in source")
+
+# ── Feature 3: State schema update for v2.4.0 fields ──
+
+# Test 9: default_state includes tool_call_counts
+from shared.state import default_state as _ds241
+_ds = _ds241()
+test("v2.4.1: default_state has tool_call_counts",
+     "tool_call_counts" in _ds and _ds["tool_call_counts"] == {},
+     f"Expected tool_call_counts: {{}}, got {_ds.get('tool_call_counts', 'MISSING')}")
+
+# Test 10: default_state includes total_tool_calls
+test("v2.4.1: default_state has total_tool_calls",
+     "total_tool_calls" in _ds and _ds["total_tool_calls"] == 0,
+     f"Expected total_tool_calls: 0, got {_ds.get('total_tool_calls', 'MISSING')}")
+
+# Test 11: Schema includes tool_call_counts
+from shared.state import get_state_schema
+_schema = get_state_schema()
+test("v2.4.1: Schema has tool_call_counts entry",
+     "tool_call_counts" in _schema and _schema["tool_call_counts"]["category"] == "metrics",
+     f"Expected tool_call_counts in schema with category=metrics")
+
+# Test 12: Schema includes total_tool_calls
+test("v2.4.1: Schema has total_tool_calls entry",
+     "total_tool_calls" in _schema and _schema["total_tool_calls"]["category"] == "metrics",
+     f"Expected total_tool_calls in schema with category=metrics")
+
+cleanup_test_states()
+
+
+# ─────────────────────────────────────────────────
+# Maintenance Gateway (v2.0.2 optimization)
+# ─────────────────────────────────────────────────
+print("\n--- Maintenance Gateway ---")
+
+_ms_gw_path = os.path.join(os.path.dirname(__file__), "memory_server.py")
+if os.path.isfile(_ms_gw_path):
+    with open(_ms_gw_path) as _mgf:
+        _ms_gw_src = _mgf.read()
+    _ms_gw_lines = _ms_gw_src.splitlines()
+
+    # Gateway function exists
+    test("gateway: maintenance function exists",
+         "def maintenance(" in _ms_gw_src,
+         "maintenance function not found in memory_server.py")
+
+    # Gateway has @mcp.tool() decorator
+    _gw_decorated = False
+    for i, line in enumerate(_ms_gw_lines):
+        if "def maintenance(" in line and i > 0:
+            _gw_decorated = "@mcp.tool()" in _ms_gw_lines[i - 1]
+            break
+    test("gateway: maintenance is registered as MCP tool",
+         _gw_decorated,
+         "@mcp.tool() not found before maintenance function")
+
+    # Gateway has action parameter
+    test("gateway: maintenance has action: str param",
+         "action: str" in _ms_gw_src,
+         "action: str param not found in maintenance")
+
+    # Individual tools are NOT decorated (no longer standalone MCP tools)
+    for _fn_name in ["suggest_promotions", "list_stale_memories", "cluster_knowledge",
+                      "memory_health_report", "rebuild_tag_index"]:
+        _still_decorated = False
+        for i, line in enumerate(_ms_gw_lines):
+            if f"def {_fn_name}(" in line and i > 0:
+                _still_decorated = "@mcp.tool()" in _ms_gw_lines[i - 1]
+                break
+        test(f"gateway: {_fn_name} is NOT a standalone MCP tool",
+             not _still_decorated,
+             f"@mcp.tool() still decorates {_fn_name}")
+
+    # Gateway dispatches to all 5 actions
+    for _action_name in ["promotions", "stale", "cluster", "health", "rebuild_tags"]:
+        test(f"gateway: dispatches '{_action_name}' action",
+             f'"{_action_name}"' in _ms_gw_src,
+             f"action '{_action_name}' not found in maintenance dispatcher")
+else:
+    test("gateway: memory_server.py exists", False, "memory_server.py not found")
+
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

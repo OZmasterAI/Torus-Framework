@@ -86,6 +86,8 @@ def default_state():
         "last_test_exit_code": None,  # Exit code from most recent test run
         "gate_timing_stats": {},    # Per-gate timing: {gate_name: {count, total_ms, min_ms, max_ms}}
         "rate_window_timestamps": [],  # Rolling window of tool call timestamps for Gate 11
+        "tool_call_counts": {},     # Per-tool call counts
+        "total_tool_calls": 0,      # Total tool calls this session
     }
 
 
@@ -125,6 +127,8 @@ def get_state_schema():
         "last_test_exit_code": {"type": "int", "description": "Exit code from most recent test", "category": "gate3"},
         "gate_timing_stats": {"type": "dict", "description": "Per-gate timing metrics", "category": "metrics"},
         "rate_window_timestamps": {"type": "list", "description": "Rolling window for rate limiting", "category": "gate11"},
+        "tool_call_counts": {"type": "dict", "description": "Per-tool call counts", "category": "metrics"},
+        "total_tool_calls": {"type": "int", "description": "Total tool calls this session", "category": "metrics"},
     }
 
 
@@ -145,6 +149,10 @@ def migrate_v1_to_v2(state):
         state["verification_scores"] = {}
     if "successful_strategies" not in state:
         state["successful_strategies"] = {}
+    if "tool_call_counts" not in state:
+        state["tool_call_counts"] = {}
+    if "total_tool_calls" not in state:
+        state["total_tool_calls"] = 0
 
     state["_version"] = 2
     return state
