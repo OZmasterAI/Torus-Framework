@@ -1,65 +1,60 @@
-# Session 23 — Framework v2.0: 10-Feature Upgrade + Gate 10 Redesign
+# Session 25 — Web UI Dashboard
 
 ## What Was Done
 
-### Sprint 1: Tracker Separation (Feature 2)
-- Extracted all PostToolUse logic from `enforcer.py` into new `tracker.py` (fail-open, always exits 0)
-- Enforcer is now PreToolUse-only (~130 lines, down from 376)
-- Updated `settings.json`: PostToolUse → tracker.py
-- Added `last_exit_plan_mode` to default_state
+### Web UI Dashboard (Feature 11)
+- Built a standalone, read-only web dashboard at `~/.claude/dashboard/`
+- 4 files, ~1,400 lines total, zero framework files modified
+- **server.py** (~400 lines): Starlette + Uvicorn on port 7777, 16 API endpoints + SSE
+- **index.html** (~110 lines): Single-page shell with 7 panels
+- **style.css** (~400 lines): Dark theme (#1a1a2e), CSS grid, responsive
+- **app.js** (~500 lines): Fetch, render, SSE client, auto-refresh
 
-### Sprint 2: Audit Trail + New Gates (Features 6, 3)
-- Created `shared/audit_log.py` — JSONL audit trail to `~/.claude/hooks/audit/YYYY-MM-DD.jsonl`
-- Created `gate_10_model_enforcement.py` — Advisory, reads `.model_lock` file or `MODEL_LOCK` env var
-- Created `gate_11_rate_limit.py` — Blocking at >60 calls/min, warns >40/min, MIN_CALLS_FOR_RATE=20
-- Created `gate_12_plan_mode_save.py` — Advisory, warns when plan mode exited without `remember_this()`
-- Added audit logging to enforcer's `handle_pre_tool_use()`
+### API Endpoints (16)
+- `/api/health` — Weighted health % with 6 dimension breakdown (reuses statusline algorithm)
+- `/api/live-state` — LIVE_STATE.json contents
+- `/api/session` — Current session state (most recent state_*.json)
+- `/api/audit` — Audit log entries (paginated, both schemas normalized)
+- `/api/audit/dates` — Available audit log dates
+- `/api/gates` — Gate pass/block/warn counts aggregated from audit
+- `/api/memories` — Memory search (semantic via ChromaDB)
+- `/api/memories/{id}` — Full memory content
+- `/api/memories/stats` — Collection counts (knowledge, observations, fix_outcomes)
+- `/api/memories/tags` — Tag frequency distribution
+- `/api/components` — Inventory: gates, hooks, skills, agents, plugins
+- `/api/errors` — Error pattern counts + active bans
+- `/api/history` — Archived handoff file list
+- `/api/history/{filename}` — Single handoff file content
+- `/api/stream` — SSE: real-time audit events + periodic health pings
 
-### Sprint 3: New Hook Scripts (Features 1, 5, 7, 8)
-- Created `auto_approve.py` — PermissionRequest hook, deny-before-allow security model
-- Created `subagent_context.py` — SubagentStart hook, agent-type-specific context injection
-- Created `pre_compact.py` — PreCompact hook, saves state snapshot before compaction
-- Created `session_end.py` — SessionEnd hook, flushes capture queue + increments session counter
-- Modified `memory_server.py`:
-  - Ingestion filter: rejects content <20 chars + noise patterns (npm install, pip install, etc.)
-  - Near-dedup: cosine distance <0.05 returns existing_id instead of saving duplicate
-  - Observation promotion: error observations promoted to curated knowledge during compaction
-- Registered 4 new hook events in settings.json (PermissionRequest, SubagentStart, PreCompact, SessionEnd)
+### Dashboard Panels (7)
+1. **Health Overview** — Big HP bar + 6 dimension bars (gates, hooks, memory, skills, core, errors)
+2. **Gate Statistics** — Horizontal bar chart, 12 gates pass/block/warn with date selector
+3. **Session Timeline** — Scrollable color-coded audit events with SSE live updates
+4. **Memory Browser** — Search + tag pills + results + click-to-expand detail
+5. **Error Patterns** — Pattern counts, active bans, tool call count
+6. **Component Inventory** — Tabbed: Gates|Hooks|Agents|Plugins
+7. **Session History** — Archived handoffs, expandable markdown
 
-### Sprint 4: Named Agents + Status Line (Features 4, 10)
-- Created 4 agent definitions in `~/.claude/agents/`:
-  - `researcher.md` (haiku, read-only)
-  - `auditor.md` (sonnet, security review)
-  - `builder.md` (opus, full implementation)
-  - `stress-tester.md` (sonnet, testing focus)
-- Created `statusline.py` — displays: `project | G:12 | M:207 | CTX:23% | 15min | $0.42`
-- Added statusLine config to settings.json
-
-### Session 23: Gate 10 Redesign
-- Repurposed Gate 10 from passive `.model_lock` reminder → active **Model Cost Guard**
-- **Step 1 (BLOCKING):** Task calls without explicit `model` parameter are blocked — prevents silent inheritance of parent's expensive model
-- **Step 2 (ADVISORY):** Warns when model doesn't match agent-type recommendations:
-  - Explore/Plan → haiku or sonnet (read-only, opus is overkill)
-  - general-purpose → sonnet or opus (needs Edit/Write, haiku may lack capability)
-  - Bash → haiku or sonnet (command execution doesn't need opus)
-  - Unknown types → pass silently
-- Added 15 new tests covering both steps (+15 from 398 → 413)
+### Tests
+- Added 40 new dashboard tests to `test_framework.py`
+- **539 passed, 0 failed** (up from 499)
 
 ### Verification
 | Check | Result |
 |-------|--------|
-| Tests | **413 passed, 0 failed** (up from 307) |
-| Hook events | 8 registered (4 original + 4 new) |
-| Gates | 12 active (9 blocking + 3 advisory); Gate 10 redesigned as two-step |
-| Agent files | 4 created with YAML frontmatter |
-| Status line | Producing formatted output |
+| Tests | **539 passed, 0 failed** |
+| API endpoints | All 16 return valid JSON |
+| SSE stream | Health pings confirmed |
+| Framework tests | All 499 original tests unchanged |
+| Files modified | 0 framework files touched |
 
 ## What's Next
-1. **Test hooks live** — Start a fresh Claude Code session to verify all 8 hooks fire correctly
-2. **Verify auto_approve** — Test PermissionRequest flow (safe commands auto-approved, dangerous denied)
-3. **Verify statusline** — Check the status bar renders correctly in the Claude Code UI
-4. **Consider**: FTS5 index persistence — revisit when memory count > 800 (currently ~207)
-5. **Consider**: Add more deny patterns to auto_approve.py as edge cases are discovered
+1. **Polish UI** — Add loading spinners, error states, mobile breakpoints
+2. **Memory detail view** — Render markdown in overlay instead of plain text
+3. **Gate drill-down** — Click a gate bar to filter timeline to that gate's events
+4. **Auto-start** — Consider adding dashboard to SessionStart hook for auto-launch
+5. **Consider**: FTS5 index persistence — revisit when memory count > 800 (currently ~219)
 
 ## Service Status
 - Enforcer: active (PreToolUse, 12 gates, audit logging)
@@ -70,28 +65,18 @@
 - PreCompact: active (PreCompact, state snapshots)
 - SessionEnd: active (SessionEnd, queue flush)
 - StatusLine: active (project status display)
-- Memory MCP: active — 210 curated memories, 12 gates
-- Tests: **413 passing, 0 failures**
+- **Dashboard: available** (`python3 ~/.claude/dashboard/server.py` → localhost:7777)
+- Memory MCP: active — 219 curated memories, 12 gates
+- Tests: **539 passing, 0 failures**
 
-## New Files Created (14)
+## New Files Created (4)
 | File | Lines | Purpose |
 |------|-------|---------|
-| `hooks/tracker.py` | ~280 | PostToolUse state tracker (fail-open) |
-| `hooks/shared/audit_log.py` | ~46 | JSONL audit trail |
-| `hooks/gates/gate_10_model_enforcement.py` | ~60 | Advisory model lock gate |
-| `hooks/gates/gate_11_rate_limit.py` | ~58 | Blocking rate limit gate |
-| `hooks/gates/gate_12_plan_mode_save.py` | ~44 | Advisory plan save gate |
-| `hooks/auto_approve.py` | ~127 | PermissionRequest deny-before-allow |
-| `hooks/subagent_context.py` | ~87 | SubagentStart context injection |
-| `hooks/pre_compact.py` | ~91 | PreCompact state snapshots |
-| `hooks/session_end.py` | ~92 | SessionEnd queue flush + counter |
-| `hooks/statusline.py` | ~80 | Status line display |
-| `agents/researcher.md` | ~25 | Read-only exploration agent (haiku) |
-| `agents/auditor.md` | ~25 | Security review agent (sonnet) |
-| `agents/builder.md` | ~25 | Full implementation agent (opus) |
-| `agents/stress-tester.md` | ~25 | Testing agent (sonnet) |
+| `dashboard/server.py` | ~400 | Starlette app, 16 API endpoints + SSE |
+| `dashboard/static/index.html` | ~110 | Single-page HTML shell, 7 panels |
+| `dashboard/static/style.css` | ~400 | Dark theme, CSS grid, responsive |
+| `dashboard/static/app.js` | ~500 | Fetch, rendering, SSE, auto-refresh |
 
 ## Key Memory IDs
+- `5c3deb2a91ad8bb6` — Dashboard Web UI completion details
 - `3aee79491823bbad` — Framework v2.0 complete summary
-- `d5a8c73bd530d041` — Sprint 3 completion details
-- `210095f8ca4fd631` — Sprint 2 completion details

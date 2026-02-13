@@ -3328,6 +3328,138 @@ test("Settings: 13 hook events total",
      f"got {len(_s_new_hooks)}: {list(_s_new_hooks.keys())}")
 
 # ─────────────────────────────────────────────────
+# Dashboard: Web UI (Feature 11)
+# ─────────────────────────────────────────────────
+print("\n--- Dashboard: Web UI ---")
+
+_dash_dir = os.path.join(os.path.expanduser("~"), ".claude", "dashboard")
+_dash_static = os.path.join(_dash_dir, "static")
+
+# 1. Directory structure
+test("Dashboard: directory exists", os.path.isdir(_dash_dir))
+test("Dashboard: static directory exists", os.path.isdir(_dash_static))
+
+# 2. All 4 files exist
+test("Dashboard: server.py exists",
+     os.path.isfile(os.path.join(_dash_dir, "server.py")))
+test("Dashboard: index.html exists",
+     os.path.isfile(os.path.join(_dash_static, "index.html")))
+test("Dashboard: style.css exists",
+     os.path.isfile(os.path.join(_dash_static, "style.css")))
+test("Dashboard: app.js exists",
+     os.path.isfile(os.path.join(_dash_static, "app.js")))
+
+# 3. Server module imports cleanly
+try:
+    import importlib.util as _ilu
+    _dash_spec = _ilu.spec_from_file_location(
+        "dashboard_server", os.path.join(_dash_dir, "server.py"))
+    _dash_mod = _ilu.module_from_spec(_dash_spec)
+    _dash_spec.loader.exec_module(_dash_mod)
+    _dash_imported = True
+except Exception as _dash_e:
+    _dash_imported = False
+    _dash_mod = None
+
+test("Dashboard: server.py imports without errors",
+     _dash_imported,
+     str(_dash_e) if not _dash_imported else "")
+
+if _dash_imported:
+    # 4. Health calculation matches statusline
+    _dash_gate_count = _dash_mod.count_gates()
+    _dash_mem_count = _dash_mod.get_memory_count()
+    _dash_health, _dash_dims = _dash_mod.calculate_health(_dash_gate_count, _dash_mem_count)
+    test("Dashboard: calculate_health returns int 0-100",
+         isinstance(_dash_health, int) and 0 <= _dash_health <= 100,
+         f"got {_dash_health}")
+
+    test("Dashboard: health dimensions has 6 entries",
+         len(_dash_dims) == 6,
+         f"got {len(_dash_dims)}: {list(_dash_dims.keys())}")
+
+    # 5. Audit parsing — Type B (gate decisions)
+    _dash_line_b = '{"timestamp":"2026-02-13T01:00:00+00:00","gate":"GATE 1: TEST","tool":"Bash","decision":"pass","reason":"","session_id":"test"}'
+    _dash_parsed_b = _dash_mod.parse_audit_line(_dash_line_b)
+    test("Dashboard: parse Type B audit line",
+         _dash_parsed_b is not None and _dash_parsed_b["type"] == "gate",
+         f"got {_dash_parsed_b}")
+    test("Dashboard: Type B has gate field",
+         _dash_parsed_b and _dash_parsed_b.get("gate") == "GATE 1: TEST")
+    test("Dashboard: Type B has decision field",
+         _dash_parsed_b and _dash_parsed_b.get("decision") == "pass")
+
+    # 6. Audit parsing — Type A (events)
+    _dash_line_a = '{"ts":1770944392.5,"event":"SubagentStop","data":{"agent_type":"Explore","status":"completed"}}'
+    _dash_parsed_a = _dash_mod.parse_audit_line(_dash_line_a)
+    test("Dashboard: parse Type A audit line",
+         _dash_parsed_a is not None and _dash_parsed_a["type"] == "event",
+         f"got {_dash_parsed_a}")
+    test("Dashboard: Type A has event field",
+         _dash_parsed_a and _dash_parsed_a.get("event") == "SubagentStop")
+
+    # 7. Gate aggregation
+    _dash_stats = _dash_mod.aggregate_gate_stats()
+    test("Dashboard: gate aggregation returns dict",
+         isinstance(_dash_stats, dict))
+
+    # 8. Audit dates
+    _dash_dates = _dash_mod.get_audit_dates()
+    test("Dashboard: audit dates returns list",
+         isinstance(_dash_dates, list))
+
+    # 9. Health color names
+    test("Dashboard: health_color_name(100) = cyan",
+         _dash_mod.health_color_name(100) == "cyan")
+    test("Dashboard: health_color_name(95) = green",
+         _dash_mod.health_color_name(95) == "green")
+    test("Dashboard: health_color_name(80) = orange",
+         _dash_mod.health_color_name(80) == "orange")
+    test("Dashboard: health_color_name(60) = yellow",
+         _dash_mod.health_color_name(60) == "yellow")
+    test("Dashboard: health_color_name(30) = red",
+         _dash_mod.health_color_name(30) == "red")
+
+    # 10. Malformed audit line returns None
+    _dash_bad = _dash_mod.parse_audit_line("not valid json {{{")
+    test("Dashboard: malformed audit line → None",
+         _dash_bad is None)
+
+    # 11. Route count matches plan (16 API + 1 static mount = 17)
+    test("Dashboard: 17 routes configured",
+         len(_dash_mod.routes) == 17,
+         f"got {len(_dash_mod.routes)}")
+
+    # 12. HTML has all 7 panels
+    with open(os.path.join(_dash_static, "index.html")) as _hf:
+        _html = _hf.read()
+    for _panel in ["panel-health", "panel-gates", "panel-timeline",
+                   "panel-memory", "panel-errors", "panel-components", "panel-history"]:
+        test(f"Dashboard: HTML has {_panel}",
+             _panel in _html, f"missing {_panel}")
+
+    # 13. CSS has dark theme variables
+    with open(os.path.join(_dash_static, "style.css")) as _cf:
+        _css = _cf.read()
+    test("Dashboard: CSS has dark theme bg",
+         "#1a1a2e" in _css)
+    test("Dashboard: CSS has accent color",
+         "#e94560" in _css)
+
+    # 14. JS has all panel renderers
+    with open(os.path.join(_dash_static, "app.js")) as _jf:
+        _js = _jf.read()
+    for _fn in ["renderHealth", "renderGates", "renderTimeline",
+                "renderMemory", "renderErrors", "renderComponents", "renderHistory"]:
+        test(f"Dashboard: JS has {_fn}",
+             f"function {_fn}" in _js or f"async function {_fn}" in _js,
+             f"missing {_fn}")
+
+    # 15. JS has SSE connection
+    test("Dashboard: JS has SSE connectSSE()",
+         "connectSSE" in _js and "EventSource" in _js)
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()
