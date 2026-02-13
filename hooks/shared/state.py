@@ -10,16 +10,23 @@ parallel agents from clobbering each other's state during concurrent access.
 
 State files: ~/.claude/hooks/state_{session_id}.json
 Legacy file: ~/.claude/hooks/state.json (cleaned up on boot)
+
+Schema versioning: STATE_VERSION tracks the current schema. On load, old
+state files are auto-migrated forward through the migration chain.
 """
 
 import fcntl
 import glob
 import json
+import logging
 import os
 import time
 
 STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 MEMORY_TIMESTAMP_FILE = os.path.join(STATE_DIR, ".memory_last_queried")
+
+# Schema version — bump when adding/removing/renaming fields
+STATE_VERSION = 2
 
 # Cap lists to prevent unbounded growth
 MAX_FILES_READ = 200
@@ -29,6 +36,8 @@ MAX_UNLOGGED_ERRORS = 20
 MAX_ERROR_PATTERNS = 50
 MAX_ACTIVE_BANS = 50
 MAX_PENDING_CHAINS = 10
+
+logger = logging.getLogger(__name__)
 
 
 def state_file_for(session_id="main"):
@@ -46,6 +55,7 @@ def state_file_for(session_id="main"):
 
 def default_state():
     return {
+        "_version": STATE_VERSION,
         "files_read": [],
         "memory_last_queried": 0,
         "pending_verification": [],
@@ -61,14 +71,137 @@ def default_state():
         "current_error_signature": "",
         "active_bans": [],
         "last_exit_plan_mode": 0,
+        # v2 fields
+        "error_windows": [],
+        "skill_usage": {},
+        "recent_skills": [],
     }
+
+
+def migrate_v1_to_v2(state):
+    """Migrate state from v1 (no _version field) to v2.
+
+    Adds new fields introduced in v2.0.3/v2.0.4 with safe defaults.
+    """
+    if "error_windows" not in state:
+        state["error_windows"] = []
+    if "skill_usage" not in state:
+        state["skill_usage"] = {}
+    if "recent_skills" not in state:
+        state["recent_skills"] = []
+
+    state["_version"] = 2
+    return state
+
+
+# Migration chain: maps (from_version) -> migration function
+_MIGRATIONS = {
+    1: migrate_v1_to_v2,
+}
+
+
+def _run_migrations(state):
+    """Run the migration chain from current version to STATE_VERSION.
+
+    Returns the migrated state. If any migration fails, logs a warning
+    and returns the state as-is with version set to STATE_VERSION.
+    """
+    version = state.get("_version", 1)
+    if version >= STATE_VERSION:
+        return state
+
+    while version < STATE_VERSION:
+        migrate_fn = _MIGRATIONS.get(version)
+        if migrate_fn is None:
+            logger.warning("No migration for v%d -> v%d, skipping", version, version + 1)
+            version += 1
+            continue
+        try:
+            state = migrate_fn(state)
+            version = state.get("_version", version + 1)
+        except Exception as e:
+            logger.warning("Migration v%d failed: %s", version, e)
+            state["_version"] = STATE_VERSION
+            break
+
+    return state
+
+
+def _validate_consistency(state):
+    """Validate and fix state consistency after load.
+
+    - Remove duplicates from lists
+    - Ensure pending_verification and verified_fixes are disjoint
+    - Cap all lists to their MAX_* limits
+    Logs warnings for any corrections made.
+    """
+    corrections = []
+
+    # Deduplicate lists
+    for list_key in ("files_read", "pending_verification", "verified_fixes",
+                     "unlogged_errors", "pending_chain_ids", "active_bans",
+                     "error_windows", "recent_skills"):
+        lst = state.get(list_key)
+        if isinstance(lst, list):
+            # Use dict.fromkeys to preserve order while deduplicating
+            # Only works for hashable items; skip unhashable gracefully
+            try:
+                deduped = list(dict.fromkeys(lst))
+                if len(deduped) < len(lst):
+                    corrections.append(f"{list_key}: removed {len(lst) - len(deduped)} duplicates")
+                    state[list_key] = deduped
+            except TypeError:
+                pass  # Items not hashable, skip dedup
+
+    # Ensure pending_verification and verified_fixes are disjoint
+    pending = set(state.get("pending_verification", []))
+    verified = set(state.get("verified_fixes", []))
+    overlap = pending & verified
+    if overlap:
+        # Items that are verified should be removed from pending
+        state["pending_verification"] = [p for p in state["pending_verification"] if p not in overlap]
+        corrections.append(f"pending_verification: removed {len(overlap)} items already in verified_fixes")
+
+    # Cap all lists to MAX_* limits
+    _cap_list(state, "files_read", MAX_FILES_READ, corrections)
+    _cap_list(state, "verified_fixes", MAX_VERIFIED_FIXES, corrections)
+    _cap_list(state, "pending_verification", MAX_PENDING_VERIFICATION, corrections)
+    _cap_list(state, "unlogged_errors", MAX_UNLOGGED_ERRORS, corrections)
+    _cap_list(state, "active_bans", MAX_ACTIVE_BANS, corrections)
+    _cap_list(state, "pending_chain_ids", MAX_PENDING_CHAINS, corrections)
+
+    # Cap error_pattern_counts dict
+    pattern_counts = state.get("error_pattern_counts", {})
+    if len(pattern_counts) > MAX_ERROR_PATTERNS:
+        sorted_patterns = sorted(pattern_counts.items(), key=lambda x: x[1], reverse=True)
+        state["error_pattern_counts"] = dict(sorted_patterns[:MAX_ERROR_PATTERNS])
+        corrections.append(f"error_pattern_counts: trimmed from {len(pattern_counts)} to {MAX_ERROR_PATTERNS}")
+
+    # Ensure skill_usage is a dict
+    if not isinstance(state.get("skill_usage"), dict):
+        state["skill_usage"] = {}
+        corrections.append("skill_usage: reset to empty dict (was not a dict)")
+
+    if corrections:
+        logger.warning("State consistency corrections: %s", "; ".join(corrections))
+
+    return state
+
+
+def _cap_list(state, key, max_size, corrections):
+    """Cap a list field to max_size, keeping the most recent (tail) entries."""
+    lst = state.get(key, [])
+    if isinstance(lst, list) and len(lst) > max_size:
+        corrections.append(f"{key}: capped from {len(lst)} to {max_size}")
+        state[key] = lst[-max_size:]
 
 
 def load_state(session_id="main"):
     """Load state for a specific session/agent with shared file locking.
 
     Acquires a shared (read) lock on the state file's lock file to prevent
-    reading while a write is in progress.
+    reading while a write is in progress. Auto-migrates old schema versions
+    and validates consistency.
     """
     state_file = state_file_for(session_id)
     if os.path.exists(state_file):
@@ -83,6 +216,10 @@ def load_state(session_id="main"):
                 for key, val in default_state().items():
                     if key not in state:
                         state[key] = val
+                # Run migrations if needed
+                state = _run_migrations(state)
+                # Validate consistency
+                state = _validate_consistency(state)
                 return state
             except (json.JSONDecodeError, IOError):
                 return default_state()
@@ -97,6 +234,8 @@ def load_state(session_id="main"):
                 for key, val in default_state().items():
                     if key not in state:
                         state[key] = val
+                state = _run_migrations(state)
+                state = _validate_consistency(state)
                 return state
             except (json.JSONDecodeError, IOError):
                 return default_state()
@@ -137,6 +276,9 @@ def save_state(state, session_id="main"):
     chains = state.get("pending_chain_ids", [])
     if len(chains) > MAX_PENDING_CHAINS:
         state["pending_chain_ids"] = chains[-MAX_PENDING_CHAINS:]
+
+    # Ensure version is set
+    state["_version"] = STATE_VERSION
 
     state_file = state_file_for(session_id)
     os.makedirs(os.path.dirname(state_file), exist_ok=True)

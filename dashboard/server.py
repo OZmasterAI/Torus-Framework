@@ -583,6 +583,50 @@ async def api_memories_tags(request):
         return JSONResponse({"tags": {}, "error": str(e)})
 
 
+async def api_memories_graph(request):
+    """Build a tag co-occurrence graph from ChromaDB knowledge collection."""
+    _, cols = _get_chroma()
+    if "knowledge" not in cols:
+        return JSONResponse({"nodes": [], "edges": []})
+    try:
+        col = cols["knowledge"]
+        count = col.count()
+        if count == 0:
+            return JSONResponse({"nodes": [], "edges": []})
+        results = col.get(limit=min(count, 500), include=["metadatas"])
+        metas = results.get("metadatas", [])
+
+        # Count tag frequencies and co-occurrences
+        tag_freq = {}
+        co_occur = {}
+        for meta in metas:
+            if not meta or not meta.get("tags"):
+                continue
+            tags = [t.strip() for t in meta["tags"].split(",") if t.strip()]
+            for tag in tags:
+                tag_freq[tag] = tag_freq.get(tag, 0) + 1
+            # Record co-occurrences
+            for i in range(len(tags)):
+                for j in range(i + 1, len(tags)):
+                    pair = tuple(sorted([tags[i], tags[j]]))
+                    co_occur[pair] = co_occur.get(pair, 0) + 1
+
+        # Top 50 tags by frequency
+        sorted_tags = sorted(tag_freq.items(), key=lambda x: -x[1])[:50]
+        top_tag_set = {t for t, _ in sorted_tags}
+
+        nodes = [{"id": tag, "label": tag, "count": cnt} for tag, cnt in sorted_tags]
+        edges = [
+            {"source": pair[0], "target": pair[1], "weight": weight}
+            for pair, weight in co_occur.items()
+            if pair[0] in top_tag_set and pair[1] in top_tag_set
+        ]
+
+        return JSONResponse({"nodes": nodes, "edges": edges})
+    except Exception as e:
+        return JSONResponse({"nodes": [], "edges": [], "error": str(e)})
+
+
 async def api_components(request):
     """Inventory of framework components: gates, hooks, skills, agents, plugins."""
     # Gates
@@ -949,6 +993,7 @@ routes = [
     Route("/api/memories", api_memories_search),
     Route("/api/memories/stats", api_memories_stats),
     Route("/api/memories/tags", api_memories_tags),
+    Route("/api/memories/graph", api_memories_graph),
     Route("/api/memories/{id}", api_memory_detail),
     Route("/api/components", api_components),
     Route("/api/skill-usage", api_skill_usage),

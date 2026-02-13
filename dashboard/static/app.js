@@ -426,6 +426,228 @@ function searchMemoryByTag(tag) {
     renderMemory(tag);
 }
 
+// ── Memory Tag Graph ────────────────────────────────────
+
+let memoryGraphVisible = false;
+let graphAnimationId = null;
+
+function toggleMemoryGraph() {
+    memoryGraphVisible = !memoryGraphVisible;
+    const container = document.getElementById('memory-graph-container');
+    const listView = document.getElementById('memory-content');
+    const searchBar = document.getElementById('memory-search-bar');
+    const tagCloud = document.getElementById('memory-tags');
+    const btn = document.getElementById('memory-graph-toggle');
+
+    if (memoryGraphVisible) {
+        container.classList.remove('hidden');
+        listView.style.display = 'none';
+        searchBar.style.display = 'none';
+        tagCloud.style.display = 'none';
+        btn.classList.add('active');
+        renderMemoryGraph();
+    } else {
+        container.classList.add('hidden');
+        listView.style.display = '';
+        searchBar.style.display = '';
+        tagCloud.style.display = '';
+        btn.classList.remove('active');
+        if (graphAnimationId) {
+            cancelAnimationFrame(graphAnimationId);
+            graphAnimationId = null;
+        }
+    }
+}
+
+async function renderMemoryGraph() {
+    const data = await apiFetch('/api/memories/graph');
+    if (!data || !data.nodes || data.nodes.length === 0) {
+        const canvas = document.getElementById('memory-graph-canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#64748b';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No tag data available', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+
+    const canvas = document.getElementById('memory-graph-canvas');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * (window.devicePixelRatio || 1);
+    canvas.height = 400 * (window.devicePixelRatio || 1);
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = '400px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+    const W = rect.width;
+    const H = 400;
+    const nodes = data.nodes;
+    const edges = data.edges;
+
+    // Build lookup
+    const nodeMap = {};
+    const maxCount = Math.max(...nodes.map(n => n.count), 1);
+    nodes.forEach((n, i) => {
+        n.x = W / 2 + (Math.random() - 0.5) * W * 0.6;
+        n.y = H / 2 + (Math.random() - 0.5) * H * 0.6;
+        n.vx = 0;
+        n.vy = 0;
+        n.radius = 6 + (n.count / maxCount) * 18;
+        nodeMap[n.id] = i;
+    });
+
+    // Color by prefix
+    function nodeColor(label) {
+        if (label.startsWith('type:')) return '#00d2ff';
+        if (label.startsWith('area:')) return '#4ade80';
+        if (label.startsWith('priority:')) return '#fb923c';
+        if (label.startsWith('outcome:')) return '#facc15';
+        if (label.startsWith('error_pattern:')) return '#f87171';
+        return '#94a3b8';
+    }
+
+    const maxWeight = Math.max(...edges.map(e => e.weight), 1);
+
+    // Force simulation
+    function simulate(steps) {
+        for (let step = 0; step < steps; step++) {
+            // Repulsion between all nodes
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    let dx = nodes[j].x - nodes[i].x;
+                    let dy = nodes[j].y - nodes[i].y;
+                    let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    let force = 800 / (dist * dist);
+                    let fx = (dx / dist) * force;
+                    let fy = (dy / dist) * force;
+                    nodes[i].vx -= fx;
+                    nodes[i].vy -= fy;
+                    nodes[j].vx += fx;
+                    nodes[j].vy += fy;
+                }
+            }
+
+            // Attraction along edges
+            for (const edge of edges) {
+                const si = nodeMap[edge.source];
+                const ti = nodeMap[edge.target];
+                if (si === undefined || ti === undefined) continue;
+                let dx = nodes[ti].x - nodes[si].x;
+                let dy = nodes[ti].y - nodes[si].y;
+                let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                let force = (dist - 80) * 0.005 * (edge.weight / maxWeight);
+                let fx = (dx / dist) * force;
+                let fy = (dy / dist) * force;
+                nodes[si].vx += fx;
+                nodes[si].vy += fy;
+                nodes[ti].vx -= fx;
+                nodes[ti].vy -= fy;
+            }
+
+            // Center gravity
+            for (const node of nodes) {
+                node.vx += (W / 2 - node.x) * 0.001;
+                node.vy += (H / 2 - node.y) * 0.001;
+            }
+
+            // Apply velocity with damping
+            const damping = 0.85;
+            for (const node of nodes) {
+                node.vx *= damping;
+                node.vy *= damping;
+                node.x += node.vx;
+                node.y += node.vy;
+                // Clamp to canvas bounds
+                node.x = Math.max(node.radius + 5, Math.min(W - node.radius - 5, node.x));
+                node.y = Math.max(node.radius + 5, Math.min(H - node.radius - 5, node.y));
+            }
+        }
+    }
+
+    // Run simulation in batches for smoother animation
+    let simStep = 0;
+    const totalSteps = 200;
+
+    function animateStep() {
+        if (simStep >= totalSteps) return;
+        simulate(5);
+        simStep += 5;
+        drawGraph();
+        graphAnimationId = requestAnimationFrame(animateStep);
+    }
+
+    function drawGraph() {
+        ctx.clearRect(0, 0, W, H);
+
+        // Draw edges
+        for (const edge of edges) {
+            const si = nodeMap[edge.source];
+            const ti = nodeMap[edge.target];
+            if (si === undefined || ti === undefined) continue;
+            ctx.beginPath();
+            ctx.moveTo(nodes[si].x, nodes[si].y);
+            ctx.lineTo(nodes[ti].x, nodes[ti].y);
+            ctx.strokeStyle = `rgba(148, 163, 184, ${0.1 + 0.5 * (edge.weight / maxWeight)})`;
+            ctx.lineWidth = 0.5 + 1.5 * (edge.weight / maxWeight);
+            ctx.stroke();
+        }
+
+        // Draw nodes
+        for (const node of nodes) {
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+            ctx.fillStyle = nodeColor(node.label);
+            ctx.globalAlpha = 0.85;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        // Draw labels
+        ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (const node of nodes) {
+            const label = node.label.length > 20 ? node.label.substring(0, 18) + '..' : node.label;
+            // Text shadow for readability
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillText(label, node.x + 1, node.y + node.radius + 11);
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillText(label, node.x, node.y + node.radius + 10);
+        }
+    }
+
+    // Start animation
+    if (graphAnimationId) cancelAnimationFrame(graphAnimationId);
+    animateStep();
+
+    // Click handling
+    canvas.onclick = function(e) {
+        const canvasRect = canvas.getBoundingClientRect();
+        const mx = e.clientX - canvasRect.left;
+        const my = e.clientY - canvasRect.top;
+        for (const node of nodes) {
+            const dx = mx - node.x;
+            const dy = my - node.y;
+            if (dx * dx + dy * dy <= (node.radius + 4) * (node.radius + 4)) {
+                // Switch to list view filtered by this tag
+                memoryGraphVisible = false;
+                document.getElementById('memory-graph-container').classList.add('hidden');
+                document.getElementById('memory-content').style.display = '';
+                document.getElementById('memory-search-bar').style.display = '';
+                document.getElementById('memory-tags').style.display = '';
+                document.getElementById('memory-graph-toggle').classList.remove('active');
+                searchMemoryByTag(node.label);
+                break;
+            }
+        }
+    };
+}
+
 // ── Error Patterns ──────────────────────────────────────
 
 async function renderErrors() {
@@ -957,6 +1179,11 @@ function setupEventListeners() {
         }
     });
 
+    // Memory graph toggle
+    document.getElementById('memory-graph-toggle').addEventListener('click', () => {
+        toggleMemoryGraph();
+    });
+
     // Component tabs
     document.getElementById('component-tabs').addEventListener('click', (e) => {
         if (e.target.classList.contains('tab')) {
@@ -988,11 +1215,61 @@ function setupEventListeners() {
     });
 }
 
+// ── Theme Toggle ────────────────────────────────────────
+
+function setupTheme() {
+    const saved = localStorage.getItem('dashboard-theme');
+    if (saved === 'light') {
+        document.documentElement.dataset.theme = 'light';
+    }
+    updateThemeIcon();
+
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+        const current = document.documentElement.dataset.theme;
+        const next = current === 'light' ? 'dark' : 'light';
+        if (next === 'dark') {
+            delete document.documentElement.dataset.theme;
+        } else {
+            document.documentElement.dataset.theme = next;
+        }
+        localStorage.setItem('dashboard-theme', next);
+        updateThemeIcon();
+    });
+}
+
+function updateThemeIcon() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    const isLight = document.documentElement.dataset.theme === 'light';
+    btn.innerHTML = isLight ? '&#9728;' : '&#9790;';
+    btn.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
+}
+
+// ── Panel Collapse ──────────────────────────────────────
+
+function setupPanelCollapse() {
+    document.querySelectorAll('.card h2').forEach(h2 => {
+        // Don't add if already has a collapse button
+        if (h2.querySelector('.panel-collapse-btn')) return;
+        const btn = document.createElement('button');
+        btn.className = 'panel-collapse-btn';
+        btn.innerHTML = '&#9660;';
+        btn.title = 'Collapse/Expand';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            h2.closest('.card').classList.toggle('collapsed');
+        });
+        h2.appendChild(btn);
+    });
+}
+
 // ── Init ────────────────────────────────────────────────
 
 async function init() {
+    setupTheme();
     setupOverlay();
     setupEventListeners();
+    setupPanelCollapse();
 
     // Initial render — all panels in parallel
     await Promise.all([

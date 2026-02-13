@@ -23,6 +23,7 @@
                 <input type="checkbox" id="auto-refresh-cb" checked>
                 Auto
             </label>
+            <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark theme">&#9790;</button>
         </div>
     </header>
 
@@ -87,14 +88,18 @@
         <section class="card" id="panel-memory">
             <h2>Memory Browser
                 <span id="memory-total" class="badge">0</span>
+                <button class="btn-sm graph-toggle" id="memory-graph-toggle">Graph</button>
             </h2>
-            <div class="search-bar">
+            <div class="search-bar" id="memory-search-bar">
                 <input type="text" id="memory-search" placeholder="Search memories..." autocomplete="off">
                 <button id="memory-search-btn" class="btn-sm">Search</button>
             </div>
             <div id="memory-tags" class="tag-cloud"></div>
             <div id="memory-content" class="panel-body memory-scroll">
                 <div class="loading">Loading...</div>
+            </div>
+            <div id="memory-graph-container" class="memory-graph-container hidden">
+                <canvas id="memory-graph-canvas" width="600" height="400"></canvas>
             </div>
         </section>
 

@@ -1854,5 +1854,181 @@ def list_stale_memories(days: int = 60, top_k: int = 20) -> dict:
         return {"error": f"Failed to list stale memories: {str(e)}"}
 
 
+@mcp.tool()
+def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3) -> dict:
+    """Group related memories into semantic clusters using ChromaDB distance queries.
+
+    Uses a union-find algorithm over ChromaDB neighbor queries to discover
+    clusters of related knowledge. Useful for finding themes, redundancies,
+    and knowledge gaps.
+
+    Args:
+        min_cluster_size: Minimum memories in a cluster to be returned (default 3)
+        distance_threshold: Max cosine distance to consider memories related (default 0.3, range 0.05-0.8)
+    """
+    min_cluster_size = max(2, min(min_cluster_size, 20))
+    distance_threshold = max(0.05, min(distance_threshold, 0.8))
+
+    count = collection.count()
+    if count == 0:
+        return {"clusters": [], "total_memories": 0, "message": "Memory is empty."}
+
+    # Fetch all memories
+    try:
+        all_data = collection.get(
+            limit=count,
+            include=["metadatas", "documents"],
+        )
+    except Exception as e:
+        return {"clusters": [], "error": f"Failed to fetch memories: {str(e)}"}
+
+    if not all_data or not all_data.get("ids"):
+        return {"clusters": [], "total_memories": 0}
+
+    ids = all_data["ids"]
+    docs = all_data.get("documents") or []
+    metas = all_data.get("metadatas") or []
+
+    n = len(ids)
+    if n < min_cluster_size:
+        return {"clusters": [], "total_memories": n, "message": f"Not enough memories ({n}) for clustering."}
+
+    # Build id -> index mapping
+    id_to_idx = {mid: i for i, mid in enumerate(ids)}
+
+    # Union-Find data structure
+    parent = list(range(n))
+    rank = [0] * n
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]  # path compression
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return
+        if rank[ra] < rank[rb]:
+            ra, rb = rb, ra
+        parent[rb] = ra
+        if rank[ra] == rank[rb]:
+            rank[ra] += 1
+
+    # For each memory, find neighbors within distance_threshold
+    # Process in batches to avoid overwhelming ChromaDB
+    neighbor_k = min(30, n)  # Check up to 30 nearest neighbors per memory
+
+    for i in range(n):
+        doc = docs[i] if i < len(docs) and docs[i] else None
+        if not doc:
+            continue
+
+        try:
+            neighbors = collection.query(
+                query_texts=[doc],
+                n_results=neighbor_k,
+                include=["distances"],
+            )
+
+            if not neighbors or not neighbors.get("ids") or not neighbors["ids"][0]:
+                continue
+
+            neighbor_ids = neighbors["ids"][0]
+            neighbor_dists = neighbors["distances"][0] if neighbors.get("distances") else []
+
+            for j, nid in enumerate(neighbor_ids):
+                if nid == ids[i]:
+                    continue  # skip self
+                dist = neighbor_dists[j] if j < len(neighbor_dists) else 1.0
+                if dist <= distance_threshold and nid in id_to_idx:
+                    union(i, id_to_idx[nid])
+
+        except Exception:
+            continue
+
+    # Collect clusters
+    clusters_map = {}  # root_idx -> [member_indices]
+    for i in range(n):
+        root = find(i)
+        if root not in clusters_map:
+            clusters_map[root] = []
+        clusters_map[root].append(i)
+
+    # Filter by min_cluster_size and build output
+    from collections import Counter
+
+    result_clusters = []
+    for root, members in clusters_map.items():
+        if len(members) < min_cluster_size:
+            continue
+
+        member_ids = [ids[i] for i in members]
+
+        # Extract common tags
+        all_tags = []
+        all_words = []
+        for i in members:
+            meta = metas[i] if i < len(metas) else {}
+            tags_str = meta.get("tags", "")
+            if tags_str:
+                all_tags.extend(t.strip() for t in tags_str.split(",") if t.strip())
+
+            # Collect content words for topic label
+            doc = docs[i] if i < len(docs) and docs[i] else ""
+            words = re.findall(r'[a-zA-Z_]{4,}', doc.lower())
+            all_words.extend(words)
+
+        # Common tags: tags appearing in >30% of cluster members
+        tag_counts = Counter(all_tags)
+        common_tags = [tag for tag, cnt in tag_counts.most_common(10)
+                       if cnt >= max(2, len(members) * 0.3)]
+
+        # Topic label: top 3 most frequent meaningful words (exclude stop words)
+        stop_words = {"this", "that", "with", "from", "have", "been", "were", "will",
+                      "would", "could", "should", "their", "there", "they", "which",
+                      "when", "what", "where", "than", "then", "also", "about", "into",
+                      "more", "some", "such", "only", "other", "each", "just", "like",
+                      "over", "very", "after", "before", "between", "under", "again",
+                      "does", "done", "make", "made", "most", "much", "must", "need",
+                      "none", "true", "false"}
+        word_counts = Counter(w for w in all_words if w not in stop_words)
+        top_words = [w for w, _ in word_counts.most_common(3)]
+        topic = " / ".join(top_words) if top_words else "misc"
+
+        # Sample preview: first member's content snippet
+        sample_idx = members[0]
+        sample_doc = docs[sample_idx] if sample_idx < len(docs) and docs[sample_idx] else ""
+        sample_preview = sample_doc[:SUMMARY_LENGTH].replace("\n", " ")
+        if len(sample_doc) > SUMMARY_LENGTH:
+            sample_preview += "..."
+
+        result_clusters.append({
+            "cluster_id": f"cluster_{len(result_clusters)}",
+            "topic": topic,
+            "size": len(members),
+            "common_tags": common_tags,
+            "member_ids": member_ids,
+            "sample_preview": sample_preview,
+        })
+
+    # Sort by size descending, cap at 20
+    result_clusters.sort(key=lambda x: x["size"], reverse=True)
+    result_clusters = result_clusters[:20]
+
+    _touch_memory_timestamp()
+
+    return {
+        "clusters": result_clusters,
+        "total_clusters": len(result_clusters),
+        "total_memories": count,
+        "params": {
+            "min_cluster_size": min_cluster_size,
+            "distance_threshold": distance_threshold,
+        },
+    }
+
+
 if __name__ == "__main__":
     mcp.run()

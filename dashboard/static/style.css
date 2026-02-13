@@ -23,6 +23,61 @@
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
+/* ── Light Theme ──────────────────────────────────────── */
+
+[data-theme="light"] {
+    --bg-primary: #f0f2f5;
+    --bg-secondary: #e8eaed;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f5f7fa;
+    --accent: #d63851;
+    --accent-dim: #b82e44;
+    --cyan: #0891b2;
+    --green: #16a34a;
+    --orange: #ea580c;
+    --yellow: #ca8a04;
+    --red: #dc2626;
+    --text-primary: #1a1a2e;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --border: #d1d5db;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] body {
+    background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+}
+
+[data-theme="light"] header {
+    background: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="light"] .overlay {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="light"] .markdown-body pre {
+    background: #f1f5f9;
+}
+
+[data-theme="light"] .badge-pass { background: rgba(22, 163, 74, 0.12); }
+[data-theme="light"] .badge-block { background: rgba(220, 38, 38, 0.12); }
+[data-theme="light"] .badge-warn { background: rgba(202, 138, 4, 0.12); }
+[data-theme="light"] .badge-event { background: rgba(8, 145, 178, 0.12); }
+[data-theme="light"] .badge-error { background: rgba(234, 88, 12, 0.12); }
+
+[data-theme="light"] .tag-pill {
+    background: rgba(8, 145, 178, 0.1);
+}
+[data-theme="light"] .tag-pill:hover {
+    background: rgba(8, 145, 178, 0.2);
+}
+
+[data-theme="light"] .toast {
+    background: #ffffff;
+    border-color: #e5e7eb;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -106,6 +161,25 @@ header {
     gap: 4px;
 }
 .auto-refresh-toggle input { cursor: pointer; }
+
+.theme-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 16px;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+.theme-toggle:hover {
+    border-color: var(--cyan);
+    color: var(--cyan);
+}
 
 /* ── Dashboard Grid ───────────────────────────────────── */
 
@@ -404,6 +478,36 @@ header {
     overflow-y: auto;
 }
 
+/* ── Memory Graph ────────────────────────────────────── */
+
+.memory-graph-container {
+    width: 100%;
+    border-radius: 6px;
+    background: var(--bg-primary);
+    overflow: hidden;
+}
+
+.memory-graph-container.hidden {
+    display: none;
+}
+
+.memory-graph-container canvas {
+    width: 100%;
+    height: 400px;
+    display: block;
+}
+
+.graph-toggle {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 3px 10px;
+}
+
+.graph-toggle.active {
+    background: var(--cyan);
+    color: var(--bg-primary);
+}
+
 .memory-entry {
     padding: 6px 0;
     border-bottom: 1px solid rgba(30, 58, 95, 0.4);
@@ -683,6 +787,45 @@ header {
     background: var(--text-muted);
 }
 
+/* ── Panel Collapse ───────────────────────────────────── */
+
+.panel-collapse-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.panel-collapse-btn:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-secondary);
+}
+
+.card.collapsed .panel-body,
+.card.collapsed .search-bar,
+.card.collapsed .tag-cloud,
+.card.collapsed .tab-bar,
+.card.collapsed .timeline-filters,
+.card.collapsed .gate-perf-section,
+.card.collapsed .memory-graph-container {
+    display: none !important;
+}
+
+.card.collapsed .panel-collapse-btn {
+    transform: rotate(-90deg);
+}
+
 /* ── Responsive ───────────────────────────────────────── */
 
 @media (max-width: 900px) {
@@ -698,6 +841,126 @@ header {
     }
     .gate-name {
         width: 140px;
+    }
+}
+
+/* ── Tablet (768px) ──────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 10px;
+    }
+    .card.full-width {
+        grid-column: 1;
+    }
+    header {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+    }
+    .header-left, .header-right {
+        gap: 10px;
+    }
+    .tab-bar {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        flex-wrap: nowrap;
+    }
+    .tab-bar::-webkit-scrollbar {
+        display: none;
+    }
+    .tab {
+        min-height: 44px;
+        min-width: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .btn-sm {
+        min-height: 44px;
+        min-width: 44px;
+        padding: 8px 14px;
+    }
+    .search-bar input {
+        min-height: 44px;
+        font-size: 16px; /* prevent iOS zoom */
+    }
+    .inline-select {
+        min-height: 44px;
+        padding: 6px 10px;
+    }
+    .timeline-filters {
+        gap: 6px;
+    }
+    .gate-name {
+        width: 120px;
+        font-size: 11px;
+    }
+}
+
+/* ── Phone (480px) ───────────────────────────────────── */
+
+@media (max-width: 480px) {
+    header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 6px 10px;
+        gap: 6px;
+    }
+    .header-left {
+        justify-content: space-between;
+    }
+    .header-right {
+        justify-content: flex-end;
+        gap: 8px;
+    }
+    .health-bar-mini {
+        width: 60px;
+    }
+    .header-project {
+        font-size: 12px;
+    }
+    .dashboard-grid {
+        gap: 8px;
+        padding: 8px;
+    }
+    .card {
+        padding: 10px;
+    }
+    .card h2 {
+        font-size: 12px;
+    }
+    .panel-body {
+        font-size: 12px;
+    }
+    .health-big-pct {
+        font-size: 36px;
+    }
+    .timeline-entry {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    .timeline-time {
+        min-width: auto;
+    }
+    .gate-bar-container {
+        display: none;
+    }
+    .gate-name {
+        flex: 1;
+        width: auto;
+    }
+    .compare-header,
+    .compare-row {
+        grid-template-columns: 1fr;
+    }
+    .overlay-content {
+        width: 95%;
+        padding: 16px;
     }
 }
 
