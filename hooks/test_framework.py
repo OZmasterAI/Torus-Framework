@@ -4420,6 +4420,93 @@ else:
 
 
 # ─────────────────────────────────────────────────
+# Test: v2.1.1 Features
+# ─────────────────────────────────────────────────
+print("\n--- v2.1.1 Features ---")
+
+# Read audit_log.py source
+_audit_log_path = os.path.join(os.path.dirname(__file__), "shared", "audit_log.py")
+if os.path.isfile(_audit_log_path):
+    with open(_audit_log_path) as _audit_logf:
+        _audit_log_src = _audit_logf.read()
+
+    # Audit log enrichment (4 tests)
+    test("v2.1.1: audit_log.py log_gate_decision accepts state_keys parameter",
+         "def log_gate_decision" in _audit_log_src and "state_keys" in _audit_log_src,
+         "log_gate_decision with state_keys parameter not found in audit_log.py")
+
+    test("v2.1.1: audit_log.py entry dict includes state_keys field",
+         '"state_keys"' in _audit_log_src or "'state_keys'" in _audit_log_src,
+         "state_keys field not found in audit_log.py entry dict")
+else:
+    test("v2.1.1: audit_log.py log_gate_decision accepts state_keys parameter", False, "audit_log.py not found")
+    test("v2.1.1: audit_log.py entry dict includes state_keys field", False, "audit_log.py not found")
+
+# Read enforcer.py source
+_enforcer_path_v211 = os.path.join(os.path.dirname(__file__), "enforcer.py")
+if os.path.isfile(_enforcer_path_v211):
+    with open(_enforcer_path_v211) as _enforcerf_v211:
+        _enforcer_src_v211 = _enforcerf_v211.read()
+
+    test("v2.1.1: enforcer.py passes state_keys to log_gate_decision",
+         "state_keys" in _enforcer_src_v211 and "handle_pre_tool_use" in _enforcer_src_v211,
+         "state_keys not passed to log_gate_decision in enforcer.py handle_pre_tool_use")
+
+    test("v2.1.1: enforcer.py GATE_DEPENDENCIES is used in handle_pre_tool_use",
+         "GATE_DEPENDENCIES" in _enforcer_src_v211 and "handle_pre_tool_use" in _enforcer_src_v211,
+         "GATE_DEPENDENCIES not used in handle_pre_tool_use")
+else:
+    test("v2.1.1: enforcer.py passes state_keys to log_gate_decision", False, "enforcer.py not found")
+    test("v2.1.1: enforcer.py GATE_DEPENDENCIES is used in handle_pre_tool_use", False, "enforcer.py not found")
+
+# Read dashboard server.py
+_server_v211_path = os.path.expanduser("~/.claude/dashboard/server.py")
+if os.path.isfile(_server_v211_path):
+    with open(_server_v211_path) as _server_v211f:
+        _server_v211_src = _server_v211f.read()
+
+    # Gate dependency visualization (1 test)
+    test("v2.1.1: server.py has gate-deps endpoint",
+         "gate-deps" in _server_v211_src or "gate_deps" in _server_v211_src,
+         "gate-deps endpoint not found in server.py")
+
+    # Dashboard route count (1 test)
+    _route_count = _server_v211_src.count("Route(")
+    test("v2.1.1: server.py has expected route count (24+ routes)",
+         _route_count >= 24,
+         f"Expected 24+ routes in server.py, found {_route_count}")
+else:
+    test("v2.1.1: server.py has gate-deps endpoint", False, "dashboard/server.py not found")
+    test("v2.1.1: server.py has expected route count (24+ routes)", False, "dashboard/server.py not found")
+
+# Read dashboard app.js
+_appjs_v211_path = os.path.expanduser("~/.claude/dashboard/static/app.js")
+if os.path.isfile(_appjs_v211_path):
+    with open(_appjs_v211_path) as _appjs_v211f:
+        _appjs_v211_src = _appjs_v211f.read()
+
+    # Gate dependency visualization (1 test)
+    test("v2.1.1: app.js has gate dependency rendering",
+         "gate-dep" in _appjs_v211_src or "gateDep" in _appjs_v211_src or "renderGateDeps" in _appjs_v211_src,
+         "gate dependency rendering not found in app.js")
+else:
+    test("v2.1.1: app.js has gate dependency rendering", False, "dashboard/static/app.js not found")
+
+# Read dashboard style.css
+_stylecss_v211_path = os.path.expanduser("~/.claude/dashboard/static/style.css")
+if os.path.isfile(_stylecss_v211_path):
+    with open(_stylecss_v211_path) as _stylecss_v211f:
+        _stylecss_v211_src = _stylecss_v211f.read()
+
+    # Gate dependency visualization (1 test)
+    test("v2.1.1: style.css has gate dependency matrix styles",
+         "dep-read" in _stylecss_v211_src or "gate-dep" in _stylecss_v211_src,
+         "gate dependency matrix styles not found in style.css")
+else:
+    test("v2.1.1: style.css has gate dependency matrix styles", False, "dashboard/static/style.css not found")
+
+
+# ─────────────────────────────────────────────────
 # Test: Gate Bypass Regression Tests
 # ─────────────────────────────────────────────────
 print("\n--- Gate Bypass Regression Tests ---")

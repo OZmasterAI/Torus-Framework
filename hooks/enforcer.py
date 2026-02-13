@@ -244,21 +244,31 @@ def handle_pre_tool_use(tool_name, tool_input, state):
             elapsed_ms = (time.time() - t0) * 1000
             gate_label = getattr(gate, "GATE_NAME", gate.__name__)
             session_id = state.get("_session_id", "")
+
+            # Look up state key dependencies for this gate
+            gate_short = gate.__name__.split(".")[-1]  # e.g., "gate_01_read_before_edit"
+            deps = GATE_DEPENDENCIES.get(gate_short, {})
+            state_keys_read = deps.get("reads", [])
+
             if elapsed_ms > 100:
                 log_gate_decision(gate_label, tool_name, "slow",
-                                  f"gate took {elapsed_ms:.0f}ms (>100ms threshold)", session_id)
+                                  f"gate took {elapsed_ms:.0f}ms (>100ms threshold)", session_id, state_keys_read)
             if result.blocked:
-                log_gate_decision(gate_label, tool_name, "block", result.message, session_id)
+                log_gate_decision(gate_label, tool_name, "block", result.message, session_id, state_keys_read)
                 print(result.message, file=sys.stderr)
                 sys.exit(1)
             elif result.message:
-                log_gate_decision(gate_label, tool_name, "warn", result.message, session_id)
+                log_gate_decision(gate_label, tool_name, "warn", result.message, session_id, state_keys_read)
             else:
-                log_gate_decision(gate_label, tool_name, "pass", "", session_id)
+                log_gate_decision(gate_label, tool_name, "pass", "", session_id, state_keys_read)
         except Exception as e:
             if gate.__name__ in TIER1_SAFETY_GATES:
                 # Tier 1 safety gates MUST fail-closed — if we can't verify safety, block
-                log_gate_decision(gate.__name__, tool_name, "block", f"crash: {e}", state.get("_session_id", ""))
+                # Look up state keys for crashed gate too
+                gate_short = gate.__name__.split(".")[-1]
+                deps = GATE_DEPENDENCIES.get(gate_short, {})
+                state_keys_read = deps.get("reads", [])
+                log_gate_decision(gate.__name__, tool_name, "block", f"crash: {e}", state.get("_session_id", ""), state_keys_read)
                 print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate.__name__}' crashed: {e}", file=sys.stderr)
                 sys.exit(1)
             # Non-safety gate errors should not block work — log and continue

@@ -65,7 +65,7 @@ def _rotate_file(filepath):
         pass  # Rotation failure must not break logging
 
 
-def log_gate_decision(gate_name, tool_name, decision, reason, session_id=""):
+def log_gate_decision(gate_name, tool_name, decision, reason, session_id="", state_keys=None):
     """Append a gate decision record to today's audit log.
 
     Args:
@@ -74,6 +74,7 @@ def log_gate_decision(gate_name, tool_name, decision, reason, session_id=""):
         decision: One of "pass", "block", or "warn".
         reason: Human-readable explanation of the decision.
         session_id: Optional session identifier for correlation.
+        state_keys: Optional list of state keys accessed during the gate check.
     """
     try:
         os.makedirs(AUDIT_DIR, exist_ok=True)
@@ -98,6 +99,7 @@ def log_gate_decision(gate_name, tool_name, decision, reason, session_id=""):
             "decision": decision,
             "reason": reason,
             "session_id": session_id,
+            "state_keys": state_keys or [],
         }
 
         with open(filepath, "a") as f:

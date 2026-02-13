@@ -1043,29 +1043,67 @@ async function renderGateDeps() {
     const el = document.getElementById('gate-deps-content');
     if (!el) return;
     const deps = data.dependencies || {};
-    const gateNames = Object.keys(deps);
+    const gateNames = Object.keys(deps).sort();
 
     if (gateNames.length === 0) {
         el.innerHTML = '<div class="no-data">No gate dependency data available.</div>';
         return;
     }
 
-    let html = '<table class="gate-perf-table"><thead><tr>' +
-        '<th>Gate</th><th>Reads</th><th>Writes</th>' +
-        '</tr></thead><tbody>';
-
+    // Extract all unique state keys across all gates
+    const stateKeys = new Set();
     for (const gate of gateNames) {
         const d = deps[gate];
-        const reads = (d.reads || []).map(k => `<code>${escapeHtml(k)}</code>`).join(', ') || '<span class="text-muted">none</span>';
-        const writes = (d.writes || []).map(k => `<code class="color-orange">${escapeHtml(k)}</code>`).join(', ') || '<span class="text-muted">none</span>';
+        (d.reads || []).forEach(k => stateKeys.add(k));
+        (d.writes || []).forEach(k => stateKeys.add(k));
+    }
+    const stateKeysList = Array.from(stateKeys).sort();
+
+    if (stateKeysList.length === 0) {
+        el.innerHTML = '<div class="no-data">No state key dependencies found.</div>';
+        return;
+    }
+
+    // Build matrix table
+    let html = '<table class="gate-dep-matrix"><thead><tr><th>Gate</th>';
+    for (const key of stateKeysList) {
+        html += `<th title="${escapeHtml(key)}">${escapeHtml(key)}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+
+    // Rows: gates
+    for (const gate of gateNames) {
+        const d = deps[gate];
+        const reads = new Set(d.reads || []);
+        const writes = new Set(d.writes || []);
         const shortName = gate.replace('gate_', 'G').replace(/_/g, ' ');
-        html += `<tr>
-            <td class="gate-perf-name" title="${escapeHtml(gate)}">${escapeHtml(shortName)}</td>
-            <td>${reads}</td>
-            <td>${writes}</td>
-        </tr>`;
+        html += `<tr><td class="gate-dep-name" title="${escapeHtml(gate)}">${escapeHtml(shortName)}</td>`;
+
+        // Columns: state keys
+        for (const key of stateKeysList) {
+            const isRead = reads.has(key);
+            const isWrite = writes.has(key);
+            let cellContent = '';
+            if (isRead && isWrite) {
+                // Both read and write: show both dots
+                cellContent = '<span class="dep-read"></span><span class="dep-write"></span>';
+            } else if (isRead) {
+                cellContent = '<span class="dep-read"></span>';
+            } else if (isWrite) {
+                cellContent = '<span class="dep-write"></span>';
+            }
+            html += `<td class="dep-cell">${cellContent}</td>`;
+        }
+        html += '</tr>';
     }
     html += '</tbody></table>';
+
+    // Add legend
+    html += '<div class="gate-dep-legend">';
+    html += '<span class="legend-item"><span class="dep-read"></span> Reads</span>';
+    html += '<span class="legend-item"><span class="dep-write"></span> Writes</span>';
+    html += '</div>';
+
     el.innerHTML = html;
 }
 
