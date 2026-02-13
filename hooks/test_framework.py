@@ -7365,6 +7365,108 @@ cleanup_test_states()
 
 
 # ─────────────────────────────────────────────────
+# v2.3.3: Gate 8 Milestones, Audit Block Summary, Gate 4 Exemptions
+# ─────────────────────────────────────────────────
+print("\n--- v2.3.3: Gate 8 Milestones, Audit Block Summary, Gate 4 Exemptions ---")
+
+# ── Feature 1: Gate 8 session milestone warnings ──
+
+# Test 1: Gate 8 source has 3 milestone tiers (1h, 2h, 3h)
+import inspect
+import gates.gate_08_temporal as _g8_mod
+_g8_source = inspect.getsource(_g8_mod.check)
+test("v2.3.3: Gate 8 has 3h milestone warning",
+     "session_hours >= 3" in _g8_source or "session_hours>=3" in _g8_source,
+     "Expected 3h milestone in Gate 8 source")
+
+# Test 2: Gate 8 has 2h milestone
+test("v2.3.3: Gate 8 has 2h milestone warning",
+     "session_hours >= 2" in _g8_source or "session_hours>=2" in _g8_source,
+     "Expected 2h milestone in Gate 8 source")
+
+# Test 3: Gate 8 has 1h milestone
+test("v2.3.3: Gate 8 has 1h milestone warning",
+     "session_hours >= 1" in _g8_source or "session_hours>=1" in _g8_source,
+     "Expected 1h milestone in Gate 8 source")
+
+# Test 4: Gate 8 uses graduated messaging (different messages per tier)
+test("v2.3.3: Gate 8 uses /wrap-up in 3h+ message",
+     "/wrap-up" in _g8_source,
+     "Expected /wrap-up mention in 3h+ advisory")
+
+# ── Feature 2: Audit log get_block_summary ──
+
+# Test 5: get_block_summary function exists and is callable
+from shared.audit_log import get_block_summary
+test("v2.3.3: get_block_summary is callable",
+     callable(get_block_summary),
+     "Expected get_block_summary to be callable")
+
+# Test 6: get_block_summary returns correct structure
+_bs = get_block_summary(hours=1)
+test("v2.3.3: get_block_summary returns dict with expected keys",
+     isinstance(_bs, dict) and "blocked_by_gate" in _bs and "blocked_by_tool" in _bs and "total_blocks" in _bs,
+     f"Expected dict with blocked_by_gate/blocked_by_tool/total_blocks, got keys={list(_bs.keys())}")
+
+# Test 7: get_block_summary total_blocks is non-negative int
+test("v2.3.3: get_block_summary total_blocks is non-negative",
+     isinstance(_bs["total_blocks"], int) and _bs["total_blocks"] >= 0,
+     f"Expected non-negative int, got {_bs['total_blocks']}")
+
+# Test 8: get_block_summary blocked_by_gate is dict
+test("v2.3.3: get_block_summary blocked_by_gate is dict",
+     isinstance(_bs["blocked_by_gate"], dict),
+     f"Expected dict, got {type(_bs['blocked_by_gate'])}")
+
+# ── Feature 3: Gate 4 exemption tracking ──
+
+# Test 9: Gate 4 tracks exemptions in state
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_g4_state = load_state(session_id=MAIN_SESSION)
+_g4_state["memory_last_queried"] = time.time()
+save_state(_g4_state, session_id=MAIN_SESSION)
+# Edit an exempt file (HANDOFF.md) — should track exemption
+run_enforcer("PreToolUse", "Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"})
+_g4_after = load_state(session_id=MAIN_SESSION)
+_g4_exemptions = _g4_after.get("gate4_exemptions", {})
+test("v2.3.3: Gate 4 tracks exemption for HANDOFF.md",
+     "HANDOFF.md" in _g4_exemptions,
+     f"Expected HANDOFF.md in exemptions, got keys={list(_g4_exemptions.keys())}")
+
+# Test 10: Gate 4 exemption count increments
+run_enforcer("PreToolUse", "Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"})
+_g4_after2 = load_state(session_id=MAIN_SESSION)
+_g4_exemptions2 = _g4_after2.get("gate4_exemptions", {})
+_g4_handoff_count = _g4_exemptions2.get("HANDOFF.md", 0)
+test("v2.3.3: Gate 4 exemption count increments",
+     _g4_handoff_count >= 2,
+     f"Expected >=2, got {_g4_handoff_count}")
+
+# Test 11: Gate 4 non-exempt file does not create exemption entry
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_g4b_state = load_state(session_id=MAIN_SESSION)
+_g4b_state["memory_last_queried"] = time.time()
+_g4b_state["files_read"] = ["/tmp/g4_test233.py"]
+save_state(_g4b_state, session_id=MAIN_SESSION)
+run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g4_test233.py"})
+_g4b_after = load_state(session_id=MAIN_SESSION)
+_g4b_exemptions = _g4b_after.get("gate4_exemptions", {})
+test("v2.3.3: Gate 4 non-exempt file has no exemption entry",
+     "g4_test233.py" not in _g4b_exemptions,
+     f"Expected no entry for g4_test233.py, got keys={list(_g4b_exemptions.keys())}")
+
+# Test 12: Gate 4 EXEMPT_BASENAMES includes expected files
+from gates.gate_04_memory_first import EXEMPT_BASENAMES as G4_EXEMPT
+test("v2.3.3: Gate 4 EXEMPT_BASENAMES includes HANDOFF.md and CLAUDE.md",
+     "HANDOFF.md" in G4_EXEMPT and "CLAUDE.md" in G4_EXEMPT,
+     f"Expected HANDOFF.md and CLAUDE.md in exemptions, got {G4_EXEMPT}")
+
+cleanup_test_states()
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

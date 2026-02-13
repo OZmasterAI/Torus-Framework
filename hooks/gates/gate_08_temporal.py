@@ -77,14 +77,27 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
                 severity="warn",
             )
 
-    # Long session warning (advisory, not blocking)
+    # Graduated session milestone warnings (advisory, not blocking)
     session_start = state.get("session_start", time.time())
     session_duration = time.time() - session_start
-    if session_duration > LONG_SESSION_THRESHOLD:
-        hours = int(session_duration / 3600)
+    session_hours = session_duration / 3600
+
+    if session_hours >= 3:
         print(
-            f"[{GATE_NAME}] ADVISORY: Session has been running for {hours}+ hours. "
-            f"Consider wrapping up with /wrap-up to save progress.",
+            f"[{GATE_NAME}] ADVISORY: Session running {int(session_hours)}h+. "
+            f"Save progress with /wrap-up before context degrades.",
+            file=sys.stderr,
+        )
+    elif session_hours >= 2:
+        print(
+            f"[{GATE_NAME}] ADVISORY: Session running 2h+. "
+            f"Consider saving key findings to memory.",
+            file=sys.stderr,
+        )
+    elif session_hours >= 1:
+        print(
+            f"[{GATE_NAME}] ADVISORY: Session running 1h+. "
+            f"Good time for a memory checkpoint.",
             file=sys.stderr,
         )
 

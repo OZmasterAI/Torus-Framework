@@ -266,3 +266,55 @@ def cleanup_old_audit_files(max_age_days=CLEANUP_AGE_DAYS):
         errors += 1
 
     return {"deleted": deleted, "errors": errors, "status": "ok"}
+
+
+def get_block_summary(hours=24):
+    """Return summary of blocked gate decisions from recent audit logs.
+
+    Reads JSONL audit files from the last N hours and returns counts
+    of blocks grouped by gate name and tool name.
+
+    Returns:
+        dict with keys: blocked_by_gate, blocked_by_tool, total_blocks
+    """
+    cutoff = time.time() - (hours * 3600)
+    gate_counts = {}
+    tool_counts = {}
+    total = 0
+
+    if not os.path.isdir(AUDIT_DIR):
+        return {"blocked_by_gate": {}, "blocked_by_tool": {}, "total_blocks": 0}
+
+    for fname in sorted(os.listdir(AUDIT_DIR), reverse=True):
+        if not fname.endswith(".jsonl"):
+            continue
+        fpath = os.path.join(AUDIT_DIR, fname)
+        try:
+            with open(fpath) as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                    except json.JSONDecodeError:
+                        continue
+                    if entry.get("decision") != "block":
+                        continue
+                    ts = entry.get("timestamp", "")
+                    try:
+                        dt = datetime.fromisoformat(ts)
+                        if dt.timestamp() < cutoff:
+                            continue
+                    except (ValueError, TypeError):
+                        continue
+                    gate = entry.get("gate", "unknown")
+                    tool = entry.get("tool", "unknown")
+                    gate_counts[gate] = gate_counts.get(gate, 0) + 1
+                    tool_counts[tool] = tool_counts.get(tool, 0) + 1
+                    total += 1
+        except (IOError, OSError):
+            continue
+
+    return {
+        "blocked_by_gate": dict(sorted(gate_counts.items(), key=lambda x: -x[1])),
+        "blocked_by_tool": dict(sorted(tool_counts.items(), key=lambda x: -x[1])),
+        "total_blocks": total,
+    }

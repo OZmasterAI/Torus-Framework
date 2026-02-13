@@ -54,6 +54,10 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     # Check file exemptions
     file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
     if is_exempt(file_path):
+        # Track exemption for observability
+        exempt_stats = state.setdefault("gate4_exemptions", {})
+        basename = os.path.basename(file_path)
+        exempt_stats[basename] = exempt_stats.get(basename, 0) + 1
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check if memory was queried recently (checks both enforcer state AND MCP sideband file)
