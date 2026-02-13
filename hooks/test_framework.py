@@ -3005,7 +3005,12 @@ _sl_r = _sp_auto.run(
     [sys.executable, os.path.join(os.path.dirname(__file__), "statusline.py")],
     input=json.dumps({
         "cost": {"total_cost_usd": 1.23, "total_duration_ms": 900000, "total_lines_added": 50, "total_lines_removed": 10},
-        "context_window": {"used_percentage": 45}
+        "context_window": {
+            "used_percentage": 45,
+            "total_input_tokens": 15000,
+            "total_output_tokens": 4700,
+            "current_usage": {"input_tokens": 8500, "output_tokens": 1200}
+        }
     }),
     capture_output=True, text=True, timeout=10
 )
@@ -3026,8 +3031,44 @@ test("StatusLine: has duration",
      "15min" in _sl_out, f"out={_sl_out}")
 test("StatusLine: has lines changed",
      "+50/-10" in _sl_out, f"out={_sl_out}")
+test("StatusLine: has session tokens",
+     "19.7k tok" in _sl_out, f"out={_sl_out}")
+test("StatusLine: has last turn tokens",
+     "8.5k>1.2k" in _sl_out, f"out={_sl_out}")
 
-# 3b. High context triggers warning
+# 3b. Token formatting helper
+_sl_mod = __import__("importlib").import_module("statusline") if "statusline" in sys.modules else None
+# Test via subprocess to keep it clean
+_fmt_test = _sp_auto.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, '%s'); from statusline import fmt_tokens; "
+     "print(fmt_tokens(500), fmt_tokens(19700), fmt_tokens(150000), fmt_tokens(1500000), fmt_tokens(0))"
+     % os.path.dirname(__file__)],
+    capture_output=True, text=True, timeout=5
+)
+_fmt_parts = _fmt_test.stdout.strip().split()
+test("StatusLine: fmt_tokens(<1k) → raw number",
+     _fmt_parts[0] == "500" if len(_fmt_parts) >= 1 else False, f"got={_fmt_parts}")
+test("StatusLine: fmt_tokens(19700) → 19.7k",
+     _fmt_parts[1] == "19.7k" if len(_fmt_parts) >= 2 else False, f"got={_fmt_parts}")
+test("StatusLine: fmt_tokens(150000) → 150k",
+     _fmt_parts[2] == "150k" if len(_fmt_parts) >= 3 else False, f"got={_fmt_parts}")
+test("StatusLine: fmt_tokens(1.5M) → 1.5M",
+     _fmt_parts[3] == "1.5M" if len(_fmt_parts) >= 4 else False, f"got={_fmt_parts}")
+test("StatusLine: fmt_tokens(0) → 0",
+     _fmt_parts[4] == "0" if len(_fmt_parts) >= 5 else False, f"got={_fmt_parts}")
+
+# 3c. No token segments when data absent
+_sl_no_tok = _sp_auto.run(
+    [sys.executable, os.path.join(os.path.dirname(__file__), "statusline.py")],
+    input=json.dumps({"cost": {"total_cost_usd": 0.50}, "context_window": {"used_percentage": 10}}),
+    capture_output=True, text=True, timeout=10
+)
+_sl_no_tok_out = _sl_no_tok.stdout.strip()
+test("StatusLine: no tokens → no tok segment",
+     "tok" not in _sl_no_tok_out, f"out={_sl_no_tok_out}")
+
+# 3e. High context triggers warning
 _sl_high = _sp_auto.run(
     [sys.executable, os.path.join(os.path.dirname(__file__), "statusline.py")],
     input=json.dumps({"context_window": {"used_percentage": 85}}),
@@ -3035,6 +3076,72 @@ _sl_high = _sp_auto.run(
 )
 test("StatusLine: high context shows warning",
      "CTX:85%!" in _sl_high.stdout, f"out={_sl_high.stdout.strip()}")
+
+# 3f. Health bar appears in output
+test("StatusLine: has health bar",
+     "HP:[" in _sl_out and "]" in _sl_out, f"out={_sl_out}")
+
+# 3g. Health bar tests via subprocess
+_hp_test = _sp_auto.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, '%s'); "
+     "from statusline import calculate_health, format_health_bar; "
+     "print(calculate_health(12, 216)); "
+     "print(calculate_health(6, '?')); "
+     "print(calculate_health(0, '?')); "
+     "print(format_health_bar(85)); "
+     "print(format_health_bar(0))"
+     % os.path.dirname(__file__)],
+    capture_output=True, text=True, timeout=10
+)
+_hp_lines = _hp_test.stdout.strip().split("\n")
+test("StatusLine: full health = 100%%",
+     _hp_lines[0] == "100" if len(_hp_lines) >= 1 else False, f"got={_hp_lines}")
+test("StatusLine: degraded health (6 gates, mem down) < 100",
+     int(_hp_lines[1]) < 100 if len(_hp_lines) >= 2 else False, f"got={_hp_lines}")
+test("StatusLine: critical health (0 gates, no mem) < degraded",
+     int(_hp_lines[2]) < int(_hp_lines[1]) if len(_hp_lines) >= 3 else False, f"got={_hp_lines}")
+test("StatusLine: format_health_bar has bar chars",
+     "\u2588" in _hp_lines[3] and "\u2591" in _hp_lines[3] if len(_hp_lines) >= 4 else False, f"got={_hp_lines}")
+test("StatusLine: format_health_bar(0) = all empty",
+     "\u2588" not in _hp_lines[4] if len(_hp_lines) >= 5 else False, f"got={_hp_lines}")
+
+# 3h. Health bar colors match thresholds
+_color_test = _sp_auto.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, '%s'); "
+     "from statusline import health_color, COLOR_CYAN, COLOR_GREEN, COLOR_ORANGE, COLOR_YELLOW, COLOR_RED; "
+     "print(health_color(100) == COLOR_CYAN); "
+     "print(health_color(95) == COLOR_GREEN); "
+     "print(health_color(80) == COLOR_ORANGE); "
+     "print(health_color(60) == COLOR_YELLOW); "
+     "print(health_color(30) == COLOR_RED)"
+     % os.path.dirname(__file__)],
+    capture_output=True, text=True, timeout=5
+)
+_color_lines = _color_test.stdout.strip().split("\n")
+test("StatusLine: 100%% → cyan",
+     _color_lines[0] == "True" if len(_color_lines) >= 1 else False, f"got={_color_lines}")
+test("StatusLine: 95%% → green",
+     _color_lines[1] == "True" if len(_color_lines) >= 2 else False, f"got={_color_lines}")
+test("StatusLine: 80%% → orange",
+     _color_lines[2] == "True" if len(_color_lines) >= 3 else False, f"got={_color_lines}")
+test("StatusLine: 60%% → yellow",
+     _color_lines[3] == "True" if len(_color_lines) >= 4 else False, f"got={_color_lines}")
+test("StatusLine: 30%% → red",
+     _color_lines[4] == "True" if len(_color_lines) >= 5 else False, f"got={_color_lines}")
+
+# 3i. Output contains ANSI reset (color doesn't bleed into rest of statusline)
+test("StatusLine: ANSI reset in output",
+     "\033[0m" in _sl_out, f"out={repr(_sl_out[:60])}")
+
+# 3j. Health bar in malformed JSON still works (fail-open)
+_sl_mal_hp = _sp_auto.run(
+    [sys.executable, os.path.join(os.path.dirname(__file__), "statusline.py")],
+    input="not json", capture_output=True, text=True, timeout=10
+)
+test("StatusLine: malformed JSON still has health bar",
+     "HP:[" in _sl_mal_hp.stdout, f"out={_sl_mal_hp.stdout.strip()}")
 
 # 4. Settings has statusLine config
 with open(os.path.join(os.path.expanduser("~"), ".claude", "settings.json")) as _sfile4:
