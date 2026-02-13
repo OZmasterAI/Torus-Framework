@@ -84,6 +84,7 @@ def default_state():
         "edit_streak": {},          # Consecutive edits per file without verification
         "last_test_exit_code": None,  # Exit code from most recent test run
         "gate_timing_stats": {},    # Per-gate timing: {gate_name: {count, total_ms, min_ms, max_ms}}
+        "rate_window_timestamps": [],  # Rolling window of tool call timestamps for Gate 11
     }
 
 

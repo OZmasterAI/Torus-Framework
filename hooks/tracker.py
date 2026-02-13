@@ -208,7 +208,7 @@ def _capture_observation(tool_name, tool_input, tool_response, session_id, state
             obs_hash = None  # Fail-open: continue with capture
 
         from shared.observation import compress_observation
-        obs = compress_observation(tool_name, tool_input, tool_response, session_id)
+        obs = compress_observation(tool_name, tool_input, tool_response, session_id, state=state)
 
         # Add dedup hash to observation if we computed it
         if obs_hash is not None:

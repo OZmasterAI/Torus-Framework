@@ -112,7 +112,33 @@ def _compute_priority(tool_name, has_error, exit_code):
     return "low"
 
 
-def compress_observation(tool_name, tool_input, tool_response, session_id):
+def _detect_sentiment(tool_name, tool_input, state):
+    """Detect agent sentiment from tool usage patterns and state.
+
+    Returns a sentiment string or empty string for neutral.
+    """
+    if state is None:
+        return ""
+
+    # Frustration: repeated error patterns while editing
+    if tool_name in ("Edit", "Write"):
+        counts = state.get("error_pattern_counts", {})
+        if any(v >= 2 for v in counts.values()):
+            return "frustration"
+
+    # Confidence: recent passing tests
+    if state.get("last_test_exit_code") == 0:
+        if (time.time() - state.get("last_test_run", 0)) < 120:
+            return "confidence"
+
+    # Exploration: read/search tools
+    if tool_name in ("Read", "Grep", "Glob", "WebSearch", "WebFetch"):
+        return "exploration"
+
+    return ""
+
+
+def compress_observation(tool_name, tool_input, tool_response, session_id, state=None):
     """Compress a tool call into a compact observation dict.
 
     Returns dict with 'document', 'metadata', and 'id' keys,
@@ -224,6 +250,9 @@ def compress_observation(tool_name, tool_input, tool_response, session_id):
 
     priority = _compute_priority(tool_name, has_error, exit_code)
 
+    # Detect agent sentiment
+    sentiment = _detect_sentiment(tool_name, tool_input, state)
+
     # Generate deterministic ID
     id_source = f"{document}_{session_id}_{now}"
     obs_id = "obs_" + hashlib.sha256(id_source.encode()).hexdigest()[:12]
@@ -240,6 +269,7 @@ def compress_observation(tool_name, tool_input, tool_response, session_id):
             "exit_code": exit_code,
             "command_hash": command_hash,
             "priority": priority,
+            "sentiment": sentiment if sentiment else "",
             "context": json.dumps(context) if context else "",
         },
         "id": obs_id,

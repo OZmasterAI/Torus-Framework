@@ -6251,6 +6251,149 @@ test("v2.2.3: multiple gates each get correct avg_ms",
 
 
 # ─────────────────────────────────────────────────
+# Test: v2.2.4 — Gate 11 Decay Window, Gate 12 Escalation, Observation Sentiment
+# ─────────────────────────────────────────────────
+print("\n--- v2.2.4: Gate 11 Decay Window, Gate 12 Escalation, Observation Sentiment ---")
+
+# ── Gate 11 decay window ──
+
+# Test 1: rate_window_timestamps exists in default_state as empty list
+ds = default_state()
+test("v2.2.4: rate_window_timestamps in default_state as empty list",
+     "rate_window_timestamps" in ds and ds["rate_window_timestamps"] == [],
+     f"Expected empty list, got {ds.get('rate_window_timestamps')!r}")
+
+# Test 2: Gate 11 passes with low windowed rate (few recent tool calls)
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+s = load_state(session_id=MAIN_SESSION)
+s["_session_id"] = MAIN_SESSION
+s["files_read"] = ["test.py"]
+s["memory_last_queried"] = time.time()
+s["rate_window_timestamps"] = []
+save_state(s, session_id=MAIN_SESSION)
+rc11_2, stderr11_2 = run_enforcer("PreToolUse", "Read", {"file_path": "test.py"})
+test("v2.2.4: Gate 11 passes with low windowed rate",
+     rc11_2 == 0,
+     f"Expected rc=0, got rc={rc11_2}, stderr={stderr11_2}")
+
+# Test 3: Old timestamps outside 120s window don't count toward rate
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+s = load_state(session_id=MAIN_SESSION)
+s["_session_id"] = MAIN_SESSION
+s["files_read"] = ["test.py"]
+s["memory_last_queried"] = time.time()
+# 50 timestamps all 300s in the past (well outside 120s window)
+old_time = time.time() - 300
+s["rate_window_timestamps"] = [old_time + i * 0.1 for i in range(50)]
+save_state(s, session_id=MAIN_SESSION)
+rc11_3, stderr11_3 = run_enforcer("PreToolUse", "Read", {"file_path": "test.py"})
+# After enforcer runs, old timestamps should be pruned from state
+s_after = load_state(session_id=MAIN_SESSION)
+recent_count = len([t for t in s_after.get("rate_window_timestamps", []) if t > time.time() - 120])
+test("v2.2.4: old timestamps outside 120s window pruned, call passes",
+     rc11_3 == 0 and recent_count <= 2,
+     f"Expected rc=0 and <=2 recent timestamps, got rc={rc11_3}, recent={recent_count}")
+
+# Test 4: State schema includes rate_window_timestamps field
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+s = load_state(session_id=MAIN_SESSION)
+test("v2.2.4: loaded state includes rate_window_timestamps",
+     "rate_window_timestamps" in s and isinstance(s["rate_window_timestamps"], list),
+     f"Expected list field, got {type(s.get('rate_window_timestamps'))}")
+
+# ── Gate 12 escalation display ──
+
+# Test 5: Gate 12 warning message includes escalation counter format
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+s = load_state(session_id=MAIN_SESSION)
+s["_session_id"] = MAIN_SESSION
+s["files_read"] = ["foo.py"]
+s["memory_last_queried"] = time.time()
+s["last_exit_plan_mode"] = time.time()  # plan exited after memory query
+s["gate12_warn_count"] = 0
+save_state(s, session_id=MAIN_SESSION)
+rc12_5, stderr12_5 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
+test("v2.2.4: Gate 12 warning includes escalation counter (N/M format)",
+     "1/" in stderr12_5 or "(1/" in stderr12_5,
+     f"Expected '1/' in stderr, got: {stderr12_5[:200]}")
+
+# Test 6: Gate 12 counter resets when memory is fresh
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+s = load_state(session_id=MAIN_SESSION)
+s["_session_id"] = MAIN_SESSION
+s["files_read"] = ["foo.py"]
+s["memory_last_queried"] = time.time()
+s["last_exit_plan_mode"] = time.time() - 60  # plan exited in the past
+s["gate12_warn_count"] = 2
+save_state(s, session_id=MAIN_SESSION)
+rc12_6, stderr12_6 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
+s_after = load_state(session_id=MAIN_SESSION)
+test("v2.2.4: Gate 12 counter resets when memory is fresh",
+     s_after.get("gate12_warn_count") == 0,
+     f"Expected gate12_warn_count=0, got {s_after.get('gate12_warn_count')}")
+
+# Test 7: Gate 12 blocks after ESCALATION_THRESHOLD warnings
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+s = load_state(session_id=MAIN_SESSION)
+s["_session_id"] = MAIN_SESSION
+s["files_read"] = ["foo.py"]
+s["memory_last_queried"] = time.time() - 120
+s["last_exit_plan_mode"] = time.time()  # plan exited after memory
+s["gate12_warn_count"] = 2  # already at threshold-1
+save_state(s, session_id=MAIN_SESSION)
+rc12_7, stderr12_7 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
+test("v2.2.4: Gate 12 blocks after ESCALATION_THRESHOLD warnings",
+     rc12_7 != 0 and "BLOCKED" in stderr12_7,
+     f"Expected non-zero rc and BLOCKED, got rc={rc12_7}, stderr={stderr12_7[:200]}")
+
+# Test 8: Gate 12 and Gate 6 use separate counters
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+s = load_state(session_id=MAIN_SESSION)
+s["gate6_warn_count"] = 5
+s["gate12_warn_count"] = 1
+save_state(s, session_id=MAIN_SESSION)
+s = load_state(session_id=MAIN_SESSION)
+test("v2.2.4: Gate 12 and Gate 6 use separate counters",
+     s.get("gate6_warn_count") == 5 and s.get("gate12_warn_count") == 1,
+     f"Expected gate6=5, gate12=1, got gate6={s.get('gate6_warn_count')}, gate12={s.get('gate12_warn_count')}")
+
+# ── Observation sentiment ──
+
+from shared.observation import _detect_sentiment
+
+# Test 9: _detect_sentiment returns "frustration" with error_pattern_counts >= 2 and Edit tool
+sentiment_state_9 = {"error_pattern_counts": {"Traceback": 3, "SyntaxError": 1}}
+test("v2.2.4: _detect_sentiment → 'frustration' with repeated errors + Edit",
+     _detect_sentiment("Edit", {}, sentiment_state_9) == "frustration",
+     f"Expected 'frustration', got {_detect_sentiment('Edit', {}, sentiment_state_9)!r}")
+
+# Test 10: _detect_sentiment returns "confidence" with last_test_exit_code == 0 and recent test
+sentiment_state_10 = {"last_test_exit_code": 0, "last_test_run": time.time() - 30, "error_pattern_counts": {}}
+test("v2.2.4: _detect_sentiment → 'confidence' with passing test",
+     _detect_sentiment("Bash", {}, sentiment_state_10) == "confidence",
+     f"Expected 'confidence', got {_detect_sentiment('Bash', {}, sentiment_state_10)!r}")
+
+# Test 11: _detect_sentiment returns "exploration" for Read tool
+sentiment_state_11 = {"error_pattern_counts": {}, "last_test_exit_code": None}
+test("v2.2.4: _detect_sentiment → 'exploration' for Read tool",
+     _detect_sentiment("Read", {}, sentiment_state_11) == "exploration",
+     f"Expected 'exploration', got {_detect_sentiment('Read', {}, sentiment_state_11)!r}")
+
+# Test 12: _detect_sentiment returns "" for neutral state
+sentiment_state_12 = {"error_pattern_counts": {}, "last_test_exit_code": None, "last_test_run": 0}
+test("v2.2.4: _detect_sentiment → '' for neutral state",
+     _detect_sentiment("Task", {}, sentiment_state_12) == "",
+     f"Expected '', got {_detect_sentiment('Task', {}, sentiment_state_12)!r}")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()
