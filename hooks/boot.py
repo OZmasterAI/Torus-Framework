@@ -403,6 +403,35 @@ def _extract_tool_activity():
         return (0, None)
 
 
+def _extract_gate_blocks():
+    """Extract total gate blocks from recent audit logs.
+
+    Returns count of blocked decisions from last 24h, or 0 if none/error.
+    """
+    try:
+        audit_dir = os.path.join(os.path.dirname(__file__), "audit")
+        if not os.path.isdir(audit_dir):
+            return 0
+
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+
+        block_count = 0
+        audit_file = os.path.join(audit_dir, f"{today}.jsonl")
+        if os.path.isfile(audit_file):
+            with open(audit_file) as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                        if entry.get("decision") == "block":
+                            block_count += 1
+                    except json.JSONDecodeError:
+                        continue
+        return block_count
+    except Exception:
+        return 0
+
+
 def main():
     now = datetime.now()
     hour = now.hour
@@ -461,6 +490,9 @@ def main():
     # Extract session duration from last session
     session_duration = _extract_session_duration()
 
+    # Extract gate blocks from audit log
+    gate_blocks = _extract_gate_blocks()
+
     # Build dashboard
     dashboard = f"""
 +====================================================================+
@@ -518,6 +550,12 @@ def main():
     if tool_summary:
         activity_line = f"Tool activity: {tool_call_count} calls ({tool_summary})"
         dashboard += f"\n|  {activity_line:<66}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
+    # Gate block stats from audit log
+    if gate_blocks > 0:
+        block_line = f"Gate blocks today: {gate_blocks}"
+        dashboard += f"\n|  {block_line:<66}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
     dashboard += """

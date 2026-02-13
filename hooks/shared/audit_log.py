@@ -318,3 +318,57 @@ def get_block_summary(hours=24):
         "blocked_by_tool": dict(sorted(tool_counts.items(), key=lambda x: -x[1])),
         "total_blocks": total,
     }
+
+
+def get_recent_gate_activity(gate_name, minutes=30):
+    """Return recent activity for a specific gate.
+
+    Args:
+        gate_name: Name of the gate (e.g., "GATE 5: PROOF BEFORE FIXED")
+        minutes: Lookback window in minutes (default 30)
+
+    Returns:
+        dict with keys: pass_count, block_count, warn_count, total
+    """
+    cutoff = time.time() - (minutes * 60)
+    pass_count = block_count = warn_count = 0
+
+    if not os.path.isdir(AUDIT_DIR):
+        return {"pass_count": 0, "block_count": 0, "warn_count": 0, "total": 0}
+
+    for fname in sorted(os.listdir(AUDIT_DIR), reverse=True):
+        if not fname.endswith(".jsonl"):
+            continue
+        fpath = os.path.join(AUDIT_DIR, fname)
+        try:
+            with open(fpath) as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                    except json.JSONDecodeError:
+                        continue
+                    if entry.get("gate") != gate_name:
+                        continue
+                    ts = entry.get("timestamp", "")
+                    try:
+                        dt = datetime.fromisoformat(ts)
+                        if dt.timestamp() < cutoff:
+                            continue
+                    except (ValueError, TypeError):
+                        continue
+                    decision = entry.get("decision", "unknown")
+                    if decision == "pass":
+                        pass_count += 1
+                    elif decision == "block":
+                        block_count += 1
+                    elif decision == "warn":
+                        warn_count += 1
+        except (IOError, OSError):
+            continue
+
+    return {
+        "pass_count": pass_count,
+        "block_count": block_count,
+        "warn_count": warn_count,
+        "total": pass_count + block_count + warn_count,
+    }

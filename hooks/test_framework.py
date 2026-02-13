@@ -7465,6 +7465,94 @@ test("v2.3.3: Gate 4 EXEMPT_BASENAMES includes HANDOFF.md and CLAUDE.md",
 
 cleanup_test_states()
 
+print("\n--- v2.3.4: Gate 9 Success Ratio, Audit Gate Activity, Boot Gate Blocks ---")
+
+# ── Feature 1: Gate 9 success ratio in warnings ──
+
+# Test 1: Gate 9 source includes success context in warning
+import inspect as _insp234
+import gates.gate_09_strategy_ban as _g9_mod
+_g9_source = _insp234.getsource(_g9_mod.check)
+test("v2.3.4: Gate 9 warning includes success context formatting",
+     "past successes:" in _g9_source and "success_count" in _g9_source,
+     "Expected 'past successes:' and 'success_count' in Gate 9 check() source")
+
+# Test 2: Gate 9 success context is conditional on success_count > 0
+test("v2.3.4: Gate 9 success context is conditional",
+     "success_count > 0" in _g9_source,
+     "Expected conditional 'success_count > 0' in Gate 9 check() source")
+
+# Test 3: Gate 9 ban threshold constants are correct
+from gates.gate_09_strategy_ban import DEFAULT_BAN_THRESHOLD, SUCCESS_BONUS_RETRIES
+test("v2.3.4: Gate 9 ban threshold constants are correct",
+     DEFAULT_BAN_THRESHOLD == 3 and SUCCESS_BONUS_RETRIES == 1,
+     f"Expected threshold=3 bonus=1, got {DEFAULT_BAN_THRESHOLD}/{SUCCESS_BONUS_RETRIES}")
+
+# Test 4: Gate 9 check() with success_count > 0 doesn't block at fail_count=1
+from gates.gate_09_strategy_ban import check as _g9_check
+from shared.gate_result import GateResult as _GR234
+_g9_test_state = {
+    "current_strategy_id": "test-strat-234",
+    "active_bans": {"test-strat-234": {"fail_count": 1, "first_failed": time.time() - 60, "last_failed": time.time() - 30}},
+    "successful_strategies": {"test-strat-234": {"success_count": 5}},
+}
+_g9_result = _g9_check("Edit", {"file_path": "/tmp/test.py"}, _g9_test_state)
+test("v2.3.4: Gate 9 allows through at fail_count=1 with successes",
+     not _g9_result.blocked,
+     f"Expected not blocked, got blocked={_g9_result.blocked}")
+
+# ── Feature 2: Audit log get_recent_gate_activity ──
+
+# Test 5: get_recent_gate_activity is callable
+from shared.audit_log import get_recent_gate_activity
+test("v2.3.4: get_recent_gate_activity is callable",
+     callable(get_recent_gate_activity),
+     "Expected get_recent_gate_activity to be callable")
+
+# Test 6: get_recent_gate_activity returns correct structure
+_ga = get_recent_gate_activity("GATE 1: READ BEFORE EDIT", minutes=1)
+test("v2.3.4: get_recent_gate_activity returns dict with expected keys",
+     isinstance(_ga, dict) and "pass_count" in _ga and "block_count" in _ga and "warn_count" in _ga and "total" in _ga,
+     f"Expected dict with pass_count/block_count/warn_count/total, got {_ga}")
+
+# Test 7: get_recent_gate_activity total equals sum of counts
+test("v2.3.4: get_recent_gate_activity total equals sum of counts",
+     _ga["total"] == _ga["pass_count"] + _ga["block_count"] + _ga["warn_count"],
+     f"Expected total={_ga['pass_count']+_ga['block_count']+_ga['warn_count']}, got total={_ga['total']}")
+
+# Test 8: get_recent_gate_activity with non-existent gate returns zeros
+_ga_none = get_recent_gate_activity("GATE 999: NONEXISTENT", minutes=1)
+test("v2.3.4: get_recent_gate_activity with non-existent gate returns zeros",
+     _ga_none["total"] == 0 and _ga_none["pass_count"] == 0,
+     f"Expected all zeros, got {_ga_none}")
+
+# ── Feature 3: Boot dashboard gate block stats ──
+
+# Test 9: _extract_gate_blocks function exists and is callable
+from boot import _extract_gate_blocks
+test("v2.3.4: _extract_gate_blocks is callable",
+     callable(_extract_gate_blocks),
+     "Expected _extract_gate_blocks to be callable")
+
+# Test 10: _extract_gate_blocks returns an integer
+_gb = _extract_gate_blocks()
+test("v2.3.4: _extract_gate_blocks returns int",
+     isinstance(_gb, int),
+     f"Expected int, got {type(_gb).__name__}")
+
+# Test 11: _extract_gate_blocks returns non-negative value
+test("v2.3.4: _extract_gate_blocks returns non-negative",
+     _gb >= 0,
+     f"Expected >= 0, got {_gb}")
+
+# Test 12: _extract_gate_blocks is consistent across calls
+_gb2 = _extract_gate_blocks()
+test("v2.3.4: _extract_gate_blocks is consistent across calls",
+     _gb2 == _gb,
+     f"Expected same result {_gb}, got {_gb2}")
+
+cleanup_test_states()
+
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

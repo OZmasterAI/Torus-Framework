@@ -100,10 +100,12 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         )
 
     if fail_count >= 1:
-        # Warn but allow — show retry budget
+        # Warn but allow — show retry budget with success context
         remaining = ban_threshold - fail_count
+        success_context = f" (past successes: {success_count})" if success_count > 0 else ""
         print(
-            f"[{GATE_NAME}] WARNING: Strategy '{current_strategy}' has failed {fail_count}/{ban_threshold} times. "
+            f"[{GATE_NAME}] WARNING: Strategy '{current_strategy}' has failed "
+            f"{fail_count}/{ban_threshold} times{success_context}. "
             f"{remaining} more failure(s) before ban. Consider a different approach.",
             file=sys.stderr,
         )
