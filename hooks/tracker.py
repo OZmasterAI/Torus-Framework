@@ -144,6 +144,14 @@ def _observation_key(tool_name, tool_input):
         return f"Read:{fp}"
     elif tool_name in ("Edit", "Write"):
         fp = tool_input.get("file_path", "")
+        # Include content hash so different edits to the same file are not deduplicated
+        if tool_name == "Edit":
+            content_snippet = tool_input.get("old_string", "")[:100]
+        else:
+            content_snippet = tool_input.get("content", "")[:100]
+        if content_snippet:
+            content_hash = fnv1a_hash(content_snippet)
+            return f"{tool_name}:{fp}:{content_hash}"
         return f"{tool_name}:{fp}"
     elif tool_name == "Glob":
         pattern = tool_input.get("pattern", "")

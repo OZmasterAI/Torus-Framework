@@ -36,6 +36,7 @@ MAX_UNLOGGED_ERRORS = 20
 MAX_ERROR_PATTERNS = 50
 MAX_ACTIVE_BANS = 50
 MAX_PENDING_CHAINS = 10
+MAX_EDIT_STREAK = 50
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +194,13 @@ def _validate_consistency(state):
         state["error_pattern_counts"] = dict(sorted_patterns[:MAX_ERROR_PATTERNS])
         corrections.append(f"error_pattern_counts: trimmed from {len(pattern_counts)} to {MAX_ERROR_PATTERNS}")
 
+    # Cap edit_streak dict — keep top N by count
+    edit_streak = state.get("edit_streak", {})
+    if len(edit_streak) > MAX_EDIT_STREAK:
+        sorted_streak = sorted(edit_streak.items(), key=lambda x: x[1], reverse=True)
+        state["edit_streak"] = dict(sorted_streak[:MAX_EDIT_STREAK])
+        corrections.append(f"edit_streak: trimmed from {len(edit_streak)} to {MAX_EDIT_STREAK}")
+
     # Ensure skill_usage is a dict
     if not isinstance(state.get("skill_usage"), dict):
         state["skill_usage"] = {}
@@ -281,6 +289,12 @@ def save_state(state, session_id="main"):
     if len(pattern_counts) > MAX_ERROR_PATTERNS:
         sorted_patterns = sorted(pattern_counts.items(), key=lambda x: x[1], reverse=True)
         state["error_pattern_counts"] = dict(sorted_patterns[:MAX_ERROR_PATTERNS])
+
+    # Cap edit_streak dict — keep top N by count
+    edit_streak = state.get("edit_streak", {})
+    if len(edit_streak) > MAX_EDIT_STREAK:
+        sorted_streak = sorted(edit_streak.items(), key=lambda x: x[1], reverse=True)
+        state["edit_streak"] = dict(sorted_streak[:MAX_EDIT_STREAK])
 
     # Cap active_bans list
     bans = state.get("active_bans", [])

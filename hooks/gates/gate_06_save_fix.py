@@ -13,6 +13,7 @@ when tests pass after edits were made.
 
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
@@ -70,9 +71,24 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         issued_warning = True
 
     # Repair loop detection — warn when the same error recurs 3+ times
+    # Time-aware: skip warning if the error pattern is stale (>10 min old)
     pattern_counts = state.get("error_pattern_counts", {})
+    error_windows = state.get("error_windows", [])
+    now = time.time()
+    STALE_THRESHOLD = 600  # 10 minutes
     for pat, count in pattern_counts.items():
         if count >= 3:
+            # Check if this pattern has a recent entry in error_windows
+            is_stale = False
+            for window in error_windows:
+                if window.get("pattern") == pat:
+                    last_seen = window.get("last_seen", 0)
+                    if now - last_seen > STALE_THRESHOLD:
+                        is_stale = True
+                    break
+            # If pattern not found in error_windows, still warn (defensive)
+            if is_stale:
+                continue
             print(
                 f"[{GATE_NAME}] REPAIR LOOP: Error '{pat}' has occurred {count} times. "
                 f"Consider a different approach instead of retrying the same fix.",

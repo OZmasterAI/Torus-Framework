@@ -6887,6 +6887,130 @@ test("v2.2.8: edit streak risk 3 hotspots → critical",
 cleanup_test_states()
 
 
+print("\n--- v2.2.9: State Edit Streak Cap, Gate 6 Temporal Decay, Tracker Dedup ---")
+
+# ── Feature 1: State edit_streak cap ──
+
+from shared.state import MAX_EDIT_STREAK
+
+# Test 1: MAX_EDIT_STREAK constant exists and equals 50
+test("v2.2.9: MAX_EDIT_STREAK constant is 50",
+     MAX_EDIT_STREAK == 50,
+     f"Expected 50, got {MAX_EDIT_STREAK!r}")
+
+# Test 2: _validate_consistency caps edit_streak
+from shared.state import _validate_consistency
+_es2_state = default_state()
+# Create 60 entries — should be capped to 50
+for _i in range(60):
+    _es2_state["edit_streak"][f"/tmp/file_{_i}.py"] = _i + 1
+_validate_consistency(_es2_state)
+test("v2.2.9: _validate_consistency caps edit_streak to 50",
+     len(_es2_state["edit_streak"]) == 50,
+     f"Expected 50, got {len(_es2_state['edit_streak'])}")
+
+# Test 3: Cap keeps highest-count entries
+test("v2.2.9: edit_streak cap keeps highest counts",
+     _es2_state["edit_streak"].get("/tmp/file_59.py") == 60,
+     f"Expected file_59.py (count=60) retained, keys={list(_es2_state['edit_streak'].keys())[:3]}")
+
+# Test 4: Under-cap edit_streak is not modified
+_es4_state = default_state()
+_es4_state["edit_streak"] = {"/tmp/a.py": 3, "/tmp/b.py": 1}
+_validate_consistency(_es4_state)
+test("v2.2.9: edit_streak under cap not modified",
+     len(_es4_state["edit_streak"]) == 2,
+     f"Expected 2, got {len(_es4_state['edit_streak'])}")
+
+# ── Feature 2: Gate 6 time-aware repair loop ──
+
+from gates.gate_06_save_fix import check as gate6_check_229
+import io as _io229
+
+# Test 5: Gate 6 warns about recent repair loop (last_seen < 10min)
+_g6d_state5 = default_state()
+_g6d_state5["error_pattern_counts"] = {"SyntaxError": 4}
+_g6d_state5["error_windows"] = [{"pattern": "SyntaxError", "first_seen": time.time() - 300, "last_seen": time.time() - 60, "count": 4}]
+_g6d_state5["_session_id"] = MAIN_SESSION
+_g6d_err5 = _io229.StringIO()
+_orig_stderr229 = sys.stderr
+sys.stderr = _g6d_err5
+gate6_check_229("Edit", {"file_path": "/tmp/x.py"}, _g6d_state5)
+sys.stderr = _orig_stderr229
+test("v2.2.9: Gate 6 warns about recent repair loop",
+     "REPAIR LOOP" in _g6d_err5.getvalue(),
+     f"Expected REPAIR LOOP in output, got: {_g6d_err5.getvalue()[:100]!r}")
+
+# Test 6: Gate 6 skips stale repair loop (last_seen > 10min)
+_g6d_state6 = default_state()
+_g6d_state6["error_pattern_counts"] = {"ImportError": 5}
+_g6d_state6["error_windows"] = [{"pattern": "ImportError", "first_seen": time.time() - 1800, "last_seen": time.time() - 700, "count": 5}]
+_g6d_state6["_session_id"] = MAIN_SESSION
+_g6d_err6 = _io229.StringIO()
+sys.stderr = _g6d_err6
+gate6_check_229("Edit", {"file_path": "/tmp/x.py"}, _g6d_state6)
+sys.stderr = _orig_stderr229
+test("v2.2.9: Gate 6 skips stale repair loop (>10min)",
+     "REPAIR LOOP" not in _g6d_err6.getvalue(),
+     f"Expected NO REPAIR LOOP, got: {_g6d_err6.getvalue()[:100]!r}")
+
+# Test 7: Gate 6 still warns if pattern not in error_windows (defensive)
+_g6d_state7 = default_state()
+_g6d_state7["error_pattern_counts"] = {"TypeError": 3}
+_g6d_state7["error_windows"] = []  # Empty windows
+_g6d_state7["_session_id"] = MAIN_SESSION
+_g6d_err7 = _io229.StringIO()
+sys.stderr = _g6d_err7
+gate6_check_229("Edit", {"file_path": "/tmp/x.py"}, _g6d_state7)
+sys.stderr = _orig_stderr229
+test("v2.2.9: Gate 6 warns when pattern not in error_windows (defensive)",
+     "REPAIR LOOP" in _g6d_err7.getvalue(),
+     f"Expected REPAIR LOOP (defensive), got: {_g6d_err7.getvalue()[:100]!r}")
+
+# Test 8: Gate 6 count < 3 does not warn
+_g6d_state8 = default_state()
+_g6d_state8["error_pattern_counts"] = {"SyntaxError": 2}
+_g6d_state8["_session_id"] = MAIN_SESSION
+_g6d_err8 = _io229.StringIO()
+sys.stderr = _g6d_err8
+gate6_check_229("Edit", {"file_path": "/tmp/x.py"}, _g6d_state8)
+sys.stderr = _orig_stderr229
+test("v2.2.9: Gate 6 no repair loop for count < 3",
+     "REPAIR LOOP" not in _g6d_err8.getvalue(),
+     f"Expected no REPAIR LOOP, got: {_g6d_err8.getvalue()[:100]!r}")
+
+# ── Feature 3: Tracker observation dedup improvement ──
+
+from tracker import _observation_key
+
+# Test 9: Edit observation key includes content hash
+_ok9 = _observation_key("Edit", {"file_path": "/tmp/foo.py", "old_string": "def hello():"})
+test("v2.2.9: Edit observation key includes content hash",
+     _ok9.startswith("Edit:/tmp/foo.py:") and len(_ok9) > len("Edit:/tmp/foo.py:"),
+     f"Expected Edit:/tmp/foo.py:{{hash}}, got {_ok9!r}")
+
+# Test 10: Different old_strings produce different keys
+_ok10a = _observation_key("Edit", {"file_path": "/tmp/foo.py", "old_string": "def hello():"})
+_ok10b = _observation_key("Edit", {"file_path": "/tmp/foo.py", "old_string": "def goodbye():"})
+test("v2.2.9: Different edits to same file produce different keys",
+     _ok10a != _ok10b,
+     f"Expected different keys, got {_ok10a!r} vs {_ok10b!r}")
+
+# Test 11: Write observation key includes content hash
+_ok11 = _observation_key("Write", {"file_path": "/tmp/bar.py", "content": "print('hello')"})
+test("v2.2.9: Write observation key includes content hash",
+     _ok11.startswith("Write:/tmp/bar.py:") and len(_ok11) > len("Write:/tmp/bar.py:"),
+     f"Expected Write:/tmp/bar.py:{{hash}}, got {_ok11!r}")
+
+# Test 12: Edit without old_string falls back to path-only key
+_ok12 = _observation_key("Edit", {"file_path": "/tmp/no_content.py"})
+test("v2.2.9: Edit without old_string falls back to path-only",
+     _ok12 == "Edit:/tmp/no_content.py",
+     f"Expected 'Edit:/tmp/no_content.py', got {_ok12!r}")
+
+cleanup_test_states()
+
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
