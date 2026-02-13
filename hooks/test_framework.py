@@ -7244,6 +7244,127 @@ cleanup_test_states()
 
 
 # ─────────────────────────────────────────────────
+# v2.3.2: Gate 7 Categories, Boot Duration, Gate 11 Window Util
+# ─────────────────────────────────────────────────
+print("\n--- v2.3.2: Gate 7 Categories, Boot Duration, Gate 11 Window Util ---")
+
+# ── Feature 1: Gate 7 category labels ──
+
+# Test 1: Gate 7 CRITICAL_PATTERNS is list of tuples
+from gates.gate_07_critical_file_guard import CRITICAL_PATTERNS as G7_PATTERNS
+test("v2.3.2: Gate 7 CRITICAL_PATTERNS are (regex, category) tuples",
+     all(isinstance(p, tuple) and len(p) == 2 for p in G7_PATTERNS),
+     "Expected all entries to be 2-tuples")
+
+# Test 2: Gate 7 block message includes category
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_g7_state = load_state(session_id=MAIN_SESSION)
+_g7_state["memory_last_queried"] = time.time() - 200  # Fresh for Gate 4 (<5m) but stale for Gate 7 (>3m)
+_g7_state["files_read"] = ["/home/crab/.claude/hooks/enforcer.py"]  # Bypass Gate 1
+save_state(_g7_state, session_id=MAIN_SESSION)
+code_g7, msg_g7 = run_enforcer("PreToolUse", "Edit", {"file_path": "/home/crab/.claude/hooks/enforcer.py"})
+test("v2.3.2: Gate 7 block message includes category",
+     code_g7 != 0 and "Framework core" in msg_g7,
+     f"Expected block with 'Framework core', got code={code_g7}, msg={msg_g7}")
+
+# Test 3: Gate 7 recognizes SSH directory category
+_g7_match = None
+import re as _re
+for _pat, _cat in G7_PATTERNS:
+    if _re.search(_pat, "/home/user/.ssh/id_rsa", _re.IGNORECASE):
+        _g7_match = _cat
+        break
+test("v2.3.2: Gate 7 recognizes SSH directory path",
+     _g7_match == "SSH directory",
+     f"Expected 'SSH directory', got '{_g7_match}'")
+
+# Test 4: Gate 7 non-critical file passes
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_g7nc_state = load_state(session_id=MAIN_SESSION)
+_g7nc_state["memory_last_queried"] = time.time()
+_g7nc_state["files_read"] = ["/tmp/g7_normal232.py"]
+save_state(_g7nc_state, session_id=MAIN_SESSION)
+code_g7nc, _ = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g7_normal232.py"})
+test("v2.3.2: Gate 7 allows non-critical file",
+     code_g7nc == 0,
+     f"Expected allowed (code=0), got code={code_g7nc}")
+
+# ── Feature 2: Boot session duration ──
+
+# Test 5: _extract_session_duration returns formatted string
+from boot import _extract_session_duration
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_bd_state = load_state(session_id=MAIN_SESSION)
+_bd_state["session_start"] = time.time() - 3700  # ~61 minutes ago
+save_state(_bd_state, session_id=MAIN_SESSION)
+_bd_dur = _extract_session_duration()
+test("v2.3.2: _extract_session_duration returns '1h Xm' format",
+     _bd_dur is not None and _bd_dur.startswith("1h"),
+     f"Expected '1h Xm', got '{_bd_dur}'")
+
+# Test 6: Session duration returns None for very short sessions
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_bd2_state = load_state(session_id=MAIN_SESSION)
+_bd2_state["session_start"] = time.time() - 30  # 30 seconds ago
+save_state(_bd2_state, session_id=MAIN_SESSION)
+_bd2_dur = _extract_session_duration()
+test("v2.3.2: _extract_session_duration returns None for <60s",
+     _bd2_dur is None,
+     f"Expected None, got '{_bd2_dur}'")
+
+# Test 7: Session duration minutes-only format
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_bd3_state = load_state(session_id=MAIN_SESSION)
+_bd3_state["session_start"] = time.time() - 1500  # 25 minutes ago
+save_state(_bd3_state, session_id=MAIN_SESSION)
+_bd3_dur = _extract_session_duration()
+test("v2.3.2: _extract_session_duration returns 'Xm' for <1h",
+     _bd3_dur is not None and "h" not in _bd3_dur and _bd3_dur.endswith("m"),
+     f"Expected 'Xm', got '{_bd3_dur}'")
+
+# Test 8: Session duration returns None when no state
+cleanup_test_states()
+_bd4_dur = _extract_session_duration()
+test("v2.3.2: _extract_session_duration returns None when no state",
+     _bd4_dur is None,
+     f"Expected None, got '{_bd4_dur}'")
+
+# ── Feature 3: Gate 11 window utilization ──
+
+# Test 9: Gate 11 block message includes call count
+from gates.gate_11_rate_limit import BLOCK_THRESHOLD, WINDOW_SECONDS
+test("v2.3.2: Gate 11 constants BLOCK_THRESHOLD=60 WINDOW_SECONDS=120",
+     BLOCK_THRESHOLD == 60 and WINDOW_SECONDS == 120,
+     f"Expected (60, 120), got ({BLOCK_THRESHOLD}, {WINDOW_SECONDS})")
+
+# Test 10: Gate 11 source includes window utilization in block message
+import inspect
+import gates.gate_11_rate_limit as _g11_mod
+_g11_source = inspect.getsource(_g11_mod.check)
+test("v2.3.2: Gate 11 block msg includes window utilization",
+     "calls in {WINDOW_SECONDS}s window" in _g11_source,
+     "Expected 'calls in {WINDOW_SECONDS}s window' in block message source")
+
+# Test 11: Gate 11 warning also includes window utilization
+_g11_window_count = _g11_source.count("calls in {WINDOW_SECONDS}s window")
+test("v2.3.2: Gate 11 warn msg also includes window utilization",
+     _g11_window_count >= 2,
+     f"Expected >=2 occurrences, got {_g11_window_count}")
+
+# Test 12: Gate 11 message format includes len(recent)
+test("v2.3.2: Gate 11 source uses len(recent) for call count",
+     "len(recent)" in _g11_source,
+     "Expected 'len(recent)' in Gate 11 source")
+
+cleanup_test_states()
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

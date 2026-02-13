@@ -331,6 +331,39 @@ def _extract_verification_quality():
         return None
 
 
+def _extract_session_duration():
+    """Extract session duration from the most recent session state file.
+
+    Returns a formatted string like "2h 15m" or "45m" or None if no data.
+    """
+    try:
+        pattern = os.path.join(STATE_DIR, "state_*.json")
+        state_files = glob.glob(pattern)
+        if not state_files:
+            return None
+
+        most_recent = max(state_files, key=os.path.getmtime)
+        with open(most_recent) as f:
+            state_data = json.load(f)
+
+        session_start = state_data.get("session_start", 0)
+        if session_start == 0:
+            return None
+
+        elapsed = time.time() - session_start
+        if elapsed < 60:
+            return None  # Too short to display
+
+        total_minutes = int(elapsed / 60)
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+    except Exception:
+        return None
+
+
 def _extract_tool_activity():
     """Extract tool usage stats from the most recent session state file.
 
@@ -425,6 +458,9 @@ def main():
     # Extract verification quality from last session
     verification = _extract_verification_quality()
 
+    # Extract session duration from last session
+    session_duration = _extract_session_duration()
+
     # Build dashboard
     dashboard = f"""
 +====================================================================+
@@ -470,6 +506,12 @@ def main():
     if verification:
         vq_line = f"VERIFICATION: {verification['verified']} verified, {verification['pending']} pending"
         dashboard += f"\n|  {vq_line:<66}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
+    # Session duration from last session
+    if session_duration:
+        dur_line = f"Session duration: {session_duration}"
+        dashboard += f"\n|  {dur_line:<66}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
     # Tool activity from last session

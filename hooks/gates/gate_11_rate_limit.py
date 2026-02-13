@@ -61,7 +61,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             gate_name=GATE_NAME,
             message=(
                 f"[{GATE_NAME}] BLOCKED: Tool call rate is {windowed_rate:.1f} calls/min "
-                f"(limit: {BLOCK_THRESHOLD}/min over {WINDOW_SECONDS}s window). "
+                f"({len(recent)} calls in {WINDOW_SECONDS}s window, limit: {BLOCK_THRESHOLD}/min). "
                 f"Slow down — consider batching work or waiting before the next call."
             ),
         )
@@ -69,7 +69,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if windowed_rate > WARN_THRESHOLD:
         print(
             f"[{GATE_NAME}] WARNING: Tool call rate is {windowed_rate:.1f} calls/min "
-            f"(warn threshold: {WARN_THRESHOLD}/min). Consider slowing down.",
+            f"({len(recent)} calls in {WINDOW_SECONDS}s window, warn: {WARN_THRESHOLD}/min). "
+            f"Consider slowing down.",
             file=sys.stderr,
         )
 
