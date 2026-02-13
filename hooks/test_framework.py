@@ -7640,6 +7640,98 @@ test("v2.3.5: Dashboard conflicts endpoint returns write_conflicts and hot_keys"
 
 cleanup_test_states()
 
+print("\n--- v2.3.6: Gate 5 Test Exemption, Event Logger Session ID, State Schema ---")
+
+# ── Feature 1: Gate 5 test file exemption ──
+
+# Test 1: _is_test_file identifies test_ prefix
+from gates.gate_05_proof_before_fixed import _is_test_file
+test("v2.3.6: _is_test_file detects test_ prefix",
+     _is_test_file("/path/to/test_foo.py"),
+     "Expected test_foo.py to be detected as test file")
+
+# Test 2: _is_test_file identifies _test suffix
+test("v2.3.6: _is_test_file detects _test suffix",
+     _is_test_file("/path/to/foo_test.py"),
+     "Expected foo_test.py to be detected as test file")
+
+# Test 3: _is_test_file rejects non-test files
+test("v2.3.6: _is_test_file rejects non-test files",
+     not _is_test_file("/path/to/server.py"),
+     "Expected server.py to NOT be detected as test file")
+
+# Test 4: Gate 5 check allows test file edits even with pending verification
+from gates.gate_05_proof_before_fixed import check as _g5_check
+_g5_state = {
+    "pending_verification": ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py", "/tmp/d.py"],
+    "verification_scores": {},
+    "edit_streak": {},
+}
+_g5_result = _g5_check("Edit", {"file_path": "/tmp/test_server.py"}, _g5_state)
+test("v2.3.6: Gate 5 allows test file edit with pending verifications",
+     not _g5_result.blocked,
+     f"Expected not blocked for test file, got blocked={_g5_result.blocked}")
+
+# ── Feature 2: Event logger session correlation ──
+
+# Test 5: _audit_log function accepts session_id parameter
+import inspect as _insp236
+from event_logger import _audit_log as _el_audit
+_el_sig = _insp236.signature(_el_audit)
+test("v2.3.6: _audit_log accepts session_id parameter",
+     "session_id" in _el_sig.parameters,
+     f"Expected session_id in params, got {list(_el_sig.parameters.keys())}")
+
+# Test 6: event_logger source includes session_id in entry
+_el_source = _insp236.getsource(_el_audit)
+test("v2.3.6: _audit_log includes session_id in entry",
+     '"session_id"' in _el_source or "'session_id'" in _el_source,
+     "Expected session_id key in audit entry")
+
+# Test 7: event_logger main() extracts session_id from data
+from event_logger import main as _el_main
+_el_main_source = _insp236.getsource(_el_main)
+test("v2.3.6: event_logger main extracts session_id",
+     "session_id" in _el_main_source,
+     "Expected session_id extraction in main()")
+
+# Test 8: Handler-level _audit_log calls removed (unified in main)
+from event_logger import handle_subagent_stop
+_h_source = _insp236.getsource(handle_subagent_stop)
+test("v2.3.6: handle_subagent_stop no longer calls _audit_log directly",
+     "_audit_log" not in _h_source,
+     "Expected _audit_log removed from handler (unified in main)")
+
+# ── Feature 3: State schema export ──
+
+# Test 9: get_state_schema exists and is callable
+from shared.state import get_state_schema
+test("v2.3.6: get_state_schema is callable",
+     callable(get_state_schema),
+     "Expected get_state_schema to be callable")
+
+# Test 10: get_state_schema returns dict with expected keys
+_schema = get_state_schema()
+test("v2.3.6: get_state_schema returns dict with core fields",
+     isinstance(_schema, dict) and "files_read" in _schema and "memory_last_queried" in _schema,
+     f"Expected dict with files_read/memory_last_queried, got keys: {list(_schema.keys())[:5]}")
+
+# Test 11: Schema entries have required metadata
+_fr_schema = _schema.get("files_read", {})
+test("v2.3.6: Schema entries have type, description, category",
+     "type" in _fr_schema and "description" in _fr_schema and "category" in _fr_schema,
+     f"Expected type/description/category, got {_fr_schema}")
+
+# Test 12: Schema covers all default_state keys
+from shared.state import default_state
+_ds = default_state()
+_missing = [k for k in _ds if k not in _schema]
+test("v2.3.6: Schema covers all default_state keys",
+     len(_missing) == 0,
+     f"Missing from schema: {_missing}")
+
+cleanup_test_states()
+
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

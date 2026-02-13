@@ -89,6 +89,45 @@ def default_state():
     }
 
 
+def get_state_schema():
+    """Return structured schema metadata for all state fields.
+
+    Returns a dict mapping field names to their metadata:
+    {field_name: {"type": str, "description": str, "category": str}}
+
+    Used by dashboard for state visualization and documentation.
+    """
+    return {
+        "_version": {"type": "int", "description": "State schema version", "category": "meta"},
+        "files_read": {"type": "list", "description": "Recently read file paths", "category": "gate1", "max_size": MAX_FILES_READ},
+        "memory_last_queried": {"type": "float", "description": "Timestamp of last memory query", "category": "gate4"},
+        "pending_verification": {"type": "list", "description": "Files with unverified edits", "category": "gate5", "max_size": MAX_PENDING_VERIFICATION},
+        "last_test_run": {"type": "float", "description": "Timestamp of last test run", "category": "gate3"},
+        "verified_fixes": {"type": "list", "description": "Files with verified fixes", "category": "gate6", "max_size": MAX_VERIFIED_FIXES},
+        "session_start": {"type": "float", "description": "Session start timestamp", "category": "session"},
+        "edits_locked": {"type": "bool", "description": "Emergency edit lock flag", "category": "safety"},
+        "tool_call_count": {"type": "int", "description": "Total tool calls this session", "category": "metrics"},
+        "unlogged_errors": {"type": "list", "description": "Errors not saved to memory", "category": "gate6", "max_size": MAX_UNLOGGED_ERRORS},
+        "error_pattern_counts": {"type": "dict", "description": "Error pattern frequencies", "category": "gate6", "max_size": MAX_ERROR_PATTERNS},
+        "pending_chain_ids": {"type": "list", "description": "Causal chains awaiting outcome", "category": "causal", "max_size": MAX_PENDING_CHAINS},
+        "current_strategy_id": {"type": "str", "description": "Active fix strategy ID", "category": "causal"},
+        "current_error_signature": {"type": "str", "description": "Active error signature hash", "category": "causal"},
+        "active_bans": {"type": "list", "description": "Banned strategy IDs", "category": "gate9", "max_size": MAX_ACTIVE_BANS},
+        "last_exit_plan_mode": {"type": "float", "description": "Timestamp of last plan mode exit", "category": "gate12"},
+        "error_windows": {"type": "list", "description": "Time-windowed error tracking", "category": "gate6"},
+        "skill_usage": {"type": "dict", "description": "Skill invocation counts", "category": "skills"},
+        "recent_skills": {"type": "list", "description": "Recently used skills", "category": "skills"},
+        "gate6_warn_count": {"type": "int", "description": "Gate 6 warning escalation counter", "category": "gate6"},
+        "verification_scores": {"type": "dict", "description": "Partial verification scores per file", "category": "gate5"},
+        "successful_strategies": {"type": "dict", "description": "Strategy success counts", "category": "gate9"},
+        "tool_stats": {"type": "dict", "description": "Per-tool call statistics", "category": "metrics"},
+        "edit_streak": {"type": "dict", "description": "Consecutive edits per file without verification", "category": "gate5", "max_size": MAX_EDIT_STREAK},
+        "last_test_exit_code": {"type": "int", "description": "Exit code from most recent test", "category": "gate3"},
+        "gate_timing_stats": {"type": "dict", "description": "Per-gate timing metrics", "category": "metrics"},
+        "rate_window_timestamps": {"type": "list", "description": "Rolling window for rate limiting", "category": "gate11"},
+    }
+
+
 def migrate_v1_to_v2(state):
     """Migrate state from v1 (no _version field) to v2.
 

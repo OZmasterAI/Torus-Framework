@@ -42,6 +42,20 @@ def is_exempt(file_path):
     return False
 
 
+def _is_test_file(file_path):
+    """Check if file is a test file (editing tests IS verification)."""
+    basename = os.path.basename(file_path)
+    stem = os.path.splitext(basename)[0]
+    return (
+        stem.startswith("test_") or
+        stem.endswith("_test") or
+        stem.endswith("_spec") or
+        stem.endswith(".test") or
+        stem.endswith(".spec") or
+        basename.startswith("test_")
+    )
+
+
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
@@ -53,6 +67,10 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     # Check exemptions
     if is_exempt(file_path):
+        return GateResult(blocked=False, gate_name=GATE_NAME)
+
+    # Test files are inherently verification — exempt from proof requirements
+    if _is_test_file(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check pending verifications with progressive scoring

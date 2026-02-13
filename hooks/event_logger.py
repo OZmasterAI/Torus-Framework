@@ -49,8 +49,8 @@ def _save_state(path, state):
         pass
 
 
-def _audit_log(event_name, data):
-    """Append a line to today's audit log."""
+def _audit_log(event_name, data, session_id=""):
+    """Append a line to today's audit log with session correlation."""
     try:
         os.makedirs(AUDIT_DIR, exist_ok=True)
         today = time.strftime("%Y-%m-%d")
@@ -59,6 +59,7 @@ def _audit_log(event_name, data):
             "ts": time.time(),
             "event": event_name,
             "data": data,
+            "session_id": session_id,
         }
         with open(log_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
@@ -76,7 +77,6 @@ def handle_subagent_stop(data):
     if error:
         msg += f": {str(error)[:100]}"
     print(msg, file=sys.stderr)
-    _audit_log("SubagentStop", {"agent_type": agent_type, "status": status})
 
 
 def handle_post_tool_use_failure(data):
@@ -84,7 +84,6 @@ def handle_post_tool_use_failure(data):
     tool_name = data.get("tool_name", "unknown")
     error = data.get("error", str(data.get("tool_response", "")))[:200]
     print(f"[PostToolUseFailure] {tool_name}: {error[:80]}", file=sys.stderr)
-    _audit_log("PostToolUseFailure", {"tool": tool_name, "error": error[:200]})
 
     # Update error pattern counts in session state
     state_path, state = _find_session_state()
@@ -101,14 +100,12 @@ def handle_notification(data):
     """Log system-level notifications."""
     message = data.get("message", data.get("content", str(data)))[:200]
     print(f"[Notification] {message[:80]}", file=sys.stderr)
-    _audit_log("Notification", {"message": message})
 
 
 def handle_teammate_idle(data):
     """Log when a team member goes idle."""
     agent_name = data.get("agent_name", data.get("name", "unknown"))
     print(f"[TeammateIdle] {agent_name}", file=sys.stderr)
-    _audit_log("TeammateIdle", {"agent": agent_name})
 
 
 def handle_task_completed(data):
@@ -116,7 +113,6 @@ def handle_task_completed(data):
     task_id = data.get("task_id", data.get("id", "unknown"))
     subject = data.get("subject", data.get("title", ""))[:100]
     print(f"[TaskCompleted] #{task_id}: {subject[:60]}", file=sys.stderr)
-    _audit_log("TaskCompleted", {"task_id": task_id, "subject": subject})
 
 
 HANDLERS = {
@@ -140,12 +136,18 @@ def main():
     except (json.JSONDecodeError, Exception):
         data = {}
 
+    # Extract session ID for audit correlation
+    session_id = data.get("session_id", "")
+
     handler = HANDLERS.get(event_name)
     if handler:
         try:
             handler(data)
         except Exception as e:
             print(f"[event_logger] Error in {event_name}: {e}", file=sys.stderr)
+
+    # Unified audit with session correlation
+    _audit_log(event_name, data, session_id=session_id)
 
     # Always exit 0 — fail-open
     sys.exit(0)
