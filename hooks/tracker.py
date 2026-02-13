@@ -115,6 +115,40 @@ def _capture_observation(tool_name, tool_input, tool_response, session_id, state
         pass  # Silent failure — never crash PostToolUse
 
 
+BROAD_TEST_COMMANDS = ["pytest", "python -m pytest", "npm test", "cargo test", "go test", "make test"]
+
+
+def _classify_verification_score(command):
+    """Classify a Bash command's verification confidence score.
+
+    Returns an integer score:
+      - Full test suite (pytest, npm test, make test, cargo test) = 100
+      - Targeted test (pytest test_specific.py, jest file.test.js) = 70
+      - Running a script (python script.py, node script.js) = 50
+      - Generic commands (ls, git status, echo, cat) = 10
+      - Other commands = 30
+    """
+    for kw in BROAD_TEST_COMMANDS:
+        if kw in command:
+            rest = command.split(kw, 1)[1].strip()
+            # Specific test file or test selector
+            if re.search(r'\btest_\w+\.py\b', rest) or '::' in rest:
+                return 70  # Targeted test
+            if re.search(r'\w+\.test\.(js|ts|tsx)\b', rest):
+                return 70  # Jest-style targeted test
+            return 100  # Full test suite
+
+    script_runners = ["python ", "python3 ", "node ", "ruby ", "bash ", "sh ", "./"]
+    if any(kw in command for kw in script_runners):
+        return 50
+
+    generic_cmds = ["ls", "git status", "echo ", "cat ", "pwd", "which "]
+    if any(kw in command for kw in generic_cmds):
+        return 10
+
+    return 30
+
+
 def _cap_queue_file():
     """Truncate queue to last 300 lines if over 500."""
     try:
@@ -147,6 +181,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     if tool_name == "mcp__memory__remember_this":
         state["unlogged_errors"] = []
         state["error_pattern_counts"] = {}
+        state["gate6_warn_count"] = 0  # Reset Gate 6 escalation on memory save
 
     # Track skill invocations
     if tool_name == "Skill":
@@ -198,36 +233,42 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
             pending.append(file_path)
             state["pending_verification"] = pending
 
-    # Verification clears pending files that match the command context
+    # Progressive verification scoring: accumulate confidence scores for pending files
     if tool_name == "Bash":
         command = tool_input.get("command", "")
-        verify_keywords = ["pytest", "python -m pytest", "npm test", "cargo test", "go test",
-                          "python ", "node "]
-        if any(kw in command for kw in verify_keywords):
-            # Only clear files that are referenced in the command, or all if running a broad test suite
-            broad_test_commands = ["pytest", "python -m pytest", "npm test", "cargo test", "go test"]
-            if any(kw in command for kw in broad_test_commands):
-                # Running a full test suite counts as verifying everything
-                verified = state.get("pending_verification", [])
-                state["verified_fixes"] = state.get("verified_fixes", []) + verified
-                state["pending_verification"] = []
+        score = _classify_verification_score(command)
+        scores = state.setdefault("verification_scores", {})
+        pending = state.get("pending_verification", [])
+
+        if any(kw in command for kw in BROAD_TEST_COMMANDS):
+            # Broad tests apply score to all pending files
+            for fp in pending:
+                scores[fp] = scores.get(fp, 0) + score
+        else:
+            # Targeted commands: score only files referenced in command
+            for filepath in pending:
+                basename = os.path.basename(filepath)
+                stem = os.path.splitext(basename)[0]
+                matched = (
+                    re.search(r'\b' + re.escape(filepath) + r'\b', command)
+                    or re.search(r'\b' + re.escape(basename) + r'\b', command)
+                    or re.search(r'\b' + re.escape(stem) + r'\b', command)
+                )
+                if matched:
+                    # Direct file execution (score >= 30) gets minimum 70 — running
+                    # the exact file you edited is strong verification evidence
+                    effective_score = max(score, 70) if score >= 30 else score
+                    scores[filepath] = scores.get(filepath, 0) + effective_score
+
+        # Clear files that have reached the verification threshold (>= 70)
+        remaining = []
+        for fp in pending:
+            if scores.get(fp, 0) >= 70:
+                state.setdefault("verified_fixes", []).append(fp)
+                scores.pop(fp, None)
             else:
-                # For targeted commands, only clear files mentioned in the command
-                pending = state.get("pending_verification", [])
-                remaining = []
-                for filepath in pending:
-                    basename = os.path.basename(filepath)
-                    stem = os.path.splitext(basename)[0]
-                    matched = (
-                        re.search(r'\b' + re.escape(filepath) + r'\b', command)
-                        or re.search(r'\b' + re.escape(basename) + r'\b', command)
-                        or re.search(r'\b' + re.escape(stem) + r'\b', command)
-                    )
-                    if matched:
-                        state.setdefault("verified_fixes", []).append(filepath)
-                    else:
-                        remaining.append(filepath)
-                state["pending_verification"] = remaining
+                remaining.append(fp)
+        state["pending_verification"] = remaining
 
     # Detect errors in Bash output
     if tool_name == "Bash" and tool_response is not None:
@@ -260,12 +301,38 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                     resp = json.loads(tool_response)
                 except (json.JSONDecodeError, TypeError):
                     resp = {}
-            if resp.get("banned"):
-                strategy_id = resp.get("strategy_id", "")
-                if strategy_id:
-                    bans = state.setdefault("active_bans", [])
+            strategy_id = resp.get("strategy_id", "") or state.get("current_strategy_id", "")
+            outcome = resp.get("outcome", "")
+
+            if strategy_id:
+                # Track successful strategies
+                if outcome == "success":
+                    successes = state.setdefault("successful_strategies", {})
+                    if strategy_id not in successes:
+                        successes[strategy_id] = {"success_count": 0, "last_success": 0}
+                    successes[strategy_id]["success_count"] += 1
+                    successes[strategy_id]["last_success"] = time.time()
+
+                # Track failures with retry budget (dict format)
+                if resp.get("banned") or outcome == "failure":
+                    bans = state.get("active_bans", [])
+                    # Migrate list → dict if needed
+                    if isinstance(bans, list):
+                        bans_dict = {}
+                        for sid in bans:
+                            bans_dict[sid] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
+                        bans = bans_dict
+                        state["active_bans"] = bans
                     if strategy_id not in bans:
-                        bans.append(strategy_id)
+                        bans[strategy_id] = {"fail_count": 0, "first_failed": time.time(), "last_failed": time.time()}
+                    if resp.get("banned"):
+                        # Explicit ban from MCP: immediately set to ban threshold
+                        bans[strategy_id]["fail_count"] = max(bans[strategy_id].get("fail_count", 0), 3)
+                    else:
+                        # Gradual failure: increment retry budget
+                        bans[strategy_id]["fail_count"] = bans[strategy_id].get("fail_count", 0) + 1
+                    bans[strategy_id]["last_failed"] = time.time()
+
             state["pending_chain_ids"] = []
             state["current_strategy_id"] = ""
         except Exception:
@@ -281,11 +348,18 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                 except (json.JSONDecodeError, TypeError):
                     resp = {}
             banned_list = resp.get("banned", [])
-            bans = state.setdefault("active_bans", [])
+            bans = state.get("active_bans", [])
+            # Migrate list → dict if needed
+            if isinstance(bans, list):
+                bans_dict = {}
+                for sid in bans:
+                    bans_dict[sid] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
+                bans = bans_dict
+                state["active_bans"] = bans
             for entry in banned_list:
                 sid = entry.get("strategy_id", "") if isinstance(entry, dict) else ""
                 if sid and sid not in bans:
-                    bans.append(sid)
+                    bans[sid] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
         except Exception:
             pass
 

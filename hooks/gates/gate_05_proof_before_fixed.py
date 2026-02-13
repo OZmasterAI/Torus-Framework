@@ -55,13 +55,23 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if is_exempt(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # Check pending verifications
+    # Check pending verifications with progressive scoring
     pending = state.get("pending_verification", [])
+    verification_scores = state.get("verification_scores", {})
 
     # Allow editing the same file that's pending (iterating on a fix)
     pending_other = [p for p in pending if p != file_path]
 
-    if len(pending_other) >= MAX_UNVERIFIED:
+    # Count effective unverified: partially scored files count less
+    effective_unverified = 0.0
+    for p in pending_other:
+        score = verification_scores.get(p, 0)
+        if score > 0:
+            effective_unverified += 0.5  # Partial verification reduces urgency
+        else:
+            effective_unverified += 1.0
+
+    if effective_unverified >= MAX_UNVERIFIED:
         file_list = ", ".join(os.path.basename(p) for p in pending_other[:3])
         return GateResult(
             blocked=True,

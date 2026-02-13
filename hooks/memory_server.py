@@ -465,6 +465,87 @@ _preview_migrated = _migrate_previews()
 fts_index = FTS5Index()
 _fts_count = fts_index.build_from_chromadb(collection)
 
+# ──────────────────────────────────────────────────
+# Tag Co-occurrence Matrix (lazy-built, cached)
+# ──────────────────────────────────────────────────
+_tag_cooccurrence: dict[str, dict[str, int]] = {}  # tag_a -> {tag_b: count}
+_tag_counts: dict[str, int] = {}  # tag -> total memories with this tag
+_tag_cooccurrence_dirty: bool = True  # rebuild on first use
+
+
+def _build_tag_cooccurrence():
+    """Build tag co-occurrence matrix from FTS5 tag index.
+
+    Scans all memory tags, counts how often tag pairs appear together.
+    Called lazily on first search or explicitly via rebuild_tag_index().
+    """
+    global _tag_cooccurrence, _tag_counts, _tag_cooccurrence_dirty
+
+    conn = fts_index.conn
+    rows = conn.execute("SELECT memory_id, tag FROM tags").fetchall()
+
+    # Group tags by memory_id
+    mem_tags: dict[str, set[str]] = {}
+    tag_totals: dict[str, int] = {}
+    for mid, tag in rows:
+        mem_tags.setdefault(mid, set()).add(tag)
+        tag_totals[tag] = tag_totals.get(tag, 0) + 1
+
+    # Build co-occurrence counts
+    cooccur: dict[str, dict[str, int]] = {}
+    for _mid, tagset in mem_tags.items():
+        tags = list(tagset)
+        for i in range(len(tags)):
+            for j in range(len(tags)):
+                if i != j:
+                    cooccur.setdefault(tags[i], {})
+                    cooccur[tags[i]][tags[j]] = cooccur[tags[i]].get(tags[j], 0) + 1
+
+    _tag_cooccurrence = cooccur
+    _tag_counts = tag_totals
+    _tag_cooccurrence_dirty = False
+
+
+def _get_expanded_tags(query: str) -> list[str]:
+    """Find tags that co-occur with tags matching the query (>40% rate).
+
+    Checks if query text matches any known tags, then returns co-occurring
+    tags above the 40% co-occurrence threshold.
+    """
+    if _tag_cooccurrence_dirty:
+        _build_tag_cooccurrence()
+
+    if not _tag_counts:
+        return []
+
+    query_lower = query.lower().strip()
+    query_tokens = set(query_lower.split())
+
+    # Match query against known tags (substring or token match)
+    matched_tags = []
+    for tag in _tag_counts:
+        tag_lower = tag.lower()
+        # Exact match, substring, or token overlap
+        if tag_lower == query_lower or tag_lower in query_lower or tag_lower in query_tokens:
+            matched_tags.append(tag)
+
+    if not matched_tags:
+        return []
+
+    # Find co-occurring tags above 40% threshold
+    expanded = set()
+    matched_set = set(matched_tags)
+    for tag in matched_tags:
+        if tag not in _tag_cooccurrence:
+            continue
+        tag_total = _tag_counts.get(tag, 1)
+        for co_tag, count in _tag_cooccurrence[tag].items():
+            rate = count / tag_total
+            if rate > 0.4 and co_tag not in matched_set:
+                expanded.add(co_tag)
+
+    return list(expanded)
+
 
 def format_results(results) -> list[dict]:
     """Format ChromaDB results into readable dicts."""
@@ -837,18 +918,45 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         )
         formatted = format_summaries(results)
 
+    # Tag expansion: find co-occurring tags and merge additional results
+    tag_expanded = False
+    expanded_tags = []
+    try:
+        expanded_tags = _get_expanded_tags(query)
+        if expanded_tags:
+            tag_results = fts_index.tag_search(expanded_tags, match_all=False, top_k=actual_k)
+            if tag_results:
+                # Merge: deduplicate by ID, keep highest relevance
+                seen_ids = {r.get("id") for r in formatted if r.get("id")}
+                for tr in tag_results:
+                    tid = tr.get("id", "")
+                    if tid and tid not in seen_ids:
+                        tr["tag_expanded"] = True
+                        formatted.append(tr)
+                        seen_ids.add(tid)
+                tag_expanded = True
+    except Exception:
+        pass  # Tag expansion failure must not break search
+
     # Apply recency boost and re-sort
     if recency_weight > 0:
         formatted = _apply_recency_boost(formatted, recency_weight)
 
+    # Trim to requested top_k after expansion
+    formatted = formatted[:top_k]
+
     _touch_memory_timestamp()
 
-    return {
+    result = {
         "results": formatted,
         "total_memories": count,
         "query": query,
         "mode": mode,
     }
+    if tag_expanded:
+        result["tag_expanded"] = True
+        result["expanded_tags"] = expanded_tags
+    return result
 
 
 @mcp.tool()
@@ -920,6 +1028,11 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
 
     # Dual-write: keep FTS5 index in sync
     fts_index.add_entry(doc_id, content, preview, tags, timestamp, now)
+
+    # Mark tag co-occurrence matrix as dirty (new tags may change co-occurrence rates)
+    global _tag_cooccurrence_dirty
+    if tags:
+        _tag_cooccurrence_dirty = True
 
     _touch_memory_timestamp()
 
@@ -2028,6 +2141,25 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
             "distance_threshold": distance_threshold,
         },
     }
+
+
+@mcp.tool()
+def rebuild_tag_index() -> dict:
+    """Force rebuild the tag co-occurrence matrix.
+
+    Use when tag relationships seem stale or after bulk memory operations.
+    The matrix is normally rebuilt lazily when dirty, but this forces an
+    immediate rebuild.
+    """
+    try:
+        _build_tag_cooccurrence()
+        return {
+            "result": "Tag co-occurrence matrix rebuilt",
+            "unique_tags": len(_tag_counts),
+            "tags_with_cooccurrence": len(_tag_cooccurrence),
+        }
+    except Exception as e:
+        return {"error": f"Failed to rebuild tag index: {str(e)}"}
 
 
 if __name__ == "__main__":

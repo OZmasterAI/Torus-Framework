@@ -3425,9 +3425,9 @@ if _dash_imported:
     test("Dashboard: malformed audit line → None",
          _dash_bad is None)
 
-    # 11. Route count matches plan (20 API + 1 static mount = 21)
-    test("Dashboard: 21 routes configured",
-         len(_dash_mod.routes) == 21,
+    # 11. Route count matches plan (21 API + 1 static mount = 22)
+    test("Dashboard: 22 routes configured",
+         len(_dash_mod.routes) == 22,
          f"got {len(_dash_mod.routes)}")
 
     # 12. HTML has all 7 panels
@@ -3653,6 +3653,156 @@ if os.path.isfile(_skill_review_path):
     test("v2.0.3: /review skill mentions quality/review",
          "review" in _skill_review_content.lower() or "quality" in _skill_review_content.lower(),
          "expected content not found")
+
+# ─────────────────────────────────────────────────
+# Test: v2.0.4 Features (Session 27)
+# ─────────────────────────────────────────────────
+print("\n--- v2.0.4 Features (Session 27) ---")
+
+# 1. Dashboard auto-start (boot.py port check)
+_boot_path = os.path.expanduser("~/.claude/hooks/boot.py")
+if os.path.isfile(_boot_path):
+    with open(_boot_path) as _bf204:
+        _boot_src = _bf204.read()
+
+    test("v2.0.4: boot.py has port 7777 or socket check for dashboard auto-start",
+         "7777" in _boot_src or "socket" in _boot_src,
+         "port 7777 or socket check not found in boot.py")
+else:
+    test("v2.0.4: boot.py exists", False, "file not found")
+
+# 2. Skill usage tracking in tracker.py
+_tracker_path = os.path.join(os.path.dirname(__file__), "tracker.py")
+if os.path.isfile(_tracker_path):
+    with open(_tracker_path) as _tf204:
+        _tracker_src = _tf204.read()
+
+    test("v2.0.4: tracker.py has skill_usage state tracking",
+         "skill_usage" in _tracker_src,
+         "skill_usage not found in tracker.py")
+
+    # 3. Error deduplication (error_windows)
+    test("v2.0.4: tracker.py has error_windows deduplication logic",
+         "error_windows" in _tracker_src,
+         "error_windows not found in tracker.py")
+else:
+    test("v2.0.4: tracker.py exists", False, "file not found")
+
+# 4. Sentiment tagging in user_prompt_capture.py
+_capture_path = os.path.expanduser("~/.claude/hooks/user_prompt_capture.py")
+if os.path.isfile(_capture_path):
+    with open(_capture_path) as _cf204:
+        _capture_src = _cf204.read()
+
+    test("v2.0.4: user_prompt_capture.py has sentiment patterns",
+         "frustration" in _capture_src or "sentiment" in _capture_src,
+         "sentiment patterns not found in user_prompt_capture.py")
+else:
+    test("v2.0.4: user_prompt_capture.py exists", False, "file not found")
+
+# 5. get_session_sentiment in memory_server.py
+_ms_path_204 = os.path.join(os.path.dirname(__file__), "memory_server.py")
+with open(_ms_path_204) as _mf204:
+    _ms_src_204 = _mf204.read()
+
+test("v2.0.4: memory_server.py has get_session_sentiment function",
+     "def get_session_sentiment" in _ms_src_204,
+     "get_session_sentiment not found in memory_server.py")
+
+# 6. Knowledge transfer in wrap-up skill
+_wrapup_skill_path = os.path.expanduser("~/.claude/skills/wrap-up/SKILL.md")
+if os.path.isfile(_wrapup_skill_path):
+    with open(_wrapup_skill_path) as _wf204:
+        _wrapup_content = _wf204.read()
+
+    test("v2.0.4: wrap-up SKILL.md contains KNOWLEDGE TRANSFER section",
+         "KNOWLEDGE TRANSFER" in _wrapup_content,
+         "KNOWLEDGE TRANSFER section not found in wrap-up/SKILL.md")
+else:
+    test("v2.0.4: skills/wrap-up/SKILL.md exists", False, "file not found")
+
+# ─────────────────────────────────────────────────
+# Test: v2.0.5 Features (Session 27)
+# ─────────────────────────────────────────────────
+print("\n--- v2.0.5 Features (Session 27) ---")
+
+# 1. Memory graph endpoint in dashboard server.py
+if os.path.isfile(_dash_server_path):
+    with open(_dash_server_path) as _dsf205:
+        _dash_src_205 = _dsf205.read()
+
+    test("v2.0.5: dashboard server.py has memories/graph endpoint",
+         "memories/graph" in _dash_src_205,
+         "memories/graph endpoint not found in server.py")
+else:
+    test("v2.0.5: dashboard server.py exists", False, "file not found")
+
+# 2. Mobile responsiveness (media queries in style.css)
+_css_path = os.path.expanduser("~/.claude/dashboard/static/style.css")
+if os.path.isfile(_css_path):
+    with open(_css_path) as _cssf:
+        _css_src = _cssf.read()
+
+    test("v2.0.5: style.css has @media queries for mobile responsiveness",
+         "@media" in _css_src,
+         "@media queries not found in style.css")
+
+    # 3. Theme toggle (data-theme in CSS)
+    test("v2.0.5: style.css has data-theme for theme toggle",
+         "data-theme" in _css_src,
+         "data-theme not found in style.css")
+else:
+    test("v2.0.5: dashboard style.css exists", False, "file not found")
+
+# 3b. Theme toggle (dashboard-theme in app.js)
+_appjs_path = os.path.expanduser("~/.claude/dashboard/static/app.js")
+if os.path.isfile(_appjs_path):
+    with open(_appjs_path) as _ajf:
+        _appjs_src = _ajf.read()
+
+    test("v2.0.5: app.js has dashboard-theme for theme persistence",
+         "dashboard-theme" in _appjs_src,
+         "dashboard-theme not found in app.js")
+else:
+    test("v2.0.5: dashboard app.js exists", False, "file not found")
+
+# 4. New skills: /refactor and /document
+_skill_refactor_path = os.path.expanduser("~/.claude/skills/refactor/SKILL.md")
+_skill_document_path = os.path.expanduser("~/.claude/skills/document/SKILL.md")
+
+test("v2.0.5: skills/refactor/SKILL.md exists",
+     os.path.isfile(_skill_refactor_path),
+     "file not found")
+
+test("v2.0.5: skills/document/SKILL.md exists",
+     os.path.isfile(_skill_document_path),
+     "file not found")
+
+# 5. Audit log rotation
+_audit_log_path = os.path.expanduser("~/.claude/hooks/shared/audit_log.py")
+if os.path.isfile(_audit_log_path):
+    with open(_audit_log_path) as _alf:
+        _audit_src = _alf.read()
+
+    test("v2.0.5: audit_log.py has log rotation logic",
+         "rotate" in _audit_src or "gzip" in _audit_src,
+         "rotate/gzip not found in audit_log.py")
+else:
+    test("v2.0.5: audit/audit_log.py exists", False, "file not found")
+
+# 6. State versioning
+test("v2.0.5: state.py has STATE_VERSION constant",
+     "STATE_VERSION" in _state_src,
+     "STATE_VERSION not found in state.py")
+
+test("v2.0.5: state.py has migrate function for state versioning",
+     "migrate" in _state_src,
+     "migrate not found in state.py")
+
+# 7. Memory clustering
+test("v2.0.5: memory_server.py has cluster_knowledge function",
+     "cluster_knowledge" in _ms_src_204,
+     "cluster_knowledge not found in memory_server.py")
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files
