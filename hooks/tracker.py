@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from shared.state import load_state, save_state
 
 # Auto-capture constants — expanded to include read/search/skill tools
-CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "Skill"}
+CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "Skill", "WebSearch", "WebFetch"}
 CAPTURE_QUEUE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
 MAX_QUEUE_LINES = 500
 

@@ -33,6 +33,33 @@ _sys.path.insert(0, os.path.dirname(__file__))
 from shared.error_normalizer import normalize_error, fnv1a_hash, error_signature
 
 
+def _validate_top_k(value, default=15, min_val=1, max_val=500):
+    """Validate and clamp a top_k/limit parameter."""
+    try:
+        val = int(value)
+        return max(min_val, min(val, max_val))
+    except (ValueError, TypeError):
+        return default
+
+
+def _validate_hours(value, default=48, min_val=1, max_val=720):
+    """Validate and clamp an hours parameter."""
+    try:
+        val = int(value)
+        return max(min_val, min(val, max_val))
+    except (ValueError, TypeError):
+        return default
+
+
+def _validate_distance_threshold(value, default=0.3, min_val=0.05, max_val=0.8):
+    """Validate and clamp a distance_threshold parameter."""
+    try:
+        val = float(value)
+        return max(min_val, min(val, max_val))
+    except (ValueError, TypeError):
+        return default
+
+
 def _touch_memory_timestamp():
     """Write the current timestamp to the sideband file (atomic)."""
     tmp = MEMORY_TIMESTAMP_FILE + ".tmp"
@@ -458,12 +485,26 @@ def _merge_results(fts_results, chroma_summaries, top_k=15):
     return results[:top_k]
 
 
-# Run preview migration on startup (idempotent — skips if already done)
-_preview_migrated = _migrate_previews()
-
-# Build FTS5 index from ChromaDB (rebuilt on every server restart)
+# Lazy initialization — only run when module is used as a server, not when imported
+# for testing. ChromaDB Rust backend segfaults on concurrent PersistentClient access.
+_preview_migrated = False
 fts_index = FTS5Index()
-_fts_count = fts_index.build_from_chromadb(collection)
+_fts_count = 0
+_initialized = False
+
+
+def _ensure_initialized():
+    """Run one-time initialization (preview migration + FTS5 build).
+
+    Called lazily on first MCP tool use or explicitly at server startup.
+    Safe to call multiple times — idempotent after first run.
+    """
+    global _preview_migrated, fts_index, _fts_count, _initialized
+    if _initialized:
+        return
+    _initialized = True
+    _preview_migrated = _migrate_previews()
+    _fts_count = fts_index.build_from_chromadb(collection)
 
 # ──────────────────────────────────────────────────
 # Tag Co-occurrence Matrix (lazy-built, cached)
@@ -882,7 +923,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
     """
     recency_weight = max(0.0, min(1.0, recency_weight))
-    top_k = max(1, min(top_k, 500))
+    top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
     count = collection.count()
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty. Start building knowledge with remember_this()."}
@@ -1056,7 +1097,7 @@ def deep_query(query: str, top_k: int = 50, recency_weight: float = 0.15) -> dic
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
     """
     recency_weight = max(0.0, min(1.0, recency_weight))
-    top_k = max(1, min(top_k, 500))
+    top_k = _validate_top_k(top_k, default=50, min_val=1, max_val=500)
     count = collection.count()
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty."}
@@ -1089,7 +1130,7 @@ def get_recent_activity(hours: int = 48) -> dict:
     Args:
         hours: How far back to look (default 48 hours)
     """
-    hours = max(1, min(hours, 8760))
+    hours = _validate_hours(hours, default=48, min_val=1, max_val=720)
     count = collection.count()
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty."}
@@ -1219,7 +1260,7 @@ def search_by_tags(tags: str, match_all: bool = False, top_k: int = 15) -> dict:
     if not tags_list:
         return {"results": [], "message": "No tags provided"}
 
-    top_k = max(1, min(top_k, 500))
+    top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
     results = fts_index.tag_search(tags_list, match_all=match_all, top_k=top_k)
 
     _touch_memory_timestamp()
@@ -1246,7 +1287,7 @@ def search_observations(query: str, top_k: int = 20, hours: int = 0, sentiment: 
         hours: If > 0, only return observations from the last N hours
         sentiment: Filter by sentiment value (frustration, confidence, uncertainty, neutral). Empty = no filter.
     """
-    top_k = max(1, min(top_k, 100))
+    top_k = _validate_top_k(top_k, default=20, min_val=1, max_val=100)
 
     # Flush queue to ensure latest data
     _flush_capture_queue()
@@ -1460,7 +1501,7 @@ def timeline(anchor_id: str = "", anchor_time: str = "", window_minutes: int = 1
     start = anchor_epoch - window_secs
     end = anchor_epoch + window_secs
 
-    limit = max(1, min(limit, 100))
+    limit = _validate_top_k(limit, default=20, min_val=1, max_val=100)
 
     try:
         results = observations.get(
@@ -1625,7 +1666,7 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
         error_text: The error message to look up
         top_k: Maximum number of results (default 10)
     """
-    top_k = max(1, min(top_k, 100))
+    top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
     normalized, error_hash = error_signature(error_text)
 
     results_by_chain = {}
@@ -1738,7 +1779,7 @@ def suggest_promotions(top_k: int = 5) -> dict:
     Args:
         top_k: Number of top clusters to return (default 5)
     """
-    top_k = max(1, min(top_k, 50))
+    top_k = _validate_top_k(top_k, default=5, min_val=1, max_val=50)
     count = collection.count()
     if count == 0:
         return {"clusters": [], "message": "Memory is empty."}
@@ -1888,7 +1929,7 @@ def list_stale_memories(days: int = 60, top_k: int = 20) -> dict:
         top_k: Maximum number of results (default 20).
     """
     days = max(1, min(days, 3650))
-    top_k = max(1, min(top_k, 200))
+    top_k = _validate_top_k(top_k, default=20, min_val=1, max_val=200)
 
     try:
         count = collection.count()
@@ -1989,7 +2030,7 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
         distance_threshold: Max cosine distance to consider memories related (default 0.3, range 0.05-0.8)
     """
     min_cluster_size = max(2, min(min_cluster_size, 20))
-    distance_threshold = max(0.05, min(distance_threshold, 0.8))
+    distance_threshold = _validate_distance_threshold(distance_threshold, default=0.3, min_val=0.05, max_val=0.8)
 
     count = collection.count()
     if count == 0:
@@ -2348,4 +2389,5 @@ def rebuild_tag_index() -> dict:
 
 
 if __name__ == "__main__":
+    _ensure_initialized()
     mcp.run()

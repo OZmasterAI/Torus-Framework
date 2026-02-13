@@ -107,7 +107,7 @@ def _compute_priority(tool_name, has_error, exit_code):
         return "medium"
     if tool_name in ("Read", "Glob", "Grep"):
         return "low"
-    if tool_name == "Bash":
+    if tool_name in ("Bash", "WebSearch", "WebFetch"):
         return "medium"
     return "low"
 
@@ -198,6 +198,16 @@ def compress_observation(tool_name, tool_input, tool_response, session_id):
         skill_name = tool_input.get("skill", "") or tool_input.get("name", "")
         context = {"skill_name": skill_name}
         document = f"Skill: {skill_name}"
+
+    elif tool_name == "WebSearch":
+        query = tool_input.get("query", "")
+        context = {"query": query}
+        document = f"WebSearch: {query[:100]}"
+
+    elif tool_name == "WebFetch":
+        url = tool_input.get("url", "")
+        context = {"url": url}
+        document = f"WebFetch: {url}"
 
     else:
         document = f"{tool_name}: (uncategorized)"

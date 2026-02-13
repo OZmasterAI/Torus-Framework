@@ -44,6 +44,12 @@ DEPLOY_PATTERNS = [
     r"\bpulumi\s+up\b",                   # pulumi deploy
     r"\bserverless\s+deploy\b",           # serverless framework
     r"\bcdk\s+deploy\b",                  # AWS CDK deploy
+    r"\bnpm\s+run\s+deploy\b",            # npm scripts deploy
+    r"\byarn\s+deploy\b",                 # yarn deploy
+    r"\bvercel\b.*--prod\b",              # Vercel production deploy
+    r"\bnetlify\s+deploy\b.*--prod\b",    # Netlify production deploy
+    r"\brailway\s+up\b",                  # Railway.app deploy
+    r"\bamplify\s+publish\b",             # AWS Amplify publish
 ]
 
 
