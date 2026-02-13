@@ -307,6 +307,16 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     """Track state after a tool call completes."""
     state["tool_call_count"] = state.get("tool_call_count", 0) + 1
 
+    # Per-tool call counting for session metrics
+    tool_call_counts = state.setdefault("tool_call_counts", {})
+    tool_call_counts[tool_name] = tool_call_counts.get(tool_name, 0) + 1
+    state["total_tool_calls"] = state.get("total_tool_calls", 0) + 1
+    # Cap tool_call_counts at 50 keys (defensive, prevent unbounded growth)
+    if len(tool_call_counts) > 50:
+        sorted_tools = sorted(tool_call_counts.items(), key=lambda x: x[1])
+        for k, _ in sorted_tools[:len(tool_call_counts) - 50]:
+            del tool_call_counts[k]
+
     # Per-tool call stats
     tool_stats = state.setdefault("tool_stats", {})
     tool_entry = tool_stats.setdefault(tool_name, {"count": 0})

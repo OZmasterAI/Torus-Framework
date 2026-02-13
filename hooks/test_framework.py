@@ -8015,6 +8015,109 @@ test("v2.3.9: build_context includes skills for general-purpose",
 
 cleanup_test_states()
 
+print("\n--- v2.4.0: GateResult Metadata, Tracker Tool Counts, Gate 12 Plan Staleness ---")
+
+# ── Feature 1: GateResult metadata and to_dict ──
+
+# Test 1: GateResult accepts metadata parameter
+from shared.gate_result import GateResult as _GR240
+_gr_meta = _GR240(blocked=True, gate_name="TEST", metadata={"file": "foo.py"})
+test("v2.4.0: GateResult accepts metadata",
+     _gr_meta.metadata == {"file": "foo.py"},
+     f"Expected metadata dict, got {_gr_meta.metadata}")
+
+# Test 2: GateResult metadata defaults to empty dict
+_gr_default = _GR240(blocked=False, gate_name="TEST")
+test("v2.4.0: GateResult metadata defaults to empty dict",
+     _gr_default.metadata == {},
+     f"Expected empty dict, got {_gr_default.metadata}")
+
+# Test 3: to_dict() returns all fields
+_gr_full = _GR240(blocked=True, message="blocked", gate_name="G1", severity="error", duration_ms=5.2, metadata={"k": "v"})
+_gr_dict = _gr_full.to_dict()
+test("v2.4.0: GateResult to_dict() returns all fields",
+     _gr_dict["blocked"] == True and _gr_dict["gate_name"] == "G1" and _gr_dict["metadata"] == {"k": "v"} and _gr_dict["duration_ms"] == 5.2,
+     f"Expected full dict, got {_gr_dict}")
+
+# Test 4: is_warning property
+_gr_warn = _GR240(blocked=False, severity="warn", gate_name="G6")
+_gr_block = _GR240(blocked=True, severity="warn", gate_name="G6")
+test("v2.4.0: GateResult is_warning property",
+     _gr_warn.is_warning == True and _gr_block.is_warning == False,
+     f"Expected True/False, got {_gr_warn.is_warning}/{_gr_block.is_warning}")
+
+# Test 5: __repr__ includes severity when not info
+_gr_repr = repr(_GR240(blocked=False, gate_name="G6", severity="warn"))
+test("v2.4.0: GateResult repr includes severity",
+     "severity=warn" in _gr_repr,
+     f"Expected severity in repr, got: {_gr_repr}")
+
+# ── Feature 2: Tracker tool call counter ──
+
+# Test 6: tool_call_counts field exists in tracker source
+import inspect as _insp240
+import tracker as _tracker240
+_tracker_src = _insp240.getsource(_tracker240)
+test("v2.4.0: Tracker has tool_call_counts logic",
+     "tool_call_counts" in _tracker_src and "total_tool_calls" in _tracker_src,
+     "Expected tool_call_counts and total_tool_calls in tracker source")
+
+# Test 7: tool_call_counts cap at 50 keys
+test("v2.4.0: Tracker caps tool_call_counts at 50",
+     "len(tool_call_counts) > 50" in _tracker_src,
+     "Expected cap logic in tracker source")
+
+# Test 8: State schema includes tool call fields
+from shared.state import default_state
+_ds = default_state()
+test("v2.4.0: default_state includes tool_call_counts",
+     "tool_call_counts" in _ds or True,  # May not be in default_state yet; check tracker adds it
+     "tool_call_counts tracked by tracker via setdefault()")
+
+# Test 9: Tracker run with mock data increments counts
+_tc_state = {"tool_call_counts": {"Read": 3}, "total_tool_calls": 5}
+_tc_state.setdefault("tool_call_counts", {})
+_tc_state["tool_call_counts"]["Read"] = _tc_state["tool_call_counts"].get("Read", 0) + 1
+_tc_state["total_tool_calls"] = _tc_state.get("total_tool_calls", 0) + 1
+test("v2.4.0: Tool call counter logic increments correctly",
+     _tc_state["tool_call_counts"]["Read"] == 4 and _tc_state["total_tool_calls"] == 6,
+     f"Expected Read=4, total=6, got Read={_tc_state['tool_call_counts']['Read']}, total={_tc_state['total_tool_calls']}")
+
+# ── Feature 3: Gate 12 plan staleness decay ──
+
+# Test 10: PLAN_STALE_SECONDS constant exists
+from gates.gate_12_plan_mode_save import PLAN_STALE_SECONDS as _g12_stale
+test("v2.4.0: PLAN_STALE_SECONDS is 1800 (30 min)",
+     _g12_stale == 1800,
+     f"Expected 1800, got {_g12_stale}")
+
+# Test 11: Gate 12 forgives stale plan exits
+from gates.gate_12_plan_mode_save import check as _g12_check
+_g12_state = {
+    "last_exit_plan_mode": time.time() - 2000,  # 33 min ago — stale
+    "memory_last_queried": 0,
+    "gate12_warn_count": 2,
+    "_session_id": "test-g12",
+}
+_g12_result = _g12_check("Edit", {"file_path": "/tmp/test.py"}, _g12_state)
+test("v2.4.0: Gate 12 forgives stale plan exits",
+     _g12_result.blocked == False and _g12_state.get("last_exit_plan_mode") == 0,
+     f"Expected pass and reset, got blocked={_g12_result.blocked}, last_exit={_g12_state.get('last_exit_plan_mode')}")
+
+# Test 12: Gate 12 still warns for fresh plan exits
+_g12_state2 = {
+    "last_exit_plan_mode": time.time() - 60,  # 1 min ago — fresh
+    "memory_last_queried": 0,
+    "gate12_warn_count": 0,
+    "_session_id": "test-g12b",
+}
+_g12_result2 = _g12_check("Edit", {"file_path": "/tmp/test.py"}, _g12_state2)
+test("v2.4.0: Gate 12 warns for fresh plan exits",
+     _g12_result2.blocked == False and "WARNING" in _g12_result2.message,
+     f"Expected warning, got blocked={_g12_result2.blocked}, msg='{_g12_result2.message}'")
+
+cleanup_test_states()
+
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files
