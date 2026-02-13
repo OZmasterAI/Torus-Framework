@@ -1120,7 +1120,7 @@ def search_by_tags(tags: str, match_all: bool = False, top_k: int = 15) -> dict:
 
 
 @mcp.tool()
-def search_observations(query: str, top_k: int = 20, hours: int = 0) -> dict:
+def search_observations(query: str, top_k: int = 20, hours: int = 0, sentiment: str = "") -> dict:
     """Search auto-captured observations (tool calls, errors, prompts).
 
     Unlike curated memories, observations are passively captured from every
@@ -1131,6 +1131,7 @@ def search_observations(query: str, top_k: int = 20, hours: int = 0) -> dict:
         query: What to search for (semantic search)
         top_k: Number of results to return (default 20)
         hours: If > 0, only return observations from the last N hours
+        sentiment: Filter by sentiment value (frustration, confidence, uncertainty, neutral). Empty = no filter.
     """
     top_k = max(1, min(top_k, 100))
 
@@ -1143,17 +1144,31 @@ def search_observations(query: str, top_k: int = 20, hours: int = 0) -> dict:
 
     actual_k = min(top_k, count)
 
+    # Build where clause from optional filters
+    where_clauses = []
     if hours > 0:
         cutoff = time.time() - (hours * 3600)
-        try:
+        where_clauses.append({"session_time": {"$gte": cutoff}})
+    if sentiment and sentiment in ("frustration", "confidence", "uncertainty", "neutral"):
+        where_clauses.append({"sentiment": sentiment})
+
+    where = None
+    if len(where_clauses) == 1:
+        where = where_clauses[0]
+    elif len(where_clauses) > 1:
+        where = {"$and": where_clauses}
+
+    try:
+        if where:
             results = observations.query(
                 query_texts=[query],
                 n_results=actual_k,
-                where={"session_time": {"$gte": cutoff}},
+                where=where,
             )
-        except Exception:
+        else:
             results = observations.query(query_texts=[query], n_results=actual_k)
-    else:
+    except Exception:
+        # Fallback: query without filters if ChromaDB rejects the where clause
         results = observations.query(query_texts=[query], n_results=actual_k)
 
     formatted = format_summaries(results)
@@ -1164,6 +1179,96 @@ def search_observations(query: str, top_k: int = 20, hours: int = 0) -> dict:
         "results": formatted,
         "total_observations": count,
         "query": query,
+    }
+
+
+@mcp.tool()
+def get_session_sentiment(hours: int = 24) -> dict:
+    """Get sentiment distribution for recent user interactions.
+
+    Analyzes captured UserPrompt observations to show how the user has been
+    feeling during the session. Useful for detecting frustration patterns
+    and adjusting approach.
+
+    Args:
+        hours: Time window in hours (default 24). Set to 1-2 for current session.
+    """
+    hours = max(1, min(hours, 168))  # Cap at 1 week
+
+    # Flush queue to ensure latest data
+    _flush_capture_queue()
+
+    count = observations.count()
+    if count == 0:
+        return {
+            "distribution": {"frustration": 0, "confidence": 0, "uncertainty": 0, "neutral": 0},
+            "dominant": "neutral",
+            "total": 0,
+            "insight": "No observations captured yet.",
+        }
+
+    cutoff = time.time() - (hours * 3600)
+
+    try:
+        # Get UserPrompt observations within time window
+        results = observations.get(
+            where={"$and": [
+                {"tool_name": "UserPrompt"},
+                {"session_time": {"$gte": cutoff}},
+            ]},
+            limit=min(count, 500),
+            include=["metadatas"],
+        )
+    except Exception:
+        try:
+            # Fallback: just get UserPrompt observations without time filter
+            results = observations.get(
+                where={"tool_name": "UserPrompt"},
+                limit=min(count, 500),
+                include=["metadatas"],
+            )
+        except Exception:
+            return {
+                "distribution": {"frustration": 0, "confidence": 0, "uncertainty": 0, "neutral": 0},
+                "dominant": "neutral",
+                "total": 0,
+                "insight": "Could not query observations.",
+            }
+
+    dist = {"frustration": 0, "confidence": 0, "uncertainty": 0, "neutral": 0}
+    metas = results.get("metadatas") or []
+
+    for meta in metas:
+        if not meta:
+            continue
+        sentiment = meta.get("sentiment", "neutral")
+        if sentiment in dist:
+            dist[sentiment] += 1
+        else:
+            dist["neutral"] += 1
+
+    total = sum(dist.values())
+    dominant = max(dist, key=dist.get) if total > 0 else "neutral"
+
+    # Generate brief insight
+    if total == 0:
+        insight = "No user prompts captured in the last {} hours.".format(hours)
+    elif dist["frustration"] > total * 0.4:
+        insight = "High frustration detected ({}/{} prompts). Consider verifying approach and checking memory for repeated issues.".format(dist["frustration"], total)
+    elif dist["confidence"] > total * 0.4:
+        insight = "User appears satisfied ({}/{} positive prompts). Current approach is working well.".format(dist["confidence"], total)
+    elif dist["uncertainty"] > total * 0.4:
+        insight = "User seems uncertain ({}/{} prompts). Consider providing more explanation or asking clarifying questions.".format(dist["uncertainty"], total)
+    else:
+        insight = "Mixed sentiment across {} prompts. Dominant: {}.".format(total, dominant)
+
+    _touch_memory_timestamp()
+
+    return {
+        "distribution": dist,
+        "dominant": dominant,
+        "total": total,
+        "insight": insight,
     }
 
 

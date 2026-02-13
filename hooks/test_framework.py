@@ -3425,9 +3425,9 @@ if _dash_imported:
     test("Dashboard: malformed audit line → None",
          _dash_bad is None)
 
-    # 11. Route count matches plan (19 API + 1 static mount = 20)
-    test("Dashboard: 20 routes configured",
-         len(_dash_mod.routes) == 20,
+    # 11. Route count matches plan (20 API + 1 static mount = 21)
+    test("Dashboard: 21 routes configured",
+         len(_dash_mod.routes) == 21,
          f"got {len(_dash_mod.routes)}")
 
     # 12. HTML has all 7 panels
@@ -3458,6 +3458,201 @@ if _dash_imported:
     # 15. JS has SSE connection
     test("Dashboard: JS has SSE connectSSE()",
          "connectSSE" in _js and "EventSource" in _js)
+
+# ─────────────────────────────────────────────────
+# Test: v2.0.2 Features (Session 26)
+# ─────────────────────────────────────────────────
+print("\n--- v2.0.2 Features (Session 26) ---")
+
+# Read memory_server source for feature checks
+_ms_path = os.path.join(os.path.dirname(__file__), "memory_server.py")
+with open(_ms_path) as _f202:
+    _ms_src_202 = _f202.read()
+
+# 1. Recency boost in search_knowledge
+test("v2.0.2: search_knowledge has recency_weight param",
+     "def search_knowledge" in _ms_src_202 and "recency_weight" in _ms_src_202.split("def search_knowledge")[1].split(")")[0],
+     "recency_weight not in search_knowledge signature")
+
+test("v2.0.2: search_knowledge recency_weight default is 0.15",
+     "recency_weight: float = 0.15" in _ms_src_202 or "recency_weight=0.15" in _ms_src_202,
+     "default 0.15 not found")
+
+# 2. Recency boost in deep_query
+test("v2.0.2: deep_query has recency_weight param",
+     "def deep_query" in _ms_src_202 and "recency_weight" in _ms_src_202.split("def deep_query")[1].split(")")[0],
+     "recency_weight not in deep_query signature")
+
+# 3. _apply_recency_boost helper exists
+test("v2.0.2: _apply_recency_boost function exists",
+     "def _apply_recency_boost" in _ms_src_202,
+     "_apply_recency_boost not found")
+
+# 4. Recency boost calculation logic (age_days / 365 formula)
+test("v2.0.2: recency boost uses age_days/365 formula",
+     "age_days" in _ms_src_202 and "365" in _ms_src_202,
+     "temporal boost calculation not found")
+
+# 5. suggest_promotions tool exists
+test("v2.0.2: suggest_promotions function exists",
+     "def suggest_promotions" in _ms_src_202,
+     "suggest_promotions not found")
+
+test("v2.0.2: suggest_promotions accepts top_k param",
+     "def suggest_promotions(top_k" in _ms_src_202,
+     "top_k param not found in suggest_promotions")
+
+_sp_line = [l for l in _ms_src_202.splitlines() if "def suggest_promotions" in l]
+test("v2.0.2: suggest_promotions returns dict",
+     len(_sp_line) > 0 and "-> dict" in _sp_line[0],
+     "return type not dict")
+
+# 6. Skills: /test and /research
+_skill_test_path = os.path.expanduser("~/.claude/skills/test/SKILL.md")
+_skill_research_path = os.path.expanduser("~/.claude/skills/research/SKILL.md")
+
+test("v2.0.2: skills/test/SKILL.md exists",
+     os.path.isfile(_skill_test_path),
+     "file not found")
+
+if os.path.isfile(_skill_test_path):
+    with open(_skill_test_path) as _stf:
+        _skill_test_content = _stf.read()
+    test("v2.0.2: /test skill has trigger words",
+         "test" in _skill_test_content.lower() and "run tests" in _skill_test_content.lower(),
+         "expected trigger words not found")
+
+test("v2.0.2: skills/research/SKILL.md exists",
+     os.path.isfile(_skill_research_path),
+     "file not found")
+
+if os.path.isfile(_skill_research_path):
+    with open(_skill_research_path) as _srf:
+        _skill_research_content = _srf.read()
+    test("v2.0.2: /research skill has trigger words",
+         "research" in _skill_research_content.lower() and "investigate" in _skill_research_content.lower(),
+         "expected trigger words not found")
+
+# ─────────────────────────────────────────────────
+# Test: v2.0.3 Features (Session 27)
+# ─────────────────────────────────────────────────
+print("\n--- v2.0.3 Features (Session 27) ---")
+
+# 1. State file locking (fcntl)
+_state_path = os.path.expanduser("~/.claude/hooks/shared/state.py")
+with open(_state_path) as _sf203:
+    _state_src = _sf203.read()
+
+test("v2.0.3: state.py imports fcntl",
+     "import fcntl" in _state_src,
+     "fcntl import not found")
+
+test("v2.0.3: state.py uses flock for locking",
+     "fcntl.flock" in _state_src or "flock(" in _state_src,
+     "flock calls not found")
+
+test("v2.0.3: load_state uses shared lock (LOCK_SH)",
+     "LOCK_SH" in _state_src,
+     "LOCK_SH not found")
+
+test("v2.0.3: save_state uses exclusive lock (LOCK_EX)",
+     "LOCK_EX" in _state_src,
+     "LOCK_EX not found")
+
+# 2. Gate 2 bypass fixes
+_g02_path = os.path.expanduser("~/.claude/hooks/gates/gate_02_no_destroy.py")
+with open(_g02_path) as _g02f:
+    _g02_src = _g02f.read()
+
+test("v2.0.3: gate_02 has realpath for symlink validation",
+     "realpath" in _g02_src,
+     "realpath not found in gate_02")
+
+test("v2.0.3: gate_02 handles heredoc patterns (<<)",
+     "heredoc" in _g02_src and "<<" in _g02_src,
+     "heredoc handling not found")
+
+test("v2.0.3: gate_02 handles exec with -c flag",
+     "exec" in _g02_src and "-c" in _g02_src,
+     "exec -c handling not found")
+
+# 3. Gate timing instrumentation
+_enforcer_path = os.path.join(os.path.dirname(__file__), "enforcer.py")
+with open(_enforcer_path) as _ef203:
+    _enforcer_src = _ef203.read()
+
+test("v2.0.3: enforcer.py has time.time() instrumentation",
+     "time.time()" in _enforcer_src,
+     "time.time() not found in enforcer")
+
+test("v2.0.3: enforcer.py tracks elapsed_ms",
+     "elapsed_ms" in _enforcer_src or "elapsed" in _enforcer_src,
+     "elapsed timing not found")
+
+# 4. list_stale_memories
+test("v2.0.3: list_stale_memories function exists",
+     "def list_stale_memories" in _ms_src_202,
+     "list_stale_memories not found in memory_server")
+
+test("v2.0.3: list_stale_memories days param defaults to 60",
+     "days: int = 60" in _ms_src_202 or "days=60" in _ms_src_202,
+     "days=60 default not found")
+
+test("v2.0.3: list_stale_memories top_k param defaults to 20",
+     "top_k: int = 20" in _ms_src_202.split("def list_stale_memories")[1].split("):")[0] if "def list_stale_memories" in _ms_src_202 else False,
+     "top_k=20 default not found in list_stale_memories")
+
+# 5. Dashboard new endpoints
+_dash_server_path = os.path.expanduser("~/.claude/dashboard/server.py")
+if os.path.isfile(_dash_server_path):
+    with open(_dash_server_path) as _dsf:
+        _dash_server_src = _dsf.read()
+
+    test("v2.0.3: dashboard has /api/gate-perf endpoint",
+         "gate-perf" in _dash_server_src,
+         "gate-perf endpoint not found")
+
+    test("v2.0.3: dashboard has /api/audit/query endpoint",
+         "audit/query" in _dash_server_src,
+         "audit/query endpoint not found")
+
+    test("v2.0.3: dashboard has /api/history/compare endpoint",
+         "history/compare" in _dash_server_src,
+         "history/compare endpoint not found")
+else:
+    test("v2.0.3: dashboard server.py exists", False, "file not found")
+
+# 6. New skills: /explore and /review
+_skill_explore_path = os.path.expanduser("~/.claude/skills/explore/SKILL.md")
+_skill_review_path = os.path.expanduser("~/.claude/skills/review/SKILL.md")
+
+test("v2.0.3: skills/explore/SKILL.md exists",
+     os.path.isfile(_skill_explore_path),
+     "file not found")
+
+if os.path.isfile(_skill_explore_path):
+    with open(_skill_explore_path) as _sef:
+        _skill_explore_content = _sef.read()
+    test("v2.0.3: /explore skill has Steps section",
+         "## Steps" in _skill_explore_content or "### " in _skill_explore_content,
+         "Steps section not found")
+    test("v2.0.3: /explore skill mentions codebase exploration",
+         "explore" in _skill_explore_content.lower() or "codebase" in _skill_explore_content.lower(),
+         "expected content not found")
+
+test("v2.0.3: skills/review/SKILL.md exists",
+     os.path.isfile(_skill_review_path),
+     "file not found")
+
+if os.path.isfile(_skill_review_path):
+    with open(_skill_review_path) as _srvf:
+        _skill_review_content = _srvf.read()
+    test("v2.0.3: /review skill has Steps section",
+         "## Steps" in _skill_review_content or "### " in _skill_review_content,
+         "Steps section not found")
+    test("v2.0.3: /review skill mentions quality/review",
+         "review" in _skill_review_content.lower() or "quality" in _skill_review_content.lower(),
+         "expected content not found")
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

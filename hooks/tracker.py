@@ -41,6 +41,37 @@ def is_memory_tool(tool_name):
     return False
 
 
+def _deduplicate_error_window(state, pattern):
+    """Windowed error deduplication: group same patterns within 60s windows.
+
+    Tracks (pattern, first_seen, last_seen, count) tuples in state["error_windows"].
+    If same error pattern appears within 60s, increments count instead of adding new entry.
+    Caps at 50 unique patterns.
+    """
+    now = time.time()
+    windows = state.setdefault("error_windows", [])
+
+    # Check for existing window for this pattern
+    for window in windows:
+        if window["pattern"] == pattern and (now - window["last_seen"]) <= 60:
+            window["last_seen"] = now
+            window["count"] += 1
+            return  # Deduplicated — no new entry needed
+
+    # No recent window found — create new one (cap at 50)
+    if len(windows) >= 50:
+        # Remove oldest window
+        windows.sort(key=lambda w: w["last_seen"])
+        windows.pop(0)
+
+    windows.append({
+        "pattern": pattern,
+        "first_seen": now,
+        "last_seen": now,
+        "count": 1,
+    })
+
+
 def _detect_errors(tool_input, tool_response, state):
     """Scan Bash output for error patterns, track in state."""
     ERROR_PATTERNS = [
@@ -63,6 +94,8 @@ def _detect_errors(tool_input, tool_response, state):
             # Track pattern recurrence for repair loop detection
             counts = state.setdefault("error_pattern_counts", {})
             counts[pattern] = counts.get(pattern, 0) + 1
+            # Windowed deduplication
+            _deduplicate_error_window(state, pattern)
             break  # One entry per Bash tool call max
 
 
@@ -114,6 +147,21 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     if tool_name == "mcp__memory__remember_this":
         state["unlogged_errors"] = []
         state["error_pattern_counts"] = {}
+
+    # Track skill invocations
+    if tool_name == "Skill":
+        try:
+            skill_name = tool_input.get("skill", "") or tool_input.get("name", "")
+            if skill_name:
+                usage = state.setdefault("skill_usage", {})
+                usage[skill_name] = usage.get(skill_name, 0) + 1
+                recent = state.setdefault("recent_skills", [])
+                recent.append({"name": skill_name, "timestamp": time.time()})
+                # Cap at 50 recent entries
+                if len(recent) > 50:
+                    state["recent_skills"] = recent[-50:]
+        except Exception:
+            pass  # Skill tracking must not crash tracker
 
     # Track ExitPlanMode for Gate 12
     if tool_name == "ExitPlanMode":

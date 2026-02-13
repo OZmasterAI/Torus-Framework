@@ -14,6 +14,21 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
    - If any topic appears 3+ times across sessions, suggest promoting to CLAUDE.md as a new rule
    - Present promotion suggestions to user for approval before adding
    - Never auto-promote without explicit user consent
+1c. **KNOWLEDGE TRANSFER** — Extract session learnings for the next session:
+   - Use search_knowledge("type:learning") to find learning entries from this session
+   - Extract the top 5 most relevant learnings (prioritize by recency and relevance)
+   - Generate a "## Key Learnings" section with concise bullet points summarizing each
+   - This section will be prepended to HANDOFF.md in the UPDATE HANDOFF step below
+   - If no type:learning entries exist, note any significant decisions or fixes as learnings
+1d. **CONTINUITY CHECK** — Verify session handoff readiness:
+   - Check if HANDOFF.md was updated within the last 4 hours (stale = older than 4h)
+   - Check if memories were saved this session (search_knowledge for recent timestamps)
+   - Check for uncommitted git changes (`git status --porcelain`)
+   - Display risk indicators:
+     - GREEN: All checks pass (handoff fresh, memories saved, git clean)
+     - YELLOW: Stale handoff (>4h old) or uncommitted changes exist
+     - RED: No memories saved this session (memory gap risk)
+   - If YELLOW or RED, warn the user and suggest corrective actions before ending
 2. **UPDATE HANDOFF** — Use the Write tool to update ~/.claude/HANDOFF.md with:
    - Session number (increment from previous)
    - What was done this session

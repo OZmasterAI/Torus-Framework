@@ -472,8 +472,19 @@ async function renderErrors() {
 
 async function renderComponents() {
     if (!componentData) {
-        componentData = await apiFetch('/api/components');
-        if (!componentData) return;
+        const [comp, skillUsage] = await Promise.all([
+            apiFetch('/api/components'),
+            apiFetch('/api/skill-usage'),
+        ]);
+        if (!comp) return;
+        componentData = comp;
+        // Merge skill usage data into componentData for rendering
+        if (skillUsage && skillUsage.skills) {
+            componentData._skillUsage = {};
+            for (const s of skillUsage.skills) {
+                componentData._skillUsage[s.name] = s;
+            }
+        }
     }
     renderComponentTab(activeComponentTab);
 }
@@ -509,12 +520,22 @@ function renderComponentTab(tab) {
                 </div>`);
             break;
         case 'skills':
-            items = (componentData.skills || []).map(s =>
-                `<div class="component-item">
-                    <div class="component-name">/${escapeHtml(s.name)}</div>
+            items = (componentData.skills || []).map(s => {
+                const usage = (componentData._skillUsage || {})[s.name];
+                let usageHtml = '';
+                if (usage) {
+                    const lastUsed = usage.last_used ? formatTime(usage.last_used) : 'never';
+                    usageHtml = `<div class="skill-usage-info">
+                        <span class="skill-usage-count">${usage.count} call${usage.count !== 1 ? 's' : ''}</span>
+                        <span class="skill-usage-last">last: ${lastUsed}</span>
+                    </div>`;
+                }
+                return `<div class="component-item">
+                    <div class="component-name">/${escapeHtml(s.name)}${usageHtml}</div>
                     ${s.description ? `<div class="component-desc">${escapeHtml(s.description)}</div>` : ''}
                     ${s.purpose ? `<div class="component-purpose">${escapeHtml(s.purpose)}</div>` : ''}
-                </div>`);
+                </div>`;
+            });
             break;
         case 'agents':
             items = (componentData.agents || []).map(a =>

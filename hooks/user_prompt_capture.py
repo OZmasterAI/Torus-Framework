@@ -23,6 +23,39 @@ _FEATURE_REQ_RE = re.compile(
     re.IGNORECASE,
 )
 
+# --- Sentiment detection patterns ---
+
+_FRUSTRATION_RE = re.compile(
+    r'\b(again|still|ugh|sigh|wrong|not working|broken|doesn\'t work|won\'t work)\b',
+    re.IGNORECASE,
+)
+_CONFIDENCE_RE = re.compile(
+    r'\b(great|perfect|nice|works|good|awesome|excellent|fixed)\b',
+    re.IGNORECASE,
+)
+_UNCERTAINTY_RE = re.compile(
+    r'\b(hmm|maybe|wonder|not sure|try|might|could)\b',
+    re.IGNORECASE,
+)
+# 3+ consecutive uppercase words (e.g. "THIS IS WRONG")
+_ALL_CAPS_RE = re.compile(r'(?:\b[A-Z]{2,}\b[\s]+){2,}\b[A-Z]{2,}\b')
+
+
+def detect_sentiment(text: str) -> str:
+    """Detect sentiment from user prompt text.
+
+    Returns one of: frustration, confidence, uncertainty, neutral.
+    Frustration takes priority (most actionable signal).
+    """
+    if _FRUSTRATION_RE.search(text) or _ALL_CAPS_RE.search(text):
+        return "frustration"
+    if _CONFIDENCE_RE.search(text):
+        return "confidence"
+    if _UNCERTAINTY_RE.search(text):
+        return "uncertainty"
+    return "neutral"
+
+
 # --- Capture constants ---
 
 CAPTURE_QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".capture_queue.jsonl")
@@ -63,8 +96,10 @@ def main():
 
         truncated = prompt[:200]
         scrubbed = scrub(truncated)
+        sentiment = detect_sentiment(prompt)
         tool_input = {"prompt": scrubbed}
         obs = compress_observation("UserPrompt", tool_input, {}, "prompt_hook")
+        obs["metadata"]["sentiment"] = sentiment
         with open(CAPTURE_QUEUE, "a") as f:
             f.write(json.dumps(obs) + "\n")
     except Exception:

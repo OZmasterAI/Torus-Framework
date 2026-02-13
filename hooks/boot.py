@@ -14,6 +14,8 @@ This ensures every session starts with full context rather than amnesia.
 
 import json
 import os
+import socket
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -162,6 +164,48 @@ def inject_memories(handoff_content, live_state, knowledge_col):
     return injected
 
 
+def _is_port_in_use(port):
+    """Check if a TCP port is in use by attempting a socket connect."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            s.connect(("127.0.0.1", port))
+            return True
+    except (ConnectionRefusedError, OSError):
+        return False
+
+
+def _auto_start_dashboard():
+    """Start the dashboard server if not already running on port 7777."""
+    try:
+        if _is_port_in_use(7777):
+            print("  [BOOT] Dashboard already running at http://localhost:7777", file=sys.stderr)
+            return
+
+        server_path = os.path.join(CLAUDE_DIR, "dashboard", "server.py")
+        if not os.path.isfile(server_path):
+            return
+
+        proc = subprocess.Popen(
+            [sys.executable, server_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+        # Store PID for later cleanup
+        pidfile = os.path.join(CLAUDE_DIR, "dashboard", ".dashboard.pid")
+        try:
+            with open(pidfile, "w") as f:
+                f.write(str(proc.pid))
+        except OSError:
+            pass
+
+        print(f"  [BOOT] Dashboard auto-started at http://localhost:7777 (pid {proc.pid})", file=sys.stderr)
+    except Exception:
+        pass  # Boot must never crash
+
+
 def _write_sideband_timestamp():
     """Write fresh sideband timestamp (auto-injection counts as querying memory)."""
     try:
@@ -249,6 +293,9 @@ def main():
 
     # Print to stderr (Claude Code displays this as hook output)
     print(dashboard, file=sys.stderr)
+
+    # Auto-start dashboard server
+    _auto_start_dashboard()
 
     # Reset state
     reset_enforcement_state()

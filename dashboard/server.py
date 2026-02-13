@@ -679,6 +679,53 @@ async def api_components(request):
     })
 
 
+async def api_skill_usage(request):
+    """Skill invocation counts and recent usage from session state."""
+    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    files = globmod.glob(pattern)
+    skill_usage = {}
+    recent_skills = []
+    if files:
+        files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+        state = _read_json(files[0]) or {}
+        skill_usage = state.get("skill_usage", {})
+        recent_skills = state.get("recent_skills", [])
+
+    # Enrich with SKILL.md descriptions
+    skill_details = []
+    for name, count in sorted(skill_usage.items(), key=lambda x: -x[1]):
+        desc = ""
+        skill_file = os.path.join(SKILLS_DIR, name, "SKILL.md")
+        if os.path.isfile(skill_file):
+            try:
+                with open(skill_file) as fh:
+                    for line in fh:
+                        stripped = line.strip()
+                        if stripped.startswith("# "):
+                            desc = stripped.lstrip("# ").strip()
+                            break
+            except OSError:
+                pass
+        # Find last used timestamp from recent_skills
+        last_used = None
+        for entry in reversed(recent_skills):
+            if entry.get("name") == name:
+                last_used = entry.get("timestamp")
+                break
+        skill_details.append({
+            "name": name,
+            "count": count,
+            "description": desc,
+            "last_used": last_used,
+        })
+
+    return JSONResponse({
+        "skills": skill_details,
+        "recent": recent_skills[-10:],
+        "total_invocations": sum(skill_usage.values()),
+    })
+
+
 async def api_errors(request):
     """Error pattern counts + active bans from session state."""
     pattern = os.path.join(HOOKS_DIR, "state_*.json")
@@ -904,6 +951,7 @@ routes = [
     Route("/api/memories/tags", api_memories_tags),
     Route("/api/memories/{id}", api_memory_detail),
     Route("/api/components", api_components),
+    Route("/api/skill-usage", api_skill_usage),
     Route("/api/errors", api_errors),
     Route("/api/history", api_history),
     Route("/api/history/{filename}", api_history_detail),
