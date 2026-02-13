@@ -3003,7 +3003,10 @@ test("StatusLine: script exists",
 # 2. Produces output with project name
 _sl_r = _sp_auto.run(
     [sys.executable, os.path.join(os.path.dirname(__file__), "statusline.py")],
-    input=json.dumps({"total_cost_usd": 1.23, "context_window_percent": 45, "duration_seconds": 900}),
+    input=json.dumps({
+        "cost": {"total_cost_usd": 1.23, "total_duration_ms": 900000, "total_lines_added": 50, "total_lines_removed": 10},
+        "context_window": {"used_percentage": 45}
+    }),
     capture_output=True, text=True, timeout=10
 )
 test("StatusLine: produces output",
@@ -3017,6 +3020,21 @@ test("StatusLine: has memory count",
      "M:" in _sl_out, f"out={_sl_out}")
 test("StatusLine: has cost",
      "$1.23" in _sl_out, f"out={_sl_out}")
+test("StatusLine: has context percentage",
+     "CTX:45%" in _sl_out, f"out={_sl_out}")
+test("StatusLine: has duration",
+     "15min" in _sl_out, f"out={_sl_out}")
+test("StatusLine: has lines changed",
+     "+50/-10" in _sl_out, f"out={_sl_out}")
+
+# 3b. High context triggers warning
+_sl_high = _sp_auto.run(
+    [sys.executable, os.path.join(os.path.dirname(__file__), "statusline.py")],
+    input=json.dumps({"context_window": {"used_percentage": 85}}),
+    capture_output=True, text=True, timeout=10
+)
+test("StatusLine: high context shows warning",
+     "CTX:85%!" in _sl_high.stdout, f"out={_sl_high.stdout.strip()}")
 
 # 4. Settings has statusLine config
 with open(os.path.join(os.path.expanduser("~"), ".claude", "settings.json")) as _sfile4:
