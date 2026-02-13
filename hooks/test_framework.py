@@ -6626,6 +6626,144 @@ test("v2.2.6: _extract_test_status detects failed test",
 cleanup_test_states()
 
 
+print("\n--- v2.2.7: Gate 6 Edit Streak, StatusLine PV Count, Gate 9 Retry Budget ---")
+
+# ── Feature 1: Gate 6 edit streak in warnings ──
+
+from gates.gate_06_save_fix import check as gate6_check
+
+# Test 1: Gate 6 warns about high edit streak files
+_g6_state1 = default_state()
+_g6_state1["edit_streak"] = {"/tmp/churn.py": 5, "/tmp/stable.py": 1}
+_g6_state1["verified_fixes"] = ["/tmp/a.py", "/tmp/b.py"]
+_g6_state1["_session_id"] = MAIN_SESSION
+_g6_result1 = gate6_check("Edit", {"file_path": "/tmp/next.py"}, _g6_state1)
+test("v2.2.7: Gate 6 warns with edit streak >= 3",
+     _g6_result1.severity == "warn",
+     f"Expected severity='warn', got {_g6_result1.severity!r}")
+
+# Test 2: Gate 6 does NOT warn with low edit streak
+_g6_state2 = default_state()
+_g6_state2["edit_streak"] = {"/tmp/stable.py": 1}
+_g6_state2["_session_id"] = MAIN_SESSION
+_g6_result2 = gate6_check("Edit", {"file_path": "/tmp/next.py"}, _g6_state2)
+test("v2.2.7: Gate 6 no warning with edit streak < 3",
+     _g6_result2.severity != "warn" or len(_g6_state2.get("verified_fixes", [])) >= WARN_THRESHOLD,
+     f"Got severity={_g6_result2.severity!r}")
+
+# Test 3: Gate 6 edit streak surfaces basename not full path
+_g6_state3 = default_state()
+_g6_state3["edit_streak"] = {"/very/long/path/to/file.py": 4}
+_g6_state3["verified_fixes"] = ["/tmp/a.py", "/tmp/b.py"]
+_g6_state3["_session_id"] = MAIN_SESSION
+import io as _io227
+_g6_stderr = _io227.StringIO()
+_orig_stderr = sys.stderr
+sys.stderr = _g6_stderr
+gate6_check("Edit", {"file_path": "/tmp/x.py"}, _g6_state3)
+sys.stderr = _orig_stderr
+_g6_output = _g6_stderr.getvalue()
+test("v2.2.7: Gate 6 edit streak shows basename",
+     "file.py" in _g6_output and "Top churn" in _g6_output,
+     f"Expected 'file.py' and 'Top churn' in output, got: {_g6_output[:100]!r}")
+
+# Test 4: Gate 6 edit streak shows correct count
+test("v2.2.7: Gate 6 edit streak shows count",
+     "4 edits" in _g6_output,
+     f"Expected '4 edits' in output, got: {_g6_output[:100]!r}")
+
+# ── Feature 2: StatusLine pending verification count ──
+
+from statusline import get_pending_count
+
+# Test 5: get_pending_count returns 0 with no state files
+cleanup_test_states()
+pv5 = get_pending_count()
+test("v2.2.7: get_pending_count returns 0 with no state",
+     pv5 == 0,
+     f"Expected 0, got {pv5!r}")
+
+# Test 6: get_pending_count reads from session state file
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_pv_state = load_state(session_id=MAIN_SESSION)
+_pv_state["pending_verification"] = ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py"]
+save_state(_pv_state, session_id=MAIN_SESSION)
+pv6 = get_pending_count()
+test("v2.2.7: get_pending_count reads pending_verification from state",
+     pv6 == 3,
+     f"Expected 3, got {pv6!r}")
+
+# Test 7: get_pending_count returns 0 when pending_verification is empty
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+pv7 = get_pending_count()
+test("v2.2.7: get_pending_count returns 0 for empty pending",
+     pv7 == 0,
+     f"Expected 0, got {pv7!r}")
+
+# Test 8: StatusLine includes PV when count > 0 (integration via state file)
+# Already tested via get_pending_count — verify it reads the right file
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_pv_state8 = load_state(session_id=MAIN_SESSION)
+_pv_state8["pending_verification"] = ["/tmp/x.py"]
+save_state(_pv_state8, session_id=MAIN_SESSION)
+pv8 = get_pending_count()
+test("v2.2.7: get_pending_count reads single pending file",
+     pv8 == 1,
+     f"Expected 1, got {pv8!r}")
+
+# ── Feature 3: Gate 9 retry budget display ──
+
+from gates.gate_09_strategy_ban import check as gate9_check
+
+# Test 9: Gate 9 warning shows retry budget (fail_count=1, threshold=3)
+_g9_state9 = default_state()
+_g9_state9["current_strategy_id"] = "fix-auth"
+_g9_state9["active_bans"] = {"fix-auth": {"fail_count": 1, "first_failed": time.time() - 60, "last_failed": time.time() - 30}}
+_g9_stderr9 = _io227.StringIO()
+sys.stderr = _g9_stderr9
+_g9_result9 = gate9_check("Edit", {"file_path": "/tmp/x.py"}, _g9_state9)
+sys.stderr = _orig_stderr
+_g9_warn9 = _g9_stderr9.getvalue()
+test("v2.2.7: Gate 9 warning shows retry budget",
+     "1/3" in _g9_warn9 and "2 more" in _g9_warn9,
+     f"Expected '1/3' and '2 more' in warning, got: {_g9_warn9!r}")
+
+# Test 10: Gate 9 warning at fail_count=2 shows 1 remaining
+_g9_state10 = default_state()
+_g9_state10["current_strategy_id"] = "fix-auth"
+_g9_state10["active_bans"] = {"fix-auth": {"fail_count": 2, "first_failed": time.time() - 120, "last_failed": time.time() - 10}}
+_g9_stderr10 = _io227.StringIO()
+sys.stderr = _g9_stderr10
+_g9_result10 = gate9_check("Edit", {"file_path": "/tmp/x.py"}, _g9_state10)
+sys.stderr = _orig_stderr
+_g9_warn10 = _g9_stderr10.getvalue()
+test("v2.2.7: Gate 9 warning at fail_count=2 shows 1 remaining",
+     "2/3" in _g9_warn10 and "1 more" in _g9_warn10,
+     f"Expected '2/3' and '1 more' in warning, got: {_g9_warn10!r}")
+
+# Test 11: Gate 9 block message includes timing info
+_g9_state11 = default_state()
+_g9_state11["current_strategy_id"] = "fix-auth"
+_g9_state11["active_bans"] = {"fix-auth": {"fail_count": 3, "first_failed": time.time() - 600, "last_failed": time.time() - 120}}
+_g9_result11 = gate9_check("Edit", {"file_path": "/tmp/x.py"}, _g9_state11)
+test("v2.2.7: Gate 9 block includes timing info",
+     _g9_result11.blocked and "first:" in _g9_result11.message and "last:" in _g9_result11.message,
+     f"Expected timing in block message, got: {_g9_result11.message!r}")
+
+# Test 12: Gate 9 not blocked (no strategy set)
+_g9_state12 = default_state()
+_g9_state12["current_strategy_id"] = ""
+_g9_result12 = gate9_check("Edit", {"file_path": "/tmp/x.py"}, _g9_state12)
+test("v2.2.7: Gate 9 passes with empty strategy",
+     not _g9_result12.blocked,
+     f"Expected not blocked, got blocked={_g9_result12.blocked!r}")
+
+cleanup_test_states()
+
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────

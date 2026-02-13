@@ -237,6 +237,22 @@ def get_session_age(state):
     return f"{hours}h{minutes}m"
 
 
+def get_pending_count():
+    """Return count of files awaiting verification from session state."""
+    import glob as globmod
+    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    files = globmod.glob(pattern)
+    if not files:
+        return 0
+    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    try:
+        with open(files[0]) as f:
+            state = json.load(f)
+        return len(state.get("pending_verification", []))
+    except (json.JSONDecodeError, OSError):
+        return 0
+
+
 def calculate_health(gate_count, mem_count):
     """Calculate framework health as a weighted percentage (0-100).
 
@@ -429,6 +445,11 @@ def main():
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         live_state = {}
     parts.append(f"A:{get_session_age(live_state)}")
+
+    # Pending verification count
+    pv_count = get_pending_count()
+    if pv_count > 0:
+        parts.append(f"PV:{pv_count}")
 
     parts.append(cost_str)
 

@@ -81,6 +81,18 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             issued_warning = True
             break
 
+    # Edit streak: warn about high-churn files
+    edit_streak = state.get("edit_streak", {})
+    if edit_streak:
+        top_file = max(edit_streak, key=lambda f: edit_streak[f])
+        top_count = edit_streak[top_file]
+        if top_count >= 3:
+            print(
+                f"[{GATE_NAME}] Top churn: {os.path.basename(top_file)} ({top_count} edits)",
+                file=sys.stderr,
+            )
+            issued_warning = True
+
     # Causal tracking: warn about pending chains without recorded outcomes
     pending_chains = state.get("pending_chain_ids", [])
     if len(pending_chains) >= 1:

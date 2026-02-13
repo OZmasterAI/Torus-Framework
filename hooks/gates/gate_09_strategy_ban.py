@@ -16,6 +16,7 @@ so Gate 9 is inert by default.
 
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
@@ -83,20 +84,27 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     if fail_count >= ban_threshold:
         level_name, result_severity = _ban_severity(fail_count)
+        first_failed = ban_info.get("first_failed", 0)
+        last_failed = ban_info.get("last_failed", 0)
+        now = time.time()
+        first_ago = int((now - first_failed) / 60) if first_failed else 0
+        last_ago = int((now - last_failed) / 60) if last_failed else 0
         return GateResult(
             blocked=True,
             gate_name=GATE_NAME,
             severity=result_severity,
             message=f"[{GATE_NAME}] BLOCKED ({level_name}): Strategy '{current_strategy}' is BANNED "
                     f"({fail_count} failures, threshold={ban_threshold}). "
+                    f"first: {first_ago}m ago, last: {last_ago}m ago. "
                     f"Call query_fix_history() for alternatives.",
         )
 
-    if fail_count == 2:
-        # Warn but allow
+    if fail_count >= 1:
+        # Warn but allow — show retry budget
+        remaining = ban_threshold - fail_count
         print(
-            f"[{GATE_NAME}] WARNING: Strategy '{current_strategy}' has failed twice. "
-            f"Consider a different approach.",
+            f"[{GATE_NAME}] WARNING: Strategy '{current_strategy}' has failed {fail_count}/{ban_threshold} times. "
+            f"{remaining} more failure(s) before ban. Consider a different approach.",
             file=sys.stderr,
         )
 
