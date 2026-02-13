@@ -524,7 +524,26 @@ async def api_components(request):
         for entry in sorted(os.listdir(SKILLS_DIR)):
             skill_file = os.path.join(SKILLS_DIR, entry, "SKILL.md")
             if os.path.isfile(skill_file):
-                skills.append({"name": entry})
+                desc = ""
+                purpose = ""
+                try:
+                    with open(skill_file) as fh:
+                        for line in fh:
+                            stripped = line.strip()
+                            # First # heading becomes description
+                            if not desc and stripped.startswith("# "):
+                                desc = stripped.lstrip("# ").strip()
+                            # First non-empty, non-heading line becomes purpose
+                            elif desc and not purpose and stripped and not stripped.startswith("#"):
+                                purpose = stripped[:150]
+                                break
+                except OSError:
+                    pass
+                skills.append({
+                    "name": entry,
+                    "description": desc,
+                    "purpose": purpose,
+                })
 
     # Agents
     agents = []

@@ -505,6 +505,13 @@ header {
     margin-top: 2px;
 }
 
+.component-purpose {
+    color: var(--text-secondary);
+    font-size: 10px;
+    margin-top: 1px;
+    font-style: italic;
+}
+
 /* ── Session History ──────────────────────────────────── */
 
 .history-scroll {

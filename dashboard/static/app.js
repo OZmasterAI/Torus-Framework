@@ -358,6 +358,14 @@ function renderComponentTab(tab) {
                     <div class="component-desc">${escapeHtml(h.command)} (${h.timeout}ms)</div>
                 </div>`);
             break;
+        case 'skills':
+            items = (componentData.skills || []).map(s =>
+                `<div class="component-item">
+                    <div class="component-name">/${escapeHtml(s.name)}</div>
+                    ${s.description ? `<div class="component-desc">${escapeHtml(s.description)}</div>` : ''}
+                    ${s.purpose ? `<div class="component-purpose">${escapeHtml(s.purpose)}</div>` : ''}
+                </div>`);
+            break;
         case 'agents':
             items = (componentData.agents || []).map(a =>
                 `<div class="component-item">
