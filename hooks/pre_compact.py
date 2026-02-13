@@ -141,6 +141,24 @@ def main():
             f"exec={cat['execution']}, mem={cat['memory']}, other={cat['other']}"
         )
 
+    # Tool mix sentiment analysis
+    total_tools = sum(tool_categories.values()) or 1
+    read_ratio = tool_categories.get("read_only", 0) / total_tools
+    write_ratio = tool_categories.get("write", 0) / total_tools
+    exec_ratio = tool_categories.get("execution", 0) / total_tools
+
+    if write_ratio > 0.5:
+        tool_mix_sentiment = "write_heavy"
+    elif read_ratio > 0.7:
+        tool_mix_sentiment = "read_dominant"
+    elif exec_ratio < 0.1 and write_ratio > 0.2:
+        tool_mix_sentiment = "unverified_edits"
+    else:
+        tool_mix_sentiment = "balanced"
+
+    if tool_categories:
+        document_parts.append(f"Session profile: {tool_mix_sentiment}")
+
     document = ". ".join(document_parts)
 
     timestamp = datetime.now().isoformat()
@@ -160,6 +178,7 @@ def main():
         "session_elapsed_seconds": round(session_elapsed, 0),
         "tool_stats_snapshot": {k: v.get("count", 0) for k, v in tool_stats.items()} if tool_stats else {},
         "tool_categories": tool_categories if tool_categories else {},
+        "tool_mix_sentiment": tool_mix_sentiment if tool_categories else "unknown",
     }
 
     observation = {

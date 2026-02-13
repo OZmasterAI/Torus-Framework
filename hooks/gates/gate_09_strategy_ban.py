@@ -28,6 +28,16 @@ DEFAULT_BAN_THRESHOLD = 3
 SUCCESS_BONUS_RETRIES = 1
 
 
+def _ban_severity(fail_count):
+    """Compute escalation severity from failure count."""
+    if fail_count >= 3:
+        return "escalating", "critical"
+    elif fail_count >= 2:
+        return "repeating", "error"
+    else:
+        return "first_fail", "warn"
+
+
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     """Block Edit/Write if the current strategy is banned, with retry budget."""
     if event_type != "PreToolUse":
@@ -45,10 +55,12 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     # Backward compatibility: list format → all entries are fully banned (legacy behavior)
     if isinstance(active_bans, list):
         if current_strategy in active_bans:
+            level_name, result_severity = _ban_severity(3)  # legacy defaults to 3
             return GateResult(
                 blocked=True,
                 gate_name=GATE_NAME,
-                message=f"[{GATE_NAME}] BLOCKED: Strategy '{current_strategy}' is BANNED "
+                severity=result_severity,
+                message=f"[{GATE_NAME}] BLOCKED ({level_name}): Strategy '{current_strategy}' is BANNED "
                         f"(proven ineffective). Call query_fix_history() for alternatives.",
             )
         return GateResult(blocked=False, gate_name=GATE_NAME)
@@ -70,10 +82,12 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         ban_threshold += SUCCESS_BONUS_RETRIES
 
     if fail_count >= ban_threshold:
+        level_name, result_severity = _ban_severity(fail_count)
         return GateResult(
             blocked=True,
             gate_name=GATE_NAME,
-            message=f"[{GATE_NAME}] BLOCKED: Strategy '{current_strategy}' is BANNED "
+            severity=result_severity,
+            message=f"[{GATE_NAME}] BLOCKED ({level_name}): Strategy '{current_strategy}' is BANNED "
                     f"({fail_count} failures, threshold={ban_threshold}). "
                     f"Call query_fix_history() for alternatives.",
         )

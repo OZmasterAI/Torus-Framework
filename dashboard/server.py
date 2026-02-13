@@ -440,6 +440,69 @@ async def api_health(request):
     })
 
 
+async def api_health_score(request):
+    """Lightweight health score endpoint for external monitoring."""
+    import glob as glob_mod
+    hooks_dir = os.path.join(CLAUDE_DIR, "hooks")
+
+    # Dimension 1: Gates (25%) — count gate files
+    gates_dir = os.path.join(hooks_dir, "gates")
+    gate_count = len(glob_mod.glob(os.path.join(gates_dir, "gate_*.py"))) if os.path.isdir(gates_dir) else 0
+    expected_gates = 12
+    gates_score = min(100, int(gate_count / expected_gates * 100))
+
+    # Dimension 2: Hooks (20%) — check key hook files exist
+    hook_files = ["enforcer.py", "tracker.py", "boot.py", "statusline.py", "pre_compact.py"]
+    hooks_present = sum(1 for f in hook_files if os.path.isfile(os.path.join(hooks_dir, f)))
+    hooks_score = min(100, int(hooks_present / len(hook_files) * 100))
+
+    # Dimension 3: Memory (15%) — check memory directory
+    memory_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
+    memory_score = 100 if os.path.isdir(memory_dir) else 0
+
+    # Dimension 4: Skills (15%) — check skills directory
+    skills_dir = os.path.join(CLAUDE_DIR, "skills")
+    skill_count = len(os.listdir(skills_dir)) if os.path.isdir(skills_dir) else 0
+    skills_score = min(100, int(skill_count / max(1, 5) * 100))  # expect ~5 skills
+
+    # Dimension 5: Core (15%) — check critical shared modules
+    core_files = ["shared/state.py", "shared/gate_result.py", "shared/audit_log.py"]
+    core_present = sum(1 for f in core_files if os.path.isfile(os.path.join(hooks_dir, f)))
+    core_score = min(100, int(core_present / len(core_files) * 100))
+
+    # Dimension 6: Errors (10%) — check recent error patterns
+    state = _read_latest_state()
+    error_counts = state.get("error_pattern_counts", {}) if state else {}
+    total_errors = sum(error_counts.values()) if error_counts else 0
+    errors_score = max(0, 100 - total_errors * 20)  # -20 per error pattern
+
+    # Weighted average
+    health_pct = int(
+        gates_score * 0.25 +
+        hooks_score * 0.20 +
+        memory_score * 0.15 +
+        skills_score * 0.15 +
+        core_score * 0.15 +
+        errors_score * 0.10
+    )
+    health_pct = max(0, min(100, health_pct))
+
+    dimensions = {
+        "gates": gates_score,
+        "hooks": hooks_score,
+        "memory": memory_score,
+        "skills": skills_score,
+        "core": core_score,
+        "errors": errors_score,
+    }
+
+    return JSONResponse({
+        "health_pct": health_pct,
+        "dimensions": dimensions,
+        "timestamp": time.time(),
+    })
+
+
 async def api_live_state(request):
     state = _read_json(LIVE_STATE_FILE)
     if state is None:
@@ -1332,6 +1395,7 @@ async def index_redirect(request):
 routes = [
     Route("/", index_redirect),
     Route("/api/health", api_health),
+    Route("/api/health/score", api_health_score),
     Route("/api/live-state", api_live_state),
     Route("/api/session", api_session),
     Route("/api/audit", api_audit),

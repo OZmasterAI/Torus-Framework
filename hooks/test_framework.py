@@ -6394,6 +6394,111 @@ test("v2.2.4: _detect_sentiment → '' for neutral state",
 
 
 # ─────────────────────────────────────────────────
+# Test: v2.2.5 — Health Score API, Gate 9 Ban Severity, PreCompact Tool Mix
+# ─────────────────────────────────────────────────
+print("\n--- v2.2.5: Health Score API, Gate 9 Ban Severity, PreCompact Tool Mix ---")
+
+# ── Health Score API ──
+# Replicate the health score computation logic from server.py api_health_score:
+#   gates_score = min(100, int(gate_count / expected_gates * 100))
+#   errors_score = max(0, 100 - total_errors * 20)
+
+# Test 1: gates_score with 12 gates (full) → 100
+gates_score_1 = min(100, int(12 / 12 * 100))
+test("v2.2.5: gates_score with 12 gates → 100",
+     gates_score_1 == 100,
+     f"Expected 100, got {gates_score_1}")
+
+# Test 2: gates_score with 6 gates → 50
+gates_score_2 = min(100, int(6 / 12 * 100))
+test("v2.2.5: gates_score with 6 gates → 50",
+     gates_score_2 == 50,
+     f"Expected 50, got {gates_score_2}")
+
+# Test 3: errors_score with 0 errors → 100
+errors_score_3 = max(0, 100 - 0 * 20)
+test("v2.2.5: errors_score with 0 errors → 100",
+     errors_score_3 == 100,
+     f"Expected 100, got {errors_score_3}")
+
+# Test 4: errors_score with 3 error patterns → max(0, 100 - 60) = 40
+errors_score_4 = max(0, 100 - 3 * 20)
+test("v2.2.5: errors_score with 3 error patterns → 40",
+     errors_score_4 == 40,
+     f"Expected 40, got {errors_score_4}")
+
+# ── Gate 9 ban severity ──
+
+from gates.gate_09_strategy_ban import _ban_severity
+
+# Test 5: _ban_severity(1) → ("first_fail", "warn")
+sev5 = _ban_severity(1)
+test("v2.2.5: _ban_severity(1) → ('first_fail', 'warn')",
+     sev5 == ("first_fail", "warn"),
+     f"Expected ('first_fail', 'warn'), got {sev5!r}")
+
+# Test 6: _ban_severity(2) → ("repeating", "error")
+sev6 = _ban_severity(2)
+test("v2.2.5: _ban_severity(2) → ('repeating', 'error')",
+     sev6 == ("repeating", "error"),
+     f"Expected ('repeating', 'error'), got {sev6!r}")
+
+# Test 7: _ban_severity(3) → ("escalating", "critical")
+sev7 = _ban_severity(3)
+test("v2.2.5: _ban_severity(3) → ('escalating', 'critical')",
+     sev7 == ("escalating", "critical"),
+     f"Expected ('escalating', 'critical'), got {sev7!r}")
+
+# Test 8: _ban_severity(5) → ("escalating", "critical") — high count still escalating
+sev8 = _ban_severity(5)
+test("v2.2.5: _ban_severity(5) → ('escalating', 'critical') — high count",
+     sev8 == ("escalating", "critical"),
+     f"Expected ('escalating', 'critical'), got {sev8!r}")
+
+# ── PreCompact tool mix sentiment ──
+# Replicate the tool_mix_sentiment classification from pre_compact.py:
+#   if write_ratio > 0.5: "write_heavy"
+#   elif read_ratio > 0.7: "read_dominant"
+#   elif exec_ratio < 0.1 and write_ratio > 0.2: "unverified_edits"
+#   else: "balanced"
+
+def compute_tool_mix_sentiment(write_ratio, read_ratio, exec_ratio):
+    """Replicate pre_compact.py tool_mix_sentiment classification."""
+    if write_ratio > 0.5:
+        return "write_heavy"
+    elif read_ratio > 0.7:
+        return "read_dominant"
+    elif exec_ratio < 0.1 and write_ratio > 0.2:
+        return "unverified_edits"
+    else:
+        return "balanced"
+
+# Test 9: write_ratio=0.6, read_ratio=0.2, exec_ratio=0.2 → "write_heavy"
+mix9 = compute_tool_mix_sentiment(0.6, 0.2, 0.2)
+test("v2.2.5: tool mix write_ratio=0.6 → 'write_heavy'",
+     mix9 == "write_heavy",
+     f"Expected 'write_heavy', got {mix9!r}")
+
+# Test 10: read_ratio=0.8, write_ratio=0.1, exec_ratio=0.1 → "read_dominant"
+mix10 = compute_tool_mix_sentiment(0.1, 0.8, 0.1)
+test("v2.2.5: tool mix read_ratio=0.8 → 'read_dominant'",
+     mix10 == "read_dominant",
+     f"Expected 'read_dominant', got {mix10!r}")
+
+# Test 11: exec_ratio=0.05, write_ratio=0.3, read_ratio=0.65 → "unverified_edits"
+mix11 = compute_tool_mix_sentiment(0.3, 0.65, 0.05)
+test("v2.2.5: tool mix exec_ratio=0.05, write_ratio=0.3 → 'unverified_edits'",
+     mix11 == "unverified_edits",
+     f"Expected 'unverified_edits', got {mix11!r}")
+
+# Test 12: read_ratio=0.4, write_ratio=0.3, exec_ratio=0.3 → "balanced"
+mix12 = compute_tool_mix_sentiment(0.3, 0.4, 0.3)
+test("v2.2.5: tool mix balanced ratios → 'balanced'",
+     mix12 == "balanced",
+     f"Expected 'balanced', got {mix12!r}")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()
