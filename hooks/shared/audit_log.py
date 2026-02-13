@@ -204,6 +204,7 @@ def _aggregate_entry(entry, daily_stats):
     ts = entry.get("timestamp", "")
     gate = entry.get("gate", "unknown")
     decision = entry.get("decision", "unknown")
+    severity = entry.get("severity", "info")
 
     # Extract date from ISO timestamp
     date_str = ts[:10] if len(ts) >= 10 else "unknown"
@@ -211,10 +212,18 @@ def _aggregate_entry(entry, daily_stats):
     if date_str not in daily_stats:
         daily_stats[date_str] = {}
     if gate not in daily_stats[date_str]:
-        daily_stats[date_str][gate] = {"pass": 0, "block": 0, "warn": 0}
+        daily_stats[date_str][gate] = {
+            "pass": 0, "block": 0, "warn": 0,
+            "severity_dist": {"info": 0, "warn": 0, "error": 0, "critical": 0},
+        }
 
     if decision in ("pass", "block", "warn"):
         daily_stats[date_str][gate][decision] += 1
+
+    if severity in ("info", "warn", "error", "critical"):
+        daily_stats[date_str][gate]["severity_dist"][severity] += 1
+    else:
+        daily_stats[date_str][gate]["severity_dist"]["info"] += 1
 
 
 def cleanup_old_audit_files(max_age_days=CLEANUP_AGE_DAYS):

@@ -6002,6 +6002,143 @@ test("v2.2.1: gate_04 has Task in GATED_TOOLS",
 
 
 # ─────────────────────────────────────────────────
+# Test: v2.2.2 — Gate Timing, Audit Severity Dist, PreCompact Categories
+# ─────────────────────────────────────────────────
+print("\n--- v2.2.2: Gate Timing, Audit Severity Dist, PreCompact Categories ---")
+
+# ── Gate Timing Stats ──
+
+# Test 1: gate_timing_stats exists in default_state and is empty dict
+cleanup_test_states()
+ds = default_state()
+test("v2.2.2: gate_timing_stats in default_state",
+     "gate_timing_stats" in ds and isinstance(ds["gate_timing_stats"], dict) and len(ds["gate_timing_stats"]) == 0,
+     "Expected gate_timing_stats to be empty dict in default_state()")
+
+# Test 2: After enforcer PreToolUse on Edit (blocked by Gate 1), state has gate_timing_stats populated
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+rc, _ = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/test.py", "old_string": "a", "new_string": "b"}, session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+timing = state.get("gate_timing_stats", {})
+test("v2.2.2: enforcer populates gate_timing_stats on Edit block",
+     rc != 0 and len(timing) > 0,
+     f"Expected non-zero exit and populated timing, got rc={rc}, timing keys={list(timing.keys())}")
+
+# Test 3: Timing entries have count, total_ms, min_ms, max_ms fields
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/test.py", "old_string": "a", "new_string": "b"}, session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+timing = state.get("gate_timing_stats", {})
+if timing:
+    first_entry = next(iter(timing.values()))
+    has_fields = all(k in first_entry for k in ("count", "total_ms", "min_ms", "max_ms"))
+else:
+    has_fields = False
+test("v2.2.2: timing entries have count/total_ms/min_ms/max_ms",
+     has_fields,
+     f"Expected count/total_ms/min_ms/max_ms in timing entry, got {first_entry if timing else 'empty'}")
+
+# Test 4: Running enforcer twice accumulates timing (count increases)
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/test.py", "old_string": "a", "new_string": "b"}, session_id=MAIN_SESSION)
+state1 = load_state(session_id=MAIN_SESSION)
+count1 = 0
+for v in state1.get("gate_timing_stats", {}).values():
+    count1 = max(count1, v.get("count", 0))
+run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/test.py", "old_string": "a", "new_string": "b"}, session_id=MAIN_SESSION)
+state2 = load_state(session_id=MAIN_SESSION)
+count2 = 0
+for v in state2.get("gate_timing_stats", {}).values():
+    count2 = max(count2, v.get("count", 0))
+test("v2.2.2: timing accumulates across enforcer runs",
+     count2 > count1,
+     f"Expected count to increase, got count1={count1}, count2={count2}")
+
+# ── Audit Severity Distribution ──
+
+from shared.audit_log import _aggregate_entry
+
+# Test 5: _aggregate_entry tracks severity_dist counts
+daily_stats = {}
+entries = [
+    {"timestamp": "2026-01-15T00:00:00", "gate": "gate_01", "decision": "pass", "severity": "info"},
+    {"timestamp": "2026-01-15T00:00:01", "gate": "gate_01", "decision": "block", "severity": "error"},
+    {"timestamp": "2026-01-15T00:00:02", "gate": "gate_01", "decision": "warn", "severity": "warn"},
+]
+for e in entries:
+    _aggregate_entry(e, daily_stats)
+sev = daily_stats.get("2026-01-15", {}).get("gate_01", {}).get("severity_dist", {})
+test("v2.2.2: _aggregate_entry tracks severity_dist",
+     sev.get("info") == 1 and sev.get("error") == 1 and sev.get("warn") == 1,
+     f"Expected info=1, error=1, warn=1, got {sev}")
+
+# Test 6: Entries without severity field default to "info"
+daily_stats2 = {}
+_aggregate_entry({"timestamp": "2026-01-16T00:00:00", "gate": "gate_02", "decision": "pass"}, daily_stats2)
+sev2 = daily_stats2.get("2026-01-16", {}).get("gate_02", {}).get("severity_dist", {})
+test("v2.2.2: missing severity defaults to info",
+     sev2.get("info") == 1,
+     f"Expected info=1 for missing severity, got {sev2}")
+
+# Test 7: All 4 severity levels (info, warn, error, critical) are tracked
+daily_stats3 = {}
+for sev_level in ("info", "warn", "error", "critical"):
+    _aggregate_entry({"timestamp": "2026-01-17T00:00:00", "gate": "gate_03", "decision": "pass", "severity": sev_level}, daily_stats3)
+sev3 = daily_stats3.get("2026-01-17", {}).get("gate_03", {}).get("severity_dist", {})
+all_tracked = all(sev3.get(s) == 1 for s in ("info", "warn", "error", "critical"))
+test("v2.2.2: all 4 severity levels tracked",
+     all_tracked,
+     f"Expected each severity=1, got {sev3}")
+
+# Test 8: Unknown severity values fall back to "info"
+daily_stats4 = {}
+_aggregate_entry({"timestamp": "2026-01-18T00:00:00", "gate": "gate_04", "decision": "pass", "severity": "banana"}, daily_stats4)
+sev4 = daily_stats4.get("2026-01-18", {}).get("gate_04", {}).get("severity_dist", {})
+test("v2.2.2: unknown severity falls back to info",
+     sev4.get("info") == 1,
+     f"Expected info=1 for unknown severity 'banana', got {sev4}")
+
+# ── PreCompact Tool Categories ──
+
+from pre_compact import _categorize_tools
+
+# Test 9: _categorize_tools function exists and is callable
+test("v2.2.2: _categorize_tools exists and is callable",
+     callable(_categorize_tools),
+     "Expected _categorize_tools to be callable")
+
+# Test 10: Categorize Read=5, Edit=3 → read_only=5, write=3
+cats = _categorize_tools({"Read": {"count": 5}, "Edit": {"count": 3}})
+test("v2.2.2: categorize Read→read_only, Edit→write",
+     cats.get("read_only") == 5 and cats.get("write") == 3,
+     f"Expected read_only=5, write=3, got {cats}")
+
+# Test 11: Memory tools classified as 'memory'
+cats2 = _categorize_tools({"mcp__memory__search_knowledge": {"count": 7}})
+test("v2.2.2: memory tools classified as memory",
+     cats2.get("memory") == 7,
+     f"Expected memory=7, got {cats2}")
+
+# Test 12: Category counts sum correctly across all categories
+tool_stats_mixed = {
+    "Read": {"count": 10},
+    "Edit": {"count": 4},
+    "Bash": {"count": 6},
+    "mcp__memory__remember_this": {"count": 3},
+    "LSP": {"count": 2},
+}
+cats3 = _categorize_tools(tool_stats_mixed)
+total = sum(cats3.values())
+expected_total = 10 + 4 + 6 + 3 + 2
+test("v2.2.2: category counts sum correctly",
+     total == expected_total and cats3["read_only"] == 10 and cats3["write"] == 4 and cats3["execution"] == 6 and cats3["memory"] == 3 and cats3["other"] == 2,
+     f"Expected total={expected_total} with correct breakdown, got {cats3} (sum={total})")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

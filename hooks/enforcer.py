@@ -23,7 +23,7 @@ import time
 
 # Add parent to path for shared imports
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.state import load_state
+from shared.state import load_state, save_state
 from shared.gate_result import GateResult
 from shared.audit_log import log_gate_decision
 
@@ -251,6 +251,14 @@ def handle_pre_tool_use(tool_name, tool_input, state):
             deps = GATE_DEPENDENCIES.get(gate_short, {})
             state_keys_read = deps.get("reads", [])
 
+            # Update gate timing stats
+            timing = state.setdefault("gate_timing_stats", {})
+            entry = timing.setdefault(gate_short, {"count": 0, "total_ms": 0.0, "min_ms": 999999, "max_ms": 0.0})
+            entry["count"] += 1
+            entry["total_ms"] += elapsed_ms
+            entry["min_ms"] = min(entry["min_ms"], elapsed_ms)
+            entry["max_ms"] = max(entry["max_ms"], elapsed_ms)
+
             if elapsed_ms > 100:
                 log_gate_decision(gate_label, tool_name, "slow",
                                   f"gate took {elapsed_ms:.0f}ms (>100ms threshold)", session_id, state_keys_read,
@@ -259,6 +267,7 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 log_gate_decision(gate_label, tool_name, "block", result.message, session_id, state_keys_read,
                                   severity=result.severity)
                 print(result.message, file=sys.stderr)
+                save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(1)
             elif result.message:
                 log_gate_decision(gate_label, tool_name, "warn", result.message, session_id, state_keys_read,
@@ -276,6 +285,7 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 log_gate_decision(gate.__name__, tool_name, "block", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
                                   severity="error")
                 print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate.__name__}' crashed: {e}", file=sys.stderr)
+                save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(1)
             # Non-safety gate errors should not block work — log and continue
             gate_short = gate.__name__.split(".")[-1]
@@ -284,6 +294,9 @@ def handle_pre_tool_use(tool_name, tool_input, state):
             log_gate_decision(gate.__name__, tool_name, "crash", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
                               severity="warn")
             print(f"[ENFORCER] Warning: Gate error in {gate.__name__}: {e}", file=sys.stderr)
+
+    # Save timing stats after all gates complete (normal path)
+    save_state(state, session_id=state.get("_session_id", "main"))
 
 
 def main():

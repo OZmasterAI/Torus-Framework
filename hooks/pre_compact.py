@@ -16,6 +16,30 @@ from datetime import datetime
 
 CAPTURE_QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".capture_queue.jsonl")
 
+TOOL_CATEGORIES = {
+    "read_only": {"Read", "Grep", "Glob", "WebSearch", "WebFetch"},
+    "write": {"Edit", "Write", "NotebookEdit"},
+    "execution": {"Bash", "Task"},
+}
+
+
+def _categorize_tools(tool_stats):
+    """Categorize tool usage into read_only, write, execution, memory, other."""
+    categories = {"read_only": 0, "write": 0, "execution": 0, "memory": 0, "other": 0}
+    for tool_name, info in tool_stats.items():
+        count = info.get("count", 0) if isinstance(info, dict) else 0
+        if tool_name in TOOL_CATEGORIES.get("read_only", set()):
+            categories["read_only"] += count
+        elif tool_name in TOOL_CATEGORIES.get("write", set()):
+            categories["write"] += count
+        elif tool_name in TOOL_CATEGORIES.get("execution", set()):
+            categories["execution"] += count
+        elif tool_name.startswith("mcp__memory__") or tool_name.startswith("mcp_memory_"):
+            categories["memory"] += count
+        else:
+            categories["other"] += count
+    return categories
+
 
 def main():
     # Read session data from stdin
@@ -108,6 +132,15 @@ def main():
         tools_summary = ", ".join(f"{tool}:{stats.get('count', 0)}" for tool, stats in top_tools)
         document_parts.append(f"Top tools: {tools_summary}")
 
+    # Tool category breakdown
+    tool_categories = _categorize_tools(tool_stats) if tool_stats else {}
+    if tool_categories:
+        cat = tool_categories
+        document_parts.append(
+            f"Tool mix: read={cat['read_only']}, write={cat['write']}, "
+            f"exec={cat['execution']}, mem={cat['memory']}, other={cat['other']}"
+        )
+
     document = ". ".join(document_parts)
 
     timestamp = datetime.now().isoformat()
@@ -126,6 +159,7 @@ def main():
         "velocity_tier": velocity_tier,
         "session_elapsed_seconds": round(session_elapsed, 0),
         "tool_stats_snapshot": {k: v.get("count", 0) for k, v in tool_stats.items()} if tool_stats else {},
+        "tool_categories": tool_categories if tool_categories else {},
     }
 
     observation = {
