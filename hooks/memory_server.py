@@ -498,6 +498,7 @@ def format_summaries(results) -> list[dict]:
 
     Handles both query() results (nested ids[0]) and get() results (flat ids).
     Supports metadata-only queries (documents=None) by using stored preview field.
+    Also tracks retrieval counts for stale memory detection.
     """
     if not results:
         return []
@@ -524,6 +525,10 @@ def format_summaries(results) -> list[dict]:
         return []
 
     formatted = []
+    retrieval_update_ids = []
+    retrieval_update_metas = []
+    now_iso = datetime.now().isoformat()
+
     for i in range(len(ids)):
         meta = metas[i] if i < len(metas) and metas else {}
 
@@ -548,6 +553,21 @@ def format_summaries(results) -> list[dict]:
             entry["tags"] = meta.get("tags", "")
             entry["timestamp"] = meta.get("timestamp", "")
         formatted.append(entry)
+
+        # Queue retrieval tracking update
+        if meta and ids[i]:
+            updated_meta = dict(meta)
+            updated_meta["retrieval_count"] = int(meta.get("retrieval_count", 0)) + 1
+            updated_meta["last_retrieved"] = now_iso
+            retrieval_update_ids.append(ids[i])
+            retrieval_update_metas.append(updated_meta)
+
+    # Batch update retrieval counts (fire-and-forget)
+    if retrieval_update_ids:
+        try:
+            collection.update(ids=retrieval_update_ids, metadatas=retrieval_update_metas)
+        except Exception:
+            pass  # Tracking failure must not break search
 
     return formatted
 
@@ -1008,7 +1028,7 @@ def get_memory(id: str) -> dict:
         id: The memory ID (from search results)
     """
     try:
-        result = collection.get(ids=[id])
+        result = collection.get(ids=[id], include=["documents", "metadatas"])
         if not result or not result.get("documents") or len(result["documents"]) == 0:
             return {"error": f"No memory found with id: {id}"}
 
@@ -1021,6 +1041,16 @@ def get_memory(id: str) -> dict:
             entry["context"] = meta.get("context", "")
             entry["tags"] = meta.get("tags", "")
             entry["timestamp"] = meta.get("timestamp", "")
+
+            # Retrieval tracking: increment count and update timestamp
+            try:
+                retrieval_count = int(meta.get("retrieval_count", 0)) + 1
+                updated_meta = dict(meta)
+                updated_meta["retrieval_count"] = retrieval_count
+                updated_meta["last_retrieved"] = datetime.now().isoformat()
+                collection.update(ids=[id], metadatas=[updated_meta])
+            except Exception:
+                pass  # Tracking failure must not break retrieval
 
         _touch_memory_timestamp()
         return entry
@@ -1616,6 +1646,107 @@ def suggest_promotions(top_k: int = 5) -> dict:
         "total_candidates": len(candidates),
         "total_clusters": len(clusters),
     }
+
+
+@mcp.tool()
+def list_stale_memories(days: int = 60, top_k: int = 20) -> dict:
+    """Find memories that haven't been retrieved recently.
+
+    Returns memories older than `days` with zero or low retrieval counts,
+    sorted by age (oldest first). Useful for identifying knowledge that may
+    be outdated or irrelevant for cleanup.
+
+    Args:
+        days: Age threshold in days (default 60). Only memories older than this are returned.
+        top_k: Maximum number of results (default 20).
+    """
+    days = max(1, min(days, 3650))
+    top_k = max(1, min(top_k, 200))
+
+    try:
+        count = collection.count()
+        if count == 0:
+            return {"results": [], "total_memories": 0, "message": "Memory is empty."}
+
+        cutoff = time.time() - (days * 86400)
+
+        # Query memories older than the threshold
+        try:
+            old_memories = collection.get(
+                where={"session_time": {"$lt": cutoff}},
+                limit=min(count, 500),
+                include=["documents", "metadatas"],
+            )
+        except Exception:
+            # Fallback: get all and filter manually
+            old_memories = collection.get(
+                limit=min(count, 500),
+                include=["documents", "metadatas"],
+            )
+
+        if not old_memories or not old_memories.get("ids"):
+            return {"results": [], "total_memories": count, "message": "No memories found matching criteria."}
+
+        ids = old_memories["ids"]
+        docs = old_memories.get("documents") or []
+        metas = old_memories.get("metadatas") or []
+
+        now = time.time()
+        stale = []
+
+        for i, mid in enumerate(ids):
+            meta = metas[i] if i < len(metas) else {}
+            doc = docs[i] if i < len(docs) else ""
+
+            retrieval_count = int(meta.get("retrieval_count", 0))
+
+            # Only include memories with zero or low retrievals
+            if retrieval_count > 2:
+                continue
+
+            # Calculate age
+            session_time = meta.get("session_time")
+            if session_time is not None:
+                try:
+                    age_seconds = now - float(session_time)
+                except (ValueError, TypeError):
+                    age_seconds = days * 86400  # Assume old if unparseable
+            else:
+                age_seconds = days * 86400
+
+            age_days = round(age_seconds / 86400, 1)
+
+            # Filter by age threshold (needed for fallback path)
+            if age_days < days:
+                continue
+
+            preview = meta.get("preview", "")
+            if not preview and doc:
+                preview = doc[:100].replace("\n", " ")
+                if len(doc) > 100:
+                    preview += "..."
+
+            stale.append({
+                "id": mid,
+                "preview": preview[:100],
+                "age_days": age_days,
+                "retrieval_count": retrieval_count,
+                "last_retrieved": meta.get("last_retrieved", "never"),
+                "tags": meta.get("tags", ""),
+            })
+
+        # Sort by age descending (oldest first)
+        stale.sort(key=lambda x: x["age_days"], reverse=True)
+
+        return {
+            "results": stale[:top_k],
+            "total_stale": len(stale),
+            "total_memories": count,
+            "threshold_days": days,
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to list stale memories: {str(e)}"}
 
 
 if __name__ == "__main__":

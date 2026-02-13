@@ -63,7 +63,8 @@ DANGEROUS_PATTERNS = [
     (r"\bbash\s+-c\s+", "bash -c (shell command wrapping)"),
     (r"\bsh\s+-c\s+", "sh -c (shell command wrapping)"),
     (r"\|\s*(ba)?sh\b", "pipe to shell (command indirection)"),
-    (r"<<<\s*", "heredoc execution"),
+    (r"<<<\s*", "heredoc execution (<<<)"),
+    (r"(?<!<)<<(?!<)\s*", "heredoc input (<<)"),
     (r"\bexec\s+", "exec (replace current process)"),
     (r"\bsource\s+", "source (execute script in current shell)"),
     # SQL mass deletion without WHERE clause
@@ -78,11 +79,8 @@ DANGEROUS_PATTERNS = [
 # Format: (exact_description_from_DANGEROUS_PATTERNS, safe_regex_pattern)
 # NOTE: Bypass vectors (eval, bash -c, sh -c, pipe-to-shell) have NO exceptions.
 SAFE_EXCEPTIONS = [
-    # source: allow venv activation and common shell profile sourcing
-    ("source (execute script in current shell)",
-     r"\bsource\s+\S*(?:activate|\.bashrc|\.bash_profile|\.profile|\.zshrc|\.zprofile|\.envrc)\b"),
+    # source: handled by _source_is_safe() below (path validation with realpath)
     # exec: handled by _exec_is_safe() below (shlex-based, not regex)
-    # Removed regex — shlex tokenization catches flag interleaving and heredoc
     # DELETE FROM: allow targeted SQL deletes that include a WHERE clause
     ("DELETE FROM (SQL mass deletion)",
      r"\bDELETE\s+FROM\s+\S+\s+WHERE\b"),
@@ -108,12 +106,28 @@ def _is_safe_exception(command, description):
         return _exec_is_safe(command)
 
     # Special case: <<< here-strings are safe when not feeding to a shell
-    if description == "heredoc execution":
+    if description == "heredoc execution (<<<)":
         # Extract the command word immediately before <<<
         # Handles: wc -w <<< "hello", grep -c "x" <<< "$var"
         m = re.search(r"\b(\w+)\b[^|;&]*<<<", command)
         if m and m.group(1).lower() not in ("bash", "sh", "zsh", "eval", "exec"):
             return True
+
+    # Special case: << heredocs are safe when feeding to non-shell commands
+    if description == "heredoc input (<<)":
+        # Extract the command word before <<
+        # Safe: cat << EOF, wc << EOF, tee << EOF
+        # Dangerous: bash << EOF, sh << EOF, python3 << EOF
+        DANGEROUS_HEREDOC_CMDS = {"bash", "sh", "zsh", "eval", "exec",
+                                   "python", "python2", "python3", "node",
+                                   "ruby", "perl"}
+        m = re.search(r"\b(\w+)\b[^|;&]*(?<!<)<<(?!<)", command)
+        if m and m.group(1).lower() not in DANGEROUS_HEREDOC_CMDS:
+            return True
+
+    # Special case: source with symlink validation
+    if description == "source (execute script in current shell)":
+        return _source_is_safe(command)
 
     return False
 
@@ -207,6 +221,52 @@ def _exec_is_safe(command):
                 return False
 
         return True
+
+    return False
+
+
+def _source_is_safe(command):
+    """Check if a source command is safe by validating both filename and resolved path.
+
+    Only allows sourcing files that:
+    1. Match known-safe filenames (activate, .bashrc, .profile, etc.)
+    2. Resolve (via os.path.realpath) to a path under $HOME, /etc/, or /usr/local/
+
+    This prevents symlink attacks where /tmp/activate -> /tmp/malicious.sh.
+    """
+    SAFE_FILENAMES = {"activate", ".bashrc", ".bash_profile", ".profile",
+                      ".zshrc", ".zprofile", ".envrc"}
+    ALLOWED_PREFIXES = [
+        os.path.expanduser("~"),  # Current user's home
+        "/home/",                 # Any user home directory (Linux)
+        "/Users/",                # Any user home directory (macOS)
+        "/etc/",                  # System configuration
+        "/usr/local/",            # Local installations
+        "/usr/",                  # System packages
+        "/opt/",                  # Optional packages
+    ]
+
+    # Extract the path argument from the source command
+    m = re.search(r"\bsource\s+(\S+)", command)
+    if not m:
+        return False
+
+    source_path = m.group(1)
+    basename = os.path.basename(source_path)
+
+    # Check filename matches a known-safe name
+    if basename not in SAFE_FILENAMES:
+        return False
+
+    # Resolve symlinks and validate the real path is in an allowed directory
+    try:
+        real_path = os.path.realpath(source_path)
+    except (OSError, ValueError):
+        return False
+
+    for prefix in ALLOWED_PREFIXES:
+        if real_path.startswith(prefix):
+            return True
 
     return False
 

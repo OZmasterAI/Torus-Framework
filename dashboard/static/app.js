@@ -553,10 +553,20 @@ async function renderHistory() {
         return;
     }
 
+    selectedSessions.clear();
+    const btn = document.getElementById('compare-btn');
+    if (btn) btn.classList.add('hidden');
+
     el.innerHTML = files.map(f => `
-        <div class="history-entry" onclick="showHistoryDetail('${escapeHtml(f.filename)}')">
-            <div class="history-name">${escapeHtml(f.filename)}</div>
-            <div class="history-meta">${formatDate(f.modified)} | ${(f.size / 1024).toFixed(1)} KB</div>
+        <div class="history-entry">
+            <label class="history-check-label" onclick="event.stopPropagation()">
+                <input type="checkbox" class="history-check" data-filename="${escapeHtml(f.filename)}"
+                    onchange="toggleSessionSelect('${escapeHtml(f.filename)}', this)">
+            </label>
+            <div class="history-entry-body" onclick="showHistoryDetail('${escapeHtml(f.filename)}')">
+                <div class="history-name">${escapeHtml(f.filename)}</div>
+                <div class="history-meta">${formatDate(f.modified)} | ${(f.size / 1024).toFixed(1)} KB</div>
+            </div>
         </div>`).join('');
 }
 
@@ -566,6 +576,215 @@ async function showHistoryDetail(filename) {
 
     document.getElementById('overlay-title').textContent = filename;
     document.getElementById('overlay-body').textContent = data.content || '(empty)';
+    document.getElementById('detail-overlay').classList.remove('hidden');
+}
+
+// ── Gate Performance ────────────────────────────────────
+
+async function renderGatePerf() {
+    const data = await apiFetch('/api/gate-perf');
+    if (!data) return;
+
+    const el = document.getElementById('gate-perf-content');
+    const gates = data.gates || [];
+
+    if (gates.length === 0) {
+        el.innerHTML = '<div class="no-data">No gate performance data available.</div>';
+        return;
+    }
+
+    let html = '<table class="gate-perf-table"><thead><tr>' +
+        '<th>Gate</th><th>Pass</th><th>Block</th><th>Warn</th><th>Block Rate</th>' +
+        '</tr></thead><tbody>';
+
+    for (const g of gates) {
+        const rateClass = g.block_rate > 30 ? 'rate-high' :
+                          g.block_rate > 10 ? 'rate-med' : 'rate-low';
+        const shortName = g.gate.replace('GATE ', 'G');
+        html += `<tr>
+            <td class="gate-perf-name" title="${escapeHtml(g.gate)}">${escapeHtml(shortName)}</td>
+            <td class="color-green">${g.pass}</td>
+            <td class="color-red">${g.block}</td>
+            <td class="color-yellow">${g.warn}</td>
+            <td class="${rateClass}">${g.block_rate}%</td>
+        </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+
+    // Also populate the gate filter dropdown for timeline
+    populateGateFilterDropdown(gates.map(g => g.gate));
+}
+
+function populateGateFilterDropdown(gateNames) {
+    const select = document.getElementById('timeline-gate-filter');
+    if (!select) return;
+    // Keep the "All Gates" option, remove the rest
+    while (select.options.length > 1) select.remove(1);
+    for (const name of gateNames) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name.replace('GATE ', 'G');
+        select.appendChild(opt);
+    }
+}
+
+// ── Audit Query Filters ────────────────────────────────
+
+let activeQueryFilters = {};
+
+async function applyTimelineFilters() {
+    const gate = document.getElementById('timeline-gate-filter').value;
+    const decision = document.getElementById('timeline-decision-filter').value;
+
+    // If no filters, fall back to regular timeline
+    if (!gate && !decision) {
+        activeQueryFilters = {};
+        renderActiveFilterBadges();
+        renderFilteredTimeline();
+        return;
+    }
+
+    const params = new URLSearchParams();
+    if (gate) params.set('gate', gate);
+    if (decision) params.set('decision', decision);
+    params.set('hours', '24');
+
+    const data = await apiFetch(`/api/audit/query?${params.toString()}`);
+    if (!data) return;
+
+    activeQueryFilters = {};
+    if (gate) activeQueryFilters.gate = gate;
+    if (decision) activeQueryFilters.decision = decision;
+
+    renderActiveFilterBadges();
+
+    const el = document.getElementById('timeline-content');
+    const entries = data.entries || [];
+    document.getElementById('timeline-count').textContent = data.total;
+
+    if (entries.length === 0) {
+        el.innerHTML = '<div class="no-data">No audit events match these filters.</div>';
+        return;
+    }
+    el.innerHTML = entries.map(renderTimelineEntry).join('');
+}
+
+function renderActiveFilterBadges() {
+    const container = document.getElementById('timeline-active-filters');
+    if (!container) return;
+
+    const keys = Object.keys(activeQueryFilters);
+    if (keys.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = keys.map(key => {
+        const val = activeQueryFilters[key];
+        const display = key === 'gate' ? val.replace('GATE ', 'G') : val;
+        return `<span class="filter-badge">${escapeHtml(key)}: ${escapeHtml(display)} ` +
+            `<span class="filter-badge-x" onclick="event.stopPropagation(); removeQueryFilter('${key}')">&times;</span></span>`;
+    }).join(' ');
+}
+
+function removeQueryFilter(key) {
+    delete activeQueryFilters[key];
+    // Reset the corresponding dropdown
+    if (key === 'gate') document.getElementById('timeline-gate-filter').value = '';
+    if (key === 'decision') document.getElementById('timeline-decision-filter').value = '';
+
+    if (Object.keys(activeQueryFilters).length === 0) {
+        renderActiveFilterBadges();
+        renderFilteredTimeline();
+    } else {
+        applyTimelineFilters();
+    }
+}
+
+// ── Session Comparison ─────────────────────────────────
+
+let selectedSessions = new Set();
+
+function toggleSessionSelect(filename, checkbox) {
+    if (checkbox.checked) {
+        selectedSessions.add(filename);
+    } else {
+        selectedSessions.delete(filename);
+    }
+    // Show/hide Compare button
+    const btn = document.getElementById('compare-btn');
+    if (selectedSessions.size === 2) {
+        btn.classList.remove('hidden');
+    } else {
+        btn.classList.add('hidden');
+    }
+}
+
+async function compareSessions() {
+    const files = Array.from(selectedSessions);
+    if (files.length !== 2) return;
+
+    const data = await apiFetch(`/api/history/compare?a=${encodeURIComponent(files[0])}&b=${encodeURIComponent(files[1])}`);
+    if (!data || data.error) return;
+
+    document.getElementById('overlay-title').textContent = 'Session Comparison';
+    const body = document.getElementById('overlay-body');
+
+    let html = '<div class="compare-view">';
+
+    // Header
+    html += `<div class="compare-header">
+        <div class="compare-col-header">${escapeHtml(data.a.filename)}</div>
+        <div class="compare-col-header">${escapeHtml(data.b.filename)}</div>
+    </div>`;
+
+    const diff = data.diff || {};
+
+    // Added sections (only in B)
+    for (const section of (diff.added_sections || [])) {
+        html += `<div class="compare-row compare-added">
+            <div class="compare-col compare-empty"><em>(not present)</em></div>
+            <div class="compare-col"><strong>${escapeHtml(section)}</strong><br>${escapeHtml(data.b.sections[section] || '').substring(0, 300)}</div>
+        </div>`;
+    }
+
+    // Removed sections (only in A)
+    for (const section of (diff.removed_sections || [])) {
+        html += `<div class="compare-row compare-removed">
+            <div class="compare-col"><strong>${escapeHtml(section)}</strong><br>${escapeHtml(data.a.sections[section] || '').substring(0, 300)}</div>
+            <div class="compare-col compare-empty"><em>(not present)</em></div>
+        </div>`;
+    }
+
+    // Changed sections
+    for (const section of (diff.changed_sections || [])) {
+        html += `<div class="compare-row compare-changed">
+            <div class="compare-col"><strong>${escapeHtml(section)}</strong><br>${escapeHtml(data.a.sections[section] || '').substring(0, 300)}</div>
+            <div class="compare-col"><strong>${escapeHtml(section)}</strong><br>${escapeHtml(data.b.sections[section] || '').substring(0, 300)}</div>
+        </div>`;
+    }
+
+    // Unchanged sections
+    const allSections = new Set([
+        ...Object.keys(data.a.sections || {}),
+        ...Object.keys(data.b.sections || {}),
+    ]);
+    const changedSet = new Set([
+        ...(diff.added_sections || []),
+        ...(diff.removed_sections || []),
+        ...(diff.changed_sections || []),
+    ]);
+    for (const section of allSections) {
+        if (changedSet.has(section)) continue;
+        html += `<div class="compare-row">
+            <div class="compare-col"><strong>${escapeHtml(section)}</strong><br><span class="text-muted">(unchanged)</span></div>
+            <div class="compare-col"><strong>${escapeHtml(section)}</strong><br><span class="text-muted">(unchanged)</span></div>
+        </div>`;
+    }
+
+    html += '</div>';
+    body.innerHTML = html;
     document.getElementById('detail-overlay').classList.remove('hidden');
 }
 
@@ -697,6 +916,7 @@ async function refreshAll() {
         renderHealth(),
         renderGates(),
         renderTimeline(),
+        renderGatePerf(),
         renderErrors(),
     ]);
 }
@@ -730,6 +950,21 @@ function setupEventListeners() {
     document.getElementById('timeline-date-select').addEventListener('change', (e) => {
         renderTimeline(e.target.value);
     });
+
+    // Gate performance refresh
+    document.getElementById('gate-perf-refresh').addEventListener('click', () => {
+        renderGatePerf();
+    });
+
+    // Timeline query filters
+    document.getElementById('timeline-filter-btn').addEventListener('click', () => {
+        applyTimelineFilters();
+    });
+
+    // Session comparison
+    document.getElementById('compare-btn').addEventListener('click', () => {
+        compareSessions();
+    });
 }
 
 // ── Init ────────────────────────────────────────────────
@@ -742,6 +977,7 @@ async function init() {
     await Promise.all([
         renderHealth(),
         renderGates(),
+        renderGatePerf(),
         renderTimeline(),
         renderMemory(''),
         renderMemoryTags(),

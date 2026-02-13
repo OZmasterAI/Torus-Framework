@@ -843,3 +843,166 @@ header {
     from { opacity: 0; transform: translateX(20px); }
     to { opacity: 1; transform: translateX(0); }
 }
+
+/* ── Gate Performance ────────────────────────────────── */
+
+.gate-perf-section {
+    margin-top: 16px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+}
+
+.gate-perf-header {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gate-perf-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.gate-perf-table th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
+.gate-perf-table td {
+    padding: 3px 6px;
+    border-bottom: 1px solid rgba(30, 58, 95, 0.3);
+}
+
+.gate-perf-name {
+    color: var(--text-secondary);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rate-low { color: var(--green); font-weight: 700; }
+.rate-med { color: var(--yellow); font-weight: 700; }
+.rate-high { color: var(--red); font-weight: 700; }
+
+/* ── Timeline Filters ────────────────────────────────── */
+
+.timeline-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.timeline-filters .inline-select {
+    margin-left: 0;
+}
+
+#timeline-active-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+/* ── Session Comparison ──────────────────────────────── */
+
+.history-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.history-check-label {
+    display: flex;
+    align-items: center;
+    padding-top: 8px;
+}
+
+.history-check {
+    cursor: pointer;
+    accent-color: var(--cyan);
+}
+
+.history-entry-body {
+    flex: 1;
+    cursor: pointer;
+}
+
+.compare-view {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.compare-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.compare-col-header {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cyan);
+    padding: 6px 8px;
+    background: rgba(0, 210, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.compare-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    border-radius: 4px;
+    padding: 2px;
+}
+
+.compare-col {
+    font-size: 11px;
+    line-height: 1.5;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 4px;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+.compare-empty {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.compare-added .compare-col {
+    border-left: 3px solid var(--green);
+}
+
+.compare-removed .compare-col {
+    border-left: 3px solid var(--red);
+}
+
+.compare-changed .compare-col {
+    border-left: 3px solid var(--yellow);
+}
+
+.text-muted {
+    color: var(--text-muted);
+}

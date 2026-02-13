@@ -3425,9 +3425,9 @@ if _dash_imported:
     test("Dashboard: malformed audit line → None",
          _dash_bad is None)
 
-    # 11. Route count matches plan (16 API + 1 static mount = 17)
-    test("Dashboard: 17 routes configured",
-         len(_dash_mod.routes) == 17,
+    # 11. Route count matches plan (19 API + 1 static mount = 20)
+    test("Dashboard: 20 routes configured",
+         len(_dash_mod.routes) == 20,
          f"got {len(_dash_mod.routes)}")
 
     # 12. HTML has all 7 panels

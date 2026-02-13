@@ -5,10 +5,14 @@ corruption. Each Claude Code agent (main or team member) gets its own state file
 keyed by session_id, ensuring parallel agents don't contaminate each other's
 gate checks.
 
+File locking (fcntl.flock) is used around state reads and writes to prevent
+parallel agents from clobbering each other's state during concurrent access.
+
 State files: ~/.claude/hooks/state_{session_id}.json
 Legacy file: ~/.claude/hooks/state.json (cleaned up on boot)
 """
 
+import fcntl
 import glob
 import json
 import os
@@ -61,19 +65,41 @@ def default_state():
 
 
 def load_state(session_id="main"):
-    """Load state for a specific session/agent."""
+    """Load state for a specific session/agent with shared file locking.
+
+    Acquires a shared (read) lock on the state file's lock file to prevent
+    reading while a write is in progress.
+    """
     state_file = state_file_for(session_id)
     if os.path.exists(state_file):
+        lock_path = state_file + ".lock"
         try:
-            with open(state_file) as f:
-                state = json.load(f)
-            # Ensure all expected keys exist (forward compat)
-            for key, val in default_state().items():
-                if key not in state:
-                    state[key] = val
-            return state
-        except (json.JSONDecodeError, IOError):
-            return default_state()
+            lock_fd = open(lock_path, "a+")
+            try:
+                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_SH)
+                with open(state_file) as f:
+                    state = json.load(f)
+                # Ensure all expected keys exist (forward compat)
+                for key, val in default_state().items():
+                    if key not in state:
+                        state[key] = val
+                return state
+            except (json.JSONDecodeError, IOError):
+                return default_state()
+            finally:
+                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+                lock_fd.close()
+        except OSError:
+            # If we can't acquire the lock, fall back to unlocked read
+            try:
+                with open(state_file) as f:
+                    state = json.load(f)
+                for key, val in default_state().items():
+                    if key not in state:
+                        state[key] = val
+                return state
+            except (json.JSONDecodeError, IOError):
+                return default_state()
     return default_state()
 
 
@@ -114,10 +140,17 @@ def save_state(state, session_id="main"):
 
     state_file = state_file_for(session_id)
     os.makedirs(os.path.dirname(state_file), exist_ok=True)
-    tmp = state_file + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(state, f, indent=2)
-    os.replace(tmp, state_file)
+    lock_path = state_file + ".lock"
+    lock_fd = open(lock_path, "a+")
+    try:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+        tmp = state_file + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=2)
+        os.replace(tmp, state_file)
+    finally:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+        lock_fd.close()
 
 
 def get_memory_last_queried(state):
@@ -163,7 +196,7 @@ def cleanup_all_states():
     Cleans up both per-session state files (state_*.json) and the legacy
     shared state file (state.json) from previous sessions.
     """
-    # Remove per-session state files
+    # Remove per-session state files and their lock files
     pattern = os.path.join(STATE_DIR, "state_*.json")
     for f in glob.glob(pattern):
         # Don't remove .tmp files (in-progress writes)
@@ -172,6 +205,13 @@ def cleanup_all_states():
                 os.remove(f)
             except OSError:
                 pass
+    # Clean up lock files
+    lock_pattern = os.path.join(STATE_DIR, "state_*.json.lock")
+    for f in glob.glob(lock_pattern):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
 
     # Remove legacy shared state file
     legacy = os.path.join(STATE_DIR, "state.json")

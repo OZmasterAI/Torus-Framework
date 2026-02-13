@@ -298,6 +298,103 @@ def aggregate_gate_stats(date_str=None):
     return stats
 
 
+def aggregate_gate_perf(date_str=None):
+    """Aggregate per-gate performance metrics including block rate and timing."""
+    if not date_str:
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    filepath = os.path.join(AUDIT_DIR, f"{date_str}.jsonl")
+    stats = {}
+    if not os.path.isfile(filepath):
+        return []
+    try:
+        with open(filepath) as f:
+            for line in f:
+                try:
+                    entry = json.loads(line.strip())
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                # Type B: has "gate" key
+                gate = entry.get("gate")
+                if not gate:
+                    continue
+                decision = entry.get("decision", "")
+                if gate not in stats:
+                    stats[gate] = {"pass": 0, "block": 0, "warn": 0, "total": 0,
+                                   "durations": []}
+                if decision in ("pass", "block", "warn"):
+                    stats[gate][decision] += 1
+                stats[gate]["total"] += 1
+                duration = entry.get("gate_duration_ms")
+                if duration is not None:
+                    try:
+                        stats[gate]["durations"].append(float(duration))
+                    except (ValueError, TypeError):
+                        pass
+    except OSError:
+        pass
+
+    result = []
+    for gate_name in sorted(stats.keys()):
+        s = stats[gate_name]
+        total = s["total"] or 1
+        block_rate = round(s["block"] / total * 100, 1)
+        avg_dur = None
+        if s["durations"]:
+            avg_dur = round(sum(s["durations"]) / len(s["durations"]), 2)
+        result.append({
+            "gate": gate_name,
+            "pass": s["pass"],
+            "block": s["block"],
+            "warn": s["warn"],
+            "total": s["total"],
+            "block_rate": block_rate,
+            "avg_duration_ms": avg_dur,
+        })
+    return result
+
+
+def load_audit_entries_filtered(gate=None, decision=None, tool=None, hours=24, limit=200):
+    """Load audit entries with optional filters across recent JSONL files."""
+    cutoff = time.time() - (hours * 3600)
+    entries = []
+    if not os.path.isdir(AUDIT_DIR):
+        return entries
+
+    # Gather relevant audit files (sorted newest first)
+    files = sorted(
+        [f for f in os.listdir(AUDIT_DIR) if f.endswith(".jsonl")],
+        reverse=True,
+    )
+
+    for fname in files:
+        filepath = os.path.join(AUDIT_DIR, fname)
+        try:
+            with open(filepath) as f:
+                for line in f:
+                    parsed = parse_audit_line(line)
+                    if not parsed:
+                        continue
+                    # Time filter
+                    if parsed.get("ts", 0) and parsed["ts"] < cutoff:
+                        continue
+                    # Gate filter
+                    if gate and parsed.get("gate", "") != gate:
+                        continue
+                    # Decision filter
+                    if decision and parsed.get("decision", "") != decision:
+                        continue
+                    # Tool filter
+                    if tool and parsed.get("tool", "") != tool:
+                        continue
+                    entries.append(parsed)
+        except OSError:
+            continue
+
+    # Most recent first, limited
+    entries.sort(key=lambda e: e.get("ts", 0), reverse=True)
+    return entries[:limit]
+
+
 # ── API Endpoints ────────────────────────────────────────────────
 
 async def api_health(request):
@@ -598,6 +695,93 @@ async def api_errors(request):
     })
 
 
+async def api_gate_perf(request):
+    """Per-gate performance metrics: pass/block/warn counts, block rate, avg duration."""
+    date_str = request.query_params.get("date", "")
+    perf = aggregate_gate_perf(date_str or None)
+    return JSONResponse({"gates": perf, "date": date_str or "today"})
+
+
+async def api_audit_query(request):
+    """Filtered audit log query with gate, decision, tool, hours params."""
+    gate = request.query_params.get("gate", "") or None
+    decision = request.query_params.get("decision", "") or None
+    tool = request.query_params.get("tool", "") or None
+    try:
+        hours = int(request.query_params.get("hours", "24"))
+    except (ValueError, TypeError):
+        hours = 24
+    hours = max(1, min(hours, 168))  # 1h to 7 days
+    entries = load_audit_entries_filtered(
+        gate=gate, decision=decision, tool=tool, hours=hours, limit=200,
+    )
+    return JSONResponse({
+        "entries": entries,
+        "total": len(entries),
+        "filters": {"gate": gate, "decision": decision, "tool": tool, "hours": hours},
+    })
+
+
+async def api_history_compare(request):
+    """Compare two archived handoff files side-by-side."""
+    file_a = request.query_params.get("a", "")
+    file_b = request.query_params.get("b", "")
+    if not file_a or not file_b:
+        return JSONResponse({"error": "Both 'a' and 'b' params required"}, status_code=400)
+    # Security: prevent path traversal
+    for fname in (file_a, file_b):
+        if "/" in fname or "\\" in fname or ".." in fname:
+            return JSONResponse({"error": "Invalid filename"}, status_code=400)
+
+    def parse_sections(content):
+        sections = {}
+        current_header = None
+        current_lines = []
+        for line in content.split("\n"):
+            if line.startswith("## "):
+                if current_header is not None:
+                    sections[current_header] = "\n".join(current_lines).strip()
+                current_header = line[3:].strip()
+                current_lines = []
+            else:
+                current_lines.append(line)
+        if current_header is not None:
+            sections[current_header] = "\n".join(current_lines).strip()
+        return sections
+
+    results = {}
+    for key, fname in [("a", file_a), ("b", file_b)]:
+        path = os.path.join(ARCHIVE_DIR, fname)
+        if not os.path.isfile(path):
+            return JSONResponse({"error": f"File not found: {fname}"}, status_code=404)
+        try:
+            with open(path) as f:
+                content = f.read()
+            results[key] = {"filename": fname, "sections": parse_sections(content)}
+        except OSError as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    # Compute diff
+    keys_a = set(results["a"]["sections"].keys())
+    keys_b = set(results["b"]["sections"].keys())
+    added = sorted(keys_b - keys_a)
+    removed = sorted(keys_a - keys_b)
+    changed = sorted(
+        k for k in keys_a & keys_b
+        if results["a"]["sections"][k] != results["b"]["sections"][k]
+    )
+
+    return JSONResponse({
+        "a": results["a"],
+        "b": results["b"],
+        "diff": {
+            "added_sections": added,
+            "removed_sections": removed,
+            "changed_sections": changed,
+        },
+    })
+
+
 async def api_history(request):
     """List archived handoff files."""
     if not os.path.isdir(ARCHIVE_DIR):
@@ -712,6 +896,9 @@ routes = [
     Route("/api/audit", api_audit),
     Route("/api/audit/dates", api_audit_dates),
     Route("/api/gates", api_gates),
+    Route("/api/gate-perf", api_gate_perf),
+    Route("/api/audit/query", api_audit_query),
+    Route("/api/history/compare", api_history_compare),
     Route("/api/memories", api_memories_search),
     Route("/api/memories/stats", api_memories_stats),
     Route("/api/memories/tags", api_memories_tags),

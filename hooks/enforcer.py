@@ -19,6 +19,7 @@ import importlib
 import json
 import os
 import sys
+import time
 
 # Add parent to path for shared imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -110,9 +111,14 @@ def handle_pre_tool_use(tool_name, tool_input, state):
     gates = load_gates()
     for gate in gates:
         try:
+            t0 = time.time()
             result = gate.check(tool_name, tool_input, state, event_type="PreToolUse")
+            elapsed_ms = (time.time() - t0) * 1000
             gate_label = getattr(gate, "GATE_NAME", gate.__name__)
             session_id = state.get("_session_id", "")
+            if elapsed_ms > 100:
+                log_gate_decision(gate_label, tool_name, "slow",
+                                  f"gate took {elapsed_ms:.0f}ms (>100ms threshold)", session_id)
             if result.blocked:
                 log_gate_decision(gate_label, tool_name, "block", result.message, session_id)
                 print(result.message, file=sys.stderr)

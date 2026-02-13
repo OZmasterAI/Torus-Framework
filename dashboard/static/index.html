@@ -45,6 +45,15 @@
             <div id="gates-content" class="panel-body">
                 <div class="loading">Loading...</div>
             </div>
+            <div class="gate-perf-section">
+                <h3 class="gate-perf-header">
+                    Gate Performance
+                    <button class="btn-sm" id="gate-perf-refresh">Refresh</button>
+                </h3>
+                <div id="gate-perf-content" class="panel-body">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
         </section>
 
         <!-- Row 2: Timeline (full width) -->
@@ -56,6 +65,19 @@
                 <span id="timeline-count" class="badge">0</span>
                 <span id="gate-filter-badge" class="filter-badge hidden"></span>
             </h2>
+            <div class="timeline-filters">
+                <select id="timeline-gate-filter" class="inline-select">
+                    <option value="">All Gates</option>
+                </select>
+                <select id="timeline-decision-filter" class="inline-select">
+                    <option value="">All Decisions</option>
+                    <option value="pass">Pass</option>
+                    <option value="block">Block</option>
+                    <option value="warn">Warn</option>
+                </select>
+                <button class="btn-sm" id="timeline-filter-btn">Filter</button>
+                <div id="timeline-active-filters"></div>
+            </div>
             <div id="timeline-content" class="panel-body timeline-scroll">
                 <div class="loading">Loading...</div>
             </div>
@@ -101,6 +123,7 @@
         <section class="card" id="panel-history">
             <h2>Session History
                 <span id="history-count" class="badge">0</span>
+                <button class="btn-sm hidden" id="compare-btn">Compare</button>
             </h2>
             <div id="history-content" class="panel-body history-scroll">
                 <div class="loading">Loading...</div>
