@@ -54,6 +54,7 @@
                     <option value="">Today</option>
                 </select>
                 <span id="timeline-count" class="badge">0</span>
+                <span id="gate-filter-badge" class="filter-badge hidden"></span>
             </h2>
             <div id="timeline-content" class="panel-body timeline-scroll">
                 <div class="loading">Loading...</div>
@@ -112,10 +113,11 @@
         <div class="overlay-content">
             <button class="overlay-close" id="overlay-close">&times;</button>
             <h3 id="overlay-title">Detail</h3>
-            <pre id="overlay-body"></pre>
+            <div id="overlay-body" class="markdown-body"></div>
         </div>
     </div>
 
+    <div id="toast-container"></div>
     <script src="/static/app.js"></script>
 </body>
 </html>

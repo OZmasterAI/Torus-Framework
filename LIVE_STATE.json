@@ -1,28 +1,42 @@
 {
   "session_count": 27,
-  "status": "skills_tab_complete",
+  "status": "v2.0.2_improvement_sprint_complete",
   "project": "self-healing-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "dashboard-skills-tab",
+  "feature": "self-improvement-sprint",
   "feature_status": "complete",
   "test_count": 539,
   "test_failures": 0,
   "files_modified": [
+    "hooks/memory_server.py",
     "dashboard/server.py",
     "dashboard/static/index.html",
     "dashboard/static/style.css",
-    "dashboard/static/app.js"
+    "dashboard/static/app.js",
+    "skills/test/SKILL.md",
+    "skills/research/SKILL.md"
   ],
   "hook_events": 13,
   "gates": 12,
-  "mcp_tools": 13,
-  "curated_memories": 221,
+  "mcp_tools": 15,
+  "curated_memories": 225,
   "named_agents": 4,
+  "skills_count": 11,
   "dashboard_port": 7777,
+  "improvements_shipped": [
+    "test_skill",
+    "research_skill",
+    "memory_recency_boost",
+    "suggest_promotions_tool",
+    "dashboard_markdown_rendering",
+    "dashboard_gate_drilldown",
+    "dashboard_loading_states"
+  ],
   "next_steps": [
-    "polish_ui_loading_states",
-    "memory_detail_markdown_rendering",
-    "gate_drilldown_timeline_filter",
-    "consider_auto_start_on_session"
+    "write_tests_for_new_features",
+    "dashboard_auto_start",
+    "memory_graph_visualization",
+    "skill_usage_analytics",
+    "session_comparison_view"
   ]
 }

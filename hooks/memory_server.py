@@ -386,6 +386,44 @@ def _detect_query_mode(query):
     return "hybrid"
 
 
+def _apply_recency_boost(results, recency_weight=0.15):
+    """Apply temporal recency boost to search results.
+
+    Adjusts relevance scores so newer entries rank slightly higher.
+    adjusted_relevance = raw_relevance + (recency_weight * max(0, 1 - age_days/365))
+
+    Args:
+        results: List of result dicts with optional 'relevance' and 'timestamp' fields
+        recency_weight: How much to boost recent results (0.0-1.0, default 0.15)
+    Returns:
+        Results list re-sorted by adjusted relevance
+    """
+    if not results or recency_weight <= 0:
+        return results
+
+    now = datetime.now()
+    for entry in results:
+        raw_relevance = entry.get("relevance", 0) or entry.get("fts_score", 0) or 0
+        timestamp_str = entry.get("timestamp", "")
+        boost = 0.0
+        if timestamp_str:
+            try:
+                entry_time = datetime.fromisoformat(timestamp_str)
+                age_days = max(0, (now - entry_time).total_seconds() / 86400)
+                boost = recency_weight * max(0, 1 - age_days / 365)
+            except (ValueError, TypeError):
+                pass  # No boost if timestamp parsing fails
+        entry["_adjusted_relevance"] = raw_relevance + boost
+
+    results.sort(key=lambda x: x.get("_adjusted_relevance", 0), reverse=True)
+
+    # Clean up internal key
+    for entry in results:
+        entry.pop("_adjusted_relevance", None)
+
+    return results
+
+
 def _merge_results(fts_results, chroma_summaries, top_k=15):
     """Merge FTS5 and ChromaDB results, dedup by memory_id.
 
@@ -733,14 +771,16 @@ def _compact_observations():
 
 
 @mcp.tool()
-def search_knowledge(query: str, top_k: int = 15, mode: str = "") -> dict:
+def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight: float = 0.15) -> dict:
     """Search memory for relevant information. Use before starting any task.
 
     Args:
         query: What to search for (semantic search)
         top_k: Number of results to return (default 15)
         mode: Force search mode ("keyword", "semantic", "hybrid", "tags"). Empty = auto-detect.
+        recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
     """
+    recency_weight = max(0.0, min(1.0, recency_weight))
     top_k = max(1, min(top_k, 500))
     count = collection.count()
     if count == 0:
@@ -776,6 +816,10 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "") -> dict:
             include=["metadatas", "distances"],
         )
         formatted = format_summaries(results)
+
+    # Apply recency boost and re-sort
+    if recency_weight > 0:
+        formatted = _apply_recency_boost(formatted, recency_weight)
 
     _touch_memory_timestamp()
 
@@ -868,7 +912,7 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
 
 
 @mcp.tool()
-def deep_query(query: str, top_k: int = 50) -> dict:
+def deep_query(query: str, top_k: int = 50, recency_weight: float = 0.15) -> dict:
     """Comprehensive memory search — use for important decisions or debugging recurring issues.
 
     Returns more results than search_knowledge for thorough analysis.
@@ -876,7 +920,9 @@ def deep_query(query: str, top_k: int = 50) -> dict:
     Args:
         query: What to search for
         top_k: Number of results (default 50)
+        recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
     """
+    recency_weight = max(0.0, min(1.0, recency_weight))
     top_k = max(1, min(top_k, 500))
     count = collection.count()
     if count == 0:
@@ -888,6 +934,10 @@ def deep_query(query: str, top_k: int = 50) -> dict:
         include=["metadatas", "distances"],
     )
     formatted = format_summaries(results)
+
+    # Apply recency boost and re-sort
+    if recency_weight > 0:
+        formatted = _apply_recency_boost(formatted, recency_weight)
 
     _touch_memory_timestamp()
 
@@ -1427,6 +1477,145 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
             pass
 
     return result
+
+
+@mcp.tool()
+def suggest_promotions(top_k: int = 5) -> dict:
+    """Suggest memory entries that should be promoted to permanent rules.
+
+    Finds clusters of similar error/learning/correction memories and ranks them
+    by frequency and recency. High-scoring clusters indicate recurring patterns
+    that may warrant a permanent rule in CLAUDE.md.
+
+    Args:
+        top_k: Number of top clusters to return (default 5)
+    """
+    top_k = max(1, min(top_k, 50))
+    count = collection.count()
+    if count == 0:
+        return {"clusters": [], "message": "Memory is empty."}
+
+    # Query for promotable memory types
+    promotion_tags = ["type:error", "type:learning", "type:correction"]
+    candidates = []
+
+    for tag in promotion_tags:
+        try:
+            tag_results = fts_index.tag_search([tag], match_all=False, top_k=200)
+            for r in tag_results:
+                if r.get("id") and r["id"] not in [c["id"] for c in candidates]:
+                    candidates.append(r)
+        except Exception:
+            continue
+
+    if not candidates:
+        return {"clusters": [], "message": "No promotable memories found (need type:error, type:learning, or type:correction tags)."}
+
+    # Get embeddings for clustering via ChromaDB
+    candidate_ids = [c["id"] for c in candidates]
+
+    # Build a lookup from id -> candidate info
+    id_to_candidate = {c["id"]: c for c in candidates}
+
+    # Cluster similar memories using ChromaDB cosine distance
+    # For each candidate, find others within distance 0.3
+    clusters = []  # list of sets of ids
+    clustered = set()
+
+    for cand in candidates:
+        cid = cand["id"]
+        if cid in clustered:
+            continue
+
+        # Find similar entries to this one using its content
+        try:
+            # Get full content for this entry
+            full = collection.get(ids=[cid], include=["documents"])
+            if not full or not full.get("documents") or not full["documents"][0]:
+                clustered.add(cid)
+                clusters.append({cid})
+                continue
+
+            doc_text = full["documents"][0]
+            similar = collection.query(
+                query_texts=[doc_text],
+                n_results=min(50, count),
+                include=["distances"],
+            )
+
+            cluster = {cid}
+            if similar and similar.get("ids") and similar["ids"][0]:
+                sim_ids = similar["ids"][0]
+                sim_dists = similar["distances"][0] if similar.get("distances") else []
+                candidate_id_set = set(candidate_ids)
+                for i, sid in enumerate(sim_ids):
+                    if sid in candidate_id_set and sid not in clustered:
+                        dist = sim_dists[i] if i < len(sim_dists) else 1.0
+                        if dist <= 0.3:
+                            cluster.add(sid)
+
+            for mid in cluster:
+                clustered.add(mid)
+            clusters.append(cluster)
+
+        except Exception:
+            clustered.add(cid)
+            clusters.append({cid})
+
+    # Score each cluster: score = (count * 2) + recency_bonus
+    now = datetime.now()
+    scored_clusters = []
+
+    for cluster_ids in clusters:
+        member_count = len(cluster_ids)
+        # Calculate average age and recency bonus
+        ages = []
+        best_preview = ""
+        best_score = -1
+        member_id_list = list(cluster_ids)
+
+        for mid in member_id_list:
+            cand = id_to_candidate.get(mid, {})
+            ts = cand.get("timestamp", "")
+            if ts:
+                try:
+                    entry_time = datetime.fromisoformat(ts)
+                    age_days = max(0, (now - entry_time).total_seconds() / 86400)
+                    ages.append(age_days)
+                except (ValueError, TypeError):
+                    pass
+
+            # Track highest-scored member for the suggested rule
+            preview = cand.get("preview", "")
+            # Simple score: shorter age = higher score
+            member_score = member_count
+            if ages:
+                member_score += max(0, 1 - ages[-1] / 365)
+            if member_score > best_score:
+                best_score = member_score
+                best_preview = preview
+
+        avg_age = sum(ages) / len(ages) if ages else 365
+        recency_bonus = max(0, 1 - avg_age / 365)
+        score = (member_count * 2) + recency_bonus
+
+        scored_clusters.append({
+            "suggested_rule": best_preview[:200],
+            "supporting_ids": member_id_list,
+            "count": member_count,
+            "score": round(score, 3),
+            "avg_age_days": round(avg_age, 1),
+        })
+
+    # Sort by score descending and take top_k
+    scored_clusters.sort(key=lambda x: x["score"], reverse=True)
+    top_clusters = scored_clusters[:top_k]
+
+    return {
+        "clusters": top_clusters,
+        "total_candidates": len(candidates),
+        "total_clusters": len(clusters),
+    }
 
 
 if __name__ == "__main__":

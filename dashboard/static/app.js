@@ -23,6 +23,8 @@ let autoRefreshTimer = null;
 let sseSource = null;
 let componentData = null;
 let activeComponentTab = 'gates';
+let activeGateFilter = null;
+let cachedTimelineEntries = [];
 
 // ── Fetch Helper ────────────────────────────────────────
 
@@ -33,6 +35,7 @@ async function apiFetch(path) {
         return await res.json();
     } catch (e) {
         console.error(`API error: ${path}`, e);
+        showToast(`API error: ${path} — ${e.message}`, 'error');
         return null;
     }
 }
@@ -64,6 +67,108 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+}
+
+// ── Markdown Renderer ──────────────────────────────────
+
+function renderMarkdown(text) {
+    if (!text) return '';
+    const lines = text.split('\n');
+    let html = '';
+    let inCodeBlock = false;
+    let codeBuffer = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // Code block toggle
+        if (line.trimStart().startsWith('```')) {
+            if (inCodeBlock) {
+                html += `<pre><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`;
+                codeBuffer = [];
+                inCodeBlock = false;
+            } else {
+                inCodeBlock = true;
+            }
+            continue;
+        }
+
+        if (inCodeBlock) {
+            codeBuffer.push(line);
+            continue;
+        }
+
+        // Empty line
+        if (line.trim() === '') {
+            html += '<br>';
+            continue;
+        }
+
+        let processed = line;
+
+        // Headings
+        if (/^### /.test(processed)) {
+            html += `<h5>${escapeHtml(processed.slice(4))}</h5>`;
+            continue;
+        } else if (/^## /.test(processed)) {
+            html += `<h4>${escapeHtml(processed.slice(3))}</h4>`;
+            continue;
+        } else if (/^# /.test(processed)) {
+            html += `<h3>${escapeHtml(processed.slice(2))}</h3>`;
+            continue;
+        }
+
+        // List items
+        if (/^- /.test(processed.trimStart())) {
+            // Collect consecutive list items
+            let items = [processed.trimStart().slice(2)];
+            while (i + 1 < lines.length && /^- /.test(lines[i + 1].trimStart())) {
+                i++;
+                items.push(lines[i].trimStart().slice(2));
+            }
+            html += '<ul>' + items.map(item => `<li>${inlineMarkdown(escapeHtml(item))}</li>`).join('') + '</ul>';
+            continue;
+        }
+
+        // Regular paragraph with inline formatting
+        html += `<p>${inlineMarkdown(escapeHtml(processed))}</p>`;
+    }
+
+    // Close unclosed code block
+    if (inCodeBlock && codeBuffer.length > 0) {
+        html += `<pre><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`;
+    }
+
+    return html;
+}
+
+function inlineMarkdown(escaped) {
+    // Bold: **text**
+    escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic: *text*
+    escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Inline code: `text`
+    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return escaped;
+}
+
+// ── Toast Notifications ────────────────────────────────
+
+function showToast(message, type = 'error') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    // Auto-remove after 5s
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
 }
 
 // ── Health Panel ────────────────────────────────────────
@@ -141,7 +246,7 @@ async function renderGates(date) {
         // Short name: "GATE 1: READ BEFORE EDIT" -> "G1: READ..."
         const shortName = name.replace('GATE ', 'G');
         html += `
-            <div class="gate-row" title="${escapeHtml(name)}">
+            <div class="gate-row" title="${escapeHtml(name)}" onclick="filterTimelineByGate('${escapeHtml(name)}')">
                 <span class="gate-name">${escapeHtml(shortName)}</span>
                 <div class="gate-bar-container">
                     <div class="gate-bar-pass" style="width:${pPass}%"></div>
@@ -161,15 +266,26 @@ async function renderTimeline(date) {
     const data = await apiFetch(`/api/audit${dateParam}`);
     if (!data) return;
 
-    const el = document.getElementById('timeline-content');
+    cachedTimelineEntries = data.entries || [];
     document.getElementById('timeline-count').textContent = data.total;
 
-    if (!data.entries || data.entries.length === 0) {
-        el.innerHTML = '<div class="no-data">No audit events for this date.</div>';
+    renderFilteredTimeline();
+}
+
+function renderFilteredTimeline() {
+    const el = document.getElementById('timeline-content');
+    let entries = cachedTimelineEntries;
+
+    if (activeGateFilter) {
+        entries = entries.filter(e => e.gate && e.gate.includes(activeGateFilter));
+    }
+
+    if (entries.length === 0) {
+        el.innerHTML = '<div class="no-data">No audit events match this filter.</div>';
         return;
     }
 
-    el.innerHTML = data.entries.map(renderTimelineEntry).join('');
+    el.innerHTML = entries.map(renderTimelineEntry).join('');
 }
 
 function renderTimelineEntry(entry) {
@@ -223,6 +339,35 @@ function prependTimelineEntry(entry) {
     }
 }
 
+// ── Gate Filter ─────────────────────────────────────────
+
+function filterTimelineByGate(gateName) {
+    activeGateFilter = gateName;
+    renderFilteredTimeline();
+
+    // Show filter badge
+    const badge = document.getElementById('gate-filter-badge');
+    if (badge) {
+        badge.innerHTML = `${escapeHtml(gateName)} <span class="filter-badge-x" onclick="event.stopPropagation(); clearGateFilter()">&times;</span>`;
+        badge.classList.remove('hidden');
+    }
+
+    // Scroll timeline into view
+    const timeline = document.getElementById('panel-timeline');
+    if (timeline) timeline.scrollIntoView({ behavior: 'smooth' });
+}
+
+function clearGateFilter() {
+    activeGateFilter = null;
+    renderFilteredTimeline();
+
+    const badge = document.getElementById('gate-filter-badge');
+    if (badge) {
+        badge.classList.add('hidden');
+        badge.innerHTML = '';
+    }
+}
+
 // ── Memory Browser ──────────────────────────────────────
 
 async function renderMemory(query) {
@@ -266,7 +411,12 @@ async function showMemoryDetail(id) {
 
     document.getElementById('overlay-title').textContent = `Memory: ${id}`;
     const body = document.getElementById('overlay-body');
-    body.textContent = `Content:\n${data.content || ''}\n\nContext: ${data.context || ''}\nTags: ${data.tags || ''}\nTimestamp: ${data.timestamp || ''}`;
+    const metaHtml = `<div class="memory-detail-meta">
+        <div><strong>Context:</strong> ${escapeHtml(data.context || '—')}</div>
+        <div><strong>Tags:</strong> ${escapeHtml(data.tags || '—')}</div>
+        <div><strong>Timestamp:</strong> ${escapeHtml(data.timestamp || '—')}</div>
+    </div><hr style="border-color:var(--border); margin:12px 0;">`;
+    body.innerHTML = metaHtml + renderMarkdown(data.content || '');
     document.getElementById('detail-overlay').classList.remove('hidden');
 }
 

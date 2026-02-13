@@ -152,6 +152,12 @@ header {
 .loading {
     color: var(--text-muted);
     font-style: italic;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
 }
 
 /* ── Health Panel ─────────────────────────────────────── */
@@ -232,6 +238,14 @@ header {
     gap: 8px;
     margin-bottom: 4px;
     font-size: 12px;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+
+.gate-row:hover {
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .gate-name {
@@ -627,7 +641,6 @@ header {
     font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.6;
-    white-space: pre-wrap;
     word-break: break-word;
     color: var(--text-primary);
 }
@@ -681,3 +694,152 @@ header {
 .bg-orange { background: var(--orange); }
 .bg-yellow { background: var(--yellow); }
 .bg-red { background: var(--red); }
+
+/* ── Markdown Body (memory overlay) ──────────────────── */
+
+.markdown-body h3 {
+    color: var(--cyan);
+    font-size: 16px;
+    margin: 12px 0 6px;
+}
+
+.markdown-body h4 {
+    color: var(--cyan);
+    font-size: 14px;
+    margin: 10px 0 4px;
+}
+
+.markdown-body h5 {
+    color: var(--cyan);
+    font-size: 13px;
+    margin: 8px 0 4px;
+}
+
+.markdown-body p {
+    margin: 4px 0;
+}
+
+.markdown-body ul {
+    padding-left: 20px;
+    list-style: disc;
+    margin: 4px 0;
+}
+
+.markdown-body ul li {
+    margin: 2px 0;
+}
+
+.markdown-body code {
+    background: rgba(0, 210, 255, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.markdown-body pre {
+    background: #0d1117;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+.markdown-body pre code {
+    background: none;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.markdown-body strong {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.markdown-body em {
+    font-style: italic;
+    color: var(--text-secondary);
+}
+
+.memory-detail-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+}
+
+.memory-detail-meta strong {
+    color: var(--cyan);
+}
+
+/* ── Filter Badge ────────────────────────────────────── */
+
+.filter-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    background: var(--accent);
+    color: white;
+    white-space: nowrap;
+}
+
+.filter-badge.hidden {
+    display: none;
+}
+
+.filter-badge-x {
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    margin-left: 2px;
+    opacity: 0.8;
+}
+
+.filter-badge-x:hover {
+    opacity: 1;
+}
+
+/* ── Toast Notifications ─────────────────────────────── */
+
+#toast-container {
+    position: fixed;
+    top: 60px;
+    right: 16px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
+    pointer-events: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--red);
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    box-shadow: var(--shadow);
+    max-width: 360px;
+    animation: slideIn 0.3s ease;
+    transition: opacity 0.3s ease;
+}
+
+.toast-error {
+    border-left-color: var(--red);
+}
+
+.toast-info {
+    border-left-color: var(--cyan);
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
