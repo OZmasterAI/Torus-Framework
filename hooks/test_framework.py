@@ -7553,6 +7553,93 @@ test("v2.3.4: _extract_gate_blocks is consistent across calls",
 
 cleanup_test_states()
 
+print("\n--- v2.3.5: Gate 3 Deploy Categories, Gate 10 Model Tracking, Dashboard Conflicts API ---")
+
+# ── Feature 1: Gate 3 deploy command categories ──
+
+# Test 1: DEPLOY_PATTERNS entries are now (pattern, category) tuples
+from gates.gate_03_test_before_deploy import DEPLOY_PATTERNS as G3_PATTERNS
+test("v2.3.5: Gate 3 DEPLOY_PATTERNS are (regex, category) tuples",
+     all(isinstance(p, tuple) and len(p) == 2 for p in G3_PATTERNS),
+     f"Expected all tuples of length 2, got types: {[type(p).__name__ for p in G3_PATTERNS[:3]]}")
+
+# Test 2: Gate 3 categories include known types
+_g3_categories = {cat for _, cat in G3_PATTERNS}
+test("v2.3.5: Gate 3 has container and kubernetes categories",
+     "container" in _g3_categories and "kubernetes" in _g3_categories,
+     f"Expected container/kubernetes in categories, got {_g3_categories}")
+
+# Test 3: Gate 3 block message includes category for docker push
+from gates.gate_03_test_before_deploy import check as _g3_check
+_g3_result = _g3_check("Bash", {"command": "docker push myimage:latest"}, {"last_test_run": 0}, event_type="PreToolUse")
+test("v2.3.5: Gate 3 block message includes category for docker push",
+     _g3_result.blocked and "container" in (_g3_result.message or ""),
+     f"Expected blocked with 'container' in message, got blocked={_g3_result.blocked}, msg={(_g3_result.message or '')[:100]}")
+
+# Test 4: Gate 3 block message includes category for npm publish
+_g3_npm = _g3_check("Bash", {"command": "npm publish"}, {"last_test_run": 0}, event_type="PreToolUse")
+test("v2.3.5: Gate 3 block message includes category for npm publish",
+     _g3_npm.blocked and "package publish" in (_g3_npm.message or ""),
+     f"Expected blocked with 'package publish' in message, got msg={(_g3_npm.message or '')[:100]}")
+
+# ── Feature 2: Gate 10 model performance tracking ──
+
+# Test 5: Gate 10 check() creates model_agent_usage in state
+from gates.gate_10_model_enforcement import check as _g10_check
+_g10_state = {}
+_g10_check("Task", {"model": "sonnet", "subagent_type": "builder", "description": "test"}, _g10_state)
+test("v2.3.5: Gate 10 creates model_agent_usage in state",
+     "model_agent_usage" in _g10_state,
+     f"Expected model_agent_usage in state, got keys={list(_g10_state.keys())}")
+
+# Test 6: Gate 10 increments usage counter
+_g10_usage = _g10_state.get("model_agent_usage", {})
+test("v2.3.5: Gate 10 increments usage counter",
+     _g10_usage.get("builder:sonnet", 0) == 1,
+     f"Expected builder:sonnet=1, got {_g10_usage}")
+
+# Test 7: Gate 10 warns for mismatched model with usage count
+_g10_state2 = {}
+_g10_warn = _g10_check("Task", {"model": "opus", "subagent_type": "Explore", "description": "test"}, _g10_state2)
+test("v2.3.5: Gate 10 warns for opus+Explore mismatch with usage count",
+     not _g10_warn.blocked and "1x" in (_g10_warn.message or ""),
+     f"Expected warning with '1x', got msg={(_g10_warn.message or '')[:100]}")
+
+# Test 8: Gate 10 suppresses warning after 3+ uses of same combo
+_g10_state3 = {"model_agent_usage": {"Explore:opus": 2}}
+# This call will increment to 3 — should suppress
+_g10_suppressed = _g10_check("Task", {"model": "opus", "subagent_type": "Explore", "description": "test"}, _g10_state3)
+test("v2.3.5: Gate 10 suppresses warning after 3+ uses",
+     not _g10_suppressed.blocked and _g10_suppressed.message == "",
+     f"Expected no warning (suppressed), got msg='{_g10_suppressed.message}'")
+
+# ── Feature 3: Dashboard gate state conflicts API ──
+
+# Test 9: api_gate_state_conflicts endpoint exists in server.py source
+import inspect as _insp235
+_server_path = os.path.join(os.path.dirname(__file__), "..", "dashboard", "server.py")
+_server_source = open(os.path.normpath(_server_path)).read()
+test("v2.3.5: Dashboard has api_gate_state_conflicts function",
+     "async def api_gate_state_conflicts" in _server_source,
+     "Expected api_gate_state_conflicts function in server.py")
+
+# Test 10: Route is registered
+test("v2.3.5: Dashboard has /api/gate-state-conflicts route",
+     "/api/gate-state-conflicts" in _server_source,
+     "Expected /api/gate-state-conflicts route in server.py")
+
+# Test 11: Endpoint uses get_gate_dependencies from enforcer
+test("v2.3.5: Dashboard conflicts endpoint imports get_gate_dependencies",
+     "get_gate_dependencies" in _server_source,
+     "Expected get_gate_dependencies import in endpoint")
+
+# Test 12: Endpoint returns write_conflicts and hot_keys
+test("v2.3.5: Dashboard conflicts endpoint returns write_conflicts and hot_keys",
+     "write_conflicts" in _server_source and "hot_keys" in _server_source,
+     "Expected write_conflicts and hot_keys in response")
+
+cleanup_test_states()
+
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

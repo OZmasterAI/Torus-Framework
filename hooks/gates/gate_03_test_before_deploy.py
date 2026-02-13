@@ -21,35 +21,35 @@ TEST_FRESHNESS_WINDOW = 1800  # 30 minutes
 
 # Commands that indicate deployment
 DEPLOY_PATTERNS = [
-    r"\bscp\b.*\b\d+\.\d+\.\d+\.\d+\b",  # scp to IP address
-    r"\bscp\b.*@.*:",                      # scp to hostname
-    r"\brsync\b.*:",                         # rsync to remote
-    r"\bdocker\s+push\b",                   # docker push
-    r"\bkubectl\s+apply\b",                 # k8s deploy
-    r"\bkubectl\s+rollout\b",              # k8s rollout
-    r"\bgit\s+push\b.*\b(main|master|prod|production)\b",  # git push to main/prod branches
-    r"\bssh\b.*deploy",                     # ssh deploy commands
-    r"\bfab\s+deploy\b",                    # fabric deploy
-    r"\bansible-playbook\b",               # ansible deploy
-    r"\bcaprover\b",                        # CapRover deploy
-    r"\bheroku\s+push\b",                  # heroku
-    r"\bfly\s+deploy\b",                   # fly.io
-    r"\bnpm\s+publish\b",                  # npm publish
-    r"\bcargo\s+publish\b",                # cargo publish
-    r"\btwine\s+upload\b",                 # twine upload (PyPI)
-    r"\bgcloud\s+(app\s+deploy|run\s+deploy)\b",  # gcloud deploy
-    r"\baws\s+s3\s+sync\b",               # aws s3 sync
-    r"\bhelm\s+(upgrade|install)\b",       # helm deploy
-    r"\bterraform\s+apply\b",             # terraform deploy
-    r"\bpulumi\s+up\b",                   # pulumi deploy
-    r"\bserverless\s+deploy\b",           # serverless framework
-    r"\bcdk\s+deploy\b",                  # AWS CDK deploy
-    r"\bnpm\s+run\s+deploy\b",            # npm scripts deploy
-    r"\byarn\s+deploy\b",                 # yarn deploy
-    r"\bvercel\b.*--prod\b",              # Vercel production deploy
-    r"\bnetlify\s+deploy\b.*--prod\b",    # Netlify production deploy
-    r"\brailway\s+up\b",                  # Railway.app deploy
-    r"\bamplify\s+publish\b",             # AWS Amplify publish
+    (r"\bscp\b.*\b\d+\.\d+\.\d+\.\d+\b", "remote copy"),
+    (r"\bscp\b.*@.*:", "remote copy"),
+    (r"\brsync\b.*:", "remote sync"),
+    (r"\bdocker\s+push\b", "container"),
+    (r"\bkubectl\s+apply\b", "kubernetes"),
+    (r"\bkubectl\s+rollout\b", "kubernetes"),
+    (r"\bgit\s+push\b.*\b(main|master|prod|production)\b", "git production"),
+    (r"\bssh\b.*deploy", "remote deploy"),
+    (r"\bfab\s+deploy\b", "fabric"),
+    (r"\bansible-playbook\b", "ansible"),
+    (r"\bcaprover\b", "caprover"),
+    (r"\bheroku\s+push\b", "heroku"),
+    (r"\bfly\s+deploy\b", "fly.io"),
+    (r"\bnpm\s+publish\b", "package publish"),
+    (r"\bcargo\s+publish\b", "package publish"),
+    (r"\btwine\s+upload\b", "package publish"),
+    (r"\bgcloud\s+(app\s+deploy|run\s+deploy)\b", "gcloud"),
+    (r"\baws\s+s3\s+sync\b", "aws"),
+    (r"\bhelm\s+(upgrade|install)\b", "helm"),
+    (r"\bterraform\s+apply\b", "terraform"),
+    (r"\bpulumi\s+up\b", "pulumi"),
+    (r"\bserverless\s+deploy\b", "serverless"),
+    (r"\bcdk\s+deploy\b", "aws cdk"),
+    (r"\bnpm\s+run\s+deploy\b", "npm deploy"),
+    (r"\byarn\s+deploy\b", "yarn deploy"),
+    (r"\bvercel\b.*--prod\b", "vercel"),
+    (r"\bnetlify\s+deploy\b.*--prod\b", "netlify"),
+    (r"\brailway\s+up\b", "railway"),
+    (r"\bamplify\s+publish\b", "aws amplify"),
 ]
 
 
@@ -90,11 +90,11 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     # Check if this looks like a deploy command
     is_deploy = False
-    matched_pattern = ""
-    for pattern in DEPLOY_PATTERNS:
+    matched_category = None
+    for pattern, category in DEPLOY_PATTERNS:
         if re.search(pattern, command, re.IGNORECASE):
             is_deploy = True
-            matched_pattern = pattern
+            matched_category = category
             break
 
     if not is_deploy:
@@ -109,9 +109,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         hint = f" Try: {framework}" if framework != "unknown" else ""
         minutes_ago = int(elapsed / 60) if last_test > 0 else None
         if minutes_ago:
-            msg = f"[{GATE_NAME}] BLOCKED: Tests last ran {minutes_ago} minutes ago. Run tests before deploying.{hint}"
+            msg = f"[{GATE_NAME}] BLOCKED: Deploy ({matched_category}) attempted but tests last ran {minutes_ago} minutes ago. Run tests before deploying.{hint}"
         else:
-            msg = f"[{GATE_NAME}] BLOCKED: No tests have been run this session. Run tests before deploying.{hint}"
+            msg = f"[{GATE_NAME}] BLOCKED: Deploy ({matched_category}) attempted but no tests have been run this session. Run tests before deploying.{hint}"
         return GateResult(blocked=True, message=msg, gate_name=GATE_NAME)
 
     # Check if last test run actually passed
@@ -119,7 +119,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if last_exit_code is not None and last_exit_code != 0:
         return GateResult(
             blocked=True,
-            message=f"[{GATE_NAME}] BLOCKED: Last test run failed (exit code: {last_exit_code}). Fix tests before deploying.",
+            message=f"[{GATE_NAME}] BLOCKED: Deploy ({matched_category}) attempted but last test run failed (exit code: {last_exit_code}). Fix tests before deploying.",
             gate_name=GATE_NAME,
         )
 

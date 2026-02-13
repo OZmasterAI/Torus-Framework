@@ -88,12 +88,21 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         )
 
     # ── Step 2: Model mismatch → WARN (never block) ──
+    # Track model usage by agent type for learning
+    model_usage = state.setdefault("model_agent_usage", {})
+    usage_key = f"{subagent_type}:{model}"
+    model_usage[usage_key] = model_usage.get(usage_key, 0) + 1
+
     recommended = RECOMMENDED_MODELS.get(subagent_type)
     if recommended and model not in recommended:
+        # Suppress warning if this combo has been used 3+ times (proven pattern)
+        if model_usage.get(usage_key, 0) >= 3:
+            return GateResult(blocked=False, gate_name=GATE_NAME)
         suggestion = MODEL_SUGGESTIONS.get(subagent_type, "check model choice")
+        uses = model_usage.get(usage_key, 0)
         warning = (
             f"[{GATE_NAME}] WARNING: Task '{description}' uses {subagent_type} "
-            f"agent with model '{model}'. Recommended: {suggestion}"
+            f"agent with model '{model}' (used {uses}x). Recommended: {suggestion}"
         )
         print(warning, file=sys.stderr)
         return GateResult(

@@ -1419,6 +1419,40 @@ async def api_stream(request):
     return EventSourceResponse(event_generator())
 
 
+async def api_gate_state_conflicts(request):
+    """Analyze gate dependencies for potential state key conflicts."""
+    import sys
+    try:
+        sys.path.insert(0, HOOKS_DIR)
+        from enforcer import get_gate_dependencies
+        deps = get_gate_dependencies()
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    # Find state keys written by multiple gates
+    write_map = {}
+    read_map = {}
+    for gate, spec in deps.items():
+        for key in spec.get("writes", []):
+            write_map.setdefault(key, []).append(gate)
+        for key in spec.get("reads", []):
+            read_map.setdefault(key, []).append(gate)
+
+    # Keys written by multiple gates = potential conflicts
+    write_conflicts = {k: v for k, v in write_map.items() if len(v) > 1}
+
+    # Keys read by many gates = high-impact keys
+    hot_keys = {k: {"readers": v, "writers": write_map.get(k, [])}
+                for k, v in read_map.items() if len(v) >= 3}
+
+    return JSONResponse({
+        "write_conflicts": write_conflicts,
+        "hot_keys": hot_keys,
+        "total_gates": len(deps),
+        "total_state_keys": len(set(list(write_map.keys()) + list(read_map.keys()))),
+    })
+
+
 async def index_redirect(request):
     return RedirectResponse(url="/static/index.html")
 
@@ -1438,6 +1472,7 @@ routes = [
     Route("/api/gate-timing", api_gate_timing),
     Route("/api/edit-streak", api_edit_streak),
     Route("/api/gate-deps", api_gate_deps),
+    Route("/api/gate-state-conflicts", api_gate_state_conflicts),
     Route("/api/audit/query", api_audit_query),
     Route("/api/history/compare", api_history_compare),
     Route("/api/memory-health", api_memory_health),
