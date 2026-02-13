@@ -159,6 +159,47 @@ def get_error_pressure():
         return 0
 
 
+def get_error_velocity():
+    """Calculate error velocity by reading error_windows from session state.
+
+    Returns (recent_count, total_count) tuple where:
+      - recent_count: errors in last 300 seconds (5 minutes)
+      - total_count: all errors in error_windows
+
+    This distinguishes active error loops from historical errors.
+    """
+    import glob as globmod
+    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    files = globmod.glob(pattern)
+    if not files:
+        return (0, 0)
+    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    try:
+        with open(files[0]) as f:
+            state = json.load(f)
+        error_windows = state.get("error_windows", [])
+        if not error_windows:
+            return (0, 0)
+
+        now = time.time()
+        recent_threshold = 300  # 5 minutes
+        recent_count = 0
+        total_count = 0
+
+        for entry in error_windows:
+            if isinstance(entry, dict):
+                last_seen = entry.get("last_seen", 0)
+                count = entry.get("count", 1)
+                total_count += count
+                if now - last_seen < recent_threshold:
+                    recent_count += count
+
+        return (recent_count, total_count)
+    except (json.JSONDecodeError, OSError, ValueError, KeyError):
+        # Fail-open: return healthy state on any error
+        return (0, 0)
+
+
 def calculate_health(gate_count, mem_count):
     """Calculate framework health as a weighted percentage (0-100).
 
@@ -200,16 +241,26 @@ def calculate_health(gate_count, mem_count):
     core_present = sum(1 for f in core_files if os.path.isfile(f))
     scores["core"] = (core_present / len(core_files), 15)
 
-    # 6. Error pressure (10%) — decays with more errors
-    errors = get_error_pressure()
-    if errors == 0:
+    # 6. Error pressure (10%) — velocity-aware: recent errors heavily penalized
+    try:
+        recent_errors, total_errors = get_error_velocity()
+        if recent_errors > 0:
+            # Active error loop — use recent count with harsh penalties
+            if recent_errors <= 2:
+                scores["errors"] = (0.6, 10)
+            elif recent_errors <= 5:
+                scores["errors"] = (0.3, 10)
+            else:
+                scores["errors"] = (0.1, 10)
+        elif total_errors > 0:
+            # Historical errors but not recent — mild penalty
+            scores["errors"] = (0.8, 10)
+        else:
+            # No errors — perfect health
+            scores["errors"] = (1.0, 10)
+    except Exception:
+        # Fail-open on velocity calculation error
         scores["errors"] = (1.0, 10)
-    elif errors <= 2:
-        scores["errors"] = (0.7, 10)
-    elif errors <= 5:
-        scores["errors"] = (0.4, 10)
-    else:
-        scores["errors"] = (0.1, 10)
 
     # Weighted average
     total = sum(score * weight for score, weight in scores.values())

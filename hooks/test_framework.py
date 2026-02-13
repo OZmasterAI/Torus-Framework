@@ -5050,6 +5050,266 @@ else:
 
 
 # ─────────────────────────────────────────────────
+# v2.1.4 Features
+# ─────────────────────────────────────────────────
+print("\n--- v2.1.4 Features ---")
+
+# ── Tracker Observation Dedup (source checks) ────────
+tracker_path = os.path.join(os.path.dirname(__file__), "tracker.py")
+if os.path.isfile(tracker_path):
+    with open(tracker_path) as f:
+        tracker_src = f.read()
+
+    # 1. tracker.py source contains "_observation_key" function
+    test("v2.1.4: tracker.py has _observation_key function",
+         "_observation_key" in tracker_src and "def _observation_key" in tracker_src,
+         "_observation_key function not found in tracker.py")
+
+    # 2. tracker.py source contains "_is_recent_duplicate" function
+    test("v2.1.4: tracker.py has _is_recent_duplicate function",
+         "_is_recent_duplicate" in tracker_src and "def _is_recent_duplicate" in tracker_src,
+         "_is_recent_duplicate function not found in tracker.py")
+
+    # 3. tracker.py source contains "_obs_hash" string
+    test("v2.1.4: tracker.py uses _obs_hash for dedup",
+         "_obs_hash" in tracker_src,
+         "_obs_hash string not found in tracker.py")
+
+    # 4. tracker.py source contains "fnv1a_hash" import
+    test("v2.1.4: tracker.py imports fnv1a_hash",
+         "fnv1a_hash" in tracker_src and "from shared.error_normalizer import" in tracker_src,
+         "fnv1a_hash import not found in tracker.py")
+else:
+    test("v2.1.4: tracker.py has _observation_key function", False, "tracker.py not found")
+    test("v2.1.4: tracker.py has _is_recent_duplicate function", False, "tracker.py not found")
+    test("v2.1.4: tracker.py uses _obs_hash for dedup", False, "tracker.py not found")
+    test("v2.1.4: tracker.py imports fnv1a_hash", False, "tracker.py not found")
+
+# ── Tracker Dedup Logic Tests (via subprocess) ───────
+# 5. Test _observation_key for Bash tool returns "Bash:" prefix
+try:
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '/home/crab/.claude/hooks'); "
+         "from tracker import _observation_key; "
+         "print(_observation_key('Bash', {'command': 'ls -la'}))"],
+        capture_output=True, text=True, timeout=5
+    )
+    key_output = result.stdout.strip()
+    test("v2.1.4: _observation_key for Bash returns 'Bash:' prefix",
+         key_output.startswith("Bash:") and "ls -la" in key_output,
+         f"Expected 'Bash:ls -la', got '{key_output}'")
+except Exception as e:
+    test("v2.1.4: _observation_key for Bash returns 'Bash:' prefix", False, f"subprocess failed: {e}")
+
+# 6. Test _observation_key for Read tool returns "Read:" prefix
+try:
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '/home/crab/.claude/hooks'); "
+         "from tracker import _observation_key; "
+         "print(_observation_key('Read', {'file_path': '/tmp/test.txt'}))"],
+        capture_output=True, text=True, timeout=5
+    )
+    key_output = result.stdout.strip()
+    test("v2.1.4: _observation_key for Read returns 'Read:' prefix",
+         key_output.startswith("Read:") and "/tmp/test.txt" in key_output,
+         f"Expected 'Read:/tmp/test.txt', got '{key_output}'")
+except Exception as e:
+    test("v2.1.4: _observation_key for Read returns 'Read:' prefix", False, f"subprocess failed: {e}")
+
+# 7. Test _observation_key for unknown tool returns just tool name
+try:
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '/home/crab/.claude/hooks'); "
+         "from tracker import _observation_key; "
+         "print(_observation_key('UnknownTool', {}))"],
+        capture_output=True, text=True, timeout=5
+    )
+    key_output = result.stdout.strip()
+    test("v2.1.4: _observation_key for unknown tool returns tool name",
+         key_output == "UnknownTool",
+         f"Expected 'UnknownTool', got '{key_output}'")
+except Exception as e:
+    test("v2.1.4: _observation_key for unknown tool returns tool name", False, f"subprocess failed: {e}")
+
+# 8. Test _is_recent_duplicate detects duplicates
+try:
+    import tempfile
+    temp_queue = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.jsonl')
+    queue_path = temp_queue.name
+    # Write 2 identical observations with same _obs_hash
+    obs1 = {"tool": "Bash", "input": {"command": "ls"}, "_obs_hash": "test_hash_123"}
+    obs2 = {"tool": "Read", "input": {"file_path": "/tmp/foo"}, "_obs_hash": "test_hash_456"}
+    temp_queue.write(json.dumps(obs1) + "\n")
+    temp_queue.write(json.dumps(obs2) + "\n")
+    temp_queue.close()
+
+    result = subprocess.run(
+        [sys.executable, "-c",
+         f"import sys; sys.path.insert(0, '/home/crab/.claude/hooks'); "
+         f"from tracker import _is_recent_duplicate, CAPTURE_QUEUE; "
+         f"import tracker; "
+         f"tracker.CAPTURE_QUEUE = '{queue_path}'; "
+         f"print(_is_recent_duplicate('test_hash_123'))"],
+        capture_output=True, text=True, timeout=5
+    )
+    is_dup = result.stdout.strip()
+    test("v2.1.4: _is_recent_duplicate detects duplicates",
+         is_dup == "True",
+         f"Expected True, got '{is_dup}'")
+    os.unlink(queue_path)
+except Exception as e:
+    test("v2.1.4: _is_recent_duplicate detects duplicates", False, f"test setup failed: {e}")
+
+# 9. Test _is_recent_duplicate returns False for non-duplicates
+try:
+    import tempfile
+    temp_queue = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.jsonl')
+    queue_path = temp_queue.name
+    obs1 = {"tool": "Bash", "input": {"command": "ls"}, "_obs_hash": "test_hash_999"}
+    temp_queue.write(json.dumps(obs1) + "\n")
+    temp_queue.close()
+
+    result = subprocess.run(
+        [sys.executable, "-c",
+         f"import sys; sys.path.insert(0, '/home/crab/.claude/hooks'); "
+         f"from tracker import _is_recent_duplicate, CAPTURE_QUEUE; "
+         f"import tracker; "
+         f"tracker.CAPTURE_QUEUE = '{queue_path}'; "
+         f"print(_is_recent_duplicate('different_hash_000'))"],
+        capture_output=True, text=True, timeout=5
+    )
+    is_dup = result.stdout.strip()
+    test("v2.1.4: _is_recent_duplicate returns False for non-duplicates",
+         is_dup == "False",
+         f"Expected False, got '{is_dup}'")
+    os.unlink(queue_path)
+except Exception as e:
+    test("v2.1.4: _is_recent_duplicate returns False for non-duplicates", False, f"test setup failed: {e}")
+
+# ── StatusLine Error Velocity (source checks) ────────
+statusline_path = os.path.join(os.path.dirname(__file__), "statusline.py")
+if os.path.isfile(statusline_path):
+    with open(statusline_path) as f:
+        statusline_src = f.read()
+
+    # 10. statusline.py source contains "get_error_velocity" function
+    test("v2.1.4: statusline.py has get_error_velocity function",
+         "get_error_velocity" in statusline_src and "def get_error_velocity" in statusline_src,
+         "get_error_velocity function not found in statusline.py")
+
+    # 11. statusline.py source contains "error_windows" string
+    test("v2.1.4: statusline.py uses error_windows for velocity",
+         "error_windows" in statusline_src,
+         "error_windows string not found in statusline.py")
+
+    # 12. statusline.py source contains "300" (5-minute window)
+    test("v2.1.4: statusline.py uses 300s (5-minute) threshold",
+         "300" in statusline_src and "recent_threshold" in statusline_src,
+         "300s threshold not found in statusline.py")
+else:
+    test("v2.1.4: statusline.py has get_error_velocity function", False, "statusline.py not found")
+    test("v2.1.4: statusline.py uses error_windows for velocity", False, "statusline.py not found")
+    test("v2.1.4: statusline.py uses 300s (5-minute) threshold", False, "statusline.py not found")
+
+# ── StatusLine Velocity Logic Tests (via subprocess) ──
+# 13. Test get_error_velocity with no state file returns (0, 0)
+try:
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys, os, glob; sys.path.insert(0, '/home/crab/.claude/hooks'); "
+         # Temporarily move state files out of the way
+         "orig_glob = glob.glob; "
+         "glob.glob = lambda p: []; "
+         "from statusline import get_error_velocity; "
+         "print(get_error_velocity())"],
+        capture_output=True, text=True, timeout=5
+    )
+    velocity_output = result.stdout.strip()
+    test("v2.1.4: get_error_velocity with no state returns (0, 0)",
+         velocity_output == "(0, 0)",
+         f"Expected (0, 0), got '{velocity_output}'")
+except Exception as e:
+    test("v2.1.4: get_error_velocity with no state returns (0, 0)", False, f"subprocess failed: {e}")
+
+# 14. Test get_error_velocity with recent errors returns recent_count > 0
+try:
+    import tempfile
+    temp_state = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='_state_test.json')
+    state_path = temp_state.name
+    # Create state with recent error_windows (last_seen = now)
+    now = time.time()
+    state = {
+        "error_windows": [
+            {"pattern": "Traceback", "first_seen": now - 10, "last_seen": now - 5, "count": 3},
+            {"pattern": "SyntaxError", "first_seen": now - 20, "last_seen": now - 2, "count": 2},
+        ]
+    }
+    temp_state.write(json.dumps(state))
+    temp_state.close()
+
+    result = subprocess.run(
+        [sys.executable, "-c",
+         f"import sys, glob; sys.path.insert(0, '/home/crab/.claude/hooks'); "
+         f"orig_glob = glob.glob; "
+         f"glob.glob = lambda p: ['{state_path}']; "
+         f"from statusline import get_error_velocity; "
+         f"recent, total = get_error_velocity(); "
+         f"print(f'{{recent}},{{total}}')"],
+        capture_output=True, text=True, timeout=5
+    )
+    velocity_output = result.stdout.strip()
+    parts = velocity_output.split(',')
+    recent_count = int(parts[0]) if parts and parts[0].isdigit() else -1
+    total_count = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else -1
+    test("v2.1.4: get_error_velocity with recent errors returns recent_count > 0",
+         recent_count > 0 and total_count > 0,
+         f"Expected recent > 0 and total > 0, got recent={recent_count}, total={total_count}")
+    os.unlink(state_path)
+except Exception as e:
+    test("v2.1.4: get_error_velocity with recent errors returns recent_count > 0", False, f"test setup failed: {e}")
+
+# 15. Test get_error_velocity with old errors returns recent_count == 0 but total_count > 0
+try:
+    import tempfile
+    temp_state = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='_state_test.json')
+    state_path = temp_state.name
+    # Create state with old error_windows (last_seen = now - 600, outside 5-minute window)
+    now = time.time()
+    state = {
+        "error_windows": [
+            {"pattern": "Traceback", "first_seen": now - 700, "last_seen": now - 600, "count": 4},
+            {"pattern": "ImportError", "first_seen": now - 800, "last_seen": now - 650, "count": 1},
+        ]
+    }
+    temp_state.write(json.dumps(state))
+    temp_state.close()
+
+    result = subprocess.run(
+        [sys.executable, "-c",
+         f"import sys, glob; sys.path.insert(0, '/home/crab/.claude/hooks'); "
+         f"orig_glob = glob.glob; "
+         f"glob.glob = lambda p: ['{state_path}']; "
+         f"from statusline import get_error_velocity; "
+         f"recent, total = get_error_velocity(); "
+         f"print(f'{{recent}},{{total}}')"],
+        capture_output=True, text=True, timeout=5
+    )
+    velocity_output = result.stdout.strip()
+    parts = velocity_output.split(',')
+    recent_count = int(parts[0]) if parts and parts[0].isdigit() else -1
+    total_count = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else -1
+    test("v2.1.4: get_error_velocity with old errors returns recent_count == 0",
+         recent_count == 0 and total_count > 0,
+         f"Expected recent == 0 and total > 0, got recent={recent_count}, total={total_count}")
+    os.unlink(state_path)
+except Exception as e:
+    test("v2.1.4: get_error_velocity with old errors returns recent_count == 0", False, f"test setup failed: {e}")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()
