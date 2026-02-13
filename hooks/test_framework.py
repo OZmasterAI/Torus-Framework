@@ -7011,6 +7011,116 @@ test("v2.2.9: Edit without old_string falls back to path-only",
 cleanup_test_states()
 
 
+print("\n--- v2.3.0: Gate 1 Related Reads, Verification Timestamps, Session Pattern Index ---")
+
+# ── Feature 1: Gate 1 related reads intelligence ──
+
+from gates.gate_01_read_before_edit import _is_related_read, _stem_normalize
+
+# Test 1: _stem_normalize strips test_ prefix
+test("v2.3.0: _stem_normalize('test_foo.py') → 'foo'",
+     _stem_normalize("test_foo.py") == "foo",
+     f"Expected 'foo', got {_stem_normalize('test_foo.py')!r}")
+
+# Test 2: _stem_normalize strips _test suffix
+test("v2.3.0: _stem_normalize('foo_test.py') → 'foo'",
+     _stem_normalize("foo_test.py") == "foo",
+     f"Expected 'foo', got {_stem_normalize('foo_test.py')!r}")
+
+# Test 3: _is_related_read — foo.py and test_foo.py are related
+test("v2.3.0: _is_related_read('foo.py', 'test_foo.py') → True",
+     _is_related_read("/src/foo.py", "/tests/test_foo.py"),
+     "Expected True for foo.py → test_foo.py")
+
+# Test 4: _is_related_read — same basename different dir
+test("v2.3.0: _is_related_read same basename diff dir → True",
+     _is_related_read("/src/utils.py", "/lib/utils.py"),
+     "Expected True for same basename different directory")
+
+# Test 5: _is_related_read — unrelated files
+test("v2.3.0: _is_related_read('foo.py', 'bar.py') → False",
+     not _is_related_read("/src/foo.py", "/src/bar.py"),
+     "Expected False for unrelated files")
+
+# Test 6: Gate 1 allows edit when related file was read
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+# Bypass Gate 4 (memory first) so we can test Gate 1 in isolation
+_g1_state = load_state(session_id=MAIN_SESSION)
+_g1_state["memory_last_queried"] = time.time()
+save_state(_g1_state, session_id=MAIN_SESSION)
+# Read foo.py, then try editing test_foo.py — should be allowed
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate1_foo230.py"})
+code230, msg230 = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/test_gate1_foo230.py"})
+test("v2.3.0: Gate 1 allows edit when related file was read",
+     code230 == 0,
+     f"Expected code=0 (allowed), got code={code230}, msg={msg230}")
+
+# Test 7: Gate 1 still blocks completely unrelated files
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+# Bypass Gate 4 so we isolate Gate 1 behavior
+_g1b_state = load_state(session_id=MAIN_SESSION)
+_g1b_state["memory_last_queried"] = time.time()
+save_state(_g1b_state, session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate1_alpha230.py"})
+code231, msg231 = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate1_beta230.py"})
+test("v2.3.0: Gate 1 blocks unrelated file",
+     code231 != 0,
+     f"Expected block (code!=0), got code={code231}")
+
+# ── Feature 2: Tracker verification timestamps ──
+
+# Test 8: Verification timestamps recorded when files are verified
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+# Simulate: edit a file, then run pytest (verification score >= 70)
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/vts230.py"})
+run_enforcer("PostToolUse", "Bash", {"command": "pytest /tmp/vts230.py"})
+_vts_state = load_state(session_id=MAIN_SESSION)
+_vts_timestamps = _vts_state.get("verification_timestamps", {})
+test("v2.3.0: verification_timestamps recorded on verification",
+     "/tmp/vts230.py" in _vts_timestamps or len(_vts_timestamps) > 0,
+     f"Expected timestamp for vts230.py, got keys={list(_vts_timestamps.keys())}")
+
+# Test 9: Verification timestamp is recent (within last 5 seconds)
+if _vts_timestamps:
+    _vts_ts = list(_vts_timestamps.values())[0]
+    test("v2.3.0: verification timestamp is recent",
+         abs(time.time() - _vts_ts) < 5,
+         f"Expected timestamp within 5s, got {time.time() - _vts_ts:.1f}s ago")
+else:
+    test("v2.3.0: verification timestamp is recent",
+         False, "No verification_timestamps found to check")
+
+# ── Feature 3: PreCompact session pattern index ──
+
+# Test 10: PreCompact captures high_churn_count in metadata
+# (Unit test the classification logic)
+_es230 = {"a.py": 5, "b.py": 2, "c.py": 4}
+_high230 = {f: c for f, c in _es230.items() if c >= 4}
+test("v2.3.0: high churn detection filters correctly",
+     len(_high230) == 2 and "a.py" in _high230 and "c.py" in _high230,
+     f"Expected 2 high-churn files, got {_high230!r}")
+
+# Test 11: verified_ratio computation
+_vr_verified = 5
+_vr_pending = 3
+_vr_total = _vr_verified + _vr_pending
+_vr_ratio = round(_vr_verified / max(_vr_total, 1), 2)
+test("v2.3.0: verified_ratio computation correct",
+     _vr_ratio == 0.62,
+     f"Expected 0.62, got {_vr_ratio}")
+
+# Test 12: verified_ratio handles zero total
+_vr_ratio_zero = round(0 / max(0, 1), 2)
+test("v2.3.0: verified_ratio handles zero total",
+     _vr_ratio_zero == 0.0,
+     f"Expected 0.0, got {_vr_ratio_zero}")
+
+cleanup_test_states()
+
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────

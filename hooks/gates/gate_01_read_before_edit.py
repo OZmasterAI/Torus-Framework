@@ -33,6 +33,44 @@ EXEMPT_PATTERNS = [
 ]
 
 
+def _stem_normalize(filepath):
+    """Extract normalized stem from a filepath for related-read matching.
+
+    Strips test prefixes (test_, test) and test suffixes (_test, _spec, .test, .spec)
+    from the basename stem so that 'foo.py' and 'test_foo.py' share the same normalized stem.
+    """
+    stem = os.path.splitext(os.path.basename(filepath))[0]
+    # Strip test prefixes
+    for prefix in ("test_", "test"):
+        if stem.startswith(prefix):
+            stem = stem[len(prefix):]
+            break
+    # Strip test suffixes
+    for suffix in ("_test", "_spec", ".test", ".spec"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    return stem.lower()
+
+
+def _is_related_read(read_path, edit_path):
+    """Return True if read_path is semantically related to edit_path.
+
+    Related means:
+    - Same normalized stem (after stripping test prefixes/suffixes)
+    - OR same basename in a different directory
+    """
+    read_base = os.path.basename(read_path)
+    edit_base = os.path.basename(edit_path)
+
+    # Same basename in different directory
+    if read_base == edit_base:
+        return True
+
+    # Same normalized stem (e.g., foo.py ↔ test_foo.py)
+    return _stem_normalize(read_path) == _stem_normalize(edit_path)
+
+
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
@@ -63,6 +101,11 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     file_path_real = os.path.realpath(file_path)
     files_read_real = [os.path.realpath(f) for f in files_read]
     if file_path_real not in files_read_real:
+        # Check if any read file is semantically related (e.g., read foo.py → edit test_foo.py)
+        for read_file in files_read:
+            if _is_related_read(os.path.realpath(read_file), file_path_real):
+                return GateResult(blocked=False, gate_name=GATE_NAME)
+
         return GateResult(
             blocked=True,
             message=f"[{GATE_NAME}] BLOCKED: You must Read '{file_path}' before editing it.",

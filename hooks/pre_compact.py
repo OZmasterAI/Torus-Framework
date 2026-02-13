@@ -159,6 +159,19 @@ def main():
     if tool_categories:
         document_parts.append(f"Session profile: {tool_mix_sentiment}")
 
+    # High churn files (edit_streak >= 4)
+    edit_streak = state.get("edit_streak", {})
+    high_churn = {f: c for f, c in edit_streak.items() if isinstance(c, (int, float)) and c >= 4}
+    if high_churn:
+        churn_items = sorted(high_churn.items(), key=lambda x: x[1], reverse=True)
+        churn_summary = ", ".join(f"{f} ({c}x)" for f, c in churn_items)
+        document_parts.append(f"High churn: {churn_summary}")
+
+    # Verified fix ratio
+    verified_total = verified_count + pending_count
+    verified_ratio = round(verified_count / max(verified_total, 1), 2)
+    document_parts.append(f"Verified ratio: {verified_ratio:.2f}")
+
     document = ". ".join(document_parts)
 
     timestamp = datetime.now().isoformat()
@@ -179,6 +192,8 @@ def main():
         "tool_stats_snapshot": {k: v.get("count", 0) for k, v in tool_stats.items()} if tool_stats else {},
         "tool_categories": tool_categories if tool_categories else {},
         "tool_mix_sentiment": tool_mix_sentiment if tool_categories else "unknown",
+        "high_churn_count": len(high_churn),
+        "verified_ratio": verified_ratio,
     }
 
     observation = {

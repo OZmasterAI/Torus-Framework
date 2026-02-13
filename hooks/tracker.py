@@ -433,6 +433,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         for fp in pending:
             if scores.get(fp, 0) >= 70:
                 state.setdefault("verified_fixes", []).append(fp)
+                state.setdefault("verification_timestamps", {})[fp] = time.time()
                 scores.pop(fp, None)
             else:
                 remaining.append(fp)
