@@ -7923,6 +7923,98 @@ test("v2.3.8: Gate 6 source has verification_timestamps decay logic",
 
 cleanup_test_states()
 
+print("\n--- v2.3.9: Secrets Filter Patterns, Session End Metrics, Subagent Skill Context ---")
+
+# ── Feature 1: Secrets filter pattern expansion ──
+
+# Test 1: SSH public key is redacted
+from shared.secrets_filter import scrub as _scrub_239
+_ssh_test = _scrub_239("key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC user@host")
+test("v2.3.9: SSH public key is redacted",
+     "<SSH_KEY_REDACTED>" in _ssh_test,
+     f"Expected <SSH_KEY_REDACTED> in output, got: {_ssh_test}")
+
+# Test 2: Slack token is redacted (no env-var key prefix to avoid pattern #11 clobber)
+_slack_test = _scrub_239("slack xoxb-123456789-abcdefghijklmnop")
+test("v2.3.9: Slack token is redacted",
+     "<SLACK_TOKEN_REDACTED>" in _slack_test,
+     f"Expected <SLACK_TOKEN_REDACTED>, got: {_slack_test}")
+
+# Test 3: Anthropic API key is redacted (no env-var key prefix to avoid clobber)
+_ant_test = _scrub_239("key is sk-ant-api03-abcdefghijk123456")
+test("v2.3.9: Anthropic API key is redacted",
+     "<ANTHROPIC_KEY_REDACTED>" in _ant_test,
+     f"Expected <ANTHROPIC_KEY_REDACTED>, got: {_ant_test}")
+
+# Test 4: Generic sk- key (40+ chars) is redacted
+_sk_test = _scrub_239("key=sk-" + "a" * 50)
+test("v2.3.9: Generic sk- key (40+ chars) is redacted",
+     "<SK_KEY_REDACTED>" in _sk_test,
+     f"Expected <SK_KEY_REDACTED>, got: {_sk_test}")
+
+# Test 5: Pattern count grew from 8 to 12
+from shared.secrets_filter import _PATTERNS as _sf_patterns
+test("v2.3.9: Secrets filter has 12 patterns",
+     len(_sf_patterns) == 12,
+     f"Expected 12 patterns, got {len(_sf_patterns)}")
+
+# ── Feature 2: Session end metrics summary ──
+
+# Test 6: session_summary() returns dict with expected keys
+import session_end
+_sm = session_end.session_summary()
+test("v2.3.9: session_summary returns dict",
+     isinstance(_sm, dict),
+     f"Expected dict, got {type(_sm)}")
+
+# Test 7: session_summary metrics keys (if state exists, should have keys)
+_sm_keys = set(_sm.keys()) if _sm else set()
+_expected_keys = {"reads", "edits", "errors", "verified", "pending"}
+test("v2.3.9: session_summary has expected metric keys or is empty",
+     _sm_keys == _expected_keys or _sm_keys == set(),
+     f"Expected {_expected_keys} or empty, got {_sm_keys}")
+
+# Test 8: increment_session_count accepts metrics param
+import inspect as _insp239
+_inc_sig = _insp239.signature(session_end.increment_session_count)
+test("v2.3.9: increment_session_count accepts metrics param",
+     "metrics" in _inc_sig.parameters,
+     f"Expected 'metrics' param, got {list(_inc_sig.parameters.keys())}")
+
+# Test 9: session_end source has last_session_metrics storage
+_se_source = _insp239.getsource(session_end.increment_session_count)
+test("v2.3.9: increment_session_count stores last_session_metrics",
+     "last_session_metrics" in _se_source,
+     "Expected 'last_session_metrics' in increment_session_count source")
+
+# ── Feature 3: Subagent context skill usage ──
+
+# Test 10: _format_skill_usage returns empty string for no skills
+from subagent_context import _format_skill_usage
+_fsu_empty = _format_skill_usage({"recent_skills": []})
+test("v2.3.9: _format_skill_usage empty for no skills",
+     _fsu_empty == "",
+     f"Expected empty string, got: '{_fsu_empty}'")
+
+# Test 11: _format_skill_usage formats skills correctly
+_fsu_result = _format_skill_usage({"recent_skills": ["commit", "build", "deep-dive"]})
+test("v2.3.9: _format_skill_usage formats skills list",
+     "Recent skills:" in _fsu_result and "commit" in _fsu_result and "deep-dive" in _fsu_result,
+     f"Expected formatted skill list, got: '{_fsu_result}'")
+
+# Test 12: build_context includes skills for general-purpose agents
+from subagent_context import build_context as _bc_239
+_ctx_with_skills = _bc_239(
+    "general-purpose",
+    {"project": "test", "feature": "test"},
+    {"recent_skills": ["status", "wrap-up"]}
+)
+test("v2.3.9: build_context includes skills for general-purpose",
+     "Recent skills:" in _ctx_with_skills and "status" in _ctx_with_skills,
+     f"Expected skills in context, got: '{_ctx_with_skills}'")
+
+cleanup_test_states()
+
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

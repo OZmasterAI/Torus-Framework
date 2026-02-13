@@ -7,6 +7,7 @@ Fires on SessionEnd to:
 
 Fail-open: always exits 0.
 """
+import glob
 import json
 import os
 import sys
@@ -16,6 +17,45 @@ CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 CAPTURE_QUEUE = os.path.join(HOOKS_DIR, ".capture_queue.jsonl")
+
+
+def session_summary():
+    """Load most recent session state and print compact metrics."""
+    try:
+        # Find most recent state_*.json file
+        state_files = glob.glob(os.path.join(HOOKS_DIR, "state_*.json"))
+        if not state_files:
+            return {}
+
+        # Sort by modification time, get most recent
+        latest_state_file = max(state_files, key=os.path.getmtime)
+
+        with open(latest_state_file, "r") as f:
+            state = json.load(f)
+
+        # Extract metrics
+        reads = len(state.get("files_read", []))
+        edits = len(state.get("edit_streak", {}))
+        errors = len(state.get("error_pattern_counts", {}))
+        verified = len(state.get("verified_fixes", []))
+        pending = len(state.get("pending_verification", []))
+
+        # Print compact summary to stderr
+        print(
+            f"[SESSION_END] Metrics: {reads}R {edits}W | {errors} errors | {verified}V {pending}P",
+            file=sys.stderr
+        )
+
+        return {
+            "reads": reads,
+            "edits": edits,
+            "errors": errors,
+            "verified": verified,
+            "pending": pending
+        }
+    except Exception as e:
+        print(f"[SESSION_END] Summary error (non-fatal): {e}", file=sys.stderr)
+        return {}
 
 
 def flush_capture_queue():
@@ -55,7 +95,7 @@ def flush_capture_queue():
     print(f"[SESSION_END] Flushed {len(docs)} observations", file=sys.stderr)
 
 
-def increment_session_count():
+def increment_session_count(metrics=None):
     """Atomically increment session_count in LIVE_STATE.json."""
     state = {}
     if os.path.exists(LIVE_STATE_FILE):
@@ -65,6 +105,11 @@ def increment_session_count():
         except (json.JSONDecodeError, OSError):
             state = {}
     state["session_count"] = state.get("session_count", 0) + 1
+
+    # Store session metrics if provided
+    if metrics:
+        state["last_session_metrics"] = metrics
+
     tmp = LIVE_STATE_FILE + ".tmp"
     with open(tmp, "w") as f:
         json.dump(state, f, indent=2)
@@ -80,8 +125,16 @@ def main():
             _session_data = json.loads(sys.stdin.read())
         except (json.JSONDecodeError, ValueError):
             _session_data = {}
+
+        # Get session summary metrics
+        metrics = {}
+        try:
+            metrics = session_summary()
+        except Exception as e:
+            print(f"[SESSION_END] Summary error (non-fatal): {e}", file=sys.stderr)
+
         flush_capture_queue()
-        increment_session_count()
+        increment_session_count(metrics)
     except Exception as e:
         print(f"[SESSION_END] Error (non-fatal): {e}", file=sys.stderr)
     sys.exit(0)

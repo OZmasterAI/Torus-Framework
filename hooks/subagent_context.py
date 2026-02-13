@@ -119,6 +119,28 @@ def _format_bans(session_state):
     return "Banned strategies: " + ", ".join(bans[:5]) + "."
 
 
+def _format_skill_usage(session_state):
+    """Format recent skill usage: 'Recent skills: commit, build, deep-dive'."""
+    skills = session_state.get("recent_skills", [])
+    if not skills:
+        return ""
+    # Deduplicate while preserving order (most recent last)
+    seen = set()
+    unique = []
+    for s in reversed(skills):
+        if s not in seen:
+            seen.add(s)
+            unique.append(s)
+    unique.reverse()
+    # Take last 5 (most recent)
+    max_skills = 5
+    if len(unique) > max_skills:
+        shown = unique[-max_skills:]
+        extra = len(unique) - max_skills
+        return "Recent skills: " + ", ".join(shown) + f" +{extra} more."
+    return "Recent skills: " + ", ".join(unique) + "."
+
+
 # ─── Context builder ────────────────────────────────────────────────
 
 def build_context(agent_type, live_state, session_state=None):
@@ -153,6 +175,9 @@ def build_context(agent_type, live_state, session_state=None):
         errors_str = _format_error_state(session_state)
         if errors_str:
             parts.append(errors_str)
+        skills_str = _format_skill_usage(session_state)
+        if skills_str:
+            parts.append(skills_str)
         parts.append("Explore and report findings only.")
         return " ".join(parts)
 
@@ -177,6 +202,9 @@ def build_context(agent_type, live_state, session_state=None):
         bans_str = _format_bans(session_state)
         if bans_str:
             parts.append(bans_str)
+        skills_str = _format_skill_usage(session_state)
+        if skills_str:
+            parts.append(skills_str)
         parts.append("IMPORTANT: Query search_knowledge before editing any files.")
         return " ".join(parts)
 

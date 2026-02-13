@@ -31,12 +31,24 @@ _PATTERNS = [
     # 5. GitHub tokens (ghp_, gho_, ghs_, github_pat_)
     (re.compile(r'(?:ghp_|gho_|ghs_|github_pat_)[A-Za-z0-9_]+'), '<GH_TOKEN_REDACTED>'),
 
-    # 6. Connection strings (mongodb://, postgresql://, redis://, mysql://, amqp://)
+    # 6. SSH public keys (ssh-rsa, ssh-ed25519, ssh-ecdsa)
+    (re.compile(r'ssh-(rsa|ed25519|ecdsa)\s+AAAA[A-Za-z0-9+/=]+'), '<SSH_KEY_REDACTED>'),
+
+    # 7. Slack tokens (xoxb-, xoxp-, xoxa-, xoxr-, xoxs-)
+    (re.compile(r'xox[bpars]-[A-Za-z0-9-]+'), '<SLACK_TOKEN_REDACTED>'),
+
+    # 8. Anthropic API keys (sk-ant-...)
+    (re.compile(r'sk-ant-[A-Za-z0-9-_]+'), '<ANTHROPIC_KEY_REDACTED>'),
+
+    # 9. Generic sk- prefix keys (OpenAI, Stripe, etc., 40+ chars)
+    (re.compile(r'sk-[A-Za-z0-9]{40,}'), '<SK_KEY_REDACTED>'),
+
+    # 10. Connection strings (mongodb://, postgresql://, redis://, mysql://, amqp://)
     (re.compile(
         r'((?:mongodb|postgresql|postgres|mysql|redis|amqp|amqps)://)([^\s,\'"]+)'
     ), r'\1<REDACTED>'),
 
-    # 7. Env var assignments with sensitive names (generic — after specific tokens)
+    # 11. Env var assignments with sensitive names (generic — after specific tokens)
     (re.compile(
         r'((?:API_KEY|SECRET|TOKEN|PASSWORD|PASSWD|MONGODB_URI|DATABASE_URL|'
         r'AUTH|PRIVATE_KEY|ACCESS_KEY|SECRET_KEY|CREDENTIALS|DB_PASS|'
@@ -45,7 +57,7 @@ _PATTERNS = [
         re.IGNORECASE
     ), r'\1<REDACTED>'),
 
-    # 8. Long hex/base64 strings after = or : (40+ chars, catch-all)
+    # 12. Long hex/base64 strings after = or : (40+ chars, catch-all)
     (re.compile(r'([=:]\s*)[A-Za-z0-9+/\-_]{40,}=*'), r'\1<POSSIBLE_SECRET_REDACTED>'),
 ]
 
