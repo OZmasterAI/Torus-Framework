@@ -5472,6 +5472,125 @@ test("v2.1.5: Gate 7 (or Gate 4) blocks editing enforcer.py without memory query
      f"Expected memory gate block, got code={code}, msg={msg}")
 
 
+# ── v2.1.6 Features ──────────────────────────────────
+print("\n--- v2.1.6 Features ---")
+
+# 1. PreCompact velocity metrics (source checks)
+pre_compact_path = os.path.join(os.path.dirname(__file__), "pre_compact.py")
+try:
+    with open(pre_compact_path, "r") as f:
+        pre_compact_source = f.read()
+    test("v2.1.6: pre_compact.py contains tool_call_rate",
+         "tool_call_rate" in pre_compact_source,
+         "tool_call_rate not found in pre_compact.py")
+    test("v2.1.6: pre_compact.py contains velocity_tier",
+         "velocity_tier" in pre_compact_source,
+         "velocity_tier not found in pre_compact.py")
+    test("v2.1.6: pre_compact.py contains edit_rate",
+         "edit_rate" in pre_compact_source,
+         "edit_rate not found in pre_compact.py")
+    test("v2.1.6: pre_compact.py uses .get('last_seen') safely",
+         'w.get("last_seen"' in pre_compact_source,
+         "Bug fix: should use .get('last_seen', 0) instead of bare iteration")
+except Exception as e:
+    test("v2.1.6: pre_compact.py source checks", False, f"Could not read pre_compact.py: {e}")
+
+# 2. Gate 5 edit streak (source checks)
+gate5_path = os.path.join(os.path.dirname(__file__), "gates", "gate_05_proof_before_fixed.py")
+try:
+    with open(gate5_path, "r") as f:
+        gate5_source = f.read()
+    test("v2.1.6: Gate 5 contains edit_streak tracking",
+         "edit_streak" in gate5_source,
+         "edit_streak not found in gate_05_proof_before_fixed.py")
+    test("v2.1.6: Gate 5 contains warning threshold (>= 3)",
+         "current_streak >= 3" in gate5_source,
+         "Warning threshold 'current_streak >= 3' not found")
+    test("v2.1.6: Gate 5 contains blocking threshold (>= 5)",
+         "current_streak >= 5" in gate5_source,
+         "Blocking threshold 'current_streak >= 5' not found")
+except Exception as e:
+    test("v2.1.6: Gate 5 source checks", False, f"Could not read gate_05_proof_before_fixed.py: {e}")
+
+# 3. Tracker edit streak (source checks)
+tracker_path = os.path.join(os.path.dirname(__file__), "tracker.py")
+try:
+    with open(tracker_path, "r") as f:
+        tracker_source = f.read()
+    test("v2.1.6: tracker.py contains edit_streak tracking",
+         "edit_streak" in tracker_source,
+         "edit_streak not found in tracker.py")
+    # Check for streak reset logic — looking for edit_streak being set to {}
+    test("v2.1.6: tracker.py contains streak reset logic",
+         'edit_streak"] = {}' in tracker_source or 'edit_streak"] = dict()' in tracker_source,
+         "Streak reset logic (edit_streak = {}) not found in tracker.py")
+except Exception as e:
+    test("v2.1.6: tracker.py source checks", False, f"Could not read tracker.py: {e}")
+
+# 4. Gate 5 streak logic test (via subprocess)
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+
+# Set up a state with high edit streak for test.py
+state = load_state(session_id=MAIN_SESSION)
+state["edit_streak"] = {"test.py": 5}
+state["pending_verification"] = ["test.py"]
+state["memory_last_queried"] = time.time()  # Bypass Gate 4
+save_state(state, session_id=MAIN_SESSION)
+
+# First, read test.py to bypass Gate 1
+run_enforcer("PostToolUse", "Read",
+            {"file_path": "test.py"},
+            session_id=MAIN_SESSION)
+
+# Try to edit test.py again — should be blocked (streak >= 5)
+code, msg = run_enforcer("PreToolUse", "Edit",
+                        {"file_path": "test.py", "old_string": "x", "new_string": "y"},
+                        session_id=MAIN_SESSION)
+test("v2.1.6: Gate 5 blocks editing at streak >= 5",
+     code != 0 and "GATE 5" in msg,
+     f"Expected GATE 5 block at streak=5, got code={code}, msg={msg}")
+
+# Test warning threshold (streak = 3)
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["edit_streak"] = {"test.py": 3}
+state["pending_verification"] = ["test.py"]
+state["memory_last_queried"] = time.time()  # Bypass Gate 4
+save_state(state, session_id=MAIN_SESSION)
+
+run_enforcer("PostToolUse", "Read",
+            {"file_path": "test.py"},
+            session_id=MAIN_SESSION)
+
+code, msg = run_enforcer("PreToolUse", "Edit",
+                        {"file_path": "test.py", "old_string": "x", "new_string": "y"},
+                        session_id=MAIN_SESSION)
+test("v2.1.6: Gate 5 warns at streak >= 3 but doesn't block",
+     code == 0 and ("WARNING" in msg or "edited" in msg),
+     f"Expected warning but no block at streak=3, got code={code}, msg={msg}")
+
+# Test streak reset on verification (via Bash)
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["edit_streak"] = {"test.py": 2}
+state["pending_verification"] = ["test.py"]
+save_state(state, session_id=MAIN_SESSION)
+
+# Run a Bash command to trigger verification reset
+run_enforcer("PostToolUse", "Bash",
+            {"command": "pytest"},
+            session_id=MAIN_SESSION)
+
+# Check that edit_streak was reset
+state = load_state(session_id=MAIN_SESSION)
+test("v2.1.6: Tracker resets edit_streak on Bash verification",
+     state.get("edit_streak", {}) == {},
+     f"Expected empty edit_streak after Bash, got {state.get('edit_streak', {})}")
+
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────

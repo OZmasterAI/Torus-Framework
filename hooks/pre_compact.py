@@ -38,6 +38,13 @@ def main():
     verified_count = len(state.get("verified_fixes", []))
     elapsed = time.time() - state.get("session_start", time.time())
 
+    # Velocity metrics
+    session_elapsed = max(elapsed, 1)  # Avoid division by zero
+    tool_call_rate = round((tool_call_count / session_elapsed) * 60, 1)  # calls/min
+    edit_count = pending_count + verified_count
+    edit_rate = round((edit_count / session_elapsed) * 60, 1)  # edits/min
+    velocity_tier = "high" if tool_call_rate > 40 else ("normal" if tool_call_rate > 10 else "low")
+
     # Extract enriched state data (error and chain tracking)
     error_pattern_counts = state.get("error_pattern_counts", {})
     pending_chain_ids = state.get("pending_chain_ids", [])
@@ -56,7 +63,8 @@ def main():
         f"{files_read_count} files read, "
         f"{pending_count} pending verification, "
         f"{verified_count} verified fixes, "
-        f"{elapsed:.0f}s elapsed | "
+        f"{elapsed:.0f}s elapsed, "
+        f"Velocity: {tool_call_rate} calls/min ({velocity_tier}) | "
         f"Errors: {error_patterns_summary}, "
         f"Chains: {chains_summary}, "
         f"Bans: {bans_summary}, "
@@ -70,7 +78,8 @@ def main():
         f"{files_read_count} files read, "
         f"{pending_count} pending, "
         f"{verified_count} verified, "
-        f"{elapsed:.0f}s elapsed"
+        f"{elapsed:.0f}s elapsed",
+        f"Velocity: {tool_call_rate} calls/min, {edit_rate} edits/min ({velocity_tier})"
     ]
 
     # Add enriched state data
@@ -89,7 +98,7 @@ def main():
         document_parts.append(f"Gate 6 warnings: {gate6_warn_count}")
 
     if error_windows:
-        recent_errors = len([ts for ts in error_windows if time.time() - ts < 300])  # last 5 minutes
+        recent_errors = len([w for w in error_windows if time.time() - w.get("last_seen", 0) < 300])  # last 5 minutes
         if recent_errors > 0:
             document_parts.append(f"Recent errors (5m): {recent_errors}")
 
@@ -106,6 +115,10 @@ def main():
         "has_error": "false",
         "error_pattern": "",
         "snapshot_type": "enriched",
+        "tool_call_rate": tool_call_rate,
+        "edit_rate": edit_rate,
+        "velocity_tier": velocity_tier,
+        "session_elapsed_seconds": round(session_elapsed, 0),
     }
 
     observation = {

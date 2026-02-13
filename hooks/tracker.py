@@ -366,12 +366,21 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
             pending.append(file_path)
             state["pending_verification"] = pending
 
+        # Track edit streak per file
+        edit_streak = state.setdefault("edit_streak", {})
+        file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+        if file_path:
+            edit_streak[file_path] = edit_streak.get(file_path, 0) + 1
+
     # Progressive verification scoring: accumulate confidence scores for pending files
     if tool_name == "Bash":
         command = tool_input.get("command", "")
         score = _classify_verification_score(command)
         scores = state.setdefault("verification_scores", {})
         pending = state.get("pending_verification", [])
+
+        # Reset edit streaks on verification
+        state["edit_streak"] = {}
 
         if any(kw in command for kw in BROAD_TEST_COMMANDS):
             # Broad tests apply score to all pending files

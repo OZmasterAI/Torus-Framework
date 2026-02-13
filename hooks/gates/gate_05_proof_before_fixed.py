@@ -62,6 +62,29 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     # Allow editing the same file that's pending (iterating on a fix)
     pending_other = [p for p in pending if p != file_path]
 
+    # Track consecutive edits to the same file without verification
+    edit_streak = state.get("edit_streak", {})
+    current_streak = edit_streak.get(file_path, 0)
+
+    # Warn at 4+ same-file edits without verification
+    if current_streak >= 3:
+        print(
+            f"[{GATE_NAME}] WARNING: {os.path.basename(file_path)} edited "
+            f"{current_streak + 1} times without verification. "
+            f"Consider running a test to confirm changes work.",
+            file=sys.stderr,
+        )
+
+    # Block at 6+ same-file edits without verification
+    if current_streak >= 5:
+        return GateResult(
+            blocked=True,
+            message=f"[{GATE_NAME}] BLOCKED: {os.path.basename(file_path)} edited "
+                    f"{current_streak + 1} times without verification. "
+                    f"Run a test or check before making more edits.",
+            gate_name=GATE_NAME,
+        )
+
     # Count effective unverified: partially scored files count less
     effective_unverified = 0.0
     for p in pending_other:
