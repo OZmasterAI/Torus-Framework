@@ -56,6 +56,9 @@ DANGEROUS_PATTERNS = [
     (r"\bfind\b.*\s-delete\b", "find -delete (recursive file deletion)"),
     (r"\btruncate\s+-s\s*0\b", "truncate -s 0 (zero file contents)"),
     (r"\bshred\b", "shred (secure file destruction)"),
+    # Disk encryption/partition destruction
+    (r"\bcryptsetup\s+(luksFormat|luksErase|erase|remove)\b", "cryptsetup LUKS destruction"),
+    (r"\b(wipefs|sgdisk\s+--zap-all)\b", "disk signature/partition wipe"),
     # Dangerous rsync (can delete target contents)
     (r"\brsync\b.*--delete\b", "rsync --delete (can remove target files)"),
     # Shell wrapping / indirection (can hide any destructive command)

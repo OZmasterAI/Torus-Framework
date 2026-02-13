@@ -172,6 +172,21 @@ def main():
     verified_ratio = round(verified_count / max(verified_total, 1), 2)
     document_parts.append(f"Verified ratio: {verified_ratio:.2f}")
 
+    # Session trajectory classification
+    if verified_total > 0:
+        success_rate = verified_count / verified_total
+    else:
+        success_rate = 1.0  # No edits = neutral
+    if success_rate >= 0.9:
+        trajectory = "high_confidence"
+    elif success_rate >= 0.6:
+        trajectory = "incremental"
+    elif success_rate >= 0.3:
+        trajectory = "iterative"
+    else:
+        trajectory = "struggling"
+    document_parts.append(f"Trajectory: {trajectory}")
+
     document = ". ".join(document_parts)
 
     timestamp = datetime.now().isoformat()
@@ -194,6 +209,7 @@ def main():
         "tool_mix_sentiment": tool_mix_sentiment if tool_categories else "unknown",
         "high_churn_count": len(high_churn),
         "verified_ratio": verified_ratio,
+        "trajectory": trajectory,
     }
 
     observation = {

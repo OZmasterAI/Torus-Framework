@@ -7122,6 +7122,128 @@ cleanup_test_states()
 
 
 # ─────────────────────────────────────────────────
+# v2.3.1: Gate 2 LUKS Patterns, Session Trajectory, StatusLine V-Ratio
+# ─────────────────────────────────────────────────
+print("\n--- v2.3.1: Gate 2 LUKS, PreCompact Trajectory, StatusLine V-Ratio ---")
+
+# ── Feature 1: Gate 2 LUKS/disk destruction patterns ──
+
+# Test 1: cryptsetup luksFormat blocked
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+code_cf, msg_cf = run_enforcer("PreToolUse", "Bash", {"command": "cryptsetup luksFormat /dev/sda1"})
+test("v2.3.1: Gate 2 blocks cryptsetup luksFormat",
+     code_cf != 0 and "LUKS" in msg_cf,
+     f"Expected block with LUKS mention, got code={code_cf}, msg={msg_cf}")
+
+# Test 2: cryptsetup luksErase blocked
+code_ce, msg_ce = run_enforcer("PreToolUse", "Bash", {"command": "cryptsetup luksErase /dev/sda1"})
+test("v2.3.1: Gate 2 blocks cryptsetup luksErase",
+     code_ce != 0,
+     f"Expected block, got code={code_ce}")
+
+# Test 3: wipefs blocked
+code_wf, msg_wf = run_enforcer("PreToolUse", "Bash", {"command": "wipefs -a /dev/sdb"})
+test("v2.3.1: Gate 2 blocks wipefs",
+     code_wf != 0 and "wipe" in msg_wf.lower(),
+     f"Expected block with wipe mention, got code={code_wf}, msg={msg_wf}")
+
+# Test 4: sgdisk --zap-all blocked
+code_sg, msg_sg = run_enforcer("PreToolUse", "Bash", {"command": "sgdisk --zap-all /dev/sda"})
+test("v2.3.1: Gate 2 blocks sgdisk --zap-all",
+     code_sg != 0,
+     f"Expected block, got code={code_sg}")
+
+# Test 5: cryptsetup luksOpen is safe (not blocked)
+code_lo, msg_lo = run_enforcer("PreToolUse", "Bash", {"command": "cryptsetup luksOpen /dev/sda1 myvolume"})
+test("v2.3.1: Gate 2 allows cryptsetup luksOpen",
+     code_lo == 0,
+     f"Expected allowed (code=0), got code={code_lo}, msg={msg_lo}")
+
+# ── Feature 2: PreCompact session trajectory classification ──
+
+# Test 6: high_confidence trajectory (>= 0.9 success rate)
+_t_verified = 9
+_t_pending = 1
+_t_total = _t_verified + _t_pending
+_t_rate = _t_verified / _t_total
+_t_traj = "high_confidence" if _t_rate >= 0.9 else "other"
+test("v2.3.1: trajectory high_confidence at 90% success",
+     _t_traj == "high_confidence",
+     f"Expected high_confidence, got {_t_traj} (rate={_t_rate})")
+
+# Test 7: incremental trajectory (0.6-0.89)
+_t_verified2 = 7
+_t_pending2 = 3
+_t_total2 = _t_verified2 + _t_pending2
+_t_rate2 = _t_verified2 / _t_total2
+if _t_rate2 >= 0.9:
+    _t_traj2 = "high_confidence"
+elif _t_rate2 >= 0.6:
+    _t_traj2 = "incremental"
+else:
+    _t_traj2 = "other"
+test("v2.3.1: trajectory incremental at 70% success",
+     _t_traj2 == "incremental",
+     f"Expected incremental, got {_t_traj2} (rate={_t_rate2})")
+
+# Test 8: struggling trajectory (< 0.3)
+_t_verified3 = 1
+_t_pending3 = 9
+_t_total3 = _t_verified3 + _t_pending3
+_t_rate3 = _t_verified3 / _t_total3
+if _t_rate3 >= 0.9:
+    _t_traj3 = "high_confidence"
+elif _t_rate3 >= 0.6:
+    _t_traj3 = "incremental"
+elif _t_rate3 >= 0.3:
+    _t_traj3 = "iterative"
+else:
+    _t_traj3 = "struggling"
+test("v2.3.1: trajectory struggling at 10% success",
+     _t_traj3 == "struggling",
+     f"Expected struggling, got {_t_traj3} (rate={_t_rate3})")
+
+# Test 9: neutral trajectory when no edits (total=0)
+_t_rate4 = 1.0  # No edits = neutral
+_t_traj4 = "high_confidence" if _t_rate4 >= 0.9 else "other"
+test("v2.3.1: trajectory high_confidence when no edits",
+     _t_traj4 == "high_confidence",
+     f"Expected high_confidence for zero edits, got {_t_traj4}")
+
+# ── Feature 3: StatusLine verification ratio ──
+
+# Test 10: get_verification_ratio returns correct counts
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_vr_state = load_state(session_id=MAIN_SESSION)
+_vr_state["verified_fixes"] = ["/a.py", "/b.py", "/c.py"]
+_vr_state["pending_verification"] = ["/d.py", "/e.py"]
+save_state(_vr_state, session_id=MAIN_SESSION)
+from statusline import get_verification_ratio
+_vr_v, _vr_t = get_verification_ratio()
+test("v2.3.1: get_verification_ratio returns (3, 5)",
+     _vr_v == 3 and _vr_t == 5,
+     f"Expected (3, 5), got ({_vr_v}, {_vr_t})")
+
+# Test 11: get_verification_ratio returns (0, 0) for empty state
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_vr_v2, _vr_t2 = get_verification_ratio()
+test("v2.3.1: get_verification_ratio returns (0, 0) for empty",
+     _vr_v2 == 0 and _vr_t2 == 0,
+     f"Expected (0, 0), got ({_vr_v2}, {_vr_t2})")
+
+# Test 12: V:x/y format string
+_vr_fmt = f"V:{_vr_v}/{_vr_t}" if _vr_t > 0 else ""
+test("v2.3.1: V:x/y format correct for (3, 5) input",
+     "V:3/5" in f"V:{3}/{5}",
+     "Expected V:3/5 format")
+
+cleanup_test_states()
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

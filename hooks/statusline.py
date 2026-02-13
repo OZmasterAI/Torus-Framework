@@ -269,6 +269,24 @@ def get_plan_mode_warns():
         return 0
 
 
+def get_verification_ratio():
+    """Return (verified, total) from session state for V:x/y display."""
+    import glob as globmod
+    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    files = globmod.glob(pattern)
+    if not files:
+        return (0, 0)
+    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    try:
+        with open(files[0]) as f:
+            state = json.load(f)
+        verified = len(state.get("verified_fixes", []))
+        pending = len(state.get("pending_verification", []))
+        return (verified, verified + pending)
+    except (json.JSONDecodeError, OSError):
+        return (0, 0)
+
+
 def calculate_health(gate_count, mem_count):
     """Calculate framework health as a weighted percentage (0-100).
 
@@ -466,6 +484,11 @@ def main():
     pv_count = get_pending_count()
     if pv_count > 0:
         parts.append(f"PV:{pv_count}")
+
+    # Verification ratio
+    vr_verified, vr_total = get_verification_ratio()
+    if vr_total > 0:
+        parts.append(f"V:{vr_verified}/{vr_total}")
 
     # Plan mode escalation warnings
     pm_warns = get_plan_mode_warns()
