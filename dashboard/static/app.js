@@ -300,6 +300,12 @@ function renderTimelineEntry(entry) {
     const time = formatTime(entry.ts || entry.timestamp);
     let badge, text, stateKeysBadges = '';
 
+    // Determine severity class
+    const severity = entry.severity || 'info';
+    const severityClass = severity === 'critical' ? 'severity-critical' :
+                          severity === 'error' ? 'severity-error' :
+                          severity === 'warn' ? 'severity-warn' : '';
+
     if (entry.type === 'gate') {
         const dec = entry.decision;
         const badgeClass = dec === 'pass' ? 'badge-pass' :
@@ -327,7 +333,7 @@ function renderTimelineEntry(entry) {
     const entryData = encodeURIComponent(JSON.stringify(entry));
 
     return `
-        <div class="timeline-entry" onclick="showAuditDetailPopover('${entryData}', event)">
+        <div class="timeline-entry ${severityClass}" onclick="showAuditDetailPopover('${entryData}', event)">
             <span class="timeline-time">${time}</span>
             ${badge}
             <span class="timeline-text">${escapeHtml(text)}</span>
@@ -1245,6 +1251,7 @@ let activeQueryFilters = {};
 async function applyTimelineFilters() {
     const gate = document.getElementById('timeline-gate-filter').value;
     const decision = document.getElementById('timeline-decision-filter').value;
+    const severity = document.getElementById('timeline-severity-filter')?.value || '';
     const hoursInput = document.getElementById('timeline-hours-filter');
     let hours = parseInt(hoursInput.value) || 24;
 
@@ -1256,7 +1263,7 @@ async function applyTimelineFilters() {
     }
 
     // If no filters, fall back to regular timeline
-    if (!gate && !decision) {
+    if (!gate && !decision && !severity) {
         activeQueryFilters = {};
         renderActiveFilterBadges();
         renderFilteredTimeline();
@@ -1266,6 +1273,7 @@ async function applyTimelineFilters() {
     const params = new URLSearchParams();
     if (gate) params.set('gate', gate);
     if (decision) params.set('decision', decision);
+    if (severity) params.set('severity', severity);
     params.set('hours', hours.toString());
 
     const data = await apiFetch(`/api/audit/query?${params.toString()}`);
@@ -1274,6 +1282,7 @@ async function applyTimelineFilters() {
     activeQueryFilters = {};
     if (gate) activeQueryFilters.gate = gate;
     if (decision) activeQueryFilters.decision = decision;
+    if (severity) activeQueryFilters.severity = severity;
 
     renderActiveFilterBadges();
 
@@ -1311,6 +1320,10 @@ function removeQueryFilter(key) {
     // Reset the corresponding dropdown
     if (key === 'gate') document.getElementById('timeline-gate-filter').value = '';
     if (key === 'decision') document.getElementById('timeline-decision-filter').value = '';
+    if (key === 'severity') {
+        const severityFilter = document.getElementById('timeline-severity-filter');
+        if (severityFilter) severityFilter.value = '';
+    }
 
     if (Object.keys(activeQueryFilters).length === 0) {
         renderActiveFilterBadges();

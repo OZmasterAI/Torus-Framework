@@ -5691,6 +5691,106 @@ test("v2.1.7: tracker.py populates tool_stats for Read tool",
 
 
 # ─────────────────────────────────────────────────
+# v2.1.8 Features
+# ─────────────────────────────────────────────────
+print("\n--- v2.1.8 Features ---")
+
+# Dashboard severity — server.py (source checks)
+dashboard_server_path = os.path.join(os.path.dirname(__file__), "..", "dashboard", "server.py")
+with open(dashboard_server_path) as f:
+    server_py_content = f.read()
+
+test("v2.1.8: server.py parse_audit_line includes severity",
+     '"severity": entry.get("severity"' in server_py_content,
+     "Expected severity field in parse_audit_line return dict")
+
+test("v2.1.8: server.py load_audit_entries_filtered has severity param",
+     "def load_audit_entries_filtered(gate=None, decision=None, tool=None, severity=None" in server_py_content,
+     "Expected severity parameter in load_audit_entries_filtered")
+
+test("v2.1.8: server.py api_audit_query reads severity from request",
+     'severity = request.query_params.get("severity"' in server_py_content,
+     "Expected severity reading from request params in api_audit_query")
+
+# Dashboard severity — app.js (source checks)
+dashboard_app_path = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "app.js")
+with open(dashboard_app_path) as f:
+    app_js_content = f.read()
+
+test("v2.1.8: app.js contains severity-critical class reference",
+     "severity-critical" in app_js_content,
+     "Expected 'severity-critical' class in app.js")
+
+test("v2.1.8: app.js contains severity-error class reference",
+     "severity-error" in app_js_content,
+     "Expected 'severity-error' class in app.js")
+
+test("v2.1.8: app.js contains severity-warn class reference",
+     "severity-warn" in app_js_content,
+     "Expected 'severity-warn' class in app.js")
+
+# Dashboard severity — style.css (source checks)
+dashboard_style_path = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "style.css")
+with open(dashboard_style_path) as f:
+    style_css_content = f.read()
+
+test("v2.1.8: style.css contains .severity-critical rule",
+     ".severity-critical" in style_css_content,
+     "Expected '.severity-critical' CSS rule")
+
+test("v2.1.8: style.css contains .severity-error rule",
+     ".severity-error" in style_css_content,
+     "Expected '.severity-error' CSS rule")
+
+# Dashboard severity — index.html (source check)
+dashboard_html_path = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "index.html")
+with open(dashboard_html_path) as f:
+    index_html_content = f.read()
+
+test("v2.1.8: index.html contains timeline-severity-filter dropdown",
+     "timeline-severity-filter" in index_html_content,
+     "Expected 'timeline-severity-filter' dropdown in index.html")
+
+# StatusLine tool activity (source + logic checks)
+statusline_path = os.path.join(os.path.dirname(__file__), "statusline.py")
+with open(statusline_path) as f:
+    statusline_content = f.read()
+
+test("v2.1.8: statusline.py contains get_most_used_tool function",
+     "def get_most_used_tool()" in statusline_content,
+     "Expected get_most_used_tool function in statusline.py")
+
+test("v2.1.8: statusline.py contains tool_stats reference",
+     "tool_stats" in statusline_content,
+     "Expected 'tool_stats' reference in statusline.py")
+
+# Subprocess test: verify get_most_used_tool returns correct result
+# Create a temp state file with tool_stats
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+state["tool_stats"] = {
+    "Read": {"count": 5},
+    "Edit": {"count": 12},
+    "Bash": {"count": 3}
+}
+save_state(state, session_id=MAIN_SESSION)
+
+# Run get_most_used_tool via subprocess
+result = subprocess.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, '/home/crab/.claude/hooks'); "
+     "from statusline import get_most_used_tool; "
+     "r = get_most_used_tool(); "
+     "print(r[0] if r else 'None')"],
+    capture_output=True, text=True, timeout=5
+)
+test("v2.1.8: get_most_used_tool returns Edit (highest count)",
+     result.returncode == 0 and result.stdout.strip() == "Edit",
+     f"Expected 'Edit', got: {result.stdout.strip()}")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

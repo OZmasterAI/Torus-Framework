@@ -200,6 +200,26 @@ def get_error_velocity():
         return (0, 0)
 
 
+def get_most_used_tool():
+    """Read tool_stats from most recent session state, return (name, count) or None."""
+    import glob as globmod
+    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    files = globmod.glob(pattern)
+    if not files:
+        return None
+    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    try:
+        with open(files[0]) as f:
+            state = json.load(f)
+        tool_stats = state.get("tool_stats", {})
+        if not tool_stats:
+            return None
+        top = max(tool_stats.items(), key=lambda x: x[1].get("count", 0))
+        return (top[0], top[1]["count"])
+    except (json.JSONDecodeError, OSError, ValueError, KeyError):
+        return None
+
+
 def calculate_health(gate_count, mem_count):
     """Calculate framework health as a weighted percentage (0-100).
 
@@ -377,6 +397,14 @@ def main():
         parts.append(f"{minutes}min")
     if lines_str:
         parts.append(lines_str)
+
+    # Tool activity
+    tool_info = get_most_used_tool()
+    if tool_info:
+        tool_name, tool_count = tool_info
+        tool_short = {"Bash": ">_", "Edit": "~", "Write": "+", "Read": "@", "Grep": "?", "Glob": "*"}.get(tool_name, tool_name[:2])
+        parts.append(f"T:{tool_short}x{tool_count}")
+
     parts.append(cost_str)
 
     print(" | ".join(parts))

@@ -214,6 +214,7 @@ def parse_audit_line(line):
             "reason": entry.get("reason", ""),
             "session_id": entry.get("session_id", ""),
             "state_keys": entry.get("state_keys", []),
+            "severity": entry.get("severity", "info"),
         }
 
     # Type A: event (has "event" key)
@@ -354,7 +355,7 @@ def aggregate_gate_perf(date_str=None):
     return result
 
 
-def load_audit_entries_filtered(gate=None, decision=None, tool=None, hours=24, limit=200):
+def load_audit_entries_filtered(gate=None, decision=None, tool=None, severity=None, hours=24, limit=200):
     """Load audit entries with optional filters across recent JSONL files."""
     cutoff = time.time() - (hours * 3600)
     entries = []
@@ -386,6 +387,9 @@ def load_audit_entries_filtered(gate=None, decision=None, tool=None, hours=24, l
                         continue
                     # Tool filter
                     if tool and parsed.get("tool", "") != tool:
+                        continue
+                    # Severity filter
+                    if severity and parsed.get("severity", "") != severity:
                         continue
                     entries.append(parsed)
         except OSError:
@@ -1040,22 +1044,23 @@ async def api_gate_perf(request):
 
 
 async def api_audit_query(request):
-    """Filtered audit log query with gate, decision, tool, hours params."""
+    """Filtered audit log query with gate, decision, tool, severity, hours params."""
     gate = request.query_params.get("gate", "") or None
     decision = request.query_params.get("decision", "") or None
     tool = request.query_params.get("tool", "") or None
+    severity = request.query_params.get("severity", "") or None
     try:
         hours = int(request.query_params.get("hours", "24"))
     except (ValueError, TypeError):
         hours = 24
     hours = max(1, min(hours, 168))  # 1h to 7 days
     entries = load_audit_entries_filtered(
-        gate=gate, decision=decision, tool=tool, hours=hours, limit=200,
+        gate=gate, decision=decision, tool=tool, severity=severity, hours=hours, limit=200,
     )
     return JSONResponse({
         "entries": entries,
         "total": len(entries),
-        "filters": {"gate": gate, "decision": decision, "tool": tool, "hours": hours},
+        "filters": {"gate": gate, "decision": decision, "tool": tool, "severity": severity, "hours": hours},
     })
 
 
