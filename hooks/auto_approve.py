@@ -63,6 +63,16 @@ SAFE_COMMAND_PREFIXES = [
     # Testing frameworks
     "pytest", "python -m pytest", "python3 -m pytest",
     "npm test", "cargo test", "go test",
+    # Diagnostic / read-only commands
+    "find . -name", "find . -type",
+    "grep -r", "grep -rn",
+    "ps aux", "ps -ef",
+    "df -h", "du -sh",
+    "curl -I", "curl --head",
+    "file", "stat", "type",
+    # Python introspection
+    "python3 -c", "python -c",
+    "pip list", "pip show", "pip freeze",
 ]
 
 

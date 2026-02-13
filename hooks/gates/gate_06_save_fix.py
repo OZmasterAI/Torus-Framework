@@ -27,6 +27,9 @@ WARN_THRESHOLD = 2
 # Escalation: after this many warnings, Gate 6 becomes blocking
 ESCALATION_THRESHOLD = 5
 
+# Verified fixes older than this are considered stale (expired)
+STALE_FIX_SECONDS = 1200  # 20 minutes
+
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     """Advisory gate that escalates to blocking after repeated ignored warnings."""
@@ -40,6 +43,13 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     issued_warning = False
 
     verified_fixes = state.get("verified_fixes", [])
+    # Time-decay: remove verified fixes older than STALE_FIX_SECONDS
+    verification_timestamps = state.get("verification_timestamps", {})
+    now = time.time()
+    fresh_fixes = [f for f in verified_fixes if now - verification_timestamps.get(f, now) <= STALE_FIX_SECONDS]
+    if len(fresh_fixes) < len(verified_fixes):
+        state["verified_fixes"] = fresh_fixes
+        verified_fixes = fresh_fixes
     if len(verified_fixes) >= WARN_THRESHOLD:
         fix_list = ", ".join(os.path.basename(f) for f in verified_fixes[:3])
         print(

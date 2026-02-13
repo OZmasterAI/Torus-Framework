@@ -17,6 +17,12 @@ _STRIP_PATTERNS = [
     (re.compile(r'\b[0-9a-f]{7}\b'), '<git-short>'),                 # Git short hashes
     (re.compile(r'tmp[a-zA-Z0-9_]{6,10}'), '<tmp>'),                 # Temp directory suffixes
     (re.compile(r'<\w+ object at (?:0x[0-9a-fA-F]+|<hex>)>'), '<obj-repr>'),   # Python object repr
+    # Port numbers in connection errors
+    (re.compile(r':\d{2,5}(?=/|\s|$)'), ':<port>'),                              # :8080, :3000, :443
+    # Memory/size values
+    (re.compile(r'\b\d+\s*(?:bytes?|[KMG]B)\b', re.I), '<mem-size>'),           # 1024 bytes, 50MB
+    # Python traceback line references
+    (re.compile(r',\s*line\s+\d+'), ', line <n>'),                               # , line 42
     (re.compile(r'\d{2,}'), '<n>'),                                   # Multi-digit numbers
 ]
 

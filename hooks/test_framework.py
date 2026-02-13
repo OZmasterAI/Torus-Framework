@@ -7822,6 +7822,107 @@ test("v2.3.7: Same prompt immediately after is duplicate",
 
 cleanup_test_states()
 
+print("\n--- v2.3.8: Error Normalizer Patterns, Auto-Approve Expansion, Gate 6 Time Decay ---")
+
+# ── Feature 1: Error normalizer pattern expansion ──
+
+# Test 1: normalize_error strips port numbers
+from shared.error_normalizer import normalize_error
+_ne1 = normalize_error("ConnectionRefusedError: localhost:8080")
+test("v2.3.8: normalize_error strips port numbers",
+     ":<port>" in _ne1,
+     f"Expected :<port> in normalized output, got: {_ne1}")
+
+# Test 2: normalize_error strips memory sizes
+_ne2 = normalize_error("MemoryError: allocated 1024 bytes")
+test("v2.3.8: normalize_error strips memory sizes",
+     "<mem-size>" in _ne2,
+     f"Expected <mem-size> in normalized output, got: {_ne2}")
+
+# Test 3: normalize_error strips traceback line refs
+_ne3 = normalize_error("File foo.py, line 42, in main")
+test("v2.3.8: normalize_error strips line references",
+     "line <n>" in _ne3,
+     f"Expected 'line <n>' in normalized output, got: {_ne3}")
+
+# Test 4: Same error with different ports produces same fingerprint
+from shared.error_normalizer import error_signature
+_sig1 = error_signature("ConnectionRefusedError: localhost:8080")
+_sig2 = error_signature("ConnectionRefusedError: localhost:3000")
+test("v2.3.8: Different ports produce same error fingerprint",
+     _sig1[1] == _sig2[1],
+     f"Expected same hash, got {_sig1[1]} vs {_sig2[1]}")
+
+# ── Feature 2: Auto-approve safe command expansion ──
+
+# Test 5: SAFE_COMMAND_PREFIXES includes diagnostic commands
+sys.path.insert(0, os.path.dirname(__file__))
+from auto_approve import SAFE_COMMAND_PREFIXES
+test("v2.3.8: SAFE_COMMAND_PREFIXES includes find",
+     "find . -name" in SAFE_COMMAND_PREFIXES,
+     f"Expected 'find . -name' in prefixes")
+
+# Test 6: SAFE_COMMAND_PREFIXES includes grep -r
+test("v2.3.8: SAFE_COMMAND_PREFIXES includes grep -r",
+     "grep -r" in SAFE_COMMAND_PREFIXES,
+     "Expected 'grep -r' in prefixes")
+
+# Test 7: SAFE_COMMAND_PREFIXES includes pip commands
+test("v2.3.8: SAFE_COMMAND_PREFIXES includes pip list",
+     "pip list" in SAFE_COMMAND_PREFIXES,
+     "Expected 'pip list' in prefixes")
+
+# Test 8: SAFE_COMMAND_PREFIXES has grown from original ~17 entries
+test("v2.3.8: SAFE_COMMAND_PREFIXES has 25+ entries",
+     len(SAFE_COMMAND_PREFIXES) >= 25,
+     f"Expected >= 25 entries, got {len(SAFE_COMMAND_PREFIXES)}")
+
+# ── Feature 3: Gate 6 verified fix time decay ──
+
+# Test 9: STALE_FIX_SECONDS constant exists
+from gates.gate_06_save_fix import STALE_FIX_SECONDS
+test("v2.3.8: STALE_FIX_SECONDS is 1200 (20 min)",
+     STALE_FIX_SECONDS == 1200,
+     f"Expected 1200, got {STALE_FIX_SECONDS}")
+
+# Test 10: Gate 6 check() removes stale verified fixes from state
+from gates.gate_06_save_fix import check as _g6_check
+_g6_state = {
+    "verified_fixes": ["/tmp/old_fix.py", "/tmp/fresh_fix.py"],
+    "verification_timestamps": {
+        "/tmp/old_fix.py": time.time() - 2000,   # 33 min ago — stale
+        "/tmp/fresh_fix.py": time.time() - 60,    # 1 min ago — fresh
+    },
+    "gate6_warn_count": 0,
+}
+_g6_check("Edit", {"file_path": "/tmp/test.py"}, _g6_state)
+test("v2.3.8: Gate 6 removes stale verified fixes",
+     len(_g6_state["verified_fixes"]) == 1 and "/tmp/fresh_fix.py" in _g6_state["verified_fixes"],
+     f"Expected only fresh_fix.py, got {_g6_state['verified_fixes']}")
+
+# Test 11: Gate 6 keeps all fixes when none are stale
+_g6_state2 = {
+    "verified_fixes": ["/tmp/a.py", "/tmp/b.py"],
+    "verification_timestamps": {
+        "/tmp/a.py": time.time() - 300,  # 5 min ago — fresh
+        "/tmp/b.py": time.time() - 600,  # 10 min ago — fresh
+    },
+    "gate6_warn_count": 0,
+}
+_g6_check("Edit", {"file_path": "/tmp/test.py"}, _g6_state2)
+test("v2.3.8: Gate 6 keeps all fresh fixes",
+     len(_g6_state2["verified_fixes"]) == 2,
+     f"Expected 2 fixes, got {len(_g6_state2['verified_fixes'])}")
+
+# Test 12: Gate 6 source includes time-decay logic
+import inspect as _insp238
+_g6_source = _insp238.getsource(_g6_check)
+test("v2.3.8: Gate 6 source has verification_timestamps decay logic",
+     "verification_timestamps" in _g6_source and "STALE_FIX_SECONDS" in _g6_source,
+     "Expected verification_timestamps and STALE_FIX_SECONDS in Gate 6 check() source")
+
+cleanup_test_states()
+
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files
