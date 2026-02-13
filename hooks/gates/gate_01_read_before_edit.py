@@ -58,9 +58,11 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name == "Write" and not os.path.exists(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # Check if file was read this session
+    # Check if file was read this session (resolve symlinks to prevent bypass)
     files_read = state.get("files_read", [])
-    if file_path not in files_read:
+    file_path_real = os.path.realpath(file_path)
+    files_read_real = [os.path.realpath(f) for f in files_read]
+    if file_path_real not in files_read_real:
         return GateResult(
             blocked=True,
             message=f"[{GATE_NAME}] BLOCKED: You must Read '{file_path}' before editing it.",

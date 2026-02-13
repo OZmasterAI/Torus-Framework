@@ -3977,6 +3977,246 @@ else:
 
 
 # ─────────────────────────────────────────────────
+# Test: v2.0.8 Features (Session 27)
+# ─────────────────────────────────────────────────
+print("\n--- v2.0.8 Features (Session 27) ---")
+
+# Source paths for v2.0.8
+_memory_server_path_208 = os.path.join(os.path.dirname(__file__), "memory_server.py")
+_chain_skill_path_208 = os.path.expanduser("~/.claude/skills/chain/SKILL.md")
+_server_path_208 = os.path.expanduser("~/.claude/dashboard/server.py")
+_appjs_path_208 = os.path.expanduser("~/.claude/dashboard/static/app.js")
+_gate06_path_208 = os.path.join(os.path.dirname(__file__), "gates", "gate_06_save_fix.py")
+
+# 1. Memory health report tool exists
+if os.path.isfile(_memory_server_path_208):
+    with open(_memory_server_path_208) as _mf208:
+        _mem_src_208 = _mf208.read()
+
+    test("v2.0.8: Memory has memory_health_report tool",
+         "memory_health_report" in _mem_src_208,
+         "memory_health_report not found in memory_server.py")
+
+    # 2. Observation timeline tool exists
+    test("v2.0.8: Memory has timeline tool",
+         "timeline" in _mem_src_208,
+         "timeline not found in memory_server.py")
+else:
+    test("v2.0.8: Memory has memory_health_report tool", False, "memory_server.py not found")
+    test("v2.0.8: Memory has timeline tool", False, "memory_server.py not found")
+
+# 3. /chain skill exists
+test("v2.0.8: /chain skill exists",
+     os.path.isfile(_chain_skill_path_208),
+     "skills/chain/SKILL.md not found")
+
+# 4-5. Dashboard API endpoints
+if os.path.isfile(_server_path_208):
+    with open(_server_path_208) as _sf208:
+        _server_src_208 = _sf208.read()
+
+    test("v2.0.8: Dashboard has /api/memory-health endpoint",
+         "memory-health" in _server_src_208,
+         "memory-health not found in server.py")
+
+    test("v2.0.8: Dashboard has /api/observations/recent endpoint",
+         "observations/recent" in _server_src_208,
+         "observations/recent not found in server.py")
+else:
+    test("v2.0.8: Dashboard has /api/memory-health endpoint", False, "dashboard/server.py not found")
+    test("v2.0.8: Dashboard has /api/observations/recent endpoint", False, "dashboard/server.py not found")
+
+# 6-7. Dashboard visualizations
+if os.path.isfile(_appjs_path_208):
+    with open(_appjs_path_208) as _af208:
+        _appjs_src_208 = _af208.read()
+
+    test("v2.0.8: Dashboard has observation timeline visualization",
+         "timeline" in _appjs_src_208,
+         "timeline not found in app.js")
+
+    test("v2.0.8: Dashboard has memory health gauge",
+         ("health" in _appjs_src_208 and "gauge" in _appjs_src_208) or "health-big" in _appjs_src_208,
+         "health gauge not found in app.js")
+else:
+    test("v2.0.8: Dashboard has observation timeline visualization", False, "dashboard/static/app.js not found")
+    test("v2.0.8: Dashboard has memory health gauge", False, "dashboard/static/app.js not found")
+
+# 8. Gate 6 escalation logic
+if os.path.isfile(_gate06_path_208):
+    with open(_gate06_path_208) as _g06f208:
+        _gate06_src_208 = _g06f208.read()
+
+    test("v2.0.8: Gate 6 has escalation logic",
+         "gate6_warn_count" in _gate06_src_208,
+         "gate6_warn_count not found in gate_06_save_fix.py")
+else:
+    test("v2.0.8: Gate 6 has escalation logic", False, "gates/gate_06_save_fix.py not found")
+
+
+# ─────────────────────────────────────────────────
+# Test: Observation Compression Tests
+# ─────────────────────────────────────────────────
+print("\n--- Observation Compression Tests ---")
+
+# Import observation compression functions
+try:
+    import sys
+    _obs_module_path = os.path.join(os.path.dirname(__file__), "shared")
+    if _obs_module_path not in sys.path:
+        sys.path.insert(0, _obs_module_path)
+    from observation import compress_observation, _extract_command_name, _compute_priority
+    _obs_imported = True
+except ImportError:
+    _obs_imported = False
+    test("Observation: Import observation module", False, "Failed to import observation module")
+
+if _obs_imported:
+    # 1. Bash tool with error exit code → priority "high"
+    _bash_error_obs = compress_observation(
+        "Bash",
+        {"command": "python3 test.py"},
+        {"exit_code": 1, "stdout": "Error occurred", "stderr": ""},
+        "test-session"
+    )
+    test("Observation: Bash with error exit code has high priority",
+         _bash_error_obs["metadata"]["priority"] == "high",
+         f"Expected high priority, got {_bash_error_obs['metadata']['priority']}")
+
+    # 2. Edit tool → file_extension in context metadata
+    _edit_obs = compress_observation(
+        "Edit",
+        {"file_path": "/path/to/file.py", "old_string": "old", "new_string": "new"},
+        {"success": True},
+        "test-session"
+    )
+    _edit_context = json.loads(_edit_obs["metadata"]["context"]) if _edit_obs["metadata"]["context"] else {}
+    test("Observation: Edit tool has file_extension in context",
+         "file_extension" in _edit_context,
+         f"file_extension not found in context: {_edit_context}")
+
+    # 3. Bash with sudo prefix → cmd extraction strips "sudo"
+    _sudo_obs = compress_observation(
+        "Bash",
+        {"command": "sudo apt-get update"},
+        {"exit_code": 0, "stdout": "OK", "stderr": ""},
+        "test-session"
+    )
+    _sudo_context = json.loads(_sudo_obs["metadata"]["context"]) if _sudo_obs["metadata"]["context"] else {}
+    test("Observation: Bash sudo prefix stripped from cmd",
+         _sudo_context.get("cmd") == "apt-get",
+         f"Expected 'apt-get', got '{_sudo_context.get('cmd')}'")
+
+    # 4. Unknown tool → "uncategorized" in document
+    _unknown_obs = compress_observation(
+        "UnknownTool",
+        {"param": "value"},
+        {"result": "data"},
+        "test-session"
+    )
+    test("Observation: Unknown tool marked as uncategorized",
+         "uncategorized" in _unknown_obs["document"],
+         f"Expected 'uncategorized' in document, got '{_unknown_obs['document']}'")
+
+    # 5. Verify secrets scrubbing (check that scrub is imported)
+    _obs_py_path = os.path.join(os.path.dirname(__file__), "shared", "observation.py")
+    if os.path.isfile(_obs_py_path):
+        with open(_obs_py_path) as _obsf:
+            _obs_src = _obsf.read()
+        test("Observation: Imports scrub from secrets_filter",
+             "from shared.secrets_filter import scrub" in _obs_src,
+             "scrub import not found in observation.py")
+    else:
+        test("Observation: Imports scrub from secrets_filter", False, "observation.py not found")
+
+    # 6. Test _extract_command_name with env var prefix
+    _cmd_name_env = _extract_command_name("VAR=val OTHER=123 python3 script.py")
+    test("Observation: _extract_command_name strips env vars",
+         _cmd_name_env == "python3",
+         f"Expected 'python3', got '{_cmd_name_env}'")
+
+    # 7. Test _compute_priority edge case: exit_code="" should not be "high"
+    _priority_empty_exit = _compute_priority("Bash", False, "")
+    test("Observation: _compute_priority with empty exit_code not high",
+         _priority_empty_exit != "high",
+         f"Expected priority != 'high', got '{_priority_empty_exit}'")
+
+
+# ─────────────────────────────────────────────────
+# Test: Hot-Reload Tests
+# ─────────────────────────────────────────────────
+print("\n--- Hot-Reload Tests ---")
+
+_enforcer_path_reload = os.path.join(os.path.dirname(__file__), "enforcer.py")
+
+if os.path.isfile(_enforcer_path_reload):
+    with open(_enforcer_path_reload) as _ef_reload:
+        _enforcer_src_reload = _ef_reload.read()
+
+    # 1. Verify enforcer.py has RELOAD_CHECK_INTERVAL constant
+    test("Hot-Reload: enforcer.py has RELOAD_CHECK_INTERVAL",
+         "RELOAD_CHECK_INTERVAL" in _enforcer_src_reload,
+         "RELOAD_CHECK_INTERVAL not found in enforcer.py")
+
+    # 2. Verify enforcer.py has _check_and_reload_gates function
+    test("Hot-Reload: enforcer.py has _check_and_reload_gates function",
+         "_check_and_reload_gates" in _enforcer_src_reload,
+         "_check_and_reload_gates not found in enforcer.py")
+
+    # 3. Verify enforcer.py has _gate_mtimes dict
+    test("Hot-Reload: enforcer.py has _gate_mtimes dict",
+         "_gate_mtimes" in _enforcer_src_reload,
+         "_gate_mtimes not found in enforcer.py")
+
+    # 4. Verify enforcer.py has _get_gate_file_path function
+    test("Hot-Reload: enforcer.py has _get_gate_file_path function",
+         "_get_gate_file_path" in _enforcer_src_reload,
+         "_get_gate_file_path not found in enforcer.py")
+else:
+    test("Hot-Reload: enforcer.py has RELOAD_CHECK_INTERVAL", False, "enforcer.py not found")
+    test("Hot-Reload: enforcer.py has _check_and_reload_gates function", False, "enforcer.py not found")
+    test("Hot-Reload: enforcer.py has _gate_mtimes dict", False, "enforcer.py not found")
+    test("Hot-Reload: enforcer.py has _get_gate_file_path function", False, "enforcer.py not found")
+
+
+# ─────────────────────────────────────────────────
+# Test: Gate 10 Model Enforcement Tests
+# ─────────────────────────────────────────────────
+print("\n--- Gate 10 Model Enforcement Tests ---")
+
+_gate10_path = os.path.join(os.path.dirname(__file__), "gates", "gate_10_model_enforcement.py")
+
+if os.path.isfile(_gate10_path):
+    with open(_gate10_path) as _g10f:
+        _gate10_src = _g10f.read()
+
+    # 1. Verify gate_10 has RECOMMENDED_MODELS dict
+    test("Gate 10: has RECOMMENDED_MODELS dict",
+         "RECOMMENDED_MODELS" in _gate10_src,
+         "RECOMMENDED_MODELS not found in gate_10_model_enforcement.py")
+
+    # 2. Verify gate_10 RECOMMENDED_MODELS covers key agent types
+    test("Gate 10: RECOMMENDED_MODELS covers Explore, Plan, general-purpose, Bash",
+         all(agent in _gate10_src for agent in ["Explore", "Plan", "general-purpose", "Bash"]),
+         "Not all required agent types found in RECOMMENDED_MODELS")
+
+    # 3. Verify gate_10 has MODEL_SUGGESTIONS dict
+    test("Gate 10: has MODEL_SUGGESTIONS dict",
+         "MODEL_SUGGESTIONS" in _gate10_src,
+         "MODEL_SUGGESTIONS not found in gate_10_model_enforcement.py")
+
+    # 4. Verify gate_10 blocks Task calls without model parameter
+    test("Gate 10: blocks Task calls without model parameter",
+         "not model" in _gate10_src and "blocked=True" in _gate10_src,
+         "Blocking logic for missing model not found in gate_10")
+else:
+    test("Gate 10: has RECOMMENDED_MODELS dict", False, "gate_10_model_enforcement.py not found")
+    test("Gate 10: RECOMMENDED_MODELS covers Explore, Plan, general-purpose, Bash", False, "gate_10_model_enforcement.py not found")
+    test("Gate 10: has MODEL_SUGGESTIONS dict", False, "gate_10_model_enforcement.py not found")
+    test("Gate 10: blocks Task calls without model parameter", False, "gate_10_model_enforcement.py not found")
+
+
+# ─────────────────────────────────────────────────
 # Test: Gate Bypass Regression Tests
 # ─────────────────────────────────────────────────
 print("\n--- Gate Bypass Regression Tests ---")

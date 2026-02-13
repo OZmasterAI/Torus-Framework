@@ -1765,6 +1765,17 @@ def suggest_promotions(top_k: int = 5) -> dict:
     # Build a lookup from id -> candidate info
     id_to_candidate = {c["id"]: c for c in candidates}
 
+    # Batch fetch all candidate documents to avoid N+1 queries
+    id_to_doc = {}
+    try:
+        batch_docs = collection.get(ids=candidate_ids, include=["documents"])
+        if batch_docs and batch_docs.get("ids") and batch_docs.get("documents"):
+            for doc_id, doc_text in zip(batch_docs["ids"], batch_docs["documents"]):
+                if doc_text:
+                    id_to_doc[doc_id] = doc_text
+    except Exception:
+        pass
+
     # Cluster similar memories using ChromaDB cosine distance
     # For each candidate, find others within distance 0.3
     clusters = []  # list of sets of ids
@@ -1777,14 +1788,12 @@ def suggest_promotions(top_k: int = 5) -> dict:
 
         # Find similar entries to this one using its content
         try:
-            # Get full content for this entry
-            full = collection.get(ids=[cid], include=["documents"])
-            if not full or not full.get("documents") or not full["documents"][0]:
+            # Get full content for this entry from batch lookup
+            doc_text = id_to_doc.get(cid)
+            if not doc_text:
                 clustered.add(cid)
                 clusters.append({cid})
                 continue
-
-            doc_text = full["documents"][0]
             similar = collection.query(
                 query_texts=[doc_text],
                 n_results=min(50, count),

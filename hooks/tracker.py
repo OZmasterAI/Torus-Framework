@@ -27,6 +27,9 @@ CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "Read", "Glob", "Gr
 CAPTURE_QUEUE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
 MAX_QUEUE_LINES = 500
 
+# Debug logging (opt-in: only writes if file exists)
+TRACKER_DEBUG_LOG = os.path.join(os.path.dirname(__file__), ".tracker_debug.log")
+
 # MCP memory tools
 MEMORY_TOOL_PREFIXES = [
     "mcp__memory__",
@@ -39,6 +42,34 @@ def is_memory_tool(tool_name):
         if tool_name.startswith(prefix):
             return True
     return False
+
+
+def _log_debug(msg):
+    """Append debug message to tracker log (opt-in: only if file exists).
+
+    Never crashes. Caps file at 1000 lines (truncates from top).
+    """
+    try:
+        if not os.path.exists(TRACKER_DEBUG_LOG):
+            return  # Opt-in: only write if file exists
+
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_line = f"[{timestamp}] {msg}\n"
+
+        # Append the message
+        with open(TRACKER_DEBUG_LOG, "a") as f:
+            f.write(log_line)
+
+        # Cap at 1000 lines (truncate from top)
+        with open(TRACKER_DEBUG_LOG, "r") as f:
+            lines = f.readlines()
+
+        if len(lines) > 1000:
+            with open(TRACKER_DEBUG_LOG, "w") as f:
+                f.writelines(lines[-1000:])
+    except Exception:
+        pass  # Debug logging must never crash tracker
 
 
 def _deduplicate_error_window(state, pattern):
@@ -111,8 +142,8 @@ def _capture_observation(tool_name, tool_input, tool_response, session_id, state
         # Cap check every 50 calls
         if state.get("tool_call_count", 0) % 50 == 0:
             _cap_queue_file()
-    except Exception:
-        pass  # Silent failure — never crash PostToolUse
+    except Exception as e:
+        _log_debug(f"capture_observation failed: {e}")
 
 
 BROAD_TEST_COMMANDS = ["pytest", "python -m pytest", "npm test", "cargo test", "go test", "make test"]
@@ -183,8 +214,8 @@ def _cap_queue_file():
         with open(CAPTURE_QUEUE + ".tmp", "w") as f:
             f.writelines(kept)
         os.replace(CAPTURE_QUEUE + ".tmp", CAPTURE_QUEUE)
-    except Exception:
-        pass
+    except Exception as e:
+        _log_debug(f"cap_queue_file failed: {e}")
 
 
 def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_response=None):
@@ -220,8 +251,8 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                 # Cap at 50 recent entries
                 if len(recent) > 50:
                     state["recent_skills"] = recent[-50:]
-        except Exception:
-            pass  # Skill tracking must not crash tracker
+        except Exception as e:
+            _log_debug(f"skill tracking failed: {e}")
 
     # Track ExitPlanMode for Gate 12
     if tool_name == "ExitPlanMode":
@@ -314,8 +345,8 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                 pending = state.setdefault("pending_chain_ids", [])
                 if chain_id not in pending:
                     pending.append(chain_id)
-        except Exception:
-            pass  # Defensive: don't crash PostToolUse
+        except Exception as e:
+            _log_debug(f"record_attempt tracking failed: {e}")
 
     # Causal fix tracking: record_outcome
     if tool_name == "mcp__memory__record_outcome":
@@ -360,8 +391,8 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
 
             state["pending_chain_ids"] = []
             state["current_strategy_id"] = ""
-        except Exception:
-            pass
+        except Exception as e:
+            _log_debug(f"record_outcome tracking failed: {e}")
 
     # Causal fix tracking: query_fix_history
     if tool_name == "mcp__memory__query_fix_history":
@@ -385,8 +416,8 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                 sid = entry.get("strategy_id", "") if isinstance(entry, dict) else ""
                 if sid and sid not in bans:
                     bans[sid] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
-        except Exception:
-            pass
+        except Exception as e:
+            _log_debug(f"query_fix_history tracking failed: {e}")
 
     _capture_observation(tool_name, tool_input, tool_response, session_id, state)
 

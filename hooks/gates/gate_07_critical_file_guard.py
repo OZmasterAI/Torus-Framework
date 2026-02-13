@@ -40,6 +40,13 @@ CRITICAL_PATTERNS = [
     r"cron\.d/",                               # Cron directory
     r"\.pem$",                                 # PEM certificates/keys
     r"\.key$",                                 # Private key files
+    r"\.pgpass$",                           # PostgreSQL password file
+    r"\.aws/credentials$",                  # AWS credentials
+    r"\.docker/config\.json$",             # Docker auth config
+    r"sudoers\.d/",                         # Sudo rules directory
+    r"\.netrc$",                            # FTP/HTTP password file
+    r"\.npmrc$",                            # npm auth tokens
+    r"\.pypirc$",                           # PyPI auth tokens
 ]
 
 

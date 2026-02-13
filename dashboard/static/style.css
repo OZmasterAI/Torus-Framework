@@ -1121,6 +1121,25 @@ header {
     border-left-color: var(--cyan);
 }
 
+/* Toast severity levels */
+.toast-critical {
+    background: #dc3545;
+    color: #fff;
+    border-left-color: #a71d2a;
+}
+
+.toast-warning {
+    background: #fd7e14;
+    color: #1a1a2e;
+    border-left-color: #e8590c;
+}
+
+.toast-info {
+    background: #0d6efd;
+    color: #fff;
+    border-left-color: #0b5ed7;
+}
+
 @keyframes slideIn {
     from { opacity: 0; transform: translateX(20px); }
     to { opacity: 1; transform: translateX(0); }

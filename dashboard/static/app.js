@@ -154,21 +154,29 @@ function inlineMarkdown(escaped) {
 
 // ── Toast Notifications ────────────────────────────────
 
-function showToast(message, type = 'error') {
+function showToast(message, type = 'error', severity = null) {
     const container = document.getElementById('toast-container');
     if (!container) return;
 
+    // Default severity based on type if not provided
+    if (!severity) {
+        severity = type === 'error' ? 'critical' : 'info';
+    }
+
     const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
+    toast.className = `toast toast-${type} toast-${severity}`;
     toast.textContent = message;
 
     container.appendChild(toast);
 
-    // Auto-remove after 5s
+    // Auto-dismiss timeout based on severity
+    const timeout = severity === 'critical' ? 8000 :
+                    severity === 'warning' ? 5000 : 3000;
+
     setTimeout(() => {
         toast.style.opacity = '0';
         setTimeout(() => toast.remove(), 300);
-    }, 5000);
+    }, timeout);
 }
 
 // ── Health Panel ────────────────────────────────────────
