@@ -53,6 +53,32 @@ DEPLOY_PATTERNS = [
 ]
 
 
+def _detect_test_framework(state):
+    """Detect the test framework from recent test commands in state.
+
+    Returns a string like "pytest", "npm test", "cargo test", or "unknown".
+    """
+    # Check last test command if available
+    last_test_cmd = state.get("last_test_command", "")
+    if "pytest" in last_test_cmd or "python -m pytest" in last_test_cmd:
+        return "pytest"
+    if "npm test" in last_test_cmd:
+        return "npm test"
+    if "cargo test" in last_test_cmd:
+        return "cargo test"
+    if "go test" in last_test_cmd:
+        return "go test"
+    if "make test" in last_test_cmd:
+        return "make test"
+
+    # Fallback: check tool_stats for Bash commands (no specific command stored)
+    tool_stats = state.get("tool_stats", {})
+    if tool_stats.get("Bash", {}).get("count", 0) > 0:
+        return "pytest"  # Default suggestion for Python projects
+
+    return "unknown"
+
+
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
@@ -79,11 +105,13 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     elapsed = time.time() - last_test
 
     if elapsed > TEST_FRESHNESS_WINDOW:
+        framework = _detect_test_framework(state)
+        hint = f" Try: {framework}" if framework != "unknown" else ""
         minutes_ago = int(elapsed / 60) if last_test > 0 else None
         if minutes_ago:
-            msg = f"[{GATE_NAME}] BLOCKED: Tests last ran {minutes_ago} minutes ago. Run tests before deploying."
+            msg = f"[{GATE_NAME}] BLOCKED: Tests last ran {minutes_ago} minutes ago. Run tests before deploying.{hint}"
         else:
-            msg = f"[{GATE_NAME}] BLOCKED: No tests have been run this session. Run tests before deploying."
+            msg = f"[{GATE_NAME}] BLOCKED: No tests have been run this session. Run tests before deploying.{hint}"
         return GateResult(blocked=True, message=msg, gate_name=GATE_NAME)
 
     # Check if last test run actually passed

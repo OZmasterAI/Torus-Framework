@@ -312,6 +312,18 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
             if file_path not in state.get("files_read", []):
                 state["files_read"].append(file_path)
 
+    # Track files edited (Edit/Write) for dashboard visibility
+    if tool_name in ("Edit", "Write"):
+        file_path = tool_input.get("file_path", "")
+        if file_path:
+            file_path = os.path.normpath(file_path)
+            files_edited = state.setdefault("files_edited", [])
+            if file_path not in files_edited:
+                files_edited.append(file_path)
+            # Cap at 200 entries
+            if len(files_edited) > 200:
+                state["files_edited"] = files_edited[-200:]
+
     # Track memory queries
     if is_memory_tool(tool_name):
         state["memory_last_queried"] = time.time()
@@ -345,6 +357,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         command = tool_input.get("command", "")
         if any(kw in command for kw in ["pytest", "python -m pytest", "npm test", "cargo test", "go test"]):
             state["last_test_run"] = time.time()
+            state["last_test_command"] = command[:200]
             # Capture exit code from tool_response (Claude Code provides it there)
             exit_code = 0
             if tool_response is not None:

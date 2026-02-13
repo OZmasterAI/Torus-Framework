@@ -257,6 +257,48 @@ def _extract_recent_errors():
         return []
 
 
+def _extract_test_status():
+    """Extract last test run info from the most recent session state file.
+
+    Returns a dict with keys: framework, passed (bool), minutes_ago (int or None).
+    Returns None if no test info found.
+    """
+    try:
+        pattern = os.path.join(STATE_DIR, "state_*.json")
+        state_files = glob.glob(pattern)
+        if not state_files:
+            return None
+
+        most_recent = max(state_files, key=os.path.getmtime)
+        with open(most_recent) as f:
+            state_data = json.load(f)
+
+        last_test = state_data.get("last_test_run", 0)
+        if last_test == 0:
+            return None
+
+        elapsed = time.time() - last_test
+        minutes_ago = int(elapsed / 60)
+        exit_code = state_data.get("last_test_exit_code", None)
+        passed = (exit_code == 0) if exit_code is not None else None
+        command = state_data.get("last_test_command", "")
+
+        # Detect framework from command
+        framework = "unknown"
+        if "pytest" in command:
+            framework = "pytest"
+        elif "npm test" in command:
+            framework = "npm test"
+        elif "cargo test" in command:
+            framework = "cargo test"
+        elif "go test" in command:
+            framework = "go test"
+
+        return {"framework": framework, "passed": passed, "minutes_ago": minutes_ago}
+    except Exception:
+        return None
+
+
 def _extract_tool_activity():
     """Extract tool usage stats from the most recent session state file.
 
@@ -345,6 +387,9 @@ def main():
     # Extract tool activity from last session
     tool_call_count, tool_summary = _extract_tool_activity()
 
+    # Extract test status from last session
+    test_status = _extract_test_status()
+
     # Build dashboard
     dashboard = f"""
 +====================================================================+
@@ -375,6 +420,15 @@ def main():
         dashboard += "\n|  RECENT ERRORS (from last session):                               |"
         for err in recent_errors:
             dashboard += f"\n|    - {err:<61}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
+    # Test status from last session
+    if test_status:
+        status_icon = "PASS" if test_status["passed"] else ("FAIL" if test_status["passed"] is not None else "??")
+        fw = test_status["framework"]
+        mins = test_status["minutes_ago"]
+        test_line = f"Last test: {status_icon} ({fw}, {mins}m ago)"
+        dashboard += f"\n|  {test_line:<66}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
     # Tool activity from last session

@@ -6498,6 +6498,134 @@ test("v2.2.5: tool mix balanced ratios → 'balanced'",
      f"Expected 'balanced', got {mix12!r}")
 
 
+print("\n--- v2.2.6: Gate 3 Framework Detection, Boot Test Status, Tracker Files Edited ---")
+
+# ── Feature 1: Tracker files_edited tracking ──
+
+# Test 1: Edit tool adds file to files_edited list
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/foo226.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/foo226.py"})
+_s226_1 = load_state(session_id=MAIN_SESSION)
+test("v2.2.6: Edit adds file to files_edited",
+     "/tmp/foo226.py" in _s226_1.get("files_edited", []),
+     f"Expected /tmp/foo226.py in files_edited, got {_s226_1.get('files_edited', [])!r}")
+
+# Test 2: Write tool adds file to files_edited list
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Write", {"file_path": "/tmp/bar226.py"})
+_s226_2 = load_state(session_id=MAIN_SESSION)
+test("v2.2.6: Write adds file to files_edited",
+     "/tmp/bar226.py" in _s226_2.get("files_edited", []),
+     f"Expected /tmp/bar226.py in files_edited, got {_s226_2.get('files_edited', [])!r}")
+
+# Test 3: Duplicate files not added twice
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/dup226.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/dup226.py"})
+_s226_3 = load_state(session_id=MAIN_SESSION)
+test("v2.2.6: files_edited deduplicates",
+     _s226_3.get("files_edited", []).count("/tmp/dup226.py") == 1,
+     f"Expected 1 occurrence, got {_s226_3.get('files_edited', [])!r}")
+
+# Test 4: Read does NOT add to files_edited
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/read_only226.py"})
+_s226_4 = load_state(session_id=MAIN_SESSION)
+test("v2.2.6: Read does not add to files_edited",
+     "/tmp/read_only226.py" not in _s226_4.get("files_edited", []),
+     f"Expected Read not in files_edited, got {_s226_4.get('files_edited', [])!r}")
+
+# ── Feature 2: Gate 3 test framework detection ──
+
+from gates.gate_03_test_before_deploy import _detect_test_framework
+
+# Test 5: Detect pytest from last_test_command
+_fw_state5 = {"last_test_command": "pytest hooks/test_framework.py"}
+fw5 = _detect_test_framework(_fw_state5)
+test("v2.2.6: _detect_test_framework detects pytest",
+     fw5 == "pytest",
+     f"Expected 'pytest', got {fw5!r}")
+
+# Test 6: Detect npm test from last_test_command
+_fw_state6 = {"last_test_command": "npm test -- --coverage"}
+fw6 = _detect_test_framework(_fw_state6)
+test("v2.2.6: _detect_test_framework detects npm test",
+     fw6 == "npm test",
+     f"Expected 'npm test', got {fw6!r}")
+
+# Test 7: Detect cargo test
+_fw_state7 = {"last_test_command": "cargo test --release"}
+fw7 = _detect_test_framework(_fw_state7)
+test("v2.2.6: _detect_test_framework detects cargo test",
+     fw7 == "cargo test",
+     f"Expected 'cargo test', got {fw7!r}")
+
+# Test 8: Unknown framework when no test command
+_fw_state8 = {}
+fw8 = _detect_test_framework(_fw_state8)
+test("v2.2.6: _detect_test_framework returns 'unknown' for empty state",
+     fw8 == "unknown",
+     f"Expected 'unknown', got {fw8!r}")
+
+# ── Feature 2b: Tracker saves last_test_command ──
+
+# Test 9: Tracker saves last_test_command on test run
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
+_s226_9 = load_state(session_id=MAIN_SESSION)
+test("v2.2.6: Tracker saves last_test_command",
+     _s226_9.get("last_test_command") == "pytest tests/",
+     f"Expected 'pytest tests/', got {_s226_9.get('last_test_command')!r}")
+
+# ── Feature 3: Boot _extract_test_status ──
+
+from boot import _extract_test_status
+
+# Test 10: _extract_test_status returns None when no state files
+cleanup_test_states()
+ts10 = _extract_test_status()
+test("v2.2.6: _extract_test_status returns None with no state",
+     ts10 is None,
+     f"Expected None, got {ts10!r}")
+
+# Test 11: _extract_test_status reads test info from state file
+_test226_state_path = state_file_for(MAIN_SESSION)
+_test226_state_data = {
+    "last_test_run": time.time() - 120,
+    "last_test_exit_code": 0,
+    "last_test_command": "pytest hooks/test_framework.py",
+    "session_start": time.time() - 600,
+}
+with open(_test226_state_path, "w") as _f226:
+    json.dump(_test226_state_data, _f226)
+ts11 = _extract_test_status()
+test("v2.2.6: _extract_test_status reads passed test",
+     ts11 is not None and ts11["passed"] is True and ts11["framework"] == "pytest",
+     f"Expected passed=True framework=pytest, got {ts11!r}")
+cleanup_test_states()
+
+# Test 12: _extract_test_status detects failed test
+_test226_state_data2 = {
+    "last_test_run": time.time() - 300,
+    "last_test_exit_code": 1,
+    "last_test_command": "npm test",
+    "session_start": time.time() - 600,
+}
+with open(_test226_state_path, "w") as _f226:
+    json.dump(_test226_state_data2, _f226)
+ts12 = _extract_test_status()
+test("v2.2.6: _extract_test_status detects failed test",
+     ts12 is not None and ts12["passed"] is False and ts12["framework"] == "npm test",
+     f"Expected passed=False framework='npm test', got {ts12!r}")
+cleanup_test_states()
+
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
