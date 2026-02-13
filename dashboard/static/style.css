@@ -1180,6 +1180,27 @@ header {
 .rate-med { color: var(--yellow); font-weight: 700; }
 .rate-high { color: var(--red); font-weight: 700; }
 
+/* ── Gate Dependencies ───────────────────────────────── */
+
+.gate-deps-section {
+    margin-top: 16px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+}
+
+.gate-deps-section code {
+    background: rgba(0, 210, 255, 0.1);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--cyan);
+}
+
+.card.collapsed .gate-deps-section {
+    display: none !important;
+}
+
 /* ── Timeline Filters ────────────────────────────────── */
 
 .timeline-filters {
@@ -1287,4 +1308,117 @@ header {
 
 .text-muted {
     color: var(--text-muted);
+}
+
+/* ── Notification Badge ──────────────────────────────── */
+
+.notif-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    background: var(--red);
+    color: #fff;
+    cursor: pointer;
+    animation: notifPulse 2s ease-in-out infinite;
+    position: relative;
+}
+
+.notif-badge.hidden {
+    display: none;
+}
+
+@keyframes notifPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+/* ── Gate Row Flash (SSE gate_event) ─────────────────── */
+
+.gate-flash {
+    animation: gateFlash 1.5s ease;
+}
+
+@keyframes gateFlash {
+    0% { background: rgba(0, 210, 255, 0.3); }
+    100% { background: transparent; }
+}
+
+/* ── Panel Flash Error (SSE error_event) ─────────────── */
+
+.panel-flash-error {
+    animation: panelFlashError 2s ease;
+}
+
+@keyframes panelFlashError {
+    0% { box-shadow: 0 0 0 2px var(--red), var(--shadow); }
+    100% { box-shadow: var(--shadow); }
+}
+
+/* ── Toast Info Style ────────────────────────────────── */
+
+.toast-gate {
+    border-left-color: var(--cyan);
+}
+
+.toast-memory {
+    border-left-color: var(--green);
+}
+
+/* ── Plugin Cards ────────────────────────────────────── */
+
+.plugin-card {
+    padding: 8px 0;
+}
+
+.plugin-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.plugin-version {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+}
+
+.plugin-status {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.plugin-status-active {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--green);
+}
+
+.plugin-status-inactive {
+    background: rgba(100, 116, 139, 0.15);
+    color: var(--text-muted);
+}
+
+.plugin-status-error {
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--red);
+}
+
+.plugin-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 12px;
+    margin-top: 3px;
 }

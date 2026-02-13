@@ -74,11 +74,50 @@ def _get_output_text(tool_response) -> str:
     return str(tool_response) if tool_response else ""
 
 
+def _extract_command_name(command):
+    """Extract the first meaningful command name from a shell command string."""
+    if not command:
+        return ""
+    # Strip leading env vars, sudo, etc.
+    parts = command.strip().split()
+    skip_prefixes = {"sudo", "env", "nohup", "time", "nice"}
+    for part in parts:
+        if "=" in part:
+            continue  # env var assignment
+        if part in skip_prefixes:
+            continue
+        return part.split("/")[-1]  # basename
+    return parts[0] if parts else ""
+
+
+def _extract_file_extension(file_path):
+    """Extract file extension from a path."""
+    if not file_path:
+        return ""
+    import os
+    _, ext = os.path.splitext(file_path)
+    return ext
+
+
+def _compute_priority(tool_name, has_error, exit_code):
+    """Compute observation priority: high for errors, medium for edits, low for reads."""
+    if has_error or (exit_code and exit_code not in ("", "0")):
+        return "high"
+    if tool_name in ("Edit", "Write", "NotebookEdit"):
+        return "medium"
+    if tool_name in ("Read", "Glob", "Grep"):
+        return "low"
+    if tool_name == "Bash":
+        return "medium"
+    return "low"
+
+
 def compress_observation(tool_name, tool_input, tool_response, session_id):
     """Compress a tool call into a compact observation dict.
 
     Returns dict with 'document', 'metadata', and 'id' keys,
     ready for queue append or ChromaDB upsert.
+    Includes tool-specific context metadata and priority scoring.
     """
     now = time.time()
     timestamp = datetime.now().isoformat()
@@ -86,6 +125,7 @@ def compress_observation(tool_name, tool_input, tool_response, session_id):
     error_pattern = ""
     exit_code = ""
     command_hash = ""
+    context = {}
 
     if tool_name == "Bash":
         command = scrub(str(tool_input.get("command", ""))[:200])
@@ -95,6 +135,13 @@ def compress_observation(tool_name, tool_input, tool_response, session_id):
         has_error = bool(error_pattern) or (exit_code and exit_code not in ("", "0"))
         command_hash = fnv1a_hash(tool_input.get("command", ""))
         document = f"Bash: {command} → EXIT {exit_code} | {error_pattern} | {output_text}"
+        context = {
+            "exit_code": exit_code,
+            "cmd": _extract_command_name(tool_input.get("command", "")),
+            "cwd": tool_input.get("cwd", ""),
+        }
+        if error_pattern:
+            context["error_pattern"] = error_pattern
 
     elif tool_name == "Edit":
         file_path = tool_input.get("file_path", "")
@@ -102,24 +149,60 @@ def compress_observation(tool_name, tool_input, tool_response, session_id):
         # Approximate line range from old_string length
         lines_hint = old_str.count('\n') + 1 if old_str else 0
         document = f"Edit: {file_path} (~{lines_hint} lines changed)"
+        context = {
+            "file_path": file_path,
+            "file_extension": _extract_file_extension(file_path),
+        }
 
     elif tool_name == "Write":
         file_path = tool_input.get("file_path", "")
         content = tool_input.get("content", "")
         document = f"Write: {file_path} ({len(content)} chars)"
+        context = {
+            "file_path": file_path,
+            "file_extension": _extract_file_extension(file_path),
+        }
 
     elif tool_name == "NotebookEdit":
         notebook_path = tool_input.get("notebook_path", "")
         cell_number = tool_input.get("cell_number", "?")
         edit_mode = tool_input.get("edit_mode", "replace")
         document = f"NotebookEdit: {notebook_path} cell {cell_number} ({edit_mode})"
+        context = {
+            "file_path": notebook_path,
+            "file_extension": _extract_file_extension(notebook_path),
+        }
 
     elif tool_name == "UserPrompt":
         prompt_text = scrub(str(tool_input.get("prompt", ""))[:200])
         document = f"UserPrompt: {prompt_text}"
 
+    elif tool_name == "Read":
+        file_path = tool_input.get("file_path", "")
+        context = {
+            "file_path": file_path,
+            "file_extension": _extract_file_extension(file_path),
+        }
+        document = f"Read: {file_path}"
+
+    elif tool_name in ("Glob", "Grep"):
+        pattern = tool_input.get("pattern", "")
+        path = tool_input.get("path", "")
+        context = {
+            "pattern": pattern,
+            "path": path,
+        }
+        document = f"{tool_name}: {pattern} in {path or '.'}"
+
+    elif tool_name == "Skill":
+        skill_name = tool_input.get("skill", "") or tool_input.get("name", "")
+        context = {"skill_name": skill_name}
+        document = f"Skill: {skill_name}"
+
     else:
         document = f"{tool_name}: (uncategorized)"
+
+    priority = _compute_priority(tool_name, has_error, exit_code)
 
     # Generate deterministic ID
     id_source = f"{document}_{session_id}_{now}"
@@ -136,6 +219,8 @@ def compress_observation(tool_name, tool_input, tool_response, session_id):
             "error_pattern": error_pattern,
             "exit_code": exit_code,
             "command_hash": command_hash,
+            "priority": priority,
+            "context": json.dumps(context) if context else "",
         },
         "id": obs_id,
     }

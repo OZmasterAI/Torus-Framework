@@ -767,10 +767,29 @@ function renderComponentTab(tab) {
                 </div>`);
             break;
         case 'plugins':
-            items = (componentData.plugins || []).map(p =>
-                `<div class="component-item">
-                    <div class="component-name">${escapeHtml(p)}</div>
-                </div>`);
+            items = (componentData.plugins || []).map(p => {
+                // Support both old format (string) and new format (object)
+                if (typeof p === 'string') {
+                    return `<div class="component-item">
+                        <div class="component-name">${escapeHtml(p)}</div>
+                    </div>`;
+                }
+                const statusClass = p.status === 'active' ? 'plugin-status-active' :
+                                    p.status === 'error' ? 'plugin-status-error' : 'plugin-status-inactive';
+                const statusLabel = p.status || 'unknown';
+                return `<div class="component-item plugin-card">
+                    <div class="plugin-header">
+                        <span class="component-name">${escapeHtml(p.name)}</span>
+                        <span class="plugin-version">v${escapeHtml(p.version || '?')}</span>
+                        <span class="plugin-status ${statusClass}">${escapeHtml(statusLabel)}</span>
+                    </div>
+                    <div class="component-desc">${escapeHtml(p.description || '')}</div>
+                    <div class="plugin-meta">
+                        ${p.file_count ? `<span>${p.file_count} file${p.file_count !== 1 ? 's' : ''}</span>` : ''}
+                        ${p.marketplace ? `<span>from ${escapeHtml(p.marketplace)}</span>` : ''}
+                    </div>
+                </div>`;
+            });
             break;
     }
 
@@ -857,6 +876,41 @@ async function renderGatePerf() {
 
     // Also populate the gate filter dropdown for timeline
     populateGateFilterDropdown(gates.map(g => g.gate));
+}
+
+// ── Gate Dependencies ────────────────────────────────────
+
+async function renderGateDeps() {
+    const data = await apiFetch('/api/gate-deps');
+    if (!data) return;
+
+    const el = document.getElementById('gate-deps-content');
+    if (!el) return;
+    const deps = data.dependencies || {};
+    const gateNames = Object.keys(deps);
+
+    if (gateNames.length === 0) {
+        el.innerHTML = '<div class="no-data">No gate dependency data available.</div>';
+        return;
+    }
+
+    let html = '<table class="gate-perf-table"><thead><tr>' +
+        '<th>Gate</th><th>Reads</th><th>Writes</th>' +
+        '</tr></thead><tbody>';
+
+    for (const gate of gateNames) {
+        const d = deps[gate];
+        const reads = (d.reads || []).map(k => `<code>${escapeHtml(k)}</code>`).join(', ') || '<span class="text-muted">none</span>';
+        const writes = (d.writes || []).map(k => `<code class="color-orange">${escapeHtml(k)}</code>`).join(', ') || '<span class="text-muted">none</span>';
+        const shortName = gate.replace('gate_', 'G').replace(/_/g, ' ');
+        html += `<tr>
+            <td class="gate-perf-name" title="${escapeHtml(gate)}">${escapeHtml(shortName)}</td>
+            <td>${reads}</td>
+            <td>${writes}</td>
+        </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
 }
 
 function populateGateFilterDropdown(gateNames) {
@@ -1058,6 +1112,30 @@ async function populateDateSelects() {
 
 // ── SSE Connection ──────────────────────────────────────
 
+// ── Notification Badge ──────────────────────────────────
+
+let notificationCount = 0;
+
+function incrementNotificationBadge() {
+    notificationCount++;
+    const badge = document.getElementById('notification-badge');
+    if (badge) {
+        badge.textContent = notificationCount > 99 ? '99+' : notificationCount;
+        badge.classList.remove('hidden');
+    }
+}
+
+function clearNotificationBadge() {
+    notificationCount = 0;
+    const badge = document.getElementById('notification-badge');
+    if (badge) {
+        badge.textContent = '0';
+        badge.classList.add('hidden');
+    }
+}
+
+// ── SSE Connection ──────────────────────────────────────
+
 function connectSSE() {
     if (sseSource) {
         sseSource.close();
@@ -1089,6 +1167,71 @@ function connectSSE() {
                 fill.style.background = color;
                 document.getElementById('header-hp').textContent = `HP: ${data.health_pct}%`;
                 document.getElementById('header-hp').style.color = color;
+            } catch {}
+        });
+
+        // Handle gate_event: flash gate row, increment counter, show toast
+        sseSource.addEventListener('gate_event', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                const decision = data.decision || '';
+                const gate = data.gate || '';
+                const shortGate = gate.replace('GATE ', 'G');
+
+                // Show toast for blocks/warns
+                if (decision === 'block') {
+                    showToast(`Gate blocked: ${shortGate} [${data.tool || ''}]`, 'error');
+                } else if (decision === 'warn') {
+                    showToast(`Gate warning: ${shortGate}`, 'info');
+                }
+
+                // Increment notification badge
+                incrementNotificationBadge();
+
+                // Flash the matching gate row in the Gates panel
+                const gateRows = document.querySelectorAll('.gate-row');
+                for (const row of gateRows) {
+                    if (row.title && row.title.includes(gate)) {
+                        row.classList.add('gate-flash');
+                        setTimeout(() => row.classList.remove('gate-flash'), 1500);
+                        break;
+                    }
+                }
+            } catch {}
+        });
+
+        // Handle memory_event: show toast notification
+        sseSource.addEventListener('memory_event', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                const delta = data.delta || 1;
+                showToast(`Memory saved (${data.new_count} total, +${delta})`, 'info');
+                incrementNotificationBadge();
+
+                // Update memory total badge if visible
+                const memTotal = document.getElementById('memory-total');
+                if (memTotal) {
+                    memTotal.textContent = data.new_count;
+                }
+            } catch {}
+        });
+
+        // Handle error_event: highlight in Error Patterns panel
+        sseSource.addEventListener('error_event', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                showToast(`Error pressure increased: ${data.error_pressure} (+${data.delta})`, 'error');
+                incrementNotificationBadge();
+
+                // Flash the errors panel
+                const errPanel = document.getElementById('panel-errors');
+                if (errPanel) {
+                    errPanel.classList.add('panel-flash-error');
+                    setTimeout(() => errPanel.classList.remove('panel-flash-error'), 2000);
+                }
+
+                // Re-render errors panel
+                renderErrors();
             } catch {}
         });
 
@@ -1213,6 +1356,14 @@ function setupEventListeners() {
     document.getElementById('compare-btn').addEventListener('click', () => {
         compareSessions();
     });
+
+    // Notification badge - click to clear
+    const notifBadge = document.getElementById('notification-badge');
+    if (notifBadge) {
+        notifBadge.addEventListener('click', () => {
+            clearNotificationBadge();
+        });
+    }
 }
 
 // ── Theme Toggle ────────────────────────────────────────
@@ -1276,6 +1427,7 @@ async function init() {
         renderHealth(),
         renderGates(),
         renderGatePerf(),
+        renderGateDeps(),
         renderTimeline(),
         renderMemory(''),
         renderMemoryTags(),

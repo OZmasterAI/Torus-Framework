@@ -18,6 +18,7 @@
         </div>
         <div class="header-right">
             <span id="live-indicator" class="live-dot off" title="SSE Connection">&#9679;</span>
+            <span id="notification-badge" class="notif-badge hidden">0</span>
             <span id="header-session" class="header-session" title="Session count">S:--</span>
             <label class="auto-refresh-toggle" title="Auto-refresh panels every 30s">
                 <input type="checkbox" id="auto-refresh-cb" checked>
@@ -52,6 +53,12 @@
                     <button class="btn-sm" id="gate-perf-refresh">Refresh</button>
                 </h3>
                 <div id="gate-perf-content" class="panel-body">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+            <div class="gate-deps-section">
+                <h3 class="gate-perf-header">State Dependencies</h3>
+                <div id="gate-deps-content" class="panel-body">
                     <div class="loading">Loading...</div>
                 </div>
             </div>

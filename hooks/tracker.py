@@ -22,8 +22,8 @@ import time
 sys.path.insert(0, os.path.dirname(__file__))
 from shared.state import load_state, save_state
 
-# Auto-capture constants
-CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit"}
+# Auto-capture constants — expanded to include read/search/skill tools
+CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "Skill"}
 CAPTURE_QUEUE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
 MAX_QUEUE_LINES = 500
 
@@ -150,14 +150,39 @@ def _classify_verification_score(command):
 
 
 def _cap_queue_file():
-    """Truncate queue to last 300 lines if over 500."""
+    """Truncate queue with priority-aware retention if over 500 lines.
+
+    High-priority observations (errors) survive compaction longer than
+    low-priority ones (reads). Keeps all high-priority entries plus
+    the most recent medium/low entries to fill up to 300 lines.
+    """
     try:
         with open(CAPTURE_QUEUE, "r") as f:
             lines = f.readlines()
-        if len(lines) > MAX_QUEUE_LINES:
-            with open(CAPTURE_QUEUE + ".tmp", "w") as f:
-                f.writelines(lines[-300:])
-            os.replace(CAPTURE_QUEUE + ".tmp", CAPTURE_QUEUE)
+        if len(lines) <= MAX_QUEUE_LINES:
+            return
+
+        # Separate by priority
+        high, rest = [], []
+        for line in lines:
+            try:
+                obs = json.loads(line)
+                meta = obs.get("metadata", {})
+                if meta.get("priority") == "high":
+                    high.append(line)
+                else:
+                    rest.append(line)
+            except (json.JSONDecodeError, TypeError):
+                rest.append(line)
+
+        # Keep all high-priority (capped at 150), fill rest from recent
+        high = high[-150:]
+        remaining_budget = 300 - len(high)
+        kept = high + rest[-max(remaining_budget, 50):]
+
+        with open(CAPTURE_QUEUE + ".tmp", "w") as f:
+            f.writelines(kept)
+        os.replace(CAPTURE_QUEUE + ".tmp", CAPTURE_QUEUE)
     except Exception:
         pass
 

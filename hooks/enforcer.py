@@ -76,14 +76,142 @@ def is_always_allowed(tool_name):
     return tool_name in ALWAYS_ALLOWED_TOOLS or is_memory_tool(tool_name)
 
 
+# ── Gate Dependency Graph ────────────────────────────────────────
+# Documents which state keys each gate reads/writes, useful for
+# debugging state interactions and dashboard visualization.
+
+GATE_DEPENDENCIES = {
+    "gate_01_read_before_edit": {
+        "reads": ["files_read"],
+        "writes": [],
+    },
+    "gate_02_no_destroy": {
+        "reads": [],
+        "writes": [],
+    },
+    "gate_03_test_before_deploy": {
+        "reads": ["last_test_run", "last_test_exit_code"],
+        "writes": [],
+    },
+    "gate_04_memory_first": {
+        "reads": ["memory_last_queried"],
+        "writes": [],
+    },
+    "gate_05_proof_before_fixed": {
+        "reads": ["pending_verification", "verification_scores"],
+        "writes": [],
+    },
+    "gate_06_save_fix": {
+        "reads": ["gate6_warn_count", "verified_fixes", "unlogged_errors", "error_pattern_counts", "pending_chain_ids"],
+        "writes": ["gate6_warn_count"],
+    },
+    "gate_07_critical_file_guard": {
+        "reads": ["memory_last_queried"],
+        "writes": [],
+    },
+    "gate_08_temporal": {
+        "reads": ["session_start", "memory_last_queried"],
+        "writes": [],
+    },
+    "gate_09_strategy_ban": {
+        "reads": ["current_strategy_id", "active_bans", "successful_strategies"],
+        "writes": [],
+    },
+    "gate_10_model_enforcement": {
+        "reads": [],
+        "writes": [],
+    },
+    "gate_11_rate_limit": {
+        "reads": ["tool_call_count", "session_start"],
+        "writes": [],
+    },
+    "gate_12_plan_mode_save": {
+        "reads": ["last_exit_plan_mode", "memory_last_queried"],
+        "writes": [],
+    },
+}
+
+
+def get_gate_dependencies():
+    """Return the full gate dependency graph.
+
+    Returns a dict mapping gate names to their state reads/writes.
+    """
+    return GATE_DEPENDENCIES
+
+
+# ── Hot-Reload State ─────────────────────────────────────────────
+# Track gate module file modification times for live reloading.
+# Only check filesystem every RELOAD_CHECK_INTERVAL seconds.
+
+RELOAD_CHECK_INTERVAL = 30  # seconds between mtime checks
+_gate_mtimes = {}           # module_name -> last known mtime
+_last_reload_check = 0.0    # timestamp of last mtime scan
+
+
+def _get_gate_file_path(module_name):
+    """Convert dotted module name to file path relative to hooks dir."""
+    hooks_dir = os.path.dirname(__file__)
+    parts = module_name.split(".")
+    return os.path.join(hooks_dir, *parts) + ".py"
+
+
+def _check_and_reload_gates():
+    """Check if any gate files have been modified and reload them.
+
+    Only checks filesystem every RELOAD_CHECK_INTERVAL seconds.
+    Logs reloaded gates to audit trail.
+    """
+    global _last_reload_check, _gate_mtimes
+
+    now = time.time()
+    if now - _last_reload_check < RELOAD_CHECK_INTERVAL:
+        return  # Too soon to check again
+
+    _last_reload_check = now
+
+    for module_name in GATE_MODULES:
+        try:
+            filepath = _get_gate_file_path(module_name)
+            if not os.path.isfile(filepath):
+                continue
+            current_mtime = os.path.getmtime(filepath)
+            stored_mtime = _gate_mtimes.get(module_name)
+
+            if stored_mtime is not None and current_mtime > stored_mtime:
+                # File has changed — reload the module
+                if module_name in sys.modules:
+                    mod = sys.modules[module_name]
+                    importlib.reload(mod)
+                    log_gate_decision(
+                        module_name, "reload", "pass",
+                        f"Gate reloaded (file modified, mtime {current_mtime:.0f})",
+                        "",
+                    )
+
+            _gate_mtimes[module_name] = current_mtime
+        except Exception:
+            pass  # Reload failures are non-fatal
+
+
 def load_gates():
-    """Dynamically load all available gate modules."""
+    """Dynamically load all available gate modules, with hot-reload support."""
+    # Check for modified gate files before loading
+    _check_and_reload_gates()
+
     gates = []
     for module_name in GATE_MODULES:
         try:
             mod = importlib.import_module(module_name)
             if hasattr(mod, "check"):
                 gates.append(mod)
+                # Record initial mtime if not yet tracked
+                if module_name not in _gate_mtimes:
+                    try:
+                        filepath = _get_gate_file_path(module_name)
+                        _gate_mtimes[module_name] = os.path.getmtime(filepath)
+                    except OSError:
+                        pass
         except ImportError as e:
             # Non-Tier-1 gate: log warning so missing gates are visible
             # Tier 1 missing gates are caught by the check below (fail-closed)

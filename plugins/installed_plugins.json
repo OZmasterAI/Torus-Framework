@@ -3,32 +3,35 @@
   "plugins": {
     "pyright-lsp@claude-plugins-official": [
       {
-        "scope": "user",
+        "scope": "project",
         "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0",
         "version": "1.0.0",
-        "installedAt": "2026-02-12T23:41:23.465Z",
-        "lastUpdated": "2026-02-12T23:41:23.465Z",
-        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
+        "installedAt": "2026-02-13T01:18:50.368Z",
+        "lastUpdated": "2026-02-13T01:35:16.632Z",
+        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3",
+        "projectPath": "/home/crab"
       }
     ],
     "rust-analyzer-lsp@claude-plugins-official": [
       {
-        "scope": "user",
+        "scope": "project",
         "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0",
         "version": "1.0.0",
-        "installedAt": "2026-02-12T23:41:27.064Z",
-        "lastUpdated": "2026-02-12T23:41:27.064Z",
-        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
+        "installedAt": "2026-02-13T01:35:16.632Z",
+        "lastUpdated": "2026-02-13T01:35:16.632Z",
+        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3",
+        "projectPath": "/home/crab"
       }
     ],
     "typescript-lsp@claude-plugins-official": [
       {
-        "scope": "user",
+        "scope": "project",
         "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/typescript-lsp/1.0.0",
         "version": "1.0.0",
-        "installedAt": "2026-02-12T23:41:29.903Z",
-        "lastUpdated": "2026-02-12T23:41:29.903Z",
-        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
+        "installedAt": "2026-02-13T01:35:16.632Z",
+        "lastUpdated": "2026-02-13T01:35:16.632Z",
+        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3",
+        "projectPath": "/home/crab"
       }
     ]
   }

@@ -704,8 +704,49 @@ async def api_components(request):
                     pass
                 agents.append({"file": f, "name": f.replace(".md", ""), "description": desc})
 
-    # Plugins
-    plugins = list(settings.get("enabledPlugins", {}).keys())
+    # Plugins — read installed_plugins.json for rich plugin discovery
+    plugins = []
+    plugins_dir = os.path.join(CLAUDE_DIR, "plugins")
+    installed_plugins_file = os.path.join(plugins_dir, "installed_plugins.json")
+    installed_data = _read_json(installed_plugins_file)
+    if installed_data and isinstance(installed_data.get("plugins"), dict):
+        for plugin_key, installs in installed_data["plugins"].items():
+            # plugin_key is like "pyright-lsp@claude-plugins-official"
+            name = plugin_key.split("@")[0] if "@" in plugin_key else plugin_key
+            marketplace = plugin_key.split("@")[1] if "@" in plugin_key else ""
+            for install_info in (installs if isinstance(installs, list) else [installs]):
+                version = install_info.get("version", "unknown")
+                install_path = install_info.get("installPath", "")
+                scope = install_info.get("scope", "unknown")
+
+                # Determine status by checking if install path exists
+                status = "inactive"
+                file_count = 0
+                if install_path and os.path.isdir(install_path):
+                    status = "active"
+                    try:
+                        file_count = sum(
+                            1 for f in os.listdir(install_path)
+                            if os.path.isfile(os.path.join(install_path, f))
+                        )
+                    except OSError:
+                        status = "error"
+                elif install_path:
+                    status = "error"  # path specified but doesn't exist
+
+                plugins.append({
+                    "name": name,
+                    "version": version,
+                    "status": status,
+                    "description": f"{scope} plugin from {marketplace}" if marketplace else scope,
+                    "file_count": file_count,
+                    "marketplace": marketplace,
+                })
+    else:
+        # Fallback to old method
+        plugins = [{"name": p, "version": "unknown", "status": "active",
+                     "description": "", "file_count": 0, "marketplace": ""}
+                    for p in settings.get("enabledPlugins", {}).keys()]
 
     return JSONResponse({
         "gates": gates,
@@ -784,6 +825,26 @@ async def api_errors(request):
         "tool_call_count": state.get("tool_call_count", 0),
         "session_id": state.get("_session_id", ""),
     })
+
+
+async def api_gate_deps(request):
+    """Gate dependency graph: which state keys each gate reads/writes."""
+    try:
+        import importlib
+        import sys as _sys
+        _hooks_in_path = HOOKS_DIR in _sys.path
+        if not _hooks_in_path:
+            _sys.path.insert(0, HOOKS_DIR)
+        try:
+            import enforcer as _enforcer_mod
+            importlib.reload(_enforcer_mod)
+            deps = _enforcer_mod.get_gate_dependencies()
+        finally:
+            if not _hooks_in_path:
+                _sys.path.remove(HOOKS_DIR)
+        return JSONResponse({"dependencies": deps})
+    except Exception as e:
+        return JSONResponse({"error": str(e), "dependencies": {}})
 
 
 async def api_gate_perf(request):
@@ -908,7 +969,13 @@ async def api_history_detail(request):
 
 
 async def api_stream(request):
-    """SSE endpoint: streams new audit events + periodic health pings."""
+    """SSE endpoint: streams new audit events + periodic health pings.
+
+    Also streams:
+    - gate_event: real-time gate decisions from audit log
+    - memory_event: when new memories are saved (count changes)
+    - error_event: when error pressure changes
+    """
     if not SSE_AVAILABLE:
         return PlainTextResponse("SSE not available (sse-starlette not installed)", status_code=503)
 
@@ -919,6 +986,11 @@ async def api_stream(request):
         file_pos = 0
         if os.path.isfile(filepath):
             file_pos = os.path.getsize(filepath)
+
+        # Track memory count for change detection
+        last_mem_count = get_memory_count()
+        # Track error pressure for change detection
+        last_error_pressure = get_error_pressure()
 
         ping_counter = 0
         while True:
@@ -949,8 +1021,54 @@ async def api_stream(request):
                                         "event": "audit",
                                         "data": json.dumps(parsed),
                                     }
+                                    # Also emit gate_event for gate decisions
+                                    if parsed.get("type") == "gate":
+                                        yield {
+                                            "event": "gate_event",
+                                            "data": json.dumps({
+                                                "gate": parsed.get("gate", ""),
+                                                "decision": parsed.get("decision", ""),
+                                                "tool": parsed.get("tool", ""),
+                                                "reason": parsed.get("reason", ""),
+                                                "timestamp": parsed.get("timestamp", ""),
+                                            }),
+                                        }
                     except OSError:
                         pass
+
+            # Check for memory count changes (every loop iteration)
+            try:
+                current_mem_count = get_memory_count()
+                if current_mem_count > last_mem_count:
+                    yield {
+                        "event": "memory_event",
+                        "data": json.dumps({
+                            "new_count": current_mem_count,
+                            "previous_count": last_mem_count,
+                            "delta": current_mem_count - last_mem_count,
+                            "ts": time.time(),
+                        }),
+                    }
+                    last_mem_count = current_mem_count
+            except Exception:
+                pass
+
+            # Check for error pressure changes
+            try:
+                current_error_pressure = get_error_pressure()
+                if current_error_pressure > last_error_pressure:
+                    yield {
+                        "event": "error_event",
+                        "data": json.dumps({
+                            "error_pressure": current_error_pressure,
+                            "previous": last_error_pressure,
+                            "delta": current_error_pressure - last_error_pressure,
+                            "ts": time.time(),
+                        }),
+                    }
+                    last_error_pressure = current_error_pressure
+            except Exception:
+                pass
 
             # Health ping every 10 seconds (5 loops x 2s)
             ping_counter += 1
@@ -988,6 +1106,7 @@ routes = [
     Route("/api/audit/dates", api_audit_dates),
     Route("/api/gates", api_gates),
     Route("/api/gate-perf", api_gate_perf),
+    Route("/api/gate-deps", api_gate_deps),
     Route("/api/audit/query", api_audit_query),
     Route("/api/history/compare", api_history_compare),
     Route("/api/memories", api_memories_search),

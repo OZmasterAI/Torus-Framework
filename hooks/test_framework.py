@@ -1692,8 +1692,8 @@ _pre_count = len(_lines)
 run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/should_not_capture.py"})
 with open(_queue_file, "r") as f:
     _lines_after = f.readlines()
-test("Integration: Read NOT captured (low signal)",
-     len(_lines_after) == _pre_count,
+test("Integration: Read captured (now in CAPTURABLE_TOOLS)",
+     len(_lines_after) == _pre_count + 1,
      f"before={_pre_count}, after={len(_lines_after)}")
 
 # Restore queue
@@ -3425,9 +3425,9 @@ if _dash_imported:
     test("Dashboard: malformed audit line → None",
          _dash_bad is None)
 
-    # 11. Route count matches plan (21 API + 1 static mount = 22)
-    test("Dashboard: 22 routes configured",
-         len(_dash_mod.routes) == 22,
+    # 11. Route count matches plan (22 API + 1 static mount = 23)
+    test("Dashboard: 23 routes configured",
+         len(_dash_mod.routes) == 23,
          f"got {len(_dash_mod.routes)}")
 
     # 12. HTML has all 7 panels
@@ -3803,6 +3803,92 @@ test("v2.0.5: state.py has migrate function for state versioning",
 test("v2.0.5: memory_server.py has cluster_knowledge function",
      "cluster_knowledge" in _ms_src_204,
      "cluster_knowledge not found in memory_server.py")
+
+# ─────────────────────────────────────────────────
+# Test: v2.0.6 Features (Session 27)
+# ─────────────────────────────────────────────────
+print("\n--- v2.0.6 Features (Session 27) ---")
+
+# Source paths
+_g05_path = os.path.expanduser("~/.claude/hooks/gates/gate_05_proof_before_fixed.py")
+_g06_path = os.path.expanduser("~/.claude/hooks/gates/gate_06_save_fix.py")
+_g09_path = os.path.expanduser("~/.claude/hooks/gates/gate_09_strategy_ban.py")
+_tracker_path_206 = os.path.join(os.path.dirname(__file__), "tracker.py")
+_ms_path_206 = os.path.join(os.path.dirname(__file__), "memory_server.py")
+_profile_path = os.path.expanduser("~/.claude/skills/profile/SKILL.md")
+_analyze_path = os.path.expanduser("~/.claude/skills/analyze-errors/SKILL.md")
+
+# Read gate sources
+if os.path.isfile(_g05_path):
+    with open(_g05_path) as _g05f:
+        _g05_src = _g05f.read()
+
+    # 1. Gate 5 verification scoring
+    test("v2.0.6: Gate 5 has verification scoring",
+         "verification_score" in _g05_src or "score" in _g05_src,
+         "verification_score/score not found in gate_05")
+else:
+    test("v2.0.6: Gate 5 has verification scoring", False, "gate_05 file not found")
+
+# 2. Gate 5 scoring in tracker
+if os.path.isfile(_tracker_path_206):
+    with open(_tracker_path_206) as _tf206:
+        _tracker_src_206 = _tf206.read()
+
+    test("v2.0.6: Tracker has scoring logic",
+         any(s in _tracker_src_206 for s in ["100", "70", "50"]),
+         "point values (100/70/50) not found in tracker.py")
+else:
+    test("v2.0.6: Tracker has scoring logic", False, "tracker.py not found")
+
+# 3. Gate 6 escalation
+if os.path.isfile(_g06_path):
+    with open(_g06_path) as _g06f:
+        _g06_src = _g06f.read()
+
+    test("v2.0.6: Gate 6 has escalation",
+         "gate6_warn_count" in _g06_src or "escalat" in _g06_src,
+         "gate6_warn_count/escalat not found in gate_06")
+else:
+    test("v2.0.6: Gate 6 has escalation", False, "gate_06 file not found")
+
+# 4. Gate 9 retry budget
+if os.path.isfile(_g09_path):
+    with open(_g09_path) as _g09f:
+        _g09_src = _g09f.read()
+
+    test("v2.0.6: Gate 9 has retry budget",
+         "fail_count" in _g09_src or "retry" in _g09_src,
+         "fail_count/retry not found in gate_09")
+
+    # 5. Gate 9 successful strategies
+    test("v2.0.6: Gate 9 tracks successes",
+         "successful_strategies" in _g09_src,
+         "successful_strategies not found in gate_09")
+else:
+    test("v2.0.6: Gate 9 has retry budget", False, "gate_09 file not found")
+    test("v2.0.6: Gate 9 tracks successes", False, "gate_09 file not found")
+
+# 6. Tag inference in memory server
+if os.path.isfile(_ms_path_206):
+    with open(_ms_path_206) as _mf206:
+        _ms_src_206 = _mf206.read()
+
+    test("v2.0.6: Memory has tag inference",
+         any(s in _ms_src_206 for s in ["cooccur", "co_occur", "tag_cooccurrence", "rebuild_tag_index"]),
+         "tag inference functions not found in memory_server.py")
+else:
+    test("v2.0.6: Memory has tag inference", False, "memory_server.py not found")
+
+# 7. /profile skill exists
+test("v2.0.6: /profile skill exists",
+     os.path.isfile(_profile_path),
+     "skills/profile/SKILL.md not found")
+
+# 8. /analyze-errors skill exists
+test("v2.0.6: /analyze-errors skill exists",
+     os.path.isfile(_analyze_path),
+     "skills/analyze-errors/SKILL.md not found")
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files
