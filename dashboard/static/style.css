@@ -1855,3 +1855,11 @@ header {
 .severity-warn {
     border-left: 2px solid #fbbf24;
 }
+
+/* ── Tool Stats ──────────────────────────────────────── */
+.tool-stat-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.tool-stat-name { width: 80px; font-size: 12px; font-family: var(--font-mono); color: var(--text-primary); }
+.tool-stat-bar-bg { flex: 1; height: 14px; background: var(--bg-primary); border-radius: 3px; overflow: hidden; }
+.tool-stat-bar { height: 100%; background: var(--cyan); border-radius: 3px; transition: width 0.3s; }
+.tool-stat-count { width: 40px; text-align: right; font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
+.tool-stat-total { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }

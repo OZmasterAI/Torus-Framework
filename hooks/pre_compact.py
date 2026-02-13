@@ -51,6 +51,7 @@ def main():
     active_bans = state.get("active_bans", [])
     gate6_warn_count = state.get("gate6_warn_count", 0)
     error_windows = state.get("error_windows", [])
+    tool_stats = state.get("tool_stats", {})
 
     # Log snapshot to stderr (visible in Claude Code hook output)
     error_patterns_summary = f"{len(error_pattern_counts)} patterns" if error_pattern_counts else "none"
@@ -102,6 +103,11 @@ def main():
         if recent_errors > 0:
             document_parts.append(f"Recent errors (5m): {recent_errors}")
 
+    if tool_stats:
+        top_tools = sorted(tool_stats.items(), key=lambda x: x[1].get("count", 0), reverse=True)[:3]
+        tools_summary = ", ".join(f"{tool}:{stats.get('count', 0)}" for tool, stats in top_tools)
+        document_parts.append(f"Top tools: {tools_summary}")
+
     document = ". ".join(document_parts)
 
     timestamp = datetime.now().isoformat()
@@ -119,6 +125,7 @@ def main():
         "edit_rate": edit_rate,
         "velocity_tier": velocity_tier,
         "session_elapsed_seconds": round(session_elapsed, 0),
+        "tool_stats_snapshot": {k: v.get("count", 0) for k, v in tool_stats.items()} if tool_stats else {},
     }
 
     observation = {

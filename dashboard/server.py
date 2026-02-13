@@ -86,6 +86,20 @@ def _read_json(path):
         return None
 
 
+def _read_latest_state():
+    """Read the most recent session state file."""
+    state_dir = HOOKS_DIR
+    files = globmod.glob(os.path.join(state_dir, "state_*.json"))
+    if not files:
+        return None
+    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    try:
+        with open(files[0]) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def count_gates():
     if not os.path.isdir(GATES_DIR):
         return 0
@@ -1016,6 +1030,19 @@ async def api_errors(request):
     })
 
 
+async def api_tool_stats(request):
+    """Return per-tool call statistics from current session state."""
+    state = _read_latest_state()
+    tool_stats = state.get("tool_stats", {}) if state else {}
+    tool_call_count = state.get("tool_call_count", 0) if state else 0
+    # Sort by count descending
+    sorted_stats = sorted(tool_stats.items(), key=lambda x: x[1].get("count", 0), reverse=True)
+    return JSONResponse({
+        "tool_stats": {name: info for name, info in sorted_stats},
+        "total_calls": tool_call_count,
+    })
+
+
 async def api_gate_deps(request):
     """Gate dependency graph: which state keys each gate reads/writes."""
     try:
@@ -1309,6 +1336,7 @@ routes = [
     Route("/api/components", api_components),
     Route("/api/skill-usage", api_skill_usage),
     Route("/api/errors", api_errors),
+    Route("/api/tool-stats", api_tool_stats),
     Route("/api/history", api_history),
     Route("/api/history/{filename}", api_history_detail),
     Route("/api/stream", api_stream),

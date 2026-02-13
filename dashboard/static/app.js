@@ -944,6 +944,38 @@ async function renderErrors() {
     el.innerHTML = html;
 }
 
+// ── Tool Stats ──────────────────────────────────────────
+
+async function renderToolStats() {
+    const el = document.getElementById('tool-stats-content');
+    if (!el) return;
+    try {
+        const resp = await fetch('/api/tool-stats');
+        const data = await resp.json();
+        const stats = data.tool_stats || {};
+        const entries = Object.entries(stats);
+        if (entries.length === 0) {
+            el.innerHTML = '<div class="empty-state">No tool data yet</div>';
+            return;
+        }
+        const maxCount = Math.max(...entries.map(([,v]) => v.count || 0));
+        const html = entries.map(([name, info]) => {
+            const count = info.count || 0;
+            const pct = maxCount > 0 ? (count / maxCount * 100) : 0;
+            return `<div class="tool-stat-row">
+                <span class="tool-stat-name">${escapeHtml(name)}</span>
+                <div class="tool-stat-bar-bg">
+                    <div class="tool-stat-bar" style="width:${pct}%"></div>
+                </div>
+                <span class="tool-stat-count">${count}</span>
+            </div>`;
+        }).join('');
+        el.innerHTML = `<div class="tool-stat-total">Total: ${data.total_calls} calls</div>${html}`;
+    } catch (e) {
+        el.innerHTML = '<div class="error-state">Failed to load</div>';
+    }
+}
+
 // ── Component Inventory ─────────────────────────────────
 
 async function renderComponents() {
@@ -1654,6 +1686,7 @@ async function refreshAll() {
         renderTimeline(),
         renderGatePerf(),
         renderErrors(),
+        renderToolStats(),
     ]);
 }
 
@@ -1784,6 +1817,7 @@ async function init() {
         renderMemoryHealth(),
         renderObservations(),
         renderErrors(),
+        renderToolStats(),
         renderComponents(),
         renderHistory(),
         populateDateSelects(),

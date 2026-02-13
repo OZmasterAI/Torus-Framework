@@ -5879,6 +5879,89 @@ test("v2.1.9: audit_log.py stores severity in log entry",
      "Expected severity stored in audit log entry")
 
 
+# ── v2.2.0 Features ──────────────────────────────────
+print("\n--- v2.2.0 Features ---")
+
+# Test 1: Dashboard tool stats API - source checks
+dashboard_server_path = "/home/crab/.claude/dashboard/server.py"
+try:
+    with open(dashboard_server_path) as f:
+        server_content = f.read()
+except FileNotFoundError:
+    server_content = ""
+
+test("v2.2.0: server.py contains api_tool_stats function",
+     "def api_tool_stats" in server_content,
+     "Expected api_tool_stats function in server.py")
+
+test("v2.2.0: server.py contains /api/tool-stats route",
+     '"/api/tool-stats"' in server_content,
+     "Expected /api/tool-stats route in server.py")
+
+test("v2.2.0: server.py contains _read_latest_state helper",
+     "def _read_latest_state" in server_content,
+     "Expected _read_latest_state function in server.py")
+
+# Test 2: Dashboard tool stats UI - source checks
+dashboard_app_path = "/home/crab/.claude/dashboard/static/app.js"
+try:
+    with open(dashboard_app_path) as f:
+        app_content = f.read()
+except FileNotFoundError:
+    app_content = ""
+
+test("v2.2.0: app.js contains renderToolStats function",
+     "function renderToolStats" in app_content or "async function renderToolStats" in app_content,
+     "Expected renderToolStats function in app.js")
+
+test("v2.2.0: app.js contains tool-stats-content element reference",
+     "tool-stats-content" in app_content,
+     "Expected tool-stats-content element reference in app.js")
+
+# Test 3: Dashboard tool stats HTML - source check
+dashboard_html_path = "/home/crab/.claude/dashboard/static/index.html"
+try:
+    with open(dashboard_html_path) as f:
+        html_content = f.read()
+except FileNotFoundError:
+    html_content = ""
+
+test("v2.2.0: index.html contains tool-stats-content panel",
+     "tool-stats-content" in html_content,
+     "Expected tool-stats-content panel in index.html")
+
+# Test 4: Dashboard tool stats CSS - source check
+dashboard_css_path = "/home/crab/.claude/dashboard/static/style.css"
+try:
+    with open(dashboard_css_path) as f:
+        css_content = f.read()
+except FileNotFoundError:
+    css_content = ""
+
+test("v2.2.0: style.css contains tool-stat-row class",
+     ".tool-stat-row" in css_content,
+     "Expected .tool-stat-row class in style.css")
+
+test("v2.2.0: style.css contains tool-stat-bar class",
+     ".tool-stat-bar" in css_content,
+     "Expected .tool-stat-bar class in style.css")
+
+# Test 5: PreCompact tool snapshot - source checks
+test("v2.2.0: pre_compact.py contains tool_stats reference",
+     "tool_stats" in open("/home/crab/.claude/hooks/pre_compact.py").read(),
+     "Expected tool_stats reference in pre_compact.py")
+
+pre_compact_content = open("/home/crab/.claude/hooks/pre_compact.py").read()
+
+test("v2.2.0: pre_compact.py contains tool_stats_snapshot in metadata",
+     "tool_stats_snapshot" in pre_compact_content,
+     "Expected tool_stats_snapshot in metadata in pre_compact.py")
+
+test("v2.2.0: pre_compact.py contains Top tools: in document_parts",
+     "Top tools:" in pre_compact_content,
+     "Expected 'Top tools:' in document_parts in pre_compact.py")
+
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
