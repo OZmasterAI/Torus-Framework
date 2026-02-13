@@ -108,6 +108,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
                 message=f"[{GATE_NAME}] BLOCKED: {warn_count} verified fixes unsaved. "
                         f"Call remember_this() to continue.",
                 gate_name=GATE_NAME,
+                severity="error",
             )
 
-    return GateResult(blocked=False, gate_name=GATE_NAME)
+    # If warnings were issued but not blocking, mark as advisory
+    severity = "warn" if issued_warning else "info"
+    return GateResult(blocked=False, gate_name=GATE_NAME, severity=severity)

@@ -5591,6 +5591,105 @@ test("v2.1.6: Tracker resets edit_streak on Bash verification",
      f"Expected empty edit_streak after Bash, got {state.get('edit_streak', {})}")
 
 
+# ── v2.1.7 Features ──────────────────────────────────
+print("\n--- v2.1.7 Features ---")
+
+# GateResult severity field (source check)
+gate_result_src = open(os.path.join(os.path.dirname(__file__), "shared/gate_result.py")).read()
+test("v2.1.7: GateResult has severity in source",
+     "severity" in gate_result_src and 'self.severity = severity' in gate_result_src,
+     "Expected severity field in GateResult class")
+
+# GateResult default severity is "info" (logic check via subprocess)
+result = subprocess.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, '/home/crab/.claude/hooks/shared'); "
+     "from gate_result import GateResult; r = GateResult(); print(r.severity)"],
+    capture_output=True, text=True, timeout=5
+)
+test("v2.1.7: GateResult default severity is 'info'",
+     result.returncode == 0 and result.stdout.strip() == "info",
+     f"Expected 'info', got: {result.stdout.strip()}")
+
+# GateResult custom severity works (logic check via subprocess)
+result = subprocess.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, '/home/crab/.claude/hooks/shared'); "
+     "from gate_result import GateResult; r = GateResult(blocked=True, severity='critical'); print(r.severity)"],
+    capture_output=True, text=True, timeout=5
+)
+test("v2.1.7: GateResult custom severity works",
+     result.returncode == 0 and result.stdout.strip() == "critical",
+     f"Expected 'critical', got: {result.stdout.strip()}")
+
+# audit_log severity field (source check)
+audit_log_src = open(os.path.join(os.path.dirname(__file__), "shared/audit_log.py")).read()
+test("v2.1.7: audit_log has severity in source",
+     '"severity": severity' in audit_log_src and 'severity="info"' in audit_log_src,
+     "Expected severity in audit log entry dict")
+
+# Gate 06 severity assignment (source check)
+gate_06_src = open(os.path.join(os.path.dirname(__file__), "gates/gate_06_save_fix.py")).read()
+test("v2.1.7: Gate 06 uses severity='warn'",
+     'severity="warn"' in gate_06_src or "severity = \"warn\"" in gate_06_src,
+     "Expected severity='warn' in Gate 06")
+
+# Gate 07 severity assignment (source check)
+gate_07_src = open(os.path.join(os.path.dirname(__file__), "gates/gate_07_critical_file_guard.py")).read()
+test("v2.1.7: Gate 07 uses severity='critical'",
+     'severity="critical"' in gate_07_src,
+     "Expected severity='critical' in Gate 07")
+
+# Gate 08 severity assignment (source check)
+gate_08_src = open(os.path.join(os.path.dirname(__file__), "gates/gate_08_temporal.py")).read()
+test("v2.1.7: Gate 08 uses severity='warn'",
+     'severity="warn"' in gate_08_src,
+     "Expected severity='warn' in Gate 08")
+
+# tracker.py tool_stats field (source check)
+tracker_src = open(os.path.join(os.path.dirname(__file__), "tracker.py")).read()
+test("v2.1.7: tracker.py has tool_stats in source",
+     "tool_stats" in tracker_src and 'state.setdefault("tool_stats"' in tracker_src,
+     "Expected tool_stats tracking in tracker.py")
+
+# tracker.py tool_stats structure (source pattern check)
+test("v2.1.7: tracker.py tool_stats has count field",
+     '"count": 0' in tracker_src and 'tool_entry["count"]' in tracker_src,
+     "Expected count field in tool_stats entries")
+
+# tracker.py per-tool tracking logic (source check)
+test("v2.1.7: tracker.py increments tool counts",
+     'tool_entry["count"] += 1' in tracker_src or 'tool_entry["count"] = tool_entry.get("count", 0) + 1' in tracker_src,
+     "Expected count increment logic in tracker.py")
+
+# Verify severity field types in GateResult (logic check via subprocess)
+result = subprocess.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, '/home/crab/.claude/hooks/shared'); "
+     "from gate_result import GateResult; "
+     "r1 = GateResult(severity='info'); "
+     "r2 = GateResult(severity='warn'); "
+     "r3 = GateResult(severity='error'); "
+     "r4 = GateResult(severity='critical'); "
+     "print('info' if r1.severity == 'info' and r2.severity == 'warn' and r3.severity == 'error' and r4.severity == 'critical' else 'fail')"],
+    capture_output=True, text=True, timeout=5
+)
+test("v2.1.7: GateResult accepts all severity levels",
+     result.returncode == 0 and result.stdout.strip() == "info",
+     f"Expected all severity levels to work, got: {result.stdout.strip()}")
+
+# Verify tool_stats tracking via actual tracker execution
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+code, _ = run_enforcer("PostToolUse", "Read",
+                      {"file_path": "test.py"},
+                      session_id=MAIN_SESSION)
+state = load_state(session_id=MAIN_SESSION)
+test("v2.1.7: tracker.py populates tool_stats for Read tool",
+     "tool_stats" in state and "Read" in state.get("tool_stats", {}) and state["tool_stats"]["Read"]["count"] >= 1,
+     f"Expected Read in tool_stats, got: {state.get('tool_stats', {})}")
+
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────

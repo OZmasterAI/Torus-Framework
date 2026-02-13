@@ -74,6 +74,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
                         f"Extra caution required — query memory before editing. "
                         f"Use search_knowledge() to verify your approach.",
                 gate_name=GATE_NAME,
+                severity="warn",
             )
 
     # Long session warning (advisory, not blocking)

@@ -299,6 +299,11 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     """Track state after a tool call completes."""
     state["tool_call_count"] = state.get("tool_call_count", 0) + 1
 
+    # Per-tool call stats
+    tool_stats = state.setdefault("tool_stats", {})
+    tool_entry = tool_stats.setdefault(tool_name, {"count": 0})
+    tool_entry["count"] += 1
+
     # Track file reads (normalize paths to prevent bypass via ./foo vs foo)
     if tool_name == "Read":
         file_path = tool_input.get("file_path", "")

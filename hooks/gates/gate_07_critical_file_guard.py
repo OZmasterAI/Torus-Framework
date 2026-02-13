@@ -91,6 +91,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             blocked=True,
             message=f"[{GATE_NAME}] BLOCKED: '{basename}' is a critical file. Query memory about this file/component before editing. Use search_knowledge() first.",
             gate_name=GATE_NAME,
+            severity="critical",
         )
 
     return GateResult(blocked=False, gate_name=GATE_NAME)
