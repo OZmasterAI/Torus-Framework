@@ -187,6 +187,7 @@ def _check_and_reload_gates():
                         module_name, "reload", "pass",
                         f"Gate reloaded (file modified, mtime {current_mtime:.0f})",
                         "",
+                        severity="info",
                     )
 
             _gate_mtimes[module_name] = current_mtime
@@ -252,15 +253,19 @@ def handle_pre_tool_use(tool_name, tool_input, state):
 
             if elapsed_ms > 100:
                 log_gate_decision(gate_label, tool_name, "slow",
-                                  f"gate took {elapsed_ms:.0f}ms (>100ms threshold)", session_id, state_keys_read)
+                                  f"gate took {elapsed_ms:.0f}ms (>100ms threshold)", session_id, state_keys_read,
+                                  severity="warn")
             if result.blocked:
-                log_gate_decision(gate_label, tool_name, "block", result.message, session_id, state_keys_read)
+                log_gate_decision(gate_label, tool_name, "block", result.message, session_id, state_keys_read,
+                                  severity=result.severity)
                 print(result.message, file=sys.stderr)
                 sys.exit(1)
             elif result.message:
-                log_gate_decision(gate_label, tool_name, "warn", result.message, session_id, state_keys_read)
+                log_gate_decision(gate_label, tool_name, "warn", result.message, session_id, state_keys_read,
+                                  severity="warn")
             else:
-                log_gate_decision(gate_label, tool_name, "pass", "", session_id, state_keys_read)
+                log_gate_decision(gate_label, tool_name, "pass", "", session_id, state_keys_read,
+                                  severity="info")
         except Exception as e:
             if gate.__name__ in TIER1_SAFETY_GATES:
                 # Tier 1 safety gates MUST fail-closed — if we can't verify safety, block
@@ -268,10 +273,16 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 gate_short = gate.__name__.split(".")[-1]
                 deps = GATE_DEPENDENCIES.get(gate_short, {})
                 state_keys_read = deps.get("reads", [])
-                log_gate_decision(gate.__name__, tool_name, "block", f"crash: {e}", state.get("_session_id", ""), state_keys_read)
+                log_gate_decision(gate.__name__, tool_name, "block", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
+                                  severity="error")
                 print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate.__name__}' crashed: {e}", file=sys.stderr)
                 sys.exit(1)
             # Non-safety gate errors should not block work — log and continue
+            gate_short = gate.__name__.split(".")[-1]
+            deps = GATE_DEPENDENCIES.get(gate_short, {})
+            state_keys_read = deps.get("reads", [])
+            log_gate_decision(gate.__name__, tool_name, "crash", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
+                              severity="warn")
             print(f"[ENFORCER] Warning: Gate error in {gate.__name__}: {e}", file=sys.stderr)
 
 

@@ -79,6 +79,10 @@ def default_state():
         "gate6_warn_count": 0,
         "verification_scores": {},
         "successful_strategies": {},
+        # v2.1.9 fields (enhanced tracking)
+        "tool_stats": {},           # Per-tool call counts {tool_name: {"count": N}}
+        "edit_streak": {},          # Consecutive edits per file without verification
+        "last_test_exit_code": None,  # Exit code from most recent test run
     }
 
 

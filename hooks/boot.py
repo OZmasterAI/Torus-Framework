@@ -257,6 +257,45 @@ def _extract_recent_errors():
         return []
 
 
+def _extract_tool_activity():
+    """Extract tool usage stats from the most recent session state file.
+
+    This is called BEFORE reset_enforcement_state() wipes all state files.
+    Returns (tool_call_count, tool_summary_string) or (0, None).
+    """
+    try:
+        # Find all state_*.json files in the hooks directory
+        pattern = os.path.join(STATE_DIR, "state_*.json")
+        state_files = glob.glob(pattern)
+
+        if not state_files:
+            return (0, None)
+
+        # Get the most recent file by modification time
+        most_recent = max(state_files, key=os.path.getmtime)
+
+        # Read the state file
+        with open(most_recent) as f:
+            state_data = json.load(f)
+
+        # Extract tool stats
+        tool_stats = state_data.get("tool_stats", {})
+        tool_call_count = state_data.get("tool_call_count", 0)
+
+        if not tool_stats or tool_call_count == 0:
+            return (0, None)
+
+        # Sort by count and take top 3
+        sorted_tools = sorted(tool_stats.items(), key=lambda x: x[1].get("count", 0), reverse=True)[:3]
+        tool_summary = ", ".join(f"{name}:{info.get('count', 0)}" for name, info in sorted_tools)
+
+        return (tool_call_count, tool_summary)
+
+    except Exception:
+        # Boot must never crash
+        return (0, None)
+
+
 def main():
     now = datetime.now()
     hour = now.hour
@@ -303,6 +342,9 @@ def main():
     # Extract recent errors BEFORE reset_enforcement_state() wipes them
     recent_errors = _extract_recent_errors()
 
+    # Extract tool activity from last session
+    tool_call_count, tool_summary = _extract_tool_activity()
+
     # Build dashboard
     dashboard = f"""
 +====================================================================+
@@ -333,6 +375,12 @@ def main():
         dashboard += "\n|  RECENT ERRORS (from last session):                               |"
         for err in recent_errors:
             dashboard += f"\n|    - {err:<61}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
+    # Tool activity from last session
+    if tool_summary:
+        activity_line = f"Tool activity: {tool_call_count} calls ({tool_summary})"
+        dashboard += f"\n|  {activity_line:<66}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
     dashboard += """

@@ -5790,6 +5790,95 @@ test("v2.1.8: get_most_used_tool returns Edit (highest count)",
      f"Expected 'Edit', got: {result.stdout.strip()}")
 
 
+# ── v2.1.9 Features ──────────────────────────────────
+print("\n--- v2.1.9 Features ---")
+
+# Test 1: State field defaults - verify new fields exist in default_state()
+result = subprocess.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, '/home/crab/.claude/hooks/shared'); "
+     "from state import default_state; s = default_state(); "
+     "print('tool_stats' in s, 'edit_streak' in s, 'last_test_exit_code' in s)"],
+    capture_output=True, text=True, timeout=5
+)
+output_parts = result.stdout.strip().split()
+test("v2.1.9: default_state contains tool_stats",
+     result.returncode == 0 and len(output_parts) >= 1 and output_parts[0] == "True",
+     f"Expected tool_stats in default_state, got: {result.stdout.strip()}")
+
+test("v2.1.9: default_state contains edit_streak",
+     result.returncode == 0 and len(output_parts) >= 2 and output_parts[1] == "True",
+     f"Expected edit_streak in default_state, got: {result.stdout.strip()}")
+
+test("v2.1.9: default_state contains last_test_exit_code",
+     result.returncode == 0 and len(output_parts) >= 3 and output_parts[2] == "True",
+     f"Expected last_test_exit_code in default_state, got: {result.stdout.strip()}")
+
+# Test 2: Boot.py tool activity tracking - source code checks
+boot_path = "/home/crab/.claude/hooks/boot.py"
+try:
+    with open(boot_path) as f:
+        boot_content = f.read()
+except FileNotFoundError:
+    boot_content = ""
+
+test("v2.1.9: boot.py contains tool_stats reference",
+     "tool_stats" in boot_content,
+     "Expected 'tool_stats' reference in boot.py")
+
+test("v2.1.9: boot.py contains tool_call_count reference",
+     "tool_call_count" in boot_content,
+     "Expected 'tool_call_count' reference in boot.py")
+
+test("v2.1.9: boot.py contains _extract_tool_activity function",
+     "_extract_tool_activity" in boot_content,
+     "Expected '_extract_tool_activity' function in boot.py")
+
+test("v2.1.9: boot.py extracts tool activity from state",
+     "tool_call_count, tool_summary = _extract_tool_activity()" in boot_content,
+     "Expected tool activity extraction call in boot.py")
+
+# Test 3: Enforcer severity levels - source code checks
+enforcer_path = "/home/crab/.claude/hooks/enforcer.py"
+try:
+    with open(enforcer_path) as f:
+        enforcer_content = f.read()
+except FileNotFoundError:
+    enforcer_content = ""
+
+test("v2.1.9: enforcer.py contains severity parameter usage",
+     'severity=' in enforcer_content,
+     "Expected severity parameter usage in enforcer.py")
+
+test("v2.1.9: enforcer.py uses severity=error for Tier 1 crashes",
+     'severity="error"' in enforcer_content,
+     "Expected severity='error' for crash handling in enforcer.py")
+
+test("v2.1.9: enforcer.py uses severity=warn for non-blocking warnings",
+     'severity="warn"' in enforcer_content,
+     "Expected severity='warn' for non-blocking warnings in enforcer.py")
+
+test("v2.1.9: enforcer.py propagates result.severity from gates",
+     "severity=result.severity" in enforcer_content,
+     "Expected 'severity=result.severity' for propagating gate severity in enforcer.py")
+
+# Test 4: Audit log severity integration - verify severity parameter exists
+audit_log_path = "/home/crab/.claude/hooks/shared/audit_log.py"
+try:
+    with open(audit_log_path) as f:
+        audit_content = f.read()
+except FileNotFoundError:
+    audit_content = ""
+
+test("v2.1.9: audit_log.py log_gate_decision has severity parameter",
+     "def log_gate_decision" in audit_content and "severity=" in audit_content,
+     "Expected log_gate_decision function with severity parameter in audit_log.py")
+
+test("v2.1.9: audit_log.py stores severity in log entry",
+     '"severity": severity' in audit_content,
+     "Expected severity stored in audit log entry")
+
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
