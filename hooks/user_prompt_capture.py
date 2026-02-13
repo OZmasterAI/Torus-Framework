@@ -10,6 +10,8 @@ import json
 import os
 import re
 import sys
+import hashlib
+import time
 
 # --- Detection patterns (ported from user_prompt_check.sh) ---
 
@@ -60,6 +62,27 @@ def detect_sentiment(text: str) -> str:
 
 CAPTURE_QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".capture_queue.jsonl")
 
+DEDUP_WINDOW = 30  # seconds — skip identical prompts within this window
+_LAST_PROMPT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".prompt_last_hash")
+
+
+def _is_duplicate_prompt(prompt_text):
+    """Check if this prompt was captured within the dedup window."""
+    try:
+        prompt_hash = hashlib.sha256(prompt_text.encode()).hexdigest()[:16]
+        now = time.time()
+        if os.path.exists(_LAST_PROMPT_FILE):
+            with open(_LAST_PROMPT_FILE) as f:
+                data = json.load(f)
+            if data.get("hash") == prompt_hash and now - data.get("ts", 0) < DEDUP_WINDOW:
+                return True
+        # Update last hash
+        with open(_LAST_PROMPT_FILE, "w") as f:
+            json.dump({"hash": prompt_hash, "ts": now}, f)
+        return False
+    except Exception:
+        return False  # Fail-open
+
 
 def main():
     # Read JSON from stdin
@@ -96,6 +119,11 @@ def main():
 
         truncated = prompt[:200]
         scrubbed = scrub(truncated)
+
+        # Skip duplicate prompts within dedup window
+        if _is_duplicate_prompt(scrubbed):
+            sys.exit(0)
+
         sentiment = detect_sentiment(prompt)
         tool_input = {"prompt": scrubbed}
         obs = compress_observation("UserPrompt", tool_input, {}, "prompt_hook")

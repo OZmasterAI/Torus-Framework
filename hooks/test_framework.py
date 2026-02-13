@@ -7732,6 +7732,96 @@ test("v2.3.6: Schema covers all default_state keys",
 
 cleanup_test_states()
 
+print("\n--- v2.3.7: Observation Error Patterns, Enforcer Block Counter, Prompt Dedup ---")
+
+# ── Feature 1: Expanded error patterns in observation.py ──
+
+# Test 1: _ERROR_PATTERNS includes common Python exceptions
+from shared.observation import _ERROR_PATTERNS
+test("v2.3.7: _ERROR_PATTERNS includes KeyError",
+     "KeyError:" in _ERROR_PATTERNS,
+     f"Expected KeyError: in patterns, got {len(_ERROR_PATTERNS)} patterns")
+
+# Test 2: _ERROR_PATTERNS includes ValueError
+test("v2.3.7: _ERROR_PATTERNS includes ValueError",
+     "ValueError:" in _ERROR_PATTERNS,
+     "Expected ValueError: in patterns")
+
+# Test 3: _ERROR_PATTERNS includes system errors
+test("v2.3.7: _ERROR_PATTERNS includes segmentation fault",
+     "segmentation fault" in _ERROR_PATTERNS,
+     "Expected 'segmentation fault' in patterns")
+
+# Test 4: _detect_error_pattern detects new patterns
+from shared.observation import _detect_error_pattern
+test("v2.3.7: _detect_error_pattern detects TypeError",
+     _detect_error_pattern("TypeError: unsupported operand") == "TypeError:",
+     f"Expected 'TypeError:', got '{_detect_error_pattern('TypeError: unsupported operand')}'")
+
+# ── Feature 2: Enforcer gate block counter ──
+
+# Test 5: Enforcer source includes gate_block_counts tracking
+import inspect as _insp237
+_enforcer_path = os.path.join(os.path.dirname(__file__), "enforcer.py")
+_enf_source = open(_enforcer_path).read()
+test("v2.3.7: Enforcer tracks gate_block_counts in state",
+     "gate_block_counts" in _enf_source,
+     "Expected gate_block_counts in enforcer.py source")
+
+# Test 6: gate_block_counts is incremented on block (check source pattern)
+test("v2.3.7: Enforcer increments block count per gate",
+     "block_counts[gate_short]" in _enf_source or "block_counts.get(gate_short" in _enf_source,
+     "Expected gate_short-keyed increment in enforcer source")
+
+# Test 7: Enforcer block counter runs via enforcer (triggers Gate 1 block, check state)
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+_ebc_state = load_state(session_id=MAIN_SESSION)
+_ebc_state["memory_last_queried"] = time.time()
+# Don't set files_read — Gate 1 will block
+save_state(_ebc_state, session_id=MAIN_SESSION)
+run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/unread_file.py"})
+_ebc_after = load_state(session_id=MAIN_SESSION)
+_ebc_blocks = _ebc_after.get("gate_block_counts", {})
+test("v2.3.7: Enforcer block counter increments on Gate 1 block",
+     _ebc_blocks.get("gate_01_read_before_edit", 0) >= 1,
+     f"Expected gate_01 block count >= 1, got {_ebc_blocks}")
+
+# Test 8: Multiple blocks increment the counter
+run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/unread_file2.py"})
+_ebc_after2 = load_state(session_id=MAIN_SESSION)
+_ebc_blocks2 = _ebc_after2.get("gate_block_counts", {})
+test("v2.3.7: Enforcer block counter increments on repeated blocks",
+     _ebc_blocks2.get("gate_01_read_before_edit", 0) >= 2,
+     f"Expected gate_01 block count >= 2, got {_ebc_blocks2}")
+
+# ── Feature 3: User prompt deduplication ──
+
+# Test 9: _is_duplicate_prompt function exists
+from user_prompt_capture import _is_duplicate_prompt, DEDUP_WINDOW
+test("v2.3.7: _is_duplicate_prompt is callable",
+     callable(_is_duplicate_prompt),
+     "Expected _is_duplicate_prompt to be callable")
+
+# Test 10: DEDUP_WINDOW is 30 seconds
+test("v2.3.7: DEDUP_WINDOW is 30 seconds",
+     DEDUP_WINDOW == 30,
+     f"Expected 30, got {DEDUP_WINDOW}")
+
+# Test 11: First call returns False (not duplicate)
+_dedup_result1 = _is_duplicate_prompt("test_prompt_237_unique_abc")
+test("v2.3.7: First prompt is not duplicate",
+     _dedup_result1 == False,
+     f"Expected False, got {_dedup_result1}")
+
+# Test 12: Same prompt immediately after returns True (duplicate)
+_dedup_result2 = _is_duplicate_prompt("test_prompt_237_unique_abc")
+test("v2.3.7: Same prompt immediately after is duplicate",
+     _dedup_result2 == True,
+     f"Expected True, got {_dedup_result2}")
+
+cleanup_test_states()
+
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

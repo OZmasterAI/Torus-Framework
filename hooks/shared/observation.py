@@ -34,6 +34,14 @@ _ERROR_PATTERNS = [
     "Permission denied", "npm ERR!", "fatal:", "error[E", "FAILED",
     "command not found", "No such file or directory",
     "ConnectionRefusedError", "OSError:",
+    # Common Python exceptions
+    "AssertionError:", "KeyError:", "ValueError:", "TypeError:",
+    "AttributeError:", "IndexError:", "NameError:", "FileNotFoundError:",
+    "RuntimeError:", "TimeoutError:",
+    # Test and build failures
+    "pytest FAILED", "test failed", "ERRORS:", "CalledProcessError",
+    # System-level errors
+    "panic:", "segmentation fault", "core dumped", "killed",
 ]
 
 

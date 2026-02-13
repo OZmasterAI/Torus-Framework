@@ -266,6 +266,9 @@ def handle_pre_tool_use(tool_name, tool_input, state):
             if result.blocked:
                 log_gate_decision(gate_label, tool_name, "block", result.message, session_id, state_keys_read,
                                   severity=result.severity)
+                # Track gate block counts for diagnostics
+                block_counts = state.setdefault("gate_block_counts", {})
+                block_counts[gate_short] = block_counts.get(gate_short, 0) + 1
                 print(result.message, file=sys.stderr)
                 save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(1)
