@@ -25,7 +25,7 @@
     {
       "id": 3,
       "name": "Write pytest tests for utils module",
-      "status": "pending",
+      "status": "passed",
       "files": [
         "/home/crab/.claude/PRPs/test-workspace/test_utils.py"
       ],
