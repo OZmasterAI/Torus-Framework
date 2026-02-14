@@ -21,7 +21,7 @@ STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 FALLBACK_CONTEXT = "No project context available. Query memory before starting work."
 
 # Rules injected into sub-agents (no gates protect them)
-EDIT_AGENT_RULES = "RULES: Always Read a file before Edit/Write. No rm -rf, force push, or reset --hard."
+EDIT_AGENT_RULES = "RULES: Always Read a file before Edit/Write. No rm -rf, force push, or reset --hard. Extra caution with critical files (auth, config, enforcer, memory_server) — query search_knowledge first."
 BASH_AGENT_RULES = "RULES: No rm -rf, force push, or reset --hard."
 
 
