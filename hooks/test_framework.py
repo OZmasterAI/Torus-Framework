@@ -9092,6 +9092,47 @@ test("Web: SKILL.md has delete command", "delete.py" in _ws_skill_src)
 # Cleanup sys.path
 sys.path = [p for p in sys.path if _WEB_SCRIPTS not in p]
 
+print("\n--- PRP Skill ---")
+
+_prp_base = os.path.expanduser("~/.claude")
+
+# SKILL.md exists
+_prp_skill = os.path.join(_prp_base, "skills", "prp", "SKILL.md")
+test("PRP: SKILL.md exists", os.path.isfile(_prp_skill))
+
+# SKILL.md has generate/execute/list commands
+with open(_prp_skill) as _pf:
+    _prp_skill_src = _pf.read()
+test("PRP: SKILL.md has generate command", "generate" in _prp_skill_src.lower())
+test("PRP: SKILL.md has execute command", "execute" in _prp_skill_src.lower())
+test("PRP: SKILL.md has list command", "list" in _prp_skill_src.lower())
+
+# PRP base template exists
+_prp_template = os.path.join(_prp_base, "PRPs", "templates", "base.md")
+test("PRP: base template exists", os.path.isfile(_prp_template))
+
+# Template has required sections
+with open(_prp_template) as _pf:
+    _prp_tmpl_src = _pf.read()
+test("PRP: template has Goal section", "## Goal" in _prp_tmpl_src)
+test("PRP: template has Success Criteria section", "## Success Criteria" in _prp_tmpl_src)
+test("PRP: template has Known Gotchas section", "## Known Gotchas" in _prp_tmpl_src)
+test("PRP: template has Validation Gates section", "## Validation Gates" in _prp_tmpl_src)
+test("PRP: template has Implementation Tasks section", "## Implementation Tasks" in _prp_tmpl_src)
+
+# Template is valid markdown (no unclosed code blocks)
+_prp_fence_count = _prp_tmpl_src.count("```")
+test("PRP: template has balanced code fences", _prp_fence_count % 2 == 0,
+     f"found {_prp_fence_count} fences (odd = unclosed)")
+
+# PRPs directory exists
+test("PRP: PRPs directory exists", os.path.isdir(os.path.join(_prp_base, "PRPs")))
+
+# Examples directory exists
+_prp_examples = os.path.join(_prp_base, "examples")
+test("PRP: examples directory exists", os.path.isdir(_prp_examples))
+test("PRP: examples README exists", os.path.isfile(os.path.join(_prp_examples, "README.md")))
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
