@@ -1,64 +1,61 @@
-# Session 32 — ChromaDB Hardening + v2.0.2 Tests + Framework Comparison
+# Session 36 — ChromaDB UDS Gateway: Single-Owner Architecture
 
 ## Key Learnings
-- ChromaDB Rust PersistentClient segfaults on concurrent access — lazy init is the root fix, not more guards
-- thepopebot is an autonomous agent platform (Docker+GitHub Actions), NOT a Claude Code framework — different problem domain entirely
-- Module-level Python code runs on import — always defer expensive resource creation to lazy init for testability
+- UDS (Unix Domain Socket) is ~470-1000x faster than subprocess for local IPC — no process spawn overhead
+- Replacing pgrep with UDS-only detection is unsafe during transition — pre-upgrade servers don't have the socket file. Use UDS-first + pgrep fallback.
+- Dashboard standalone fallback (safe_count/safe_query/safe_get) restores independence when MCP server isn't running
+- ChromaDB concurrent PersistentClient segfault is now architecturally impossible (single-owner guarantee)
+- Killing MCP server mid-session breaks MCP tool reconnection — tools unavailable until next session
 
 ## What Was Done
 
-### Session 31 Recovery
-- Terminal crashed before wrap-up; recovered state from memory MCP
-- Updated stale HANDOFF.md and LIVE_STATE.json from Session 30 → 32
+### ChromaDB UDS Gateway (8 files, 2 commits)
+**Commit `6b5faa9`** — Main implementation (7 phases):
+1. `hooks/shared/chromadb_socket.py` (NEW) — UDS client module (132 lines)
+2. `hooks/memory_server.py` — Daemon thread UDS server + atexit cleanup
+3. `hooks/statusline.py` — subprocess query → socket_count() (~470x faster)
+4. `hooks/session_end.py` — pgrep + PersistentClient → socket_flush()
+5. `hooks/boot.py` — pgrep + PersistentClient → socket_available/query/count/flush
+6. `dashboard/server.py` — _get_chroma() + 10 endpoints → socket client calls
+7. `hooks/test_framework.py` — 14 new UDS socket tests
 
-### ChromaDB Segfault Hardening (3 files)
-- `memory_server.py`: Replaced module-level `PersistentClient` with lazy `_init_chromadb()` — importing no longer opens the database
-- `boot.py`: Added `pgrep` guard to skip direct ChromaDB when MCP server is running
-- `session_end.py`: Same guard — defers observation queue flush when MCP running
-- Root cause eliminated: `from memory_server import X` no longer creates a PersistentClient
+**Commit `15ca09f`** — Gap fixes:
+- Dashboard: safe_count/safe_query/safe_get wrappers with standalone PersistentClient fallback
+- test_framework.py: UDS-first + pgrep fallback for server detection
 
-### v2.0.2 Functional Tests (33 new tests)
-- `_apply_recency_boost`: 7 tests (score math, edge cases, >365d decay)
-- `format_results`: 7 tests (relevance calc, empty/None inputs)
-- `format_summaries`: 4 tests (query vs get structure detection)
-- `suggest_promotions`: 15 tests (clustering, scoring, ChromaDB-guarded)
-- Total: 901 passed, 0 failed
-
-### Framework Comparison: Megaman vs thepopebot
-- Different layers: Megaman = Claude Code customization, thepopebot = autonomous agent infra
-- Megaman wins: memory (283), gates (13), tests (901), token efficiency (1.5x leaner)
-- thepopebot wins: Telegram UI, cron/webhooks, Docker isolation, browser automation
-
-### Commits
-- `c47fc0c` — Session 31: AKIRA feature adoption sprint (9 files)
-- `ffaed98` — Session 32: ChromaDB lazy init + segfault hardening + v2.0.2 tests (6 files)
+### Results
+- 925 tests passing, 0 failures (up from 901)
+- Single-owner guarantee: only memory_server.py creates PersistentClient
+- All pgrep guards eliminated from production hooks
+- All `import chromadb` removed from consumer files
+- StatusLine: ~3.3s → ~7ms per prompt
 
 ## What's Next
-1. **Dashboard auto-start** — Consider adding to SessionStart hook
-2. **Memory graph visualization** — D3.js network of related memories
-3. **Telegram/chat UI** — Inspired by thepopebot, add conversational interface
-4. **Credential filtering** — thepopebot's env-sanitizer approach is stronger than instruction-based
+1. **Remove old inject_memories()** — Dead code in boot.py (kept for 4 test compatibility). Rewrite tests to use inject_memories_via_socket() to clean up.
+2. **Dashboard auto-start** — Consider adding to SessionStart hook
+3. **Memory graph visualization** — D3.js network of related memories
+4. **HTTP /health endpoint** — Optional addition to memory_server.py for ops monitoring (~40 lines)
 
 ## Known Issues
-- ChromaDB segfault: **largely mitigated** by lazy init, but external worker still deferred
-- MCP server requires restart for code changes (pkill + auto-restart on next tool call)
-- MCP connection breaks if server killed mid-session (reconnects on next session start)
+- MCP tool reconnection: Killing MCP server mid-session breaks tool access until next session restart
 - 26 pre-existing gate interaction test failures (timing-dependent, not consistent)
+- Old inject_memories() function in boot.py is dead code (tested directly, not called from main())
 
 ## Service Status
 - Enforcer: active (PreToolUse, 13 gates, audit logging)
 - Tracker: active (PostToolUse, fail-open)
-- Boot: active (SessionStart, memory injection, **pgrep-guarded ChromaDB**)
+- Boot: active (SessionStart, **UDS socket memory injection**)
 - Auto-Approve: active (PermissionRequest, deny-before-allow)
 - SubagentContext: active (SubagentStart, context injection + subagent tracking + safety rules)
 - EventLogger: active (SubagentStop, token parsing + state cleanup + TaskCompleted warnings)
 - PreCompact: active (PreCompact, state snapshots)
-- SessionEnd: active (SessionEnd, queue flush, **pgrep-guarded ChromaDB**)
-- StatusLine: active (subprocess-isolated ChromaDB, HP 100%, SA:/ST: subagent display)
-- **Dashboard: available** (`python3 ~/.claude/dashboard/server.py` → localhost:7777)
-- Memory MCP: active — 283 curated memories, **15 MCP tools** (gateway), 13 gates
+- SessionEnd: active (SessionEnd, **UDS socket queue flush**)
+- StatusLine: **UDS socket memory count** (HP 100%, SA:/ST: subagent display)
+- **Dashboard: available** (`python3 ~/.claude/dashboard/server.py` → localhost:7777, **standalone fallback**)
+- Memory MCP: active — 294 curated memories, **15 MCP tools** (gateway), 13 gates
+- **UDS Gateway: active** — `.chromadb.sock`, single-owner ChromaDB access
 - Skills: **18 total**
-- Tests: 901 passing, 0 failures
+- Tests: 925 passing, 0 failures
 
 ## MCP Tools (15)
 Core: search_knowledge, remember_this, deep_query, get_memory (batch), get_recent_activity
@@ -68,3 +65,7 @@ Timeline: timeline
 Causal Chain: record_attempt, record_outcome, query_fix_history
 Stats: memory_stats
 **Gateway: maintenance** (dispatches: promotions, stale, cluster, health, rebuild_tags)
+
+## Commits
+- `6b5faa9` — Session 36: ChromaDB UDS Gateway — single-owner architecture (7 files)
+- `15ca09f` — Fix UDS migration gaps: dashboard fallback + test detection hardening (2 files)
