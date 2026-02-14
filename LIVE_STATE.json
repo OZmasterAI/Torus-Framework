@@ -1,20 +1,27 @@
 {
-  "session_count": 49,
+  "session_count": 52,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "megaman-loop-orchestrator",
+  "feature": "crash-proof-mcp",
   "feature_status": "complete",
   "test_count": 1036,
   "test_failures": 1,
-  "files_modified": [],
+  "files_modified": [
+    "hooks/memory_server.py",
+    "hooks/test_framework.py",
+    "dashboard/server.py",
+    "dashboard/static/index.html"
+  ],
   "improvements_shipped": [
-    "Phase 2: JSON task tracking in /prp",
-    "Phase 3: External bash orchestrator (megaman-loop.sh)",
-    "/loop skill (start/status/stop)",
-    "enforcer.py gate naming fix"
+    "@crash_proof decorator on 15 MCP tool handlers",
+    "_init_chromadb() hardened with degraded flag",
+    "mcp.run() entry point wrapped",
+    "Dashboard cache-busting (?v=2 + NoCacheStaticWrapper)",
+    "Live Metrics panel loading fix"
   ],
   "next_steps": [
+    "Verify UDS socket file exists after session restart",
     "Real-world loop test with 5+ task PRP",
     "Dashboard gate name normalization (optional)",
     "inject_memories cleanup",
@@ -22,14 +29,14 @@
     "stale X sessions cron job"
   ],
   "known_issues": [
-    "UDS socket intermittent when MCP server not running",
+    "UDS socket file missing — self-heals on next MCP server restart",
     "Historical audit entries still have module-path gate names (2026-02-14.jsonl)"
   ],
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 10,
-    "errors": 2,
-    "verified": 4,
+    "reads": 15,
+    "edits": 8,
+    "errors": 0,
+    "verified": 2,
     "pending": 0
   }
 }
