@@ -1,5 +1,5 @@
 {
-  "session_count": 56,
+  "session_count": 57,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
@@ -33,9 +33,9 @@
     "Historical audit entries still have module-path gate names (2026-02-14.jsonl)"
   ],
   "last_session_metrics": {
-    "reads": 1,
+    "reads": 2,
     "edits": 0,
-    "errors": 2,
+    "errors": 1,
     "verified": 1,
     "pending": 0
   }
