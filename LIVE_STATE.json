@@ -1,41 +1,35 @@
 {
-  "session_count": 63,
+  "session_count": 65,
   "status": "active",
   "project": "Self-Healing Claude",
   "project_path": "/home/crab/.claude/hooks",
-  "feature": "tmpfs-ramdisk",
+  "feature": "behavioral-modes",
   "feature_status": "shipped",
   "test_count": 953,
   "test_failures": 0,
   "files_modified": [
-    "hooks/shared/ramdisk.py",
-    "hooks/shared/audit_log.py",
-    "hooks/shared/state.py",
-    "hooks/event_logger.py",
-    "hooks/tracker.py",
-    "hooks/memory_server.py",
-    "hooks/boot.py",
-    "hooks/statusline.py",
-    "hooks/setup_ramdisk.sh",
-    "hooks/test_framework.py"
+    "modes/coding.md",
+    "modes/skill/SKILL.md",
+    "rules/modes.md",
+    "hooks/statusline.py"
   ],
   "improvements_shipped": [
-    "Hybrid tmpfs ramdisk for hook I/O (~450x faster writes)",
-    "Test suite pruning: 1037→953 tests, 0 failures"
+    "Behavioral modes system with coding mode",
+    "Statusline MODE:{name} indicator",
+    "Dormant /mode skill ready for activation"
   ],
   "next_steps": [
-    "Restart MCP memory server for tmpfs queue path",
-    "Benchmark I/O latency before/after",
-    "Add ramdisk health to dashboard"
+    "Activate skill: cp -r modes/skill skills/mode",
+    "Add more modes (review, debug, docs)",
+    "Mode-specific gate behavior",
+    "Dashboard mode indicator"
   ],
-  "known_issues": [
-    "MCP memory server needs restart to use tmpfs capture queue path"
-  ],
+  "known_issues": [],
   "last_session_metrics": {
-    "reads": 15,
-    "edits": 22,
+    "reads": 3,
+    "edits": 3,
     "errors": 0,
-    "verified": 1,
+    "verified": 7,
     "pending": 0
   }
 }

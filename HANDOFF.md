@@ -1,29 +1,29 @@
-# Session 63 — Hybrid tmpfs Ramdisk + Test Pruning
+# Session 65 — Behavioral Modes System
 
 ## What Was Done
 
-### 1. Hybrid tmpfs Ramdisk for Hook I/O (v2.5.0)
-- Created `shared/ramdisk.py` — central tmpfs config, path resolution, async disk mirror
-- Created `setup_ramdisk.sh` — one-time setup (dirs, migration, systemd service)
-- Created `claude-hooks-sync.service` — syncs tmpfs to disk on shutdown
-- Modified 7 files: `audit_log.py`, `event_logger.py`, `state.py`, `tracker.py`, `memory_server.py`, `boot.py`, `statusline.py`
-- All hot I/O (audit, state, capture queue) now at `/run/user/1000/claude-hooks` (RAM speed)
-- Audit logs get async disk mirror via daemon threads; state/queue are ephemeral
-- Graceful fallback: `is_ramdisk_available()` checked everywhere, zero regression if tmpfs absent
+### Behavioral Modes System (coding mode)
+- Created `~/.claude/modes/coding.md` — coding mode behavioral overlay (~600 tokens)
+  - Smallest-diff discipline, test-first, error handling rigor, type safety, minimal communication
+- Created `~/.claude/modes/skill/SKILL.md` — dormant `/mode` skill (not in skills/ yet)
+  - Supports: `/mode on <name>`, `/mode off`, `/mode list`
+  - Activation: copies mode .md → `rules/_active_mode.md`, writes name → `modes/.active`
+- Created `~/.claude/rules/modes.md` — static rules file with `globs: .claude/modes/**` frontmatter
+- Modified `~/.claude/hooks/statusline.py` — added `get_active_mode()` + `MODE:{name}` in status parts
 
-### 2. Test Suite Pruning
-- Removed 84 dead/redundant tests (file existence, source-contains, duplicate exits-0, private helpers, config validation)
-- Consolidated field-check tests into schema assertions
-- Result: 1037 → 953 tests, 22 failures → 0 failures (clean 100% pass rate)
+### Architecture
+- Modes leverage Claude Code's rules auto-loading (`rules/*.md` → auto-injected into prompt)
+- `.active` dotfile is sideband signal for statusline + future tooling
+- Dormant skill pattern: lives in `modes/skill/` until `cp -r` to `skills/mode/`
 
 ## What's Next
-1. Restart MCP memory server to pick up new `CAPTURE_QUEUE_FILE` tmpfs path
-2. Benchmark before/after I/O latency (1000 audit writes)
-3. Consider adding ramdisk health to dashboard (tmpfs usage, mirror lag)
-4. Monitor for edge cases: reboot recovery, disk backup integrity over time
+1. Go live with skill: `cp -r ~/.claude/modes/skill ~/.claude/skills/mode`
+2. Add more modes (e.g., review, debug, docs)
+3. Consider mode-specific gate behavior (e.g., coding mode enforces stricter test-first)
+4. Add mode indicator to dashboard
 
 ## Service Status
-- Memory MCP: 337 memories (needs restart for tmpfs queue path)
+- Memory MCP: 340 memories
 - Tests: 953 passed, 0 failed
 - Ramdisk: active at /run/user/1000/claude-hooks
-- Dashboard: running
+- Modes: 1 available (coding), dormant skill
