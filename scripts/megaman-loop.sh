@@ -146,10 +146,10 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
     # Build prompt
     PROMPT=$(build_prompt "$TASK_JSON")
 
-    # Spawn fresh Claude instance
+    # Spawn fresh Claude instance (unset CLAUDECODE to allow launching from within a session)
     START_TIME=$(date +%s)
     CLAUDE_EXIT=0
-    timeout "$TASK_TIMEOUT" claude -p "$PROMPT" --dangerously-skip-permissions --model "$MODEL" 2>&1 || CLAUDE_EXIT=$?
+    env -u CLAUDECODE timeout "$TASK_TIMEOUT" claude -p "$PROMPT" --dangerously-skip-permissions --model "$MODEL" 2>&1 || CLAUDE_EXIT=$?
     END_TIME=$(date +%s)
     DURATION=$((END_TIME - START_TIME))
 
