@@ -1,44 +1,47 @@
 {
-  "session_count": 38,
-  "status": "gateway_optimization_complete",
+  "session_count": 39,
+  "status": "claude_md_optimized",
   "project": "self-healing-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "mcp-gateway-optimization",
+  "feature": "claude-md-token-optimization",
   "feature_status": "complete",
   "test_count": 553,
   "test_failures": 0,
   "files_modified": [
-    "hooks/memory_server.py",
-    "hooks/test_framework.py",
-    "hooks/statusline.py"
+    "CLAUDE.md",
+    "hooks/statusline.py",
+    "hooks/subagent_context.py",
+    "hooks/event_logger.py",
+    "hooks/shared/state.py"
   ],
   "hook_events": 13,
   "gates": 12,
   "mcp_tools": 15,
-  "curated_memories": 268,
+  "curated_memories": 271,
   "named_agents": 4,
   "skills_count": 18,
   "dashboard_port": 7777,
   "improvements_shipped": [
-    "maintenance_gateway",
-    "statusline_segfault_fix"
+    "subagent_visibility",
+    "plan_mode_loop_fix",
+    "claude_md_optimization"
   ],
   "next_steps": [
+    "implement_gates_10_11_12",
     "fix_test_framework_segfault",
     "write_tests_for_new_features",
     "dashboard_auto_start",
-    "memory_graph_visualization",
-    "skill_usage_analytics"
+    "memory_graph_visualization"
   ],
   "known_issues": [
     "ChromaDB/SQLite segfault: affects test_framework.py, statusline subprocess, subagent MCP access",
-    "EXPECTED_SKILLS constant updated in statusline.py (now 18)"
+    "Gates 10, 11, 12 defined in CLAUDE.md but not yet in enforcer.py"
   ],
   "last_session_metrics": {
-    "reads": 25,
-    "edits": 7,
+    "reads": 12,
+    "edits": 4,
     "errors": 0,
-    "verified": 14,
+    "verified": 6,
     "pending": 0
   }
 }

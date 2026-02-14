@@ -1,4 +1,4 @@
-# Self-Healing Claude Framework
+# Megaman-Framework
 
 ## MEMORY FIRST (Non-Negotiable)
 You have amnesia every session. Memory doesn't.
@@ -7,24 +7,16 @@ When search_knowledge returns summaries, use get_memory(id) to retrieve full con
 AFTER any fix or decision: remember_this(content, context, tags)
 
 ## THE LOOP
-1. **MEMORY CHECK** — search_knowledge() before building anything
-2. **PLAN** — Enter Plan Mode, explore the codebase, write a plan
-3. **TESTS FIRST** — Define success criteria before coding
-4. **BUILD** — Piece by piece, verify each piece works
-5. **PROVE IT** — Never say "fixed" without evidence (run tests, show output)
-6. **SHIP** — Commit, update HANDOFF.md, save to memory
+memory check → plan → tests first → build → prove it → ship
 
 ## BEHAVIORAL RULES
 1. **Prove it works** — Never claim "fixed" without evidence. Show test output.
 2. **Save to memory** — Every fix, discovery, and decision gets remember_this()
-3. **Smart agent delegation** — Use sub-agents for independent/parallel work; use agent teams for 6+ dependent steps or when real-time coordination is needed
-4. **Protect main context** — Delegate heavy operations to sub-agents or team members, not main thread
-5. **Read before edit** — Always Read a file before Edit/Write (enforced by Gate 1)
-6. **No destructive commands** — rm -rf, force push, reset --hard are blocked (Gate 2)
+3. **Protect main context** — Delegate heavy operations to sub-agents or team members, not main thread
+4. **Plan mode discipline** — NEVER write code while in plan mode. The workflow is: enter plan mode → explore + write plan → ExitPlanMode → get approval → THEN implement. If ExitPlanMode is rejected, ask the user what's wrong — do NOT call ExitPlanMode again immediately. Max 1 ExitPlanMode attempt per turn.
 
 ## QUALITY GATES (Enforced by hooks)
-The following gates are checked via enforcer.py. Blocking gates exit with code 1 to prevent the tool call. Advisory gates warn but never block.
-
+Gates checked by enforcer.py. Blocking = exit 1. Advisory = warn only.
 **Blocking gates** (sys.exit(1) on violation):
 - Gate 1: READ BEFORE EDIT — Must read .py files before editing
 - Gate 2: NO DESTROY — Blocks rm -rf, DROP TABLE, force push, reset --hard
@@ -34,23 +26,19 @@ The following gates are checked via enforcer.py. Blocking gates exit with code 1
 - Gate 7: CRITICAL FILE GUARD — Extra checks for high-risk files
 - Gate 8: TEMPORAL AWARENESS — Extra caution during late-night hours
 - Gate 9: STRATEGY BAN — Blocks banned fix strategies (proven ineffective)
+- Gate 10: MODEL COST GUARD — Blocks expensive model usage without justification
+- Gate 11: RATE LIMIT — Blocks runaway tool call loops (rolling window)
 
 **Advisory gate** (warns only, never blocks):
 - Gate 6: SAVE VERIFIED FIX — WARNS only when verified fixes not saved to memory
+- Gate 12: PLAN MODE SAVE — Warns if exiting plan mode without saving to memory
 
 ## SESSION START (Non-Negotiable)
 At the start of every new session, BEFORE doing anything else:
 1. Read ~/.claude/HANDOFF.md and ~/.claude/LIVE_STATE.json
-2. If there is previous session state, present a brief summary and ask the user:
-   - **"Continue"** — Resume the previous work (use handoff as active context)
-   - **"New task"** — Mark previous state as closed, archive it, and start fresh
-3. If the user chooses "New task":
-   - Move HANDOFF.md → ~/.claude/archive/HANDOFF_{date}_{project}.md
-   - Reset LIVE_STATE.json to `{"session_count": 0, "status": "new_session"}`
-   - Do NOT reference the previous project unless the user brings it up
-4. If the user chooses "Continue":
-   - Use the handoff state as active context
-   - Pick up from "What's Next" in HANDOFF.md
+2. If previous session state exists, present brief summary and ask: "Continue" or "New task".
+3. "New task" → Archive HANDOFF.md to ~/.claude/archive/HANDOFF_{date}_{project}.md, reset LIVE_STATE.json, don't reference previous project.
+4. "Continue" → Use handoff as context, pick up from "What's Next".
 5. **CRITICAL: The user's current instructions ALWAYS override handoff state.** Previous session context is history, not a directive. If the user asks for something different, do that — not what the handoff says.
 
 ## SESSION HANDOFF
@@ -59,26 +47,10 @@ At the start of every new session, BEFORE doing anything else:
 - Update both at session end (use /wrap-up)
 
 ## AGENT DELEGATION GUIDE
-Choose the right approach based on task complexity:
 
 **Sub-agents** (Task tool, lightweight):
-- Best for: independent parallel work, research, exploration, 2-5 step tasks
 - Memory MCP gives sub-agents shared context (search_knowledge/remember_this)
 - Causal chain tracking shares fix history across agents automatically
-- Cheaper on tokens, no coordination overhead
-
-**Agent teams** (TeamCreate workflow, full coordination):
-- Best for: 6+ dependent steps, real-time coordination, dynamic re-planning
-- Use when agents need to message each other directly (push, not pull)
-- Use when work may discover new tasks mid-execution
-- Use when progress tracking visibility matters
-
-**Team workflow when used:**
-1. **TeamCreate** — Create a named team (e.g., "audit-team")
-2. **TaskCreate** — Define tasks with clear descriptions and acceptance criteria
-3. **Assign** — Spawn agents via Task tool with `team_name`, assign tasks with TaskUpdate
-4. **Coordinate** — Use SendMessage for inter-agent communication, TaskList to monitor progress
-5. **Shutdown** — Send shutdown_request to each agent when work is complete, then TeamDelete
 
 **Decision table:**
 - 2-5 steps, independent → Sub-agents (parallel Task calls)
@@ -99,17 +71,14 @@ SATISFACTION = (Agent Teams) x (Visual Output) x (Autonomy) x (Memory-First)
 ## MEMORY TAG CONVENTIONS
 Use structured tags when saving to memory for better searchability and promotion detection.
 
-**Type tags:** `type:error`, `type:learning`, `type:fix`, `type:feature-request`, `type:correction`, `type:decision`
-**Priority tags:** `priority:critical`, `priority:high`, `priority:medium`, `priority:low`
-**Area tags:** `area:frontend`, `area:backend`, `area:infra`, `area:framework`, `area:testing`, `area:docs`
-**Outcome tags:** `outcome:success`, `outcome:failed`
-**Correlation tags:** `error_pattern:Traceback`, `error_pattern:npm-ERR` (links errors to fixes)
+Tags — type: error, learning, fix, feature-request, correction, decision | priority: critical, high, medium, low | area: frontend, backend, infra, framework, testing, docs | outcome: success, failed | error_pattern:
+  Traceback, npm-ERR
 
 Example: `remember_this("Fixed auth token refresh loop", "debugging login flow", "type:fix,priority:high,area:backend")`
 
 ## CAUSAL CHAIN WORKFLOW
 When fixing recurring errors, use the causal tracking chain:
-1. query_fix_history("error text") — Check what's been tried before
-2. record_attempt("error text", "strategy-name") — Log what you're about to try
-3. Apply the fix and verify it works
-4. record_outcome("chain_id", "success"|"failure") — Log the result
+1. query_fix_history("error text")
+2. record_attempt("error text", "strategy-name")
+3. Fix and verify
+4. record_outcome("chain_id", "success"|"failure")
