@@ -20,6 +20,9 @@ STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 
 FALLBACK_CONTEXT = "No project context available. Query memory before starting work."
 
+# Rules injected into sub-agents that can edit files (no gates protect them)
+EDIT_AGENT_RULES = "RULES: Always Read a file before Edit/Write. No rm -rf, force push, or reset --hard."
+
 
 def load_live_state():
     """Load project state, returning empty dict on any failure."""
@@ -206,6 +209,7 @@ def build_context(agent_type, live_state, session_state=None):
         if skills_str:
             parts.append(skills_str)
         parts.append("IMPORTANT: Query search_knowledge before editing any files.")
+        parts.append(EDIT_AGENT_RULES)
         return " ".join(parts)
 
     if agent_type == "Bash":
@@ -222,6 +226,7 @@ def build_context(agent_type, live_state, session_state=None):
     files_str = _format_file_list(session_state.get("files_read", []))
     if files_str:
         parts.append(f"Recently read: {files_str}.")
+    parts.append(EDIT_AGENT_RULES)
     return " ".join(parts)
 
 
