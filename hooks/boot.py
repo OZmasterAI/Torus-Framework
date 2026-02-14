@@ -29,7 +29,6 @@ from shared.chromadb_socket import is_worker_available as socket_available, quer
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
-MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 SIDEBAND_FILE = os.path.join(os.path.dirname(__file__), ".memory_last_queried")
 STATE_DIR = os.path.join(os.path.dirname(__file__))
 
