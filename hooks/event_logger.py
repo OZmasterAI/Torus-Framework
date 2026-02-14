@@ -67,15 +67,98 @@ def _audit_log(event_name, data, session_id=""):
         pass
 
 
+def _sum_transcript_tokens(transcript_path):
+    """Parse a subagent transcript JSONL and sum all token usage."""
+    total = 0
+    if not transcript_path or not os.path.isfile(transcript_path):
+        return 0
+    try:
+        with open(transcript_path) as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                    usage = entry.get("message", {}).get("usage", {})
+                    total += usage.get("input_tokens", 0)
+                    total += usage.get("output_tokens", 0)
+                except (json.JSONDecodeError, AttributeError):
+                    continue
+    except OSError:
+        pass
+    return total
+
+
+def _fmt_tokens(n):
+    """Format token count compactly: 834 → '834', 19700 → '19.7k'."""
+    if n < 1000:
+        return str(n)
+    if n < 1_000_000:
+        k = n / 1000
+        return f"{k:.1f}k" if k < 100 else f"{int(k)}k"
+    return f"{n / 1_000_000:.1f}M"
+
+
 def handle_subagent_stop(data):
-    """Log when a sub-agent finishes or crashes."""
+    """Log when a sub-agent finishes, parse transcript tokens, update state."""
+    agent_id = data.get("agent_id", "unknown")
     agent_type = data.get("agent_type", "unknown")
-    # Extract any error info if present
+    transcript_path = data.get("agent_transcript_path", "")
     error = data.get("error", "")
     status = "error" if error else "completed"
-    msg = f"[SubagentStop] {agent_type} agent {status}"
+
+    # Parse transcript for token usage
+    tokens = _sum_transcript_tokens(transcript_path)
+
+    # Update session state: remove from active, add to history
+    try:
+        import glob
+        pattern = os.path.join(STATE_DIR, "state_*.json")
+        files = glob.glob(pattern)
+        if files:
+            files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+            state_path = files[0]
+            with open(state_path) as f:
+                state = json.load(f)
+
+            # Remove from active_subagents
+            active = state.get("active_subagents", [])
+            start_ts = time.time()
+            for sa in active:
+                if sa.get("agent_id") == agent_id:
+                    start_ts = sa.get("start_ts", time.time())
+                    break
+            state["active_subagents"] = [
+                sa for sa in active if sa.get("agent_id") != agent_id
+            ]
+
+            # Add to history
+            duration_s = round(time.time() - start_ts, 1)
+            history = state.get("subagent_history", [])
+            history.append({
+                "agent_id": agent_id,
+                "agent_type": agent_type,
+                "tokens": tokens,
+                "duration_s": duration_s,
+            })
+            # Cap history at 20 entries
+            state["subagent_history"] = history[-20:]
+
+            # Accumulate total tokens
+            state["subagent_total_tokens"] = state.get("subagent_total_tokens", 0) + tokens
+
+            # Atomic write
+            tmp = state_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(state, f, indent=2)
+            os.replace(tmp, state_path)
+    except Exception:
+        pass  # Fail-open
+
+    # Enhanced stderr log
+    msg = f"[SubagentStop] {agent_type} {status}"
+    if tokens:
+        msg += f" | {_fmt_tokens(tokens)} tok"
     if error:
-        msg += f": {str(error)[:100]}"
+        msg += f" | {str(error)[:80]}"
     print(msg, file=sys.stderr)
 
 

@@ -225,6 +225,52 @@ def build_context(agent_type, live_state, session_state=None):
     return " ".join(parts)
 
 
+def _track_subagent_start(data):
+    """Record active subagent in session state for statusline visibility."""
+    try:
+        agent_id = data.get("agent_id", "")
+        agent_type = data.get("agent_type", "unknown")
+        session_id = data.get("session_id", "")
+        transcript_path = data.get("agent_transcript_path", "")
+
+        # Construct transcript path if not provided (SubagentStart may not have it)
+        if not transcript_path and session_id and agent_id:
+            base = os.path.join(
+                os.path.expanduser("~"), ".claude", "projects", "-home-crab",
+                session_id, "subagents", f"agent-{agent_id}.jsonl"
+            )
+            transcript_path = base
+
+        # Find and update session state
+        pattern = os.path.join(STATE_DIR, "state_*.json")
+        files = glob.glob(pattern)
+        if not files:
+            return
+        files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+        state_path = files[0]
+        with open(state_path) as f:
+            state = json.load(f)
+
+        active = state.get("active_subagents", [])
+        # Avoid duplicates
+        if not any(sa.get("agent_id") == agent_id for sa in active):
+            active.append({
+                "agent_id": agent_id,
+                "agent_type": agent_type,
+                "transcript_path": transcript_path,
+                "start_ts": time.time(),
+            })
+        state["active_subagents"] = active
+
+        # Atomic write
+        tmp = state_path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=2)
+        os.replace(tmp, state_path)
+    except Exception:
+        pass  # Fail-open
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -233,6 +279,9 @@ def main():
         live_state = load_live_state()
         session_state = find_current_session_state()
         context = build_context(agent_type, live_state, session_state)
+
+        # Track subagent in session state for statusline
+        _track_subagent_start(data)
 
         output = {
             "hookSpecificOutput": {

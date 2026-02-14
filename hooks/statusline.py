@@ -290,6 +290,56 @@ def get_pending_count():
         return 0
 
 
+def get_subagent_status():
+    """Read active subagents from session state and sum their live token usage.
+
+    For each active subagent, reads its transcript JSONL and sums
+    usage.input_tokens + usage.output_tokens from all assistant messages.
+
+    Returns (active_list, total_completed_tokens) where active_list is
+    [(agent_type, live_tokens), ...] and total_completed_tokens is the
+    cumulative tokens from all finished subagents.
+    """
+    import glob as globmod
+    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    files = globmod.glob(pattern)
+    if not files:
+        return ([], 0)
+    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    try:
+        with open(files[0]) as f:
+            state = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return ([], 0)
+
+    completed_tokens = state.get("subagent_total_tokens", 0)
+    active = state.get("active_subagents", [])
+    if not active:
+        return ([], completed_tokens)
+
+    # Read live token counts from each active subagent's transcript
+    active_list = []
+    for sa in active:
+        agent_type = sa.get("agent_type", "?")
+        transcript = sa.get("transcript_path", "")
+        tokens = 0
+        if transcript and os.path.isfile(transcript):
+            try:
+                with open(transcript) as f:
+                    for line in f:
+                        try:
+                            entry = json.loads(line)
+                            usage = entry.get("message", {}).get("usage", {})
+                            tokens += usage.get("input_tokens", 0)
+                            tokens += usage.get("output_tokens", 0)
+                        except (json.JSONDecodeError, AttributeError):
+                            continue
+            except OSError:
+                pass
+        active_list.append((agent_type, tokens))
+    return (active_list, completed_tokens)
+
+
 def get_plan_mode_warns():
     """Return gate12 plan-mode escalation warn count from session state."""
     import glob as globmod
@@ -513,6 +563,17 @@ def main():
     total_calls = get_total_tool_calls()
     if total_calls > 0:
         parts.append(f"TC:{total_calls}")
+
+    # Subagent visibility
+    sa_active, sa_completed_tok = get_subagent_status()
+    if sa_active:
+        sa_parts = []
+        for agent_type, tok in sa_active:
+            short_type = agent_type[:8]  # Truncate long agent type names
+            sa_parts.append(f"{short_type}({fmt_tokens(tok)})")
+        parts.append("SA:" + ",".join(sa_parts))
+    if sa_completed_tok > 0:
+        parts.append(f"ST:{fmt_tokens(sa_completed_tok)}")
 
     # Session age
     try:

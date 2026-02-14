@@ -88,6 +88,10 @@ def default_state():
         "rate_window_timestamps": [],  # Rolling window of tool call timestamps for Gate 11
         "tool_call_counts": {},     # Per-tool call counts
         "total_tool_calls": 0,      # Total tool calls this session
+        # v2.4.2 fields (subagent visibility)
+        "active_subagents": [],     # Currently running: [{agent_id, agent_type, transcript_path, start_ts}]
+        "subagent_total_tokens": 0, # Cumulative tokens from completed subagents
+        "subagent_history": [],     # Completed: [{agent_id, agent_type, tokens, duration_s}]
     }
 
 
@@ -129,6 +133,9 @@ def get_state_schema():
         "rate_window_timestamps": {"type": "list", "description": "Rolling window for rate limiting", "category": "gate11"},
         "tool_call_counts": {"type": "dict", "description": "Per-tool call counts", "category": "metrics"},
         "total_tool_calls": {"type": "int", "description": "Total tool calls this session", "category": "metrics"},
+        "active_subagents": {"type": "list", "description": "Currently running subagents", "category": "subagents"},
+        "subagent_total_tokens": {"type": "int", "description": "Cumulative tokens from completed subagents", "category": "subagents"},
+        "subagent_history": {"type": "list", "description": "Completed subagent records", "category": "subagents"},
     }
 
 
@@ -153,6 +160,12 @@ def migrate_v1_to_v2(state):
         state["tool_call_counts"] = {}
     if "total_tool_calls" not in state:
         state["total_tool_calls"] = 0
+    if "active_subagents" not in state:
+        state["active_subagents"] = []
+    if "subagent_total_tokens" not in state:
+        state["subagent_total_tokens"] = 0
+    if "subagent_history" not in state:
+        state["subagent_history"] = []
 
     state["_version"] = 2
     return state
