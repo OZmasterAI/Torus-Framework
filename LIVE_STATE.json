@@ -1,51 +1,14 @@
 {
-  "session_count": 36,
-  "status": "completed",
-  "project": "megaman-framework",
-  "project_path": "~/.claude",
-  "feature": "chromadb-uds-gateway",
-  "feature_status": "complete",
-  "test_count": 925,
+  "session_count": 39,
+  "status": "starting",
+  "project": "",
+  "project_path": "/home/crab",
+  "feature": "",
+  "feature_status": "",
+  "test_count": 0,
   "test_failures": 0,
-  "files_modified": [
-    "hooks/shared/chromadb_socket.py",
-    "hooks/memory_server.py",
-    "hooks/statusline.py",
-    "hooks/session_end.py",
-    "hooks/boot.py",
-    "dashboard/server.py",
-    "hooks/test_framework.py"
-  ],
-  "hook_events": 13,
-  "gates": 13,
-  "mcp_tools": 15,
-  "curated_memories": 294,
-  "named_agents": 0,
-  "skills_count": 18,
-  "dashboard_port": 7777,
-  "improvements_shipped": [
-    "UDS Gateway: single-owner ChromaDB architecture",
-    "StatusLine: 3.3s → 7ms per prompt",
-    "Dashboard: standalone fallback with safe_* wrappers",
-    "14 new UDS socket tests (925 total)",
-    "All pgrep guards eliminated from production hooks"
-  ],
-  "next_steps": [
-    "Remove dead inject_memories() from boot.py",
-    "Dashboard auto-start on SessionStart",
-    "Memory graph visualization",
-    "HTTP /health endpoint for ops monitoring"
-  ],
-  "known_issues": [
-    "MCP tool reconnection breaks after mid-session server kill",
-    "26 pre-existing gate interaction test failures (timing-dependent)",
-    "Dead inject_memories() in boot.py kept for test compatibility"
-  ],
-  "last_session_metrics": {
-    "reads": 25,
-    "edits": 18,
-    "errors": 1,
-    "verified": 2,
-    "pending": 0
-  }
+  "files_modified": [],
+  "improvements_shipped": [],
+  "next_steps": [],
+  "known_issues": []
 }
