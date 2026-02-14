@@ -30,10 +30,12 @@ HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
 
 # State files may live on tmpfs ramdisk for performance
 try:
-    from shared.ramdisk import get_state_dir
+    from shared.ramdisk import get_state_dir, is_ramdisk_available, RAMDISK_DIR, TMPFS_AUDIT_DIR, BACKUP_AUDIT_DIR
     STATE_FILE_DIR = get_state_dir()
+    _HAS_RAMDISK = True
 except ImportError:
     STATE_FILE_DIR = HOOKS_DIR
+    _HAS_RAMDISK = False
 GATES_DIR = os.path.join(HOOKS_DIR, "gates")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
@@ -368,6 +370,62 @@ def get_verification_ratio():
         return (0, 0)
 
 
+def get_ramdisk_health():
+    """Return ramdisk health info: (used_bytes, mirror_lag_bytes) or None if unavailable.
+
+    Used bytes: total size of files on tmpfs.
+    Mirror lag: difference between tmpfs audit size and disk backup audit size.
+    A lag > 0 means some audit data hasn't been mirrored to disk yet.
+    """
+    if not _HAS_RAMDISK or not is_ramdisk_available():
+        return None
+
+    try:
+        # Total tmpfs usage
+        used = 0
+        for dirpath, _dirnames, filenames in os.walk(RAMDISK_DIR):
+            for f in filenames:
+                try:
+                    used += os.path.getsize(os.path.join(dirpath, f))
+                except OSError:
+                    pass
+
+        # Mirror lag: tmpfs audit size vs disk backup audit size
+        tmpfs_audit_size = 0
+        disk_audit_size = 0
+
+        if os.path.isdir(TMPFS_AUDIT_DIR):
+            for f in os.listdir(TMPFS_AUDIT_DIR):
+                try:
+                    tmpfs_audit_size += os.path.getsize(os.path.join(TMPFS_AUDIT_DIR, f))
+                except OSError:
+                    pass
+
+        if os.path.isdir(BACKUP_AUDIT_DIR):
+            for f in os.listdir(BACKUP_AUDIT_DIR):
+                fp = os.path.join(BACKUP_AUDIT_DIR, f)
+                # Only count .jsonl files (not .gz archives) for fair comparison
+                if f.endswith(".jsonl"):
+                    try:
+                        disk_audit_size += os.path.getsize(fp)
+                    except OSError:
+                        pass
+
+        lag = max(0, tmpfs_audit_size - disk_audit_size)
+        return (used, lag)
+    except (OSError, IOError):
+        return None
+
+
+def fmt_bytes(n):
+    """Format bytes compactly: 1234 -> '1.2K', 4800000 -> '4.6M'."""
+    if n < 1024:
+        return f"{n}B"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.1f}K"
+    return f"{n / (1024 * 1024):.1f}M"
+
+
 def calculate_health(gate_count, mem_count):
     """Calculate framework health as a weighted percentage (0-100).
 
@@ -568,6 +626,15 @@ def main():
         parts.append("SA:" + ",".join(sa_parts))
     if sa_completed_tok > 0:
         parts.append(f"ST:{fmt_tokens(sa_completed_tok)}")
+
+    # Ramdisk health
+    rd_health = get_ramdisk_health()
+    if rd_health is not None:
+        rd_used, rd_lag = rd_health
+        rd_str = f"RD:{fmt_bytes(rd_used)}"
+        if rd_lag > 1024:  # Only show lag if > 1KB
+            rd_str += f"|lag:{fmt_bytes(rd_lag)}"
+        parts.append(rd_str)
 
     # Session age
     try:
