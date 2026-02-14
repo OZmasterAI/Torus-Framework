@@ -9,7 +9,7 @@
       "files": [
         "/tmp/megaman-test/hello.py"
       ],
-      "validate": "python3 -c \"from hello import greet; assert greet('World') == 'Hello, World!'\" ",
+      "validate": "python3 -c \"from hello import greet; assert greet('World') == 'Hello, World!'\"",
       "depends_on": []
     },
     {
