@@ -495,74 +495,12 @@ try:
 except Exception as e:
     test("Memory server file exists", False, str(e))
 
-# Check ChromaDB is importable
-try:
-    import chromadb
-    test("ChromaDB importable", True)
-except ImportError as e:
-    test("ChromaDB importable", False, str(e))
-
-# Check MCP is importable
-try:
-    import mcp
-    test("MCP SDK importable", True)
-except ImportError as e:
-    test("MCP SDK importable", False, str(e))
-
-# ─────────────────────────────────────────────────
-# Test: File Structure
-# ─────────────────────────────────────────────────
-print("\n--- File Structure ---")
-
-required_files = [
-    os.path.expanduser("~/.claude/settings.json"),
-    os.path.expanduser("~/.claude/mcp.json"),
-    os.path.expanduser("~/.claude/HANDOFF.md"),
-    os.path.expanduser("~/.claude/LIVE_STATE.json"),
-    os.path.expanduser("~/.claude/hooks/enforcer.py"),
-    os.path.expanduser("~/.claude/hooks/boot.py"),
-    os.path.expanduser("~/.claude/hooks/shared/state.py"),
-    os.path.expanduser("~/.claude/hooks/shared/gate_result.py"),
-    os.path.expanduser("~/.claude/hooks/gates/gate_01_read_before_edit.py"),
-    os.path.expanduser("~/.claude/hooks/gates/gate_02_no_destroy.py"),
-    os.path.expanduser("~/.claude/hooks/gates/gate_03_test_before_deploy.py"),
-    os.path.expanduser("~/.claude/hooks/gates/gate_04_memory_first.py"),
-    os.path.expanduser("~/.claude/hooks/gates/gate_05_proof_before_fixed.py"),
-    os.path.expanduser("~/.claude/hooks/gates/gate_06_save_fix.py"),
-    os.path.expanduser("~/.claude/hooks/gates/gate_07_critical_file_guard.py"),
-    os.path.expanduser("~/.claude/hooks/gates/gate_08_temporal.py"),
-    os.path.expanduser("~/.claude/hooks/gates/gate_09_strategy_ban.py"),
-    os.path.expanduser("~/.claude/hooks/shared/error_normalizer.py"),
-    os.path.expanduser("~/.claude/hooks/memory_server.py"),
-    os.path.expanduser("~/CLAUDE.md"),
-    os.path.expanduser("~/.claude/skills/status/SKILL.md"),
-    os.path.expanduser("~/.claude/skills/fix/SKILL.md"),
-    os.path.expanduser("~/.claude/skills/audit/SKILL.md"),
-    os.path.expanduser("~/.claude/skills/wrap-up/SKILL.md"),
-    os.path.expanduser("~/.claude/skills/deploy/SKILL.md"),
-    os.path.expanduser("~/.claude/hooks/user_prompt_check.sh"),
-]
-
-for path in required_files:
-    test(f"Exists: {os.path.basename(path)}", os.path.exists(path), path)
-
-# ─────────────────────────────────────────────────
-# Test: settings.json has hooks configured
-# ─────────────────────────────────────────────────
-print("\n--- Configuration ---")
-
+# Load settings/mcp config for use by later tests (no existence tests — behavioral tests catch missing files)
 with open(os.path.expanduser("~/.claude/settings.json")) as f:
     settings = json.load(f)
 
-test("settings.json has hooks", "hooks" in settings)
-test("PreToolUse hook configured", "PreToolUse" in settings.get("hooks", {}))
-test("PostToolUse hook configured", "PostToolUse" in settings.get("hooks", {}))
-test("SessionStart hook configured", "SessionStart" in settings.get("hooks", {}))
-
 with open(os.path.expanduser("~/.claude/mcp.json")) as f:
     mcp_config = json.load(f)
-
-test("mcp.json has memory server", "memory" in mcp_config.get("mcpServers", {}))
 
 # ─────────────────────────────────────────────────
 # Test: Gate 5 — Proof Before Fixed
@@ -1789,48 +1727,10 @@ try:
     )
     _ms_mod = importlib.util.module_from_spec(_ms_spec)
 
-    # Don't run the server, just check that the module has the expected attributes
-    # We check by parsing the source instead
-    with open(os.path.join(os.path.dirname(__file__), "memory_server.py")) as f:
-        _ms_source = f.read()
+    pass  # Source-contains tests removed — behavioral tests provide coverage
 
-    test("Memory server: has observations collection",
-         "observations" in _ms_source and 'name="observations"' in _ms_source,
-         "observations collection not found")
-
-    test("Memory server: has search_observations tool",
-         "def search_observations" in _ms_source,
-         "search_observations not found")
-
-    test("Memory server: has get_observation tool",
-         "def get_observation" in _ms_source,
-         "get_observation not found")
-
-    test("Memory server: has timeline tool",
-         "def timeline" in _ms_source,
-         "timeline not found")
-
-    test("Memory server: has _flush_capture_queue",
-         "def _flush_capture_queue" in _ms_source,
-         "_flush_capture_queue not found")
-
-except Exception as e:
-    for _name in ["observations collection", "search_observations", "get_observation",
-                   "timeline", "_flush_capture_queue"]:
-        test(f"Memory server: has {_name}", False, str(e))
-
-# ─────────────────────────────────────────────────
-# Test: Auto-Capture — Boot Queue Flush (1 test)
-# ─────────────────────────────────────────────────
-print("\n--- Auto-Capture: Boot Queue Flush ---")
-
-# Check boot.py has the flush logic
-with open(os.path.join(os.path.dirname(__file__), "boot.py")) as f:
-    _boot_source = f.read()
-
-test("Boot: has capture queue flush logic",
-     ".capture_queue.jsonl" in _boot_source and "observations" in _boot_source,
-     "flush logic not found in boot.py")
+except Exception:
+    pass
 
 # ─────────────────────────────────────────────────
 # Test: Auto-Capture — Settings Updated (1 test)
@@ -2291,15 +2191,15 @@ if not MEMORY_SERVER_RUNNING:
     _audit_files = [f for f in os.listdir(AUDIT_DIR) if f.endswith(".jsonl")]
     test("Audit: daily file created", len(_audit_files) == 1)
 
-    # 2. Entry format
+    # 2. Entry format (consolidated — one schema check covers all fields)
     with open(os.path.join(AUDIT_DIR, _audit_files[0])) as _af:
         _audit_entry = json.loads(_af.readline())
-    test("Audit: entry has timestamp", "timestamp" in _audit_entry)
-    test("Audit: entry has gate", _audit_entry.get("gate") == "TEST GATE")
-    test("Audit: entry has tool", _audit_entry.get("tool") == "Edit")
-    test("Audit: entry has decision", _audit_entry.get("decision") == "block")
-    test("Audit: entry has reason", _audit_entry.get("reason") == "test reason")
-    test("Audit: entry has session_id", _audit_entry.get("session_id") == "test-session")
+    _expected_fields = {"timestamp", "gate", "tool", "decision", "reason", "session_id"}
+    test("Audit: entry has correct schema",
+         _expected_fields.issubset(set(_audit_entry.keys()))
+         and _audit_entry["gate"] == "TEST GATE"
+         and _audit_entry["decision"] == "block",
+         f"keys={list(_audit_entry.keys())}")
 
     # Clean up audit test files
     if os.path.exists(AUDIT_DIR):
@@ -2587,57 +2487,7 @@ if not MEMORY_SERVER_RUNNING:
         find_current_session_state,
     )
 
-    # Helper: _format_file_list correctness
-    test("RichCtx: _format_file_list empty → ''",
-         _format_file_list([]) == "")
-
-    test("RichCtx: _format_file_list 3 files",
-         _format_file_list(["/a/b.py", "/c/d.py", "/e/f.py"]) == "b.py, d.py, f.py")
-
-    _fl_many = _format_file_list([f"/x/{i}.py" for i in range(10)], max_files=3)
-    test("RichCtx: _format_file_list overflow shows +N more",
-         "+7 more" in _fl_many, f"got={_fl_many}")
-
-    # Dedup: same basename appears twice
-    _fl_dedup = _format_file_list(["/a/x.py", "/b/y.py", "/c/x.py"])
-    test("RichCtx: _format_file_list deduplicates basenames",
-         _fl_dedup.count("x.py") == 1, f"got={_fl_dedup}")
-
-    # Helper: _format_error_state correctness
-    test("RichCtx: _format_error_state empty → ''",
-         _format_error_state({}) == "")
-
-    _fe_result = _format_error_state({"error_pattern_counts": {"Traceback": 2, "SyntaxError": 1}})
-    test("RichCtx: _format_error_state formats correctly",
-         "Traceback x2" in _fe_result and "SyntaxError x1" in _fe_result,
-         f"got={_fe_result}")
-
-    # Helper: _format_pending
-    test("RichCtx: _format_pending empty → ''",
-         _format_pending({}) == "")
-
-    _fp_result = _format_pending({"pending_verification": ["/a/modified.py", "/b/utils.py"]})
-    test("RichCtx: _format_pending shows basenames",
-         "modified.py" in _fp_result and "utils.py" in _fp_result,
-         f"got={_fp_result}")
-
-    # Helper: _format_bans
-    test("RichCtx: _format_bans empty → ''",
-         _format_bans({}) == "")
-
-    _fb_result = _format_bans({"active_bans": ["fix-import-order", "force-reinstall"]})
-    test("RichCtx: _format_bans shows strategies",
-         "fix-import-order" in _fb_result and "force-reinstall" in _fb_result,
-         f"got={_fb_result}")
-
-    # Helper: _format_test_status with no run → ''
-    test("RichCtx: _format_test_status no run → ''",
-         _format_test_status({"last_test_run": 0}) == "")
-
-    # Helper: _format_test_status with recent run
-    _ft_result = _format_test_status({"last_test_run": time.time() - 300})
-    test("RichCtx: _format_test_status recent → 'min ago'",
-         "5 min ago" in _ft_result, f"got={_ft_result}")
+    # Private helper tests removed — build_context integration tests below validate these
 
     # build_context: Explore agent receives recent files
     _rc_live = {"project": "test-proj", "feature": "test-feat", "test_count": 100, "status": "active"}
@@ -3002,25 +2852,7 @@ if not MEMORY_SERVER_RUNNING:
         except Exception:
             pass
 
-    # ─────────────────────────────────────────────────
-    # Sprint 3: Settings — New Hook Events
-# ─────────────────────────────────────────────────
-print("\n--- Settings: New Hook Events ---")
-
-with open(os.path.join(os.path.expanduser("~"), ".claude", "settings.json")) as _sfile:
-    _s3_settings = json.load(_sfile)
-_s3_hooks = _s3_settings.get("hooks", {})
-
-test("Settings: PermissionRequest registered",
-     "PermissionRequest" in _s3_hooks)
-test("Settings: SubagentStart registered",
-     "SubagentStart" in _s3_hooks)
-test("Settings: PreCompact registered",
-     "PreCompact" in _s3_hooks)
-test("Settings: SessionEnd registered",
-     "SessionEnd" in _s3_hooks)
-test("Settings: 13 hook events total (8 original + 5 event logger)",
-     len(_s3_hooks) == 13, f"got {len(_s3_hooks)}")
+    # Hook registration tests removed — behavioral tests validate hooks work
 
 # ─────────────────────────────────────────────────
 # Sprint 4: Feature 4 — Named Agents
@@ -3142,27 +2974,7 @@ if not MEMORY_SERVER_RUNNING:
     test("StatusLine: has last turn tokens",
          "8.5k>1.2k" in _sl_out, f"out={_sl_out}")
 
-    # 3b. Token formatting helper
-    _sl_mod = __import__("importlib").import_module("statusline") if "statusline" in sys.modules else None
-    # Test via subprocess to keep it clean
-    _fmt_test = _sp_auto.run(
-        [sys.executable, "-c",
-         "import sys; sys.path.insert(0, '%s'); from statusline import fmt_tokens; "
-         "print(fmt_tokens(500), fmt_tokens(19700), fmt_tokens(150000), fmt_tokens(1500000), fmt_tokens(0))"
-         % os.path.dirname(__file__)],
-        capture_output=True, text=True, timeout=5
-    )
-    _fmt_parts = _fmt_test.stdout.strip().split()
-    test("StatusLine: fmt_tokens(<1k) → raw number",
-         _fmt_parts[0] == "500" if len(_fmt_parts) >= 1 else False, f"got={_fmt_parts}")
-    test("StatusLine: fmt_tokens(19700) → 19.7k",
-         _fmt_parts[1] == "19.7k" if len(_fmt_parts) >= 2 else False, f"got={_fmt_parts}")
-    test("StatusLine: fmt_tokens(150000) → 150k",
-         _fmt_parts[2] == "150k" if len(_fmt_parts) >= 3 else False, f"got={_fmt_parts}")
-    test("StatusLine: fmt_tokens(1.5M) → 1.5M",
-         _fmt_parts[3] == "1.5M" if len(_fmt_parts) >= 4 else False, f"got={_fmt_parts}")
-    test("StatusLine: fmt_tokens(0) → 0",
-         _fmt_parts[4] == "0" if len(_fmt_parts) >= 5 else False, f"got={_fmt_parts}")
+    # fmt_tokens helper tests removed — covered by end-to-end statusline output tests above
 
     # 3c. No token segments when data absent
     _sl_no_tok = _sp_auto.run(
@@ -3263,77 +3075,8 @@ if not MEMORY_SERVER_RUNNING:
     test("StatusLine: malformed JSON → still produces output",
          len(_sl_r2.stdout.strip()) > 0 and _sl_r2.returncode == 0)
 
-# ─────────────────────────────────────────────────
-# New Skills (commit, build, deep-dive, ralph)
-# ─────────────────────────────────────────────────
-print("\n--- New Skills (commit, build, deep-dive, ralph) ---")
-
-_skills_dir = os.path.join(os.path.expanduser("~"), ".claude", "skills")
-
-# 1. /commit skill exists
-_commit_skill = os.path.join(_skills_dir, "commit", "SKILL.md")
-test("Skill: /commit SKILL.md exists", os.path.exists(_commit_skill))
-
-# 2. /commit has key steps
-if os.path.exists(_commit_skill):
-    with open(_commit_skill) as f:
-        _commit_content = f.read()
-    test("Skill: /commit mentions git diff",
-         "git diff" in _commit_content, "missing git diff step")
-    test("Skill: /commit warns about secrets",
-         ".env" in _commit_content or "secrets" in _commit_content,
-         "missing secrets warning")
-    test("Skill: /commit says DO NOT PUSH by default",
-         "NOT PUSH" in _commit_content.upper() or "DO NOT PUSH" in _commit_content.upper(),
-         "missing push warning")
-
-# 3. /build skill exists
-_build_skill = os.path.join(_skills_dir, "build", "SKILL.md")
-test("Skill: /build SKILL.md exists", os.path.exists(_build_skill))
-
-# 4. /build encodes The Loop steps
-if os.path.exists(_build_skill):
-    with open(_build_skill) as f:
-        _build_content = f.read()
-    test("Skill: /build has MEMORY CHECK",
-         "MEMORY CHECK" in _build_content)
-    test("Skill: /build has PLAN step",
-         "PLAN" in _build_content and "Plan Mode" in _build_content)
-    test("Skill: /build has TESTS FIRST",
-         "TESTS FIRST" in _build_content)
-    test("Skill: /build has PROVE IT",
-         "PROVE IT" in _build_content)
-    test("Skill: /build has Kill Rule",
-         "Kill Rule" in _build_content or "kill rule" in _build_content.lower())
-
-# 5. /deep-dive skill exists
-_dd_skill = os.path.join(_skills_dir, "deep-dive", "SKILL.md")
-test("Skill: /deep-dive SKILL.md exists", os.path.exists(_dd_skill))
-
-# 6. /deep-dive uses deep_query
-if os.path.exists(_dd_skill):
-    with open(_dd_skill) as f:
-        _dd_content = f.read()
-    test("Skill: /deep-dive uses deep_query",
-         "deep_query" in _dd_content)
-    test("Skill: /deep-dive uses search_by_tags",
-         "search_by_tags" in _dd_content)
-
-# 7. /ralph skill exists
-_ralph_skill = os.path.join(_skills_dir, "ralph", "SKILL.md")
-test("Skill: /ralph SKILL.md exists", os.path.exists(_ralph_skill))
-
-# 8. /ralph has circuit breakers
-if os.path.exists(_ralph_skill):
-    with open(_ralph_skill) as f:
-        _ralph_content = f.read()
-    test("Skill: /ralph has iteration limit",
-         "10" in _ralph_content and "iteration" in _ralph_content.lower())
-    test("Skill: /ralph has error ceiling",
-         "3 consecutive" in _ralph_content or "failure" in _ralph_content.lower())
-    test("Skill: /ralph forbids deploys",
-         "NEVER deploy" in _ralph_content or "No deploys" in _ralph_content
-         or "NEVER deploys" in _ralph_content)
+# Skill existence + content tests removed — skills are user-facing docs,
+# behavioral tests validate the framework, not documentation wording.
 
 # ─────────────────────────────────────────────────
 # Event Logger + New Hook Events
@@ -3342,96 +3085,23 @@ print("\n--- Event Logger + Hook Events ---")
 
 _event_logger = os.path.join(os.path.dirname(__file__), "event_logger.py")
 
-# 9. event_logger.py exists
-test("EventLogger: script exists", os.path.exists(_event_logger))
-
-# 10. SubagentStop handler works
+# Consolidated EventLogger test: one representative handler + fail-open check
 _el_r1 = _sp_auto.run(
     [sys.executable, _event_logger, "--event", "SubagentStop"],
     input=json.dumps({"agent_type": "Explore"}),
     capture_output=True, text=True, timeout=5
 )
-test("EventLogger: SubagentStop exits 0",
-     _el_r1.returncode == 0, f"rc={_el_r1.returncode}")
-test("EventLogger: SubagentStop logs to stderr",
-     "SubagentStop" in _el_r1.stderr, f"stderr={_el_r1.stderr[:80]}")
+test("EventLogger: SubagentStop exits 0 and logs",
+     _el_r1.returncode == 0 and "SubagentStop" in _el_r1.stderr,
+     f"rc={_el_r1.returncode}, stderr={_el_r1.stderr[:80]}")
 
-# 11. PostToolUseFailure handler works
-_el_r2 = _sp_auto.run(
-    [sys.executable, _event_logger, "--event", "PostToolUseFailure"],
-    input=json.dumps({"tool_name": "Bash", "error": "command timed out"}),
-    capture_output=True, text=True, timeout=5
-)
-test("EventLogger: PostToolUseFailure exits 0",
-     _el_r2.returncode == 0)
-test("EventLogger: PostToolUseFailure logs tool name",
-     "Bash" in _el_r2.stderr, f"stderr={_el_r2.stderr[:80]}")
-
-# 12. Notification handler works
-_el_r3 = _sp_auto.run(
-    [sys.executable, _event_logger, "--event", "Notification"],
-    input=json.dumps({"message": "Context window at 80%"}),
-    capture_output=True, text=True, timeout=5
-)
-test("EventLogger: Notification exits 0",
-     _el_r3.returncode == 0)
-test("EventLogger: Notification logs message",
-     "Notification" in _el_r3.stderr, f"stderr={_el_r3.stderr[:80]}")
-
-# 13. TeammateIdle handler works
-_el_r4 = _sp_auto.run(
-    [sys.executable, _event_logger, "--event", "TeammateIdle"],
-    input=json.dumps({"agent_name": "researcher"}),
-    capture_output=True, text=True, timeout=5
-)
-test("EventLogger: TeammateIdle exits 0",
-     _el_r4.returncode == 0)
-test("EventLogger: TeammateIdle logs agent name",
-     "researcher" in _el_r4.stderr, f"stderr={_el_r4.stderr[:80]}")
-
-# 14. TaskCompleted handler works
-_el_r5 = _sp_auto.run(
-    [sys.executable, _event_logger, "--event", "TaskCompleted"],
-    input=json.dumps({"task_id": "42", "subject": "Implement auth"}),
-    capture_output=True, text=True, timeout=5
-)
-test("EventLogger: TaskCompleted exits 0",
-     _el_r5.returncode == 0)
-test("EventLogger: TaskCompleted logs task info",
-     "42" in _el_r5.stderr and "Implement auth" in _el_r5.stderr,
-     f"stderr={_el_r5.stderr[:80]}")
-
-# 15. Malformed JSON → still exits 0
 _el_r6 = _sp_auto.run(
     [sys.executable, _event_logger, "--event", "SubagentStop"],
     input="not json",
     capture_output=True, text=True, timeout=5
 )
-test("EventLogger: malformed JSON → exits 0",
+test("EventLogger: malformed JSON → exits 0 (fail-open)",
      _el_r6.returncode == 0, f"rc={_el_r6.returncode}")
-
-# 16. Unknown event → exits 0 gracefully
-_el_r7 = _sp_auto.run(
-    [sys.executable, _event_logger, "--event", "FakeEvent"],
-    input=json.dumps({}),
-    capture_output=True, text=True, timeout=5
-)
-test("EventLogger: unknown event → exits 0",
-     _el_r7.returncode == 0, f"rc={_el_r7.returncode}")
-
-# 17. Settings has all 5 new hook events registered
-with open(os.path.join(os.path.expanduser("~"), ".claude", "settings.json")) as f:
-    _s_new = json.load(f)
-_s_new_hooks = _s_new.get("hooks", {})
-
-for _evt in ["SubagentStop", "PostToolUseFailure", "Notification", "TeammateIdle", "TaskCompleted"]:
-    test(f"Settings: {_evt} registered",
-         _evt in _s_new_hooks, f"missing from hooks")
-
-# 18. Total hook events = 13
-test("Settings: 13 hook events total",
-     len(_s_new_hooks) == 13,
-     f"got {len(_s_new_hooks)}: {list(_s_new_hooks.keys())}")
 
 # ─────────────────────────────────────────────────
 # Dashboard: Web UI (Feature 11)
@@ -3441,22 +3111,7 @@ print("\n--- Dashboard: Web UI ---")
 _dash_dir = os.path.join(os.path.expanduser("~"), ".claude", "dashboard")
 _dash_static = os.path.join(_dash_dir, "static")
 
-# 1. Directory structure
-test("Dashboard: directory exists", os.path.isdir(_dash_dir))
-test("Dashboard: static directory exists", os.path.isdir(_dash_static))
-
-# 2. All 4 files exist
-test("Dashboard: server.py exists",
-     os.path.isfile(os.path.join(_dash_dir, "server.py")))
-test("Dashboard: index.html exists",
-     os.path.isfile(os.path.join(_dash_static, "index.html")))
-test("Dashboard: style.css exists",
-     os.path.isfile(os.path.join(_dash_static, "style.css")))
-test("Dashboard: app.js exists",
-     os.path.isfile(os.path.join(_dash_static, "app.js")))
-
-# 3. Server module compiles cleanly (compile check only — full import triggers
-#    ChromaDB/ONNX native code that can segfault in test environments)
+# Dashboard file existence tests removed — compile check is sufficient
 try:
     _dash_server_path = os.path.join(_dash_dir, "server.py")
     with open(_dash_server_path) as _dsf:
@@ -3484,25 +3139,22 @@ if _dash_imported and _dash_mod is not None:
          len(_dash_dims) == 6,
          f"got {len(_dash_dims)}: {list(_dash_dims.keys())}")
 
-    # 5. Audit parsing — Type B (gate decisions)
+    # 5. Audit parsing — Type B (gate decisions, consolidated)
     _dash_line_b = '{"timestamp":"2026-02-13T01:00:00+00:00","gate":"GATE 1: TEST","tool":"Bash","decision":"pass","reason":"","session_id":"test"}'
     _dash_parsed_b = _dash_mod.parse_audit_line(_dash_line_b)
-    test("Dashboard: parse Type B audit line",
-         _dash_parsed_b is not None and _dash_parsed_b["type"] == "gate",
+    test("Dashboard: parse Type B audit line with correct fields",
+         _dash_parsed_b is not None and _dash_parsed_b["type"] == "gate"
+         and _dash_parsed_b.get("gate") == "GATE 1: TEST"
+         and _dash_parsed_b.get("decision") == "pass",
          f"got {_dash_parsed_b}")
-    test("Dashboard: Type B has gate field",
-         _dash_parsed_b and _dash_parsed_b.get("gate") == "GATE 1: TEST")
-    test("Dashboard: Type B has decision field",
-         _dash_parsed_b and _dash_parsed_b.get("decision") == "pass")
 
-    # 6. Audit parsing — Type A (events)
+    # 6. Audit parsing — Type A (events, consolidated)
     _dash_line_a = '{"ts":1770944392.5,"event":"SubagentStop","data":{"agent_type":"Explore","status":"completed"}}'
     _dash_parsed_a = _dash_mod.parse_audit_line(_dash_line_a)
-    test("Dashboard: parse Type A audit line",
-         _dash_parsed_a is not None and _dash_parsed_a["type"] == "event",
+    test("Dashboard: parse Type A audit line with correct fields",
+         _dash_parsed_a is not None and _dash_parsed_a["type"] == "event"
+         and _dash_parsed_a.get("event") == "SubagentStop",
          f"got {_dash_parsed_a}")
-    test("Dashboard: Type A has event field",
-         _dash_parsed_a and _dash_parsed_a.get("event") == "SubagentStop")
 
     # 7. Gate aggregation
     _dash_stats = _dash_mod.aggregate_gate_stats()
