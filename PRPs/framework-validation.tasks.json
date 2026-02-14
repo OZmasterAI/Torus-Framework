@@ -15,7 +15,7 @@
     {
       "id": 2,
       "name": "Implement utils.py with add and multiply functions",
-      "status": "pending",
+      "status": "passed",
       "files": [
         "/home/crab/.claude/PRPs/test-workspace/utils.py"
       ],
