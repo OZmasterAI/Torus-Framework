@@ -23,6 +23,23 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 MAX_ROTATED_FILES = 10
 CLEANUP_AGE_DAYS = 90
 
+# Gate name normalization for historical audit entries that used module paths
+_GATE_NAME_MAP = {
+    "gates.gate_01_read_before_edit": "GATE 1: READ BEFORE EDIT",
+    "gates.gate_02_no_destroy": "GATE 2: NO DESTROY",
+    "gates.gate_03_test_before_deploy": "GATE 3: TEST BEFORE DEPLOY",
+    "gates.gate_04_memory_first": "GATE 4: MEMORY FIRST",
+    "gates.gate_05_proof_before_fixed": "GATE 5: PROOF BEFORE FIXED",
+    "gates.gate_06_save_fix": "GATE 6: SAVE VERIFIED FIX",
+    "gates.gate_07_critical_file_guard": "GATE 7: CRITICAL FILE GUARD",
+    "gates.gate_08_temporal": "GATE 8: TEMPORAL AWARENESS",
+    "gates.gate_09_strategy_ban": "GATE 9: STRATEGY BAN",
+    "gates.gate_10_model_enforcement": "GATE 10: MODEL COST GUARD",
+    "gates.gate_11_rate_limit": "GATE 11: RATE LIMIT",
+    "gates.gate_12_plan_mode_save": "GATE 12: PLAN MODE SAVE",
+    "gates.gate_13_workspace_isolation": "GATE 13: WORKSPACE ISOLATION",
+}
+
 
 def _rotate_file(filepath):
     """Rotate a log file: current -> .1, compress old .1 -> .1.gz, shift others.
@@ -202,7 +219,8 @@ def _process_gzipped_file(fpath, daily_stats):
 def _aggregate_entry(entry, daily_stats):
     """Aggregate a single audit entry into the daily_stats dict."""
     ts = entry.get("timestamp", "")
-    gate = entry.get("gate", "unknown")
+    raw_gate = entry.get("gate", "unknown")
+    gate = _GATE_NAME_MAP.get(raw_gate, raw_gate)
     decision = entry.get("decision", "unknown")
     severity = entry.get("severity", "info")
 
@@ -305,7 +323,8 @@ def get_block_summary(hours=24):
                             continue
                     except (ValueError, TypeError):
                         continue
-                    gate = entry.get("gate", "unknown")
+                    raw_gate = entry.get("gate", "unknown")
+                    gate = _GATE_NAME_MAP.get(raw_gate, raw_gate)
                     tool = entry.get("tool", "unknown")
                     gate_counts[gate] = gate_counts.get(gate, 0) + 1
                     tool_counts[tool] = tool_counts.get(tool, 0) + 1

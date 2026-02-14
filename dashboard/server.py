@@ -120,6 +120,39 @@ EXPECTED_GATES = 12
 EXPECTED_SKILLS = 9
 EXPECTED_HOOK_EVENTS = 13
 
+# ── Gate name normalization ───────────────────────────────────────
+# Historical audit logs may contain module-path gate names (e.g.,
+# "gates.gate_01_read_before_edit") instead of canonical display names.
+# This map normalizes at read-time so dashboards show consistent names
+# without rewriting the source-of-truth JSONL files.
+GATE_NAME_NORMALIZATION = {
+    "gates.gate_01_read_before_edit": "GATE 1: READ BEFORE EDIT",
+    "gates.gate_02_no_destroy": "GATE 2: NO DESTROY",
+    "gates.gate_03_test_before_deploy": "GATE 3: TEST BEFORE DEPLOY",
+    "gates.gate_04_memory_first": "GATE 4: MEMORY FIRST",
+    "gates.gate_05_proof_before_fixed": "GATE 5: PROOF BEFORE FIXED",
+    "gates.gate_06_save_fix": "GATE 6: SAVE VERIFIED FIX",
+    "gates.gate_07_critical_file_guard": "GATE 7: CRITICAL FILE GUARD",
+    "gates.gate_08_temporal": "GATE 8: TEMPORAL AWARENESS",
+    "gates.gate_09_strategy_ban": "GATE 9: STRATEGY BAN",
+    "gates.gate_10_model_enforcement": "GATE 10: MODEL COST GUARD",
+    "gates.gate_11_rate_limit": "GATE 11: RATE LIMIT",
+    "gates.gate_12_plan_mode_save": "GATE 12: PLAN MODE SAVE",
+    "gates.gate_13_workspace_isolation": "GATE 13: WORKSPACE ISOLATION",
+}
+
+
+def normalize_gate_name(raw):
+    """Normalize a gate name from module-path to canonical display name.
+
+    Returns the canonical name if a mapping exists, otherwise returns
+    the original value unchanged.
+    """
+    if not raw:
+        return raw
+    return GATE_NAME_NORMALIZATION.get(raw, raw)
+
+
 # ── Helper functions (reimplemented from statusline.py) ──────────
 
 def _read_json(path):
@@ -270,7 +303,7 @@ def parse_audit_line(line):
             "type": "gate",
             "timestamp": entry.get("timestamp", ""),
             "ts": _iso_to_epoch(entry.get("timestamp", "")),
-            "gate": entry.get("gate", ""),
+            "gate": normalize_gate_name(entry.get("gate", "")),
             "tool": entry.get("tool", ""),
             "decision": entry.get("decision", ""),
             "reason": entry.get("reason", ""),
@@ -378,7 +411,7 @@ def aggregate_gate_perf(date_str=None):
                 except (json.JSONDecodeError, ValueError):
                     continue
                 # Type B: has "gate" key
-                gate = entry.get("gate")
+                gate = normalize_gate_name(entry.get("gate", ""))
                 if not gate:
                     continue
                 decision = entry.get("decision", "")
