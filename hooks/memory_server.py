@@ -74,22 +74,38 @@ mcp = FastMCP("memory")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 os.makedirs(MEMORY_DIR, exist_ok=True)
 
-client = chromadb.PersistentClient(path=MEMORY_DIR)
-collection = client.get_or_create_collection(
-    name="knowledge",
-    metadata={"hnsw:space": "cosine"},
-)
+# Lazy ChromaDB initialization — prevents segfault when module is imported
+# by test code while MCP server already holds a PersistentClient on the same path.
+# ChromaDB Rust backend cannot handle concurrent PersistentClient access.
+client = None
+collection = None
+fix_outcomes = None
+observations = None
 
-fix_outcomes = client.get_or_create_collection(
-    name="fix_outcomes",
-    metadata={"hnsw:space": "cosine"},
-)
 
-# Auto-capture: observations collection (separate from curated knowledge)
-observations = client.get_or_create_collection(
-    name="observations",
-    metadata={"hnsw:space": "cosine"},
-)
+def _init_chromadb():
+    """Lazy initialization of ChromaDB client and collections.
+
+    Called from _ensure_initialized() on first MCP tool use.
+    Safe to call multiple times — idempotent after first run.
+    """
+    global client, collection, fix_outcomes, observations
+    if client is not None:
+        return
+    client = chromadb.PersistentClient(path=MEMORY_DIR)
+    collection = client.get_or_create_collection(
+        name="knowledge",
+        metadata={"hnsw:space": "cosine"},
+    )
+    fix_outcomes = client.get_or_create_collection(
+        name="fix_outcomes",
+        metadata={"hnsw:space": "cosine"},
+    )
+    # Auto-capture: observations collection (separate from curated knowledge)
+    observations = client.get_or_create_collection(
+        name="observations",
+        metadata={"hnsw:space": "cosine"},
+    )
 
 # Progressive disclosure: preview length for search summaries
 SUMMARY_LENGTH = 120
@@ -494,7 +510,7 @@ _initialized = False
 
 
 def _ensure_initialized():
-    """Run one-time initialization (preview migration + FTS5 build).
+    """Run one-time initialization (ChromaDB client + preview migration + FTS5 build).
 
     Called lazily on first MCP tool use or explicitly at server startup.
     Safe to call multiple times — idempotent after first run.
@@ -503,6 +519,7 @@ def _ensure_initialized():
     if _initialized:
         return
     _initialized = True
+    _init_chromadb()
     _preview_migrated = _migrate_previews()
     _fts_count = fts_index.build_from_chromadb(collection)
 

@@ -1,72 +1,47 @@
-# Session 30 — Sub-agent Safety Rules + Batch Memory + Framework Comparison
+# Session 32 — Handoff Recovery + ChromaDB Hardening + v2.0.2 Tests
 
 ## What Was Done
 
-### Sub-agent Safety Rules (3 commits)
-- Injected `EDIT_AGENT_RULES` into SubagentStart hook for agents that can edit files
-- Rules: "Read before edit, no destructive commands, extra caution with critical files"
-- `BASH_AGENT_RULES` added for Bash agents (no destructive commands only)
-- Covers Gates 1, 2, 4, 7 gap — gates don't fire for sub-agents, hook injection is their only protection
-- Fixed phantom builder entry bug (empty agent_id guard)
-- Commits: `90fe760`, `631a566`, `305da27`, `51dbb46`
+### Session 31 (recovered from crash — no wrap-up ran)
+- **AKIRA Feature Adoption Sprint** — 4 features across 9 files
+- Gate 6 escalation threshold 5→2 for faster knowledge capture
+- Gate 13: Workspace Isolation (shared .file_claims.json, fcntl.flock, Tier 2)
+- Path-scoped rules in ~/.claude/rules/ (hooks.md, memory.md, framework.md)
+- TaskCompleted quality warnings in event_logger.py
+- 867 tests passing, 13 gates active
 
-### Batch Memory Fetch
-- Extended `get_memory(id)` to accept comma-separated IDs for batch retrieval
-- Single ID: backward compatible, returns single entry
-- Multiple IDs: returns `{"memories": [...], "count": N}`
-- ChromaDB natively supports batch — near-identical performance to single fetch
-- Zero new MCP tool overhead (same tool, extended behavior)
-- Commit: `71628c7`
-
-### Framework Comparison (Megaman vs AKIRA vs claude-mem)
-- Megaman: ~1,321 tok CLAUDE.md, 15 MCP tools, 12 gates, 18 skills
-- AKIRA: ~4,200 tok (est.), 13 gates, 6 named agents, separate tracker architecture
-- claude-mem: ~1,300 tok, 5 MCP tools, 0 gates, memory-only plugin
-- We already had 95% of claude-mem's 3-layer retrieval pattern — batch fetch was the only gap
-- External worker process for ChromaDB segfault isolation: DEFERRED (adequate workarounds for now)
-
-### CLAUDE.md Section-by-Section Review (continued from session 29)
-- Analyzed: Behavioral Rules, Session Start, Frustration Signals, Memory Tag Conventions, Causal Chain Workflow
-- Deleted 3 rules redundant with built-in tool descriptions (Rules 3, 5, 6)
-- Kept 4 unique rules (prove it works, save to memory, protect main context, plan mode discipline)
-- Moved deleted rules to SubagentStart hook injection (zero main context cost)
+### Session 32 (current)
+- Recovered handoff state from memory after terminal crash
+- Updating HANDOFF.md and LIVE_STATE.json
+- ChromaDB segfault hardening (Task 2)
+- Functional tests for v2.0.2 features (Task 3)
 
 ## What's Next
-1. **Save deferred worker decision to memory** — MCP connection broke this session, memory not saved
-2. **Fix ChromaDB segfault** — Systemic issue, consider external worker when multi-agent usage increases
-3. **Write tests** for v2.0.2 features (recency boost, suggest_promotions, markdown renderer)
-4. **Auto-start dashboard** — Consider adding to SessionStart hook
-5. **Memory graph visualization** — D3.js network of related memories
+1. **Dashboard auto-start** — Consider adding to SessionStart hook
+2. **Memory graph visualization** — D3.js network of related memories (needs ChromaDB batch queries, so items 2+3 should land first)
 
 ## Known Issues
-- ChromaDB/SQLite segfault: affects test_framework.py, concurrent multi-agent MCP access
+- ChromaDB/SQLite segfault: affects test_framework.py under full load, concurrent multi-agent MCP access
 - MCP server requires restart for code changes (pkill + auto-restart on next tool call)
 - MCP connection breaks if server killed mid-session (reconnects on next session start)
 
 ## Service Status
-- Enforcer: active (PreToolUse, 12 gates, audit logging)
+- Enforcer: active (PreToolUse, 13 gates, audit logging)
 - Tracker: active (PostToolUse, fail-open)
 - Boot: active (SessionStart, memory injection)
 - Auto-Approve: active (PermissionRequest, deny-before-allow)
 - SubagentContext: active (SubagentStart, context injection + subagent tracking + safety rules)
-- EventLogger: active (SubagentStop, token parsing + state cleanup)
+- EventLogger: active (SubagentStop, token parsing + state cleanup + TaskCompleted warnings)
 - PreCompact: active (PreCompact, state snapshots)
 - SessionEnd: active (SessionEnd, queue flush)
 - StatusLine: active (subprocess-isolated ChromaDB, HP 100%, SA:/ST: subagent display)
 - **Dashboard: available** (`python3 ~/.claude/dashboard/server.py` → localhost:7777)
-- Memory MCP: active — 274 curated memories, **15 MCP tools** (gateway), 12 gates
+- Memory MCP: active — 279 curated memories, **15 MCP tools** (gateway), 13 gates
 - Skills: **18 total**
-- Tests: 553+ passing, test_framework.py segfaults under full load (ChromaDB issue)
-
-## Commits This Session
-- `90fe760` — Inject safety rules into sub-agents via SubagentStart hook
-- `631a566` — Add destructive command rule to Bash sub-agents
-- `305da27` — Add critical file guard rule to sub-agent injection
-- `51dbb46` — Fix phantom subagent entries from empty agent_id
-- `71628c7` — Add batch fetch to get_memory via comma-separated IDs
+- Tests: 867+ passing
 
 ## MCP Tools (15)
-Core: search_knowledge, remember_this, deep_query, get_memory (now with batch), get_recent_activity
+Core: search_knowledge, remember_this, deep_query, get_memory (batch), get_recent_activity
 Tags: search_by_tags
 Observations: search_observations, get_observation, get_session_sentiment
 Timeline: timeline

@@ -461,16 +461,28 @@ def main():
         gate_count = len([f for f in os.listdir(gates_dir) if f.startswith("gate_") and f.endswith(".py")])
 
     # Initialize ChromaDB client (shared for queue flush + memory injection)
+    # GUARD: Skip direct ChromaDB access if MCP memory server is already running.
+    # ChromaDB Rust backend segfaults on concurrent PersistentClient access.
     db = None
     knowledge_col = None
+    _mcp_running = False
     try:
-        import chromadb
-        db = chromadb.PersistentClient(path=MEMORY_DIR)
-        knowledge_col = db.get_or_create_collection(
-            name="knowledge", metadata={"hnsw:space": "cosine"}
+        _pgrep = subprocess.run(
+            ["pgrep", "-f", "memory_server.py"],
+            capture_output=True, text=True, timeout=3
         )
+        _mcp_running = _pgrep.returncode == 0 and _pgrep.stdout.strip() != ""
     except Exception:
-        pass  # Boot must never crash
+        pass
+    if not _mcp_running:
+        try:
+            import chromadb
+            db = chromadb.PersistentClient(path=MEMORY_DIR)
+            knowledge_col = db.get_or_create_collection(
+                name="knowledge", metadata={"hnsw:space": "cosine"}
+            )
+        except Exception:
+            pass  # Boot must never crash
 
     # Inject relevant memories
     injected = inject_memories(handoff, live_state, knowledge_col)
@@ -571,6 +583,14 @@ def main():
 
     # Reset state
     reset_enforcement_state()
+
+    # Clean up workspace isolation claims (fresh session = fresh claims)
+    claims_file = os.path.join(os.path.dirname(__file__), ".file_claims.json")
+    try:
+        if os.path.exists(claims_file):
+            os.remove(claims_file)
+    except OSError:
+        pass
 
     # Flush stale capture queue from previous session (crash recovery)
     capture_queue = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")

@@ -1,46 +1,45 @@
 {
-  "session_count": 40,
-  "status": "subagent_safety_and_batch_memory",
+  "session_count": 32,
+  "status": "handoff_recovery_and_hardening",
   "project": "self-healing-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "subagent-safety-rules",
-  "feature_status": "complete",
-  "test_count": 553,
+  "feature": "chromadb-hardening-and-tests",
+  "feature_status": "in_progress",
+  "test_count": 867,
   "test_failures": 0,
   "files_modified": [
-    "hooks/subagent_context.py",
-    "hooks/memory_server.py"
+    "HANDOFF.md",
+    "LIVE_STATE.json"
   ],
   "hook_events": 13,
-  "gates": 12,
+  "gates": 13,
   "mcp_tools": 15,
-  "curated_memories": 274,
+  "curated_memories": 279,
   "named_agents": 4,
   "skills_count": 18,
   "dashboard_port": 7777,
   "improvements_shipped": [
-    "subagent_safety_rules",
-    "bash_agent_rules",
-    "critical_file_guard_injection",
-    "phantom_agent_fix",
-    "batch_memory_fetch"
+    "session31_akira_sprint",
+    "gate13_workspace_isolation",
+    "gate6_threshold_change",
+    "path_scoped_rules",
+    "taskcompleted_warnings"
   ],
   "next_steps": [
-    "save_deferred_worker_decision_to_memory",
-    "fix_test_framework_segfault",
-    "write_tests_for_new_features",
+    "chromadb_segfault_hardening",
+    "v2_functional_tests",
     "dashboard_auto_start",
     "memory_graph_visualization"
   ],
   "known_issues": [
-    "ChromaDB/SQLite segfault: affects test_framework.py, concurrent multi-agent MCP access",
-    "MCP connection breaks if server killed mid-session (reconnects on next session start)"
+    "ChromaDB/SQLite segfault: affects test_framework.py under full load",
+    "MCP connection breaks if server killed mid-session"
   ],
   "last_session_metrics": {
-    "reads": 15,
-    "edits": 8,
+    "reads": 0,
+    "edits": 0,
     "errors": 0,
-    "verified": 10,
+    "verified": 0,
     "pending": 0
   }
 }

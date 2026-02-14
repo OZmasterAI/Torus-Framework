@@ -66,7 +66,21 @@ def flush_capture_queue():
     with open(CAPTURE_QUEUE, "r") as f:
         lines = f.readlines()
 
+    # Use subprocess isolation to prevent segfault from concurrent PersistentClient access.
+    # ChromaDB Rust backend cannot handle two processes on the same DB path.
+    import subprocess as _sp
     import chromadb
+    try:
+        _pgrep = _sp.run(
+            ["pgrep", "-f", "memory_server.py"],
+            capture_output=True, text=True, timeout=3
+        )
+        if _pgrep.returncode == 0 and _pgrep.stdout.strip():
+            # MCP server running — skip direct access, queue will be flushed next boot
+            print(f"[SESSION_END] MCP server running, deferring {len(lines)} observations to next boot", file=sys.stderr)
+            return
+    except Exception:
+        pass  # Proceed with direct access if pgrep fails
     client = chromadb.PersistentClient(path=MEMORY_DIR)
     obs_col = client.get_or_create_collection(
         name="observations", metadata={"hnsw:space": "cosine"}

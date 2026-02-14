@@ -770,7 +770,7 @@ print("\n--- Gate 8: Temporal Awareness ---")
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 current_hour = datetime.now().hour
 
@@ -3613,6 +3613,285 @@ if os.path.isfile(_skill_research_path):
     test("v2.0.2: /research skill has trigger words",
          "research" in _skill_research_content.lower() and "investigate" in _skill_research_content.lower(),
          "expected trigger words not found")
+
+# ─────────────────────────────────────────────────
+# Test: v2.0.2 Functional Tests
+# ─────────────────────────────────────────────────
+print("\n--- v2.0.2 Functional Tests ---")
+
+# --- _apply_recency_boost functional tests ---
+# These tests do NOT require ChromaDB, just the pure function
+
+if not MEMORY_SERVER_RUNNING:
+    from memory_server import _apply_recency_boost, format_results, format_summaries as _fs_fn
+
+    # Test: recency_weight=0 should not change scores
+    _rb_input_0 = [
+        {"relevance": 0.8, "timestamp": datetime.now().isoformat()},
+        {"relevance": 0.5, "timestamp": (datetime.now() - timedelta(days=30)).isoformat()},
+    ]
+    _rb_out_0 = _apply_recency_boost([dict(d) for d in _rb_input_0], recency_weight=0)
+    test("v2.0.2 func: recency_weight=0 returns unchanged order",
+         _rb_out_0[0]["relevance"] == 0.8 and _rb_out_0[1]["relevance"] == 0.5,
+         f"got relevances {_rb_out_0[0].get('relevance')}, {_rb_out_0[1].get('relevance')}")
+
+    # Test: empty results should return empty
+    _rb_empty = _apply_recency_boost([], recency_weight=0.15)
+    test("v2.0.2 func: recency_boost empty input returns empty",
+         _rb_empty == [],
+         f"got {_rb_empty}")
+
+    # Test: recent entry gets boosted above older entry with same raw relevance
+    _now_iso = datetime.now().isoformat()
+    _old_iso = (datetime.now() - timedelta(days=300)).isoformat()
+    _rb_input_boost = [
+        {"relevance": 0.5, "timestamp": _old_iso},
+        {"relevance": 0.5, "timestamp": _now_iso},
+    ]
+    _rb_out_boost = _apply_recency_boost([dict(d) for d in _rb_input_boost], recency_weight=0.15)
+    # After boost, the recent entry should be sorted first
+    test("v2.0.2 func: recent entry boosted above older with same raw relevance",
+         _rb_out_boost[0]["timestamp"] == _now_iso,
+         f"first entry timestamp={_rb_out_boost[0].get('timestamp')}")
+
+    # Test: very old entry (>365 days) gets no boost
+    _ancient_iso = (datetime.now() - timedelta(days=400)).isoformat()
+    _rb_input_ancient = [
+        {"relevance": 0.6, "timestamp": _ancient_iso},
+    ]
+    _rb_out_ancient = _apply_recency_boost([dict(d) for d in _rb_input_ancient], recency_weight=0.15)
+    # boost = 0.15 * max(0, 1 - 400/365) = 0.15 * 0 = 0, so relevance stays 0.6
+    test("v2.0.2 func: entry >365 days old gets no boost",
+         _rb_out_ancient[0]["relevance"] == 0.6,
+         f"relevance={_rb_out_ancient[0].get('relevance')}")
+
+    # Test: verify boost formula math precisely
+    # For an entry 0 days old: boost = recency_weight * max(0, 1 - 0/365) = recency_weight * 1
+    _rb_precise = [{"relevance": 0.5, "timestamp": datetime.now().isoformat()}]
+    _rb_out_precise = _apply_recency_boost([dict(d) for d in _rb_precise], recency_weight=0.10)
+    # _adjusted_relevance should have been 0.5 + 0.10 * ~1.0 = ~0.60, but it's cleaned up
+    # We verify via sort order with a known comparison
+    _rb_precise2 = [
+        {"relevance": 0.59, "timestamp": ""},  # no timestamp, no boost
+        {"relevance": 0.5, "timestamp": datetime.now().isoformat()},  # 0.5 + ~0.10 = ~0.60
+    ]
+    _rb_out_precise2 = _apply_recency_boost([dict(d) for d in _rb_precise2], recency_weight=0.10)
+    test("v2.0.2 func: boost formula ranks 0.5+boost(0.10) above 0.59 no-boost",
+         _rb_out_precise2[0]["relevance"] == 0.5,
+         f"first relevance={_rb_out_precise2[0].get('relevance')}")
+
+    # Test: missing timestamp gets no boost
+    _rb_no_ts = [
+        {"relevance": 0.7},
+        {"relevance": 0.6, "timestamp": datetime.now().isoformat()},
+    ]
+    _rb_out_no_ts = _apply_recency_boost([dict(d) for d in _rb_no_ts], recency_weight=0.15)
+    # 0.6 + ~0.15 = ~0.75 > 0.7, so boosted entry should come first
+    test("v2.0.2 func: entry without timestamp gets no boost",
+         _rb_out_no_ts[0]["relevance"] == 0.6,
+         f"first relevance={_rb_out_no_ts[0].get('relevance')}")
+
+    # Test: _adjusted_relevance internal key is cleaned up
+    _rb_cleanup = [{"relevance": 0.5, "timestamp": datetime.now().isoformat()}]
+    _rb_out_cleanup = _apply_recency_boost([dict(d) for d in _rb_cleanup], recency_weight=0.15)
+    test("v2.0.2 func: _adjusted_relevance key cleaned up",
+         "_adjusted_relevance" not in _rb_out_cleanup[0],
+         f"keys={list(_rb_out_cleanup[0].keys())}")
+
+    # --- format_results functional tests ---
+
+    # Test: format_results with valid ChromaDB-style results
+    _fr_input = {
+        "documents": [["doc1 content", "doc2 content"]],
+        "metadatas": [[
+            {"context": "ctx1", "tags": "tag1", "timestamp": "2026-01-01"},
+            {"context": "ctx2", "tags": "tag2", "timestamp": "2026-01-02"},
+        ]],
+        "distances": [[0.2, 0.4]],
+    }
+    _fr_out = format_results(_fr_input)
+    test("v2.0.2 func: format_results returns correct count",
+         len(_fr_out) == 2,
+         f"got {len(_fr_out)}")
+    test("v2.0.2 func: format_results has content field",
+         _fr_out[0]["content"] == "doc1 content",
+         f"got {_fr_out[0].get('content')}")
+    test("v2.0.2 func: format_results relevance = 1-distance",
+         _fr_out[0]["relevance"] == 0.8 and _fr_out[1]["relevance"] == 0.6,
+         f"got {_fr_out[0].get('relevance')}, {_fr_out[1].get('relevance')}")
+    test("v2.0.2 func: format_results includes context from metadata",
+         _fr_out[0]["context"] == "ctx1" and _fr_out[1]["context"] == "ctx2",
+         f"got {_fr_out[0].get('context')}, {_fr_out[1].get('context')}")
+    test("v2.0.2 func: format_results includes tags from metadata",
+         _fr_out[0]["tags"] == "tag1",
+         f"got {_fr_out[0].get('tags')}")
+    test("v2.0.2 func: format_results includes timestamp from metadata",
+         _fr_out[0]["timestamp"] == "2026-01-01",
+         f"got {_fr_out[0].get('timestamp')}")
+
+    # Test: format_results empty input
+    _fr_empty = format_results({})
+    test("v2.0.2 func: format_results empty input returns empty list",
+         _fr_empty == [],
+         f"got {_fr_empty}")
+
+    # Test: format_results None input
+    _fr_none = format_results(None)
+    test("v2.0.2 func: format_results None input returns empty list",
+         _fr_none == [],
+         f"got {_fr_none}")
+
+    # Test: format_results with no documents key
+    _fr_no_docs = format_results({"metadatas": [[{"tags": "x"}]]})
+    test("v2.0.2 func: format_results no documents key returns empty",
+         _fr_no_docs == [],
+         f"got {_fr_no_docs}")
+
+    # Test: format_results with missing distances
+    _fr_no_dist = {
+        "documents": [["doc content"]],
+        "metadatas": [[{"context": "c", "tags": "t", "timestamp": "ts"}]],
+    }
+    _fr_out_nd = format_results(_fr_no_dist)
+    test("v2.0.2 func: format_results missing distances defaults to relevance 1.0",
+         len(_fr_out_nd) == 1 and _fr_out_nd[0]["relevance"] == 1.0,
+         f"got {_fr_out_nd[0].get('relevance') if _fr_out_nd else 'empty'}")
+
+    # --- format_summaries additional functional tests ---
+
+    # Test: format_summaries detects query() result structure (nested ids[0])
+    _fs_query = {
+        "ids": [["qid1", "qid2"]],
+        "documents": [["doc a", "doc b"]],
+        "metadatas": [[
+            {"tags": "qa", "timestamp": "2026-01-01"},
+            {"tags": "qb", "timestamp": "2026-01-02"},
+        ]],
+        "distances": [[0.1, 0.3]],
+    }
+    _fs_query_out = _fs_fn(_fs_query)
+    test("v2.0.2 func: format_summaries handles query() nested structure",
+         len(_fs_query_out) == 2 and _fs_query_out[0]["id"] == "qid1",
+         f"count={len(_fs_query_out)}, id={_fs_query_out[0].get('id') if _fs_query_out else 'none'}")
+    test("v2.0.2 func: format_summaries query() has relevance from distances",
+         _fs_query_out[0].get("relevance") == 0.9,
+         f"got {_fs_query_out[0].get('relevance')}")
+
+    # Test: format_summaries detects get() result structure (flat ids)
+    _fs_get = {
+        "ids": ["gid1", "gid2"],
+        "documents": ["get doc a", "get doc b"],
+        "metadatas": [
+            {"tags": "ga", "timestamp": "2026-02-01"},
+            {"tags": "gb", "timestamp": "2026-02-02"},
+        ],
+    }
+    _fs_get_out = _fs_fn(_fs_get)
+    test("v2.0.2 func: format_summaries handles get() flat structure",
+         len(_fs_get_out) == 2 and _fs_get_out[0]["id"] == "gid1",
+         f"count={len(_fs_get_out)}, id={_fs_get_out[0].get('id') if _fs_get_out else 'none'}")
+    test("v2.0.2 func: format_summaries get() has no relevance (no distances)",
+         "relevance" not in _fs_get_out[0],
+         f"keys={list(_fs_get_out[0].keys())}")
+
+    # --- suggest_promotions functional tests (requires ChromaDB) ---
+
+    from memory_server import suggest_promotions
+
+    _sp_result = suggest_promotions(top_k=3)
+    test("v2.0.2 func: suggest_promotions returns dict with clusters key",
+         isinstance(_sp_result, dict) and "clusters" in _sp_result,
+         f"type={type(_sp_result).__name__}, keys={list(_sp_result.keys()) if isinstance(_sp_result, dict) else 'N/A'}")
+    test("v2.0.2 func: suggest_promotions has total_candidates key",
+         "total_candidates" in _sp_result,
+         f"keys={list(_sp_result.keys())}")
+    test("v2.0.2 func: suggest_promotions has total_clusters key",
+         "total_clusters" in _sp_result,
+         f"keys={list(_sp_result.keys())}")
+    test("v2.0.2 func: suggest_promotions clusters is a list",
+         isinstance(_sp_result.get("clusters"), list),
+         f"type={type(_sp_result.get('clusters')).__name__}")
+
+    # If there are clusters, verify their structure
+    if _sp_result.get("clusters"):
+        _sp_cluster = _sp_result["clusters"][0]
+        test("v2.0.2 func: suggest_promotions cluster has suggested_rule",
+             "suggested_rule" in _sp_cluster,
+             f"keys={list(_sp_cluster.keys())}")
+        test("v2.0.2 func: suggest_promotions cluster has supporting_ids",
+             "supporting_ids" in _sp_cluster and isinstance(_sp_cluster["supporting_ids"], list),
+             f"keys={list(_sp_cluster.keys())}")
+        test("v2.0.2 func: suggest_promotions cluster has count",
+             "count" in _sp_cluster and isinstance(_sp_cluster["count"], int),
+             f"keys={list(_sp_cluster.keys())}")
+        test("v2.0.2 func: suggest_promotions cluster has score",
+             "score" in _sp_cluster and isinstance(_sp_cluster["score"], (int, float)),
+             f"keys={list(_sp_cluster.keys())}")
+        test("v2.0.2 func: suggest_promotions cluster has avg_age_days",
+             "avg_age_days" in _sp_cluster and isinstance(_sp_cluster["avg_age_days"], (int, float)),
+             f"keys={list(_sp_cluster.keys())}")
+        # Verify scoring formula: score = (count * 2) + recency_bonus
+        # recency_bonus = max(0, 1 - avg_age/365), so score >= count * 2
+        test("v2.0.2 func: suggest_promotions score >= count*2 (formula check)",
+             _sp_cluster["score"] >= _sp_cluster["count"] * 2,
+             f"score={_sp_cluster['score']}, count={_sp_cluster['count']}")
+        # Verify clusters are sorted by score descending
+        if len(_sp_result["clusters"]) > 1:
+            _scores = [c["score"] for c in _sp_result["clusters"]]
+            test("v2.0.2 func: suggest_promotions clusters sorted by score desc",
+                 _scores == sorted(_scores, reverse=True),
+                 f"scores={_scores}")
+        # Verify top_k is respected
+        test("v2.0.2 func: suggest_promotions respects top_k=3",
+             len(_sp_result["clusters"]) <= 3,
+             f"got {len(_sp_result['clusters'])} clusters")
+    else:
+        skip("v2.0.2 func: suggest_promotions cluster structure (no clusters available)")
+        skip("v2.0.2 func: suggest_promotions cluster supporting_ids (no clusters)")
+        skip("v2.0.2 func: suggest_promotions cluster count (no clusters)")
+        skip("v2.0.2 func: suggest_promotions cluster score (no clusters)")
+        skip("v2.0.2 func: suggest_promotions cluster avg_age_days (no clusters)")
+        skip("v2.0.2 func: suggest_promotions score formula (no clusters)")
+        skip("v2.0.2 func: suggest_promotions sorted desc (no clusters)")
+        skip("v2.0.2 func: suggest_promotions top_k (no clusters)")
+
+else:
+    for _skip_name in [
+        "v2.0.2 func: recency_weight=0 returns unchanged order",
+        "v2.0.2 func: recency_boost empty input returns empty",
+        "v2.0.2 func: recent entry boosted above older with same raw relevance",
+        "v2.0.2 func: entry >365 days old gets no boost",
+        "v2.0.2 func: boost formula ranks 0.5+boost(0.10) above 0.59 no-boost",
+        "v2.0.2 func: entry without timestamp gets no boost",
+        "v2.0.2 func: _adjusted_relevance key cleaned up",
+        "v2.0.2 func: format_results returns correct count",
+        "v2.0.2 func: format_results has content field",
+        "v2.0.2 func: format_results relevance = 1-distance",
+        "v2.0.2 func: format_results includes context from metadata",
+        "v2.0.2 func: format_results includes tags from metadata",
+        "v2.0.2 func: format_results includes timestamp from metadata",
+        "v2.0.2 func: format_results empty input returns empty list",
+        "v2.0.2 func: format_results None input returns empty list",
+        "v2.0.2 func: format_results no documents key returns empty",
+        "v2.0.2 func: format_results missing distances defaults to relevance 1.0",
+        "v2.0.2 func: format_summaries handles query() nested structure",
+        "v2.0.2 func: format_summaries query() has relevance from distances",
+        "v2.0.2 func: format_summaries handles get() flat structure",
+        "v2.0.2 func: format_summaries get() has no relevance (no distances)",
+        "v2.0.2 func: suggest_promotions returns dict with clusters key",
+        "v2.0.2 func: suggest_promotions has total_candidates key",
+        "v2.0.2 func: suggest_promotions has total_clusters key",
+        "v2.0.2 func: suggest_promotions clusters is a list",
+        "v2.0.2 func: suggest_promotions cluster structure (skipped)",
+        "v2.0.2 func: suggest_promotions cluster supporting_ids (skipped)",
+        "v2.0.2 func: suggest_promotions cluster count (skipped)",
+        "v2.0.2 func: suggest_promotions cluster score (skipped)",
+        "v2.0.2 func: suggest_promotions cluster avg_age_days (skipped)",
+        "v2.0.2 func: suggest_promotions score formula (skipped)",
+        "v2.0.2 func: suggest_promotions sorted desc (skipped)",
+        "v2.0.2 func: suggest_promotions top_k (skipped)",
+    ]:
+        skip(_skip_name)
 
 # ─────────────────────────────────────────────────
 # Test: v2.0.3 Features (Session 27)
