@@ -284,24 +284,25 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 log_gate_decision(gate_label, tool_name, "pass", "", session_id, state_keys_read,
                                   severity="info")
         except Exception as e:
+            gate_label = getattr(gate, "GATE_NAME", gate.__name__)
             if gate.__name__ in TIER1_SAFETY_GATES:
                 # Tier 1 safety gates MUST fail-closed — if we can't verify safety, block
                 # Look up state keys for crashed gate too
                 gate_short = gate.__name__.split(".")[-1]
                 deps = GATE_DEPENDENCIES.get(gate_short, {})
                 state_keys_read = deps.get("reads", [])
-                log_gate_decision(gate.__name__, tool_name, "block", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
+                log_gate_decision(gate_label, tool_name, "block", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
                                   severity="error")
-                print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate.__name__}' crashed: {e}", file=sys.stderr)
+                print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate_label}' crashed: {e}", file=sys.stderr)
                 save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(1)
             # Non-safety gate errors should not block work — log and continue
             gate_short = gate.__name__.split(".")[-1]
             deps = GATE_DEPENDENCIES.get(gate_short, {})
             state_keys_read = deps.get("reads", [])
-            log_gate_decision(gate.__name__, tool_name, "crash", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
+            log_gate_decision(gate_label, tool_name, "crash", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
                               severity="warn")
-            print(f"[ENFORCER] Warning: Gate error in {gate.__name__}: {e}", file=sys.stderr)
+            print(f"[ENFORCER] Warning: Gate error in {gate_label}: {e}", file=sys.stderr)
 
     # Save timing stats after all gates complete (normal path)
     save_state(state, session_id=state.get("_session_id", "main"))
