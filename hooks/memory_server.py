@@ -73,6 +73,7 @@ mcp = FastMCP("memory")
 # Persistent ChromaDB storage
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 os.makedirs(MEMORY_DIR, exist_ok=True)
+FTS5_DB_PATH = os.path.join(MEMORY_DIR, "fts5_index.db")
 
 # Lazy ChromaDB initialization — prevents segfault when module is imported
 # by test code while MCP server already holds a PersistentClient on the same path.
@@ -208,15 +209,19 @@ import re
 
 
 class FTS5Index:
-    """In-memory SQLite FTS5 index for keyword and tag search.
+    """SQLite FTS5 index for keyword and tag search.
 
-    Rebuilt from ChromaDB on every server restart. ChromaDB remains
-    the source of truth; FTS5 is a read-optimized secondary index.
+    Persisted to disk by default; falls back to :memory: for tests.
+    ChromaDB remains the source of truth; FTS5 is a read-optimized
+    secondary index. A sync_meta table tracks whether the on-disk
+    index matches ChromaDB, skipping rebuild when already synced.
     """
 
-    def __init__(self):
-        self.conn = sqlite3.connect(":memory:")
-        self.conn.execute("PRAGMA journal_mode=WAL")
+    def __init__(self, db_path=":memory:"):
+        self.db_path = db_path
+        self.conn = sqlite3.connect(db_path)
+        if db_path != ":memory:":
+            self.conn.execute("PRAGMA journal_mode=WAL")
         self._create_tables()
 
     def _create_tables(self):
@@ -235,7 +240,35 @@ class FTS5Index:
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_tags_mid ON tags(memory_id)")
+        c.execute("CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)")
         c.commit()
+
+    def is_synced(self, chromadb_count):
+        """Check if FTS5 index is in sync with ChromaDB by entry count."""
+        row = self.conn.execute(
+            "SELECT value FROM sync_meta WHERE key='sync_count'"
+        ).fetchone()
+        if row is None:
+            return False
+        return int(row[0]) == chromadb_count
+
+    def _update_sync_count(self, count):
+        """Record the current sync count after a successful rebuild or add."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('sync_count', ?)",
+            (str(count),),
+        )
+        self.conn.commit()
+
+    def reset_and_rebuild(self, chroma_collection):
+        """Drop all tables and rebuild from ChromaDB (corruption recovery)."""
+        self.conn.execute("DROP TABLE IF EXISTS mem_fts")
+        self.conn.execute("DROP TABLE IF EXISTS mem_lookup")
+        self.conn.execute("DROP TABLE IF EXISTS tags")
+        self.conn.execute("DROP TABLE IF EXISTS sync_meta")
+        self.conn.commit()
+        self._create_tables()
+        return self.build_from_chromadb(chroma_collection)
 
     def build_from_chromadb(self, chroma_collection):
         """Populate FTS5 index from ChromaDB data. Returns entry count."""
@@ -270,6 +303,7 @@ class FTS5Index:
             self._insert_entry(mid, doc, preview, tags_str, timestamp, session_time)
 
         self.conn.commit()
+        self._update_sync_count(len(ids))
         return len(ids)
 
     def _insert_entry(self, memory_id, content, preview, tags_str, timestamp, session_time):
@@ -302,6 +336,12 @@ class FTS5Index:
         """Add or update an entry (dual-write from remember_this)."""
         self._insert_entry(memory_id, content, preview, tags_str, timestamp, session_time)
         self.conn.commit()
+        # Keep sync_count in step with additions
+        row = self.conn.execute(
+            "SELECT value FROM sync_meta WHERE key='sync_count'"
+        ).fetchone()
+        if row:
+            self._update_sync_count(int(row[0]) + 1)
 
     def keyword_search(self, query, top_k=15):
         """FTS5 keyword search with BM25 ranking."""
@@ -504,7 +544,7 @@ def _merge_results(fts_results, chroma_summaries, top_k=15):
 # Lazy initialization — only run when module is used as a server, not when imported
 # for testing. ChromaDB Rust backend segfaults on concurrent PersistentClient access.
 _preview_migrated = False
-fts_index = FTS5Index()
+fts_index = FTS5Index(db_path=FTS5_DB_PATH)
 _fts_count = 0
 _initialized = False
 
@@ -514,14 +554,24 @@ def _ensure_initialized():
 
     Called lazily on first MCP tool use or explicitly at server startup.
     Safe to call multiple times — idempotent after first run.
+    If the on-disk FTS5 index is already in sync with ChromaDB (by count),
+    the expensive rebuild is skipped entirely.
     """
     global _preview_migrated, fts_index, _fts_count, _initialized
     if _initialized:
         return
-    _initialized = True
     _init_chromadb()
     _preview_migrated = _migrate_previews()
+
+    # Check if persisted FTS5 is already synced with ChromaDB
+    chroma_count = collection.count()
+    if fts_index.is_synced(chroma_count):
+        _fts_count = chroma_count
+        _initialized = True
+        return  # Skip rebuild — disk FTS5 is current
+
     _fts_count = fts_index.build_from_chromadb(collection)
+    _initialized = True
 
 # ──────────────────────────────────────────────────
 # Tag Co-occurrence Matrix (lazy-built, cached)

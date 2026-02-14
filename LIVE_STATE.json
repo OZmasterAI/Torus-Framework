@@ -1,50 +1,28 @@
 {
-  "session_count": 32,
-  "status": "complete",
-  "project": "self-healing-framework",
-  "project_path": "/home/crab/.claude",
-  "feature": "chromadb-hardening-and-tests",
-  "feature_status": "complete",
-  "test_count": 901,
+  "session_count": 35,
+  "status": "new_session",
+  "project": "",
+  "project_path": "",
+  "feature": "",
+  "feature_status": "",
+  "test_count": 0,
   "test_failures": 0,
-  "files_modified": [
-    "hooks/memory_server.py",
-    "hooks/boot.py",
-    "hooks/session_end.py",
-    "hooks/test_framework.py",
-    "HANDOFF.md",
-    "LIVE_STATE.json"
-  ],
-  "hook_events": 13,
-  "gates": 13,
-  "mcp_tools": 15,
-  "curated_memories": 283,
-  "named_agents": 4,
-  "skills_count": 18,
-  "dashboard_port": 7777,
-  "improvements_shipped": [
-    "chromadb_lazy_init",
-    "boot_pgrep_guard",
-    "session_end_pgrep_guard",
-    "v2_functional_tests_33",
-    "thepopebot_comparison"
-  ],
-  "next_steps": [
-    "dashboard_auto_start",
-    "memory_graph_visualization",
-    "telegram_chat_ui",
-    "credential_filtering"
-  ],
-  "known_issues": [
-    "ChromaDB segfault largely mitigated, external worker deferred",
-    "MCP connection breaks if server killed mid-session",
-    "26 pre-existing gate interaction test failures (timing-dependent)"
-  ],
+  "files_modified": [],
+  "hook_events": 0,
+  "gates": 0,
+  "mcp_tools": 0,
+  "curated_memories": 0,
+  "named_agents": 0,
+  "skills_count": 0,
+  "dashboard_port": 0,
+  "improvements_shipped": [],
+  "next_steps": [],
+  "known_issues": [],
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 5,
+    "reads": 0,
+    "edits": 0,
     "errors": 0,
-    "verified": 4,
+    "verified": 0,
     "pending": 0
   }
 }

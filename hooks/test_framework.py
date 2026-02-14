@@ -8532,6 +8532,112 @@ else:
 
 
 # ─────────────────────────────────────────────────
+# FTS5 Persistence Tests (no ChromaDB needed — safe to run always)
+# ─────────────────────────────────────────────────
+print("\n--- FTS5 Persistence ---")
+
+import tempfile
+from memory_server import FTS5Index
+
+# Test: persistent DB creates file on disk
+with tempfile.TemporaryDirectory() as _tmpdir:
+    _db_path = os.path.join(_tmpdir, "test_fts5.db")
+    _pidx = FTS5Index(db_path=_db_path)
+    test("FTS5 persistent DB creates file",
+         os.path.isfile(_db_path),
+         f"file not found at {_db_path}")
+
+# Test: sync_meta table exists
+_sidx = FTS5Index()  # in-memory
+_tables = [r[0] for r in _sidx.conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table'"
+).fetchall()]
+test("FTS5 sync_meta table exists",
+     "sync_meta" in _tables,
+     f"tables found: {_tables}")
+
+# Test: is_synced returns False when no sync_count
+_sidx2 = FTS5Index()
+test("FTS5 is_synced returns False when empty",
+     _sidx2.is_synced(100) is False)
+
+# Test: is_synced returns True when counts match
+_sidx3 = FTS5Index()
+_sidx3._update_sync_count(42)
+test("FTS5 is_synced returns True when matching",
+     _sidx3.is_synced(42) is True)
+
+# Test: is_synced returns False when counts mismatch
+test("FTS5 is_synced returns False on mismatch",
+     _sidx3.is_synced(43) is False)
+
+# Test: add_entry increments sync_count
+_sidx4 = FTS5Index()
+_sidx4._update_sync_count(10)  # simulate post-build state
+_sidx4.add_entry("test-id-1", "test content", "test preview", "tag:test", "2026-01-01", 0.0)
+_row4 = _sidx4.conn.execute("SELECT value FROM sync_meta WHERE key='sync_count'").fetchone()
+test("FTS5 add_entry increments sync_count",
+     _row4 is not None and int(_row4[0]) == 11,
+     f"sync_count={_row4[0] if _row4 else 'None'}")
+
+# Test: build_from_chromadb sets sync_count (using a mock collection)
+class _MockCollection:
+    def __init__(self, data):
+        self._data = data
+    def count(self):
+        return len(self._data["ids"])
+    def get(self, limit=None, include=None):
+        return self._data
+
+_mock_data = {
+    "ids": ["m1", "m2", "m3"],
+    "documents": ["doc one", "doc two", "doc three"],
+    "metadatas": [
+        {"tags": "type:test", "timestamp": "2026-01-01", "preview": "doc one"},
+        {"tags": "type:test", "timestamp": "2026-01-02", "preview": "doc two"},
+        {"tags": "type:fix", "timestamp": "2026-01-03", "preview": "doc three"},
+    ],
+}
+_mock_col = _MockCollection(_mock_data)
+_sidx5 = FTS5Index()
+_build_count = _sidx5.build_from_chromadb(_mock_col)
+test("FTS5 build_from_chromadb sets sync_count",
+     _sidx5.is_synced(3) and _build_count == 3,
+     f"is_synced(3)={_sidx5.is_synced(3)}, build_count={_build_count}")
+
+# Test: reset_and_rebuild drops and recreates
+_sidx6 = FTS5Index()
+_sidx6.add_entry("old-1", "old content", "old preview", "tag:old", "2025-01-01", 0.0)
+_sidx6._update_sync_count(1)
+_rebuild_count = _sidx6.reset_and_rebuild(_mock_col)
+_old_search = _sidx6.keyword_search("old content", top_k=5)
+_new_search = _sidx6.keyword_search("doc one", top_k=5)
+test("FTS5 reset_and_rebuild clears old + rebuilds",
+     len(_old_search) == 0 and len(_new_search) > 0 and _rebuild_count == 3,
+     f"old={len(_old_search)}, new={len(_new_search)}, count={_rebuild_count}")
+
+# Test: :memory: mode still works (backward compat)
+_sidx7 = FTS5Index()
+_sidx7.add_entry("compat-1", "backward compatible", "compat preview", "tag:compat", "2026-01-01", 0.0)
+_compat_search = _sidx7.keyword_search("backward compatible", top_k=5)
+test("FTS5 :memory: mode backward compatible",
+     _sidx7.db_path == ":memory:" and len(_compat_search) > 0)
+
+# Test: persistent DB survives reconnect
+with tempfile.TemporaryDirectory() as _tmpdir:
+    _db_path2 = os.path.join(_tmpdir, "persist_test.db")
+    _pidx2 = FTS5Index(db_path=_db_path2)
+    _pidx2.add_entry("persist-1", "persisted content", "persist preview", "tag:persist", "2026-01-01", 0.0)
+    _pidx2._update_sync_count(1)
+    _pidx2.conn.close()
+    # Reconnect
+    _pidx3 = FTS5Index(db_path=_db_path2)
+    _persist_search = _pidx3.keyword_search("persisted content", top_k=5)
+    test("FTS5 persistent DB survives reconnect",
+         len(_persist_search) > 0 and _pidx3.is_synced(1),
+         f"search={len(_persist_search)}, synced={_pidx3.is_synced(1)}")
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()
