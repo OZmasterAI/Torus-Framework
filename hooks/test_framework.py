@@ -21,9 +21,16 @@ FAIL = 0
 RESULTS = []
 SKIPPED = 0
 
-# Detect if memory_server MCP process is running (ChromaDB Rust backend segfaults
-# on concurrent PersistentClient access from two processes on the same DB path)
+# Detect if memory_server MCP process is running.
+# UDS socket check first (fast, ~0.05ms), pgrep fallback (slower, ~50ms).
+# Both needed: socket may not exist if server was started before UDS code was added.
+# When server is running, ChromaDB Rust backend segfaults on concurrent PersistentClient access.
+from shared.chromadb_socket import is_worker_available as _uds_available
+
 def _memory_server_running():
+    if _uds_available(retries=1, delay=0.1):
+        return True
+    # Fallback: pgrep detects server even without UDS socket (pre-upgrade server)
     try:
         r = subprocess.run(
             ["pgrep", "-f", "memory_server.py"],
@@ -35,7 +42,7 @@ def _memory_server_running():
 
 MEMORY_SERVER_RUNNING = _memory_server_running()
 if MEMORY_SERVER_RUNNING:
-    print("[INFO] Memory MCP server is running — skipping direct memory_server import tests")
+    print("[INFO] Memory MCP server is running — skipping direct import tests")
     print("[INFO] (ChromaDB Rust backend segfaults on concurrent DB access)")
     print()
 

@@ -38,6 +38,69 @@ from shared.chromadb_socket import (
     is_worker_available, WorkerUnavailable,
 )
 
+# ── Standalone fallback ──────────────────────────────────────────
+# When UDS socket is unavailable (MCP server not running), the dashboard
+# can safely create its own PersistentClient since no other process holds one.
+_standalone_client = None
+_standalone_collections = {}
+
+def _get_standalone_collection(name):
+    """Lazy-init a read-only ChromaDB collection for standalone mode."""
+    global _standalone_client
+    if _standalone_client is None:
+        import chromadb
+        _standalone_client = chromadb.PersistentClient(path=MEMORY_DIR)
+    if name not in _standalone_collections:
+        _standalone_collections[name] = _standalone_client.get_or_create_collection(
+            name=name, metadata={"hnsw:space": "cosine"}
+        )
+    return _standalone_collections[name]
+
+def _standalone_count(collection="knowledge"):
+    """Count via direct ChromaDB (standalone fallback)."""
+    return _get_standalone_collection(collection).count()
+
+def _standalone_query(collection, query_texts, n_results=5, include=None):
+    """Query via direct ChromaDB (standalone fallback)."""
+    col = _get_standalone_collection(collection)
+    kwargs = {"query_texts": query_texts, "n_results": n_results}
+    if include:
+        kwargs["include"] = include
+    return col.query(**kwargs)
+
+def _standalone_get(collection, ids=None, limit=None, include=None):
+    """Get via direct ChromaDB (standalone fallback)."""
+    col = _get_standalone_collection(collection)
+    kwargs = {}
+    if ids is not None:
+        kwargs["ids"] = ids
+    if limit is not None:
+        kwargs["limit"] = limit
+    if include is not None:
+        kwargs["include"] = include
+    return col.get(**kwargs)
+
+def safe_count(collection="knowledge"):
+    """Count with UDS-first, standalone fallback."""
+    try:
+        return socket_count(collection)
+    except (WorkerUnavailable, RuntimeError):
+        return _standalone_count(collection)
+
+def safe_query(collection, query_texts, n_results=5, include=None):
+    """Query with UDS-first, standalone fallback."""
+    try:
+        return socket_query(collection, query_texts, n_results=n_results, include=include)
+    except (WorkerUnavailable, RuntimeError):
+        return _standalone_query(collection, query_texts, n_results=n_results, include=include)
+
+def safe_get(collection, ids=None, limit=None, include=None):
+    """Get with UDS-first, standalone fallback."""
+    try:
+        return socket_get(collection, ids=ids, limit=limit, include=include)
+    except (WorkerUnavailable, RuntimeError):
+        return _standalone_get(collection, ids=ids, limit=limit, include=include)
+
 # ── Paths ────────────────────────────────────────────────────────
 CLAUDE_DIR = os.path.expanduser("~/.claude")
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
@@ -120,7 +183,7 @@ def get_error_pressure():
 
 
 def get_memory_count():
-    """Get curated memory count via UDS socket (cached)."""
+    """Get curated memory count (cached). UDS-first, standalone fallback."""
     try:
         if os.path.exists(STATS_CACHE):
             cache = _read_json(STATS_CACHE)
@@ -129,14 +192,14 @@ def get_memory_count():
     except Exception:
         pass
     try:
-        cnt = socket_count("knowledge")
+        cnt = safe_count("knowledge")
         try:
             with open(STATS_CACHE, "w") as f:
                 json.dump({"ts": time.time(), "mem_count": cnt}, f)
         except OSError:
             pass
         return cnt
-    except (WorkerUnavailable, RuntimeError):
+    except Exception:
         return 0
 
 
@@ -540,8 +603,8 @@ async def api_memories_search(request):
     offset = int(request.query_params.get("offset", "0"))
     try:
         if not query:
-            cnt = socket_count("knowledge")
-            results = socket_get("knowledge", limit=min(limit, cnt), include=["metadatas"])
+            cnt = safe_count("knowledge")
+            results = safe_get("knowledge", limit=min(limit, cnt), include=["metadatas"])
             entries = []
             ids = results.get("ids", [])
             metas = results.get("metadatas", [])
@@ -553,12 +616,12 @@ async def api_memories_search(request):
                 })
             return JSONResponse({"results": entries, "total": cnt, "query": ""})
 
-        cnt = socket_count("knowledge")
+        cnt = safe_count("knowledge")
         actual_k = min(limit + offset, cnt)
         if actual_k == 0:
             return JSONResponse({"results": [], "total": 0, "query": query})
-        results = socket_query("knowledge", [query], n_results=actual_k,
-                               include=["metadatas", "distances"])
+        results = safe_query("knowledge", [query], n_results=actual_k,
+                             include=["metadatas", "distances"])
         entries = []
         ids = results.get("ids", [[]])[0]
         metas = results.get("metadatas", [[]])[0]
@@ -573,14 +636,14 @@ async def api_memories_search(request):
             })
         sliced = entries[offset:offset + limit]
         return JSONResponse({"results": sliced, "total": cnt, "query": query})
-    except (WorkerUnavailable, RuntimeError) as e:
-        return JSONResponse({"error": str(e), "results": []}, status_code=503)
+    except Exception as e:
+        return JSONResponse({"error": str(e), "results": []}, status_code=500)
 
 
 async def api_memory_detail(request):
     mem_id = request.path_params["id"]
     try:
-        result = socket_get("knowledge", ids=[mem_id], include=["documents", "metadatas"])
+        result = safe_get("knowledge", ids=[mem_id], include=["documents", "metadatas"])
         if not result or not result.get("documents") or not result["documents"]:
             return JSONResponse({"error": "Not found"}, status_code=404)
         meta = result["metadatas"][0] if result.get("metadatas") else {}
@@ -589,30 +652,27 @@ async def api_memory_detail(request):
             "context": meta.get("context", ""), "tags": meta.get("tags", ""),
             "timestamp": meta.get("timestamp", ""),
         })
-    except (WorkerUnavailable, RuntimeError) as e:
-        return JSONResponse({"error": str(e)}, status_code=503)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 async def api_memories_stats(request):
-    try:
-        stats = {}
-        for name in ("knowledge", "observations", "fix_outcomes"):
-            try:
-                stats[name] = socket_count(name)
-            except (WorkerUnavailable, RuntimeError):
-                stats[name] = -1
-        return JSONResponse(stats)
-    except (WorkerUnavailable, RuntimeError):
-        return JSONResponse({"knowledge": -1, "observations": -1, "fix_outcomes": -1}, status_code=503)
+    stats = {}
+    for name in ("knowledge", "observations", "fix_outcomes"):
+        try:
+            stats[name] = safe_count(name)
+        except Exception:
+            stats[name] = -1
+    return JSONResponse(stats)
 
 
 async def api_memories_tags(request):
     """Get tag frequency distribution from knowledge collection."""
     try:
-        cnt = socket_count("knowledge")
+        cnt = safe_count("knowledge")
         if cnt == 0:
             return JSONResponse({"tags": {}})
-        results = socket_get("knowledge", limit=min(cnt, 500), include=["metadatas"])
+        results = safe_get("knowledge", limit=min(cnt, 500), include=["metadatas"])
         tag_freq = {}
         metas = results.get("metadatas", [])
         for meta in metas:
@@ -623,17 +683,17 @@ async def api_memories_tags(request):
                         tag_freq[tag] = tag_freq.get(tag, 0) + 1
         sorted_tags = dict(sorted(tag_freq.items(), key=lambda x: -x[1]))
         return JSONResponse({"tags": sorted_tags, "total_memories": cnt})
-    except (WorkerUnavailable, RuntimeError) as e:
-        return JSONResponse({"tags": {}, "error": str(e)}, status_code=503)
+    except Exception as e:
+        return JSONResponse({"tags": {}, "error": str(e)}, status_code=500)
 
 
 async def api_memories_graph(request):
     """Build a tag co-occurrence graph from knowledge collection."""
     try:
-        cnt = socket_count("knowledge")
+        cnt = safe_count("knowledge")
         if cnt == 0:
             return JSONResponse({"nodes": [], "edges": []})
-        results = socket_get("knowledge", limit=min(cnt, 500), include=["metadatas"])
+        results = safe_get("knowledge", limit=min(cnt, 500), include=["metadatas"])
         metas = results.get("metadatas", [])
         tag_freq = {}
         co_occur = {}
@@ -656,17 +716,17 @@ async def api_memories_graph(request):
             if pair[0] in top_tag_set and pair[1] in top_tag_set
         ]
         return JSONResponse({"nodes": nodes, "edges": edges})
-    except (WorkerUnavailable, RuntimeError) as e:
-        return JSONResponse({"nodes": [], "edges": [], "error": str(e)}, status_code=503)
+    except Exception as e:
+        return JSONResponse({"nodes": [], "edges": [], "error": str(e)}, status_code=500)
 
 
 async def api_memory_health(request):
-    """Memory health report via UDS socket."""
+    """Memory health report (UDS-first, standalone fallback)."""
     try:
-        mem_count = socket_count("knowledge")
-        obs_count = socket_count("observations")
-    except (WorkerUnavailable, RuntimeError) as e:
-        return JSONResponse({"error": str(e), "health_score": 0}, status_code=503)
+        mem_count = safe_count("knowledge")
+        obs_count = safe_count("observations")
+    except Exception as e:
+        return JSONResponse({"error": str(e), "health_score": 0}, status_code=500)
 
     now = time.time()
     if mem_count == 0:
@@ -679,9 +739,9 @@ async def api_memory_health(request):
         })
 
     try:
-        all_data = socket_get("knowledge", limit=mem_count, include=["metadatas"])
-    except (WorkerUnavailable, RuntimeError) as e:
-        return JSONResponse({"error": str(e), "health_score": 0}, status_code=503)
+        all_data = safe_get("knowledge", limit=mem_count, include=["metadatas"])
+    except Exception as e:
+        return JSONResponse({"error": str(e), "health_score": 0}, status_code=500)
 
     metas = all_data.get("metadatas", [])
     cutoff_24h = now - 86400
@@ -791,10 +851,10 @@ async def api_observations_recent(request):
     # Supplement from ChromaDB observations if we need more
     if len(results) < 50:
         try:
-            obs_count = socket_count("observations")
+            obs_count = safe_count("observations")
             if obs_count > 0:
                 needed = min(50 - len(results), obs_count)
-                obs_data = socket_get("observations", limit=needed, include=["documents", "metadatas"])
+                obs_data = safe_get("observations", limit=needed, include=["documents", "metadatas"])
                 docs = obs_data.get("documents", [])
                 metas = obs_data.get("metadatas", [])
                 for i, doc in enumerate(docs):
@@ -808,7 +868,7 @@ async def api_observations_recent(request):
                         "has_error": meta.get("has_error", "false"),
                         "session_time": meta.get("session_time", 0),
                     })
-        except (WorkerUnavailable, RuntimeError):
+        except Exception:
             pass
 
     results.sort(key=lambda x: float(x.get("session_time", 0) or 0), reverse=True)
