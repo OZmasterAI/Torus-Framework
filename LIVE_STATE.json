@@ -1,21 +1,15 @@
 {
-  "session_count": 47,
+  "session_count": 48,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "browser-skill",
+  "feature": "framework-comparison",
   "feature_status": "complete",
   "test_count": 999,
   "test_failures": 1,
-  "files_modified": [
-    "skills/browser/SKILL.md",
-    "skills/ralph/SKILL.md",
-    "hooks/test_framework.py"
-  ],
+  "files_modified": [],
   "improvements_shipped": [
-    "/browser skill (6 commands, ralph integration)",
-    "15 new browser tests",
-    "ralph visual verify + screenshots in report"
+    "v2.0.1 vs current comparison (7 dimensions)"
   ],
   "next_steps": [
     "Phase 2: JSON task tracking in /prp (ralph-loop-quickstart)",
@@ -29,10 +23,10 @@
     "UDS socket intermittent when MCP server not running"
   ],
   "last_session_metrics": {
-    "reads": 4,
-    "edits": 4,
+    "reads": 6,
+    "edits": 0,
     "errors": 0,
-    "verified": 1,
+    "verified": 0,
     "pending": 0
   }
 }
