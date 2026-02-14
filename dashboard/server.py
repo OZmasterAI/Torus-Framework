@@ -1633,7 +1633,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Prevent browser from serving stale JS/CSS — force revalidation on every request.
+# Static files still benefit from 304 Not Modified via ETag/If-Modified-Since.
+# Uses raw ASGI wrapper around the Starlette app since BaseHTTPMiddleware
+# doesn't intercept Mount sub-apps (StaticFiles).
+
+class NoCacheStaticWrapper:
+    """ASGI wrapper that adds Cache-Control headers to /static/ responses."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path", "").startswith("/static/"):
+            async def send_with_cache_header(message):
+                if message["type"] == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    headers.append((b"cache-control", b"no-cache, must-revalidate"))
+                    message = {**message, "headers": headers}
+                await send(message)
+            await self.app(scope, receive, send_with_cache_header)
+        else:
+            await self.app(scope, receive, send)
+
+wrapped_app = NoCacheStaticWrapper(app)
+
 if __name__ == "__main__":
     import uvicorn
     print("Dashboard starting at http://localhost:7777")
-    uvicorn.run(app, host="127.0.0.1", port=7777, log_level="info")
+    uvicorn.run(wrapped_app, host="127.0.0.1", port=7777, log_level="info")
