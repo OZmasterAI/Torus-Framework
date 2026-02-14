@@ -38,6 +38,7 @@ except ImportError:
     _HAS_RAMDISK = False
 GATES_DIR = os.path.join(HOOKS_DIR, "gates")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
+MODES_DIR = os.path.join(CLAUDE_DIR, "modes")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 STATS_CACHE = os.path.join(CLAUDE_DIR, "stats-cache.json")
@@ -334,6 +335,22 @@ def get_subagent_status():
                 pass
         active_list.append((agent_type, tokens))
     return (active_list, completed_tokens)
+
+
+def get_active_mode():
+    """Read active behavioral mode from ~/.claude/modes/.active.
+    Returns short mode name (e.g. 'code') or None if no mode active."""
+    active_file = os.path.join(MODES_DIR, ".active")
+    try:
+        with open(active_file) as f:
+            name = f.read().strip()
+        if name:
+            # Use short abbreviations for known modes
+            abbrevs = {"coding": "code"}
+            return abbrevs.get(name, name[:6])
+        return None
+    except (FileNotFoundError, OSError):
+        return None
 
 
 def get_plan_mode_warns():
@@ -658,6 +675,11 @@ def main():
     pm_warns = get_plan_mode_warns()
     if pm_warns >= 1:
         parts.append(f"PM:W{pm_warns}")
+
+    # Active behavioral mode
+    active_mode = get_active_mode()
+    if active_mode:
+        parts.append(f"MODE:{active_mode}")
 
     parts.append(cost_str)
 
