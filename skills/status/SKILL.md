@@ -4,15 +4,11 @@
 When the user says "status", "check", "health", or wants a system overview.
 
 ## Steps
-1. Read ~/.claude/LIVE_STATE.json for current project state
-2. Read ~/.claude/HANDOFF.md for last session summary
-3. Check gate enforcement state: Look for the most recent `state_*.json` file in `~/.claude/hooks/`, or use the current session's state file (`~/.claude/hooks/state_{session_id}.json`)
-4. Count total memories: Use memory_stats() MCP tool if available, otherwise check ~/data/memory/ directory
-5. Run boot dashboard: `python3 ~/.claude/hooks/boot.py` to show session info
-6. Display a formatted dashboard showing:
-   - Project name and version
-   - Gate count and compliance status
-   - Memory count
-   - Active tasks
-   - Last session summary
-   - Any warnings or issues
+1. Run `python3 ~/.claude/skills/status/scripts/gather.py`
+2. Display the output to the user exactly as-is (it's a pre-formatted dashboard)
+3. If the script fails or returns an error, fall back to manual gathering:
+   - Read ~/.claude/LIVE_STATE.json for current project state
+   - Read ~/.claude/HANDOFF.md for last session summary
+   - Check memory_stats() MCP tool for memory count
+   - Run `python3 ~/.claude/hooks/boot.py` for session info
+   - Display a summary of the gathered data

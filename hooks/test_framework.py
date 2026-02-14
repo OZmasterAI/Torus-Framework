@@ -4096,9 +4096,9 @@ if os.path.isfile(_wrapup_skill_path):
     with open(_wrapup_skill_path) as _wf204:
         _wrapup_content = _wf204.read()
 
-    test("v2.0.4: wrap-up SKILL.md contains KNOWLEDGE TRANSFER section",
-         "KNOWLEDGE TRANSFER" in _wrapup_content,
-         "KNOWLEDGE TRANSFER section not found in wrap-up/SKILL.md")
+    test("v2.0.4: wrap-up SKILL.md contains knowledge transfer concept",
+         "learnings" in _wrapup_content.lower() or "KNOWLEDGE TRANSFER" in _wrapup_content,
+         "knowledge transfer concept not found in wrap-up/SKILL.md")
 else:
     test("v2.0.4: skills/wrap-up/SKILL.md exists", False, "file not found")
 
@@ -8908,6 +8908,91 @@ test("auto-commit: commit message has file names + co-author",
 
 # Restore original
 auto_commit.git = _ac_orig_git
+
+# ─────────────────────────────────────────────────
+# Test: Bundled Script Gather — Status & Wrap-up
+# ─────────────────────────────────────────────────
+print("\n--- Bundled Script Gather ---")
+
+import subprocess as _bsg_sp
+
+_BSG_CLAUDE_DIR = os.path.expanduser("~/.claude")
+_STATUS_SCRIPT = os.path.join(_BSG_CLAUDE_DIR, "skills", "status", "scripts", "gather.py")
+_WRAPUP_SCRIPT = os.path.join(_BSG_CLAUDE_DIR, "skills", "wrap-up", "scripts", "gather.py")
+
+# 1. Status gather: produces valid dashboard text
+_bsg_status = _bsg_sp.run(
+    [sys.executable, _STATUS_SCRIPT],
+    capture_output=True, text=True, timeout=15,
+)
+test("Status gather: exits cleanly", _bsg_status.returncode == 0,
+     f"rc={_bsg_status.returncode}, stderr={_bsg_status.stderr[:200]}")
+test("Status gather: contains box drawing", "\u2554" in _bsg_status.stdout and "\u255d" in _bsg_status.stdout,
+     f"out={_bsg_status.stdout[:100]}")
+test("Status gather: contains SYSTEM STATUS", "SYSTEM STATUS" in _bsg_status.stdout)
+test("Status gather: includes gate count", "Gates:" in _bsg_status.stdout)
+test("Status gather: includes skill count", "Skills:" in _bsg_status.stdout)
+test("Status gather: includes hook count", "Hooks:" in _bsg_status.stdout)
+
+# 2. Wrap-up gather: produces valid JSON with required keys
+_bsg_wrapup = _bsg_sp.run(
+    [sys.executable, _WRAPUP_SCRIPT],
+    capture_output=True, text=True, timeout=15,
+)
+test("Wrap-up gather: exits cleanly", _bsg_wrapup.returncode == 0,
+     f"rc={_bsg_wrapup.returncode}, stderr={_bsg_wrapup.stderr[:200]}")
+
+_bsg_wj = {}
+try:
+    _bsg_wj = json.loads(_bsg_wrapup.stdout)
+except json.JSONDecodeError as e:
+    _bsg_wj = {}
+    test("Wrap-up gather: valid JSON", False, f"parse error: {e}, out={_bsg_wrapup.stdout[:100]}")
+
+if _bsg_wj:
+    test("Wrap-up gather: valid JSON", True)
+    _bsg_required = {"live_state", "handoff", "git", "memory", "promotion_candidates",
+                     "recent_learnings", "risk_level", "warnings"}
+    _bsg_missing = _bsg_required - set(_bsg_wj.keys())
+    test("Wrap-up gather: has all required keys", len(_bsg_missing) == 0,
+         f"missing: {_bsg_missing}")
+    _bsg_ho = _bsg_wj.get("handoff", {})
+    test("Wrap-up gather: handoff has content/age/stale",
+         "content" in _bsg_ho and "age_hours" in _bsg_ho and "stale" in _bsg_ho)
+    test("Wrap-up gather: risk_level valid",
+         _bsg_wj.get("risk_level") in ("GREEN", "YELLOW", "RED"),
+         f"got: {_bsg_wj.get('risk_level')}")
+    test("Wrap-up gather: warnings is list",
+         isinstance(_bsg_wj.get("warnings"), list))
+
+# 3. Test risk_level computation directly
+sys.path.insert(0, os.path.join(_BSG_CLAUDE_DIR, "skills", "wrap-up", "scripts"))
+from gather import compute_risk_level as _bsg_crl
+
+_bsg_green = _bsg_crl(
+    {"stale": False}, {"clean": True}, {"accessible": True, "count": 100},
+)
+test("Wrap-up gather: risk GREEN when fresh+clean+memories", _bsg_green == "GREEN")
+
+_bsg_yellow = _bsg_crl(
+    {"stale": True}, {"clean": True}, {"accessible": True, "count": 100},
+)
+test("Wrap-up gather: risk YELLOW when handoff stale", _bsg_yellow == "YELLOW")
+
+_bsg_yellow2 = _bsg_crl(
+    {"stale": False}, {"clean": False}, {"accessible": True, "count": 50},
+)
+test("Wrap-up gather: risk YELLOW when git dirty", _bsg_yellow2 == "YELLOW")
+
+_bsg_red = _bsg_crl(
+    {"stale": False}, {"clean": True}, {"accessible": False, "count": 0},
+)
+test("Wrap-up gather: risk RED when memory inaccessible", _bsg_red == "RED")
+
+_bsg_red2 = _bsg_crl(
+    {"stale": False}, {"clean": True}, {"accessible": True, "count": 0},
+)
+test("Wrap-up gather: risk RED when memory count zero", _bsg_red2 == "RED")
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files

@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Gather all prerequisite data for wrap-up and output JSON to stdout.
+
+Claude uses this JSON to write the intelligent parts (HANDOFF.md, LIVE_STATE.json).
+Every data source is wrapped in try/except so failures are non-fatal (fail-open).
+"""
+
+import json
+import os
+import subprocess
+import sys
+import time
+
+CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
+HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
+LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
+HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
+
+# Make shared modules importable
+sys.path.insert(0, HOOKS_DIR)
+
+from shared.chromadb_socket import (
+    WorkerUnavailable,
+    count as socket_count,
+    is_worker_available,
+    query as socket_query,
+)
+
+
+def gather_live_state(warnings):
+    """Load LIVE_STATE.json content."""
+    try:
+        with open(LIVE_STATE_FILE, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        warnings.append(f"live_state: {e}")
+        return {}
+
+
+def gather_handoff(warnings):
+    """Load HANDOFF.md content and staleness info."""
+    result = {"content": "", "age_hours": 999.0, "stale": True}
+    try:
+        with open(HANDOFF_FILE, "r") as f:
+            result["content"] = f.read()
+        age_hours = (time.time() - os.path.getmtime(HANDOFF_FILE)) / 3600
+        result["age_hours"] = round(age_hours, 2)
+        result["stale"] = age_hours > 4
+    except Exception as e:
+        warnings.append(f"handoff: {e}")
+    return result
+
+
+def gather_git(warnings):
+    """Gather git status for CLAUDE_DIR."""
+    result = {"clean": True, "changes": [], "diff_stat": ""}
+    try:
+        porcelain = subprocess.run(
+            ["git", "-C", CLAUDE_DIR, "status", "--porcelain"],
+            capture_output=True, text=True, timeout=10,
+        )
+        lines = [l.strip() for l in porcelain.stdout.strip().splitlines() if l.strip()]
+        result["clean"] = len(lines) == 0
+        result["changes"] = lines
+    except Exception as e:
+        warnings.append(f"git status: {e}")
+    try:
+        diff_stat = subprocess.run(
+            ["git", "-C", CLAUDE_DIR, "diff", "--stat"],
+            capture_output=True, text=True, timeout=10,
+        )
+        result["diff_stat"] = diff_stat.stdout.strip()
+    except Exception as e:
+        warnings.append(f"git diff: {e}")
+    return result
+
+
+def gather_memory(warnings):
+    """Check memory accessibility and count."""
+    result = {"count": 0, "accessible": False}
+    try:
+        result["accessible"] = is_worker_available(retries=1, delay=0.1)
+    except Exception as e:
+        warnings.append(f"memory accessible: {e}")
+    if result["accessible"]:
+        try:
+            result["count"] = socket_count("knowledge")
+        except Exception as e:
+            warnings.append(f"memory count: {e}")
+    return result
+
+
+def gather_promotion_candidates(warnings):
+    """Find recurring error patterns that appear 3+ times."""
+    candidates = []
+    try:
+        resp = socket_query(
+            "knowledge",
+            ["recurring error pattern"],
+            n_results=10,
+            include=["metadatas"],
+        )
+        # resp structure: {"ids": [[...]], "metadatas": [[...]], ...}
+        metadatas = resp.get("metadatas", [[]])[0] if resp else []
+        pattern_counts = {}
+        for meta in metadatas:
+            if not meta:
+                continue
+            tags = meta.get("tags", "")
+            if "type:error" in str(tags):
+                pattern = meta.get("error_pattern", meta.get("tags", "unknown"))
+                pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
+        for pattern, cnt in pattern_counts.items():
+            if cnt >= 3:
+                candidates.append({"pattern": str(pattern), "count": cnt})
+    except (WorkerUnavailable, Exception) as e:
+        warnings.append(f"promotion_candidates: {e}")
+    return candidates
+
+
+def gather_recent_learnings(warnings):
+    """Fetch recent learning-type memories."""
+    learnings = []
+    try:
+        resp = socket_query(
+            "knowledge",
+            ["type:learning recent session"],
+            n_results=5,
+            include=["documents", "metadatas"],
+        )
+        ids = resp.get("ids", [[]])[0] if resp else []
+        docs = resp.get("documents", [[]])[0] if resp else []
+        for i, doc in enumerate(docs):
+            mid = ids[i] if i < len(ids) else f"unknown_{i}"
+            preview = (doc[:100] + "...") if len(doc) > 100 else doc
+            learnings.append({"preview": preview, "id": mid})
+    except (WorkerUnavailable, Exception) as e:
+        warnings.append(f"recent_learnings: {e}")
+    return learnings
+
+
+def compute_risk_level(handoff, git, memory):
+    """Determine overall risk level."""
+    if not memory["accessible"] or memory["count"] == 0:
+        return "RED"
+    if handoff["stale"] or not git["clean"]:
+        return "YELLOW"
+    return "GREEN"
+
+
+def main():
+    warnings = []
+
+    live_state = gather_live_state(warnings)
+    handoff = gather_handoff(warnings)
+    git = gather_git(warnings)
+    memory = gather_memory(warnings)
+    promotion_candidates = gather_promotion_candidates(warnings)
+    recent_learnings = gather_recent_learnings(warnings)
+    risk_level = compute_risk_level(handoff, git, memory)
+
+    result = {
+        "live_state": live_state,
+        "handoff": handoff,
+        "git": git,
+        "memory": memory,
+        "promotion_candidates": promotion_candidates,
+        "recent_learnings": recent_learnings,
+        "risk_level": risk_level,
+        "warnings": warnings,
+    }
+
+    json.dump(result, sys.stdout, indent=2)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        json.dump({"error": str(e), "warnings": ["script crash"]}, sys.stdout, indent=2)
