@@ -110,9 +110,16 @@ def cmd_validate(prp_name, task_id):
         print(json.dumps({"id": task["id"], "status": "passed", "reason": "no_validation"}))
         return
 
+    # Use task's cwd if specified, otherwise derive from first file's directory
+    cwd = task.get("cwd", "")
+    if not cwd and task.get("files"):
+        cwd = os.path.dirname(task["files"][0])
+    cwd = cwd or None  # None = inherit current directory
+
     try:
         result = subprocess.run(
-            validate_cmd, shell=True, capture_output=True, text=True, timeout=300
+            validate_cmd, shell=True, capture_output=True, text=True, timeout=300,
+            cwd=cwd,
         )
         new_status = "passed" if result.returncode == 0 else "failed"
         task["status"] = new_status

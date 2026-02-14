@@ -1,0 +1,23 @@
+ Add one new MCP tool:
+
+  def get_memories_batch(ids: list[str]) -> list[dict]:
+      """Fetch multiple memories in a single call."""
+      return [get_memory(id) for id in ids]
+
+  That's it. One new tool, ~20 lines of code in memory_server.py.
+
+  Tradeoffs
+
+  ┌───────────────────────────────────────────────────────┬──────────────────────────────────────────────────┐
+  │                        Benefit                        │                     Tradeoff                     │
+  ├───────────────────────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │ Fewer API round-trips (3 calls → 1)                   │ +1 MCP tool in schema (~50 tokens/call overhead) │
+  ├───────────────────────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │ Saves ~200-400 tokens when fetching multiple memories │ Only saves tokens when fetching 2+ memories      │
+  ├───────────────────────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │ Matches claude-mem's efficiency pattern               │ Adds complexity to memory_server.py              │
+  └───────────────────────────────────────────────────────┴──────────────────────────────────────────────────┘
+
+  Break-even: The new tool costs ~50 tokens in schema overhead per call. It saves ~100-200 tokens per batch fetch. So it pays for itself any session where I batch-fetch even once.
+
+  Verdict: Worth it, small change, clear savings.

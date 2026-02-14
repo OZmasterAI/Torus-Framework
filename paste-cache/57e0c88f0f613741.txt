@@ -1,0 +1,22 @@
+yes, i want you to spawn a swarm of subagents for research.
+I want you to do deep research and in-depth analysis of the code for several projects, Solana, Ethereum, Eclipse, Raydium, Meteora, Uniswap, PancakeSwap,Pump fun. Here are a bunch of useful links:
+https://github.com/Eclipse-Laboratories-Inc
+https://github.com/solana-labs
+https://solana.com/docs
+https://github.com/ethereum
+https://ethereum.org/developers/docs/
+https://ethereum.org/developers/
+https://github.com/ethereum-optimism
+https://docs.optimism.io/
+https://github.com/pancakeswap
+https://docs.pancakeswap.finance/
+https://github.com/uniswap
+https://docs.uniswap.org/
+https://github.com/raydium-io
+https://docs.raydium.io/raydium
+https://github.com/MeteoraAg
+https://docs.meteora.ag/
+https://github.com/pump-fun
+https://docs.rs/pumpfun/latest/pumpfun/
+
+Spawn as many agents as you need and gather knowledge about the code and best practices. The goal is becoming a top tier programmer for web3 apps for EVM and SV dapps and chains, be it standalone or l2 so you can have more confidence in building those.

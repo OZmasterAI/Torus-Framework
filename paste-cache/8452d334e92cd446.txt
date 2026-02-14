@@ -1,0 +1,27 @@
+Choose the right approach based on task complexity:
+
+Sub-agents (Task tool, lightweight):
+- Best for: independent parallel work, research, exploration, 2-5 step tasks
+- Memory MCP gives sub-agents shared context (search_knowledge/remember_this)
+- Causal chain tracking shares fix history across agents automatically
+- Cheaper on tokens, no coordination overhead
+
+Agent teams (TeamCreate workflow, full coordination):
+- Best for: 6+ dependent steps, real-time coordination, dynamic re-planning
+- Use when agents need to message each other directly (push, not pull)
+- Use when work may discover new tasks mid-execution
+- Use when progress tracking visibility matters
+
+Team workflow when used:
+1. TeamCreate — Create a named team (e.g., "audit-team")
+2. TaskCreate — Define tasks with clear descriptions and acceptance criteria
+3. Assign — Spawn agents via Task tool with team_name, assign tasks with TaskUpdate
+4. Coordinate — Use SendMessage for inter-agent communication, TaskList to monitor progress
+5. Shutdown — Send shutdown_request to each agent when work is complete, then TeamDelete
+
+Decision table:
+- 2-5 steps, independent → Sub-agents (parallel Task calls)
+- 2-5 steps, dependent → Sub-agents (lead orchestrates, memory bridges gaps)
+- 5-7 steps, dependent → Either (teams preferred but sub-agents viable)
+- 7+ steps, dependent → Agent teams (real-time coordination essential)
+- Cross-session continuity → Sub-agents + memory (persists after TeamDelete)

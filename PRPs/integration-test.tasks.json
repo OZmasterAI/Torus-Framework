@@ -5,8 +5,10 @@
     {
       "id": 1,
       "name": "Create hello module with greet function",
-      "status": "pending",
-      "files": ["/tmp/megaman-test/hello.py"],
+      "status": "passed",
+      "files": [
+        "/tmp/megaman-test/hello.py"
+      ],
       "validate": "python3 -c \"from hello import greet; assert greet('World') == 'Hello, World!'\" ",
       "depends_on": []
     },
@@ -14,9 +16,13 @@
       "id": 2,
       "name": "Create test file for hello module",
       "status": "pending",
-      "files": ["/tmp/megaman-test/test_hello.py"],
+      "files": [
+        "/tmp/megaman-test/test_hello.py"
+      ],
       "validate": "cd /tmp/megaman-test && python3 -m pytest test_hello.py -v",
-      "depends_on": [1]
+      "depends_on": [
+        1
+      ]
     }
   ]
 }

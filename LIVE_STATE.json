@@ -1,5 +1,5 @@
 {
-  "session_count": 48,
+  "session_count": 51,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
@@ -23,10 +23,10 @@
     "UDS socket intermittent when MCP server not running"
   ],
   "last_session_metrics": {
-    "reads": 6,
-    "edits": 0,
-    "errors": 0,
+    "reads": 2,
+    "edits": 1,
+    "errors": 3,
     "verified": 0,
-    "pending": 0
+    "pending": 1
   }
 }

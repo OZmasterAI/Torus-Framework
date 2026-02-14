@@ -1,0 +1,11 @@
+│         Benefit          │                                                                            Impact                                                                             │
+  ├──────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Token savings            │ Skill body only loads when triggered vs our rules/ files which are always injected. A skill with 2,000 tokens of instructions costs 0 tokens when not in use. │
+  ├──────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Modular specialization   │ Each skill is self-contained with its own scripts and references. Easy to add/remove without touching shared config.                                          │
+  ├──────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Skill Creator meta-skill │ Standardized pattern for building new skills means less ad-hoc slash command creation.                                                                        │
+  ├──────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ MCP Client wrapper       │ Could connect us to external services (Zapier automations, GitHub MCP, etc.) without bloating context with tool schemas.                                      │
+  ├──────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Community skills         │ 306 stars means a growing ecosystem. Other people's skills could plug in.                 
