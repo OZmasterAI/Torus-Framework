@@ -1,27 +1,32 @@
-# Session 48 — Framework Comparison (v2.0.1 vs Current)
+# Session 49 — Megaman-Loop Orchestrator (Phase 2 + Phase 3)
 
 ## What Was Done
 
-### Compared Mega-Framework v2.0.1 (Desktop backup) against current state
-- Full metrics comparison across 7 dimensions: token costs, speed, consistency, learning, output quality, memory, reliability
-- Key deltas documented: CLAUDE.md trimmed 25%, Python LOC +2.4x, skills 9→21, gates 12→14, MCP tools 13→15, test LOC +2.6x
-- Found v2.0.1 backup was missing shared/ directory entirely
-- No code changes this session (research/comparison only)
+### Built fresh-context task orchestration system
+- Created JSON task tracking format (`tasks.json`) alongside PRPs
+- Built `task_manager.py` CLI (status, next, update, validate) with dependency resolution
+- Built `megaman-loop.sh` bash orchestrator — spawns fresh Claude instance per task
+- Created `/loop` skill (start, status, stop) and updated `/prp` skill (added status command, tasks.json generation)
+- Added 80+ tests to test_framework.py
 
-## Key Findings
-- Biggest gains since v2.0.1: passive observation capture, 2-layer memory search (54-84% token savings), shared modules
-- Main tradeoff: complexity (66→3,183 files, though most is data/cache)
-- Token savings: ~1,536 tokens/prompt saved (CLAUDE.md trim + duplicate deletion)
-- Comparison saved to memory (id: 931d4c910893a595)
+### Integration tested end-to-end
+- 2-task mini PRP: both tasks passed via fresh Claude instances
+- Memory bridge confirmed: spawned instances write to ChromaDB, searchable by future sessions
+- Found and fixed 2 bugs: CLAUDECODE env var nesting block, validate cwd derivation
+
+### Fixed enforcer.py gate naming bug
+- Exception handlers used `gate.__name__` (module path) instead of `GATE_NAME` (human label)
+- Caused duplicate gate entries in dashboard (user-reported)
+- One-line fix: `getattr(gate, "GATE_NAME", gate.__name__)` in except block
 
 ## What's Next
-1. **Phase 2**: JSON task tracking in /prp (ralph-loop-quickstart)
-2. **Phase 3**: External bash orchestrator (ralph-loop-quickstart)
-3. Optional: configurable status dashboard format
-4. Megaman-framework backlog: inject_memories cleanup, dashboard auto-start
-5. Clean stale X sessions cron job (from Session 38)
+1. **Real-world loop test**: Run megaman-loop on a substantial PRP (5+ tasks) to stress-test
+2. **Optional**: Dashboard gate name normalization (safety net for historical audit entries)
+3. **Backlog**: inject_memories cleanup, dashboard auto-start, stale X sessions cron job
+4. **Optional**: configurable status dashboard format
 
 ## Service Status
-- Memory MCP: 316 memories
-- Tests: 998/999 pass (1 pre-existing: missing /home/crab/CLAUDE.md)
+- Memory MCP: 322 memories
+- Tests: 1036 passed, 1 pre-existing failure (missing ~/CLAUDE.md)
+- Megaman-loop: operational, integration-tested
 - All framework services operational

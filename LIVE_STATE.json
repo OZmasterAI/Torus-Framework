@@ -1,32 +1,35 @@
 {
-  "session_count": 51,
+  "session_count": 49,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "framework-comparison",
+  "feature": "megaman-loop-orchestrator",
   "feature_status": "complete",
-  "test_count": 999,
+  "test_count": 1036,
   "test_failures": 1,
   "files_modified": [],
   "improvements_shipped": [
-    "v2.0.1 vs current comparison (7 dimensions)"
+    "Phase 2: JSON task tracking in /prp",
+    "Phase 3: External bash orchestrator (megaman-loop.sh)",
+    "/loop skill (start/status/stop)",
+    "enforcer.py gate naming fix"
   ],
   "next_steps": [
-    "Phase 2: JSON task tracking in /prp (ralph-loop-quickstart)",
-    "Phase 3: External bash orchestrator (ralph-loop-quickstart)",
-    "Optional: configurable status dashboard format",
+    "Real-world loop test with 5+ task PRP",
+    "Dashboard gate name normalization (optional)",
     "inject_memories cleanup",
     "dashboard auto-start",
     "stale X sessions cron job"
   ],
   "known_issues": [
-    "UDS socket intermittent when MCP server not running"
+    "UDS socket intermittent when MCP server not running",
+    "Historical audit entries still have module-path gate names (2026-02-14.jsonl)"
   ],
   "last_session_metrics": {
-    "reads": 2,
-    "edits": 1,
-    "errors": 3,
-    "verified": 0,
-    "pending": 1
+    "reads": 12,
+    "edits": 10,
+    "errors": 2,
+    "verified": 4,
+    "pending": 0
   }
 }
