@@ -236,6 +236,8 @@ def _track_subagent_start(data):
     """Record active subagent in session state for statusline visibility."""
     try:
         agent_id = data.get("agent_id", "")
+        if not agent_id:
+            return  # Skip phantom entries with no agent_id
         agent_type = data.get("agent_type", "unknown")
         session_id = data.get("session_id", "")
         transcript_path = data.get("agent_transcript_path", "")
