@@ -1,35 +1,35 @@
-# Session 52 — Crash-Proof MCP Server + Dashboard Cache Fix
+# Session 53 — Gate Normalization + X Cleanup + Loop Test
 
 ## What Was Done
 
-### Crash-proof MCP server (memory_server.py)
-- Added `@crash_proof` decorator wrapping all 15 `@mcp.tool()` handlers
-- Decorator catches exceptions, logs full traceback to stderr, returns `{"error": "..."}` dict
-- Hardened `_init_chromadb()` with try/except and `_chromadb_degraded` flag
-- Wrapped `mcp.run()` entry point with fatal error handler
-- Updated test_framework.py to handle new decorator stacking (3-line lookback for `@mcp.tool()`)
+### Dashboard gate name normalization (server.py + audit_log.py)
+- Added `GATE_NAME_NORMALIZATION` dict (13 old module-path → canonical name mappings)
+- Added `normalize_gate_name()` helper applied in 4 read paths:
+  - `parse_audit_line()`, `aggregate_gate_perf()` in server.py
+  - `_aggregate_entry()`, `get_block_summary()` in audit_log.py
+- Read-time normalization preserves JSONL audit trail integrity
+- Tests: 1036/1037 passed (1 pre-existing)
 
-### Fixed dashboard Live Metrics "Loading..." forever
-- Root cause: browser serving stale cached `app.js` from before `renderLiveMetrics()` was added
-- Server logs confirmed: no `/api/live-metrics` request ever made by browser
-- Added `?v=2` cache-busting to `<script>` and `<link>` tags in index.html
-- Added `NoCacheStaticWrapper` ASGI middleware for `Cache-Control: no-cache` on `/static/` paths
-- Key learning: Starlette `BaseHTTPMiddleware` does NOT intercept `Mount` sub-apps — must use raw ASGI wrapper
+### Stale X sessions cleanup script
+- Created `~/.claude/scripts/cleanup-x-sessions.sh`
+- Iterates `/tmp/.X*-lock`, removes dead-PID locks+sockets, warns alive-but-old
+- Supports `X_CLEANUP_DRY_RUN=true` and `X_CLEANUP_MAX_AGE_HOURS` (default 48h)
+- Cron removed — kept as manual `sudo` tool (root-owned lock files need elevated perms)
 
-### Diagnosed UDS socket missing issue
-- Socket file `/home/crab/.claude/hooks/.chromadb.sock` missing from filesystem
-- Socket still listening per `ss` (kernel holds it) but new connections fail
-- Dashboard falls back to standalone ChromaDB PersistentClient (concurrent access risk)
-- Self-heals on next session start when MCP server recreates socket
+### Framework validation PRP (5-task loop test)
+- Created `~/.claude/PRPs/framework-validation.tasks.json` — all 5/5 tasks passed
+- Tasks: workspace setup, utils.py, pytest tests, error handling+docstrings, validation report
+- Fixed `megaman-loop.sh` sed bug: replaced sed template substitution with Python `str.replace()` (sed delimiter `|` broke on validate commands containing pipe characters)
 
 ## What's Next
-1. **UDS socket**: Will self-heal on next session — verify socket file exists after restart
-2. **Real-world loop test**: Run megaman-loop on a substantial PRP (5+ tasks)
-3. **Dashboard gate name normalization**: Safety net for historical audit entries
-4. **Backlog**: inject_memories cleanup, dashboard auto-start, stale X sessions cron
+1. **inject_memories cleanup** — remove deprecated injection path
+2. **Dashboard auto-start** — systemd service or boot script
+3. **UDS socket verification** — confirm socket file exists after fresh session
+4. **Memory graph D3.js upgrade** — deferred, current canvas version sufficient
 
 ## Service Status
-- Memory MCP: 329 memories, crash-proofed
-- Tests: 1036 passed, 1 pre-existing failure
-- Dashboard: running with cache-busting, Live Metrics operational
-- UDS socket: missing file (operational risk) — will self-heal next session
+- Memory MCP: 333 memories, crash-proofed
+- Tests: 1036 passed, 1 pre-existing failure (CLAUDE.md path check)
+- Dashboard: running, gate names now normalized
+- megaman-loop: sed bug fixed, framework-validation PRP 5/5 passed
+- X cleanup: manual tool at `~/.claude/scripts/cleanup-x-sessions.sh`

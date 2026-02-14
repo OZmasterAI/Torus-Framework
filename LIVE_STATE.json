@@ -1,42 +1,40 @@
 {
-  "session_count": 58,
+  "session_count": 59,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "crash-proof-mcp",
+  "feature": "gate-normalization-loop-test",
   "feature_status": "complete",
   "test_count": 1036,
   "test_failures": 1,
   "files_modified": [
-    "hooks/memory_server.py",
-    "hooks/test_framework.py",
     "dashboard/server.py",
-    "dashboard/static/index.html"
+    "hooks/shared/audit_log.py",
+    "scripts/cleanup-x-sessions.sh",
+    "scripts/megaman-loop.sh",
+    "PRPs/framework-validation.tasks.json"
   ],
   "improvements_shipped": [
-    "@crash_proof decorator on 15 MCP tool handlers",
-    "_init_chromadb() hardened with degraded flag",
-    "mcp.run() entry point wrapped",
-    "Dashboard cache-busting (?v=2 + NoCacheStaticWrapper)",
-    "Live Metrics panel loading fix"
+    "Gate name normalization (13 mappings, 4 read paths)",
+    "Stale X cleanup script (manual tool)",
+    "Framework validation PRP 5/5 passed",
+    "megaman-loop.sh sed-to-Python fix"
   ],
   "next_steps": [
-    "Verify UDS socket file exists after session restart",
-    "Real-world loop test with 5+ task PRP",
-    "Dashboard gate name normalization (optional)",
     "inject_memories cleanup",
-    "dashboard auto-start",
-    "stale X sessions cron job"
+    "Dashboard auto-start (systemd)",
+    "UDS socket verification after restart",
+    "Memory graph D3.js upgrade (deferred)"
   ],
   "known_issues": [
-    "UDS socket file missing \u2014 self-heals on next MCP server restart",
-    "Historical audit entries still have module-path gate names (2026-02-14.jsonl)"
+    "UDS socket file may be missing — self-heals on MCP restart",
+    "Root-owned X lock files need sudo to remove"
   ],
   "last_session_metrics": {
-    "reads": 4,
-    "edits": 0,
-    "errors": 2,
-    "verified": 1,
+    "reads": 8,
+    "edits": 9,
+    "errors": 1,
+    "verified": 3,
     "pending": 0
   }
 }
