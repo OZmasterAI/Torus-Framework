@@ -1485,6 +1485,105 @@ async def api_gate_state_conflicts(request):
     })
 
 
+async def api_live_metrics(request):
+    """Consolidated live metrics endpoint — single state read, single response."""
+    # Health data
+    gate_count = count_gates()
+    mem_count = get_memory_count()
+    health_pct, _ = calculate_health(gate_count, mem_count)
+
+    # Session state — single read
+    state = _read_latest_state() or {}
+
+    # Tool stats
+    tool_stats = state.get("tool_stats", {})
+    total_tool_calls = state.get("tool_call_count", 0) or state.get("total_tool_calls", 0)
+
+    # Error data
+    error_patterns = state.get("error_pattern_counts", {})
+    error_pressure = sum(error_patterns.values()) if error_patterns else 0
+    active_bans = state.get("active_bans", [])
+
+    # Verification data
+    pending_verification = state.get("pending_verification", [])
+    verified_fixes = state.get("verified_fixes", [])
+    pending_count = len(pending_verification) if isinstance(pending_verification, list) else 0
+    verified_count = len(verified_fixes) if isinstance(verified_fixes, list) else 0
+    total_fixes = pending_count + verified_count
+    verification_ratio = round(verified_count / total_fixes, 2) if total_fixes > 0 else 0.0
+
+    # Plan mode warnings
+    gate12_warn_count = state.get("gate12_warn_count", 0)
+
+    # Session age
+    session_start = state.get("session_start", 0)
+    session_age_min = 0
+    if session_start:
+        try:
+            session_age_min = int((time.time() - float(session_start)) / 60)
+        except (ValueError, TypeError):
+            pass
+
+    # Subagent data
+    active_subagents = state.get("active_subagents", [])
+    subagent_total_tokens = state.get("subagent_total_tokens", 0)
+
+    # Skill usage
+    skill_usage = state.get("skill_usage", {})
+    recent_skills = state.get("recent_skills", [])
+
+    # Edit streak hotspots
+    edit_streak = state.get("edit_streak", {})
+    hotspots = {path: count for path, count in edit_streak.items()
+                if isinstance(count, int) and count >= 3}
+
+    # Live state
+    live = _read_json(LIVE_STATE_FILE) or {}
+
+    return JSONResponse({
+        "health": {
+            "hp": health_pct,
+            "color": health_color_name(health_pct),
+            "gates": gate_count,
+            "memories": mem_count,
+        },
+        "session": {
+            "project": live.get("project", "unknown"),
+            "session_count": live.get("session_count", 0),
+            "status": live.get("status", "unknown"),
+            "age_min": session_age_min,
+        },
+        "tools": {
+            "total_calls": total_tool_calls,
+            "stats": {name: info.get("count", 0) if isinstance(info, dict) else info
+                      for name, info in sorted(tool_stats.items(),
+                                               key=lambda x: (x[1].get("count", 0) if isinstance(x[1], dict) else x[1]),
+                                               reverse=True)},
+        },
+        "errors": {
+            "pressure": error_pressure,
+            "patterns": error_patterns,
+            "active_bans": active_bans,
+        },
+        "verification": {
+            "pending": pending_count,
+            "verified": verified_count,
+            "ratio": verification_ratio,
+        },
+        "plan_mode_warns": gate12_warn_count,
+        "subagents": {
+            "active": active_subagents if isinstance(active_subagents, list) else [],
+            "total_tokens": subagent_total_tokens,
+        },
+        "skills": {
+            "usage": skill_usage,
+            "recent": recent_skills[-5:] if isinstance(recent_skills, list) else [],
+        },
+        "hotspots": {os.path.basename(p): c for p, c in
+                     sorted(hotspots.items(), key=lambda x: -x[1])[:10]},
+    })
+
+
 async def index_redirect(request):
     return RedirectResponse(url="/static/index.html")
 
@@ -1521,6 +1620,7 @@ routes = [
     Route("/api/tool-usage", get_tool_usage),
     Route("/api/history", api_history),
     Route("/api/history/{filename}", api_history_detail),
+    Route("/api/live-metrics", api_live_metrics),
     Route("/api/stream", api_stream),
     Mount("/static", StaticFiles(directory=STATIC_DIR), name="static"),
 ]

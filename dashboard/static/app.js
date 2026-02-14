@@ -976,6 +976,133 @@ async function renderToolStats() {
     }
 }
 
+// ── Live Metrics ────────────────────────────────────────
+
+async function renderLiveMetrics() {
+    const data = await apiFetch('/api/live-metrics');
+    if (!data) return;
+
+    const el = document.getElementById('live-metrics-content');
+    if (!el) return;
+
+    const h = data.health || {};
+    const s = data.session || {};
+    const t = data.tools || {};
+    const e = data.errors || {};
+    const v = data.verification || {};
+    const sub = data.subagents || {};
+    const sk = data.skills || {};
+    const hotspots = data.hotspots || {};
+
+    const hpColor = HEALTH_COLORS[h.color] || HEALTH_COLORS.cyan;
+
+    // Format session age
+    let ageStr = '—';
+    if (s.age_min > 0) {
+        if (s.age_min >= 60) {
+            const hrs = Math.floor(s.age_min / 60);
+            const mins = s.age_min % 60;
+            ageStr = `${hrs}h ${mins}m`;
+        } else {
+            ageStr = `${s.age_min}m`;
+        }
+    }
+
+    // Build metric cards for row 1-2
+    let metricsHtml = '<div class="live-metrics-grid">';
+
+    // Row 1: Core session info
+    metricsHtml += metricCard('HP', `${h.hp || 0}%`, hpColor);
+    metricsHtml += metricCard('Project', escapeHtml(s.project || '—'), 'var(--cyan)');
+    metricsHtml += metricCard('Sessions', s.session_count || 0, 'var(--text-primary)');
+    metricsHtml += metricCard('Age', ageStr, 'var(--text-primary)');
+    metricsHtml += metricCard('Status', escapeHtml(s.status || '—'), s.status === 'active' ? 'var(--green)' : 'var(--text-muted)');
+
+    // Row 2: Framework health
+    metricsHtml += metricCard('Gates', h.gates || 0, 'var(--cyan)');
+    metricsHtml += metricCard('Memories', h.memories || 0, 'var(--green)');
+    metricsHtml += metricCard('Errors', e.pressure || 0, (e.pressure || 0) > 0 ? 'var(--red)' : 'var(--green)');
+    metricsHtml += metricCard('Plan Warns', data.plan_mode_warns || 0, (data.plan_mode_warns || 0) > 0 ? 'var(--yellow)' : 'var(--text-muted)');
+    metricsHtml += metricCard('Verified', `${v.verified || 0}/${(v.verified || 0) + (v.pending || 0)}`, v.ratio >= 0.8 ? 'var(--green)' : v.ratio >= 0.5 ? 'var(--yellow)' : 'var(--red)');
+
+    metricsHtml += '</div>';
+
+    // Row 3: Tool usage bars
+    const toolStats = t.stats || {};
+    const toolEntries = Object.entries(toolStats);
+    if (toolEntries.length > 0) {
+        const maxCount = Math.max(...toolEntries.map(([, c]) => c), 1);
+        metricsHtml += '<div class="live-metrics-section">';
+        metricsHtml += `<div class="live-metrics-section-label">Tools (${t.total_calls || 0} calls)</div>`;
+        metricsHtml += toolEntries.slice(0, 10).map(([name, count]) => {
+            const pct = maxCount > 0 ? (count / maxCount * 100) : 0;
+            return `<div class="tool-stat-row">
+                <span class="tool-stat-name">${escapeHtml(name)}</span>
+                <div class="tool-stat-bar-bg">
+                    <div class="tool-stat-bar" style="width:${pct}%"></div>
+                </div>
+                <span class="tool-stat-count">${count}</span>
+            </div>`;
+        }).join('');
+        metricsHtml += '</div>';
+    }
+
+    // Row 4: Subagents (if any)
+    const activeSubagents = sub.active || [];
+    if (activeSubagents.length > 0 || sub.total_tokens > 0) {
+        metricsHtml += '<div class="live-metrics-section">';
+        metricsHtml += '<div class="live-metrics-section-label">Subagents</div>';
+        metricsHtml += '<div class="live-metrics-grid">';
+        metricsHtml += metricCard('Active', activeSubagents.length, 'var(--cyan)');
+        metricsHtml += metricCard('Tokens', sub.total_tokens || 0, 'var(--text-primary)');
+        metricsHtml += '</div>';
+        metricsHtml += '</div>';
+    }
+
+    // Row 5: Edit streak hotspots + skill usage
+    const hotspotEntries = Object.entries(hotspots);
+    const skillEntries = Object.entries(sk.usage || {});
+    if (hotspotEntries.length > 0 || skillEntries.length > 0) {
+        metricsHtml += '<div class="live-metrics-section">';
+        if (hotspotEntries.length > 0) {
+            metricsHtml += '<div class="live-metrics-section-label">Edit Hotspots</div>';
+            metricsHtml += '<div class="live-metrics-grid">';
+            for (const [file, count] of hotspotEntries) {
+                metricsHtml += metricCard(escapeHtml(file), `${count}x`, count >= 5 ? 'var(--red)' : 'var(--orange)');
+            }
+            metricsHtml += '</div>';
+        }
+        if (skillEntries.length > 0) {
+            metricsHtml += '<div class="live-metrics-section-label">Skills Used</div>';
+            metricsHtml += '<div class="live-metrics-grid">';
+            for (const [name, count] of skillEntries.sort((a, b) => b[1] - a[1])) {
+                metricsHtml += metricCard(`/${escapeHtml(name)}`, count, 'var(--cyan)');
+            }
+            metricsHtml += '</div>';
+        }
+        metricsHtml += '</div>';
+    }
+
+    // Active bans
+    if (e.active_bans && e.active_bans.length > 0) {
+        metricsHtml += '<div class="live-metrics-section">';
+        metricsHtml += '<div class="live-metrics-section-label" style="color:var(--red)">Active Bans</div>';
+        metricsHtml += e.active_bans.map(ban =>
+            `<div class="ban-entry">${escapeHtml(typeof ban === 'string' ? ban : JSON.stringify(ban))}</div>`
+        ).join('');
+        metricsHtml += '</div>';
+    }
+
+    el.innerHTML = metricsHtml;
+}
+
+function metricCard(label, value, valueColor) {
+    return `<div class="live-metric-card">
+        <div class="live-metric-label">${label}</div>
+        <div class="live-metric-value" style="color:${valueColor}">${value}</div>
+    </div>`;
+}
+
 // ── Component Inventory ─────────────────────────────────
 
 async function renderComponents() {
@@ -1687,6 +1814,7 @@ async function refreshAll() {
         renderGatePerf(),
         renderErrors(),
         renderToolStats(),
+        renderLiveMetrics(),
     ]);
 }
 
@@ -1812,6 +1940,7 @@ async function init() {
         renderGatePerf(),
         renderGateDeps(),
         renderTimeline(),
+        renderLiveMetrics(),
         renderMemory(''),
         renderMemoryTags(),
         renderMemoryHealth(),

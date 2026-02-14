@@ -1856,6 +1856,65 @@ header {
     border-left: 2px solid #fbbf24;
 }
 
+/* ── Live Metrics ────────────────────────────────────── */
+
+.live-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.live-metric-card {
+    background: var(--bg-primary);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border: 1px solid rgba(30, 58, 95, 0.4);
+}
+
+.live-metric-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.live-metric-value {
+    font-size: 18px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.live-metrics-section {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
+.live-metrics-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.card.collapsed #live-metrics-content {
+    display: none !important;
+}
+
 /* ── Tool Stats ──────────────────────────────────────── */
 .tool-stat-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .tool-stat-name { width: 80px; font-size: 12px; font-family: var(--font-mono); color: var(--text-primary); }
