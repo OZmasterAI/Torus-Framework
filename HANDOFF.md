@@ -1,23 +1,27 @@
-# Session 38 — xRDP Login Failure Fix
+# Session 42 — Hybrid Bundled Scripts for /status and /wrap-up
 
 ## What Was Done
 
-### xRDP "login failed for user crab" — Diagnosed & Fixed
-- **Root cause:** Stale Xorg process (PID 2311247) from Feb 12 holding display `:11`, plus a stale xrdp-sesman (PID 2311228) from same date
-- **Fix:** Killed stale Xorg process (user-owned, no sudo needed). Stale sesman had already exited.
-- **Result:** RDP login working again with the clean sesman (PID 2929586) from today
+### Implemented script-first gathering for /status and /wrap-up skills
+- **status/scripts/gather.py** (251 lines) — Single Python script gathers all 10 data sources (LIVE_STATE, HANDOFF, memory count, gates, skills, hooks, tests, health, git status) and prints a box-drawing dashboard. Reuses statusline.py functions.
+- **wrap-up/scripts/gather.py** (180 lines) — Gathers 8 data sources and outputs JSON (live_state, handoff with staleness, git, memory, promotion_candidates, recent_learnings, risk_level, warnings). Claude uses JSON for intelligent parts.
+- **Both SKILL.md files updated** — Script call first, manual fallback if script fails.
+- **16 new tests** added to test_framework.py — Status dashboard output, wrap-up JSON structure, risk_level computation (GREEN/YELLOW/RED).
+- **Result:** 947/948 tests pass. /status: 6→1 tool calls. /wrap-up gathering: 5→1 tool calls.
 
 ## Key Findings
-- Two xrdp-sesman processes were running simultaneously (Feb 12 + Feb 14)
-- Stale Xorg on display :11 caused sesman to attempt reconnection to a zombie session
-- sudo is password-protected on this server (no NOPASSWD configured)
+- Scripts reuse existing shared utilities (statusline.py, chromadb_socket.py) — no duplication
+- Fail-open pattern works well: missing data sources get defaults, script continues
+- Auto-commit hook picked up all 5 files automatically
+- Minor tradeoff: fixed dashboard format is less adaptive than Claude-generated layout
 
 ## What's Next
-1. Consider setting up a cron job or systemd timer to clean stale X sessions
-2. Optional: add NOPASSWD sudoers rule for xrdp service restarts
-3. Megaman-framework next steps remain from Session 36 (inject_memories cleanup, dashboard auto-start, etc.)
+1. Consider making the status dashboard format configurable (optional)
+2. Megaman-framework backlog: inject_memories cleanup, dashboard auto-start
+3. Clean stale X sessions cron job (from Session 38)
 
 ## Service Status
-- xRDP: active, login working
-- xrdp-sesman: single instance running (PID 2929586)
-- All megaman-framework services unchanged from Session 36
+- Memory MCP: 304 memories (UDS socket intermittent this session)
+- Tests: 947/948 pass (1 pre-existing: missing /home/crab/CLAUDE.md)
+- Git: committed (7ccc325)
+- All framework services operational

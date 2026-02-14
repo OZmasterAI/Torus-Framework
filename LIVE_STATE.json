@@ -1,14 +1,38 @@
 {
-  "session_count": 39,
-  "status": "starting",
-  "project": "",
-  "project_path": "/home/crab",
-  "feature": "",
-  "feature_status": "",
-  "test_count": 0,
-  "test_failures": 0,
-  "files_modified": [],
-  "improvements_shipped": [],
-  "next_steps": [],
-  "known_issues": []
+  "session_count": 43,
+  "status": "idle",
+  "project": "megaman-framework",
+  "project_path": "/home/crab/.claude",
+  "feature": "hybrid-bundled-scripts",
+  "feature_status": "complete",
+  "test_count": 948,
+  "test_failures": 1,
+  "files_modified": [
+    "skills/status/scripts/gather.py",
+    "skills/wrap-up/scripts/gather.py",
+    "skills/status/SKILL.md",
+    "skills/wrap-up/SKILL.md",
+    "hooks/test_framework.py"
+  ],
+  "improvements_shipped": [
+    "status gather script (6→1 tool calls)",
+    "wrap-up gather script (5→1 tool calls)",
+    "16 new tests for bundled scripts"
+  ],
+  "next_steps": [
+    "Optional: configurable status dashboard format",
+    "inject_memories cleanup",
+    "dashboard auto-start",
+    "stale X sessions cron job"
+  ],
+  "known_issues": [
+    "UDS socket intermittent when MCP server not running"
+  ],
+  "last_session_metrics": {
+    "reads": 12,
+    "edits": 5,
+    "errors": 0,
+    "verified": 2,
+    "pending": 0
+  }
 }
