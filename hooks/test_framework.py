@@ -9133,6 +9133,48 @@ _prp_examples = os.path.join(_prp_base, "examples")
 test("PRP: examples directory exists", os.path.isdir(_prp_examples))
 test("PRP: examples README exists", os.path.isfile(os.path.join(_prp_examples, "README.md")))
 
+print("\n--- Browser Skill ---")
+
+_browser_base = os.path.expanduser("~/.claude")
+
+# SKILL.md exists
+_browser_skill = os.path.join(_browser_base, "skills", "browser", "SKILL.md")
+test("Browser: SKILL.md exists", os.path.isfile(_browser_skill))
+
+# SKILL.md has required commands
+with open(_browser_skill) as _bf:
+    _browser_skill_src = _bf.read()
+test("Browser: SKILL.md has open command", "open" in _browser_skill_src.lower())
+test("Browser: SKILL.md has snapshot command", "snapshot" in _browser_skill_src.lower())
+test("Browser: SKILL.md has screenshot command", "screenshot" in _browser_skill_src.lower())
+test("Browser: SKILL.md has click command", "click" in _browser_skill_src.lower())
+test("Browser: SKILL.md has fill command", "fill" in _browser_skill_src.lower())
+test("Browser: SKILL.md has verify command", "verify" in _browser_skill_src.lower())
+
+# SKILL.md has integration with /ralph section
+test("Browser: SKILL.md has ralph integration", "Integration with /ralph" in _browser_skill_src)
+
+# SKILL.md has rules section
+test("Browser: SKILL.md has rules section", "## Rules" in _browser_skill_src)
+
+# SKILL.md references screenshots/ directory
+test("Browser: SKILL.md references screenshots/ dir", "screenshots/" in _browser_skill_src)
+
+# agent-browser CLI is installed
+import shutil as _browser_shutil
+_agent_browser_path = _browser_shutil.which("agent-browser")
+test("Browser: agent-browser CLI is installed", _agent_browser_path is not None,
+     f"path={_agent_browser_path}")
+
+# /ralph SKILL.md references visual verify step
+_ralph_skill = os.path.join(_browser_base, "skills", "ralph", "SKILL.md")
+with open(_ralph_skill) as _rf:
+    _ralph_skill_src = _rf.read()
+test("Browser: ralph SKILL.md has visual verify step", "Visual Verify" in _ralph_skill_src)
+
+# /ralph SKILL.md references screenshots in report
+test("Browser: ralph SKILL.md has screenshots in report", "Screenshots taken" in _ralph_skill_src)
+
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────

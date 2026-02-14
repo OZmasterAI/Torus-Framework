@@ -31,6 +31,7 @@ For each sub-task in order:
 1. **Check**: Is this sub-task still relevant? (Prior steps may have changed things)
 2. **Build**: Implement the sub-task
 3. **Test**: Run relevant tests or verification
+3b. **Visual Verify** (if UI task): Run `/browser verify <url>` — screenshot must confirm correctness before marking done
 4. **Record**: If tests pass, mark sub-task done. If tests fail:
    - Increment failure counter
    - `record_attempt("[error]", "[strategy]")` — log the attempt
@@ -51,6 +52,7 @@ Always end with a summary:
 - Tests passing: show output
 - Iterations used: N/10
 - Failures encountered: list with strategies tried
+- Screenshots taken: list paths (if any)
 - What's left (if incomplete): ordered remaining tasks
 - Save final state to memory: `remember_this("[ralph session summary]", "autonomous execution", "type:learning,outcome:[success|partial|blocked]")`
 
