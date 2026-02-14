@@ -12,9 +12,12 @@ Run standalone: python3 memory_server.py
 Used via MCP: configured in .claude/mcp.json
 """
 
+import atexit
 import hashlib
 import json
 import os
+import socket
+import threading
 import time
 from datetime import datetime, timedelta
 
@@ -74,6 +77,12 @@ mcp = FastMCP("memory")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 os.makedirs(MEMORY_DIR, exist_ok=True)
 FTS5_DB_PATH = os.path.join(MEMORY_DIR, "fts5_index.db")
+
+# Unix Domain Socket gateway for external consumers (hooks, dashboard)
+SOCKET_PATH = os.path.join(
+    os.path.expanduser("~"), ".claude", "hooks", ".chromadb.sock"
+)
+_socket_server = None  # threading server reference for cleanup
 
 # Lazy ChromaDB initialization — prevents segfault when module is imported
 # by test code while MCP server already holds a PersistentClient on the same path.
@@ -2514,6 +2523,180 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
         }
 
 
+# ──────────────────────────────────────────────────
+# Unix Domain Socket Gateway
+# ──────────────────────────────────────────────────
+
+
+def _handle_socket_client(conn):
+    """Handle a single UDS client connection: read JSON request, dispatch, respond."""
+    try:
+        conn.settimeout(5)
+        buf = b""
+        while b"\n" not in buf:
+            chunk = conn.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+
+        if not buf:
+            return
+
+        try:
+            req = json.loads(buf.decode("utf-8").strip())
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            resp = {"ok": False, "error": "Invalid JSON request"}
+            conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
+            return
+
+        result = _dispatch_request(req)
+        conn.sendall((json.dumps(result) + "\n").encode("utf-8"))
+    except Exception as e:
+        try:
+            resp = {"ok": False, "error": str(e)}
+            conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
+        except Exception:
+            pass
+    finally:
+        conn.close()
+
+
+def _dispatch_request(req):
+    """Route a UDS request to the appropriate ChromaDB operation."""
+    method = req.get("method", "")
+    col_name = req.get("collection", "")
+    params = req.get("params", {})
+
+    try:
+        if method == "ping":
+            return {"ok": True, "result": "pong"}
+
+        if method == "flush_queue":
+            flushed = _flush_capture_queue()
+            return {"ok": True, "result": flushed}
+
+        # Collection-based operations require a valid collection name
+        col_map = {
+            "knowledge": collection,
+            "observations": observations,
+            "fix_outcomes": fix_outcomes,
+        }
+        col = col_map.get(col_name)
+        if col is None:
+            return {"ok": False, "error": f"Unknown collection: {col_name}"}
+
+        if method == "count":
+            return {"ok": True, "result": col.count()}
+
+        if method == "query":
+            result = col.query(
+                query_texts=params.get("query_texts", [""]),
+                n_results=params.get("n_results", 5),
+                include=params.get("include", ["metadatas", "distances"]),
+            )
+            # Convert ChromaDB result to JSON-serializable dict
+            return {"ok": True, "result": _serialize_chromadb_result(result)}
+
+        if method == "get":
+            kwargs = {}
+            if "ids" in params:
+                kwargs["ids"] = params["ids"]
+            if "limit" in params:
+                kwargs["limit"] = params["limit"]
+            kwargs["include"] = params.get("include", ["metadatas", "documents"])
+            result = col.get(**kwargs)
+            return {"ok": True, "result": _serialize_chromadb_result(result)}
+
+        if method == "upsert":
+            docs = params.get("documents", [])
+            metas = params.get("metadatas", [])
+            ids = params.get("ids", [])
+            if docs and ids:
+                batch_size = 100
+                for i in range(0, len(docs), batch_size):
+                    col.upsert(
+                        documents=docs[i:i + batch_size],
+                        metadatas=metas[i:i + batch_size] if metas else None,
+                        ids=ids[i:i + batch_size],
+                    )
+                return {"ok": True, "result": len(docs)}
+            return {"ok": False, "error": "upsert requires documents and ids"}
+
+        return {"ok": False, "error": f"Unknown method: {method}"}
+
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+def _serialize_chromadb_result(result):
+    """Convert ChromaDB query/get result to a plain dict for JSON serialization."""
+    if result is None:
+        return {}
+    out = {}
+    for key in ("ids", "documents", "metadatas", "distances", "embeddings"):
+        if key in result and result[key] is not None:
+            out[key] = result[key]
+    return out
+
+
+def _start_socket_server():
+    """Bind a Unix Domain Socket and accept connections in a daemon thread."""
+    global _socket_server
+
+    # Remove stale socket file (prevents 'Address already in use')
+    try:
+        if os.path.exists(SOCKET_PATH):
+            os.unlink(SOCKET_PATH)
+    except OSError:
+        pass
+
+    try:
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(SOCKET_PATH)
+        srv.listen(8)
+        srv.settimeout(1.0)  # Allow periodic shutdown checks
+        _socket_server = srv
+    except OSError as e:
+        # Non-fatal: MCP tools still work, just no external gateway
+        import sys
+        print(f"[UDS] Failed to start socket server: {e}", file=sys.stderr)
+        return
+
+    def _accept_loop():
+        while True:
+            try:
+                conn, _ = srv.accept()
+                t = threading.Thread(target=_handle_socket_client, args=(conn,), daemon=True)
+                t.start()
+            except socket.timeout:
+                continue
+            except OSError:
+                break  # Server socket closed
+
+    t = threading.Thread(target=_accept_loop, daemon=True, name="uds-gateway")
+    t.start()
+
+
+def _cleanup_socket():
+    """Close server socket and remove socket file on exit."""
+    global _socket_server
+    if _socket_server is not None:
+        try:
+            _socket_server.close()
+        except Exception:
+            pass
+        _socket_server = None
+    try:
+        if os.path.exists(SOCKET_PATH):
+            os.unlink(SOCKET_PATH)
+    except OSError:
+        pass
+
+
+atexit.register(_cleanup_socket)
+
+
 if __name__ == "__main__":
     _ensure_initialized()
+    _start_socket_server()
     mcp.run()

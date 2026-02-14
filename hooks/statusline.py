@@ -22,6 +22,9 @@ import os
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(__file__))
+from shared.chromadb_socket import is_worker_available, count as socket_count, WorkerUnavailable
+
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
 GATES_DIR = os.path.join(HOOKS_DIR, "gates")
@@ -61,13 +64,7 @@ def count_gates():
 
 
 def get_memory_count():
-    """Get curated memory count, cached to avoid cold-starting ChromaDB each time.
-
-    ChromaDB PersistentClient can segfault (exit 139) which kills the entire
-    statusline process and bypasses Python exception handling. To protect
-    against this, the ChromaDB query runs in a subprocess — if it segfaults,
-    only the child dies and we fall back to the cached value.
-    """
+    """Get curated memory count, cached to avoid frequent UDS calls."""
     # Try cache first
     try:
         if os.path.exists(STATS_CACHE):
@@ -78,30 +75,20 @@ def get_memory_count():
     except (json.JSONDecodeError, OSError):
         pass
 
-    # Cache miss — query ChromaDB in a subprocess to isolate segfaults
-    import subprocess
+    # Cache miss — query via UDS socket (fast, no subprocess needed)
     try:
-        result = subprocess.run(
-            [sys.executable, "-c",
-             "import chromadb, json; "
-             f"c=chromadb.PersistentClient(path='{MEMORY_DIR}'); "
-             "col=c.get_or_create_collection(name='knowledge', metadata={'hnsw:space': 'cosine'}); "
-             "print(col.count())"],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip().isdigit():
-            count = int(result.stdout.strip())
-            # Write cache
-            try:
-                with open(STATS_CACHE, "w") as f:
-                    json.dump({"ts": time.time(), "mem_count": count}, f)
-            except OSError:
-                pass
-            return count
-    except (subprocess.TimeoutExpired, OSError, ValueError):
+        count = socket_count("knowledge")
+        # Write cache
+        try:
+            with open(STATS_CACHE, "w") as f:
+                json.dump({"ts": time.time(), "mem_count": count}, f)
+        except OSError:
+            pass
+        return count
+    except (WorkerUnavailable, RuntimeError, OSError):
         pass
 
-    # Subprocess failed (segfault, timeout, etc.) — return stale cache or "?"
+    # UDS unavailable — return stale cache or "?"
     try:
         if os.path.exists(STATS_CACHE):
             with open(STATS_CACHE) as f:

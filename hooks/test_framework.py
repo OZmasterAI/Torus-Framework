@@ -8638,6 +8638,136 @@ with tempfile.TemporaryDirectory() as _tmpdir:
          f"search={len(_persist_search)}, synced={_pidx3.is_synced(1)}")
 
 # ─────────────────────────────────────────────────
+# UDS Socket Client Tests (chromadb_socket.py)
+# ─────────────────────────────────────────────────
+print("\n--- UDS Socket Client ---")
+
+from shared.chromadb_socket import (
+    SOCKET_PATH, SOCKET_TIMEOUT, WorkerUnavailable,
+    is_worker_available, request, ping, count, query, get, upsert, flush_queue,
+)
+
+test("Socket module imports",
+     True,
+     "from shared.chromadb_socket import ...")
+
+test("SOCKET_PATH points to .chromadb.sock",
+     SOCKET_PATH.endswith(".claude/hooks/.chromadb.sock") and os.path.expanduser("~") in SOCKET_PATH,
+     f"got: {SOCKET_PATH}")
+
+test("WorkerUnavailable is subclass of Exception",
+     issubclass(WorkerUnavailable, Exception),
+     f"bases: {WorkerUnavailable.__bases__}")
+
+# Test is_worker_available returns False when socket doesn't exist
+import tempfile as _uds_tempfile
+_uds_fake_path = os.path.join(_uds_tempfile.mkdtemp(), "nonexistent.sock")
+_uds_orig_path = SOCKET_PATH
+import shared.chromadb_socket as _uds_mod
+_uds_mod.SOCKET_PATH = _uds_fake_path
+try:
+    _uds_avail_missing = _uds_mod.is_worker_available(retries=1, delay=0.01)
+finally:
+    _uds_mod.SOCKET_PATH = _uds_orig_path
+test("is_worker_available returns False when socket missing",
+     _uds_avail_missing is False,
+     f"got: {_uds_avail_missing}")
+
+# Test request() raises WorkerUnavailable with fake path
+_uds_mod.SOCKET_PATH = _uds_fake_path
+_uds_req_raised = False
+try:
+    request("ping")
+except WorkerUnavailable:
+    _uds_req_raised = True
+except Exception:
+    _uds_req_raised = False
+finally:
+    _uds_mod.SOCKET_PATH = _uds_orig_path
+test("request() raises WorkerUnavailable when socket missing",
+     _uds_req_raised is True,
+     f"raised WorkerUnavailable: {_uds_req_raised}")
+
+# Convenience wrappers exist and are callable
+test("Convenience wrappers are callable",
+     all(callable(fn) for fn in [ping, count, query, get, upsert, flush_queue]),
+     "one or more wrappers not callable")
+
+# --- Server-required tests (guarded by MEMORY_SERVER_RUNNING + socket exists) ---
+
+_uds_socket_exists = os.path.exists(SOCKET_PATH)
+if MEMORY_SERVER_RUNNING and _uds_socket_exists:
+    _uds_ping_result = ping()
+    test("ping returns pong",
+         _uds_ping_result == "pong",
+         f"got: {_uds_ping_result}")
+
+    _uds_count_k = count("knowledge")
+    test("count(knowledge) returns int >= 0",
+         isinstance(_uds_count_k, int) and _uds_count_k >= 0,
+         f"got: {_uds_count_k!r}")
+
+    _uds_count_o = count("observations")
+    test("count(observations) returns int >= 0",
+         isinstance(_uds_count_o, int) and _uds_count_o >= 0,
+         f"got: {_uds_count_o!r}")
+
+    _uds_query_res = query("knowledge", query_texts=["test"], n_results=1)
+    test("query returns dict with ids key",
+         isinstance(_uds_query_res, dict) and "ids" in _uds_query_res,
+         f"got keys: {list(_uds_query_res.keys()) if isinstance(_uds_query_res, dict) else type(_uds_query_res)}")
+
+    _uds_get_res = get("knowledge", limit=2)
+    test("get with limit returns dict with ids key",
+         isinstance(_uds_get_res, dict) and "ids" in _uds_get_res,
+         f"got keys: {list(_uds_get_res.keys()) if isinstance(_uds_get_res, dict) else type(_uds_get_res)}")
+
+    _uds_avail_live = is_worker_available(retries=1)
+    test("is_worker_available returns True when server running",
+         _uds_avail_live is True,
+         f"got: {_uds_avail_live}")
+else:
+    _uds_skip_reason = "memory server not running" if not MEMORY_SERVER_RUNNING else "UDS socket not found"
+    skip("ping returns pong", _uds_skip_reason)
+    skip("count(knowledge) returns int >= 0", _uds_skip_reason)
+    skip("count(observations) returns int >= 0", _uds_skip_reason)
+    skip("query returns dict with ids key", _uds_skip_reason)
+    skip("get with limit returns dict with ids key", _uds_skip_reason)
+    skip("is_worker_available returns True when server running", _uds_skip_reason)
+
+# --- Error handling tests (no server needed) ---
+
+# Monkeypatch SOCKET_PATH to bad path and verify WorkerUnavailable
+_uds_mod.SOCKET_PATH = _uds_fake_path
+_uds_bad_path_raised = False
+try:
+    request("count", collection="knowledge")
+except WorkerUnavailable:
+    _uds_bad_path_raised = True
+except Exception:
+    pass
+finally:
+    _uds_mod.SOCKET_PATH = _uds_orig_path
+test("request with bad socket path raises WorkerUnavailable",
+     _uds_bad_path_raised is True,
+     f"raised: {_uds_bad_path_raised}")
+
+# Test that request() with monkeypatched path produces meaningful error message
+_uds_mod.SOCKET_PATH = _uds_fake_path
+_uds_err_msg = ""
+try:
+    request("ping")
+except WorkerUnavailable as e:
+    _uds_err_msg = str(e)
+except Exception:
+    pass
+finally:
+    _uds_mod.SOCKET_PATH = _uds_orig_path
+test("WorkerUnavailable contains descriptive error message",
+     "Cannot connect" in _uds_err_msg,
+     f"got: {_uds_err_msg!r}")
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

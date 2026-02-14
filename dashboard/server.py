@@ -31,6 +31,13 @@ try:
 except ImportError:
     SSE_AVAILABLE = False
 
+import sys as _sys
+_sys.path.insert(0, os.path.join(os.path.expanduser("~/.claude"), "hooks"))
+from shared.chromadb_socket import (
+    count as socket_count, query as socket_query, get as socket_get,
+    is_worker_available, WorkerUnavailable,
+)
+
 # ── Paths ────────────────────────────────────────────────────────
 CLAUDE_DIR = os.path.expanduser("~/.claude")
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
@@ -49,31 +56,6 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 EXPECTED_GATES = 12
 EXPECTED_SKILLS = 9
 EXPECTED_HOOK_EVENTS = 13
-
-# ── Lazy ChromaDB client ─────────────────────────────────────────
-_chroma_client = None
-_chroma_collections = {}
-
-
-def _get_chroma():
-    """Lazily initialize a read-only ChromaDB client."""
-    global _chroma_client, _chroma_collections
-    if _chroma_client is not None:
-        return _chroma_client, _chroma_collections
-    try:
-        import chromadb
-        _chroma_client = chromadb.PersistentClient(path=MEMORY_DIR)
-        for name in ("knowledge", "observations", "fix_outcomes"):
-            try:
-                _chroma_collections[name] = _chroma_client.get_or_create_collection(
-                    name=name, metadata={"hnsw:space": "cosine"}
-                )
-            except Exception:
-                pass
-        return _chroma_client, _chroma_collections
-    except Exception:
-        return None, {}
-
 
 # ── Helper functions (reimplemented from statusline.py) ──────────
 
@@ -138,7 +120,7 @@ def get_error_pressure():
 
 
 def get_memory_count():
-    """Get curated memory count via ChromaDB (cached)."""
+    """Get curated memory count via UDS socket (cached)."""
     try:
         if os.path.exists(STATS_CACHE):
             cache = _read_json(STATS_CACHE)
@@ -146,13 +128,16 @@ def get_memory_count():
                 return cache.get("mem_count", 0)
     except Exception:
         pass
-    _, cols = _get_chroma()
-    if "knowledge" in cols:
+    try:
+        cnt = socket_count("knowledge")
         try:
-            return cols["knowledge"].count()
-        except Exception:
+            with open(STATS_CACHE, "w") as f:
+                json.dump({"ts": time.time(), "mem_count": cnt}, f)
+        except OSError:
             pass
-    return 0
+        return cnt
+    except (WorkerUnavailable, RuntimeError):
+        return 0
 
 
 def calculate_health(gate_count, mem_count):
@@ -553,38 +538,27 @@ async def api_memories_search(request):
     query = request.query_params.get("q", "")
     limit = min(int(request.query_params.get("limit", "20")), 100)
     offset = int(request.query_params.get("offset", "0"))
-
-    _, cols = _get_chroma()
-    if "knowledge" not in cols:
-        return JSONResponse({"error": "ChromaDB not available", "results": []})
-
-    col = cols["knowledge"]
     try:
-        count = col.count()
         if not query:
-            # Return recent entries
-            results = col.get(limit=min(limit, count), include=["metadatas"])
+            cnt = socket_count("knowledge")
+            results = socket_get("knowledge", limit=min(limit, cnt), include=["metadatas"])
             entries = []
             ids = results.get("ids", [])
             metas = results.get("metadatas", [])
             for i, mid in enumerate(ids):
                 meta = metas[i] if i < len(metas) else {}
                 entries.append({
-                    "id": mid,
-                    "preview": meta.get("preview", ""),
-                    "tags": meta.get("tags", ""),
-                    "timestamp": meta.get("timestamp", ""),
+                    "id": mid, "preview": meta.get("preview", ""),
+                    "tags": meta.get("tags", ""), "timestamp": meta.get("timestamp", ""),
                 })
-            return JSONResponse({"results": entries, "total": count, "query": ""})
+            return JSONResponse({"results": entries, "total": cnt, "query": ""})
 
-        actual_k = min(limit + offset, count)
+        cnt = socket_count("knowledge")
+        actual_k = min(limit + offset, cnt)
         if actual_k == 0:
             return JSONResponse({"results": [], "total": 0, "query": query})
-
-        results = col.query(
-            query_texts=[query], n_results=actual_k,
-            include=["metadatas", "distances"],
-        )
+        results = socket_query("knowledge", [query], n_results=actual_k,
+                               include=["metadatas", "distances"])
         entries = []
         ids = results.get("ids", [[]])[0]
         metas = results.get("metadatas", [[]])[0]
@@ -593,64 +567,52 @@ async def api_memories_search(request):
             meta = metas[i] if i < len(metas) else {}
             dist = distances[i] if i < len(distances) else 1.0
             entries.append({
-                "id": mid,
-                "preview": meta.get("preview", ""),
-                "tags": meta.get("tags", ""),
-                "timestamp": meta.get("timestamp", ""),
+                "id": mid, "preview": meta.get("preview", ""),
+                "tags": meta.get("tags", ""), "timestamp": meta.get("timestamp", ""),
                 "relevance": round(1 - dist, 3),
             })
         sliced = entries[offset:offset + limit]
-        return JSONResponse({"results": sliced, "total": count, "query": query})
-    except Exception as e:
-        return JSONResponse({"error": str(e), "results": []})
+        return JSONResponse({"results": sliced, "total": cnt, "query": query})
+    except (WorkerUnavailable, RuntimeError) as e:
+        return JSONResponse({"error": str(e), "results": []}, status_code=503)
 
 
 async def api_memory_detail(request):
     mem_id = request.path_params["id"]
-    _, cols = _get_chroma()
-    if "knowledge" not in cols:
-        return JSONResponse({"error": "ChromaDB not available"}, status_code=503)
     try:
-        result = cols["knowledge"].get(ids=[mem_id], include=["documents", "metadatas"])
+        result = socket_get("knowledge", ids=[mem_id], include=["documents", "metadatas"])
         if not result or not result.get("documents") or not result["documents"]:
             return JSONResponse({"error": "Not found"}, status_code=404)
         meta = result["metadatas"][0] if result.get("metadatas") else {}
         return JSONResponse({
-            "id": mem_id,
-            "content": result["documents"][0],
-            "context": meta.get("context", ""),
-            "tags": meta.get("tags", ""),
+            "id": mem_id, "content": result["documents"][0],
+            "context": meta.get("context", ""), "tags": meta.get("tags", ""),
             "timestamp": meta.get("timestamp", ""),
         })
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    except (WorkerUnavailable, RuntimeError) as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
 
 
 async def api_memories_stats(request):
-    _, cols = _get_chroma()
-    stats = {}
-    for name in ("knowledge", "observations", "fix_outcomes"):
-        if name in cols:
+    try:
+        stats = {}
+        for name in ("knowledge", "observations", "fix_outcomes"):
             try:
-                stats[name] = cols[name].count()
-            except Exception:
+                stats[name] = socket_count(name)
+            except (WorkerUnavailable, RuntimeError):
                 stats[name] = -1
-        else:
-            stats[name] = -1
-    return JSONResponse(stats)
+        return JSONResponse(stats)
+    except (WorkerUnavailable, RuntimeError):
+        return JSONResponse({"knowledge": -1, "observations": -1, "fix_outcomes": -1}, status_code=503)
 
 
 async def api_memories_tags(request):
-    """Get tag frequency distribution from ChromaDB knowledge collection."""
-    _, cols = _get_chroma()
-    if "knowledge" not in cols:
-        return JSONResponse({"tags": {}})
+    """Get tag frequency distribution from knowledge collection."""
     try:
-        col = cols["knowledge"]
-        count = col.count()
-        if count == 0:
+        cnt = socket_count("knowledge")
+        if cnt == 0:
             return JSONResponse({"tags": {}})
-        results = col.get(limit=min(count, 500), include=["metadatas"])
+        results = socket_get("knowledge", limit=min(cnt, 500), include=["metadatas"])
         tag_freq = {}
         metas = results.get("metadatas", [])
         for meta in metas:
@@ -660,25 +622,19 @@ async def api_memories_tags(request):
                     if tag:
                         tag_freq[tag] = tag_freq.get(tag, 0) + 1
         sorted_tags = dict(sorted(tag_freq.items(), key=lambda x: -x[1]))
-        return JSONResponse({"tags": sorted_tags, "total_memories": count})
-    except Exception as e:
-        return JSONResponse({"tags": {}, "error": str(e)})
+        return JSONResponse({"tags": sorted_tags, "total_memories": cnt})
+    except (WorkerUnavailable, RuntimeError) as e:
+        return JSONResponse({"tags": {}, "error": str(e)}, status_code=503)
 
 
 async def api_memories_graph(request):
-    """Build a tag co-occurrence graph from ChromaDB knowledge collection."""
-    _, cols = _get_chroma()
-    if "knowledge" not in cols:
-        return JSONResponse({"nodes": [], "edges": []})
+    """Build a tag co-occurrence graph from knowledge collection."""
     try:
-        col = cols["knowledge"]
-        count = col.count()
-        if count == 0:
+        cnt = socket_count("knowledge")
+        if cnt == 0:
             return JSONResponse({"nodes": [], "edges": []})
-        results = col.get(limit=min(count, 500), include=["metadatas"])
+        results = socket_get("knowledge", limit=min(cnt, 500), include=["metadatas"])
         metas = results.get("metadatas", [])
-
-        # Count tag frequencies and co-occurrences
         tag_freq = {}
         co_occur = {}
         for meta in metas:
@@ -687,156 +643,125 @@ async def api_memories_graph(request):
             tags = [t.strip() for t in meta["tags"].split(",") if t.strip()]
             for tag in tags:
                 tag_freq[tag] = tag_freq.get(tag, 0) + 1
-            # Record co-occurrences
             for i in range(len(tags)):
                 for j in range(i + 1, len(tags)):
                     pair = tuple(sorted([tags[i], tags[j]]))
                     co_occur[pair] = co_occur.get(pair, 0) + 1
-
-        # Top 50 tags by frequency
         sorted_tags = sorted(tag_freq.items(), key=lambda x: -x[1])[:50]
         top_tag_set = {t for t, _ in sorted_tags}
-
-        nodes = [{"id": tag, "label": tag, "count": cnt} for tag, cnt in sorted_tags]
+        nodes = [{"id": tag, "label": tag, "count": cnt_val} for tag, cnt_val in sorted_tags]
         edges = [
             {"source": pair[0], "target": pair[1], "weight": weight}
             for pair, weight in co_occur.items()
             if pair[0] in top_tag_set and pair[1] in top_tag_set
         ]
-
         return JSONResponse({"nodes": nodes, "edges": edges})
-    except Exception as e:
-        return JSONResponse({"nodes": [], "edges": [], "error": str(e)})
+    except (WorkerUnavailable, RuntimeError) as e:
+        return JSONResponse({"nodes": [], "edges": [], "error": str(e)}, status_code=503)
 
 
 async def api_memory_health(request):
-    """Memory health report: growth trends, stale count, tag distribution, health score."""
-    _, cols = _get_chroma()
-    if "knowledge" not in cols:
-        return JSONResponse({"error": "ChromaDB not available", "health_score": 0})
+    """Memory health report via UDS socket."""
+    try:
+        mem_count = socket_count("knowledge")
+        obs_count = socket_count("observations")
+    except (WorkerUnavailable, RuntimeError) as e:
+        return JSONResponse({"error": str(e), "health_score": 0}, status_code=503)
 
-    col = cols["knowledge"]
-    obs_col = cols.get("observations")
     now = time.time()
+    if mem_count == 0:
+        return JSONResponse({
+            "total_memories": 0, "total_observations": obs_count,
+            "added_24h": 0, "added_7d": 0, "added_30d": 0,
+            "stale_count": 0, "top_tags": [], "avg_retrieval_count": 0,
+            "growth_rate_per_day": 0, "health_score": 0, "health_label": "empty",
+            "score_breakdown": {"recent_activity": 0, "retrieval_rate": 0, "tag_diversity": 0},
+        })
 
     try:
-        mem_count = col.count()
-        obs_count = obs_col.count() if obs_col else 0
+        all_data = socket_get("knowledge", limit=mem_count, include=["metadatas"])
+    except (WorkerUnavailable, RuntimeError) as e:
+        return JSONResponse({"error": str(e), "health_score": 0}, status_code=503)
 
-        if mem_count == 0:
-            return JSONResponse({
-                "total_memories": 0, "total_observations": obs_count,
-                "added_24h": 0, "added_7d": 0, "added_30d": 0,
-                "stale_count": 0, "top_tags": [], "avg_retrieval_count": 0,
-                "growth_rate_per_day": 0, "health_score": 0, "health_label": "empty",
-                "score_breakdown": {"recent_activity": 0, "retrieval_rate": 0, "tag_diversity": 0},
-            })
+    metas = all_data.get("metadatas", [])
+    cutoff_24h = now - 86400
+    cutoff_7d = now - 7 * 86400
+    cutoff_30d = now - 30 * 86400
+    cutoff_stale = now - 60 * 86400
+    added_24h = added_7d = added_30d = stale_count = 0
+    tag_freq = {}
+    total_retrieval = 0
+    retrieval_entries = 0
 
-        all_data = col.get(limit=mem_count, include=["metadatas"])
-        metas = all_data.get("metadatas", [])
+    for meta in metas:
+        if not meta:
+            continue
+        session_time = meta.get("session_time")
+        if session_time is not None:
+            try:
+                st = float(session_time)
+                if st >= cutoff_24h: added_24h += 1
+                if st >= cutoff_7d: added_7d += 1
+                if st >= cutoff_30d: added_30d += 1
+                rc = int(meta.get("retrieval_count", 0))
+                if st < cutoff_stale and rc <= 2: stale_count += 1
+            except (ValueError, TypeError):
+                pass
+        tags_str = meta.get("tags", "")
+        if tags_str:
+            for tag in tags_str.split(","):
+                tag = tag.strip()
+                if tag:
+                    tag_freq[tag] = tag_freq.get(tag, 0) + 1
+        rc = int(meta.get("retrieval_count", 0))
+        total_retrieval += rc
+        retrieval_entries += 1
 
-        cutoff_24h = now - 86400
-        cutoff_7d = now - 7 * 86400
-        cutoff_30d = now - 30 * 86400
-        cutoff_stale = now - 60 * 86400
-        added_24h = added_7d = added_30d = stale_count = 0
-        tag_freq = {}
-        total_retrieval = 0
-        retrieval_entries = 0
+    top_tags = sorted(tag_freq.items(), key=lambda x: -x[1])[:10]
+    top_tags_list = [{"tag": t, "count": c} for t, c in top_tags]
+    avg_retrieval = round(total_retrieval / max(retrieval_entries, 1), 2)
+    unique_tags = len(tag_freq)
 
-        for meta in metas:
-            if not meta:
-                continue
-            session_time = meta.get("session_time")
-            if session_time is not None:
-                try:
-                    st = float(session_time)
-                    if st >= cutoff_24h:
-                        added_24h += 1
-                    if st >= cutoff_7d:
-                        added_7d += 1
-                    if st >= cutoff_30d:
-                        added_30d += 1
-                    rc = int(meta.get("retrieval_count", 0))
-                    if st < cutoff_stale and rc <= 2:
-                        stale_count += 1
-                except (ValueError, TypeError):
-                    pass
-            tags_str = meta.get("tags", "")
-            if tags_str:
-                for tag in tags_str.split(","):
-                    tag = tag.strip()
-                    if tag:
-                        tag_freq[tag] = tag_freq.get(tag, 0) + 1
-            rc = int(meta.get("retrieval_count", 0))
-            total_retrieval += rc
-            retrieval_entries += 1
+    if added_7d >= 10: recent_score = 1.0
+    elif added_7d >= 5: recent_score = 0.8
+    elif added_7d >= 2: recent_score = 0.6
+    elif added_7d >= 1: recent_score = 0.4
+    else: recent_score = 0.1
 
-        top_tags = sorted(tag_freq.items(), key=lambda x: -x[1])[:10]
-        top_tags_list = [{"tag": t, "count": c} for t, c in top_tags]
-        avg_retrieval = round(total_retrieval / max(retrieval_entries, 1), 2)
-        unique_tags = len(tag_freq)
+    if avg_retrieval >= 3.0: retrieval_score = 1.0
+    elif avg_retrieval >= 1.5: retrieval_score = 0.8
+    elif avg_retrieval >= 0.5: retrieval_score = 0.5
+    elif avg_retrieval >= 0.1: retrieval_score = 0.3
+    else: retrieval_score = 0.1
 
-        # Health score calculation
-        if added_7d >= 10:
-            recent_score = 1.0
-        elif added_7d >= 5:
-            recent_score = 0.8
-        elif added_7d >= 2:
-            recent_score = 0.6
-        elif added_7d >= 1:
-            recent_score = 0.4
-        else:
-            recent_score = 0.1
+    if unique_tags >= 20: diversity_score = 1.0
+    elif unique_tags >= 10: diversity_score = 0.7
+    elif unique_tags >= 5: diversity_score = 0.5
+    elif unique_tags >= 2: diversity_score = 0.3
+    else: diversity_score = 0.1
 
-        if avg_retrieval >= 3.0:
-            retrieval_score = 1.0
-        elif avg_retrieval >= 1.5:
-            retrieval_score = 0.8
-        elif avg_retrieval >= 0.5:
-            retrieval_score = 0.5
-        elif avg_retrieval >= 0.1:
-            retrieval_score = 0.3
-        else:
-            retrieval_score = 0.1
+    health_score = int(recent_score * 40 + retrieval_score * 30 + diversity_score * 30)
+    health_score = max(0, min(100, health_score))
+    health_label = "healthy" if health_score > 70 else ("moderate" if health_score > 40 else "needs attention")
+    growth_rate = round(added_30d / 30, 2)
 
-        if unique_tags >= 20:
-            diversity_score = 1.0
-        elif unique_tags >= 10:
-            diversity_score = 0.7
-        elif unique_tags >= 5:
-            diversity_score = 0.5
-        elif unique_tags >= 2:
-            diversity_score = 0.3
-        else:
-            diversity_score = 0.1
-
-        health_score = int(recent_score * 40 + retrieval_score * 30 + diversity_score * 30)
-        health_score = max(0, min(100, health_score))
-        health_label = "healthy" if health_score > 70 else ("moderate" if health_score > 40 else "needs attention")
-        growth_rate = round(added_30d / 30, 2)
-
-        return JSONResponse({
-            "total_memories": mem_count, "total_observations": obs_count,
-            "added_24h": added_24h, "added_7d": added_7d, "added_30d": added_30d,
-            "stale_count": stale_count, "top_tags": top_tags_list,
-            "unique_tags": unique_tags, "avg_retrieval_count": avg_retrieval,
-            "growth_rate_per_day": growth_rate, "health_score": health_score,
-            "health_label": health_label,
-            "score_breakdown": {
-                "recent_activity": round(recent_score * 40, 1),
-                "retrieval_rate": round(retrieval_score * 30, 1),
-                "tag_diversity": round(diversity_score * 30, 1),
-            },
-        })
-    except Exception as e:
-        return JSONResponse({"error": str(e), "health_score": 0})
+    return JSONResponse({
+        "total_memories": mem_count, "total_observations": obs_count,
+        "added_24h": added_24h, "added_7d": added_7d, "added_30d": added_30d,
+        "stale_count": stale_count, "top_tags": top_tags_list,
+        "unique_tags": unique_tags, "avg_retrieval_count": avg_retrieval,
+        "growth_rate_per_day": growth_rate, "health_score": health_score,
+        "health_label": health_label,
+        "score_breakdown": {
+            "recent_activity": round(recent_score * 40, 1),
+            "retrieval_rate": round(retrieval_score * 30, 1),
+            "tag_diversity": round(diversity_score * 30, 1),
+        },
+    })
 
 
 async def api_observations_recent(request):
     """Return last 50 observations from capture queue and/or ChromaDB."""
-    _, cols = _get_chroma()
-    obs_col = cols.get("observations")
     results = []
 
     # First try capture queue file for most recent data
@@ -864,12 +789,12 @@ async def api_observations_recent(request):
             pass
 
     # Supplement from ChromaDB observations if we need more
-    if obs_col and len(results) < 50:
+    if len(results) < 50:
         try:
-            count = obs_col.count()
-            if count > 0:
-                needed = min(50 - len(results), count)
-                obs_data = obs_col.get(limit=needed, include=["documents", "metadatas"])
+            obs_count = socket_count("observations")
+            if obs_count > 0:
+                needed = min(50 - len(results), obs_count)
+                obs_data = socket_get("observations", limit=needed, include=["documents", "metadatas"])
                 docs = obs_data.get("documents", [])
                 metas = obs_data.get("metadatas", [])
                 for i, doc in enumerate(docs):
@@ -883,13 +808,11 @@ async def api_observations_recent(request):
                         "has_error": meta.get("has_error", "false"),
                         "session_time": meta.get("session_time", 0),
                     })
-        except Exception:
+        except (WorkerUnavailable, RuntimeError):
             pass
 
-    # Sort by session_time descending, take top 50
     results.sort(key=lambda x: float(x.get("session_time", 0) or 0), reverse=True)
     results = results[:50]
-
     return JSONResponse({"observations": results, "total": len(results)})
 
 

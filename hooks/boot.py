@@ -24,6 +24,7 @@ from datetime import datetime
 # Add hooks dir to path for shared imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from shared.state import cleanup_all_states
+from shared.chromadb_socket import is_worker_available as socket_available, query as socket_query, count as socket_count, flush_queue as socket_flush, WorkerUnavailable
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
@@ -432,6 +433,68 @@ def _extract_gate_blocks():
         return 0
 
 
+def inject_memories_via_socket(handoff_content, live_state):
+    """Query memories via UDS socket for boot dashboard injection."""
+    try:
+        cnt = socket_count("knowledge")
+        if cnt == 0:
+            return []
+    except (WorkerUnavailable, RuntimeError):
+        return []
+
+    # Build search query from handoff context
+    query_parts = []
+    project = live_state.get("project", "")
+    if project:
+        query_parts.append(project)
+    feature = live_state.get("feature", "")
+    if feature:
+        query_parts.append(feature)
+    if handoff_content:
+        in_next = False
+        for line in handoff_content.split("\n"):
+            stripped = line.strip()
+            if "what's next" in stripped.lower() or "whats next" in stripped.lower():
+                in_next = True
+                continue
+            if in_next:
+                if stripped.startswith("#") or stripped.startswith("---"):
+                    break
+                if stripped:
+                    query_parts.append(stripped[:100])
+    if not query_parts:
+        query_parts.append("recent session activity framework")
+    search_query = " ".join(query_parts)[:500]
+
+    try:
+        results = socket_query(
+            "knowledge", [search_query], n_results=min(5, cnt),
+            include=["metadatas", "distances"],
+        )
+    except (WorkerUnavailable, RuntimeError):
+        return []
+
+    if not results or not results.get("ids") or not results["ids"][0]:
+        return []
+
+    injected = []
+    ids = results["ids"][0]
+    metas = results["metadatas"][0] if results.get("metadatas") else []
+    distances = results["distances"][0] if results.get("distances") else []
+    for i, mid in enumerate(ids):
+        distance = distances[i] if i < len(distances) else 1.0
+        relevance = 1 - distance
+        if relevance < 0.3:
+            continue
+        meta = metas[i] if i < len(metas) else {}
+        preview = meta.get("preview", "(no preview)")
+        display = preview[:58]
+        if len(preview) > 58:
+            display += ".."
+        injected.append(f"[{mid[:8]}] {display}")
+    return injected
+
+
 def main():
     now = datetime.now()
     hour = now.hour
@@ -460,32 +523,15 @@ def main():
     if os.path.isdir(gates_dir):
         gate_count = len([f for f in os.listdir(gates_dir) if f.startswith("gate_") and f.endswith(".py")])
 
-    # Initialize ChromaDB client (shared for queue flush + memory injection)
-    # GUARD: Skip direct ChromaDB access if MCP memory server is already running.
-    # ChromaDB Rust backend segfaults on concurrent PersistentClient access.
-    db = None
-    knowledge_col = None
-    _mcp_running = False
+    # Check if UDS worker (memory_server.py) is available for ChromaDB access
+    _worker_available = False
     try:
-        _pgrep = subprocess.run(
-            ["pgrep", "-f", "memory_server.py"],
-            capture_output=True, text=True, timeout=3
-        )
-        _mcp_running = _pgrep.returncode == 0 and _pgrep.stdout.strip() != ""
+        _worker_available = socket_available(retries=2, delay=0.3)
     except Exception:
         pass
-    if not _mcp_running:
-        try:
-            import chromadb
-            db = chromadb.PersistentClient(path=MEMORY_DIR)
-            knowledge_col = db.get_or_create_collection(
-                name="knowledge", metadata={"hnsw:space": "cosine"}
-            )
-        except Exception:
-            pass  # Boot must never crash
 
     # Inject relevant memories
-    injected = inject_memories(handoff, live_state, knowledge_col)
+    injected = inject_memories_via_socket(handoff, live_state) if _worker_available else []
 
     # Extract recent errors BEFORE reset_enforcement_state() wipes them
     recent_errors = _extract_recent_errors()
@@ -593,33 +639,11 @@ def main():
         pass
 
     # Flush stale capture queue from previous session (crash recovery)
-    capture_queue = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
     try:
-        if os.path.exists(capture_queue) and os.path.getsize(capture_queue) > 0:
-            with open(capture_queue, "r") as f:
-                lines = f.readlines()
-            if lines:
-                obs_col = db.get_or_create_collection(
-                    name="observations", metadata={"hnsw:space": "cosine"}
-                ) if db else None
-                if obs_col:
-                    docs, metas, ids = [], [], []
-                    for line in lines:
-                        try:
-                            obs = json.loads(line.strip())
-                            if "document" in obs and "id" in obs:
-                                docs.append(obs["document"])
-                                metas.append(obs.get("metadata", {}))
-                                ids.append(obs["id"])
-                        except (json.JSONDecodeError, KeyError):
-                            continue
-                    if docs:
-                        obs_col.upsert(documents=docs, metadatas=metas, ids=ids)
-                        flushed = len(docs)
-                        print(f"  [BOOT] Flushed {flushed} stale observations from capture queue", file=sys.stderr)
-                # Clear the queue file
-                with open(capture_queue, "w") as f:
-                    pass
+        capture_queue = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
+        if _worker_available and os.path.exists(capture_queue) and os.path.getsize(capture_queue) > 0:
+            flushed = socket_flush()
+            print(f"  [BOOT] Flushed {flushed} stale observations via UDS", file=sys.stderr)
     except Exception:
         pass  # Boot must never crash
 

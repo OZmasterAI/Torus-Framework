@@ -12,6 +12,9 @@ import json
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from shared.chromadb_socket import is_worker_available, flush_queue as socket_flush, WorkerUnavailable
+
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
@@ -59,54 +62,27 @@ def session_summary():
 
 
 def flush_capture_queue():
-    """Flush .capture_queue.jsonl into ChromaDB observations collection."""
+    """Flush .capture_queue.jsonl via UDS socket to memory_server.py."""
     if not os.path.exists(CAPTURE_QUEUE) or os.path.getsize(CAPTURE_QUEUE) == 0:
         print("[SESSION_END] Flushed 0 observations", file=sys.stderr)
         return
-    with open(CAPTURE_QUEUE, "r") as f:
-        lines = f.readlines()
 
-    # Use subprocess isolation to prevent segfault from concurrent PersistentClient access.
-    # ChromaDB Rust backend cannot handle two processes on the same DB path.
-    import subprocess as _sp
-    import chromadb
+    # Count lines for reporting
+    with open(CAPTURE_QUEUE, "r") as f:
+        line_count = sum(1 for _ in f)
+
+    # Try UDS socket flush (memory_server.py handles the actual ChromaDB upsert)
     try:
-        _pgrep = _sp.run(
-            ["pgrep", "-f", "memory_server.py"],
-            capture_output=True, text=True, timeout=3
-        )
-        if _pgrep.returncode == 0 and _pgrep.stdout.strip():
-            # MCP server running — skip direct access, queue will be flushed next boot
-            print(f"[SESSION_END] MCP server running, deferring {len(lines)} observations to next boot", file=sys.stderr)
+        if is_worker_available(retries=2, delay=0.3):
+            flushed = socket_flush()
+            print(f"[SESSION_END] Flushed {flushed} observations via UDS", file=sys.stderr)
             return
-    except Exception:
-        pass  # Proceed with direct access if pgrep fails
-    client = chromadb.PersistentClient(path=MEMORY_DIR)
-    obs_col = client.get_or_create_collection(
-        name="observations", metadata={"hnsw:space": "cosine"}
-    )
-    docs, metas, ids, seen = [], [], [], set()
-    for line in lines:
-        try:
-            obs = json.loads(line.strip())
-            if "document" in obs and "id" in obs and obs["id"] not in seen:
-                docs.append(obs["document"])
-                metas.append(obs.get("metadata", {}))
-                ids.append(obs["id"])
-                seen.add(obs["id"])
-        except (json.JSONDecodeError, KeyError):
-            continue
-    if docs:
-        for i in range(0, len(docs), 100):
-            obs_col.upsert(
-                documents=docs[i:i + 100],
-                metadatas=metas[i:i + 100],
-                ids=ids[i:i + 100],
-            )
-    # Truncate queue after successful flush
-    with open(CAPTURE_QUEUE, "w") as f:
-        pass
-    print(f"[SESSION_END] Flushed {len(docs)} observations", file=sys.stderr)
+    except (WorkerUnavailable, RuntimeError) as e:
+        print(f"[SESSION_END] UDS flush failed ({e}), deferring {line_count} observations to next boot", file=sys.stderr)
+        return
+
+    # Worker unavailable — defer queue to next boot
+    print(f"[SESSION_END] Worker unavailable, deferring {line_count} observations to next boot", file=sys.stderr)
 
 
 def increment_session_count(metrics=None):
