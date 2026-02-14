@@ -26,11 +26,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from shared.state import cleanup_all_states
 from shared.chromadb_socket import is_worker_available as socket_available, query as socket_query, count as socket_count, flush_queue as socket_flush, WorkerUnavailable
 
+try:
+    from shared.ramdisk import ensure_ramdisk as _ramdisk_ensure, get_capture_queue, get_state_dir as _ramdisk_state_dir
+    _HAS_RAMDISK_MODULE = True
+except ImportError:
+    _HAS_RAMDISK_MODULE = False
+
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 SIDEBAND_FILE = os.path.join(os.path.dirname(__file__), ".memory_last_queried")
-STATE_DIR = os.path.join(os.path.dirname(__file__))
+STATE_DIR = _ramdisk_state_dir() if _HAS_RAMDISK_MODULE else os.path.join(os.path.dirname(__file__))
 
 
 def read_file(path):
@@ -418,6 +424,15 @@ def main():
     hour = now.hour
     day = now.strftime("%A")
 
+    # Ensure ramdisk is set up (before any state/audit operations)
+    if _HAS_RAMDISK_MODULE:
+        try:
+            ramdisk_ok = _ramdisk_ensure()
+            if ramdisk_ok:
+                print("  [BOOT] Ramdisk initialized at /run/user/{}/claude-hooks".format(os.getuid()), file=sys.stderr)
+        except Exception:
+            pass  # Ramdisk failure is non-fatal
+
     # Load context
     handoff = read_file(HANDOFF_FILE)
     live_state = load_live_state()
@@ -558,7 +573,7 @@ def main():
 
     # Flush stale capture queue from previous session (crash recovery)
     try:
-        capture_queue = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
+        capture_queue = get_capture_queue() if _HAS_RAMDISK_MODULE else os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
         if _worker_available and os.path.exists(capture_queue) and os.path.getsize(capture_queue) > 0:
             flushed = socket_flush()
             print(f"  [BOOT] Flushed {flushed} stale observations via UDS", file=sys.stderr)

@@ -25,7 +25,11 @@ from shared.error_normalizer import fnv1a_hash
 
 # Auto-capture constants — expanded to include read/search/skill tools
 CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "Skill", "WebSearch", "WebFetch", "Task"}
-CAPTURE_QUEUE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
+try:
+    from shared.ramdisk import get_capture_queue
+    CAPTURE_QUEUE = get_capture_queue()
+except ImportError:
+    CAPTURE_QUEUE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
 MAX_QUEUE_LINES = 500
 
 # Debug logging (opt-in: only writes if file exists)

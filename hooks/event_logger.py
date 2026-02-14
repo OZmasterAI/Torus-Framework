@@ -17,8 +17,18 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
-STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-AUDIT_DIR = os.path.join(STATE_DIR, "audit")
+_DISK_STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+    from shared.ramdisk import get_audit_dir, get_state_dir, is_ramdisk_available, async_mirror_append
+    _HAS_RAMDISK = True
+    AUDIT_DIR = get_audit_dir()
+    STATE_DIR = get_state_dir()
+except ImportError:
+    _HAS_RAMDISK = False
+    AUDIT_DIR = os.path.join(_DISK_STATE_DIR, "audit")
+    STATE_DIR = _DISK_STATE_DIR
 
 
 def _find_session_state():
@@ -61,8 +71,12 @@ def _audit_log(event_name, data, session_id=""):
             "data": data,
             "session_id": session_id,
         }
-        with open(log_file, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        line = json.dumps(entry) + "\n"
+        if _HAS_RAMDISK and is_ramdisk_available():
+            async_mirror_append(log_file, line)
+        else:
+            with open(log_file, "a") as f:
+                f.write(line)
     except OSError:
         pass
 

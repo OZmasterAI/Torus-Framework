@@ -17,8 +17,14 @@ import os
 import time
 from datetime import datetime, timezone
 
+try:
+    from shared.ramdisk import get_audit_dir, is_ramdisk_available, async_mirror_append, BACKUP_AUDIT_DIR
+    _HAS_RAMDISK = True
+except ImportError:
+    _HAS_RAMDISK = False
 
-AUDIT_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks", "audit")
+_DISK_AUDIT_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks", "audit")
+AUDIT_DIR = get_audit_dir() if _HAS_RAMDISK else _DISK_AUDIT_DIR
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 MAX_ROTATED_FILES = 10
 CLEANUP_AGE_DAYS = 90
@@ -45,12 +51,21 @@ def _rotate_file(filepath):
     """Rotate a log file: current -> .1, compress old .1 -> .1.gz, shift others.
 
     Keeps max MAX_ROTATED_FILES rotated copies. Oldest are deleted.
+    When ramdisk is active, compressed .gz archives are written to disk backup only
+    (cold data stays off ramdisk to save space).
     """
     try:
+        # Determine where compressed archives go: disk backup if ramdisk active, else same dir
+        if _HAS_RAMDISK and is_ramdisk_available():
+            # Compressed archives go to disk backup, not tmpfs
+            archive_base = os.path.join(BACKUP_AUDIT_DIR, os.path.basename(filepath))
+        else:
+            archive_base = filepath
+
         # Shift existing rotated files upward (.9 -> .10 gets deleted, .8 -> .9, etc.)
         for i in range(MAX_ROTATED_FILES, 0, -1):
-            gz_old = f"{filepath}.{i}.gz"
-            gz_new = f"{filepath}.{i + 1}.gz"
+            gz_old = f"{archive_base}.{i}.gz"
+            gz_new = f"{archive_base}.{i + 1}.gz"
             if i >= MAX_ROTATED_FILES:
                 # Delete files beyond the max
                 if os.path.exists(gz_old):
@@ -62,7 +77,8 @@ def _rotate_file(filepath):
         # Compress existing .1 to .1.gz (if it exists)
         rotated_1 = f"{filepath}.1"
         if os.path.exists(rotated_1):
-            gz_path = f"{filepath}.1.gz"
+            gz_path = f"{archive_base}.1.gz"
+            os.makedirs(os.path.dirname(gz_path), exist_ok=True)
             # Shift .1.gz up to .2.gz first (already done in loop above)
             with open(rotated_1, "rb") as f_in:
                 with gzip.open(gz_path, "wb") as f_out:
@@ -75,7 +91,7 @@ def _rotate_file(filepath):
 
         # Delete any rotated files beyond MAX_ROTATED_FILES
         for i in range(MAX_ROTATED_FILES + 1, MAX_ROTATED_FILES + 5):
-            excess = f"{filepath}.{i}.gz"
+            excess = f"{archive_base}.{i}.gz"
             if os.path.exists(excess):
                 os.remove(excess)
     except Exception:
@@ -121,8 +137,12 @@ def log_gate_decision(gate_name, tool_name, decision, reason, session_id="", sta
             "severity": severity,
         }
 
-        with open(filepath, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        line = json.dumps(entry) + "\n"
+        if _HAS_RAMDISK and is_ramdisk_available():
+            async_mirror_append(filepath, line)
+        else:
+            with open(filepath, "a") as f:
+                f.write(line)
     except Exception:
         pass
 

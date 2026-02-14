@@ -1626,7 +1626,11 @@ test("Observation: UserPrompt format",
 # ─────────────────────────────────────────────────
 print("\n--- Auto-Capture: Queue Operations ---")
 
-_queue_file = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
+try:
+    from shared.ramdisk import get_capture_queue as _get_cq
+    _queue_file = _get_cq()
+except ImportError:
+    _queue_file = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
 _queue_backup = None
 
 # Backup existing queue if present
@@ -2762,7 +2766,7 @@ if not MEMORY_SERVER_RUNNING:
          "3 files read" in _pc_r.stderr, f"stderr={_pc_r.stderr[:100]}")
 
     # 4. Wrote to capture queue
-    _pc_queue = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
+    _pc_queue = _queue_file  # Uses ramdisk path if available
     _pc_found = False
     if os.path.exists(_pc_queue):
         with open(_pc_queue) as _pcf:

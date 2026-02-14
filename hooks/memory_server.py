@@ -151,7 +151,11 @@ SUMMARY_LENGTH = 120
 # Auto-capture settings
 OBSERVATION_TTL_DAYS = 30
 MAX_OBSERVATIONS = 5000
-CAPTURE_QUEUE_FILE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
+try:
+    from shared.ramdisk import get_capture_queue
+    CAPTURE_QUEUE_FILE = get_capture_queue()
+except ImportError:
+    CAPTURE_QUEUE_FILE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
 DIGEST_TAGS = "type:digest,auto-generated,area:framework"
 
 # Ingestion filter: reject noise patterns

@@ -22,8 +22,16 @@ import logging
 import os
 import time
 
-STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-MEMORY_TIMESTAMP_FILE = os.path.join(STATE_DIR, ".memory_last_queried")
+_DISK_STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+
+try:
+    from shared.ramdisk import get_state_dir, is_ramdisk_available
+    STATE_DIR = get_state_dir()
+except ImportError:
+    STATE_DIR = _DISK_STATE_DIR
+
+# Memory timestamp sideband always lives on disk (read by gate_04, written by boot.py)
+MEMORY_TIMESTAMP_FILE = os.path.join(_DISK_STATE_DIR, ".memory_last_queried")
 
 # Schema version — bump when adding/removing/renaming fields
 STATE_VERSION = 2

@@ -27,6 +27,13 @@ from shared.chromadb_socket import is_worker_available, count as socket_count, W
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
+
+# State files may live on tmpfs ramdisk for performance
+try:
+    from shared.ramdisk import get_state_dir
+    STATE_FILE_DIR = get_state_dir()
+except ImportError:
+    STATE_FILE_DIR = HOOKS_DIR
 GATES_DIR = os.path.join(HOOKS_DIR, "gates")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
@@ -153,7 +160,7 @@ def get_error_pressure():
     """Read error_pattern_counts from the most recent session state file.
     Returns total error count (0 = healthy)."""
     import glob as globmod
-    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
         return 0
@@ -177,7 +184,7 @@ def get_error_velocity():
     This distinguishes active error loops from historical errors.
     """
     import glob as globmod
-    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
         return (0, 0)
@@ -211,7 +218,7 @@ def get_error_velocity():
 def get_most_used_tool():
     """Read tool_stats from most recent session state, return (name, count) or None."""
     import glob as globmod
-    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
         return None
@@ -231,7 +238,7 @@ def get_most_used_tool():
 def get_total_tool_calls():
     """Read total_tool_calls from most recent session state."""
     import glob as globmod
-    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
         return 0
@@ -264,7 +271,7 @@ def get_session_age(state):
 def get_pending_count():
     """Return count of files awaiting verification from session state."""
     import glob as globmod
-    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
         return 0
@@ -288,7 +295,7 @@ def get_subagent_status():
     cumulative tokens from all finished subagents.
     """
     import glob as globmod
-    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
         return ([], 0)
@@ -330,7 +337,7 @@ def get_subagent_status():
 def get_plan_mode_warns():
     """Return gate12 plan-mode escalation warn count from session state."""
     import glob as globmod
-    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
         return 0
@@ -346,7 +353,7 @@ def get_plan_mode_warns():
 def get_verification_ratio():
     """Return (verified, total) from session state for V:x/y display."""
     import glob as globmod
-    pattern = os.path.join(HOOKS_DIR, "state_*.json")
+    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
         return (0, 0)
