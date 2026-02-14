@@ -1,40 +1,14 @@
 {
-  "session_count": 59,
-  "status": "idle",
-  "project": "megaman-framework",
-  "project_path": "/home/crab/.claude",
-  "feature": "gate-normalization-loop-test",
-  "feature_status": "complete",
-  "test_count": 1036,
-  "test_failures": 1,
-  "files_modified": [
-    "dashboard/server.py",
-    "hooks/shared/audit_log.py",
-    "scripts/cleanup-x-sessions.sh",
-    "scripts/megaman-loop.sh",
-    "PRPs/framework-validation.tasks.json"
-  ],
-  "improvements_shipped": [
-    "Gate name normalization (13 mappings, 4 read paths)",
-    "Stale X cleanup script (manual tool)",
-    "Framework validation PRP 5/5 passed",
-    "megaman-loop.sh sed-to-Python fix"
-  ],
-  "next_steps": [
-    "inject_memories cleanup",
-    "Dashboard auto-start (systemd)",
-    "UDS socket verification after restart",
-    "Memory graph D3.js upgrade (deferred)"
-  ],
-  "known_issues": [
-    "UDS socket file may be missing — self-heals on MCP restart",
-    "Root-owned X lock files need sudo to remove"
-  ],
-  "last_session_metrics": {
-    "reads": 8,
-    "edits": 9,
-    "errors": 1,
-    "verified": 3,
-    "pending": 0
-  }
+  "session_count": 61,
+  "status": "active",
+  "project": "",
+  "project_path": "",
+  "feature": "",
+  "feature_status": "pending",
+  "test_count": 0,
+  "test_failures": 0,
+  "files_modified": [],
+  "improvements_shipped": [],
+  "next_steps": [],
+  "known_issues": []
 }
