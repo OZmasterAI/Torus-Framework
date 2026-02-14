@@ -20,8 +20,9 @@ STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 
 FALLBACK_CONTEXT = "No project context available. Query memory before starting work."
 
-# Rules injected into sub-agents that can edit files (no gates protect them)
+# Rules injected into sub-agents (no gates protect them)
 EDIT_AGENT_RULES = "RULES: Always Read a file before Edit/Write. No rm -rf, force push, or reset --hard."
+BASH_AGENT_RULES = "RULES: No rm -rf, force push, or reset --hard."
 
 
 def load_live_state():
@@ -219,6 +220,7 @@ def build_context(agent_type, live_state, session_state=None):
         errors_str = _format_error_state(session_state)
         if errors_str:
             parts.append(errors_str)
+        parts.append(BASH_AGENT_RULES)
         return " ".join(parts)
 
     # Default / unknown agent type
