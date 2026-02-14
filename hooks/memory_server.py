@@ -91,6 +91,7 @@ client = None
 collection = None
 fix_outcomes = None
 observations = None
+web_pages = None
 
 
 def _init_chromadb():
@@ -99,7 +100,7 @@ def _init_chromadb():
     Called from _ensure_initialized() on first MCP tool use.
     Safe to call multiple times — idempotent after first run.
     """
-    global client, collection, fix_outcomes, observations
+    global client, collection, fix_outcomes, observations, web_pages
     if client is not None:
         return
     client = chromadb.PersistentClient(path=MEMORY_DIR)
@@ -114,6 +115,11 @@ def _init_chromadb():
     # Auto-capture: observations collection (separate from curated knowledge)
     observations = client.get_or_create_collection(
         name="observations",
+        metadata={"hnsw:space": "cosine"},
+    )
+    # Web page indexing collection (used by /web skill)
+    web_pages = client.get_or_create_collection(
+        name="web_pages",
         metadata={"hnsw:space": "cosine"},
     )
 
@@ -1324,7 +1330,7 @@ def memory_stats() -> dict:
         "capture_queue_lines": queue_lines,
         "capture_queue_bytes": queue_size,
         "storage_path": MEMORY_DIR,
-        "collections": ["knowledge", "observations", "fix_outcomes"],
+        "collections": ["knowledge", "observations", "fix_outcomes", "web_pages"],
         "fts_index_count": _fts_count,
         "status": "healthy" if count >= 0 else "error",
     }
@@ -2580,6 +2586,7 @@ def _dispatch_request(req):
             "knowledge": collection,
             "observations": observations,
             "fix_outcomes": fix_outcomes,
+            "web_pages": web_pages,
         }
         col = col_map.get(col_name)
         if col is None:
@@ -2621,6 +2628,15 @@ def _dispatch_request(req):
                     )
                 return {"ok": True, "result": len(docs)}
             return {"ok": False, "error": "upsert requires documents and ids"}
+
+        if method == "delete":
+            ids = params.get("ids", [])
+            if ids:
+                batch_size = 100
+                for i in range(0, len(ids), batch_size):
+                    col.delete(ids=ids[i:i + batch_size])
+                return {"ok": True, "result": len(ids)}
+            return {"ok": False, "error": "delete requires ids"}
 
         return {"ok": False, "error": f"Unknown method: {method}"}
 

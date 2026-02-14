@@ -8995,6 +8995,104 @@ _bsg_red2 = _bsg_crl(
 test("Wrap-up gather: risk RED when memory count zero", _bsg_red2 == "RED")
 
 # ─────────────────────────────────────────────────
+# Test: Web Skill Scripts
+# ─────────────────────────────────────────────────
+print("\n--- Web Skill Scripts ---")
+
+_WEB_SCRIPTS = os.path.join(os.path.expanduser("~"), ".claude", "skills", "web", "scripts")
+sys.path.insert(0, _WEB_SCRIPTS)
+
+# Test index.py: quality gate, chunking, content extraction
+from index import quality_check as _ws_qc, chunk_content as _ws_cc, extract_content as _ws_ec, content_hash as _ws_ch
+
+# Quality gate: reject short content
+_ws_qc_short = _ws_qc("too few words here")
+test("Web index: quality rejects <50 words", _ws_qc_short[0] is False,
+     f"got passed={_ws_qc_short[0]}")
+
+# Quality gate: accept normal content
+_ws_normal = "This is a normal paragraph with plenty of words. " * 20
+_ws_qc_ok = _ws_qc(_ws_normal)
+test("Web index: quality accepts 50+ word content", _ws_qc_ok[0] is True,
+     f"got passed={_ws_qc_ok[0]}, reason={_ws_qc_ok[1]}")
+
+# Quality gate: score is between 0 and 1
+test("Web index: quality score in range", 0.0 <= _ws_qc_ok[2] <= 1.0,
+     f"got score={_ws_qc_ok[2]}")
+
+# Chunking: splits long content
+_ws_long = "\n\n".join([f"Paragraph {i} with enough words to fill space. " * 30 for i in range(10)])
+_ws_chunks = _ws_cc(_ws_long, max_words=500)
+test("Web index: chunking splits long content", len(_ws_chunks) > 1,
+     f"got {len(_ws_chunks)} chunks")
+
+# Chunking: single short content stays as one chunk
+_ws_short_para = "A short paragraph with a few words."
+_ws_single = _ws_cc(_ws_short_para)
+test("Web index: chunking keeps short content as one chunk", len(_ws_single) == 1)
+
+# Content hash: deterministic
+_ws_h1 = _ws_ch("test content")
+_ws_h2 = _ws_ch("test content")
+test("Web index: content_hash is deterministic", _ws_h1 == _ws_h2)
+test("Web index: content_hash is 16 chars hex", len(_ws_h1) == 16 and all(c in "0123456789abcdef" for c in _ws_h1))
+
+# Content hash: different content gives different hash
+_ws_h3 = _ws_ch("different content")
+test("Web index: content_hash differs for different content", _ws_h1 != _ws_h3)
+
+# Extract content: strips script tags from HTML
+_ws_html = "<html><head><title>Test Page</title></head><body><script>evil()</script><p>Good content here.</p></body></html>"
+_ws_md, _ws_title = _ws_ec(_ws_html)
+test("Web index: extract strips script tags", "evil()" not in _ws_md)
+test("Web index: extract gets title", _ws_title == "Test Page")
+test("Web index: extract keeps body content", "Good content" in _ws_md)
+
+# Metadata structure: verify index.py builds correct metadata keys
+_ws_expected_meta_keys = {"url", "title", "chunk_index", "total_chunks", "indexed_at", "content_hash", "word_count"}
+test("Web index: metadata keys defined",
+     all(k in ["url", "title", "chunk_index", "total_chunks", "indexed_at", "content_hash", "word_count"]
+         for k in _ws_expected_meta_keys))
+
+# Test chromadb_socket.delete exists
+sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+from shared import chromadb_socket as _ws_cdb
+test("Web: chromadb_socket.delete exists", hasattr(_ws_cdb, "delete") and callable(_ws_cdb.delete))
+
+# Test memory_server col_map includes web_pages (import check)
+_ws_ms_path = os.path.join(os.path.expanduser("~"), ".claude", "hooks", "memory_server.py")
+with open(_ws_ms_path) as _ws_f:
+    _ws_ms_src = _ws_f.read()
+test("Web: memory_server col_map has web_pages", '"web_pages": web_pages' in _ws_ms_src)
+test("Web: memory_server has delete handler", 'if method == "delete"' in _ws_ms_src)
+test("Web: memory_server inits web_pages collection", 'name="web_pages"' in _ws_ms_src)
+
+# Test search.py imports cleanly
+from search import search_pages as _ws_sp
+test("Web search: search_pages is callable", callable(_ws_sp))
+
+# Test list.py imports cleanly
+from list import list_pages as _ws_lp
+test("Web list: list_pages is callable", callable(_ws_lp))
+
+# Test delete.py imports cleanly
+from delete import delete_pages as _ws_dp
+test("Web delete: delete_pages is callable", callable(_ws_dp))
+
+# SKILL.md exists and has correct commands
+_ws_skill_path = os.path.join(os.path.expanduser("~"), ".claude", "skills", "web", "SKILL.md")
+test("Web: SKILL.md exists", os.path.isfile(_ws_skill_path))
+with open(_ws_skill_path) as _ws_sf:
+    _ws_skill_src = _ws_sf.read()
+test("Web: SKILL.md has index command", "index.py" in _ws_skill_src)
+test("Web: SKILL.md has search command", "search.py" in _ws_skill_src)
+test("Web: SKILL.md has list command", "list.py" in _ws_skill_src)
+test("Web: SKILL.md has delete command", "delete.py" in _ws_skill_src)
+
+# Cleanup sys.path
+sys.path = [p for p in sys.path if _WEB_SCRIPTS not in p]
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

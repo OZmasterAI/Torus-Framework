@@ -126,6 +126,11 @@ def upsert(collection, documents, metadatas, ids):
     })
 
 
+def delete(collection, ids):
+    """Delete entries by IDs from a collection."""
+    return request("delete", collection=collection, params={"ids": ids})
+
+
 def flush_queue():
     """Flush the capture queue to ChromaDB observations."""
     return request("flush_queue")
