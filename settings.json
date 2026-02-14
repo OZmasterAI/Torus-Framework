@@ -29,6 +29,16 @@
             "timeout": 3000
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/auto_commit.py\" stage",
+            "timeout": 3000
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -49,6 +59,15 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/user_prompt_capture.py\"",
+            "timeout": 3000
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/auto_commit.py\" commit",
             "timeout": 3000
           }
         ]

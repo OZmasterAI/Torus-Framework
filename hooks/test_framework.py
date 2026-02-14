@@ -1837,14 +1837,14 @@ with open(os.path.expanduser("~/.claude/settings.json")) as f:
     _settings = json.load(f)
 
 _upsub_hooks = _settings.get("hooks", {}).get("UserPromptSubmit", [])
-_upsub_cmd = ""
+_upsub_cmds = []
 for _entry in _upsub_hooks:
     for _hook in _entry.get("hooks", []):
-        _upsub_cmd = _hook.get("command", "")
+        _upsub_cmds.append(_hook.get("command", ""))
 
 test("Settings: UserPromptSubmit uses user_prompt_capture.py",
-     "user_prompt_capture.py" in _upsub_cmd,
-     f"command={_upsub_cmd}")
+     any("user_prompt_capture.py" in c for c in _upsub_cmds),
+     f"commands={_upsub_cmds}")
 
 # ─────────────────────────────────────────────────
 # Test: session_time Type Regression (4 tests)
@@ -8787,6 +8787,127 @@ finally:
 test("WorkerUnavailable contains descriptive error message",
      "Cannot connect" in _uds_err_msg,
      f"got: {_uds_err_msg!r}")
+
+# ─────────────────────────────────────────────────
+# --- Auto-Commit Hook ---
+# ─────────────────────────────────────────────────
+print("\n--- Auto-Commit Hook ---")
+
+import auto_commit
+
+# Test: stage() stages a file inside ~/.claude/
+_ac_staged_calls = []
+_ac_orig_git = auto_commit.git
+def _mock_git(*args, **kwargs):
+    _ac_staged_calls.append(args)
+    class R:
+        returncode = 0
+        stdout = ""
+    return R()
+
+auto_commit.git = _mock_git
+
+import io as _io
+
+# Simulate stdin with a file inside ~/.claude/
+_ac_test_path = os.path.expanduser("~/.claude/hooks/some_file.py")
+_ac_payload = json.dumps({"tool_input": {"file_path": _ac_test_path}})
+_ac_old_stdin = sys.stdin
+sys.stdin = _io.StringIO(_ac_payload)
+_ac_staged_calls.clear()
+auto_commit.stage()
+sys.stdin = _ac_old_stdin
+test("auto-commit: stage() stages file inside ~/.claude/",
+     len(_ac_staged_calls) == 1 and _ac_staged_calls[0][0] == "add",
+     f"calls: {_ac_staged_calls}")
+
+# Test: stage() skips files outside ~/.claude/
+_ac_test_path_ext = "/home/crab/other_project/foo.py"
+_ac_payload_ext = json.dumps({"tool_input": {"file_path": _ac_test_path_ext}})
+sys.stdin = _io.StringIO(_ac_payload_ext)
+_ac_staged_calls.clear()
+auto_commit.stage()
+sys.stdin = _ac_old_stdin
+test("auto-commit: stage() skips file outside ~/.claude/",
+     len(_ac_staged_calls) == 0,
+     f"calls: {_ac_staged_calls}")
+
+# Test: stage() handles empty tool_input gracefully
+_ac_payload_empty = json.dumps({"tool_input": {}})
+sys.stdin = _io.StringIO(_ac_payload_empty)
+_ac_staged_calls.clear()
+auto_commit.stage()
+sys.stdin = _ac_old_stdin
+test("auto-commit: stage() handles empty tool_input",
+     len(_ac_staged_calls) == 0,
+     f"calls: {_ac_staged_calls}")
+
+# Test: commit() commits when changes are staged
+_ac_commit_calls = []
+def _mock_git_with_diff(*args, **kwargs):
+    _ac_commit_calls.append(args)
+    class R:
+        returncode = 0
+    if args[0] == "diff":
+        R.stdout = "hooks/auto_commit.py\nhooks/test_framework.py\n"
+    else:
+        R.stdout = ""
+    return R()
+
+auto_commit.git = _mock_git_with_diff
+_ac_commit_calls.clear()
+auto_commit.commit()
+test("auto-commit: commit() commits when changes staged",
+     any(a[0] == "commit" for a in _ac_commit_calls),
+     f"calls: {_ac_commit_calls}")
+
+# Test: commit() no-ops when nothing is staged
+def _mock_git_no_staged(*args, **kwargs):
+    class R:
+        returncode = 0
+        stdout = ""
+    if args[0] == "diff":
+        R.stdout = ""
+    return R()
+
+_ac_noop_calls = []
+def _mock_git_noop_track(*args, **kwargs):
+    _ac_noop_calls.append(args)
+    return _mock_git_no_staged(*args, **kwargs)
+
+auto_commit.git = _mock_git_noop_track
+_ac_noop_calls.clear()
+auto_commit.commit()
+test("auto-commit: commit() no-ops when nothing staged",
+     not any(a[0] == "commit" for a in _ac_noop_calls),
+     f"calls: {_ac_noop_calls}")
+
+# Test: commit message includes file names and co-author tag
+_ac_msg_calls = []
+def _mock_git_capture_msg(*args, **kwargs):
+    _ac_msg_calls.append(args)
+    class R:
+        returncode = 0
+    if args[0] == "diff":
+        R.stdout = "hooks/boot.py\nhooks/enforcer.py\n"
+    else:
+        R.stdout = ""
+    return R()
+
+auto_commit.git = _mock_git_capture_msg
+_ac_msg_calls.clear()
+auto_commit.commit()
+_ac_commit_args = [a for a in _ac_msg_calls if a[0] == "commit"]
+_ac_msg_ok = False
+if _ac_commit_args:
+    _ac_msg = _ac_commit_args[0][2]  # commit -m <message>
+    _ac_msg_ok = "boot.py" in _ac_msg and "enforcer.py" in _ac_msg and "Co-Authored-By" in _ac_msg
+test("auto-commit: commit message has file names + co-author",
+     _ac_msg_ok,
+     f"message: {_ac_commit_args}")
+
+# Restore original
+auto_commit.git = _ac_orig_git
 
 # ─────────────────────────────────────────────────
 # Cleanup test state files
