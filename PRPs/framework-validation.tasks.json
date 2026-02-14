@@ -50,7 +50,7 @@
     {
       "id": 5,
       "name": "Generate validation report from memory",
-      "status": "pending",
+      "status": "passed",
       "files": [
         "/home/crab/.claude/PRPs/test-workspace/validation_report.md"
       ],
