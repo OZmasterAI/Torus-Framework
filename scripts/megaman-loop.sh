@@ -79,12 +79,20 @@ build_prompt() {
     validate_cmd=$(echo "$task_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('validate', 'echo no validation'))")
 
     if [[ -f "$PROMPT_TEMPLATE" ]]; then
-        sed -e "s|{task_id}|$task_id|g" \
-            -e "s|{prp_name}|$PRP_NAME|g" \
-            -e "s|{task_name}|$task_name|g" \
-            -e "s|{file_list}|$file_list|g" \
-            -e "s|{validate_command}|$validate_cmd|g" \
-            "$PROMPT_TEMPLATE"
+        # Use Python for safe template substitution (sed breaks on |, /, etc. in values)
+        python3 -c "
+import sys
+with open(sys.argv[1]) as f:
+    t = f.read()
+for k, v in zip(sys.argv[2::2], sys.argv[3::2]):
+    t = t.replace('{' + k + '}', v)
+print(t)
+" "$PROMPT_TEMPLATE" \
+            "task_id" "$task_id" \
+            "prp_name" "$PRP_NAME" \
+            "task_name" "$task_name" \
+            "file_list" "$file_list" \
+            "validate_command" "$validate_cmd"
     else
         cat <<PROMPT
 You are executing task $task_id of PRP "$PRP_NAME".

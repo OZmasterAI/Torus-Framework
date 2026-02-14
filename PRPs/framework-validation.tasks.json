@@ -37,11 +37,11 @@
     {
       "id": 4,
       "name": "Add error handling and docstrings to utils",
-      "status": "pending",
+      "status": "failed",
       "files": [
         "/home/crab/.claude/PRPs/test-workspace/utils.py"
       ],
-      "validate": "cd /home/crab/.claude/PRPs/test-workspace && python3 -m pytest test_utils.py -v && python3 -c \"from utils import add; help(add)\" | grep -q 'Add two numbers'",
+      "validate": "cd /home/crab/.claude/PRPs/test-workspace && python3 -m pytest test_utils.py -v && python3 -c \"import utils; assert 'Add two numbers' in utils.add.__doc__, 'Missing docstring'; print('DOCSTRING OK')\"",
       "depends_on": [
         2,
         3
