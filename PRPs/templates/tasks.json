@@ -1,0 +1,14 @@
+{
+  "prp": "{feature-name}",
+  "created": "{ISO-8601-timestamp}",
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Task name from PRP",
+      "status": "pending",
+      "files": ["path/to/create-or-modify"],
+      "validate": "pytest tests/test_feature.py -x",
+      "depends_on": []
+    }
+  ]
+}

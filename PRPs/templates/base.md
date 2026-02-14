@@ -53,6 +53,7 @@
 
 ### Task 1: {name}
 - **Files**: {create/modify list}
+- **Validate**: `{exact command to verify this task}`
 - **Pattern**: {existing code to mirror}
 - **Pseudocode**:
   ```
@@ -61,6 +62,7 @@
 
 ### Task 2: {name}
 - **Files**: {create/modify list}
+- **Validate**: `{exact command to verify this task}`
 - **Pattern**: {existing code to mirror}
 - **Pseudocode**:
   ```

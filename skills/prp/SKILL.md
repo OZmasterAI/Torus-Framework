@@ -8,6 +8,7 @@ or wants a comprehensive implementation blueprint for a complex feature.
 - `/prp generate <feature-description>` — Research and create a PRP
 - `/prp execute <prp-file>` — Implement a PRP
 - `/prp list` — List existing PRPs
+- `/prp status <prp-name>` — Show task pass/fail status from tasks.json
 
 ## Generate Flow
 1. **MEMORY CHECK**: search_knowledge for similar features, past PRPs, known issues
@@ -15,6 +16,7 @@ or wants a comprehensive implementation blueprint for a complex feature.
 3. **EXTERNAL RESEARCH**: WebSearch/WebFetch for library docs, API references (if needed)
 4. **FILL TEMPLATE**: Read ~/.claude/PRPs/templates/base.md and fill every section
 5. **SAVE**: Write to ~/.claude/PRPs/{feature-name}.md
+5b. **GENERATE TASKS.JSON**: Extract tasks from `## Implementation Tasks`, create `~/.claude/PRPs/{feature-name}.tasks.json` with id, name, status, files, validate, depends_on per task
 6. **REMEMBER**: remember_this() with the PRP summary and tags
 7. **PRESENT**: Show the PRP to the user for review/adjustment
 
@@ -29,6 +31,11 @@ or wants a comprehensive implementation blueprint for a complex feature.
 ## List Flow
 1. **SCAN**: Glob ~/.claude/PRPs/*.md (excluding templates/)
 2. **DISPLAY**: Show each PRP with name, status, confidence, and creation date
+
+## Status Flow
+1. **LOAD TASKS**: Read ~/.claude/PRPs/{prp-name}.tasks.json via task_manager.py
+2. **DISPLAY**: Show table with task id, name, status (pending/in_progress/passed/failed)
+3. **SUMMARY**: Show counts per status
 
 ## Rules
 - NEVER skip the "Known Gotchas" section — this is the highest-value part

@@ -9176,6 +9176,186 @@ test("Browser: ralph SKILL.md has visual verify step", "Visual Verify" in _ralph
 test("Browser: ralph SKILL.md has screenshots in report", "Screenshots taken" in _ralph_skill_src)
 
 # ─────────────────────────────────────────────────
+# TASK MANAGER (Phase 2) — PRP JSON task tracking
+# ─────────────────────────────────────────────────
+print("\n--- Task Manager Tests ---")
+
+_tm_dir = os.path.expanduser("~/.claude/PRPs")
+_tm_script = os.path.join(_tm_dir, "task_manager.py")
+_tm_test_prp = "__test_tm"
+_tm_test_file = os.path.join(_tm_dir, f"{_tm_test_prp}.tasks.json")
+
+# Create test tasks.json
+_tm_test_data = {
+    "prp": _tm_test_prp,
+    "created": "2026-02-14T00:00:00Z",
+    "tasks": [
+        {"id": 1, "name": "First task", "status": "pending", "files": ["a.py"], "validate": "echo ok", "depends_on": []},
+        {"id": 2, "name": "Second task", "status": "pending", "files": ["b.py"], "validate": "echo ok", "depends_on": [1]},
+        {"id": 3, "name": "Third task", "status": "pending", "files": ["c.py"], "validate": "false", "depends_on": []},
+    ],
+}
+with open(_tm_test_file, "w") as _f:
+    json.dump(_tm_test_data, _f, indent=2)
+
+# Test: task_manager.py exists and is executable
+test("TaskManager: script exists", os.path.isfile(_tm_script))
+
+# Test: status command
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "status", _tm_test_prp],
+    capture_output=True, text=True, timeout=10,
+)
+test("TaskManager: status exits 0", _tm_r.returncode == 0, f"rc={_tm_r.returncode}")
+_tm_status = json.loads(_tm_r.stdout) if _tm_r.returncode == 0 else {}
+test("TaskManager: status shows 3 tasks", _tm_status.get("total") == 3, f"total={_tm_status.get('total')}")
+test("TaskManager: status shows 3 pending", _tm_status.get("counts", {}).get("pending") == 3)
+
+# Test: next command returns first pending task (respects deps — task 2 depends on 1)
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "next", _tm_test_prp],
+    capture_output=True, text=True, timeout=10,
+)
+test("TaskManager: next exits 0", _tm_r.returncode == 0, f"rc={_tm_r.returncode}")
+_tm_next = json.loads(_tm_r.stdout) if _tm_r.returncode == 0 else {}
+test("TaskManager: next returns task 1 (not 2, blocked by dep)", _tm_next.get("id") == 1, f"id={_tm_next.get('id')}")
+
+# Test: update command
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "update", _tm_test_prp, "1", "passed"],
+    capture_output=True, text=True, timeout=10,
+)
+test("TaskManager: update exits 0", _tm_r.returncode == 0, f"rc={_tm_r.returncode}")
+
+# Verify task 1 is now passed
+with open(_tm_test_file) as _f:
+    _tm_after_update = json.load(_f)
+test("TaskManager: task 1 status is passed", _tm_after_update["tasks"][0]["status"] == "passed")
+
+# Test: next now returns task 2 (dep on task 1 is satisfied) or task 3 (no dep)
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "next", _tm_test_prp],
+    capture_output=True, text=True, timeout=10,
+)
+_tm_next2 = json.loads(_tm_r.stdout) if _tm_r.returncode == 0 else {}
+# Task 3 has no deps and is pending, task 2 depends on 1 which is now passed — both eligible
+# next iterates failed first, then pending, so should get task 2 or 3
+test("TaskManager: next returns task 2 or 3 after task 1 passed",
+     _tm_next2.get("id") in (2, 3), f"id={_tm_next2.get('id')}")
+
+# Test: validate with passing command (echo ok)
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "update", _tm_test_prp, "2", "pending"],
+    capture_output=True, text=True, timeout=10,
+)
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "validate", _tm_test_prp, "2"],
+    capture_output=True, text=True, timeout=10,
+)
+test("TaskManager: validate passing cmd exits 0", _tm_r.returncode == 0, f"rc={_tm_r.returncode}")
+with open(_tm_test_file) as _f:
+    _tm_after_validate = json.load(_f)
+test("TaskManager: validate sets task 2 to passed",
+     _tm_after_validate["tasks"][1]["status"] == "passed")
+
+# Test: validate with failing command (false)
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "validate", _tm_test_prp, "3"],
+    capture_output=True, text=True, timeout=10,
+)
+test("TaskManager: validate failing cmd exits 1", _tm_r.returncode == 1, f"rc={_tm_r.returncode}")
+with open(_tm_test_file) as _f:
+    _tm_after_fail = json.load(_f)
+test("TaskManager: validate sets task 3 to failed",
+     _tm_after_fail["tasks"][2]["status"] == "failed")
+
+# Test: invalid status rejected
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "update", _tm_test_prp, "1", "bogus"],
+    capture_output=True, text=True, timeout=10,
+)
+test("TaskManager: invalid status rejected", _tm_r.returncode == 1)
+
+# Test: next when all done/failed returns exit 1
+# Set task 3 to passed too
+subprocess.run(
+    [sys.executable, _tm_script, "update", _tm_test_prp, "3", "passed"],
+    capture_output=True, text=True, timeout=10,
+)
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "next", _tm_test_prp],
+    capture_output=True, text=True, timeout=10,
+)
+test("TaskManager: next exits 1 when all tasks passed", _tm_r.returncode == 1)
+
+# Test: nonexistent PRP fails
+_tm_r = subprocess.run(
+    [sys.executable, _tm_script, "status", "nonexistent_prp_xyz"],
+    capture_output=True, text=True, timeout=10,
+)
+test("TaskManager: nonexistent PRP exits 1", _tm_r.returncode == 1)
+
+# Test: tasks.json template exists
+_tm_template = os.path.join(_tm_dir, "templates", "tasks.json")
+test("TaskManager: tasks.json template exists", os.path.isfile(_tm_template))
+with open(_tm_template) as _f:
+    _tm_tmpl = json.load(_f)
+test("TaskManager: template has tasks array", "tasks" in _tm_tmpl and isinstance(_tm_tmpl["tasks"], list))
+
+# Test: megaman-loop.sh exists and is executable
+_ml_script = os.path.expanduser("~/.claude/scripts/megaman-loop.sh")
+test("MegamanLoop: script exists", os.path.isfile(_ml_script))
+test("MegamanLoop: script is executable", os.access(_ml_script, os.X_OK))
+
+# Test: megaman-prompt.md exists
+_ml_prompt = os.path.expanduser("~/.claude/scripts/megaman-prompt.md")
+test("MegamanLoop: prompt template exists", os.path.isfile(_ml_prompt))
+with open(_ml_prompt) as _f:
+    _ml_prompt_src = _f.read()
+test("MegamanLoop: prompt has task_id placeholder", "{task_id}" in _ml_prompt_src)
+test("MegamanLoop: prompt has validate_command placeholder", "{validate_command}" in _ml_prompt_src)
+test("MegamanLoop: prompt has search_knowledge rule", "search_knowledge" in _ml_prompt_src)
+
+# Test: /loop SKILL.md exists and has required commands
+_loop_skill = os.path.expanduser("~/.claude/skills/loop/SKILL.md")
+test("LoopSkill: SKILL.md exists", os.path.isfile(_loop_skill))
+with open(_loop_skill) as _f:
+    _loop_src = _f.read()
+test("LoopSkill: has start command", "/loop start" in _loop_src)
+test("LoopSkill: has status command", "/loop status" in _loop_src)
+test("LoopSkill: has stop command", "/loop stop" in _loop_src)
+test("LoopSkill: references megaman-loop.sh", "megaman-loop.sh" in _loop_src)
+test("LoopSkill: references stop sentinel", ".stop" in _loop_src)
+
+# Test: base.md template has Validate field
+_base_tmpl = os.path.join(_tm_dir, "templates", "base.md")
+with open(_base_tmpl) as _f:
+    _base_src = _f.read()
+test("PRP: base.md has Validate field", "**Validate**:" in _base_src)
+
+# Test: prp SKILL.md has status command
+_prp_skill = os.path.expanduser("~/.claude/skills/prp/SKILL.md")
+with open(_prp_skill) as _f:
+    _prp_src = _f.read()
+test("PRP: SKILL.md has /prp status command", "/prp status" in _prp_src)
+test("PRP: SKILL.md has tasks.json generation step", "tasks.json" in _prp_src)
+
+# Test: megaman-loop.sh has stop sentinel check
+with open(_ml_script) as _f:
+    _ml_src = _f.read()
+test("MegamanLoop: checks stop sentinel", "STOP_SENTINEL" in _ml_src)
+test("MegamanLoop: has max iterations", "MAX_ITERATIONS" in _ml_src)
+test("MegamanLoop: has git commit on success", "git commit" in _ml_src)
+test("MegamanLoop: uses --dangerously-skip-permissions", "--dangerously-skip-permissions" in _ml_src)
+test("MegamanLoop: has activity log", "activity.md" in _ml_src or "ACTIVITY_LOG" in _ml_src)
+
+# Cleanup test file
+try:
+    os.remove(_tm_test_file)
+except OSError:
+    pass
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()
