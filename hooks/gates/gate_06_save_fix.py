@@ -25,7 +25,7 @@ GATE_NAME = "GATE 6: SAVE VERIFIED FIX"
 WARN_THRESHOLD = 2
 
 # Escalation: after this many warnings, Gate 6 becomes blocking
-ESCALATION_THRESHOLD = 5
+ESCALATION_THRESHOLD = 2
 
 # Verified fixes older than this are considered stale (expired)
 STALE_FIX_SECONDS = 1200  # 20 minutes

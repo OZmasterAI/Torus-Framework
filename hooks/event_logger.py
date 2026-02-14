@@ -192,10 +192,54 @@ def handle_teammate_idle(data):
 
 
 def handle_task_completed(data):
-    """Log when a team task is completed."""
+    """Log when a team task is completed, with quality warnings."""
     task_id = data.get("task_id", data.get("id", "unknown"))
     subject = data.get("subject", data.get("title", ""))[:100]
     print(f"[TaskCompleted] #{task_id}: {subject[:60]}", file=sys.stderr)
+
+    # Quality checks from completing agent's state
+    try:
+        _, state = _find_session_state()
+        if not state:
+            return
+
+        warnings = []
+
+        # Check for unverified edits
+        pending = state.get("pending_verification", [])
+        if pending:
+            files = ", ".join(os.path.basename(f) for f in pending[:3])
+            suffix = f" (+{len(pending)-3} more)" if len(pending) > 3 else ""
+            warnings.append(
+                f"Task completed with {len(pending)} unverified edit(s): {files}{suffix}. "
+                f"Consider running tests before marking tasks complete."
+            )
+
+        # Check for unlogged errors
+        unlogged = state.get("unlogged_errors", [])
+        if unlogged:
+            patterns = set(e.get("pattern", "unknown") for e in unlogged[:5])
+            warnings.append(
+                f"Task completed with {len(unlogged)} unlogged error(s) ({', '.join(patterns)}). "
+                f"Consider using remember_this() to save error context."
+            )
+
+        # Check for recurring error patterns
+        pattern_counts = state.get("error_pattern_counts", {})
+        recurring = {p: c for p, c in pattern_counts.items() if c >= 3}
+        if recurring:
+            top = max(recurring, key=lambda p: recurring[p])
+            warnings.append(
+                f"Recurring error pattern '{top}' ({recurring[top]}x) detected during task. "
+                f"Consider investigating root cause."
+            )
+
+        # Emit warnings
+        for w in warnings:
+            print(f"[TaskCompleted WARNING] {w}", file=sys.stderr)
+
+    except Exception:
+        pass  # Fail-open: quality checks must not crash event logger
 
 
 HANDLERS = {

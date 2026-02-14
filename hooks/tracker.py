@@ -342,6 +342,42 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
             if len(files_edited) > 200:
                 state["files_edited"] = files_edited[-200:]
 
+    # Write file claims for workspace isolation (Gate 13)
+    if tool_name in ("Edit", "Write", "NotebookEdit"):
+        try:
+            import fcntl
+            claim_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+            claim_session = state.get("_session_id", "main")
+            if claim_path and claim_session != "main":
+                claim_path = os.path.normpath(claim_path)
+                claims_file = os.path.join(os.path.dirname(__file__), ".file_claims.json")
+                claims = {}
+                if os.path.exists(claims_file):
+                    try:
+                        with open(claims_file, "r") as f:
+                            fcntl.flock(f, fcntl.LOCK_SH)
+                            try:
+                                claims = json.load(f)
+                            finally:
+                                fcntl.flock(f, fcntl.LOCK_UN)
+                    except (json.JSONDecodeError, OSError, ValueError):
+                        claims = {}
+                claims[claim_path] = {
+                    "session_id": claim_session,
+                    "claimed_at": time.time(),
+                }
+                try:
+                    with open(claims_file, "w") as f:
+                        fcntl.flock(f, fcntl.LOCK_EX)
+                        try:
+                            json.dump(claims, f)
+                        finally:
+                            fcntl.flock(f, fcntl.LOCK_UN)
+                except OSError:
+                    pass
+        except Exception as e:
+            _log_debug(f"file claim write failed: {e}")
+
     # Track memory queries
     if is_memory_tool(tool_name):
         state["memory_last_queried"] = time.time()

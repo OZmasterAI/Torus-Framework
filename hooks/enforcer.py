@@ -41,6 +41,7 @@ GATE_MODULES = [
     "gates.gate_10_model_enforcement",
     "gates.gate_11_rate_limit",
     "gates.gate_12_plan_mode_save",
+    "gates.gate_13_workspace_isolation",
 ]
 
 # Tier 1 safety gates that MUST fail-closed (exceptions = block, not pass)
@@ -127,6 +128,10 @@ GATE_DEPENDENCIES = {
     },
     "gate_12_plan_mode_save": {
         "reads": ["last_exit_plan_mode", "memory_last_queried"],
+        "writes": [],
+    },
+    "gate_13_workspace_isolation": {
+        "reads": [],
         "writes": [],
     },
 }
