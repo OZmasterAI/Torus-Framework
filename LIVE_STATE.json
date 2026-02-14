@@ -1,47 +1,46 @@
 {
-  "session_count": 39,
-  "status": "claude_md_optimized",
+  "session_count": 40,
+  "status": "subagent_safety_and_batch_memory",
   "project": "self-healing-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "claude-md-token-optimization",
+  "feature": "subagent-safety-rules",
   "feature_status": "complete",
   "test_count": 553,
   "test_failures": 0,
   "files_modified": [
-    "CLAUDE.md",
-    "hooks/statusline.py",
     "hooks/subagent_context.py",
-    "hooks/event_logger.py",
-    "hooks/shared/state.py"
+    "hooks/memory_server.py"
   ],
   "hook_events": 13,
   "gates": 12,
   "mcp_tools": 15,
-  "curated_memories": 271,
+  "curated_memories": 274,
   "named_agents": 4,
   "skills_count": 18,
   "dashboard_port": 7777,
   "improvements_shipped": [
-    "subagent_visibility",
-    "plan_mode_loop_fix",
-    "claude_md_optimization"
+    "subagent_safety_rules",
+    "bash_agent_rules",
+    "critical_file_guard_injection",
+    "phantom_agent_fix",
+    "batch_memory_fetch"
   ],
   "next_steps": [
-    "implement_gates_10_11_12",
+    "save_deferred_worker_decision_to_memory",
     "fix_test_framework_segfault",
     "write_tests_for_new_features",
     "dashboard_auto_start",
     "memory_graph_visualization"
   ],
   "known_issues": [
-    "ChromaDB/SQLite segfault: affects test_framework.py, statusline subprocess, subagent MCP access",
-    "Gates 10, 11, 12 defined in CLAUDE.md but not yet in enforcer.py"
+    "ChromaDB/SQLite segfault: affects test_framework.py, concurrent multi-agent MCP access",
+    "MCP connection breaks if server killed mid-session (reconnects on next session start)"
   ],
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 4,
+    "reads": 15,
+    "edits": 8,
     "errors": 0,
-    "verified": 6,
+    "verified": 10,
     "pending": 0
   }
 }
