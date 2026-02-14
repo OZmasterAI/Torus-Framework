@@ -2187,35 +2187,49 @@ if not MEMORY_SERVER_RUNNING:
     # ─────────────────────────────────────────────────
     print("\n--- Phase 3: Auto-Injection ---")
 
-    from boot import inject_memories, _write_sideband_timestamp, SIDEBAND_FILE
-    import chromadb as _chromadb
+    from boot import inject_memories_via_socket, _write_sideband_timestamp, SIDEBAND_FILE
+    from unittest.mock import patch
 
-    _boot_db = _chromadb.PersistentClient(path=os.path.join(os.path.expanduser("~"), "data", "memory"))
-    _boot_col = _boot_db.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
-
-    # Test: inject_memories returns results
+    # Test: inject_memories_via_socket returns relevant memories (mock socket)
     _handoff = "# Session 19\n## What's Next\n1. Verify timeline\n2. Test compaction"
     _lstate = {"project": "self-healing-framework", "feature": "memory-optimization"}
-    _injected = inject_memories(_handoff, _lstate, _boot_col)
-    test("inject_memories returns relevant memories",
-         len(_injected) > 0,
+    _mock_results = {
+        "ids": [["mem_abc12345", "mem_def67890"]],
+        "metadatas": [[{"preview": "Fixed auth loop"}, {"preview": "Added caching"}]],
+        "distances": [[0.2, 0.5]],
+    }
+    with patch("boot.socket_count", return_value=10), \
+         patch("boot.socket_query", return_value=_mock_results):
+        _injected = inject_memories_via_socket(_handoff, _lstate)
+    test("inject_memories_via_socket returns relevant memories",
+         len(_injected) == 2,
          f"got {len(_injected)} results")
 
-    # Test: inject_memories handles empty database
-    _empty_col_db = _chromadb.Client()
-    _empty_col = _empty_col_db.get_or_create_collection(name="empty_test")
-    _empty_inject = inject_memories("handoff", {}, _empty_col)
-    test("inject_memories handles empty database",
+    # Test: inject_memories_via_socket handles empty database
+    with patch("boot.socket_count", return_value=0):
+        _empty_inject = inject_memories_via_socket("handoff", {})
+    test("inject_memories_via_socket handles empty database",
          _empty_inject == [])
 
-    # Test: inject_memories handles None collection
-    _none_inject = inject_memories("handoff", {}, None)
-    test("inject_memories handles None collection",
-         _none_inject == [])
+    # Test: inject_memories_via_socket handles WorkerUnavailable
+    from shared.chromadb_socket import WorkerUnavailable as _WU
+    with patch("boot.socket_count", side_effect=_WU("no worker")):
+        _unavail_inject = inject_memories_via_socket("handoff", {})
+    test("inject_memories_via_socket handles WorkerUnavailable",
+         _unavail_inject == [])
 
-    # Test: inject_memories filters low-relevance results (by checking count <= 5)
-    test("inject_memories returns <= 5 results",
-         len(_injected) <= 5)
+    # Test: inject_memories_via_socket returns <= 5 results
+    _mock_5 = {
+        "ids": [["a", "b", "c", "d", "e", "f"]],
+        "metadatas": [[{"preview": f"mem{i}"} for i in range(6)]],
+        "distances": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]],
+    }
+    with patch("boot.socket_count", return_value=100), \
+         patch("boot.socket_query", return_value=_mock_5):
+        _capped = inject_memories_via_socket(_handoff, _lstate)
+    test("inject_memories_via_socket returns <= 5 results",
+         len(_capped) <= 5,
+         f"got {len(_capped)}")
 
     # Test: Boot writes sideband timestamp
     _write_sideband_timestamp()
