@@ -13,6 +13,7 @@ Used via MCP: configured in .claude/mcp.json
 """
 
 import atexit
+import functools
 import hashlib
 import json
 import os
@@ -73,6 +74,21 @@ def _touch_memory_timestamp():
 # Initialize MCP server
 mcp = FastMCP("memory")
 
+
+def crash_proof(fn):
+    """Wrap MCP tool handler so exceptions return error dicts instead of crashing the server."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            print(f"[MCP] {fn.__name__} error: {e}\n{tb}", file=_sys.stderr)
+            return {"error": f"{fn.__name__} failed: {type(e).__name__}: {e}"}
+    return wrapper
+
+
 # Persistent ChromaDB storage
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 os.makedirs(MEMORY_DIR, exist_ok=True)
@@ -92,6 +108,7 @@ collection = None
 fix_outcomes = None
 observations = None
 web_pages = None
+_chromadb_degraded = False
 
 
 def _init_chromadb():
@@ -100,28 +117,33 @@ def _init_chromadb():
     Called from _ensure_initialized() on first MCP tool use.
     Safe to call multiple times — idempotent after first run.
     """
-    global client, collection, fix_outcomes, observations, web_pages
+    global client, collection, fix_outcomes, observations, web_pages, _chromadb_degraded
     if client is not None:
         return
-    client = chromadb.PersistentClient(path=MEMORY_DIR)
-    collection = client.get_or_create_collection(
-        name="knowledge",
-        metadata={"hnsw:space": "cosine"},
-    )
-    fix_outcomes = client.get_or_create_collection(
-        name="fix_outcomes",
-        metadata={"hnsw:space": "cosine"},
-    )
-    # Auto-capture: observations collection (separate from curated knowledge)
-    observations = client.get_or_create_collection(
-        name="observations",
-        metadata={"hnsw:space": "cosine"},
-    )
-    # Web page indexing collection (used by /web skill)
-    web_pages = client.get_or_create_collection(
-        name="web_pages",
-        metadata={"hnsw:space": "cosine"},
-    )
+    try:
+        client = chromadb.PersistentClient(path=MEMORY_DIR)
+        collection = client.get_or_create_collection(
+            name="knowledge",
+            metadata={"hnsw:space": "cosine"},
+        )
+        fix_outcomes = client.get_or_create_collection(
+            name="fix_outcomes",
+            metadata={"hnsw:space": "cosine"},
+        )
+        # Auto-capture: observations collection (separate from curated knowledge)
+        observations = client.get_or_create_collection(
+            name="observations",
+            metadata={"hnsw:space": "cosine"},
+        )
+        # Web page indexing collection (used by /web skill)
+        web_pages = client.get_or_create_collection(
+            name="web_pages",
+            metadata={"hnsw:space": "cosine"},
+        )
+    except Exception as e:
+        import traceback
+        print(f"[MCP] ChromaDB init failed: {e}\n{traceback.format_exc()}", file=_sys.stderr)
+        _chromadb_degraded = True
 
 # Progressive disclosure: preview length for search summaries
 SUMMARY_LENGTH = 120
@@ -995,6 +1017,7 @@ def _compact_observations():
 
 
 @mcp.tool()
+@crash_proof
 def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight: float = 0.15) -> dict:
     """Search memory for relevant information. Use before starting any task.
 
@@ -1083,6 +1106,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
 
 
 @mcp.tool()
+@crash_proof
 def remember_this(content: str, context: str = "", tags: str = "") -> dict:
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
@@ -1168,6 +1192,7 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def deep_query(query: str, top_k: int = 50, recency_weight: float = 0.15) -> dict:
     """Comprehensive memory search — use for important decisions or debugging recurring issues.
 
@@ -1206,6 +1231,7 @@ def deep_query(query: str, top_k: int = 50, recency_weight: float = 0.15) -> dic
 
 
 @mcp.tool()
+@crash_proof
 def get_recent_activity(hours: int = 48) -> dict:
     """Get recent memory saves chronologically. Good for session startup.
 
@@ -1255,6 +1281,7 @@ def get_recent_activity(hours: int = 48) -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def get_memory(id: str) -> dict:
     """Retrieve full content for a specific memory by ID.
 
@@ -1306,6 +1333,7 @@ def get_memory(id: str) -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def memory_stats() -> dict:
     """Get memory system statistics."""
     count = collection.count()
@@ -1337,6 +1365,7 @@ def memory_stats() -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def search_by_tags(tags: str, match_all: bool = False, top_k: int = 15) -> dict:
     """Search memories by exact tag matching.
 
@@ -1366,6 +1395,7 @@ def search_by_tags(tags: str, match_all: bool = False, top_k: int = 15) -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def search_observations(query: str, top_k: int = 20, hours: int = 0, sentiment: str = "") -> dict:
     """Search auto-captured observations (tool calls, errors, prompts).
 
@@ -1429,6 +1459,7 @@ def search_observations(query: str, top_k: int = 20, hours: int = 0, sentiment: 
 
 
 @mcp.tool()
+@crash_proof
 def get_session_sentiment(hours: int = 24) -> dict:
     """Get sentiment distribution for recent user interactions.
 
@@ -1519,6 +1550,7 @@ def get_session_sentiment(hours: int = 24) -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def get_observation(id: str) -> dict:
     """Retrieve full content for a specific observation by ID.
 
@@ -1547,6 +1579,7 @@ def get_observation(id: str) -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def timeline(anchor_id: str = "", anchor_time: str = "", window_minutes: int = 10, limit: int = 20) -> dict:
     """Get chronological observations around a point in time.
 
@@ -1645,6 +1678,7 @@ def timeline(anchor_id: str = "", anchor_time: str = "", window_minutes: int = 1
 
 
 @mcp.tool()
+@crash_proof
 def record_attempt(error_text: str, strategy_id: str) -> dict:
     """Record a fix attempt for causal tracking.
 
@@ -1697,6 +1731,7 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def record_outcome(chain_id: str, outcome: str) -> dict:
     """Record the outcome of a fix attempt.
 
@@ -1751,6 +1786,7 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def query_fix_history(error_text: str, top_k: int = 10) -> dict:
     """Query fix history for a given error to find what strategies worked or failed.
 
@@ -2476,6 +2512,7 @@ def rebuild_tag_index() -> dict:
 
 
 @mcp.tool()
+@crash_proof
 def maintenance(action: str, top_k: int | None = None, days: int | None = None,
                 min_cluster_size: int | None = None,
                 distance_threshold: float | None = None) -> dict:
@@ -2715,4 +2752,8 @@ atexit.register(_cleanup_socket)
 if __name__ == "__main__":
     _ensure_initialized()
     _start_socket_server()
-    mcp.run()
+    try:
+        mcp.run()
+    except Exception as e:
+        print(f"[MCP] Fatal: {e}", file=_sys.stderr)
+        _sys.exit(1)

@@ -8520,7 +8520,8 @@ if os.path.isfile(_ms_gw_path):
     _gw_decorated = False
     for i, line in enumerate(_ms_gw_lines):
         if "def maintenance(" in line and i > 0:
-            _gw_decorated = "@mcp.tool()" in _ms_gw_lines[i - 1]
+            # Check preceding lines for @mcp.tool() (may have @crash_proof between)
+            _gw_decorated = any("@mcp.tool()" in _ms_gw_lines[j] for j in range(max(0, i - 3), i))
             break
     test("gateway: maintenance is registered as MCP tool",
          _gw_decorated,
