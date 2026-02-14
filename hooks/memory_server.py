@@ -1182,32 +1182,42 @@ def get_memory(id: str) -> dict:
         id: The memory ID (from search results)
     """
     try:
-        result = collection.get(ids=[id], include=["documents", "metadatas"])
+        # Support batch fetch: comma-separated IDs return multiple memories
+        ids = [i.strip() for i in id.split(",") if i.strip()]
+        if not ids:
+            return {"error": "No valid ID provided"}
+
+        result = collection.get(ids=ids, include=["documents", "metadatas"])
         if not result or not result.get("documents") or len(result["documents"]) == 0:
             return {"error": f"No memory found with id: {id}"}
 
-        entry = {
-            "id": id,
-            "content": result["documents"][0],
-        }
-        if result.get("metadatas") and result["metadatas"][0]:
-            meta = result["metadatas"][0]
-            entry["context"] = meta.get("context", "")
-            entry["tags"] = meta.get("tags", "")
-            entry["timestamp"] = meta.get("timestamp", "")
+        entries = []
+        for i, doc in enumerate(result["documents"]):
+            entry = {
+                "id": ids[i] if i < len(ids) else "unknown",
+                "content": doc,
+            }
+            if result.get("metadatas") and i < len(result["metadatas"]) and result["metadatas"][i]:
+                meta = result["metadatas"][i]
+                entry["context"] = meta.get("context", "")
+                entry["tags"] = meta.get("tags", "")
+                entry["timestamp"] = meta.get("timestamp", "")
 
-            # Retrieval tracking: increment count and update timestamp
-            try:
-                retrieval_count = int(meta.get("retrieval_count", 0)) + 1
-                updated_meta = dict(meta)
-                updated_meta["retrieval_count"] = retrieval_count
-                updated_meta["last_retrieved"] = datetime.now().isoformat()
-                collection.update(ids=[id], metadatas=[updated_meta])
-            except Exception:
-                pass  # Tracking failure must not break retrieval
+                # Retrieval tracking: increment count and update timestamp
+                try:
+                    retrieval_count = int(meta.get("retrieval_count", 0)) + 1
+                    updated_meta = dict(meta)
+                    updated_meta["retrieval_count"] = retrieval_count
+                    updated_meta["last_retrieved"] = datetime.now().isoformat()
+                    collection.update(ids=[ids[i]], metadatas=[updated_meta])
+                except Exception:
+                    pass  # Tracking failure must not break retrieval
+
+            entries.append(entry)
 
         _touch_memory_timestamp()
-        return entry
+        # Single ID: return single entry (backward compatible)
+        return entries[0] if len(entries) == 1 else {"memories": entries, "count": len(entries)}
 
     except Exception as e:
         return {"error": f"Failed to retrieve memory: {str(e)}"}
