@@ -12,18 +12,21 @@
   ],
   "improvements_shipped": [
     "Re-enabled terminal statusline HP bar",
-    "Deep comparison analysis: Megaman vs claude-mem"
+    "Deep comparison: Megaman vs claude-mem",
+    "Diagnosed UDS RED flag (cosmetic)"
   ],
   "next_steps": [
-    "Selective AI-processing for high-value observations (errors only)",
-    "Activate get_teammate_context with @mcp.tool()",
+    "Activate get_teammate_context (add decorators)",
     "Citation URLs for memories",
-    "Privacy tags concept exploration"
+    "Privacy tags (<private> edge stripping)",
+    "Fix gather.py RED flag logic"
   ],
-  "known_issues": [],
+  "known_issues": [
+    "gather.py reports RED when MCP server not running (cosmetic)"
+  ],
   "last_session_metrics": {
-    "reads": 8,
-    "edits": 1,
+    "reads": 12,
+    "edits": 3,
     "errors": 0,
     "verified": 0,
     "pending": 0
