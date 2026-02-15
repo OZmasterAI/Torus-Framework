@@ -657,16 +657,20 @@ def main():
     # Model name from session data
     model_data = data.get("model", {}) or {}
     model_name = model_data.get("display_name", "Claude")
-    # Shorten known model names
-    model_abbrevs = {"Claude 3.5 Sonnet": "Sonnet", "Claude 3.5 Haiku": "Haiku",
-                     "Claude 3 Opus": "Opus", "Claude Opus 4": "Opus",
-                     "Claude Sonnet 4": "Sonnet", "Claude Haiku 4": "Haiku",
-                     "Claude Opus 4.6": "Opus"}
-    model_short = model_abbrevs.get(model_name, model_name.split()[-1] if model_name else "Claude")
-
-    # Model bracket color — based on model identity, not health
-    MODEL_COLORS = {"Opus": COLOR_ORANGE, "Sonnet": "\033[94m", "Haiku": "\033[97m"}
-    model_color = MODEL_COLORS.get(model_short, COLOR_CYAN)
+    # Detect model family from display name (case-insensitive substring match)
+    model_lower = (model_name or "").lower()
+    if "opus" in model_lower:
+        model_short = "Opus"
+        model_color = COLOR_ORANGE
+    elif "sonnet" in model_lower:
+        model_short = "Sonnet"
+        model_color = "\033[94m"   # blue
+    elif "haiku" in model_lower:
+        model_short = "Haiku"
+        model_color = "\033[97m"   # white
+    else:
+        model_short = model_name.split()[-1] if model_name else "Claude"
+        model_color = COLOR_CYAN
 
     # Git branch
     git_branch = get_git_branch()
