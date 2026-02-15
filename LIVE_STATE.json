@@ -1,34 +1,38 @@
 {
-  "session_count": 69,
+  "session_count": 71,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "claude-mem-comparison",
+  "feature": "framework-analysis-and-fixes",
   "feature_status": "complete",
-  "test_count": 966,
+  "test_count": 967,
   "test_failures": 0,
   "files_modified": [
-    "settings.json"
+    "skills/wrap-up/scripts/gather.py",
+    "rules/modes.md",
+    "modes/README.md"
   ],
   "improvements_shipped": [
-    "Re-enabled terminal statusline HP bar",
-    "Deep comparison: Megaman vs claude-mem",
-    "Diagnosed UDS RED flag (cosmetic)"
+    "gather.py RED flag: MCP process detection fallback",
+    "modes.md token leak: moved out of rules/",
+    "Session 40 vs 70 comprehensive comparison"
   ],
   "next_steps": [
+    "Fix stats-cache.json memory_count gap",
     "Activate get_teammate_context (add decorators)",
     "Citation URLs for memories",
     "Privacy tags (<private> edge stripping)",
-    "Fix gather.py RED flag logic"
+    "Memory compaction planning (revisit at 500+)"
   ],
   "known_issues": [
-    "gather.py reports RED when MCP server not running (cosmetic)"
+    "stats-cache.json lacks memory_count — gather.py fallback returns 0",
+    "gather.py promotion_candidates/recent_learnings fail when socket unreachable"
   ],
   "last_session_metrics": {
     "reads": 12,
-    "edits": 3,
+    "edits": 2,
     "errors": 0,
-    "verified": 0,
-    "pending": 0
+    "verified": 2,
+    "pending": 5
   }
 }
