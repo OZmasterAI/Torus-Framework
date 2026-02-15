@@ -1,33 +1,31 @@
 {
-  "session_count": 68,
+  "session_count": 69,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "cross-agent-transcript-visibility",
-  "feature_status": "dormant-complete",
+  "feature": "claude-mem-comparison",
+  "feature_status": "complete",
   "test_count": 966,
   "test_failures": 0,
   "files_modified": [
-    "hooks/memory_server.py",
-    "hooks/test_framework.py"
+    "settings.json"
   ],
   "improvements_shipped": [
-    "get_teammate_context() dormant function",
-    "_parse_transcript_actions() helper",
-    "_format_teammate_summary() helper",
-    "12 new tests for transcript visibility"
+    "Re-enabled terminal statusline HP bar",
+    "Deep comparison analysis: Megaman vs claude-mem"
   ],
   "next_steps": [
-    "Activate get_teammate_context with @mcp.tool() when ready",
-    "Add outcome tracking from tool_result blocks",
-    "Explore event-driven transcript reads on teammate idle"
+    "Selective AI-processing for high-value observations (errors only)",
+    "Activate get_teammate_context with @mcp.tool()",
+    "Citation URLs for memories",
+    "Privacy tags concept exploration"
   ],
   "known_issues": [],
   "last_session_metrics": {
-    "reads": 6,
-    "edits": 2,
+    "reads": 8,
+    "edits": 1,
     "errors": 0,
-    "verified": 1,
+    "verified": 0,
     "pending": 0
   }
 }

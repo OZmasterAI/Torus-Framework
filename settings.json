@@ -188,5 +188,6 @@
     "typescript-lsp@claude-plugins-official": true
   },
   "skipDangerousModePermissionPrompt": true,
-  "effortLevel": "medium"
+  "effortLevel": "medium",
+  "statusLine": "python3 \"$HOME/.claude/hooks/statusline.py\""
 }
