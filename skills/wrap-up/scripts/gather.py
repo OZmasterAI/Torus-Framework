@@ -75,18 +75,49 @@ def gather_git(warnings):
     return result
 
 
+def _is_mcp_process_running():
+    """Check if memory_server.py is running as a process."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "memory_server.py"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def gather_memory(warnings):
-    """Check memory accessibility and count."""
+    """Check memory accessibility and count.
+
+    Uses UDS socket first (most accurate). Falls back to process detection
+    when the socket isn't reachable — the MCP server may be running but
+    the socket is only visible inside the MCP process context.
+    """
     result = {"count": 0, "accessible": False}
     try:
         result["accessible"] = is_worker_available(retries=1, delay=0.1)
     except Exception as e:
         warnings.append(f"memory accessible: {e}")
+    if not result["accessible"]:
+        # Socket unreachable — check if MCP process is alive (common when
+        # gather.py runs as a subprocess outside the MCP context)
+        if _is_mcp_process_running():
+            result["accessible"] = True
+            warnings.append("memory: socket unreachable but MCP process running")
     if result["accessible"]:
         try:
             result["count"] = socket_count("knowledge")
-        except Exception as e:
-            warnings.append(f"memory count: {e}")
+        except (WorkerUnavailable, Exception) as e:
+            # If socket failed but process is running, estimate count from stats-cache
+            stats_cache = os.path.join(CLAUDE_DIR, "stats-cache.json")
+            try:
+                with open(stats_cache) as f:
+                    cached = json.load(f)
+                result["count"] = cached.get("memory_count", 0)
+                warnings.append("memory count: used stats-cache fallback")
+            except Exception:
+                warnings.append(f"memory count: {e}")
     return result
 
 
