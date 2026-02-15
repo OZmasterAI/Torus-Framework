@@ -578,15 +578,19 @@ def format_health_bar(pct):
 def format_context_pct(pct):
     """Format context percentage with color coding (no bar).
 
-    Green <70%, yellow 70-89%, red 90%+.
+    Cyan <40%, green 40-49%, orange 50-59%, yellow 60-69%, red 70%+.
     Returns: '{color}62%{reset}'
     """
-    if pct >= 90:
+    if pct >= 70:
         color = COLOR_RED
-    elif pct >= 70:
+    elif pct >= 60:
         color = COLOR_YELLOW
-    else:
+    elif pct >= 50:
+        color = COLOR_ORANGE
+    elif pct >= 40:
         color = COLOR_GREEN
+    else:
+        color = COLOR_CYAN
     return f"{color}{int(pct)}%{COLOR_RESET}"
 
 
