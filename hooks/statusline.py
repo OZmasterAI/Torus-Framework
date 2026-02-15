@@ -561,23 +561,33 @@ def get_git_branch():
     return branch
 
 
-def format_context_bar(pct):
-    """Format a 10-char color-coded context progress bar.
+def format_health_bar(pct):
+    """Format health as a 10-char color-coded progress bar.
 
-    Green <70%, yellow 70-89%, red 90%+.
-    Returns: '{color}██████░░░░{reset} 62%'
+    Uses health_color() thresholds: cyan=100%, green=90%+, orange=75%+, yellow=50%+, red=<50%.
+    Returns: '{color}████████░░{reset} 85%'
     """
     width = 10
     filled = round(pct / 100 * width)
     filled = max(0, min(width, filled))
     bar = BAR_FULL * filled + BAR_EMPTY * (width - filled)
+    color = health_color(pct)
+    return f"{color}{bar}{COLOR_RESET} {pct}%"
+
+
+def format_context_pct(pct):
+    """Format context percentage with color coding (no bar).
+
+    Green <70%, yellow 70-89%, red 90%+.
+    Returns: '{color}62%{reset}'
+    """
     if pct >= 90:
         color = COLOR_RED
     elif pct >= 70:
         color = COLOR_YELLOW
     else:
         color = COLOR_GREEN
-    return f"{color}{bar}{COLOR_RESET} {int(pct)}%"
+    return f"{color}{int(pct)}%{COLOR_RESET}"
 
 
 def main():
@@ -660,6 +670,9 @@ def main():
     # Total tool calls
     total_calls = get_total_tool_calls()
 
+    # Health bar (10-char, same style as old context bar)
+    health_bar = format_health_bar(health_pct)
+
     # ── LINE 1: Identity + framework health ──
     line1_parts = [f"{h_color}[{model_short}]{COLOR_RESET}"]
 
@@ -693,11 +706,14 @@ def main():
             rd_str += f"|lag:{fmt_bytes(rd_lag)}"
         line1_parts.append(rd_str)
 
-    # ── LINE 2: Context bar + session metrics ──
-    ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
-    ctx_bar = format_context_bar(ctx_pct_val)
+    # Health bar at end of line 1
+    line1_parts.append(health_bar)
 
-    line2_parts = [ctx_bar]
+    # ── LINE 2: Context percentage + session metrics ──
+    ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
+    ctx_display = format_context_pct(ctx_pct_val)
+
+    line2_parts = [ctx_display]
 
     # Session tokens + last turn breakdown
     if session_tok_str:
