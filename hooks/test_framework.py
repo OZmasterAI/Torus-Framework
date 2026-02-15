@@ -9013,6 +9013,158 @@ except OSError:
     pass
 
 # ─────────────────────────────────────────────────
+# --- Teammate Transcript Helpers ---
+# ─────────────────────────────────────────────────
+
+# Import the dormant helpers from memory_server
+sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+from memory_server import _parse_transcript_actions, _format_teammate_summary, get_teammate_context
+
+# Helper: create a temp JSONL transcript file
+def _make_transcript(lines_data):
+    """Write a list of dicts as JSONL to a temp file, return path."""
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=".jsonl")
+    with os.fdopen(fd, "w") as f:
+        for entry in lines_data:
+            f.write(json.dumps(entry) + "\n")
+    return path
+
+# Helper: build an assistant message with tool_use blocks
+def _assistant_tool_msg(tool_name, tool_input):
+    return {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {"type": "tool_use", "name": tool_name, "input": tool_input}
+            ]
+        }
+    }
+
+# Helper: build an assistant message with text block
+def _assistant_text_msg(text):
+    return {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {"type": "text", "text": text}
+            ]
+        }
+    }
+
+
+# Test 1: _parse_transcript_actions — happy path
+_t1_lines = [
+    _assistant_tool_msg("Read", {"file_path": "/home/crab/hooks/gate_01.py"}),
+    _assistant_tool_msg("Grep", {"pattern": "file_claims", "path": "/home/crab/hooks/"}),
+    _assistant_tool_msg("Edit", {"file_path": "/home/crab/hooks/gate_13.py", "old_string": "x", "new_string": "y"}),
+]
+_t1_path = _make_transcript(_t1_lines)
+_t1_result = _parse_transcript_actions(_t1_path, max_actions=5)
+test("TranscriptParse: happy path returns 3 actions", len(_t1_result) == 3)
+os.remove(_t1_path)
+
+# Test 2: _parse_transcript_actions — empty file
+import tempfile
+_t2_fd, _t2_path = tempfile.mkstemp(suffix=".jsonl")
+os.close(_t2_fd)
+_t2_result = _parse_transcript_actions(_t2_path, max_actions=5)
+test("TranscriptParse: empty file returns []", _t2_result == [])
+os.remove(_t2_path)
+
+# Test 3: _parse_transcript_actions — missing file
+_t3_result = _parse_transcript_actions("/tmp/nonexistent_transcript_99999.jsonl", max_actions=5)
+test("TranscriptParse: missing file returns []", _t3_result == [])
+
+# Test 4: _parse_transcript_actions — malformed lines
+_t4_fd, _t4_path = tempfile.mkstemp(suffix=".jsonl")
+with os.fdopen(_t4_fd, "w") as _f:
+    _f.write("this is not json\n")
+    _f.write(json.dumps(_assistant_tool_msg("Bash", {"command": "echo hello"})) + "\n")
+    _f.write("{broken json\n")
+    _f.write(json.dumps(_assistant_tool_msg("Read", {"file_path": "/tmp/a.py"})) + "\n")
+_t4_result = _parse_transcript_actions(_t4_path, max_actions=5)
+test("TranscriptParse: malformed lines skipped, valid returned", len(_t4_result) == 2)
+os.remove(_t4_path)
+
+# Test 5: _parse_transcript_actions — max_actions cap
+_t5_lines = [_assistant_tool_msg("Read", {"file_path": f"/tmp/file_{i}.py"}) for i in range(10)]
+_t5_path = _make_transcript(_t5_lines)
+_t5_result = _parse_transcript_actions(_t5_path, max_actions=3)
+test("TranscriptParse: max_actions=3 caps at 3", len(_t5_result) == 3)
+os.remove(_t5_path)
+
+# Test 6: _parse_transcript_actions — text-only messages
+_t6_lines = [
+    _assistant_text_msg("Let me analyze the error in the authentication module"),
+    _assistant_text_msg("The root cause is a missing null check"),
+]
+_t6_path = _make_transcript(_t6_lines)
+_t6_result = _parse_transcript_actions(_t6_path, max_actions=5)
+test("TranscriptParse: text-only messages extracted", len(_t6_result) == 2 and "Text:" in _t6_result[0]["action"])
+os.remove(_t6_path)
+
+# Test 7: _format_teammate_summary — formats correctly
+_t7_actions = [
+    {"action": "Read: /home/crab/hooks/gate_01.py", "outcome": ""},
+    {"action": "Grep: file_claims in hooks/", "outcome": ""},
+    {"action": "Edit: gate_13.py", "outcome": ""},
+]
+_t7_summary = _format_teammate_summary("builder", _t7_actions, True)
+test("FormatSummary: contains Teammate header", "Teammate: builder" in _t7_summary)
+test("FormatSummary: contains Recent actions", "Recent actions:" in _t7_summary)
+test("FormatSummary: has numbered list", "  1." in _t7_summary and "  2." in _t7_summary)
+
+# Test 8: _format_teammate_summary — respects char budget
+_t8_actions = [{"action": f"Read: /home/crab/some/very/long/path/file_{i}.py with extra detail padding", "outcome": ""} for i in range(20)]
+_t8_summary = _format_teammate_summary("researcher", _t8_actions, False)
+test("FormatSummary: output under 1200 chars", len(_t8_summary) <= 1200)
+
+# Test 9: get_teammate_context — no active subagents
+# Temporarily create an empty state file to test
+_t9_fd, _t9_state_path = tempfile.mkstemp(prefix="state_", suffix=".json", dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+with os.fdopen(_t9_fd, "w") as _f:
+    json.dump({"active_subagents": []}, _f)
+_t9_result = get_teammate_context()
+test("GetContext: no subagents returns empty", _t9_result["teammates"] == [] and _t9_result["count"] == 0)
+os.remove(_t9_state_path)
+
+# Test 10: get_teammate_context — with agent_name filter
+_t10_lines = [_assistant_tool_msg("Read", {"file_path": "/tmp/test.py"})]
+_t10_transcript = _make_transcript(_t10_lines)
+_t10_fd, _t10_state_path = tempfile.mkstemp(prefix="state_", suffix=".json", dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+with os.fdopen(_t10_fd, "w") as _f:
+    json.dump({"active_subagents": [
+        {"agent_id": "abc-123", "agent_type": "builder", "transcript_path": _t10_transcript, "start_ts": time.time()},
+        {"agent_id": "def-456", "agent_type": "researcher", "transcript_path": _t10_transcript, "start_ts": time.time()},
+    ]}, _f)
+# Small sleep to ensure this state file is the newest
+time.sleep(0.05)
+_t10_result = get_teammate_context(agent_name="builder")
+test("GetContext: agent_name filter returns 1 match", _t10_result["count"] == 1)
+os.remove(_t10_state_path)
+os.remove(_t10_transcript)
+
+# Test 11: get_teammate_context — missing transcript file
+_t11_fd, _t11_state_path = tempfile.mkstemp(prefix="state_", suffix=".json", dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+with os.fdopen(_t11_fd, "w") as _f:
+    json.dump({"active_subagents": [
+        {"agent_id": "ghi-789", "agent_type": "auditor", "transcript_path": "/tmp/does_not_exist_99999.jsonl", "start_ts": time.time()},
+    ]}, _f)
+time.sleep(0.05)
+_t11_result = get_teammate_context()
+test("GetContext: missing transcript gives graceful summary", _t11_result["count"] == 1 and "no actions recorded" in _t11_result["teammates"][0])
+os.remove(_t11_state_path)
+
+# Test 12: get_teammate_context — returns dict with expected keys
+_t12_fd, _t12_state_path = tempfile.mkstemp(prefix="state_", suffix=".json", dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+with os.fdopen(_t12_fd, "w") as _f:
+    json.dump({"active_subagents": []}, _f)
+_t12_result = get_teammate_context()
+test("GetContext: returns dict with teammates and count keys", isinstance(_t12_result, dict) and "teammates" in _t12_result and "count" in _t12_result)
+os.remove(_t12_state_path)
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

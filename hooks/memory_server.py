@@ -2571,6 +2571,182 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
 
 
 # ──────────────────────────────────────────────────
+# Teammate Transcript Helpers (DORMANT — add @mcp.tool() to activate)
+# ──────────────────────────────────────────────────
+
+
+def _parse_transcript_actions(transcript_path: str, max_actions: int = 5) -> list:
+    """Parse a JSONL transcript file and extract recent assistant actions.
+
+    Reads from the end of the file to get the most recent actions first.
+    Extracts tool uses (name + truncated input) and text blocks from
+    assistant messages. Skips user and progress messages.
+
+    Returns list of {"action": str, "outcome": str} dicts, most recent first.
+    """
+    if not transcript_path:
+        return []
+    try:
+        with open(transcript_path, "r") as f:
+            lines = f.readlines()
+    except (FileNotFoundError, OSError, PermissionError):
+        return []
+
+    if not lines:
+        return []
+
+    actions = []
+    # Process lines in reverse to get most recent first
+    for line in reversed(lines):
+        if len(actions) >= max_actions:
+            break
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        msg_type = entry.get("type", "")
+        if msg_type != "assistant":
+            continue
+
+        # Extract from content blocks
+        content = entry.get("message", {}).get("content", [])
+        if isinstance(content, str):
+            # Plain text assistant message
+            preview = content[:100].replace("\n", " ")
+            if preview:
+                actions.append({"action": f"Text: {preview}", "outcome": ""})
+            continue
+
+        if not isinstance(content, list):
+            continue
+
+        for block in content:
+            if len(actions) >= max_actions:
+                break
+            block_type = block.get("type", "")
+
+            if block_type == "tool_use":
+                tool_name = block.get("name", "unknown")
+                tool_input = block.get("input", {})
+                # Extract the most informative field from input
+                hint = ""
+                if isinstance(tool_input, dict):
+                    for key in ("file_path", "command", "pattern", "query", "path", "content", "prompt"):
+                        val = tool_input.get(key, "")
+                        if val:
+                            hint = str(val)[:80].replace("\n", " ")
+                            break
+                    if not hint:
+                        # Fallback: first string value
+                        for v in tool_input.values():
+                            if isinstance(v, str) and v:
+                                hint = v[:80].replace("\n", " ")
+                                break
+                action_str = f"{tool_name}: {hint}" if hint else tool_name
+                actions.append({"action": action_str, "outcome": ""})
+
+            elif block_type == "text":
+                text = block.get("text", "")
+                preview = text[:100].replace("\n", " ")
+                if preview:
+                    actions.append({"action": f"Text: {preview}", "outcome": ""})
+
+    return actions[:max_actions]
+
+
+def _format_teammate_summary(agent_type: str, actions: list, is_active: bool) -> str:
+    """Format a teammate's actions into a structured summary.
+
+    Output is hard-capped at 1200 chars (~300 tokens) to keep summaries compact.
+
+    Args:
+        agent_type: The type/role of the teammate (e.g., "builder", "researcher").
+        actions: List of {"action": str, "outcome": str} dicts from _parse_transcript_actions.
+        is_active: Whether the agent is currently running.
+    """
+    status = "active" if is_active else "finished"
+    header = f"Teammate: {agent_type} ({status}, {len(actions)} turns)"
+
+    if not actions:
+        return header + "\n  (no actions recorded)"
+
+    lines = [header, "Recent actions:"]
+    for i, act in enumerate(actions, 1):
+        action_text = act.get("action", "unknown")
+        # Truncate individual action lines to ~120 chars
+        if len(action_text) > 120:
+            action_text = action_text[:117] + "..."
+        lines.append(f"  {i}. {action_text}")
+
+    result = "\n".join(lines)
+    # Hard cap at 1200 chars
+    if len(result) > 1200:
+        result = result[:1197] + "..."
+    return result
+
+
+def get_teammate_context(agent_name: str = "", max_actions: int = 5) -> dict:
+    """Get compressed summaries of teammate transcripts for cross-agent visibility.
+
+    DORMANT: This function is not registered as an MCP tool. To activate,
+    add @mcp.tool() and @crash_proof decorators above this function and
+    restart the MCP server.
+
+    Args:
+        agent_name: Optional filter — match by agent_type or agent_id substring.
+                    If empty, summarizes all active teammates.
+        max_actions: Maximum number of recent actions to extract per teammate.
+
+    Returns:
+        dict with {"teammates": [str, ...], "count": int}
+    """
+    import glob as _glob
+
+    # Reuse the same pattern as subagent_context.py:find_current_session_state()
+    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+    try:
+        pattern = os.path.join(state_dir, "state_*.json")
+        files = _glob.glob(pattern)
+        if not files:
+            return {"teammates": [], "count": 0}
+        files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+        with open(files[0]) as f:
+            state = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError, IndexError):
+        return {"teammates": [], "count": 0}
+
+    active_subagents = state.get("active_subagents", [])
+    if not active_subagents:
+        return {"teammates": [], "count": 0}
+
+    # Filter if agent_name provided
+    if agent_name:
+        matched = [
+            sa for sa in active_subagents
+            if agent_name.lower() in sa.get("agent_type", "").lower()
+            or agent_name.lower() in sa.get("agent_id", "").lower()
+        ]
+    else:
+        matched = active_subagents
+
+    summaries = []
+    for sa in matched:
+        transcript_path = sa.get("transcript_path", "")
+        agent_type = sa.get("agent_type", "unknown")
+        actions = _parse_transcript_actions(transcript_path, max_actions=max_actions)
+        # Determine if still active (has a start_ts, no end marker)
+        is_active = bool(sa.get("start_ts", 0))
+        summary = _format_teammate_summary(agent_type, actions, is_active)
+        summaries.append(summary)
+
+    return {"teammates": summaries, "count": len(summaries)}
+
+
+# ──────────────────────────────────────────────────
 # Unix Domain Socket Gateway
 # ──────────────────────────────────────────────────
 
