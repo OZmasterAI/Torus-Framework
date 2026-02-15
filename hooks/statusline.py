@@ -572,7 +572,7 @@ def format_health_bar(pct):
     filled = max(0, min(width, filled))
     bar = BAR_FULL * filled + BAR_EMPTY * (width - filled)
     color = health_color(pct)
-    return f"HP:{color}{bar}{COLOR_RESET} {pct}%"
+    return f"{color}HP:{bar} {pct}%{COLOR_RESET}"
 
 
 def format_context_pct(pct):
