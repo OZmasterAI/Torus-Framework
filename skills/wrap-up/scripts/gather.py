@@ -114,7 +114,7 @@ def gather_memory(warnings):
             try:
                 with open(stats_cache) as f:
                     cached = json.load(f)
-                result["count"] = cached.get("memory_count", 0)
+                result["count"] = cached.get("mem_count", 0)
                 warnings.append("memory count: used stats-cache fallback")
             except Exception:
                 warnings.append(f"memory count: {e}")
