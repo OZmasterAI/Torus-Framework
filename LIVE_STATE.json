@@ -1,5 +1,5 @@
 {
-  "session_count": 82,
+  "session_count": 83,
   "status": "idle",
   "project": null,
   "project_path": null,
@@ -12,10 +12,10 @@
   "next_steps": [],
   "known_issues": [],
   "last_session_metrics": {
-    "reads": 14,
-    "edits": 3,
+    "reads": 0,
+    "edits": 0,
     "errors": 0,
-    "verified": 2,
+    "verified": 0,
     "pending": 0
   }
 }
