@@ -64,6 +64,7 @@ async function renderMemoryGraph() {
     const edges = data.edges;
     const maxCount = Math.max(...nodes.map(n => n.count), 1);
     const maxWeight = Math.max(...edges.map(e => e.weight), 1);
+    const radiusScale = (count) => 6 + (count / maxCount) * 18;
 
     // Create SVG
     const svg = d3.select(container)
@@ -118,8 +119,6 @@ async function renderMemoryGraph() {
         .force('charge', d3.forceManyBody().strength(-200))
         .force('center', d3.forceCenter(W / 2, H / 2))
         .force('collide', d3.forceCollide().radius(d => radiusScale(d.count) + 4));
-
-    const radiusScale = (count) => 6 + (count / maxCount) * 18;
 
     // Draw edges
     const link = zoomGroup.append('g')
