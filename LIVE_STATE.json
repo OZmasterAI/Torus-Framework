@@ -1,46 +1,15 @@
 {
-  "session_count": 76,
+  "session_count": 78,
   "status": "idle",
-  "project": "megaman-framework",
-  "project_path": "/home/crab/.claude",
-  "feature": "statusline-visual-redesign",
-  "feature_status": "complete",
-  "test_count": 981,
+  "project": null,
+  "project_path": null,
+  "feature": null,
+  "feature_status": null,
+  "test_count": 0,
   "test_failures": 0,
-  "files_modified": [
-    "hooks/statusline.py",
-    "hooks/test_framework.py"
-  ],
-  "improvements_shipped": [
-    "Statusline 2-line layout (identity + session metrics)",
-    "Git branch display with 10s cache",
-    "Color-coded HP bar (fully colored label+bar+%)",
-    "5-tier context % colors (cyan/green/orange/yellow/red)",
-    "Model bracket colored by identity (Opus/Sonnet/Haiku)",
-    "Error pressure indicator (E:N with fire/warning icons)",
-    "Memory freshness display (↑Xm)",
-    "Compression counter (📦CMP:N)",
-    "Icons: ⚠️ errors, ✅ verification, 💰 cost, 📦 compression",
-    "Removed redundant PV:N indicator",
-    "EXPECTED_GATES 12→14",
-    "Fixed Gate 13 test: cleanup_test_states() clears stale file claims"
-  ],
-  "next_steps": [
-    "Fix stats-cache.json memory_count gap",
-    "Activate get_teammate_context (add decorators)",
-    "Citation URLs for memories",
-    "Privacy tags (<private> edge stripping)",
-    "Memory compaction planning (revisit at 500+)"
-  ],
-  "known_issues": [
-    "stats-cache.json lacks memory_count — gather.py fallback returns 0",
-    "gather.py promotion_candidates/recent_learnings fail when socket unreachable"
-  ],
-  "last_session_metrics": {
-    "reads": 14,
-    "edits": 16,
-    "errors": 0,
-    "verified": 9,
-    "pending": 0
-  }
+  "files_modified": [],
+  "improvements_shipped": [],
+  "next_steps": [],
+  "known_issues": [],
+  "last_session_metrics": {}
 }
