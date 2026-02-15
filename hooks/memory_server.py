@@ -3,7 +3,7 @@
 
 A ChromaDB-backed persistent memory system exposed as MCP tools.
 Claude Code connects to this server and gets search_knowledge, remember_this,
-get_recent_activity, and get_memory as native tools.
+get_recent_activity, get_memory, and maintenance as native tools.
 
 The memory persists across sessions in ~/data/memory/, enabling cross-session
 knowledge retention.
@@ -1299,38 +1299,6 @@ def get_memory(id: str) -> dict:
 
 @mcp.tool()
 @crash_proof
-def memory_stats() -> dict:
-    """Get memory system statistics."""
-    count = collection.count()
-    obs_count = observations.count()
-    fix_count = fix_outcomes.count()
-
-    # Queue file size
-    queue_size = 0
-    queue_lines = 0
-    try:
-        if os.path.exists(CAPTURE_QUEUE_FILE):
-            queue_size = os.path.getsize(CAPTURE_QUEUE_FILE)
-            with open(CAPTURE_QUEUE_FILE, "r") as f:
-                queue_lines = sum(1 for _ in f)
-    except Exception:
-        pass
-
-    return {
-        "total_memories": count,
-        "total_observations": obs_count,
-        "total_fix_outcomes": fix_count,
-        "capture_queue_lines": queue_lines,
-        "capture_queue_bytes": queue_size,
-        "storage_path": MEMORY_DIR,
-        "collections": ["knowledge", "observations", "fix_outcomes", "web_pages"],
-        "fts_index_count": _fts_count,
-        "status": "healthy" if count >= 0 else "error",
-    }
-
-
-@mcp.tool()
-@crash_proof
 def search_by_tags(tags: str, match_all: bool = False, top_k: int = 15) -> dict:
     """Search memories by exact tag matching.
 
@@ -2437,9 +2405,24 @@ def memory_health_report() -> dict:
 
     _touch_memory_timestamp()
 
+    # Queue stats (merged from memory_stats)
+    queue_lines = 0
+    queue_bytes = 0
+    try:
+        if os.path.exists(CAPTURE_QUEUE_FILE):
+            queue_bytes = os.path.getsize(CAPTURE_QUEUE_FILE)
+            with open(CAPTURE_QUEUE_FILE, "r") as f:
+                queue_lines = sum(1 for _ in f)
+    except Exception:
+        pass
+
     return {
         "total_memories": mem_count,
         "total_observations": obs_count,
+        "total_fix_outcomes": fix_outcomes.count(),
+        "fts_index_count": _fts_count,
+        "capture_queue_lines": queue_lines,
+        "capture_queue_bytes": queue_bytes,
         "added_24h": added_24h,
         "added_7d": added_7d,
         "added_30d": added_30d,

@@ -19,7 +19,7 @@ When the user says "audit", "review", "check everything", or wants a comprehensi
    - Check gate state file for anomalies
    - Verify boot sequence works
 5. **MEMORY AUDIT**:
-   - Check memory_stats() for health
+   - Check maintenance(action="health") for memory health score and stats
    - Look for stale or contradictory memories
 6. **REPORT**:
    - Present findings organized by severity (Critical / Warning / Info)
