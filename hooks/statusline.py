@@ -63,6 +63,7 @@ COLOR_GREEN = "\033[92m"    # 90-99%      — healthy
 COLOR_ORANGE = "\033[38;5;208m"  # 75-89% — warning
 COLOR_YELLOW = "\033[93m"   # 50-74%      — degraded
 COLOR_RED = "\033[91m"      # <50%        — critical
+COLOR_DARK_ORANGE = "\033[38;5;166m"  # dark orange — Opus model bracket
 COLOR_RESET = "\033[0m"
 
 
@@ -661,7 +662,7 @@ def main():
     model_lower = (model_name or "").lower()
     if "opus" in model_lower:
         model_short = "Opus"
-        model_color = COLOR_ORANGE
+        model_color = COLOR_DARK_ORANGE
     elif "sonnet" in model_lower:
         model_short = "Sonnet"
         model_color = "\033[94m"   # blue
