@@ -595,6 +595,55 @@ def format_context_pct(pct):
     return f"{color}{int(pct)}%{COLOR_RESET}"
 
 
+MEMORY_TS_FILE = os.path.join(HOOKS_DIR, ".memory_last_queried")
+CTX_CACHE_FILE = "/tmp/statusline-ctx-cache"
+
+
+def get_memory_freshness():
+    """Return minutes since last memory query, or None if unknown."""
+    try:
+        with open(MEMORY_TS_FILE) as f:
+            data = json.load(f)
+        ts = data.get("timestamp", 0)
+        if ts <= 0:
+            return None
+        elapsed = int(time.time() - ts) // 60
+        return elapsed
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+
+
+def get_compression_count(current_pct):
+    """Track context compression events by detecting significant % drops.
+
+    Writes previous context % to a cache file. If current % drops by 10+
+    points from previous, counts it as a compression event.
+    Returns compression count (0 if none detected).
+    """
+    prev_pct = 0
+    count = 0
+    try:
+        if os.path.exists(CTX_CACHE_FILE):
+            with open(CTX_CACHE_FILE) as f:
+                cache = json.load(f)
+            prev_pct = cache.get("pct", 0)
+            count = cache.get("compressions", 0)
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    # Detect compression: significant drop (10+ points) from previous reading
+    if prev_pct > 0 and current_pct > 0 and (prev_pct - current_pct) >= 10:
+        count += 1
+
+    # Write current state
+    try:
+        with open(CTX_CACHE_FILE, "w") as f:
+            json.dump({"pct": current_pct, "compressions": count}, f)
+    except OSError:
+        pass
+    return count
+
+
 def main():
     # Read session data from stdin
     try:
@@ -697,7 +746,12 @@ def main():
     if git_branch:
         line1_parts.append(f"\U0001f33f {git_branch}")
     line1_parts.append(f"\U0001f6e1\ufe0f G:{gate_count} S:{skill_count}")
-    line1_parts.append(f"\U0001f9e0 M:{mem_count}")
+    # Memory count + freshness
+    mem_fresh = get_memory_freshness()
+    if mem_fresh is not None and mem_fresh > 0:
+        line1_parts.append(f"\U0001f9e0 M:{mem_count} \u2191{mem_fresh}m")
+    else:
+        line1_parts.append(f"\U0001f9e0 M:{mem_count}")
     line1_parts.append(f"\u26a1TC:{total_calls}")
 
     # Subagent visibility (conditional, line 1)
@@ -722,7 +776,19 @@ def main():
     ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
     ctx_display = format_context_pct(ctx_pct_val)
 
+    # Compression detection
+    cmp_count = get_compression_count(ctx_pct_val)
+    if cmp_count > 0:
+        ctx_display += f" CMP:{cmp_count}"
+
     line2_parts = [health_bar, ctx_display]
+
+    # Error pressure (conditional — only when recent errors active)
+    recent_errors, total_errors = get_error_velocity()
+    if recent_errors > 0:
+        line2_parts.append(f"{COLOR_RED}E:{recent_errors}\U0001f525{COLOR_RESET}")
+    elif total_errors > 0:
+        line2_parts.append(f"{COLOR_YELLOW}E:{total_errors}{COLOR_RESET}")
 
     # Session tokens + last turn breakdown
     if session_tok_str:
