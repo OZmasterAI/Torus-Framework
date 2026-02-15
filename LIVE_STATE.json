@@ -1,20 +1,26 @@
 {
-  "session_count": 75,
+  "session_count": 76,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
   "feature": "statusline-visual-redesign",
   "feature_status": "complete",
   "test_count": 981,
-  "test_failures": 0,
+  "test_failures": 1,
   "files_modified": [
     "hooks/statusline.py"
   ],
   "improvements_shipped": [
     "Statusline 2-line layout (identity + session metrics)",
     "Git branch display with 10s cache",
-    "Color-coded health bar (HP:) on line 2",
-    "Color-coded context percentage (no bar)",
+    "Color-coded HP bar (fully colored label+bar+%)",
+    "5-tier context % colors (cyan/green/orange/yellow/red)",
+    "Model bracket colored by identity (Opus/Sonnet/Haiku)",
+    "Error pressure indicator (E:N with fire/warning icons)",
+    "Memory freshness display (↑Xm)",
+    "Compression counter (📦CMP:N)",
+    "Icons: ⚠️ errors, ✅ verification, 💰 cost, 📦 compression",
+    "Removed redundant PV:N indicator",
     "EXPECTED_GATES 12→14"
   ],
   "next_steps": [
@@ -22,17 +28,19 @@
     "Activate get_teammate_context (add decorators)",
     "Citation URLs for memories",
     "Privacy tags (<private> edge stripping)",
-    "Memory compaction planning (revisit at 500+)"
+    "Memory compaction planning (revisit at 500+)",
+    "Fix Gate 13 test stale file claim issue"
   ],
   "known_issues": [
     "stats-cache.json lacks memory_count — gather.py fallback returns 0",
-    "gather.py promotion_candidates/recent_learnings fail when socket unreachable"
+    "gather.py promotion_candidates/recent_learnings fail when socket unreachable",
+    "Gate 13 test: stale file claim from real session interferes with mock"
   ],
   "last_session_metrics": {
-    "reads": 4,
-    "edits": 6,
+    "reads": 12,
+    "edits": 14,
     "errors": 0,
-    "verified": 0,
+    "verified": 9,
     "pending": 0
   }
 }
