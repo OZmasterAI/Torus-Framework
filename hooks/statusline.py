@@ -686,7 +686,7 @@ def main():
         line1_parts.append(f"\U0001f33f {git_branch}")
     line1_parts.append(f"\U0001f6e1\ufe0f G:{gate_count} S:{skill_count}")
     line1_parts.append(f"\U0001f9e0 M:{mem_count}")
-    line1_parts.append(f"\u26a1 TC:{total_calls}")
+    line1_parts.append(f"\u26a1TC:{total_calls}")
 
     # Subagent visibility (conditional, line 1)
     sa_active, sa_completed_tok = get_subagent_status()
