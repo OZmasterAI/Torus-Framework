@@ -186,18 +186,28 @@ export function populateGateFilterDropdown(gateNames) {
 }
 
 export async function renderGateDeps() {
-    const data = await apiFetch('/api/gate-deps');
-    if (!data) return;
+    // Fetch deps and conflicts in parallel
+    const [depsData, conflictsData] = await Promise.all([
+        apiFetch('/api/gate-deps'),
+        apiFetch('/api/gate-state-conflicts'),
+    ]);
+    if (!depsData) return;
 
     const el = document.getElementById('gate-deps-content');
     if (!el) return;
-    const deps = data.dependencies || {};
+    const deps = depsData.dependencies || {};
     const gateNames = Object.keys(deps).sort();
 
     if (gateNames.length === 0) {
         el.innerHTML = '<div class="no-data">No gate dependency data available.</div>';
         return;
     }
+
+    // Build conflict lookup: state key → { write_conflicts, hot_key_readers }
+    const writeConflicts = (conflictsData && conflictsData.write_conflicts) || {};
+    const hotKeys = (conflictsData && conflictsData.hot_keys) || {};
+    const conflictKeys = new Set(Object.keys(writeConflicts));
+    const hotKeySet = new Set(Object.keys(hotKeys));
 
     const stateKeys = new Set();
     for (const gate of gateNames) {
@@ -214,7 +224,20 @@ export async function renderGateDeps() {
 
     let html = '<table class="gate-dep-matrix"><thead><tr><th>Gate</th>';
     for (const key of stateKeysList) {
-        html += `<th title="${escapeHtml(key)}">${escapeHtml(key)}</th>`;
+        const isConflict = conflictKeys.has(key);
+        const isHot = hotKeySet.has(key);
+        let thClass = '';
+        let indicator = '';
+        if (isConflict) {
+            const writers = writeConflicts[key]?.writers || [];
+            thClass = ' class="dep-conflict-header"';
+            indicator = ` <span class="conflict-icon" title="Write conflict: ${escapeHtml(writers.join(', '))}">&#9888;</span>`;
+        } else if (isHot) {
+            const readers = hotKeys[key]?.readers || [];
+            thClass = ' class="dep-hot-header"';
+            indicator = ` <span class="hot-icon" title="Hot key: ${readers.length} readers">&#9670;</span>`;
+        }
+        html += `<th${thClass} title="${escapeHtml(key)}">${escapeHtml(key)}${indicator}</th>`;
     }
     html += '</tr></thead><tbody>';
 
@@ -228,6 +251,9 @@ export async function renderGateDeps() {
         for (const key of stateKeysList) {
             const isRead = reads.has(key);
             const isWrite = writes.has(key);
+            const isConflict = conflictKeys.has(key) && isWrite;
+            let cellClass = 'dep-cell';
+            if (isConflict) cellClass += ' dep-cell-conflict';
             let cellContent = '';
             if (isRead && isWrite) {
                 cellContent = '<span class="dep-read"></span><span class="dep-write"></span>';
@@ -236,7 +262,7 @@ export async function renderGateDeps() {
             } else if (isWrite) {
                 cellContent = '<span class="dep-write"></span>';
             }
-            html += `<td class="dep-cell">${cellContent}</td>`;
+            html += `<td class="${cellClass}">${cellContent}</td>`;
         }
         html += '</tr>';
     }
@@ -244,6 +270,8 @@ export async function renderGateDeps() {
     html += '<div class="gate-dep-legend">';
     html += '<span class="legend-item"><span class="dep-read"></span> Reads</span>';
     html += '<span class="legend-item"><span class="dep-write"></span> Writes</span>';
+    html += '<span class="legend-item"><span class="conflict-icon">&#9888;</span> Write Conflict</span>';
+    html += '<span class="legend-item"><span class="hot-icon">&#9670;</span> Hot Key</span>';
     html += '</div>';
     el.innerHTML = html;
 }

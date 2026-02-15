@@ -16,7 +16,7 @@ import { renderGates, renderGatePerf, renderGateDeps, populateGateFilterDropdown
 import { renderTimeline, renderFilteredTimeline, prependTimelineEntry, filterTimelineByGate, clearGateFilter, applyTimelineFilters, switchTimelineTab, renderObservations, setupPopoverClose, hideAuditDetailPopover } from './panels/timeline.js';
 import { renderMemory, renderMemoryTags, renderMemoryHealth, searchMemoryByTag } from './panels/memory.js';
 import { toggleMemoryGraph } from './panels/memory-graph.js';
-import { renderLiveMetrics, renderToolStats } from './panels/metrics.js';
+import { renderLiveMetrics, renderToolStats, renderEditStreak, renderActivityTrend } from './panels/metrics.js';
 import { renderErrors } from './panels/errors.js';
 import { renderComponents, renderComponentTab } from './panels/components.js';
 import { renderHistory, compareSessions, populateDateSelects } from './panels/history.js';
@@ -51,6 +51,8 @@ async function refreshAll() {
         renderErrors(),
         renderToolStats(),
         renderLiveMetrics(),
+        renderEditStreak(),
+        renderActivityTrend(),
     ]);
 }
 
@@ -146,6 +148,8 @@ async function init() {
         renderGateDeps(),
         renderTimeline(),
         renderLiveMetrics(),
+        renderEditStreak(),
+        renderActivityTrend(),
         renderMemory(''),
         renderMemoryTags(),
         renderMemoryHealth(),

@@ -1488,6 +1488,130 @@ header {
     gap: 5px;
 }
 
+/* ── Conflict & Hot Key Indicators ───────────────────── */
+
+.dep-conflict-header {
+    color: var(--red) !important;
+    position: relative;
+}
+
+.dep-hot-header {
+    color: var(--orange) !important;
+}
+
+.conflict-icon {
+    color: var(--red);
+    font-size: 11px;
+    text-shadow: var(--glow-red);
+}
+
+.hot-icon {
+    color: var(--orange);
+    font-size: 9px;
+}
+
+.dep-cell-conflict {
+    background: rgba(255, 51, 51, 0.08) !important;
+    border-left: 2px solid var(--red);
+}
+
+/* ── Edit Streak Hotspots ───────────────────────────── */
+
+.edit-streak-section,
+.activity-trend-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
+.section-subheader {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--cyan);
+    margin: 0 0 8px 0;
+    font-weight: 600;
+}
+
+.section-subheader .text-muted {
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 10px;
+}
+
+.streak-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 11px;
+}
+
+.streak-risk {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.streak-total {
+    color: var(--text-muted);
+}
+
+.streak-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.streak-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+}
+
+.streak-file {
+    width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+
+.streak-bar-bg {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-secondary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.streak-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.streak-count {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 10px;
+    min-width: 24px;
+    text-align: right;
+}
+
+/* ── Activity Trend ─────────────────────────────────── */
+
+#activity-trend-content svg {
+    width: 100%;
+}
+
+#activity-trend-content .domain,
+#activity-trend-content .tick line {
+    stroke: var(--border);
+}
+
 /* ── Timeline Filters ────────────────────────────────── */
 
 .timeline-filters {

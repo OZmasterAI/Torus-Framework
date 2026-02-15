@@ -221,6 +221,153 @@ function renderSparkline(container, data, key) {
         .attr('fill', color);
 }
 
+// ── Edit Streak Hotspots ─────────────────────────────────
+
+export async function renderEditStreak() {
+    const data = await apiFetch('/api/edit-streak');
+    if (!data) return;
+
+    const hotspots = data.hotspots || [];
+    const riskLevel = data.risk_level || 'ok';
+
+    // Find or create the hotspot section inside live-metrics panel
+    let section = document.getElementById('edit-streak-section');
+    if (!section) return;
+
+    if (hotspots.length === 0) {
+        section.innerHTML = '<div class="no-data">No edit hotspots detected.</div>';
+        return;
+    }
+
+    const riskColor = riskLevel === 'danger' ? 'var(--red)' :
+                      riskLevel === 'warning' ? 'var(--orange)' : 'var(--green)';
+
+    let html = `<div class="streak-header">
+        <span class="streak-risk" style="color:${riskColor}">${escapeHtml(riskLevel.toUpperCase())}</span>
+        <span class="streak-total">${data.total_files || 0} files touched</span>
+    </div>`;
+    html += '<div class="streak-list">';
+
+    const maxCount = Math.max(...hotspots.map(h => h.count), 1);
+    for (const spot of hotspots) {
+        const pct = (spot.count / maxCount * 100).toFixed(0);
+        const barColor = spot.count >= 5 ? 'var(--red)' : spot.count >= 3 ? 'var(--orange)' : 'var(--cyan)';
+        html += `<div class="streak-row">
+            <span class="streak-file" title="${escapeHtml(spot.path)}">${escapeHtml(spot.file)}</span>
+            <div class="streak-bar-bg">
+                <div class="streak-bar" style="width:${pct}%;background:${barColor}"></div>
+            </div>
+            <span class="streak-count">${spot.count}x</span>
+        </div>`;
+    }
+    html += '</div>';
+    section.innerHTML = html;
+}
+
+// ── Activity Trend Chart ─────────────────────────────────
+
+export async function renderActivityTrend() {
+    const data = await apiFetch('/api/activity-trend');
+    if (!data) return;
+
+    const el = document.getElementById('activity-trend-content');
+    if (!el) return;
+
+    const buckets = data.buckets || [];
+    if (buckets.length === 0 || typeof d3 === 'undefined') {
+        el.innerHTML = '<div class="no-data">No activity data yet.</div>';
+        return;
+    }
+
+    // Filter to buckets with any activity, but keep all for time continuity
+    const hasActivity = buckets.some(b => b.total > 0);
+    if (!hasActivity) {
+        el.innerHTML = '<div class="no-data">No gate activity in the last 24h.</div>';
+        return;
+    }
+
+    el.innerHTML = '';
+    const margin = { top: 8, right: 12, bottom: 24, left: 32 };
+    const width = el.clientWidth || 500;
+    const height = 100;
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    const svg = d3.select(el)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleBand()
+        .domain(buckets.map((_, i) => i))
+        .range([0, innerWidth])
+        .padding(0.15);
+
+    const maxTotal = Math.max(...buckets.map(b => b.total), 1);
+    const y = d3.scaleLinear()
+        .domain([0, maxTotal])
+        .range([innerHeight, 0]);
+
+    // Stacked bars: pass (green) + warn (yellow) + block (red)
+    const categories = [
+        { key: 'pass', color: 'var(--green)' },
+        { key: 'warn', color: 'var(--yellow)' },
+        { key: 'block', color: 'var(--red)' },
+    ];
+
+    buckets.forEach((bucket, i) => {
+        let cumY = 0;
+        for (const cat of categories) {
+            const val = bucket[cat.key] || 0;
+            if (val > 0) {
+                g.append('rect')
+                    .attr('x', x(i))
+                    .attr('y', y(cumY + val))
+                    .attr('width', x.bandwidth())
+                    .attr('height', Math.max(0, y(cumY) - y(cumY + val)))
+                    .attr('fill', cat.color)
+                    .attr('rx', 1)
+                    .style('opacity', 0.8);
+            }
+            cumY += val;
+        }
+    });
+
+    // X-axis: show every 4th time label
+    const timeFormat = (idx) => {
+        const b = buckets[idx];
+        if (!b || !b.time) return '';
+        const d = new Date(b.time);
+        return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    };
+
+    g.append('g')
+        .attr('transform', `translate(0,${innerHeight})`)
+        .call(d3.axisBottom(x)
+            .tickValues(buckets.map((_, i) => i).filter(i => i % 8 === 0))
+            .tickFormat(timeFormat))
+        .selectAll('text')
+        .style('font-size', '8px')
+        .style('fill', 'var(--text-muted)');
+
+    // Y-axis
+    g.append('g')
+        .call(d3.axisLeft(y).ticks(3).tickSize(-innerWidth))
+        .selectAll('text')
+        .style('font-size', '8px')
+        .style('fill', 'var(--text-muted)');
+
+    // Style grid lines
+    g.selectAll('.tick line')
+        .style('stroke', 'var(--border)')
+        .style('stroke-opacity', 0.5);
+    g.selectAll('.domain')
+        .style('stroke', 'var(--border)');
+}
+
 // ── Tool Stats ───────────────────────────────────────────
 
 export async function renderToolStats() {
