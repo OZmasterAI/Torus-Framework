@@ -805,12 +805,7 @@ def main():
     if lines_str:
         line2_parts.append(lines_str)
 
-    # Pending verification count (conditional)
-    pv_count = get_pending_count()
-    if pv_count > 0:
-        line2_parts.append(f"\U0001f50dPV:{pv_count}")
-
-    # Verification ratio
+    # Verification ratio (verified/total — pending is implicit: total - verified)
     vr_verified, vr_total = get_verification_ratio()
     if vr_total > 0:
         line2_parts.append(f"\u2705V:{vr_verified}/{vr_total}")
