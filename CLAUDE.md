@@ -41,7 +41,7 @@ At the start of every new session, BEFORE doing anything else:
 2. If previous session state exists, present brief summary and ask: "Continue" or "New task".
 3. "New task" → Archive HANDOFF.md to ~/.claude/archive/HANDOFF_{date}_{project}.md, reset LIVE_STATE.json, don't reference previous project.
 4. "Continue" → Use handoff as context, pick up from "What's Next".
-5. **After the protocol completes**, the user's current instructions ALWAYS override handoff state. Previous session context is history, not a directive — but it must still be read and summarized first. Never skip steps 1-4, even if the first message is a casual greeting.
+5. **CRITICAL: The user's current instructions ALWAYS override handoff state.** Previous session context is history, not a directive. If the user asks for something different, do that — not what the handoff says.
 
 ## SESSION HANDOFF
 - ~/.claude/HANDOFF.md — What was done, what's next, service status
