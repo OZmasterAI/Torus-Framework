@@ -1,15 +1,33 @@
 {
-  "session_count": 66,
+  "session_count": 68,
   "status": "idle",
-  "project": "",
-  "project_path": "",
-  "feature": "",
-  "feature_status": "",
-  "test_count": 952,
+  "project": "megaman-framework",
+  "project_path": "/home/crab/.claude",
+  "feature": "cross-agent-transcript-visibility",
+  "feature_status": "dormant-complete",
+  "test_count": 966,
   "test_failures": 0,
-  "files_modified": [],
-  "improvements_shipped": [],
-  "next_steps": [],
+  "files_modified": [
+    "hooks/memory_server.py",
+    "hooks/test_framework.py"
+  ],
+  "improvements_shipped": [
+    "get_teammate_context() dormant function",
+    "_parse_transcript_actions() helper",
+    "_format_teammate_summary() helper",
+    "12 new tests for transcript visibility"
+  ],
+  "next_steps": [
+    "Activate get_teammate_context with @mcp.tool() when ready",
+    "Add outcome tracking from tool_result blocks",
+    "Explore event-driven transcript reads on teammate idle"
+  ],
   "known_issues": [],
-  "last_session_metrics": {}
+  "last_session_metrics": {
+    "reads": 6,
+    "edits": 2,
+    "errors": 0,
+    "verified": 1,
+    "pending": 0
+  }
 }
