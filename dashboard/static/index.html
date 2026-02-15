@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Self-Healing Claude Framework — Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=2">
+    <link rel="stylesheet" href="/static/style.css?v=3">
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 </head>
 <body>
     <!-- Header -->
@@ -30,7 +31,7 @@
 
     <!-- Main grid -->
     <main class="dashboard-grid">
-        <!-- Row 1: Health + Gates -->
+        <!-- Health (left column) -->
         <section class="card" id="panel-health">
             <h2>Health Overview</h2>
             <div id="health-content" class="panel-body">
@@ -38,6 +39,7 @@
             </div>
         </section>
 
+        <!-- Gates (top right) -->
         <section class="card" id="panel-gates">
             <h2>Gate Statistics
                 <select id="gate-date-select" class="inline-select">
@@ -64,16 +66,16 @@
             </div>
         </section>
 
-        <!-- Row 2: Live Metrics (full width) -->
-        <section class="card full-width" id="panel-live-metrics">
+        <!-- Live Metrics (center+right) -->
+        <section class="card" id="panel-live-metrics">
             <h2>Live Metrics</h2>
             <div id="live-metrics-content" class="panel-body">
                 <div class="loading">Loading...</div>
             </div>
         </section>
 
-        <!-- Row 3: Timeline (full width) -->
-        <section class="card full-width" id="panel-timeline">
+        <!-- Timeline (full width) -->
+        <section class="card" id="panel-timeline">
             <h2>Session Timeline
                 <select id="timeline-date-select" class="inline-select">
                     <option value="">Today</option>
@@ -82,8 +84,8 @@
                 <span id="gate-filter-badge" class="filter-badge hidden"></span>
             </h2>
             <div class="tab-bar" id="timeline-tabs">
-                <button class="tab active" data-timeline-tab="audit" onclick="switchTimelineTab('audit')">Audit</button>
-                <button class="tab" data-timeline-tab="observations" onclick="switchTimelineTab('observations')">Observations</button>
+                <button class="tab active" data-timeline-tab="audit">Audit</button>
+                <button class="tab" data-timeline-tab="observations">Observations</button>
             </div>
             <div id="timeline-audit-view">
                 <div class="timeline-filters">
@@ -120,7 +122,7 @@
             </div>
         </section>
 
-        <!-- Row 3: Memory + Errors -->
+        <!-- Memory Browser -->
         <section class="card" id="panel-memory">
             <h2>Memory Browser
                 <span id="memory-total" class="badge">0</span>
@@ -135,7 +137,7 @@
                 <div class="loading">Loading...</div>
             </div>
             <div id="memory-graph-container" class="memory-graph-container hidden">
-                <canvas id="memory-graph-canvas" width="600" height="400"></canvas>
+                <!-- D3 SVG force graph renders here -->
             </div>
             <div class="memory-health-section">
                 <h3 class="memory-health-header">Memory Health</h3>
@@ -145,6 +147,7 @@
             </div>
         </section>
 
+        <!-- Error Patterns -->
         <section class="card" id="panel-errors">
             <h2>Error Patterns</h2>
             <div id="errors-content" class="panel-body">
@@ -152,14 +155,7 @@
             </div>
         </section>
 
-        <section class="card" id="panel-tool-stats">
-            <h2>Tool Usage</h2>
-            <div id="tool-stats-content" class="panel-body">
-                <div class="loading">Loading...</div>
-            </div>
-        </section>
-
-        <!-- Row 4: Components + History -->
+        <!-- Component Inventory -->
         <section class="card" id="panel-components">
             <h2>Component Inventory</h2>
             <div class="tab-bar" id="component-tabs">
@@ -174,12 +170,21 @@
             </div>
         </section>
 
+        <!-- Session History -->
         <section class="card" id="panel-history">
             <h2>Session History
                 <span id="history-count" class="badge">0</span>
                 <button class="btn-sm hidden" id="compare-btn">Compare</button>
             </h2>
             <div id="history-content" class="panel-body history-scroll">
+                <div class="loading">Loading...</div>
+            </div>
+        </section>
+
+        <!-- Tool Usage -->
+        <section class="card" id="panel-tool-stats">
+            <h2>Tool Usage</h2>
+            <div id="tool-stats-content" class="panel-body">
                 <div class="loading">Loading...</div>
             </div>
         </section>
@@ -195,6 +200,6 @@
     </div>
 
     <div id="toast-container"></div>
-    <script src="/static/app.js?v=2"></script>
+    <script type="module" src="/static/modules/main.js"></script>
 </body>
 </html>

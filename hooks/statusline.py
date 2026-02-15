@@ -128,12 +128,12 @@ def get_project_name():
     try:
         with open(LIVE_STATE_FILE) as f:
             state = json.load(f)
-        name = state.get("project", "claude")
+        name = state.get("project") or "claude"
         # Use short alias for known long names
         aliases = {
             "self-healing-framework": "shf",
         }
-        return aliases.get(name, name)[:12]
+        return (aliases.get(name, name) or "claude")[:12]
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return "claude"
 

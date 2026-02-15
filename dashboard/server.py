@@ -1518,6 +1518,54 @@ async def api_gate_state_conflicts(request):
     })
 
 
+async def api_activity_trend(request):
+    """Gate activity bucketed into 30-minute intervals for the last 24 hours."""
+    now = datetime.now(timezone.utc)
+    today_str = now.strftime("%Y-%m-%d")
+    yesterday = datetime.fromtimestamp(now.timestamp() - 86400, tz=timezone.utc)
+    yesterday_str = yesterday.strftime("%Y-%m-%d")
+    cutoff = now.timestamp() - 86400
+
+    # Collect gate entries from today and yesterday
+    gate_entries = []
+    for date_str in dict.fromkeys([yesterday_str, today_str]):
+        filepath = os.path.join(AUDIT_DIR, f"{date_str}.jsonl")
+        if not os.path.isfile(filepath):
+            continue
+        try:
+            with open(filepath) as f:
+                for line in f:
+                    parsed = parse_audit_line(line)
+                    if parsed and parsed["type"] == "gate" and parsed.get("ts", 0) >= cutoff:
+                        gate_entries.append(parsed)
+        except OSError:
+            continue
+
+    # Bucket into 30-min intervals
+    bucket_size = 1800  # 30 minutes in seconds
+    bucket_start = int(cutoff // bucket_size) * bucket_size
+    buckets_map = {}
+    for ts in range(bucket_start, int(now.timestamp()) + bucket_size, bucket_size):
+        buckets_map[ts] = {"pass": 0, "block": 0, "warn": 0, "total": 0}
+
+    for entry in gate_entries:
+        ts = entry.get("ts", 0)
+        bucket_key = int(ts // bucket_size) * bucket_size
+        if bucket_key in buckets_map:
+            decision = entry.get("decision", "")
+            if decision in ("pass", "block", "warn"):
+                buckets_map[bucket_key][decision] += 1
+            buckets_map[bucket_key]["total"] += 1
+
+    buckets = []
+    for ts in sorted(buckets_map.keys()):
+        b = buckets_map[ts]
+        b["time"] = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        buckets.append(b)
+
+    return JSONResponse({"buckets": buckets})
+
+
 async def api_live_metrics(request):
     """Consolidated live metrics endpoint — single state read, single response."""
     # Health data
@@ -1637,6 +1685,7 @@ routes = [
     Route("/api/edit-streak", api_edit_streak),
     Route("/api/gate-deps", api_gate_deps),
     Route("/api/gate-state-conflicts", api_gate_state_conflicts),
+    Route("/api/activity-trend", api_activity_trend),
     Route("/api/audit/query", api_audit_query),
     Route("/api/history/compare", api_history_compare),
     Route("/api/memory-health", api_memory_health),
