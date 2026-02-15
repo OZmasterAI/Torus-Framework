@@ -25,6 +25,19 @@ _FEATURE_REQ_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Session-ending keywords — must be the primary intent, not incidental
+# Matches: "bye", "done", "gn", "goodnight", "end session", "wrap up", "save progress"
+# Avoids: "done with this file", "I'm done editing" (requires word boundary + short prompt or end-of-string)
+_SESSION_END_RE = re.compile(
+    r'(?:^|\s)(?:bye|goodbye|goodnight|gn|see ya|end session|wrap[ -]?up|save progress)(?:\s*[.!]*\s*$)',
+    re.IGNORECASE,
+)
+# "done" alone or "i'm done" / "im done" / "we're done" — but NOT "done with X"
+_DONE_RE = re.compile(
+    r"(?:^(?:i'?m\s+|we'?re\s+)?done\s*[.!]*\s*$)",
+    re.IGNORECASE,
+)
+
 # --- Sentiment detection patterns ---
 
 _FRUSTRATION_RE = re.compile(
@@ -109,6 +122,13 @@ def main():
             "<feature_request_detected>User may be requesting a new feature or capability. "
             "Consider saving to memory with type:feature-request tag if it represents a "
             "recurring need.</feature_request_detected>"
+        )
+
+    if _SESSION_END_RE.search(prompt) or _DONE_RE.search(prompt):
+        print(
+            "<session_ending>User appears to be ending the session. "
+            "Run /wrap-up to save progress, update HANDOFF.md, and commit changes "
+            "before the session ends.</session_ending>"
         )
 
     # --- Capture phase (append observation to queue) ---
