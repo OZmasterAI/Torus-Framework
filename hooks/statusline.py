@@ -776,13 +776,12 @@ def main():
     ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
     ctx_display = format_context_pct(ctx_pct_val)
 
-    # Compression detection (before context % so it reads: 📦CMP:N | 62%)
+    # Compression detection — combined with context %: 📦62% CMP:N
     cmp_count = get_compression_count(ctx_pct_val)
-
-    line2_parts = [health_bar]
     if cmp_count > 0:
-        line2_parts.append(f"\U0001f4e6CMP:{cmp_count}")
-    line2_parts.append(ctx_display)
+        ctx_display = f"\U0001f4e6{ctx_display} CMP:{cmp_count}"
+
+    line2_parts = [health_bar, ctx_display]
 
     # Error pressure (conditional — only when recent errors active)
     recent_errors, total_errors = get_error_velocity()
