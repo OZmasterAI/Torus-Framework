@@ -189,5 +189,8 @@
   },
   "skipDangerousModePermissionPrompt": true,
   "effortLevel": "medium",
-  "statusLine": "python3 \"$HOME/.claude/hooks/statusline.py\""
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"$HOME/.claude/hooks/statusline.py\""
+  }
 }

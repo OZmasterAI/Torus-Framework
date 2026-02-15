@@ -1,33 +1,25 @@
-# Session 72 — Statusline Visual Redesign + Gate 13 Fix
+# Session 73 — Dashboard Memory Graph Fix
 
 ## What Was Done
-- Redesigned statusline.py from single pipe-delimited line to 2-line layout
-- **Line 1** (Identity): `[Model] 📁 project | 🌿 branch | 🛡️ G:N S:N | 🧠 M:N ↑Xm | ⚡TC:N` + conditional SA/RD
-- **Line 2** (Session): `HP:██████████ 100% | 62% | E:N | tokens (in>out) | ⏱️ duration | lines | ✅V:x/y | 💰$cost`
-- Model bracket colored by identity: Opus=dark orange, Sonnet=blue, Haiku=white
-- Context % uses 5 color tiers: cyan<40, green 40-49, orange 50-59, yellow 60-69, red 70+
-- HP bar fully colored (label + bar + percentage)
-- 3 new indicators: error pressure, memory freshness, compression counter
-- 4 new icons: ⚠️ errors, ✅ verification, 💰 cost, 📦 compression
-- Removed redundant PV:N (already in V:x/y)
-- **Fixed Gate 13 test failure**: cleanup_test_states() now clears real session claims from .file_claims.json so Gate 13 doesn't block test edits
-- All tests pass: 981/981
+- **Fixed memory graph TDZ bug** in `dashboard/static/modules/panels/memory-graph.js` — `const radiusScale` was declared after its first use in `forceCollide()`, causing a Temporal Dead Zone crash. Moved declaration before the D3 simulation setup. Verified with headless Puppeteer (SVG: 324 bytes empty → 97,673 bytes full graph).
+- Comparative analysis of dormant features (get_teammate_context + modes) against Session 72 statusline redesign — get_teammate_context is higher-leverage (2x throughput / 2.5x cost), modes marginal for single-file tasks. Both remain dormant per user decision.
 
 ## What's Next
 1. Fix stats-cache.json `memory_count` gap (carried from Session 70)
 2. Activate get_teammate_context() — add @mcp.tool() + @crash_proof
 3. Citation URLs for memories
 4. Privacy tags — `<private>` edge stripping in tracker.py/observation.py
-5. Memory compaction planning — revisit at 500+ (currently 364)
+5. Memory compaction planning — revisit at 500+ (currently 369)
 
 ## Known Issues
 - stats-cache.json lacks `memory_count` key — gather.py RED flag can still fire when socket unreachable
 - gather.py promotion_candidates/recent_learnings fail when UDS socket unreachable (only affects wrap-up)
 
 ## Service Status
-- Memory MCP: 364 memories
+- Memory MCP: 369 memories
 - Tests: 981 passed, 0 failed
 - Framework version: v2.4.2
 - Ramdisk: active at /run/user/1000/claude-hooks
 - Statusline: 2-line layout, 20 elements, 5-tier context colors, model-based bracket colors
-- Dormant features: get_teammate_context (transcript visibility)
+- Dashboard: memory graph fixed, 14 ES6 modules, cyberpunk theme
+- Dormant features: get_teammate_context (transcript visibility), modes system

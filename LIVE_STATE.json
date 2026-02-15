@@ -1,15 +1,21 @@
 {
-  "session_count": 78,
+  "session_count": 81,
   "status": "idle",
-  "project": null,
-  "project_path": null,
+  "project": "megaman-framework",
+  "project_path": "/home/crab/.claude",
   "feature": null,
   "feature_status": null,
-  "test_count": 0,
+  "test_count": 981,
   "test_failures": 0,
-  "files_modified": [],
-  "improvements_shipped": [],
-  "next_steps": [],
-  "known_issues": [],
-  "last_session_metrics": {}
+  "files_modified": ["dashboard/static/modules/panels/memory-graph.js"],
+  "improvements_shipped": ["dashboard-memory-graph-tdz-fix"],
+  "next_steps": ["fix-stats-cache-memory-count", "activate-get-teammate-context", "citation-urls", "privacy-tags"],
+  "known_issues": ["stats-cache-memory-count-gap", "gather-uds-socket-fallback"],
+  "last_session_metrics": {
+    "reads": 12,
+    "edits": 2,
+    "errors": 0,
+    "verified": 1,
+    "pending": 0
+  }
 }
