@@ -6,9 +6,10 @@
   "feature": "statusline-visual-redesign",
   "feature_status": "complete",
   "test_count": 981,
-  "test_failures": 1,
+  "test_failures": 0,
   "files_modified": [
-    "hooks/statusline.py"
+    "hooks/statusline.py",
+    "hooks/test_framework.py"
   ],
   "improvements_shipped": [
     "Statusline 2-line layout (identity + session metrics)",
@@ -21,24 +22,23 @@
     "Compression counter (📦CMP:N)",
     "Icons: ⚠️ errors, ✅ verification, 💰 cost, 📦 compression",
     "Removed redundant PV:N indicator",
-    "EXPECTED_GATES 12→14"
+    "EXPECTED_GATES 12→14",
+    "Fixed Gate 13 test: cleanup_test_states() clears stale file claims"
   ],
   "next_steps": [
     "Fix stats-cache.json memory_count gap",
     "Activate get_teammate_context (add decorators)",
     "Citation URLs for memories",
     "Privacy tags (<private> edge stripping)",
-    "Memory compaction planning (revisit at 500+)",
-    "Fix Gate 13 test stale file claim issue"
+    "Memory compaction planning (revisit at 500+)"
   ],
   "known_issues": [
     "stats-cache.json lacks memory_count — gather.py fallback returns 0",
-    "gather.py promotion_candidates/recent_learnings fail when socket unreachable",
-    "Gate 13 test: stale file claim from real session interferes with mock"
+    "gather.py promotion_candidates/recent_learnings fail when socket unreachable"
   ],
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 14,
+    "reads": 14,
+    "edits": 16,
     "errors": 0,
     "verified": 9,
     "pending": 0
