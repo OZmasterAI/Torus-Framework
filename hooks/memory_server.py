@@ -3,7 +3,7 @@
 
 A ChromaDB-backed persistent memory system exposed as MCP tools.
 Claude Code connects to this server and gets search_knowledge, remember_this,
-get_recent_activity, get_memory, and maintenance as native tools.
+get_memory, and maintenance as native tools.
 
 The memory persists across sessions in ~/data/memory/, enabling cross-session
 knowledge retention.
@@ -1195,8 +1195,8 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
     }
 
 
-@mcp.tool()
-@crash_proof
+# DORMANT (Session 86) — covered by handoff files + search_knowledge(recency_weight=1.0)
+# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
 def get_recent_activity(hours: int = 48) -> dict:
     """Get recent memory saves chronologically. Good for session startup.
 
@@ -1391,8 +1391,8 @@ def search_observations(query: str, top_k: int = 20, hours: int = 0, sentiment: 
     }
 
 
-@mcp.tool()
-@crash_proof
+# DORMANT (Session 86) — covered by CLAUDE.md frustration signals + search_observations(sentiment="frustration")
+# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
 def get_session_sentiment(hours: int = 24) -> dict:
     """Get sentiment distribution for recent user interactions.
 
