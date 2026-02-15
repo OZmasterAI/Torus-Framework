@@ -788,7 +788,7 @@ def main():
     if recent_errors > 0:
         line2_parts.append(f"{COLOR_RED}E:{recent_errors}\U0001f525{COLOR_RESET}")
     elif total_errors > 0:
-        line2_parts.append(f"{COLOR_YELLOW}E:{total_errors}{COLOR_RESET}")
+        line2_parts.append(f"{COLOR_YELLOW}\u26a0\ufe0fE:{total_errors}{COLOR_RESET}")
 
     # Session tokens + last turn breakdown
     if session_tok_str:
@@ -808,15 +808,15 @@ def main():
     # Pending verification count (conditional)
     pv_count = get_pending_count()
     if pv_count > 0:
-        line2_parts.append(f"PV:{pv_count}")
+        line2_parts.append(f"\U0001f50dPV:{pv_count}")
 
     # Verification ratio
     vr_verified, vr_total = get_verification_ratio()
     if vr_total > 0:
-        line2_parts.append(f"V:{vr_verified}/{vr_total}")
+        line2_parts.append(f"\u2705V:{vr_verified}/{vr_total}")
 
     # Cost
-    line2_parts.append(cost_str)
+    line2_parts.append(f"\U0001f4b0{cost_str}")
 
     # Plan mode escalation warnings (conditional, line 2 end)
     pm_warns = get_plan_mode_warns()
