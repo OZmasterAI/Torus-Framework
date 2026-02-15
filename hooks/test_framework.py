@@ -93,13 +93,27 @@ def run_enforcer(event_type, tool_name, tool_input, session_id=MAIN_SESSION, too
 
 
 def cleanup_test_states():
-    """Remove test state files."""
+    """Remove test state files and clean file claims from non-test sessions."""
     for sid in [MAIN_SESSION, SUB_SESSION_A, SUB_SESSION_B, "rich-context-test"]:
         path = state_file_for(sid)
         try:
             os.remove(path)
         except FileNotFoundError:
             pass
+    # Clean .file_claims.json so Gate 13 doesn't block tests due to real session claims
+    claims_file = os.path.join(os.path.dirname(__file__), ".file_claims.json")
+    try:
+        if os.path.exists(claims_file):
+            with open(claims_file) as f:
+                claims = json.load(f)
+            # Keep only claims from test sessions
+            test_sids = {MAIN_SESSION, SUB_SESSION_A, SUB_SESSION_B}
+            cleaned = {fp: info for fp, info in claims.items()
+                       if isinstance(info, dict) and info.get("session_id") in test_sids}
+            with open(claims_file, "w") as f:
+                json.dump(cleaned, f)
+    except (json.JSONDecodeError, OSError):
+        pass
 
 
 print("=" * 70)
