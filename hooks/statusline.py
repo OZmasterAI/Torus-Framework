@@ -572,7 +572,7 @@ def format_health_bar(pct):
     filled = max(0, min(width, filled))
     bar = BAR_FULL * filled + BAR_EMPTY * (width - filled)
     color = health_color(pct)
-    return f"{color}{bar}{COLOR_RESET} {pct}%"
+    return f"HP:{color}{bar}{COLOR_RESET} {pct}%"
 
 
 def format_context_pct(pct):
@@ -706,14 +706,11 @@ def main():
             rd_str += f"|lag:{fmt_bytes(rd_lag)}"
         line1_parts.append(rd_str)
 
-    # Health bar at end of line 1
-    line1_parts.append(health_bar)
-
-    # ── LINE 2: Context percentage + session metrics ──
+    # ── LINE 2: Health bar + context percentage + session metrics ──
     ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
     ctx_display = format_context_pct(ctx_pct_val)
 
-    line2_parts = [ctx_display]
+    line2_parts = [health_bar, ctx_display]
 
     # Session tokens + last turn breakdown
     if session_tok_str:
