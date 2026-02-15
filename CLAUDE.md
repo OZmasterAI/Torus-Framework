@@ -5,6 +5,8 @@ You have amnesia every session. Memory doesn't.
 BEFORE building/fixing ANYTHING: search_knowledge("[what you're about to do]")
 When search_knowledge returns summaries, use get_memory(id) to retrieve full content for relevant entries.
 AFTER any fix or decision: remember_this(content, context, tags)
+Relevance thresholds (search_knowledge returns relevance 0.0-1.0):
+- \> 0.5: use directly | 0.2-0.5: get_memory(id) to verify | < 0.2: treat as unknown
 
 ## THE LOOP
 memory check → plan → tests first → build → prove it → ship

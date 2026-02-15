@@ -3,6 +3,21 @@
 ## When to use
 When the user says "research", "look into", "investigate", "find out about", "what is", or needs to gather information before making a decision.
 
+## Depth Tiers
+Use `--depth <tier>` to set research intensity (default: standard):
+| Tier | Agents | Hops | Time | Use Case |
+|------|--------|------|------|----------|
+| quick | 0 (direct) | 0 | ~30s | Simple factual lookups |
+| standard | 2-4 | 1 | 2-5min | General research (default) |
+| deep | 4-6 | 2 | 5-10min | Comprehensive investigation |
+| exhaustive | 6+ team | 3 | 10-20min | Full academic-level research |
+
+## Hop Patterns (for deep/exhaustive)
+- **entity-expansion**: X → related entities → explore each (Company → Products → Competitors)
+- **temporal**: current state → recent changes → historical context → future implications
+- **conceptual-deepening**: overview → details → examples → edge cases → limitations
+- **causal-chains**: observation → immediate cause → root cause → fix options
+
 ## Steps
 1. **MEMORY CHECK** — deep_query() for existing knowledge on the topic:
    - Check what we already know before searching externally
@@ -12,7 +27,7 @@ When the user says "research", "look into", "investigate", "find out about", "wh
    - Break the broad topic into focused, answerable questions
    - Prioritize questions by impact on the user's decision
    - Present the research plan to the user for confirmation
-3. **GATHER** — Launch 2-4 parallel sub-agents:
+3. **GATHER** — Launch sub-agents based on depth tier (quick: direct calls, standard: 2-4, deep: 4-6 with hop patterns, exhaustive: 6+ team with multi-hop):
    - **Web researcher**: WebSearch + WebFetch for online sources (docs, articles, comparisons)
    - **Codebase explorer**: Glob + Grep + Read for relevant local code, patterns, and dependencies
    - **Memory miner**: search_knowledge + search_observations for past decisions and learnings

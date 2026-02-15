@@ -100,6 +100,9 @@ def default_state():
         "active_subagents": [],     # Currently running: [{agent_id, agent_type, transcript_path, start_ts}]
         "subagent_total_tokens": 0, # Cumulative tokens from completed subagents
         "subagent_history": [],     # Completed: [{agent_id, agent_type, tokens, duration_s}]
+        # v2.4.2 fields (confidence gate)
+        "session_test_baseline": False,  # Has any test been run this session?
+        "confidence_warnings": 0,        # Progressive warning counter for Gate 14
     }
 
 
@@ -144,6 +147,8 @@ def get_state_schema():
         "active_subagents": {"type": "list", "description": "Currently running subagents", "category": "subagents"},
         "subagent_total_tokens": {"type": "int", "description": "Cumulative tokens from completed subagents", "category": "subagents"},
         "subagent_history": {"type": "list", "description": "Completed subagent records", "category": "subagents"},
+        "session_test_baseline": {"type": "bool", "description": "Whether any test has been run this session", "category": "gate14"},
+        "confidence_warnings": {"type": "int", "description": "Progressive warning counter for Gate 14", "category": "gate14"},
     }
 
 

@@ -416,6 +416,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         if any(kw in command for kw in ["pytest", "python -m pytest", "npm test", "cargo test", "go test"]):
             state["last_test_run"] = time.time()
             state["last_test_command"] = command[:200]
+            state["session_test_baseline"] = True
             # Capture exit code from tool_response (Claude Code provides it there)
             exit_code = 0
             if tool_response is not None:

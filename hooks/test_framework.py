@@ -8833,6 +8833,77 @@ test("Browser: ralph SKILL.md has visual verify step", "Visual Verify" in _ralph
 test("Browser: ralph SKILL.md has screenshots in report", "Screenshots taken" in _ralph_skill_src)
 
 # ─────────────────────────────────────────────────
+# GATE 14: PRE-IMPLEMENTATION CONFIDENCE
+# ─────────────────────────────────────────────────
+print("\n--- Gate 14: Pre-Implementation Confidence ---")
+
+from gates.gate_14_confidence_check import check as _g14_check
+
+# Test 1: No test baseline → warns first time
+_g14_state1 = default_state()
+_g14_state1["session_test_baseline"] = False
+_g14_state1["pending_verification"] = []
+_g14_state1["memory_last_queried"] = 0  # stale
+_g14_state1["confidence_warnings"] = 0
+_g14_r1 = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state1)
+test("Gate14: no test baseline → warns first time (not blocked)",
+     not _g14_r1.blocked)
+test("Gate14: no test baseline → WARNING in message",
+     "WARNING" in (_g14_r1.message or ""))
+test("Gate14: warning counter incremented to 1",
+     _g14_state1.get("confidence_warnings") == 1)
+
+# Test 2: Second new file → warns again (2/2)
+_g14_r2 = _g14_check("Edit", {"file_path": "/tmp/another_file.py"}, _g14_state1)
+test("Gate14: second attempt → warns again (not blocked)",
+     not _g14_r2.blocked)
+test("Gate14: second attempt → WARNING 2/2 in message",
+     "2/2" in (_g14_r2.message or ""))
+
+# Test 3: Third new file → BLOCKED
+_g14_r3 = _g14_check("Write", {"file_path": "/tmp/third_file.py"}, _g14_state1)
+test("Gate14: third attempt → BLOCKED",
+     _g14_r3.blocked)
+test("Gate14: third attempt → BLOCKED in message",
+     "BLOCKED" in (_g14_r3.message or ""))
+
+# Test 4: After test run + fresh memory → allowed
+_g14_state2 = default_state()
+_g14_state2["session_test_baseline"] = True
+_g14_state2["pending_verification"] = []
+_g14_state2["memory_last_queried"] = time.time()  # fresh
+_g14_state2["confidence_warnings"] = 0
+_g14_r4 = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state2)
+test("Gate14: all signals pass → allowed",
+     not _g14_r4.blocked)
+test("Gate14: all signals pass → no warning message",
+     not _g14_r4.message)
+
+# Test 5: Re-editing file in pending_verification → allowed (iteration)
+_g14_state3 = default_state()
+_g14_state3["session_test_baseline"] = False
+_g14_state3["pending_verification"] = ["/tmp/existing_edit.py"]
+_g14_state3["memory_last_queried"] = 0
+_g14_state3["confidence_warnings"] = 5  # would block if not exempt
+_g14_r5 = _g14_check("Edit", {"file_path": "/tmp/existing_edit.py"}, _g14_state3)
+test("Gate14: re-edit of pending file → allowed (iteration exemption)",
+     not _g14_r5.blocked)
+
+# Test 6: Exempt files bypass gate
+_g14_state4 = default_state()
+_g14_state4["session_test_baseline"] = False
+_g14_state4["memory_last_queried"] = 0
+_g14_state4["confidence_warnings"] = 99
+for _exempt_file, _exempt_label in [
+    ("test_something.py", "test file"),
+    ("HANDOFF.md", "HANDOFF.md"),
+    ("__init__.py", "__init__.py"),
+    ("/home/user/.claude/skills/research/SKILL.md", "skills/ dir"),
+]:
+    _g14_re = _g14_check("Write", {"file_path": _exempt_file}, _g14_state4)
+    test(f"Gate14: exempt {_exempt_label} → allowed", not _g14_re.blocked)
+
+# ─────────────────────────────────────────────────
 # TASK MANAGER (Phase 2) — PRP JSON task tracking
 # ─────────────────────────────────────────────────
 print("\n--- Task Manager Tests ---")
