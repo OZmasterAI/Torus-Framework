@@ -779,7 +779,7 @@ def main():
     # Compression detection
     cmp_count = get_compression_count(ctx_pct_val)
     if cmp_count > 0:
-        ctx_display += f" CMP:{cmp_count}"
+        ctx_display += f" \U0001f4e6CMP:{cmp_count}"
 
     line2_parts = [health_bar, ctx_display]
 
