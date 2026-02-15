@@ -653,7 +653,6 @@ def main():
 
     # Calculate framework health
     health_pct = calculate_health(gate_count, mem_count)
-    h_color = health_color(health_pct)
 
     # Model name from session data
     model_data = data.get("model", {}) or {}
@@ -664,6 +663,10 @@ def main():
                      "Claude Sonnet 4": "Sonnet", "Claude Haiku 4": "Haiku",
                      "Claude Opus 4.6": "Opus"}
     model_short = model_abbrevs.get(model_name, model_name.split()[-1] if model_name else "Claude")
+
+    # Model bracket color — based on model identity, not health
+    MODEL_COLORS = {"Opus": COLOR_ORANGE, "Sonnet": "\033[94m", "Haiku": "\033[97m"}
+    model_color = MODEL_COLORS.get(model_short, COLOR_CYAN)
 
     # Git branch
     git_branch = get_git_branch()
@@ -678,7 +681,7 @@ def main():
     health_bar = format_health_bar(health_pct)
 
     # ── LINE 1: Identity + framework health ──
-    line1_parts = [f"{h_color}[{model_short}]{COLOR_RESET}"]
+    line1_parts = [f"{model_color}[{model_short}]{COLOR_RESET}"]
 
     # Active behavioral mode (right after model)
     active_mode = get_active_mode()
