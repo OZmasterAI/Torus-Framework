@@ -1,21 +1,34 @@
 {
-  "session_count": 83,
+  "session_count": 85,
   "status": "idle",
-  "project": null,
-  "project_path": null,
-  "feature": null,
-  "feature_status": null,
-  "test_count": 0,
+  "project": "megaman-framework",
+  "project_path": "/home/crab/.claude",
+  "feature": "auto-handoff",
+  "feature_status": "shipped",
+  "test_count": 981,
   "test_failures": 0,
-  "files_modified": [],
-  "improvements_shipped": [],
-  "next_steps": [],
-  "known_issues": [],
+  "files_modified": [
+    "hooks/session_end.py",
+    "hooks/user_prompt_capture.py"
+  ],
+  "improvements_shipped": [
+    "auto-handoff in session_end.py",
+    "wrap-up reminder hook in user_prompt_capture.py"
+  ],
+  "next_steps": [
+    "Fix stats-cache.json memory_count gap",
+    "Activate get_teammate_context()",
+    "Clean up stale hook registrations"
+  ],
+  "known_issues": [
+    "stats-cache.json lacks memory_count key",
+    "Plan mode exit loop bug"
+  ],
   "last_session_metrics": {
-    "reads": 0,
-    "edits": 0,
+    "reads": 14,
+    "edits": 5,
     "errors": 0,
-    "verified": 0,
-    "pending": 0
+    "verified": 1,
+    "pending": 2
   }
 }
