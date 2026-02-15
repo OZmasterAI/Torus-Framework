@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Self-Healing Claude Framework — Status Line
 
-Generates a compact status line for the Claude Code UI. Reads session data
-from stdin (JSON with costs, context usage, etc.) and outputs a single
-formatted line.
+Generates a 2-line status display for the Claude Code UI. Reads session data
+from stdin (JSON with costs, context usage, etc.) and outputs two formatted lines.
 
-Format: HP:[████░]85% | project | G:12 | M:215 | CTX:23% | 19.7k tok | 1.2k>0.8k | 15min | +120/-34 | $0.42
+Line 1: [Model] 📁 project | 🌿 branch | 🛡️ G:14 S:18 | 🧠 M:359 | ⚡ TC:42
+Line 2: ██████░░░░ 62% | 19.7k tok (1.2k>0.8k) | ⏱️ 15m | +120/-34 | V:3/5 | $0.42
 
 Usage: Configured in settings.json as "statusLine" command.
 
@@ -48,7 +48,7 @@ SETTINGS_FILE = os.path.join(CLAUDE_DIR, "settings.json")
 CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
-EXPECTED_GATES = 12
+EXPECTED_GATES = 14
 EXPECTED_SKILLS = 18
 EXPECTED_HOOK_EVENTS = 13
 
@@ -531,13 +531,53 @@ def health_color(pct):
     return COLOR_RED
 
 
-def format_health_bar(pct):
-    """Format health as a colored visual bar: HP:[████░]85%"""
-    filled = round(pct / 100 * BAR_WIDTH)
-    filled = max(0, min(BAR_WIDTH, filled))
-    bar = BAR_FULL * filled + BAR_EMPTY * (BAR_WIDTH - filled)
-    color = health_color(pct)
-    return f"{color}HP:[{bar}]{pct}%{COLOR_RESET}"
+def get_git_branch():
+    """Get current git branch name, cached for 10 seconds via /tmp file."""
+    cache_file = "/tmp/statusline-git-cache"
+    try:
+        if os.path.exists(cache_file):
+            age = time.time() - os.path.getmtime(cache_file)
+            if age < 10:
+                with open(cache_file) as f:
+                    return f.read().strip() or None
+    except OSError:
+        pass
+    # Cache miss — run git
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, timeout=2
+        )
+        branch = result.stdout.strip() if result.returncode == 0 else None
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        branch = None
+    # Write cache
+    try:
+        with open(cache_file, "w") as f:
+            f.write(branch or "")
+    except OSError:
+        pass
+    return branch
+
+
+def format_context_bar(pct):
+    """Format a 10-char color-coded context progress bar.
+
+    Green <70%, yellow 70-89%, red 90%+.
+    Returns: '{color}██████░░░░{reset} 62%'
+    """
+    width = 10
+    filled = round(pct / 100 * width)
+    filled = max(0, min(width, filled))
+    bar = BAR_FULL * filled + BAR_EMPTY * (width - filled)
+    if pct >= 90:
+        color = COLOR_RED
+    elif pct >= 70:
+        color = COLOR_YELLOW
+    else:
+        color = COLOR_GREEN
+    return f"{color}{bar}{COLOR_RESET} {int(pct)}%"
 
 
 def main():
@@ -579,15 +619,6 @@ def main():
     else:
         cost_str = "$0.00"
 
-    # Format context with warning levels
-    if isinstance(context_pct, (int, float)) and context_pct > 0:
-        if context_pct >= 80:
-            ctx_str = f"CTX:{int(context_pct)}%!"
-        else:
-            ctx_str = f"CTX:{int(context_pct)}%"
-    else:
-        ctx_str = "CTX:0%"
-
     # Format session tokens (combined input+output)
     if session_tokens > 0:
         session_tok_str = f"{fmt_tokens(session_tokens)} tok"
@@ -608,82 +639,101 @@ def main():
 
     # Calculate framework health
     health_pct = calculate_health(gate_count, mem_count)
-    health_str = format_health_bar(health_pct)
+    h_color = health_color(health_pct)
 
-    # Build status line
-    parts = [health_str, project, f"G:{gate_count}", f"M:{mem_count}", ctx_str]
-    if session_tok_str:
-        parts.append(session_tok_str)
-    if last_tok_str:
-        parts.append(last_tok_str)
-    if minutes:
-        parts.append(f"{minutes}min")
-    if lines_str:
-        parts.append(lines_str)
+    # Model name from session data
+    model_data = data.get("model", {}) or {}
+    model_name = model_data.get("display_name", "Claude")
+    # Shorten known model names
+    model_abbrevs = {"Claude 3.5 Sonnet": "Sonnet", "Claude 3.5 Haiku": "Haiku",
+                     "Claude 3 Opus": "Opus", "Claude Opus 4": "Opus",
+                     "Claude Sonnet 4": "Sonnet", "Claude Haiku 4": "Haiku",
+                     "Claude Opus 4.6": "Opus"}
+    model_short = model_abbrevs.get(model_name, model_name.split()[-1] if model_name else "Claude")
 
-    # Tool activity
-    tool_info = get_most_used_tool()
-    if tool_info:
-        tool_name, tool_count = tool_info
-        tool_short = {"Bash": ">_", "Edit": "~", "Write": "+", "Read": "@", "Grep": "?", "Glob": "*"}.get(tool_name, tool_name[:2])
-        parts.append(f"T:{tool_short}x{tool_count}")
+    # Git branch
+    git_branch = get_git_branch()
+
+    # Skill count
+    skill_count = count_skills()
 
     # Total tool calls
     total_calls = get_total_tool_calls()
-    if total_calls > 0:
-        parts.append(f"TC:{total_calls}")
 
-    # Subagent visibility
+    # ── LINE 1: Identity + framework health ──
+    line1_parts = [f"{h_color}[{model_short}]{COLOR_RESET}"]
+
+    # Active behavioral mode (right after model)
+    active_mode = get_active_mode()
+    if active_mode:
+        line1_parts[0] += f" MODE:{active_mode}"
+
+    line1_parts.append(f"\U0001f4c1 {project}")
+    if git_branch:
+        line1_parts.append(f"\U0001f33f {git_branch}")
+    line1_parts.append(f"\U0001f6e1\ufe0f G:{gate_count} S:{skill_count}")
+    line1_parts.append(f"\U0001f9e0 M:{mem_count}")
+    line1_parts.append(f"\u26a1 TC:{total_calls}")
+
+    # Subagent visibility (conditional, line 1)
     sa_active, sa_completed_tok = get_subagent_status()
     if sa_active:
         sa_parts = []
         for agent_type, tok in sa_active:
-            short_type = agent_type[:8]  # Truncate long agent type names
+            short_type = agent_type[:8]
             sa_parts.append(f"{short_type}({fmt_tokens(tok)})")
-        parts.append("SA:" + ",".join(sa_parts))
-    if sa_completed_tok > 0:
-        parts.append(f"ST:{fmt_tokens(sa_completed_tok)}")
+        line1_parts.append("SA:" + ",".join(sa_parts))
 
-    # Ramdisk health
+    # Ramdisk health (conditional, line 1)
     rd_health = get_ramdisk_health()
     if rd_health is not None:
         rd_used, rd_lag = rd_health
         rd_str = f"RD:{fmt_bytes(rd_used)}"
-        if rd_lag > 1024:  # Only show lag if > 1KB
+        if rd_lag > 1024:
             rd_str += f"|lag:{fmt_bytes(rd_lag)}"
-        parts.append(rd_str)
+        line1_parts.append(rd_str)
 
-    # Session age
-    try:
-        with open(LIVE_STATE_FILE) as f:
-            live_state = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        live_state = {}
-    parts.append(f"A:{get_session_age(live_state)}")
+    # ── LINE 2: Context bar + session metrics ──
+    ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
+    ctx_bar = format_context_bar(ctx_pct_val)
 
-    # Pending verification count
+    line2_parts = [ctx_bar]
+
+    # Session tokens + last turn breakdown
+    if session_tok_str:
+        tok_display = session_tok_str
+        if last_tok_str:
+            tok_display += f" ({last_tok_str})"
+        line2_parts.append(tok_display)
+
+    # Duration
+    if minutes:
+        line2_parts.append(f"\u23f1\ufe0f {minutes}m")
+
+    # Lines changed
+    if lines_str:
+        line2_parts.append(lines_str)
+
+    # Pending verification count (conditional)
     pv_count = get_pending_count()
     if pv_count > 0:
-        parts.append(f"PV:{pv_count}")
+        line2_parts.append(f"PV:{pv_count}")
 
     # Verification ratio
     vr_verified, vr_total = get_verification_ratio()
     if vr_total > 0:
-        parts.append(f"V:{vr_verified}/{vr_total}")
+        line2_parts.append(f"V:{vr_verified}/{vr_total}")
 
-    # Plan mode escalation warnings
+    # Cost
+    line2_parts.append(cost_str)
+
+    # Plan mode escalation warnings (conditional, line 2 end)
     pm_warns = get_plan_mode_warns()
     if pm_warns >= 1:
-        parts.append(f"PM:W{pm_warns}")
+        line2_parts.append(f"PM:W{pm_warns}")
 
-    # Active behavioral mode
-    active_mode = get_active_mode()
-    if active_mode:
-        parts.append(f"MODE:{active_mode}")
-
-    parts.append(cost_str)
-
-    print(" | ".join(parts))
+    print(" | ".join(line1_parts))
+    print(" | ".join(line2_parts))
 
 
 if __name__ == "__main__":
