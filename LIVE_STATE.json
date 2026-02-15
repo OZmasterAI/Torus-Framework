@@ -1,21 +1,27 @@
 {
-  "session_count": 71,
+  "session_count": 73,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "framework-analysis-and-fixes",
+  "feature": "v2.4.2-superclaude-enhancements",
   "feature_status": "complete",
-  "test_count": 967,
+  "test_count": 981,
   "test_failures": 0,
   "files_modified": [
-    "skills/wrap-up/scripts/gather.py",
-    "rules/modes.md",
-    "modes/README.md"
+    "CLAUDE.md",
+    "skills/research/SKILL.md",
+    "hooks/gates/gate_14_confidence_check.py",
+    "hooks/enforcer.py",
+    "hooks/shared/state.py",
+    "hooks/tracker.py",
+    "hooks/test_framework.py"
   ],
   "improvements_shipped": [
-    "gather.py RED flag: MCP process detection fallback",
-    "modes.md token leak: moved out of rules/",
-    "Session 40 vs 70 comprehensive comparison"
+    "Confidence-aware memory search (CLAUDE.md relevance thresholds)",
+    "Research depth tiers (quick/standard/deep/exhaustive)",
+    "Hop patterns for deep research (entity-expansion, temporal, conceptual-deepening, causal-chains)",
+    "Gate 14: Pre-Implementation Confidence (progressive warn→block)",
+    "10 new tests (971→981)"
   ],
   "next_steps": [
     "Fix stats-cache.json memory_count gap",
@@ -30,9 +36,9 @@
   ],
   "last_session_metrics": {
     "reads": 12,
-    "edits": 2,
+    "edits": 10,
     "errors": 0,
-    "verified": 2,
-    "pending": 5
+    "verified": 1,
+    "pending": 0
   }
 }
