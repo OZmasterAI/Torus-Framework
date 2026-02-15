@@ -4,7 +4,7 @@
 When the user says "audit", "review", "check everything", or wants a comprehensive project review.
 
 ## Steps
-1. **MEMORY CHECK** — deep_query("project issues bugs warnings") for known problems
+1. **MEMORY CHECK** — search_knowledge("project issues bugs warnings", top_k=50) for known problems
 2. **CODE AUDIT** — Create an audit team (`TeamCreate` name: "audit-team") with named agents:
    - **security-scan** agent: Look for hardcoded secrets, SQL injection, XSS, command injection
    - **dependency-check** agent: Review requirements.txt / package.json for outdated or vulnerable packages

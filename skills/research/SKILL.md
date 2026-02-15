@@ -19,7 +19,7 @@ Use `--depth <tier>` to set research intensity (default: standard):
 - **causal-chains**: observation → immediate cause → root cause → fix options
 
 ## Steps
-1. **MEMORY CHECK** — deep_query() for existing knowledge on the topic:
+1. **MEMORY CHECK** — search_knowledge("[topic]", top_k=50) for existing knowledge on the topic:
    - Check what we already know before searching externally
    - search_observations() for related past learnings
    - If sufficient knowledge exists, present it and ask if deeper research is needed

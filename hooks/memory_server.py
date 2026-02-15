@@ -3,7 +3,7 @@
 
 A ChromaDB-backed persistent memory system exposed as MCP tools.
 Claude Code connects to this server and gets search_knowledge, remember_this,
-deep_query, get_recent_activity, and get_memory as native tools.
+get_recent_activity, and get_memory as native tools.
 
 The memory persists across sessions in ~/data/memory/, enabling cross-session
 knowledge retention.
@@ -1197,45 +1197,6 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
 
 @mcp.tool()
 @crash_proof
-def deep_query(query: str, top_k: int = 50, recency_weight: float = 0.15) -> dict:
-    """Comprehensive memory search — use for important decisions or debugging recurring issues.
-
-    Returns more results than search_knowledge for thorough analysis.
-
-    Args:
-        query: What to search for
-        top_k: Number of results (default 50)
-        recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
-    """
-    recency_weight = max(0.0, min(1.0, recency_weight))
-    top_k = _validate_top_k(top_k, default=50, min_val=1, max_val=500)
-    count = collection.count()
-    if count == 0:
-        return {"results": [], "total_memories": 0, "message": "Memory is empty."}
-
-    actual_k = min(top_k, count)
-    results = collection.query(
-        query_texts=[query], n_results=actual_k,
-        include=["metadatas", "distances"],
-    )
-    formatted = format_summaries(results)
-
-    # Apply recency boost and re-sort
-    if recency_weight > 0:
-        formatted = _apply_recency_boost(formatted, recency_weight)
-
-    _touch_memory_timestamp()
-
-    return {
-        "results": formatted,
-        "total_memories": count,
-        "query": query,
-        "depth": "comprehensive",
-    }
-
-
-@mcp.tool()
-@crash_proof
 def get_recent_activity(hours: int = 48) -> dict:
     """Get recent memory saves chronologically. Good for session startup.
 
@@ -1289,7 +1250,7 @@ def get_recent_activity(hours: int = 48) -> dict:
 def get_memory(id: str) -> dict:
     """Retrieve full content for a specific memory by ID.
 
-    Use after search_knowledge/deep_query to get complete details for relevant entries.
+    Use after search_knowledge to get complete details for relevant entries.
 
     Args:
         id: The memory ID (from search results)

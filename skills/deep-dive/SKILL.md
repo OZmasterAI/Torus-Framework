@@ -5,7 +5,7 @@ When the user says "deep dive", "full context", "what do we know about", or need
 
 ## Steps
 1. **BROAD SEARCH** — Cast a wide net:
-   - `deep_query("[topic]", top_k=50)` — returns up to 50 results with full relevance scoring
+   - `search_knowledge("[topic]", top_k=50)` — returns up to 50 results with full relevance scoring
    - `search_by_tags("[relevant tags]")` — find entries by structured tags
    - `search_observations("[topic]")` — check auto-captured observations too
 2. **EXPAND RELEVANT HITS** — For the top 5-10 most relevant results:

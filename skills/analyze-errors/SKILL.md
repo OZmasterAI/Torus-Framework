@@ -8,7 +8,7 @@ Complements `/fix` (immediate resolution) by doing **historical pattern analysis
 ## Steps
 
 ### 1. DEEP QUERY
-- `deep_query("[error pattern or message]", top_k=50)` — get all historical instances
+- `search_knowledge("[error pattern or message]", top_k=50)` — get all historical instances
 - `search_knowledge("[error keywords]")` — catch keyword matches the semantic search may miss
 - `search_observations("[error pattern]")` — find auto-captured occurrences from tool calls
 - Collect every memory entry related to this error for comprehensive analysis

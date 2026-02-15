@@ -3250,10 +3250,7 @@ test("v2.0.2: search_knowledge recency_weight default is 0.15",
      "recency_weight: float = 0.15" in _ms_src_202 or "recency_weight=0.15" in _ms_src_202,
      "default 0.15 not found")
 
-# 2. Recency boost in deep_query
-test("v2.0.2: deep_query has recency_weight param",
-     "def deep_query" in _ms_src_202 and "recency_weight" in _ms_src_202.split("def deep_query")[1].split(")")[0],
-     "recency_weight not in deep_query signature")
+# 2. deep_query removed (consolidated into search_knowledge with top_k param) — Session 86
 
 # 3. _apply_recency_boost helper exists
 test("v2.0.2: _apply_recency_boost function exists",
