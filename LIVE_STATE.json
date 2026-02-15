@@ -1,38 +1,15 @@
 {
-  "session_count": 65,
-  "status": "active",
-  "project": "Self-Healing Claude",
-  "project_path": "/home/crab/.claude/hooks",
-  "feature": "behavioral-modes",
-  "feature_status": "shipped",
+  "session_count": 66,
+  "status": "idle",
+  "project": "",
+  "project_path": "",
+  "feature": "",
+  "feature_status": "",
   "test_count": 952,
   "test_failures": 0,
-  "files_modified": [
-    "modes/coding.md",
-    "modes/review.md",
-    "modes/debug.md",
-    "modes/docs.md",
-    "modes/skill/SKILL.md",
-    "rules/modes.md",
-    "hooks/statusline.py"
-  ],
-  "improvements_shipped": [
-    "Behavioral modes system with 4 modes (coding, review, debug, docs)",
-    "Statusline MODE:{name} indicator with abbreviations",
-    "Dormant /mode skill ready for activation"
-  ],
-  "next_steps": [
-    "Activate skill: cp -r modes/skill skills/mode",
-    "Mode-specific gate behavior",
-    "Dashboard mode indicator",
-    "Orchestrator mode exploration"
-  ],
+  "files_modified": [],
+  "improvements_shipped": [],
+  "next_steps": [],
   "known_issues": [],
-  "last_session_metrics": {
-    "reads": 5,
-    "edits": 4,
-    "errors": 0,
-    "verified": 8,
-    "pending": 0
-  }
+  "last_session_metrics": {}
 }
