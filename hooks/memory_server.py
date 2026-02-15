@@ -1022,7 +1022,7 @@ def _compact_observations():
 
 @mcp.tool()
 @crash_proof
-def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight: float = 0.15) -> dict:
+def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight: float = 0.15, match_all: bool = False) -> dict:
     """Search memory for relevant information. Use before starting any task.
 
     Args:
@@ -1030,6 +1030,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         top_k: Number of results to return (default 15)
         mode: Force search mode ("keyword", "semantic", "hybrid", "tags"). Empty = auto-detect.
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
+        match_all: For tag mode only — if true, all tags must be present (default false).
     """
     recency_weight = max(0.0, min(1.0, recency_weight))
     top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
@@ -1048,7 +1049,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         # Strip tag:/tags: prefix and parse
         tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)
         tags_list = [t.strip() for t in tag_query.split(",") if t.strip()]
-        formatted = fts_index.tag_search(tags_list, match_all=False, top_k=actual_k)
+        formatted = fts_index.tag_search(tags_list, match_all=match_all, top_k=actual_k)
     elif mode == "keyword":
         formatted = fts_index.keyword_search(query, top_k=actual_k)
     elif mode == "hybrid":
@@ -1297,8 +1298,8 @@ def get_memory(id: str) -> dict:
         return {"error": f"Failed to retrieve memory: {str(e)}"}
 
 
-@mcp.tool()
-@crash_proof
+# DORMANT (Session 86) — consolidated into search_knowledge(mode="tags", match_all=True/False)
+# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
 def search_by_tags(tags: str, match_all: bool = False, top_k: int = 15) -> dict:
     """Search memories by exact tag matching.
 

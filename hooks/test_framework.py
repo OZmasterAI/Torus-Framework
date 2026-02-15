@@ -2045,12 +2045,11 @@ if not MEMORY_SERVER_RUNNING:
          _sk_sem.get("mode") == "semantic",
          f"mode={_sk_sem.get('mode')}")
 
-    # Test: search_by_tags returns correct results
-    from memory_server import search_by_tags
-    _sbt = search_by_tags("type:fix,area:framework")
-    test("search_by_tags returns results",
-         _sbt["total_results"] > 0 and _sbt["match_mode"] == "any",
-         f"count={_sbt['total_results']}")
+    # Test: search_knowledge tag mode with match_all (search_by_tags consolidated — Session 86)
+    _sbt = search_knowledge("type:fix,area:framework", mode="tags", match_all=False)
+    test("search_knowledge tag mode returns results",
+         len(_sbt.get("results", [])) > 0 and _sbt.get("mode") == "tags",
+         f"count={len(_sbt.get('results', []))}")
 
     # Test: FTS5 sanitize query handles special chars
     _sanitized = FTS5Index._sanitize_fts_query('test"AND(OR)special*chars')
