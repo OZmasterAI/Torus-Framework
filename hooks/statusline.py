@@ -346,7 +346,7 @@ def get_active_mode():
             name = f.read().strip()
         if name:
             # Use short abbreviations for known modes
-            abbrevs = {"coding": "code"}
+            abbrevs = {"coding": "code", "review": "rev", "debug": "dbg", "docs": "docs"}
             return abbrevs.get(name, name[:6])
         return None
     except (FileNotFoundError, OSError):
