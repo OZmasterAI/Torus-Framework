@@ -1,27 +1,21 @@
 {
-  "session_count": 73,
+  "session_count": 75,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "v2.4.2-superclaude-enhancements",
+  "feature": "statusline-visual-redesign",
   "feature_status": "complete",
   "test_count": 981,
   "test_failures": 0,
   "files_modified": [
-    "CLAUDE.md",
-    "skills/research/SKILL.md",
-    "hooks/gates/gate_14_confidence_check.py",
-    "hooks/enforcer.py",
-    "hooks/shared/state.py",
-    "hooks/tracker.py",
-    "hooks/test_framework.py"
+    "hooks/statusline.py"
   ],
   "improvements_shipped": [
-    "Confidence-aware memory search (CLAUDE.md relevance thresholds)",
-    "Research depth tiers (quick/standard/deep/exhaustive)",
-    "Hop patterns for deep research (entity-expansion, temporal, conceptual-deepening, causal-chains)",
-    "Gate 14: Pre-Implementation Confidence (progressive warn→block)",
-    "10 new tests (971→981)"
+    "Statusline 2-line layout (identity + session metrics)",
+    "Git branch display with 10s cache",
+    "Color-coded health bar (HP:) on line 2",
+    "Color-coded context percentage (no bar)",
+    "EXPECTED_GATES 12→14"
   ],
   "next_steps": [
     "Fix stats-cache.json memory_count gap",
@@ -35,10 +29,10 @@
     "gather.py promotion_candidates/recent_learnings fail when socket unreachable"
   ],
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 10,
+    "reads": 4,
+    "edits": 6,
     "errors": 0,
-    "verified": 1,
+    "verified": 0,
     "pending": 0
   }
 }
