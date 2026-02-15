@@ -1298,35 +1298,6 @@ def get_memory(id: str) -> dict:
         return {"error": f"Failed to retrieve memory: {str(e)}"}
 
 
-# DORMANT (Session 86) — consolidated into search_knowledge(mode="tags", match_all=True/False)
-# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
-def search_by_tags(tags: str, match_all: bool = False, top_k: int = 15) -> dict:
-    """Search memories by exact tag matching.
-
-    Faster than semantic search for finding memories with specific tags.
-    Uses the FTS5 normalized tag index.
-
-    Args:
-        tags: Comma-separated tags to search for (e.g., "type:fix,area:framework")
-        match_all: If true, all tags must be present. If false, any tag matches (default false)
-        top_k: Maximum number of results (default 15)
-    """
-    tags_list = [t.strip() for t in tags.split(",") if t.strip()]
-    if not tags_list:
-        return {"results": [], "message": "No tags provided"}
-
-    top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
-    results = fts_index.tag_search(tags_list, match_all=match_all, top_k=top_k)
-
-    _touch_memory_timestamp()
-
-    return {
-        "results": results,
-        "total_results": len(results),
-        "tags_searched": tags_list,
-        "match_mode": "all" if match_all else "any",
-    }
-
 
 @mcp.tool()
 @crash_proof
