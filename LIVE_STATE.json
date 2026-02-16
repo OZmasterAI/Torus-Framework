@@ -1,38 +1,37 @@
 {
-  "session_count": 95,
+  "session_count": 97,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "session-start-protocol-fix",
-  "feature_status": "shipped-needs-verification",
+  "feature": "chromadb-backup-watchdog",
+  "feature_status": "shipped",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
+    "/home/crab/.claude/hooks/memory_server.py",
+    "/home/crab/.claude/hooks/shared/chromadb_socket.py",
+    "/home/crab/.claude/skills/wrap-up/scripts/gather.py",
+    "/home/crab/.claude/hooks/session_end.py",
     "/home/crab/.claude/hooks/boot.py"
   ],
   "improvements_shipped": [
-    "boot.py stdout injection — session start protocol now mechanical",
-    "Memory DB restored from backup (5876 embeddings, integrity OK)"
+    "ChromaDB backup via sqlite3.backup() API (WAL-safe, atomic)",
+    "DB size watchdog in boot.py (two-tier: truncation + shrinkage)",
+    "Backup integrated into wrap-up and session end lifecycle",
+    "Fixed critical connection resource leak in _backup_database()"
   ],
   "next_steps": [
-    "Verify session start protocol works on restart",
-    "Save investigation findings to memory",
     "Fix stats-cache.json memory_count gap",
     "Clean up stale hook registrations",
-    "Investigate chroma.sqlite3 truncation cause"
+    "Activate get_teammate_context()",
+    "Add ChromaDB degraded mode guards",
+    "Privacy tags in tracker.py/observation.py"
   ],
   "known_issues": [
     "stats-cache.json lacks memory_count key",
     "Plan mode exit loop bug",
     "gather.py UDS socket unreachable during wrap-up",
     "Linking tests skip when MCP server running",
-    "chroma.sqlite3 truncation root cause unknown"
-  ],
-  "last_session_metrics": {
-    "reads": 8,
-    "edits": 1,
-    "errors": 0,
-    "verified": 1,
-    "pending": 0
-  }
+    "Backup UDS dispatch needs MCP server restart"
+  ]
 }
