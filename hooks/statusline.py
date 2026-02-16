@@ -757,9 +757,10 @@ def main():
     if active_mode:
         line1_parts[0] += f" MODE:{active_mode}"
 
-    line1_parts.append(f"\U0001f4c1 {project} #{session_num}")
+    line1_parts.append(f"\U0001f4c1 {project}")
     if git_branch:
         line1_parts.append(f"\U0001f33f {git_branch}")
+    line1_parts.append(f"#{session_num}")
     line1_parts.append(f"\U0001f6e1\ufe0f G:{gate_count} S:{skill_count}")
     # Memory count + freshness
     mem_fresh = get_memory_freshness()
