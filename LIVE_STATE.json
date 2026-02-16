@@ -3,20 +3,23 @@
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "exit-code-fix",
+  "feature": "exit-code-fix+gate6-deadlock",
   "feature_status": "shipped",
   "test_count": 1034,
   "test_failures": 0,
   "files_modified": [
     "hooks/enforcer.py",
+    "hooks/gates/gate_06_save_fix.py",
+    "hooks/tracker.py",
+    "hooks/test_framework.py",
     "rules/hooks.md",
     "CLAUDE.md"
   ],
   "improvements_shipped": [
     "sys.exit(1) → sys.exit(2) in all 7 enforcer.py blocking paths",
-    "Gate enforcement now mechanical (exit code 2) not behavioral",
-    "Corrected exit code docs in rules/hooks.md and CLAUDE.md",
-    "AKIRA adoption analysis: 1/4 implemented, 3/4 skipped with rationale"
+    "Gate 6 deadlock fix: removed save_state(), clear verified_fixes on remember_this()",
+    "Exclude /tmp paths from verified_fixes, ESCALATION_THRESHOLD 2→5",
+    "AKIRA adoption: 1/4 implemented, 3/4 skipped"
   ],
   "next_steps": [
     "Fix stats-cache.json memory_count gap",
@@ -31,8 +34,8 @@
     "gather.py UDS socket unreachable during wrap-up"
   ],
   "last_session_metrics": {
-    "reads": 8,
-    "edits": 10,
+    "reads": 15,
+    "edits": 12,
     "errors": 0,
     "verified": 1,
     "pending": 0
