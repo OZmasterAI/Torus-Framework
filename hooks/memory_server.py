@@ -260,7 +260,8 @@ class FTS5Index:
 
     def __init__(self, db_path=":memory:"):
         self.db_path = db_path
-        self.conn = sqlite3.connect(db_path)
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._lock = threading.Lock()
         if db_path != ":memory:":
             self.conn.execute("PRAGMA journal_mode=WAL")
         self._create_tables()
@@ -375,14 +376,15 @@ class FTS5Index:
 
     def add_entry(self, memory_id, content, preview, tags_str, timestamp, session_time):
         """Add or update an entry (dual-write from remember_this)."""
-        self._insert_entry(memory_id, content, preview, tags_str, timestamp, session_time)
-        self.conn.commit()
-        # Keep sync_count in step with additions
-        row = self.conn.execute(
-            "SELECT value FROM sync_meta WHERE key='sync_count'"
-        ).fetchone()
-        if row:
-            self._update_sync_count(int(row[0]) + 1)
+        with self._lock:
+            self._insert_entry(memory_id, content, preview, tags_str, timestamp, session_time)
+            self.conn.commit()
+            # Keep sync_count in step with additions
+            row = self.conn.execute(
+                "SELECT value FROM sync_meta WHERE key='sync_count'"
+            ).fetchone()
+            if row:
+                self._update_sync_count(int(row[0]) + 1)
 
     def keyword_search(self, query, top_k=15):
         """FTS5 keyword search with BM25 ranking."""
@@ -390,18 +392,19 @@ class FTS5Index:
         if not sanitized:
             return []
 
-        try:
-            rows = self.conn.execute("""
-                SELECT l.memory_id, f.preview, l.tags, l.timestamp,
-                       rank * -1 as score
-                FROM mem_fts f
-                JOIN mem_lookup l ON l.fts_rowid = f.rowid
-                WHERE mem_fts MATCH ?
-                ORDER BY rank
-                LIMIT ?
-            """, (sanitized, top_k)).fetchall()
-        except sqlite3.OperationalError:
-            return []
+        with self._lock:
+            try:
+                rows = self.conn.execute("""
+                    SELECT l.memory_id, f.preview, l.tags, l.timestamp,
+                           rank * -1 as score
+                    FROM mem_fts f
+                    JOIN mem_lookup l ON l.fts_rowid = f.rowid
+                    WHERE mem_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                """, (sanitized, top_k)).fetchall()
+            except sqlite3.OperationalError:
+                return []
 
         results = []
         for row in rows:
@@ -419,32 +422,33 @@ class FTS5Index:
         if not tags_list:
             return []
 
-        if match_all:
-            # All tags must be present
-            placeholders = ",".join("?" * len(tags_list))
-            query = f"""
-                SELECT t.memory_id, l.tags, l.timestamp,
-                       (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
-                FROM tags t
-                JOIN mem_lookup l ON l.memory_id = t.memory_id
-                WHERE t.tag IN ({placeholders})
-                GROUP BY t.memory_id
-                HAVING COUNT(DISTINCT t.tag) = ?
-                LIMIT ?
-            """
-            rows = self.conn.execute(query, (*tags_list, len(tags_list), top_k)).fetchall()
-        else:
-            # Any tag matches
-            placeholders = ",".join("?" * len(tags_list))
-            query = f"""
-                SELECT DISTINCT t.memory_id, l.tags, l.timestamp,
-                       (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
-                FROM tags t
-                JOIN mem_lookup l ON l.memory_id = t.memory_id
-                WHERE t.tag IN ({placeholders})
-                LIMIT ?
-            """
-            rows = self.conn.execute(query, (*tags_list, top_k)).fetchall()
+        with self._lock:
+            if match_all:
+                # All tags must be present
+                placeholders = ",".join("?" * len(tags_list))
+                query = f"""
+                    SELECT t.memory_id, l.tags, l.timestamp,
+                           (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
+                    FROM tags t
+                    JOIN mem_lookup l ON l.memory_id = t.memory_id
+                    WHERE t.tag IN ({placeholders})
+                    GROUP BY t.memory_id
+                    HAVING COUNT(DISTINCT t.tag) = ?
+                    LIMIT ?
+                """
+                rows = self.conn.execute(query, (*tags_list, len(tags_list), top_k)).fetchall()
+            else:
+                # Any tag matches
+                placeholders = ",".join("?" * len(tags_list))
+                query = f"""
+                    SELECT DISTINCT t.memory_id, l.tags, l.timestamp,
+                           (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
+                    FROM tags t
+                    JOIN mem_lookup l ON l.memory_id = t.memory_id
+                    WHERE t.tag IN ({placeholders})
+                    LIMIT ?
+                """
+                rows = self.conn.execute(query, (*tags_list, top_k)).fetchall()
 
         results = []
         for row in rows:
@@ -458,12 +462,13 @@ class FTS5Index:
 
     def get_preview(self, memory_id):
         """Get preview + metadata for a single memory ID."""
-        row = self.conn.execute("""
-            SELECT l.tags, l.timestamp,
-                   (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
-            FROM mem_lookup l
-            WHERE l.memory_id = ?
-        """, (memory_id,)).fetchone()
+        with self._lock:
+            row = self.conn.execute("""
+                SELECT l.tags, l.timestamp,
+                       (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
+                FROM mem_lookup l
+                WHERE l.memory_id = ?
+            """, (memory_id,)).fetchone()
         if not row:
             return None
         return {"id": memory_id, "tags": row[0], "timestamp": row[1], "preview": row[2]}
@@ -471,6 +476,8 @@ class FTS5Index:
     @staticmethod
     def _sanitize_fts_query(query):
         """Strip FTS5 special characters to prevent query crashes."""
+        if len(query) > 5000:
+            query = query[:5000]
         # Remove FTS5 operators that could cause syntax errors
         sanitized = re.sub(r'[*(){}[\]^~"\'\\:;!@#$%&+=|<>]', " ", query)
         # Collapse whitespace
