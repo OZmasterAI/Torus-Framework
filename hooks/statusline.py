@@ -48,8 +48,8 @@ SETTINGS_FILE = os.path.join(CLAUDE_DIR, "settings.json")
 CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
-EXPECTED_GATES = 14
-EXPECTED_SKILLS = 18
+EXPECTED_GATES = 15
+EXPECTED_SKILLS = 22
 EXPECTED_HOOK_EVENTS = 13
 
 # Health bar characters
@@ -121,6 +121,20 @@ def fmt_tokens(n):
         return f"{k:.1f}k" if k < 100 else f"{int(k)}k"
     m = n / 1_000_000
     return f"{m:.1f}M"
+
+
+def get_session_number():
+    """Read current session number from LIVE_STATE.json.
+
+    session_count increments at session end, so current session = count + 1.
+    """
+    try:
+        with open(LIVE_STATE_FILE) as f:
+            state = json.load(f)
+        count = state.get("session_count", 0)
+        return count + 1 if isinstance(count, int) else "?"
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return "?"
 
 
 def get_project_name():
@@ -735,6 +749,7 @@ def main():
     health_bar = format_health_bar(health_pct)
 
     # ── LINE 1: Identity + framework health ──
+    session_num = get_session_number()
     line1_parts = [f"{model_color}[{model_short}]{COLOR_RESET}"]
 
     # Active behavioral mode (right after model)
@@ -742,7 +757,7 @@ def main():
     if active_mode:
         line1_parts[0] += f" MODE:{active_mode}"
 
-    line1_parts.append(f"\U0001f4c1 {project}")
+    line1_parts.append(f"\U0001f4c1 {project} #{session_num}")
     if git_branch:
         line1_parts.append(f"\U0001f33f {git_branch}")
     line1_parts.append(f"\U0001f6e1\ufe0f G:{gate_count} S:{skill_count}")
