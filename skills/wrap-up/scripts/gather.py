@@ -95,7 +95,7 @@ def gather_memory(warnings):
     when the socket isn't reachable — the MCP server may be running but
     the socket is only visible inside the MCP process context.
     """
-    result = {"count": 0, "accessible": False}
+    result = {"count": 0, "accessible": False, "count_reliable": True}
     try:
         result["accessible"] = is_worker_available(retries=1, delay=0.1)
     except Exception as e:
@@ -115,9 +115,16 @@ def gather_memory(warnings):
             try:
                 with open(stats_cache) as f:
                     cached = json.load(f)
-                result["count"] = cached.get("mem_count", 0)
-                warnings.append("memory count: used stats-cache fallback")
+                age = time.time() - cached.get("ts", 0)
+                if age < 120:
+                    result["count"] = cached.get("mem_count", 0)
+                    result["count_reliable"] = False
+                    warnings.append("memory count: used stats-cache fallback")
+                else:
+                    result["count_reliable"] = False
+                    warnings.append(f"memory count: stats-cache expired ({int(age)}s old)")
             except Exception:
+                result["count_reliable"] = False
                 warnings.append(f"memory count: {e}")
     return result
 
@@ -187,8 +194,12 @@ def gather_recent_learnings(warnings):
 
 def compute_risk_level(handoff, git, memory):
     """Determine overall risk level."""
-    if not memory["accessible"] or memory["count"] == 0:
+    if not memory["accessible"]:
         return "RED"
+    if memory["count"] == 0 and memory.get("count_reliable", True):
+        return "RED"
+    if memory["count"] == 0 and not memory.get("count_reliable", True):
+        return "YELLOW"
     if handoff["stale"] or not git["clean"]:
         return "YELLOW"
     return "GREEN"
