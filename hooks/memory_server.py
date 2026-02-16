@@ -1067,6 +1067,8 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
         match_all: For tag mode only — if true, all tags must be present (default false).
     """
+    if _chromadb_degraded:
+        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     recency_weight = max(0.0, min(1.0, recency_weight))
     top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
     count = collection.count()
@@ -1267,6 +1269,13 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
         context: What you were doing when you learned this
         tags: Comma-separated tags for categorization (e.g., "bug,fix,auth")
     """
+    if _chromadb_degraded:
+        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+    # Cap metadata strings to 500 chars
+    if len(context) > 500:
+        context = context[:497] + "..."
+    if len(tags) > 500:
+        tags = tags[:497] + "..."
     # --- Ingestion filter: reject noise ---
     if len(content.strip()) < MIN_CONTENT_LENGTH:
         return {
@@ -1412,6 +1421,8 @@ def get_memory(id: str) -> dict:
     Args:
         id: The memory ID (from search results)
     """
+    if _chromadb_degraded:
+        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     try:
         # Support batch fetch: comma-separated IDs return multiple memories
         ids = [i.strip() for i in id.split(",") if i.strip()]
@@ -1747,6 +1758,8 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
         error_text: The error message being fixed
         strategy_id: A short name for the fix strategy (e.g., "fix-type-cast")
     """
+    if _chromadb_degraded:
+        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     normalized, error_hash = error_signature(error_text)
     strategy_hash = fnv1a_hash(strategy_id)
     chain_id = f"{error_hash}_{strategy_hash}"
@@ -1800,6 +1813,8 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
         chain_id: The chain_id returned by record_attempt
         outcome: "success" or "failure"
     """
+    if _chromadb_degraded:
+        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     if outcome not in ("success", "failure"):
         return {"error": "outcome must be 'success' or 'failure'"}
 
@@ -1855,6 +1870,8 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
         error_text: The error message to look up
         top_k: Maximum number of results (default 10)
     """
+    if _chromadb_degraded:
+        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
     normalized, error_hash = error_signature(error_text)
 
@@ -2613,6 +2630,8 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
         min_cluster_size: Min memories per cluster (used by cluster).
         distance_threshold: Max cosine distance for clustering (used by cluster).
     """
+    if _chromadb_degraded:
+        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     if action == "promotions":
         return suggest_promotions(top_k=top_k if top_k is not None else 5)
     elif action == "stale":
