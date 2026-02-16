@@ -3,7 +3,7 @@
 
 Central dispatcher for all quality gates. Runs as a Claude Code hook
 on PreToolUse events. Checks gates BEFORE a tool executes and can block
-via sys.exit(1).
+via sys.exit(2) (Claude Code's mechanical block exit code).
 
 PostToolUse tracking has been moved to tracker.py (fail-open, always exit 0).
 
@@ -242,7 +242,7 @@ def load_gates():
             f"[ENFORCER] BLOCKED: Tier 1 safety gate(s) failed to load: {', '.join(sorted(missing_tier1))}",
             file=sys.stderr,
         )
-        sys.exit(1)
+        sys.exit(2)
 
     return gates
 
@@ -286,7 +286,7 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 block_counts[gate_short] = block_counts.get(gate_short, 0) + 1
                 print(result.message, file=sys.stderr)
                 save_state(state, session_id=state.get("_session_id", "main"))
-                sys.exit(1)
+                sys.exit(2)
             elif result.message:
                 log_gate_decision(gate_label, tool_name, "warn", result.message, session_id, state_keys_read,
                                   severity="warn")
@@ -305,7 +305,7 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                                   severity="error")
                 print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate_label}' crashed: {e}", file=sys.stderr)
                 save_state(state, session_id=state.get("_session_id", "main"))
-                sys.exit(1)
+                sys.exit(2)
             # Non-safety gate errors should not block work — log and continue
             gate_short = gate.__name__.split(".")[-1]
             deps = GATE_DEPENDENCIES.get(gate_short, {})
@@ -325,13 +325,13 @@ def main():
     except (json.JSONDecodeError, EOFError):
         # Fail-closed: malformed input must not bypass gates
         print("[ENFORCER] BLOCKED: Malformed or missing JSON input", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(2)
 
     tool_name = data.get("tool_name", "")
     if not tool_name:
         # Fail-closed: missing tool_name must not bypass gates
         print("[ENFORCER] BLOCKED: Missing or empty tool_name", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(2)
 
     tool_input = data.get("tool_input", {})
 
@@ -339,7 +339,7 @@ def main():
     if tool_name in ("Bash", "Edit", "Write", "NotebookEdit"):
         if not tool_input:
             print(f"[ENFORCER] BLOCKED: Missing or empty tool_input for {tool_name}", file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
 
     session_id = data.get("session_id", "main")
 

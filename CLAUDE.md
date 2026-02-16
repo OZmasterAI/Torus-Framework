@@ -24,7 +24,7 @@ When fixing errors, follow ALL 5 steps:
 4. **Plan mode discipline** — Never write code in plan mode. enter plan → explore + write plan → ExitPlanMode → approval → implement. If rejected, ask what's wrong. Max 1 ExitPlanMode per turn.
 
 ## QUALITY GATES (Enforced by hooks)
-Gates checked by enforcer.py. Blocking = exit 1. Advisory = warn only.
+Gates checked by enforcer.py. Blocking = exit 2. Advisory = warn only.
 **Blocking gates:**
 - Gate 1: READ BEFORE EDIT — Must read .py files before editing
 - Gate 2: NO DESTROY — Blocks rm -rf, DROP TABLE, force push, reset --hard

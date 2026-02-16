@@ -11,9 +11,10 @@ globs: .claude/hooks/**, .claude/hooks/gates/**
 - Use `from shared.gate_result import GateResult` — never construct dicts
 
 ## Exit Codes
-- `sys.exit(1)` = block the tool call (only valid for PreToolUse)
 - `sys.exit(0)` = allow (or for PostToolUse/other events, always exit 0)
-- NEVER use `sys.exit(2)` — Claude Code interprets exit 2 as "block and show custom message"
+- `sys.exit(2)` = block the tool call (only valid for PreToolUse); stderr is shown to Claude
+- `sys.exit(1)` = non-blocking error (tool call PROCEEDS, error is logged)
+- ALWAYS use `sys.exit(2)` for blocking — `sys.exit(1)` does NOT mechanically block
 
 ## Fail-Closed vs Fail-Open
 - Tier 1 safety gates (gates 1-3): fail-CLOSED — exceptions block the tool call
