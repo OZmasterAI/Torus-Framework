@@ -137,3 +137,8 @@ def delete(collection, ids):
 def flush_queue():
     """Flush the capture queue to ChromaDB observations."""
     return request("flush_queue")
+
+
+def backup():
+    """Trigger a consistent backup of chroma.sqlite3 on the server."""
+    return request("backup")

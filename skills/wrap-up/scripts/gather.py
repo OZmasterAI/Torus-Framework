@@ -21,6 +21,7 @@ sys.path.insert(0, HOOKS_DIR)
 
 from shared.chromadb_socket import (
     WorkerUnavailable,
+    backup as socket_backup,
     count as socket_count,
     is_worker_available,
     query as socket_query,
@@ -121,6 +122,20 @@ def gather_memory(warnings):
     return result
 
 
+def gather_backup(warnings):
+    """Trigger ChromaDB backup and return status."""
+    try:
+        if not is_worker_available(retries=1, delay=0.1):
+            warnings.append("backup: worker unavailable")
+            return {}
+        result = socket_backup()
+        size_mb = round(result.get("size_bytes", 0) / (1024 * 1024), 2)
+        return {"status": "ok", "size_mb": size_mb}
+    except Exception as e:
+        warnings.append(f"backup: {e}")
+        return {}
+
+
 def gather_promotion_candidates(warnings):
     """Find recurring error patterns that appear 3+ times."""
     candidates = []
@@ -186,6 +201,7 @@ def main():
     handoff = gather_handoff(warnings)
     git = gather_git(warnings)
     memory = gather_memory(warnings)
+    backup = gather_backup(warnings)
     promotion_candidates = gather_promotion_candidates(warnings)
     recent_learnings = gather_recent_learnings(warnings)
     risk_level = compute_risk_level(handoff, git, memory)
@@ -195,6 +211,7 @@ def main():
         "handoff": handoff,
         "git": git,
         "memory": memory,
+        "backup": backup,
         "promotion_candidates": promotion_candidates,
         "recent_learnings": recent_learnings,
         "risk_level": risk_level,

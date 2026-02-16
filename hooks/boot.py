@@ -463,6 +463,19 @@ def main():
     except Exception:
         pass
 
+    # Watchdog: detect ChromaDB truncation early
+    db_size_warning = None
+    if _worker_available:
+        _db_path = os.path.join(os.path.expanduser("~"), "data", "memory", "chroma.sqlite3")
+        try:
+            if os.path.exists(_db_path):
+                _db_size = os.path.getsize(_db_path)
+                if _db_size < 1024 * 1024:  # < 1 MB (healthy is ~23 MB)
+                    _size_kb = round(_db_size / 1024, 1)
+                    db_size_warning = f"chroma.sqlite3 is {_size_kb} KB (expected ~23 MB) — possible truncation"
+        except OSError:
+            pass
+
     # Inject relevant memories
     injected = inject_memories_via_socket(handoff, live_state) if _worker_available else []
 
@@ -496,6 +509,10 @@ def main():
 
     if time_warning:
         dashboard += f"\n|  {time_warning:<67}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
+    if db_size_warning:
+        dashboard += f"\n|  DB WATCHDOG: {db_size_warning:<54}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
     if active_tasks:

@@ -18,7 +18,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shared.chromadb_socket import is_worker_available, flush_queue as socket_flush, WorkerUnavailable
+from shared.chromadb_socket import is_worker_available, flush_queue as socket_flush, backup as socket_backup, WorkerUnavailable
 
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
@@ -325,6 +325,26 @@ def flush_capture_queue():
     print(f"[SESSION_END] Worker unavailable, deferring {line_count} observations to next boot", file=sys.stderr)
 
 
+def backup_database():
+    """Backup ChromaDB if DB changed since last backup. Fail-open."""
+    db_path = os.path.join(MEMORY_DIR, "chroma.sqlite3")
+    bak_path = os.path.join(MEMORY_DIR, "chroma.sqlite3.backup")
+    try:
+        # Mtime skip: don't re-backup if DB hasn't changed
+        if os.path.exists(db_path) and os.path.exists(bak_path):
+            if os.path.getmtime(bak_path) >= os.path.getmtime(db_path):
+                print("[SESSION_END] Backup skipped (DB unchanged)", file=sys.stderr)
+                return
+        if not is_worker_available(retries=1, delay=0.2):
+            print("[SESSION_END] Backup skipped (worker unavailable)", file=sys.stderr)
+            return
+        result = socket_backup()
+        size_mb = round(result.get("size_bytes", 0) / (1024 * 1024), 2)
+        print(f"[SESSION_END] Backup created ({size_mb} MB)", file=sys.stderr)
+    except Exception as e:
+        print(f"[SESSION_END] Backup failed (non-fatal): {e}", file=sys.stderr)
+
+
 def increment_session_count(metrics=None):
     """Atomically increment session_count in LIVE_STATE.json."""
     state = {}
@@ -373,6 +393,7 @@ def main():
             print(f"[SESSION_END] Handoff error (non-fatal): {e}", file=sys.stderr)
 
         flush_capture_queue()
+        backup_database()
         increment_session_count(metrics)
     except Exception as e:
         print(f"[SESSION_END] Error (non-fatal): {e}", file=sys.stderr)

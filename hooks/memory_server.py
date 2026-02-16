@@ -3174,6 +3174,40 @@ def _handle_socket_client(conn):
         conn.close()
 
 
+def _backup_database():
+    """Create a consistent backup of chroma.sqlite3 using sqlite3.backup() API.
+    Safe under WAL mode. Returns dict with backup_path and size_bytes.
+    """
+    import sqlite3 as _sqlite3
+
+    src_path = os.path.join(MEMORY_DIR, "chroma.sqlite3")
+    bak_path = os.path.join(MEMORY_DIR, "chroma.sqlite3.backup")
+
+    if not os.path.exists(src_path):
+        raise RuntimeError(f"Source DB not found: {src_path}")
+
+    src_size = os.path.getsize(src_path)
+    if src_size < 1024:  # < 1 KB = clearly corrupt
+        raise RuntimeError(f"Source DB too small ({src_size} bytes), refusing to backup")
+
+    # Atomic: backup to .tmp then os.replace
+    tmp_path = bak_path + ".tmp"
+    try:
+        src_conn = _sqlite3.connect(src_path)
+        dst_conn = _sqlite3.connect(tmp_path)
+        src_conn.backup(dst_conn)
+        dst_conn.close()
+        src_conn.close()
+        os.replace(tmp_path, bak_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+
+    bak_size = os.path.getsize(bak_path)
+    return {"backup_path": bak_path, "size_bytes": bak_size}
+
+
 def _dispatch_request(req):
     """Route a UDS request to the appropriate ChromaDB operation."""
     method = req.get("method", "")
@@ -3187,6 +3221,10 @@ def _dispatch_request(req):
         if method == "flush_queue":
             flushed = _flush_capture_queue()
             return {"ok": True, "result": flushed}
+
+        if method == "backup":
+            result = _backup_database()
+            return {"ok": True, "result": result}
 
         # Collection-based operations require a valid collection name
         col_map = {
