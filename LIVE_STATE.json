@@ -1,37 +1,40 @@
 {
-  "session_count": 97,
+  "session_count": 99,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "chromadb-backup-watchdog",
+  "feature": "stats-cache-fix",
   "feature_status": "shipped",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
-    "/home/crab/.claude/hooks/memory_server.py",
-    "/home/crab/.claude/hooks/shared/chromadb_socket.py",
     "/home/crab/.claude/skills/wrap-up/scripts/gather.py",
-    "/home/crab/.claude/hooks/session_end.py",
-    "/home/crab/.claude/hooks/boot.py"
+    "/home/crab/.claude/hooks/boot.py",
+    "/home/crab/.claude/CLAUDE.md"
   ],
   "improvements_shipped": [
-    "ChromaDB backup via sqlite3.backup() API (WAL-safe, atomic)",
-    "DB size watchdog in boot.py (two-tier: truncation + shrinkage)",
-    "Backup integrated into wrap-up and session end lifecycle",
-    "Fixed critical connection resource leak in _backup_database()"
+    "stats-cache count_reliable flag eliminates false RED flags",
+    "Session start protocol moved to boot.py (saves ~4K tokens/session)",
+    "ChromaDB degraded mode guards confirmed shipped (Session 89)"
   ],
   "next_steps": [
-    "Fix stats-cache.json memory_count gap",
     "Clean up stale hook registrations",
     "Activate get_teammate_context()",
-    "Add ChromaDB degraded mode guards",
-    "Privacy tags in tracker.py/observation.py"
+    "Privacy tags in tracker.py/observation.py",
+    "Address remaining medium audit findings"
   ],
   "known_issues": [
-    "stats-cache.json lacks memory_count key",
     "Plan mode exit loop bug",
     "gather.py UDS socket unreachable during wrap-up",
     "Linking tests skip when MCP server running",
-    "Backup UDS dispatch needs MCP server restart"
-  ]
+    "Backup UDS dispatch needs MCP server restart",
+    "test_framework.py collection error (pre-existing)"
+  ],
+  "last_session_metrics": {
+    "reads": 5,
+    "edits": 5,
+    "errors": 0,
+    "verified": 3,
+    "pending": 0
+  }
 }
