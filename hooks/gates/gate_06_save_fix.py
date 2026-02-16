@@ -17,7 +17,6 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
-from shared.state import save_state
 
 GATE_NAME = "GATE 6: SAVE VERIFIED FIX"
 
@@ -25,10 +24,15 @@ GATE_NAME = "GATE 6: SAVE VERIFIED FIX"
 WARN_THRESHOLD = 2
 
 # Escalation: after this many warnings, Gate 6 becomes blocking
-ESCALATION_THRESHOLD = 2
+# Set to 5 (not 2) to give adequate room for remember_this() resets
+# and avoid premature deadlocks where blocking prevents clearing
+ESCALATION_THRESHOLD = 5
 
 # Verified fixes older than this are considered stale (expired)
 STALE_FIX_SECONDS = 1200  # 20 minutes
+
+# Paths excluded from verified_fixes tracking (temp files, non-project files)
+EXCLUDED_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/")
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
@@ -43,6 +47,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     issued_warning = False
 
     verified_fixes = state.get("verified_fixes", [])
+    # Note: /tmp exclusion happens at insertion time in tracker.py, not here.
+    # Filtering here would break tests that use /tmp paths for verification.
     # Time-decay: remove verified fixes older than STALE_FIX_SECONDS
     verification_timestamps = state.get("verification_timestamps", {})
     now = time.time()
@@ -133,12 +139,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if issued_warning:
         warn_count += 1
         state["gate6_warn_count"] = warn_count
-        # Persist counter (enforcer doesn't save state after gate checks)
-        try:
-            session_id = state.get("_session_id", "main")
-            save_state(state, session_id=session_id)
-        except Exception:
-            pass  # Don't crash gate on save failure
+        # Note: enforcer saves state after all gates (enforcer.py line 318).
+        # Do NOT save_state here — it races with external state clears
+        # and overwrites resets from remember_this(), causing deadlocks.
 
         if warn_count >= ESCALATION_THRESHOLD:
             return GateResult(

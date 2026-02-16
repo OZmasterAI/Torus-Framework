@@ -405,8 +405,8 @@ test("NotebookEdit tracked in pending", "/tmp/notebook.ipynb" in state.get("pend
 # Verified fixes pipeline
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/fix1.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/fix2.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/fix1.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/fix2.py"})
 run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
 state = load_state(session_id=MAIN_SESSION)
 test("Test run populates verified_fixes", len(state.get("verified_fixes", [])) >= 2,
@@ -566,10 +566,10 @@ cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 
 # Build up 2+ verified fixes in state
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/fix_a.py"})
+run_enforcer("PostToolUse", "Read", {"file_path": "/home/test/fix_a.py"})
 run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/fix_a.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/fix_b.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/fix_a.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/fix_b.py"})
 run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})  # moves pending -> verified
 
 state = load_state(session_id=MAIN_SESSION)
@@ -577,8 +577,8 @@ test("Gate 6 setup: verified_fixes populated", len(state.get("verified_fixes", [
      f"verified_fixes={state.get('verified_fixes', [])}")
 
 # Edit with 2+ verified_fixes — should NOT block (advisory only)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/next_file.py"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/next_file.py"})
+run_enforcer("PostToolUse", "Read", {"file_path": "/home/test/next_file.py"})
+code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/home/test/next_file.py"})
 test("Gate 6: never blocks (advisory only)", code == 0, msg)
 test("Gate 6: warning emitted to stderr", "GATE 6" in msg or "WARNING" in msg, msg)
 
@@ -7059,12 +7059,12 @@ test("v2.3.0: Gate 1 blocks unrelated file",
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 # Simulate: edit a file, then run pytest (verification score >= 70)
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/vts230.py"})
-run_enforcer("PostToolUse", "Bash", {"command": "pytest /tmp/vts230.py"})
+run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/vts230.py"})
+run_enforcer("PostToolUse", "Bash", {"command": "pytest /home/test/vts230.py"})
 _vts_state = load_state(session_id=MAIN_SESSION)
 _vts_timestamps = _vts_state.get("verification_timestamps", {})
 test("v2.3.0: verification_timestamps recorded on verification",
-     "/tmp/vts230.py" in _vts_timestamps or len(_vts_timestamps) > 0,
+     "/home/test/vts230.py" in _vts_timestamps or len(_vts_timestamps) > 0,
      f"Expected timestamp for vts230.py, got keys={list(_vts_timestamps.keys())}")
 
 # Test 9: Verification timestamp is recent (within last 5 seconds)

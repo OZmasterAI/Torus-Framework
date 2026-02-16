@@ -414,6 +414,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         state["unlogged_errors"] = []
         state["error_pattern_counts"] = {}
         state["gate6_warn_count"] = 0  # Reset Gate 6 escalation on memory save
+        state["verified_fixes"] = []  # Clear verified fixes — user saved to memory
 
     # Track skill invocations
     if tool_name == "Skill":
@@ -519,11 +520,14 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                     scores[filepath] = scores.get(filepath, 0) + effective_score
 
         # Clear files that have reached the verification threshold (>= 70)
+        # Exclude temp files from verified_fixes (they trigger false positives in gate 6)
+        _EXCLUDED_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/")
         remaining = []
         for fp in pending:
             if scores.get(fp, 0) >= 70:
-                state.setdefault("verified_fixes", []).append(fp)
-                state.setdefault("verification_timestamps", {})[fp] = time.time()
+                if not any(fp.startswith(p) for p in _EXCLUDED_PREFIXES):
+                    state.setdefault("verified_fixes", []).append(fp)
+                    state.setdefault("verification_timestamps", {})[fp] = time.time()
                 scores.pop(fp, None)
             else:
                 remaining.append(fp)
