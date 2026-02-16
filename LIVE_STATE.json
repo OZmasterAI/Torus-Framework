@@ -1,25 +1,17 @@
 {
-  "session_count": 92,
+  "session_count": 93,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
   "feature": "hybrid-memory-linking",
-  "feature_status": "shipped-pending-restart",
+  "feature_status": "shipped-verified",
   "test_count": 1043,
   "test_failures": 0,
-  "files_modified": [
-    "hooks/memory_server.py",
-    "hooks/test_framework.py"
-  ],
+  "files_modified": [],
   "improvements_shipped": [
-    "Hybrid memory linking: resolves:/resolved_by: bidirectional tags",
-    "Search co-retrieval: linked memories appended with linked=True after top_k",
-    "Response hints: type:fix without resolves: gets suggestion",
-    "9 new test cases for linking (guarded by MEMORY_SERVER_RUNNING skip)"
+    "Hybrid linking live-verified: resolves:/resolved_by: co-retrieval confirmed working"
   ],
   "next_steps": [
-    "Restart MCP server to activate hybrid linking",
-    "Live-test resolves:/resolved_by: co-retrieval",
     "Fix stats-cache.json memory_count gap",
     "Clean up stale hook registrations",
     "Activate get_teammate_context()",
@@ -30,13 +22,14 @@
     "stats-cache.json lacks memory_count key",
     "Plan mode exit loop bug",
     "gather.py UDS socket unreachable during wrap-up",
-    "Linking tests skip when MCP server running"
+    "Linking tests skip when MCP server running",
+    "Session start protocol not reliably followed"
   ],
   "last_session_metrics": {
-    "reads": 8,
-    "edits": 4,
+    "reads": 5,
+    "edits": 0,
     "errors": 0,
-    "verified": 0,
+    "verified": 1,
     "pending": 0
   }
 }
