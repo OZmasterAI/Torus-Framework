@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
 from shared.state import get_memory_last_queried
 
-GATE_NAME = "GATE 14: PRE-IMPLEMENTATION CONFIDENCE"
+GATE_NAME = "GATE 14: CONFIDENCE CHECK"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 MEMORY_FRESHNESS_SECONDS = 300  # 5 minutes
 MAX_WARNINGS = 2  # Block on attempt MAX_WARNINGS + 1

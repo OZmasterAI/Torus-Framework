@@ -147,9 +147,6 @@ def log_gate_decision(gate_name, tool_name, decision, reason, session_id="", sta
         pass
 
 
-# Alias for backward compatibility
-log_event = log_gate_decision
-
 
 def compact_audit_logs():
     """Aggregate all JSONL audit files into daily summaries.
