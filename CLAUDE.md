@@ -46,9 +46,9 @@ Gates checked by enforcer.py. Blocking = exit 2. Advisory = warn only.
 
 ## SESSION START (Non-Negotiable)
 1. Read HANDOFF.md & LIVE_STATE.json
-2. If previous state exists, present summary and ask: "Continue" or "New task"
+2. If previous state exists, present in ONE message: session number, brief summary, completed list (what was done), remaining list (what's next). Ask: "Continue or New task?"
 3. "New task" → Archive HANDOFF.md, reset LIVE_STATE.json
-4. "Continue" → Use handoff as context, pick up from "What's Next"
+4. "Continue" → Ask which item from the remaining list to tackle. Do NOT auto-start work.
 5. User's current instructions ALWAYS override handoff state
 
 ## SESSION HANDOFF
