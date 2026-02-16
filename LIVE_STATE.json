@@ -1,22 +1,22 @@
 {
-  "session_count": 89,
+  "session_count": 90,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "citation-urls",
+  "feature": "exit-code-fix",
   "feature_status": "shipped",
   "test_count": 1034,
   "test_failures": 0,
   "files_modified": [
-    "hooks/memory_server.py",
-    "hooks/test_framework.py"
+    "hooks/enforcer.py",
+    "rules/hooks.md",
+    "CLAUDE.md"
   ],
   "improvements_shipped": [
-    "Citation URL extraction system (_extract_citations, _validate_url, _rank_url_authority)",
-    "FTS5 url column + search/preview integration",
-    "get_memory() citations object",
-    "format_summaries() url field",
-    "29 new citation tests"
+    "sys.exit(1) → sys.exit(2) in all 7 enforcer.py blocking paths",
+    "Gate enforcement now mechanical (exit code 2) not behavioral",
+    "Corrected exit code docs in rules/hooks.md and CLAUDE.md",
+    "AKIRA adoption analysis: 1/4 implemented, 3/4 skipped with rationale"
   ],
   "next_steps": [
     "Fix stats-cache.json memory_count gap",
@@ -31,8 +31,8 @@
     "gather.py UDS socket unreachable during wrap-up"
   ],
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 14,
+    "reads": 8,
+    "edits": 10,
     "errors": 0,
     "verified": 1,
     "pending": 0

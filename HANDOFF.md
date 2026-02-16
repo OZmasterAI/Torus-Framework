@@ -1,16 +1,19 @@
-# Session 89 — Citation URL System
+# Session 90 — Exit Code Fix + AKIRA Adoption Analysis
 
 ## What Was Done
-- Implemented citation URL extraction system in memory_server.py (Enhanced B approach)
-- `_extract_citations()`: parses `[source: URL]` and `[ref: URL]` markers + auto-extracts bare URLs
-- `_validate_url()`: scheme/netloc validation, trailing punctuation stripping, length cap
-- `_rank_url_authority()`: 3-tier domain ranking (high/medium/low) across 9 priority domains
-- `remember_this()` now strips markers from content, stores primary_source/related_urls/source_method in ChromaDB metadata
-- FTS5Index: url column added via ALTER TABLE migration, all search/preview methods updated
-- `get_memory()` returns citations object; `format_summaries()` includes url field
-- Zero token cost — no MCP tool signature changes
-- 29 new tests added, 1034 total, 0 failures
-- Full before/after impact analysis completed (speed, tokens, storage, reliability all neutral-to-positive)
+- **CRITICAL FIX**: Changed all 7 `sys.exit(1)` calls in enforcer.py to `sys.exit(2)`
+  - Claude Code hook protocol: exit(1) = non-blocking error (tool PROCEEDS), exit(2) = mechanical BLOCK
+  - Gates were relying on LLM behavioral compliance for 89 sessions, not mechanical enforcement
+  - Verified via official docs at https://code.claude.com/docs/en/hooks
+  - Live-tested: empty tool_name → exit code 2, Edit-without-Read → gate 1 blocks with exit code 2
+- Updated `rules/hooks.md` — corrected exit code documentation
+- Updated `CLAUDE.md` — "Blocking = exit 1" → "Blocking = exit 2"
+- AKIRA feature adoption analysis (4 candidates from sjxcrypto/akirica comparison):
+  - Exit code fix → IMPLEMENTED (this session)
+  - Constants consolidation → SKIPPED (only 10 lines duplicated, not worth new module)
+  - BGE-M3 embeddings → SKIPPED (our FTS5+ChromaDB works at our scale)
+  - Test file splitting → SKIPPED (1034 tests in single file is fine)
+- 1034 tests pass, 0 failures
 
 ## What's Next
 1. Fix stats-cache.json `memory_count` gap (carried from Session 70)
@@ -26,9 +29,10 @@
 - gather.py UDS socket unreachable during wrap-up (non-blocking, uses fallback)
 
 ## Service Status
-- Memory MCP: 410 memories
+- Memory MCP: 414 memories
 - Tests: 1034 passed, 0 failed
-- Framework version: v2.4.2
+- Framework version: v2.4.3
+- Gate enforcement: MECHANICAL (exit code 2) — upgraded from behavioral compliance
 - Ramdisk: active at /run/user/1000/claude-hooks
 - Statusline: 2-line layout, session number field, 5-tier context colors
 - Dashboard: memory graph fixed, 14 ES6 modules, cyberpunk theme
