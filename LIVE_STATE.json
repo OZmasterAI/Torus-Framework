@@ -1,33 +1,36 @@
 {
-  "session_count": 93,
+  "session_count": 95,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "hybrid-memory-linking",
-  "feature_status": "shipped-verified",
+  "feature": "session-start-protocol-fix",
+  "feature_status": "shipped-needs-verification",
   "test_count": 1043,
   "test_failures": 0,
-  "files_modified": [],
+  "files_modified": [
+    "/home/crab/.claude/hooks/boot.py"
+  ],
   "improvements_shipped": [
-    "Hybrid linking live-verified: resolves:/resolved_by: co-retrieval confirmed working"
+    "boot.py stdout injection — session start protocol now mechanical",
+    "Memory DB restored from backup (5876 embeddings, integrity OK)"
   ],
   "next_steps": [
+    "Verify session start protocol works on restart",
+    "Save investigation findings to memory",
     "Fix stats-cache.json memory_count gap",
     "Clean up stale hook registrations",
-    "Activate get_teammate_context()",
-    "ChromaDB degraded mode guards",
-    "Privacy tags in tracker.py/observation.py"
+    "Investigate chroma.sqlite3 truncation cause"
   ],
   "known_issues": [
     "stats-cache.json lacks memory_count key",
     "Plan mode exit loop bug",
     "gather.py UDS socket unreachable during wrap-up",
     "Linking tests skip when MCP server running",
-    "Session start protocol not reliably followed"
+    "chroma.sqlite3 truncation root cause unknown"
   ],
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 0,
+    "reads": 8,
+    "edits": 1,
     "errors": 0,
     "verified": 1,
     "pending": 0
