@@ -34,7 +34,7 @@ except ImportError:
 MEMORY_TIMESTAMP_FILE = os.path.join(_DISK_STATE_DIR, ".memory_last_queried")
 
 # Schema version — bump when adding/removing/renaming fields
-STATE_VERSION = 2
+STATE_VERSION = 3
 
 # Cap lists to prevent unbounded growth
 MAX_FILES_READ = 200
@@ -103,6 +103,10 @@ def default_state():
         # v2.4.2 fields (confidence gate)
         "session_test_baseline": False,  # Has any test been run this session?
         "confidence_warnings": 0,        # Progressive warning counter for Gate 14
+        # v3 fields (causal chain enforcement)
+        "recent_test_failure": None,     # {pattern, timestamp, command} when tests fail; None when passing
+        "fix_history_queried": 0,        # Timestamp of last query_fix_history call
+        "fixing_error": False,           # True when actively fixing a detected error
     }
 
 
@@ -149,6 +153,9 @@ def get_state_schema():
         "subagent_history": {"type": "list", "description": "Completed subagent records", "category": "subagents"},
         "session_test_baseline": {"type": "bool", "description": "Whether any test has been run this session", "category": "gate14"},
         "confidence_warnings": {"type": "int", "description": "Progressive warning counter for Gate 14", "category": "gate14"},
+        "recent_test_failure": {"type": "dict", "description": "Error info from most recent test failure", "category": "gate15"},
+        "fix_history_queried": {"type": "float", "description": "Timestamp of last query_fix_history call", "category": "gate15"},
+        "fixing_error": {"type": "bool", "description": "Whether actively fixing a detected error", "category": "gate15"},
     }
 
 
@@ -184,9 +191,25 @@ def migrate_v1_to_v2(state):
     return state
 
 
+def migrate_v2_to_v3(state):
+    """Migrate state from v2 to v3.
+
+    Adds causal chain enforcement fields for Gate 15.
+    """
+    if "recent_test_failure" not in state:
+        state["recent_test_failure"] = None
+    if "fix_history_queried" not in state:
+        state["fix_history_queried"] = 0
+    if "fixing_error" not in state:
+        state["fixing_error"] = False
+    state["_version"] = 3
+    return state
+
+
 # Migration chain: maps (from_version) -> migration function
 _MIGRATIONS = {
     1: migrate_v1_to_v2,
+    2: migrate_v2_to_v3,
 }
 
 

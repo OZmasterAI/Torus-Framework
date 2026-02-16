@@ -43,6 +43,7 @@ GATE_MODULES = [
     "gates.gate_12_plan_mode_save",
     "gates.gate_13_workspace_isolation",
     "gates.gate_14_confidence_check",
+    "gates.gate_15_causal_chain",
 ]
 
 # Tier 1 safety gates that MUST fail-closed (exceptions = block, not pass)
@@ -138,6 +139,10 @@ GATE_DEPENDENCIES = {
     "gate_14_confidence_check": {
         "reads": ["session_test_baseline", "pending_verification", "memory_last_queried", "confidence_warnings"],
         "writes": ["confidence_warnings"],
+    },
+    "gate_15_causal_chain": {
+        "reads": ["recent_test_failure", "fix_history_queried", "fixing_error"],
+        "writes": [],
     },
 }
 

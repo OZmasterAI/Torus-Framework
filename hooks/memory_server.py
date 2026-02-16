@@ -1110,6 +1110,77 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     return result
 
 
+def _bridge_to_fix_outcomes(content, context, tags):
+    """Bridge remember_this to fix_outcomes when type:fix tag is detected.
+
+    Extracts error info from content, creates a fix_outcomes entry if one
+    doesn't already exist (dedup: manual record_outcome takes priority).
+    Returns dict with chain_id on success, None on skip/failure.
+    """
+    try:
+        if fix_outcomes is None:
+            return None
+
+        # Try to extract error pattern from content
+        # Common patterns: "Fixed KeyError ...", "Fixed ImportError ..."
+        import re
+        error_match = re.search(
+            r'(?:Fixed|Resolved|fixed|resolved)\s+(\S+(?:Error|Exception|FAILED|error)\S*)',
+            content
+        )
+        error_text = error_match.group(1) if error_match else content[:100]
+
+        # Extract strategy from content if possible
+        strategy_match = re.search(
+            r'(?:using|via|by|with)\s+(.+?)(?:\.|,|$)',
+            content
+        )
+        strategy_id = strategy_match.group(1).strip()[:80] if strategy_match else "auto-bridged"
+
+        normalized, error_hash = error_signature(error_text)
+        strategy_hash = fnv1a_hash(strategy_id)
+        chain_id = f"{error_hash}_{strategy_hash}"
+
+        # Dedup: skip if manual record_outcome already exists for this chain
+        try:
+            existing = fix_outcomes.get(ids=[chain_id])
+            if (existing and existing.get("documents") and len(existing["documents"]) > 0):
+                meta = existing["metadatas"][0] if existing.get("metadatas") else {}
+                if meta.get("outcome") in ("success", "failure"):
+                    return None  # Manual chain already recorded — defer
+        except Exception:
+            pass
+
+        # Determine outcome: type:fix usually means success
+        outcome = "success"
+        if any(kw in tags for kw in ("outcome:failed", "outcome:failure")):
+            outcome = "failure"
+
+        successes = 1 if outcome == "success" else 0
+        attempts = 1
+        confidence = _compute_confidence(successes, attempts)
+
+        fix_outcomes.upsert(
+            documents=[normalized],
+            metadatas=[{
+                "error_hash": error_hash,
+                "strategy_id": strategy_id,
+                "chain_id": chain_id,
+                "outcome": outcome,
+                "confidence": str(round(confidence, 4)),
+                "attempts": str(attempts),
+                "successes": str(successes),
+                "timestamp": str(time.time()),
+                "last_outcome_time": str(time.time()),
+                "bridged": "true",
+            }],
+            ids=[chain_id],
+        )
+        return {"chain_id": chain_id, "outcome": outcome}
+    except Exception:
+        return None
+
+
 @mcp.tool()
 @crash_proof
 def remember_this(content: str, context: str = "", tags: str = "") -> dict:
@@ -1188,12 +1259,21 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
 
     _touch_memory_timestamp()
 
-    return {
+    # Option B bridge: auto-write to fix_outcomes when type:fix tag detected
+    bridge_result = None
+    if tags and "type:fix" in tags:
+        bridge_result = _bridge_to_fix_outcomes(content, context, tags)
+
+    result = {
         "result": "Memory stored successfully!",
         "id": doc_id,
         "total_memories": collection.count(),
         "timestamp": timestamp,
     }
+    if bridge_result:
+        result["fix_outcome_bridged"] = True
+        result["bridge_chain_id"] = bridge_result.get("chain_id", "")
+    return result
 
 
 # DORMANT (Session 86) — covered by handoff files + search_knowledge(recency_weight=1.0)

@@ -77,6 +77,30 @@ def _log_debug(msg):
         pass  # Debug logging must never crash tracker
 
 
+def _extract_error_pattern(tool_response):
+    """Extract the primary error pattern from test output.
+
+    Looks for common error signatures in test output and returns the first match.
+    Returns "unknown" if no pattern found.
+    """
+    if isinstance(tool_response, dict):
+        output = tool_response.get("stdout", "") + tool_response.get("stderr", "")
+    elif isinstance(tool_response, str):
+        output = tool_response
+    else:
+        return "unknown"
+
+    ERROR_SIGS = [
+        "Traceback", "SyntaxError:", "ImportError:", "ModuleNotFoundError:",
+        "TypeError:", "ValueError:", "KeyError:", "AttributeError:",
+        "AssertionError:", "NameError:", "FAILED", "npm ERR!", "fatal:",
+    ]
+    for sig in ERROR_SIGS:
+        if sig in output:
+            return sig
+    return "unknown"
+
+
 def _deduplicate_error_window(state, pattern):
     """Windowed error deduplication: group same patterns within 60s windows.
 
@@ -410,7 +434,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     if tool_name == "ExitPlanMode":
         state["last_exit_plan_mode"] = time.time()
 
-    # Track test runs
+    # Track test runs + causal chain auto-detect (Option A)
     if tool_name == "Bash":
         command = tool_input.get("command", "")
         if any(kw in command for kw in ["pytest", "python -m pytest", "npm test", "cargo test", "go test"]):
@@ -434,6 +458,21 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                     except (json.JSONDecodeError, TypeError):
                         pass
             state["last_test_exit_code"] = exit_code
+
+            # Causal chain auto-detect: set recent_test_failure on non-zero exit
+            if exit_code and exit_code != 0:
+                # Detect primary error pattern from output
+                error_pattern = _extract_error_pattern(tool_response)
+                state["recent_test_failure"] = {
+                    "pattern": error_pattern,
+                    "timestamp": time.time(),
+                    "command": command[:200],
+                }
+                state["fixing_error"] = True
+            else:
+                # Tests passed — clear error state
+                state["recent_test_failure"] = None
+                state["fixing_error"] = False
 
     # Track edits for pending verification (including NotebookEdit)
     if tool_name in ("Edit", "Write", "NotebookEdit"):
@@ -560,6 +599,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
 
     # Causal fix tracking: query_fix_history
     if tool_name == "mcp__memory__query_fix_history":
+        state["fix_history_queried"] = time.time()
         try:
             resp = tool_response if isinstance(tool_response, dict) else {}
             if isinstance(tool_response, str):

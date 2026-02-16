@@ -8914,6 +8914,110 @@ for _exempt_file, _exempt_label in [
     test(f"Gate14: exempt {_exempt_label} → allowed", not _g14_re.blocked)
 
 # ─────────────────────────────────────────────────
+# Gate 15: Causal Chain Enforcement
+# ─────────────────────────────────────────────────
+print("\n--- Gate 15: Causal Chain Enforcement ---")
+
+try:
+    from gates.gate_15_causal_chain import check as _g15_check
+except ImportError:
+    _g15_check = None
+    test("Gate15: module import", False, "Failed to import gate_15_causal_chain")
+
+if _g15_check:
+    # Test 1: No test failure → allowed
+    _g15_s1 = default_state()
+    _g15_s1["recent_test_failure"] = None
+    _g15_r1 = _g15_check("Edit", {"file_path": "/tmp/foo.py"}, _g15_s1)
+    test("Gate15: no test failure → allowed", not _g15_r1.blocked)
+
+    # Test 2: Test failure + no fix_history → BLOCKED
+    _g15_s2 = default_state()
+    _g15_s2["recent_test_failure"] = {"pattern": "AssertionError:", "timestamp": time.time(), "command": "pytest"}
+    _g15_s2["fixing_error"] = True
+    _g15_s2["fix_history_queried"] = 0
+    _g15_r2 = _g15_check("Edit", {"file_path": "/tmp/foo.py"}, _g15_s2)
+    test("Gate15: test failure + no fix_history → BLOCKED",
+         _g15_r2.blocked and "query_fix_history" in _g15_r2.message)
+
+    # Test 3: Test failure + recent fix_history → allowed
+    _g15_s3 = default_state()
+    _g15_s3["recent_test_failure"] = {"pattern": "KeyError:", "timestamp": time.time(), "command": "pytest"}
+    _g15_s3["fixing_error"] = True
+    _g15_s3["fix_history_queried"] = time.time()  # just queried
+    _g15_r3 = _g15_check("Edit", {"file_path": "/tmp/foo.py"}, _g15_s3)
+    test("Gate15: test failure + recent fix_history → allowed", not _g15_r3.blocked)
+
+    # Test 4: Test failure but fixing_error=False → allowed
+    _g15_s4 = default_state()
+    _g15_s4["recent_test_failure"] = {"pattern": "FAILED", "timestamp": time.time(), "command": "pytest"}
+    _g15_s4["fixing_error"] = False
+    _g15_r4 = _g15_check("Edit", {"file_path": "/tmp/foo.py"}, _g15_s4)
+    test("Gate15: fixing_error=False → allowed", not _g15_r4.blocked)
+
+    # Test 5: Test failure but editing test file → allowed (exempt)
+    _g15_s5 = default_state()
+    _g15_s5["recent_test_failure"] = {"pattern": "FAILED", "timestamp": time.time(), "command": "pytest"}
+    _g15_s5["fixing_error"] = True
+    _g15_s5["fix_history_queried"] = 0
+    _g15_r5 = _g15_check("Edit", {"file_path": "/tmp/test_something.py"}, _g15_s5)
+    test("Gate15: test file exempt → allowed", not _g15_r5.blocked)
+
+    # Test 6: Read tool → always allowed (not watched)
+    _g15_s6 = default_state()
+    _g15_s6["recent_test_failure"] = {"pattern": "FAILED", "timestamp": time.time(), "command": "pytest"}
+    _g15_s6["fixing_error"] = True
+    _g15_r6 = _g15_check("Read", {"file_path": "/tmp/foo.py"}, _g15_s6)
+    test("Gate15: Read tool → always allowed", not _g15_r6.blocked)
+
+    # Test 7: Stale fix_history (>5 min ago) → BLOCKED
+    _g15_s7 = default_state()
+    _g15_s7["recent_test_failure"] = {"pattern": "TypeError:", "timestamp": time.time(), "command": "pytest"}
+    _g15_s7["fixing_error"] = True
+    _g15_s7["fix_history_queried"] = time.time() - 400  # 6+ min ago
+    _g15_r7 = _g15_check("Edit", {"file_path": "/tmp/foo.py"}, _g15_s7)
+    test("Gate15: stale fix_history (>5min) → BLOCKED", _g15_r7.blocked)
+
+# State v3 fields
+_v3_state = default_state()
+test("State v3: recent_test_failure field exists",
+     "recent_test_failure" in _v3_state and _v3_state["recent_test_failure"] is None)
+test("State v3: fix_history_queried field exists",
+     "fix_history_queried" in _v3_state and _v3_state["fix_history_queried"] == 0)
+test("State v3: fixing_error field exists",
+     "fixing_error" in _v3_state and _v3_state["fixing_error"] is False)
+test("State v3: version is 3", _v3_state.get("_version") == 3)
+
+# Tracker: test failure sets recent_test_failure
+from tracker import handle_post_tool_use as _tracker_handle
+_tracker_s1 = default_state()
+_tracker_handle("Bash", {"command": "pytest tests/"}, _tracker_s1, session_id="__test_g15",
+                tool_response={"exit_code": 1, "stdout": "FAILED test_x.py"})
+test("Tracker: test failure sets recent_test_failure",
+     _tracker_s1.get("recent_test_failure") is not None
+     and _tracker_s1["recent_test_failure"].get("pattern") == "FAILED")
+test("Tracker: test failure sets fixing_error=True",
+     _tracker_s1.get("fixing_error") is True)
+
+# Tracker: test pass clears recent_test_failure
+_tracker_s2 = default_state()
+_tracker_s2["recent_test_failure"] = {"pattern": "FAILED", "timestamp": time.time(), "command": "pytest"}
+_tracker_s2["fixing_error"] = True
+_tracker_handle("Bash", {"command": "pytest tests/"}, _tracker_s2, session_id="__test_g15",
+                tool_response={"exit_code": 0, "stdout": "5 passed"})
+test("Tracker: test pass clears recent_test_failure",
+     _tracker_s2.get("recent_test_failure") is None)
+test("Tracker: test pass clears fixing_error",
+     _tracker_s2.get("fixing_error") is False)
+
+# Tracker: query_fix_history sets fix_history_queried
+_tracker_s3 = default_state()
+_tracker_handle("mcp__memory__query_fix_history", {"error_text": "test error"}, _tracker_s3,
+                session_id="__test_g15", tool_response="{}")
+test("Tracker: query_fix_history sets fix_history_queried",
+     _tracker_s3.get("fix_history_queried", 0) > 0)
+
+# ─────────────────────────────────────────────────
 # TASK MANAGER (Phase 2) — PRP JSON task tracking
 # ─────────────────────────────────────────────────
 print("\n--- Task Manager Tests ---")

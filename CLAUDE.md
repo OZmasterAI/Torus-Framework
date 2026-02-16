@@ -1,21 +1,32 @@
 # Megaman-Framework
 
 ## MEMORY FIRST (Non-Negotiable)
-You have amnesia every session. Memory doesn't.
+You have amnesia every session. Memory doesn't
 BEFORE building/fixing ANYTHING: search_knowledge("[what you're about to do]")
 When search_knowledge returns summaries, use get_memory(id) to retrieve full content for relevant entries.
 AFTER any fix or decision: remember_this(content, context, tags)
+For ERROR FIX: use the Causal Chain (see below) THEN remember_this()
 Relevance thresholds (search_knowledge returns relevance 0.0-1.0):
 - \> 0.5: use directly | 0.2-0.5: get_memory(id) to verify | < 0.2: treat as unknown
 
 ## THE LOOP
-memory check → plan → tests first → build → prove it → ship
+memory check → plan → tests first → build → prove it → track → ship
+
+## CAUSAL CHAIN WORKFLOW
+When fixing errors, follow ALL 5 steps:
+1. query_fix_history("error text")
+2. record_attempt("error text", "strategy-name")
+3. Fix and verify with tests
+4. record_outcome("chain_id", "success"|"failure")
+5. remember_this("Fixed [error] using [strategy]", ..., "type:fix")
+ Automation failsafe captures data even if steps are skipped.
 
 ## BEHAVIORAL RULES
 1. **Prove it works** — Never claim "fixed" without evidence. Show test output.
-2. **Save to memory** — Every fix, discovery, and decision gets remember_this()
-3. **Protect main context** — Delegate heavy operations to sub-agents or team members, not main thread
-4. **Plan mode discipline** — NEVER write code while in plan mode. The workflow is: enter plan mode → explore + write plan → ExitPlanMode → get approval → THEN implement. If ExitPlanMode is rejected, ask the user what's wrong — do NOT call ExitPlanMode again immediately. Max 1 ExitPlanMode attempt per turn.
+2. **Track what worked** — Error fixes:  record_attempt before, record_outcome after, use full Causal Chain (see above).
+3. **Save to memory** — Every fix, discovery, and decision gets remember_this()
+4. **Protect main context** — Delegate heavy operations to sub-agents
+5. **Plan mode discipline** — NEVER write code while in plan mode. The workflow is: enter plan mode → explore + write plan → ExitPlanMode → get approval → THEN implement. If ExitPlanMode is rejected, ask the user what's wrong — do NOT call ExitPlanMode again immediately. Max 1 ExitPlanMode attempt per turn.
 
 ## QUALITY GATES (Enforced by hooks)
 Gates checked by enforcer.py. Blocking = exit 1. Advisory = warn only.
@@ -30,6 +41,7 @@ Gates checked by enforcer.py. Blocking = exit 1. Advisory = warn only.
 - Gate 9: STRATEGY BAN — Blocks banned fix strategies (proven ineffective)
 - Gate 10: MODEL COST GUARD — Blocks expensive model usage without justification
 - Gate 11: RATE LIMIT — Blocks runaway tool call loops (rolling window)
+- Gate 15: CAUSAL CHAIN — Blocks edits after test failure until query_fix_history called
 
 **Advisory gate** (warns only, never blocks):
 - Gate 6: SAVE VERIFIED FIX — WARNS only when verified fixes not saved to memory
@@ -41,7 +53,7 @@ At the start of every new session, BEFORE doing anything else:
 2. If previous session state exists, present brief summary and ask: "Continue" or "New task".
 3. "New task" → Archive HANDOFF.md to ~/.claude/archive/HANDOFF_{date}_{project}.md, reset LIVE_STATE.json, don't reference previous project.
 4. "Continue" → Use handoff as context, pick up from "What's Next".
-5. **CRITICAL: The user's current instructions ALWAYS override handoff state.** Previous session context is history, not a directive. If the user asks for something different, do that — not what the handoff says.
+5. **After the protocol completes**, the user's current instructions ALWAYS override handoff state.
 
 ## SESSION HANDOFF
 - ~/.claude/HANDOFF.md — What was done, what's next, service status
@@ -77,10 +89,3 @@ Tags — type: error, learning, fix, feature-request, correction, decision | pri
   Traceback, npm-ERR
 
 Example: `remember_this("Fixed auth token refresh loop", "debugging login flow", "type:fix,priority:high,area:backend")`
-
-## CAUSAL CHAIN WORKFLOW
-When fixing recurring errors, use the causal tracking chain:
-1. query_fix_history("error text")
-2. record_attempt("error text", "strategy-name")
-3. Fix and verify
-4. record_outcome("chain_id", "success"|"failure")
