@@ -1,25 +1,22 @@
 {
-  "session_count": 102,
+  "session_count": 108,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "",
-  "feature_status": "",
+  "feature": "chromadb-observations-repair",
+  "feature_status": "completed",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
-    "/home/crab/.claude/hooks/statusline.py",
-    "/home/crab/.claude/hooks/boot.py",
-    "/home/crab/.claude/USAGE_GUIDE.md",
     "/home/crab/.claude/HANDOFF.md",
     "/home/crab/.claude/LIVE_STATE.json"
   ],
   "improvements_shipped": [
-    "USAGE_GUIDE.md — comprehensive framework usage guide",
-    "statusline.py off-by-one fix (removed erroneous +1)",
-    "boot.py session number fix (read LIVE_STATE.json instead of parsing HANDOFF.md)"
+    "Dropped and recreated corrupt observations collection",
+    "Verified all 5 ChromaDB collections healthy"
   ],
   "next_steps": [
+    "Restart Claude Code so MCP reconnects to rebuilt ChromaDB",
     "Document session_count contract in session_end.py docstring"
   ],
   "dormant_agent_teams": [
@@ -35,9 +32,9 @@
   ],
   "last_session_metrics": {
     "reads": 2,
-    "edits": 4,
-    "errors": 0,
-    "verified": 1,
-    "pending": 1
+    "edits": 0,
+    "errors": 1,
+    "verified": 5,
+    "pending": 0
   }
 }

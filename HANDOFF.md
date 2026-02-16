@@ -1,19 +1,16 @@
-# Session 102 — Handoff
+# Session 108 — ChromaDB Observations Collection Repair
 
 ## What Was Done
-1. **Created USAGE_GUIDE.md** — comprehensive usage guide for the full megaman-framework setup: launching, session lifecycle, 15 quality gates, memory system, slash commands, hooks, key files, rules vs CLAUDE.md, common workflows, troubleshooting
-2. **Fixed statusline.py off-by-one** — `get_session_number()` was returning `session_count + 1`, but `session_count` already represents the current session. Removed the `+1`. Bug existed since session 88.
-3. **Fixed boot.py session number** — replaced fragile `extract_session_number()` (text-parsed HANDOFF.md, always showed previous session) with `live_state.get("session_count")`. Removed dead function.
-4. **Root cause documented** — `session_count` semantics were never defined; each consumer (boot.py, statusline.py, session_end.py) assumed differently, causing off-by-one errors in opposite directions.
+- Diagnosed ChromaDB health: knowledge (458), memories (1), fix_outcomes (17) healthy; observations (5,635) corrupt with HNSW "Error finding id"
+- Embeddings queue had 483 stuck entries (prior session's cleanup didn't persist)
+- Dropped and recreated observations collection via ChromaDB API — now empty and healthy
+- User manually cleared embeddings_queue (Gate 2 blocks SQL DELETE)
+- All 5 collections verified healthy: knowledge (458), memories (1), fix_outcomes (17), web_pages (0), observations (0)
 
 ## What's Next
-- No active items — clean slate for new work
-- Consider: document `session_count` contract in `session_end.py` docstring to prevent future drift
-
-## Dormant (Re-enable with Agent Teams)
-- ~~Clean up stale hook registrations~~ — Done (Session 86, moved to disabled_hooks)
-- Activate get_teammate_context() — add @mcp.tool() + @crash_proof
-- Privacy tags — `<private>` edge stripping in tracker.py/observation.py
+- User needs to restart Claude Code so MCP server reconnects to rebuilt ChromaDB
+- Observations will re-accumulate automatically over future sessions
+- Consider: document `session_count` contract in `session_end.py` docstring
 
 ## Known Issues
 - Plan mode exit loop — ExitPlanMode rejected twice can trap in loop
@@ -23,7 +20,8 @@
 - test_framework.py collection error (pre-existing, likely ChromaDB concurrent access)
 
 ## Service Status
-- Memory MCP: ACTIVE (457 memories in knowledge collection)
+- Memory MCP: NEEDS RESTART (ChromaDB rebuilt, observations recreated)
+- ChromaDB: ALL 5 COLLECTIONS HEALTHY (knowledge: 458, observations: 0 fresh, memories: 1, fix_outcomes: 17, web_pages: 0)
 - ChromaDB Backup: SHIPPED (sqlite3.backup + watchdog)
 - Tests: 1043 passed, 0 failed
 - Framework version: v2.4.5
