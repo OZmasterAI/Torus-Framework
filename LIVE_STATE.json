@@ -1,5 +1,5 @@
 {
-  "session_count": 99,
+  "session_count": 100,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
@@ -18,10 +18,11 @@
     "ChromaDB degraded mode guards confirmed shipped (Session 89)"
   ],
   "next_steps": [
-    "Clean up stale hook registrations",
-    "Activate get_teammate_context()",
-    "Privacy tags in tracker.py/observation.py",
-    "Address remaining medium audit findings"
+    "Address remaining medium audit findings (backup locking)"
+  ],
+  "dormant_agent_teams": [
+    "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
+    "Privacy tags — <private> edge stripping in tracker.py/observation.py"
   ],
   "known_issues": [
     "Plan mode exit loop bug",
@@ -31,10 +32,10 @@
     "test_framework.py collection error (pre-existing)"
   ],
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 5,
+    "reads": 3,
+    "edits": 4,
     "errors": 0,
-    "verified": 3,
-    "pending": 0
+    "verified": 0,
+    "pending": 3
   }
 }
