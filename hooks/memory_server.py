@@ -3192,14 +3192,24 @@ def _backup_database():
 
     # Atomic: backup to .tmp then os.replace
     tmp_path = bak_path + ".tmp"
+    src_conn = None
+    dst_conn = None
     try:
         src_conn = _sqlite3.connect(src_path)
         dst_conn = _sqlite3.connect(tmp_path)
         src_conn.backup(dst_conn)
         dst_conn.close()
+        dst_conn = None
         src_conn.close()
+        src_conn = None
         os.replace(tmp_path, bak_path)
     except Exception:
+        if dst_conn:
+            try: dst_conn.close()
+            except Exception: pass
+        if src_conn:
+            try: src_conn.close()
+            except Exception: pass
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise
