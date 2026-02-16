@@ -126,13 +126,14 @@ def fmt_tokens(n):
 def get_session_number():
     """Read current session number from LIVE_STATE.json.
 
-    session_count increments at session end, so current session = count + 1.
+    session_count is set to N by session_end.py at the end of session N-1,
+    so it already represents the current session number.
     """
     try:
         with open(LIVE_STATE_FILE) as f:
             state = json.load(f)
         count = state.get("session_count", 0)
-        return count + 1 if isinstance(count, int) else "?"
+        return count if isinstance(count, int) else "?"
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return "?"
 
