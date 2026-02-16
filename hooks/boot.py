@@ -463,18 +463,24 @@ def main():
     except Exception:
         pass
 
-    # Watchdog: detect ChromaDB truncation early
+    # Watchdog: detect ChromaDB truncation/shrinkage early
     db_size_warning = None
-    if _worker_available:
-        _db_path = os.path.join(os.path.expanduser("~"), "data", "memory", "chroma.sqlite3")
-        try:
-            if os.path.exists(_db_path):
-                _db_size = os.path.getsize(_db_path)
-                if _db_size < 1024 * 1024:  # < 1 MB (healthy is ~23 MB)
-                    _size_kb = round(_db_size / 1024, 1)
-                    db_size_warning = f"chroma.sqlite3 is {_size_kb} KB (expected ~23 MB) — possible truncation"
-        except OSError:
-            pass
+    _mem_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
+    _db_path = os.path.join(_mem_dir, "chroma.sqlite3")
+    _bak_path = os.path.join(_mem_dir, "chroma.sqlite3.backup")
+    try:
+        if os.path.exists(_db_path):
+            _db_size = os.path.getsize(_db_path)
+            if _db_size < 1024:  # < 1 KB = near-total truncation
+                db_size_warning = f"chroma.sqlite3 is {_db_size} bytes — likely truncated"
+            elif os.path.exists(_bak_path):
+                _bak_size = os.path.getsize(_bak_path)
+                if _bak_size > 0 and _db_size < _bak_size * 0.8:  # < 80% of backup
+                    _db_mb = round(_db_size / (1024 * 1024), 1)
+                    _bak_mb = round(_bak_size / (1024 * 1024), 1)
+                    db_size_warning = f"chroma.sqlite3 shrunk: {_db_mb} MB vs {_bak_mb} MB backup — possible data loss"
+    except OSError:
+        pass
 
     # Inject relevant memories
     injected = inject_memories_via_socket(handoff, live_state) if _worker_available else []
