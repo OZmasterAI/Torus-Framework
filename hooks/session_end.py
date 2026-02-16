@@ -332,7 +332,9 @@ def backup_database():
     try:
         # Mtime skip: don't re-backup if DB hasn't changed
         if os.path.exists(db_path) and os.path.exists(bak_path):
-            if os.path.getmtime(bak_path) >= os.path.getmtime(db_path):
+            db_mtime = os.path.getmtime(db_path)
+            bak_mtime = os.path.getmtime(bak_path)
+            if bak_mtime >= db_mtime:
                 print("[SESSION_END] Backup skipped (DB unchanged)", file=sys.stderr)
                 return
         if not is_worker_available(retries=1, delay=0.2):
