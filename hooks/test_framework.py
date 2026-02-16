@@ -8861,6 +8861,110 @@ test("Browser: ralph SKILL.md has visual verify step", "Visual Verify" in _ralph
 test("Browser: ralph SKILL.md has screenshots in report", "Screenshots taken" in _ralph_skill_src)
 
 # ─────────────────────────────────────────────────
+# GATE 13: WORKSPACE ISOLATION
+# ─────────────────────────────────────────────────
+print("\n--- Gate 13: Workspace Isolation ---")
+
+from gates.gate_13_workspace_isolation import check as _g13_check
+import gates.gate_13_workspace_isolation as _g13_module
+
+_g13_claims_file = os.path.join(os.path.dirname(__file__), ".file_claims.json")
+
+# Save original claims file content (if any) so we can restore it after tests
+_g13_original_claims = None
+if os.path.exists(_g13_claims_file):
+    try:
+        with open(_g13_claims_file, "r") as _f:
+            _g13_original_claims = _f.read()
+    except OSError:
+        pass
+
+try:
+    # Test 1: Solo work allowed (session_id="main")
+    _g13_s1 = default_state()
+    _g13_s1["_session_id"] = "main"
+    _g13_r1 = _g13_check("Edit", {"file_path": "/tmp/some_file.py"}, _g13_s1)
+    test("Gate13: solo work (session_id=main) → allowed", not _g13_r1.blocked)
+
+    # Test 2: Non-watched tool allowed (e.g., Read)
+    _g13_s2 = default_state()
+    _g13_s2["_session_id"] = "agent-worker-1"
+    _g13_r2 = _g13_check("Read", {"file_path": "/tmp/some_file.py"}, _g13_s2)
+    test("Gate13: non-watched tool (Read) → allowed", not _g13_r2.blocked)
+
+    # Test 3: Unclaimed file allowed
+    # Write empty claims file to ensure no claims exist
+    with open(_g13_claims_file, "w") as _f:
+        json.dump({}, _f)
+    _g13_s3 = default_state()
+    _g13_s3["_session_id"] = "agent-worker-1"
+    _g13_r3 = _g13_check("Edit", {"file_path": "/tmp/unclaimed_file.py"}, _g13_s3)
+    test("Gate13: unclaimed file → allowed", not _g13_r3.blocked)
+
+    # Test 4: Self-claimed file allowed (same session_id)
+    _g13_self_claim = {
+        "/tmp/my_file.py": {
+            "session_id": "agent-worker-1",
+            "claimed_at": time.time()
+        }
+    }
+    with open(_g13_claims_file, "w") as _f:
+        json.dump(_g13_self_claim, _f)
+    _g13_s4 = default_state()
+    _g13_s4["_session_id"] = "agent-worker-1"
+    _g13_r4 = _g13_check("Write", {"file_path": "/tmp/my_file.py"}, _g13_s4)
+    test("Gate13: self-claimed file → allowed", not _g13_r4.blocked)
+
+    # Test 5: Different session claiming same file → BLOCKED
+    _g13_other_claim = {
+        "/tmp/contested_file.py": {
+            "session_id": "agent-worker-2",
+            "claimed_at": time.time()
+        }
+    }
+    with open(_g13_claims_file, "w") as _f:
+        json.dump(_g13_other_claim, _f)
+    _g13_s5 = default_state()
+    _g13_s5["_session_id"] = "agent-worker-1"
+    _g13_r5 = _g13_check("Edit", {"file_path": "/tmp/contested_file.py"}, _g13_s5)
+    test("Gate13: different session claims file → BLOCKED", _g13_r5.blocked)
+    test("Gate13: blocked message mentions other session",
+         "agent-worker-2" in (_g13_r5.message or ""))
+
+    # Test 6: Stale claim (>2h) → allowed (stale claim ignored)
+    _g13_stale_claim = {
+        "/tmp/stale_file.py": {
+            "session_id": "agent-worker-2",
+            "claimed_at": time.time() - 8000  # >2h old
+        }
+    }
+    with open(_g13_claims_file, "w") as _f:
+        json.dump(_g13_stale_claim, _f)
+    _g13_s6 = default_state()
+    _g13_s6["_session_id"] = "agent-worker-1"
+    _g13_r6 = _g13_check("Edit", {"file_path": "/tmp/stale_file.py"}, _g13_s6)
+    test("Gate13: stale claim (>2h) → allowed", not _g13_r6.blocked)
+
+    # Test 7: Empty/missing file_path → allowed
+    _g13_s7 = default_state()
+    _g13_s7["_session_id"] = "agent-worker-1"
+    _g13_r7a = _g13_check("Edit", {"file_path": ""}, _g13_s7)
+    test("Gate13: empty file_path → allowed", not _g13_r7a.blocked)
+    _g13_r7b = _g13_check("Write", {}, _g13_s7)
+    test("Gate13: missing file_path → allowed", not _g13_r7b.blocked)
+
+finally:
+    # Restore original claims file
+    if _g13_original_claims is not None:
+        with open(_g13_claims_file, "w") as _f:
+            _f.write(_g13_original_claims)
+    elif os.path.exists(_g13_claims_file):
+        try:
+            os.remove(_g13_claims_file)
+        except OSError:
+            pass
+
+# ─────────────────────────────────────────────────
 # GATE 14: PRE-IMPLEMENTATION CONFIDENCE
 # ─────────────────────────────────────────────────
 print("\n--- Gate 14: Pre-Implementation Confidence ---")

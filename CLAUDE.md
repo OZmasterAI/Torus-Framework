@@ -1,13 +1,10 @@
 # Megaman-Framework
 
 ## MEMORY FIRST (Non-Negotiable)
-You have amnesia every session. Memory doesn't
 BEFORE building/fixing ANYTHING: search_knowledge("[what you're about to do]")
-When search_knowledge returns summaries, use get_memory(id) to retrieve full content for relevant entries.
-AFTER any fix or decision: remember_this(content, context, tags)
-For ERROR FIX: use the Causal Chain (see below) THEN remember_this()
-Relevance thresholds (search_knowledge returns relevance 0.0-1.0):
-- \> 0.5: use directly | 0.2-0.5: get_memory(id) to verify | < 0.2: treat as unknown
+- \> 0.5 relevance: use directly | 0.2-0.5: get_memory(id) to verify | < 0.2: treat as unknown
+AFTER any fix/decision: remember_this(content, context, tags)
+For ERROR FIX: use the Causal Chain (below) then remember_this()
 
 ## THE LOOP
 memory check → plan → tests first → build → prove it → track → ship
@@ -19,18 +16,16 @@ When fixing errors, follow ALL 5 steps:
 3. Fix and verify with tests
 4. record_outcome("chain_id", "success"|"failure")
 5. remember_this("Fixed [error] using [strategy]", ..., "type:fix")
- Automation failsafe captures data even if steps are skipped.
 
 ## BEHAVIORAL RULES
 1. **Prove it works** — Never claim "fixed" without evidence. Show test output.
-2. **Track what worked** — Error fixes:  record_attempt before, record_outcome after, use full Causal Chain (see above).
-3. **Save to memory** — Every fix, discovery, and decision gets remember_this()
-4. **Protect main context** — Delegate heavy operations to sub-agents
-5. **Plan mode discipline** — NEVER write code while in plan mode. The workflow is: enter plan mode → explore + write plan → ExitPlanMode → get approval → THEN implement. If ExitPlanMode is rejected, ask the user what's wrong — do NOT call ExitPlanMode again immediately. Max 1 ExitPlanMode attempt per turn.
+2. **Save to memory** — Every fix, discovery, and decision gets remember_this()
+3. **Protect main context** — Delegate heavy operations to sub-agents
+4. **Plan mode discipline** — Never write code in plan mode. enter plan → explore + write plan → ExitPlanMode → approval → implement. If rejected, ask what's wrong. Max 1 ExitPlanMode per turn.
 
 ## QUALITY GATES (Enforced by hooks)
 Gates checked by enforcer.py. Blocking = exit 1. Advisory = warn only.
-**Blocking gates** (sys.exit(1) on violation):
+**Blocking gates:**
 - Gate 1: READ BEFORE EDIT — Must read .py files before editing
 - Gate 2: NO DESTROY — Blocks rm -rf, DROP TABLE, force push, reset --hard
 - Gate 3: TEST BEFORE DEPLOY — Must run tests before deploying
@@ -38,54 +33,42 @@ Gates checked by enforcer.py. Blocking = exit 1. Advisory = warn only.
 - Gate 5: PROOF BEFORE FIXED — Verify changes before making more
 - Gate 7: CRITICAL FILE GUARD — Extra checks for high-risk files
 - Gate 8: TEMPORAL AWARENESS — Extra caution during late-night hours
-- Gate 9: STRATEGY BAN — Blocks banned fix strategies (proven ineffective)
+- Gate 9: STRATEGY BAN — Blocks proven-ineffective fix strategies
 - Gate 10: MODEL COST GUARD — Blocks expensive model usage without justification
 - Gate 11: RATE LIMIT — Blocks runaway tool call loops (rolling window)
+- Gate 13: WORKSPACE ISOLATION — Prevents concurrent file edits across agents
+- Gate 14: CONFIDENCE CHECK — Progressive readiness enforcement (3-strike escalation)
 - Gate 15: CAUSAL CHAIN — Blocks edits after test failure until query_fix_history called
 
-**Advisory gate** (warns only, never blocks):
-- Gate 6: SAVE VERIFIED FIX — WARNS only when verified fixes not saved to memory
+**Advisory gates** (warn only, never block):
+- Gate 6: SAVE VERIFIED FIX — Warns when verified fixes not saved to memory
 - Gate 12: PLAN MODE SAVE — Warns if exiting plan mode without saving to memory
 
 ## SESSION START (Non-Negotiable)
-At the start of every new session, BEFORE doing anything else:
-1. Read ~/.claude/HANDOFF.md and ~/.claude/LIVE_STATE.json
-2. If previous session state exists, present brief summary and ask: "Continue" or "New task".
-3. "New task" → Archive HANDOFF.md to ~/.claude/archive/HANDOFF_{date}_{project}.md, reset LIVE_STATE.json, don't reference previous project.
-4. "Continue" → Use handoff as context, pick up from "What's Next".
-5. **After the protocol completes**, the user's current instructions ALWAYS override handoff state.
+1. Read HANDOFF.md & LIVE_STATE.json
+2. If previous state exists, present summary and ask: "Continue" or "New task"
+3. "New task" → Archive HANDOFF.md, reset LIVE_STATE.json
+4. "Continue" → Use handoff as context, pick up from "What's Next"
+5. User's current instructions ALWAYS override handoff state
 
 ## SESSION HANDOFF
-- ~/.claude/HANDOFF.md — What was done, what's next, service status
-- ~/.claude/LIVE_STATE.json — Machine-readable project state
+- HANDOFF.md — What was done, what's next, service status
+- LIVE_STATE.json — Machine-readable project state
 - Update both at session end (use /wrap-up)
 
-## AGENT DELEGATION GUIDE
+## AGENT DELEGATION
+- Memory MCP gives sub-agents shared context; causal chain shares fix history automatically
+- 2-5 steps, independent → Sub-agents (parallel)
+- 2-5 steps, dependent → Sub-agents (lead orchestrates, memory bridges)
+- 5-7 steps → Either (teams preferred)
+- 7+ steps → Agent teams (real-time coordination)
+- Cross-session → Sub-agents + memory
 
-**Sub-agents** (Task tool, lightweight):
-- Memory MCP gives sub-agents shared context (search_knowledge/remember_this)
-- Causal chain tracking shares fix history across agents automatically
-
-**Decision table:**
-- 2-5 steps, independent → Sub-agents (parallel Task calls)
-- 2-5 steps, dependent → Sub-agents (lead orchestrates, memory bridges gaps)
-- 5-7 steps, dependent → Either (teams preferred but sub-agents viable)
-- 7+ steps, dependent → Agent teams (real-time coordination essential)
-- Cross-session continuity → Sub-agents + memory (persists after TeamDelete)
-
-## SATISFACTION FORMULA
-SATISFACTION = (Agent Teams) x (Visual Output) x (Autonomy) x (Memory-First)
-
-## FRUSTRATION SIGNALS (stop and verify when user says):
-- "again" — You're repeating a mistake. Query memory.
-- "still" — Your fix didn't work. Prove it this time.
+## FRUSTRATION SIGNALS (stop and verify):
+- "again" — Repeating a mistake. Query memory.
+- "still" — Fix didn't work. Prove it this time.
 - "why" — Unexpected behavior. Investigate deeper.
-- ALL CAPS — Important point being missed. Re-read carefully.
+- ALL CAPS — Important point missed. Re-read carefully.
 
 ## MEMORY TAG CONVENTIONS
-Use structured tags when saving to memory for better searchability and promotion detection.
-
-Tags — type: error, learning, fix, feature-request, correction, decision | priority: critical, high, medium, low | area: frontend, backend, infra, framework, testing, docs | outcome: success, failed | error_pattern:
-  Traceback, npm-ERR
-
-Example: `remember_this("Fixed auth token refresh loop", "debugging login flow", "type:fix,priority:high,area:backend")`
+Tags: type (error, learning, fix, feature-request, correction, decision) | priority (critical, high, medium, low) | area (frontend, backend, infra, framework, testing, docs) | outcome (success, failed) | error_pattern (Traceback, npm-ERR)

@@ -66,13 +66,16 @@ def request(method, collection=None, params=None):
         # Send request as JSON + newline
         sock.sendall((json.dumps(req) + "\n").encode("utf-8"))
 
-        # Read response (accumulate until newline)
+        # Read response (accumulate until newline, cap at 10MB)
+        MAX_RESPONSE_SIZE = 10 * 1024 * 1024
         buf = b""
         while b"\n" not in buf:
             chunk = sock.recv(65536)
             if not chunk:
                 break
             buf += chunk
+            if len(buf) > MAX_RESPONSE_SIZE:
+                raise RuntimeError(f"Response exceeded {MAX_RESPONSE_SIZE} bytes")
 
         if not buf:
             raise WorkerUnavailable("Empty response from UDS worker")
