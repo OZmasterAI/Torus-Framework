@@ -1,5 +1,5 @@
 {
-  "session_count": 101,
+  "session_count": 102,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
@@ -8,15 +8,20 @@
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
-    "/home/crab/.claude/hooks/session_end.py",
+    "/home/crab/.claude/hooks/statusline.py",
+    "/home/crab/.claude/hooks/boot.py",
+    "/home/crab/.claude/USAGE_GUIDE.md",
     "/home/crab/.claude/HANDOFF.md",
     "/home/crab/.claude/LIVE_STATE.json"
   ],
   "improvements_shipped": [
-    "TOCTOU race fix in backup_database() (audit M-1)",
-    "Backlog reclassified — agent-team items moved to dormant"
+    "USAGE_GUIDE.md — comprehensive framework usage guide",
+    "statusline.py off-by-one fix (removed erroneous +1)",
+    "boot.py session number fix (read LIVE_STATE.json instead of parsing HANDOFF.md)"
   ],
-  "next_steps": [],
+  "next_steps": [
+    "Document session_count contract in session_end.py docstring"
+  ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
     "Privacy tags — <private> edge stripping in tracker.py/observation.py"
@@ -29,10 +34,10 @@
     "test_framework.py collection error (pre-existing)"
   ],
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 5,
+    "reads": 2,
+    "edits": 4,
     "errors": 0,
     "verified": 1,
-    "pending": 0
+    "pending": 1
   }
 }

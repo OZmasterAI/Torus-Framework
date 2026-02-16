@@ -1,14 +1,14 @@
-# Session 101 — Handoff
+# Session 102 — Handoff
 
 ## What Was Done
-1. **Fixed TOCTOU race condition** (audit finding M-1) in `session_end.py:backup_database()` — captured `db_mtime`/`bak_mtime` into local variables before comparison (lines 335-337)
-2. **Reclassified backlog items** — 3 items moved to dormant (agent-team-dependent): stale hook cleanup (already done S86), `get_teammate_context()` activation, privacy tag stripping
-3. **Confirmed audit backlog clear** — only M-1 was actionable; all LOW/ADVISORY findings already clean
-4. **Synced handoff state** — added Dormant section to HANDOFF.md, `dormant_agent_teams` key to LIVE_STATE.json
+1. **Created USAGE_GUIDE.md** — comprehensive usage guide for the full megaman-framework setup: launching, session lifecycle, 15 quality gates, memory system, slash commands, hooks, key files, rules vs CLAUDE.md, common workflows, troubleshooting
+2. **Fixed statusline.py off-by-one** — `get_session_number()` was returning `session_count + 1`, but `session_count` already represents the current session. Removed the `+1`. Bug existed since session 88.
+3. **Fixed boot.py session number** — replaced fragile `extract_session_number()` (text-parsed HANDOFF.md, always showed previous session) with `live_state.get("session_count")`. Removed dead function.
+4. **Root cause documented** — `session_count` semantics were never defined; each consumer (boot.py, statusline.py, session_end.py) assumed differently, causing off-by-one errors in opposite directions.
 
 ## What's Next
-- No active items — audit backlog clear, agent-team features dormant
-- Clean slate for new work
+- No active items — clean slate for new work
+- Consider: document `session_count` contract in `session_end.py` docstring to prevent future drift
 
 ## Dormant (Re-enable with Agent Teams)
 - ~~Clean up stale hook registrations~~ — Done (Session 86, moved to disabled_hooks)
@@ -23,7 +23,7 @@
 - test_framework.py collection error (pre-existing, likely ChromaDB concurrent access)
 
 ## Service Status
-- Memory MCP: ACTIVE (452 memories in knowledge collection)
+- Memory MCP: ACTIVE (457 memories in knowledge collection)
 - ChromaDB Backup: SHIPPED (sqlite3.backup + watchdog)
 - Tests: 1043 passed, 0 failed
 - Framework version: v2.4.5
