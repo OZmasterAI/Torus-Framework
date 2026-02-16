@@ -1,34 +1,45 @@
 {
-  "session_count": 85,
+  "session_count": 88,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "auto-handoff",
+  "feature": "audit-hardening",
   "feature_status": "shipped",
-  "test_count": 981,
+  "test_count": 1005,
   "test_failures": 0,
   "files_modified": [
-    "hooks/session_end.py",
-    "hooks/user_prompt_capture.py"
+    "hooks/shared/state.py",
+    "hooks/shared/chromadb_socket.py",
+    "hooks/memory_server.py",
+    "CLAUDE.md",
+    "hooks/statusline.py",
+    "hooks/test_framework.py"
   ],
   "improvements_shipped": [
-    "auto-handoff in session_end.py",
-    "wrap-up reminder hook in user_prompt_capture.py"
+    "C1 fix: timestamp bypass in state.py",
+    "C2 fix: buffer overflow in chromadb_socket.py",
+    "CLAUDE.md optimized 964→851 tokens",
+    "Gate 13 tests added (9 tests)",
+    "FTS5 thread lock + 5000-char query cap",
+    "Statusline session number field"
   ],
   "next_steps": [
     "Fix stats-cache.json memory_count gap",
+    "Clean up stale hook registrations",
     "Activate get_teammate_context()",
-    "Clean up stale hook registrations"
+    "ChromaDB degraded mode guards",
+    "Cap metadata strings to 500 chars"
   ],
   "known_issues": [
     "stats-cache.json lacks memory_count key",
-    "Plan mode exit loop bug"
+    "Plan mode exit loop bug",
+    "gather.py UDS socket unreachable during wrap-up"
   ],
   "last_session_metrics": {
-    "reads": 14,
-    "edits": 5,
+    "reads": 15,
+    "edits": 12,
     "errors": 0,
-    "verified": 1,
-    "pending": 2
+    "verified": 7,
+    "pending": 0
   }
 }
