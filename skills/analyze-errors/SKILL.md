@@ -10,13 +10,12 @@ Complements `/fix` (immediate resolution) by doing **historical pattern analysis
 ### 1. DEEP QUERY
 - `search_knowledge("[error pattern or message]", top_k=50)` — get all historical instances
 - `search_knowledge("[error keywords]")` — catch keyword matches the semantic search may miss
-- `search_observations("[error pattern]")` — find auto-captured occurrences from tool calls
+- `search_knowledge("[error pattern]", mode="all")` — also includes auto-captured observations
 - Collect every memory entry related to this error for comprehensive analysis
 
 ### 2. TIMELINE
 Organize findings chronologically:
 - Sort all occurrences by timestamp
-- Use `timeline(anchor_id="[earliest occurrence]", window_minutes=60)` for context around first appearance
 - Build a progression view:
   ```
   Date       | Occurrence | Context              | Resolution
@@ -51,7 +50,7 @@ Cross-reference with fix history:
 - `query_fix_history("[error text]")` — find what strategies were tried
 - Check **recommended** strategies (high confidence, worked before)
 - Check **banned** strategies (tried and failed multiple times)
-- Cross-reference with `search_observations("[error]", hours=168)` for the full week's context
+- Cross-reference with `search_knowledge("[error]", mode="all")` for the full history including observations
 - Look for **error windows**: clusters of related errors that appear together
 - Map the **causal chain**: Error A causes Error B which triggers Error C
 

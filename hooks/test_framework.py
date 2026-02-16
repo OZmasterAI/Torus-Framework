@@ -2051,6 +2051,24 @@ if not MEMORY_SERVER_RUNNING:
          len(_sbt.get("results", [])) > 0 and _sbt.get("mode") == "tags",
          f"count={len(_sbt.get('results', []))}")
 
+    # Test: search_knowledge mode="observations" (Session 86 — observation consolidation)
+    _sk_obs = search_knowledge("test framework", mode="observations")
+    test("search_knowledge observations mode works",
+         _sk_obs.get("mode") == "observations" and isinstance(_sk_obs.get("results"), list),
+         f"mode={_sk_obs.get('mode')}")
+
+    # Test: search_knowledge mode="all" returns both sources
+    _sk_all = search_knowledge("test framework", mode="all")
+    test("search_knowledge all mode works",
+         _sk_all.get("mode") == "all" and isinstance(_sk_all.get("results"), list),
+         f"mode={_sk_all.get('mode')}, count={len(_sk_all.get('results', []))}")
+
+    # Test: search_knowledge VALID_MODES includes new modes
+    test("search_knowledge accepts observations mode",
+         _sk_obs.get("mode") == "observations")
+    test("search_knowledge accepts all mode",
+         _sk_all.get("mode") == "all")
+
     # Test: FTS5 sanitize query handles special chars
     _sanitized = FTS5Index._sanitize_fts_query('test"AND(OR)special*chars')
     test("FTS5 sanitize query strips special chars",

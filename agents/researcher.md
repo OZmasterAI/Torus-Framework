@@ -9,7 +9,6 @@ tools:
   - WebSearch
   - mcp__memory__search_knowledge
   - mcp__memory__get_memory
-  - mcp__memory__search_observations
 model: haiku
 permissionMode: default
 ---

@@ -9,7 +9,7 @@ Complements `/deep-dive` (memory-only retrieval) by doing **real-time codebase e
 
 ### 1. MEMORY CHECK
 - `search_knowledge("[topic or codebase area]")` — check for prior explorations
-- `search_observations("[topic]")` — check for past tool calls related to this area
+- `search_knowledge("[topic]", mode="all")` — also includes auto-captured observations
 - If prior exploration exists, present it and ask if the user wants a fresh look or to build on it
 
 ### 2. SCOPE

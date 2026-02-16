@@ -1020,6 +1020,34 @@ def _compact_observations():
         pass  # Compaction failure must not crash the server
 
 
+def _search_observations_internal(query, top_k=20, recency_weight=0):
+    """Internal helper to search observations collection.
+
+    Used by search_knowledge mode="observations", mode="all", and auto-fallback.
+    Returns dict with "results" list in same format as knowledge results.
+    """
+    try:
+        _flush_capture_queue()
+        obs_count = observations.count()
+        if obs_count == 0:
+            return {"results": [], "total_observations": 0}
+
+        actual_k = min(top_k, obs_count)
+        results = observations.query(query_texts=[query], n_results=actual_k)
+        formatted = format_summaries(results)
+
+        # Label all results as coming from observations
+        for entry in formatted:
+            entry["source"] = "observations"
+
+        return {
+            "results": formatted,
+            "total_observations": obs_count,
+        }
+    except Exception:
+        return {"results": [], "total_observations": 0, "error": "Observation search failed"}
+
+
 @mcp.tool()
 @crash_proof
 def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight: float = 0.15, match_all: bool = False) -> dict:
@@ -1028,7 +1056,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     Args:
         query: What to search for (semantic search)
         top_k: Number of results to return (default 15)
-        mode: Force search mode ("keyword", "semantic", "hybrid", "tags"). Empty = auto-detect.
+        mode: Force search mode ("keyword", "semantic", "hybrid", "tags", "observations", "all"). Empty = auto-detect.
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
         match_all: For tag mode only — if true, all tags must be present (default false).
     """
@@ -1038,11 +1066,21 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty. Start building knowledge with remember_this()."}
 
-    VALID_MODES = {"keyword", "semantic", "hybrid", "tags"}
+    VALID_MODES = {"keyword", "semantic", "hybrid", "tags", "observations", "all"}
     if mode and mode not in VALID_MODES:
         mode = ""  # Invalid mode falls back to auto-detect
     if not mode:
         mode = _detect_query_mode(query)
+
+    # Handle observations-only mode
+    if mode == "observations":
+        result = _search_observations_internal(query, top_k, recency_weight)
+        result["mode"] = "observations"
+        result["query"] = query
+        result["total_memories"] = count
+        _touch_memory_timestamp()
+        return result
+
     actual_k = min(top_k, count)
 
     if mode == "tags":
@@ -1096,7 +1134,38 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     # Trim to requested top_k after expansion
     formatted = formatted[:top_k]
 
+    # "all" mode: also search observations and merge
+    if mode == "all":
+        # Reserve ~1/3 of budget for observations so they actually appear
+        obs_budget = max(3, top_k // 3)
+        knowledge_budget = top_k - obs_budget
+        formatted = formatted[:knowledge_budget]  # Trim knowledge to make room
+        obs_results = _search_observations_internal(query, obs_budget, recency_weight=0)
+        obs_formatted = obs_results.get("results", [])
+        # Label and merge observation results (dedup by ID)
+        seen_ids = {r.get("id") for r in formatted if r.get("id")}
+        for obs in obs_formatted:
+            oid = obs.get("id", "")
+            if oid and oid not in seen_ids:
+                obs["source"] = "observations"
+                formatted.append(obs)
+                seen_ids.add(oid)
+
+    # Auto-fallback: if knowledge returned 0 results and mode was auto-detected, try observations
+    if len(formatted) == 0 and mode not in ("tags", "observations", "all"):
+        obs_results = _search_observations_internal(query, min(top_k, 10), recency_weight=0)
+        obs_formatted = obs_results.get("results", [])
+        if obs_formatted:
+            for obs in obs_formatted:
+                obs["source"] = "observations"
+                obs["fallback"] = True
+            formatted = obs_formatted
+            mode = mode + "+fallback"
+
     _touch_memory_timestamp()
+
+    # Trim to requested top_k after all merging
+    formatted = formatted[:top_k]
 
     result = {
         "results": formatted,
@@ -1379,8 +1448,8 @@ def get_memory(id: str) -> dict:
 
 
 
-@mcp.tool()
-@crash_proof
+# DORMANT (Session 86) — consolidated into search_knowledge(mode="observations"|"all") + auto-fallback
+# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
 def search_observations(query: str, top_k: int = 20, hours: int = 0, sentiment: str = "") -> dict:
     """Search auto-captured observations (tool calls, errors, prompts).
 
@@ -1534,8 +1603,8 @@ def get_session_sentiment(hours: int = 24) -> dict:
     }
 
 
-@mcp.tool()
-@crash_proof
+# DORMANT (Session 86) — use get_memory() for knowledge, search_knowledge(mode="observations") for observations
+# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
 def get_observation(id: str) -> dict:
     """Retrieve full content for a specific observation by ID.
 
@@ -1563,8 +1632,8 @@ def get_observation(id: str) -> dict:
         return {"error": f"Failed to retrieve observation: {str(e)}"}
 
 
-@mcp.tool()
-@crash_proof
+# DORMANT (Session 86) — zero usage across 86 sessions, observation data accessible via search_knowledge(mode="all")
+# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
 def timeline(anchor_id: str = "", anchor_time: str = "", window_minutes: int = 10, limit: int = 20) -> dict:
     """Get chronological observations around a point in time.
 

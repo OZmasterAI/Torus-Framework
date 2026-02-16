@@ -21,7 +21,7 @@ Use `--depth <tier>` to set research intensity (default: standard):
 ## Steps
 1. **MEMORY CHECK** — search_knowledge("[topic]", top_k=50) for existing knowledge on the topic:
    - Check what we already know before searching externally
-   - search_observations() for related past learnings
+   - `search_knowledge("[topic]", mode="all")` for related past observations
    - If sufficient knowledge exists, present it and ask if deeper research is needed
 2. **SCOPE** — Define 3-5 specific research questions:
    - Break the broad topic into focused, answerable questions
@@ -30,7 +30,7 @@ Use `--depth <tier>` to set research intensity (default: standard):
 3. **GATHER** — Launch sub-agents based on depth tier (quick: direct calls, standard: 2-4, deep: 4-6 with hop patterns, exhaustive: 6+ team with multi-hop):
    - **Web researcher**: WebSearch + WebFetch for online sources (docs, articles, comparisons)
    - **Codebase explorer**: Glob + Grep + Read for relevant local code, patterns, and dependencies
-   - **Memory miner**: search_knowledge + search_observations for past decisions and learnings
+   - **Memory miner**: search_knowledge (mode="all" for observations too) for past decisions and learnings
    - Each agent targets specific research questions from Step 2
 4. **SYNTHESIZE** — Combine findings into a structured report:
    - **Key Findings**: Direct answers to each research question
