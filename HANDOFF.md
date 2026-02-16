@@ -14,7 +14,7 @@
 - `/home/crab/.claude/plans/dapper-weaving-sketch.md` (pending)
 
 ## What's Next
-1. Address remaining medium audit findings (backup locking)
+- No active items — audit backlog clear, agent-team features dormant
 
 ## Dormant (Re-enable with Agent Teams)
 - ~~Clean up stale hook registrations~~ — Done (Session 86, moved to disabled_hooks)

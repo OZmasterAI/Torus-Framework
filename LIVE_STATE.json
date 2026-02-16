@@ -17,9 +17,7 @@
     "Session start protocol moved to boot.py (saves ~4K tokens/session)",
     "ChromaDB degraded mode guards confirmed shipped (Session 89)"
   ],
-  "next_steps": [
-    "Address remaining medium audit findings (backup locking)"
-  ],
+  "next_steps": [],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
     "Privacy tags — <private> edge stripping in tracker.py/observation.py"
