@@ -598,8 +598,9 @@ def main():
     if injected:
         context_parts.append(f"Relevant memories: {'; '.join(injected)}")
     context_parts.append(
-        "PROTOCOL: Present a brief 1-2 line summary of the last session, "
-        "then ask the user: 'Continue or New task?'"
+        "PROTOCOL: Present session number, brief summary, completed list (what was done last session), "
+        "and remaining list (what's next) in ONE message. Ask: 'Continue or New task?' "
+        "If user says continue, ask which item to tackle — do NOT auto-start work."
     )
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))
