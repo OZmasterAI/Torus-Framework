@@ -554,8 +554,32 @@ def main():
 +====================================================================+
 """
 
-    # Print to stderr (Claude Code displays this as hook output)
+    # Print to stderr (displayed in user's terminal)
     print(dashboard, file=sys.stderr)
+
+    # Print to stdout (INJECTED INTO CLAUDE'S CONVERSATION CONTEXT)
+    # This is the mechanical fix for the session start protocol.
+    # SessionStart stdout is one of only two hook types where stdout
+    # becomes conversation context (the other is UserPromptSubmit).
+    context_parts = [f"<session-start-context>"]
+    context_parts.append(f"Session {session_num} | Project: {project_name}")
+    if handoff:
+        # Include the full handoff so Claude has complete context
+        context_parts.append(f"HANDOFF.md contents:\n{handoff}")
+    else:
+        context_parts.append("No HANDOFF.md found — this may be a fresh project.")
+    if live_state:
+        context_parts.append(f"LIVE_STATE.json: {json.dumps(live_state, indent=2)}")
+    if active_tasks:
+        context_parts.append(f"Active tasks: {', '.join(active_tasks[:5])}")
+    if injected:
+        context_parts.append(f"Relevant memories: {'; '.join(injected)}")
+    context_parts.append(
+        "PROTOCOL: Present a brief 1-2 line summary of the last session, "
+        "then ask the user: 'Continue or New task?'"
+    )
+    context_parts.append("</session-start-context>")
+    print("\n".join(context_parts))
 
     # Auto-start dashboard server
     _auto_start_dashboard()
