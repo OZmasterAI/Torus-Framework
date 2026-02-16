@@ -3,32 +3,27 @@
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "audit-hardening",
+  "feature": "citation-urls",
   "feature_status": "shipped",
-  "test_count": 1005,
+  "test_count": 1034,
   "test_failures": 0,
   "files_modified": [
-    "hooks/shared/state.py",
-    "hooks/shared/chromadb_socket.py",
     "hooks/memory_server.py",
-    "CLAUDE.md",
-    "hooks/statusline.py",
     "hooks/test_framework.py"
   ],
   "improvements_shipped": [
-    "C1 fix: timestamp bypass in state.py",
-    "C2 fix: buffer overflow in chromadb_socket.py",
-    "CLAUDE.md optimized 964\u2192851 tokens",
-    "Gate 13 tests added (9 tests)",
-    "FTS5 thread lock + 5000-char query cap",
-    "Statusline session number field"
+    "Citation URL extraction system (_extract_citations, _validate_url, _rank_url_authority)",
+    "FTS5 url column + search/preview integration",
+    "get_memory() citations object",
+    "format_summaries() url field",
+    "29 new citation tests"
   ],
   "next_steps": [
     "Fix stats-cache.json memory_count gap",
     "Clean up stale hook registrations",
     "Activate get_teammate_context()",
     "ChromaDB degraded mode guards",
-    "Cap metadata strings to 500 chars"
+    "Privacy tags in tracker.py/observation.py"
   ],
   "known_issues": [
     "stats-cache.json lacks memory_count key",
@@ -36,10 +31,10 @@
     "gather.py UDS socket unreachable during wrap-up"
   ],
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 1,
-    "errors": 2,
-    "verified": 0,
-    "pending": 1
+    "reads": 12,
+    "edits": 14,
+    "errors": 0,
+    "verified": 1,
+    "pending": 0
   }
 }
