@@ -1,28 +1,19 @@
-# Session 100 — Auto-Generated Handoff
+# Session 101 — Handoff
 
 ## What Was Done
-*(Auto-generated — /wrap-up was not run. Metrics below show session activity.)*
-
-## Session Metrics (auto-generated)
-- **Duration**: 4m
-- **Tool Calls**: 9 (mcp__memory__search_knowledge: 3, Glob: 2, mcp__memory__get_memory: 1, Read: 1, EnterPlanMode: 1, Write: 1)
-- **Files Modified**: 1 (0 verified, 1 pending)
-- **Errors**: 2 (ToolFail:Read x1, ToolFail:Glob x1)
-- **Tests**: none this session
-
-**Files changed:**
-- `/home/crab/.claude/plans/dapper-weaving-sketch.md` (pending)
+1. **Fixed TOCTOU race condition** (audit finding M-1) in `session_end.py:backup_database()` — captured `db_mtime`/`bak_mtime` into local variables before comparison (lines 335-337)
+2. **Reclassified backlog items** — 3 items moved to dormant (agent-team-dependent): stale hook cleanup (already done S86), `get_teammate_context()` activation, privacy tag stripping
+3. **Confirmed audit backlog clear** — only M-1 was actionable; all LOW/ADVISORY findings already clean
+4. **Synced handoff state** — added Dormant section to HANDOFF.md, `dormant_agent_teams` key to LIVE_STATE.json
 
 ## What's Next
 - No active items — audit backlog clear, agent-team features dormant
+- Clean slate for new work
 
 ## Dormant (Re-enable with Agent Teams)
 - ~~Clean up stale hook registrations~~ — Done (Session 86, moved to disabled_hooks)
 - Activate get_teammate_context() — add @mcp.tool() + @crash_proof
 - Privacy tags — `<private>` edge stripping in tracker.py/observation.py
-
-## Completed This Session
-- Fixed TOCTOU race condition in backup_database() (audit finding M-1, session_end.py:335-337)
 
 ## Known Issues
 - Plan mode exit loop — ExitPlanMode rejected twice can trap in loop
@@ -32,7 +23,7 @@
 - test_framework.py collection error (pre-existing, likely ChromaDB concurrent access)
 
 ## Service Status
-- Memory MCP: ACTIVE (448 memories in knowledge collection)
+- Memory MCP: ACTIVE (452 memories in knowledge collection)
 - ChromaDB Backup: SHIPPED (sqlite3.backup + watchdog)
 - Tests: 1043 passed, 0 failed
 - Framework version: v2.4.5

@@ -1,21 +1,20 @@
 {
-  "session_count": 100,
+  "session_count": 101,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "stats-cache-fix",
-  "feature_status": "shipped",
+  "feature": "",
+  "feature_status": "",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
-    "/home/crab/.claude/skills/wrap-up/scripts/gather.py",
-    "/home/crab/.claude/hooks/boot.py",
-    "/home/crab/.claude/CLAUDE.md"
+    "/home/crab/.claude/hooks/session_end.py",
+    "/home/crab/.claude/HANDOFF.md",
+    "/home/crab/.claude/LIVE_STATE.json"
   ],
   "improvements_shipped": [
-    "stats-cache count_reliable flag eliminates false RED flags",
-    "Session start protocol moved to boot.py (saves ~4K tokens/session)",
-    "ChromaDB degraded mode guards confirmed shipped (Session 89)"
+    "TOCTOU race fix in backup_database() (audit M-1)",
+    "Backlog reclassified — agent-team items moved to dormant"
   ],
   "next_steps": [],
   "dormant_agent_teams": [
@@ -30,10 +29,10 @@
     "test_framework.py collection error (pre-existing)"
   ],
   "last_session_metrics": {
-    "reads": 3,
-    "edits": 4,
+    "reads": 5,
+    "edits": 5,
     "errors": 0,
-    "verified": 0,
-    "pending": 3
+    "verified": 1,
+    "pending": 0
   }
 }
