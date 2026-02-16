@@ -58,17 +58,6 @@ def extract_summary(handoff_content):
     return "Handoff exists but no summary found"
 
 
-def extract_session_number(handoff_content):
-    """Try to find session number from handoff."""
-    if not handoff_content:
-        return "?"
-    for line in handoff_content.split("\n"):
-        if "session" in line.lower() and any(c.isdigit() for c in line):
-            digits = "".join(c for c in line if c.isdigit())
-            if digits:
-                return digits[:4]
-    return "?"
-
 
 def load_live_state():
     content = read_file(LIVE_STATE_FILE)
@@ -436,7 +425,7 @@ def main():
     # Load context
     handoff = read_file(HANDOFF_FILE)
     live_state = load_live_state()
-    session_num = extract_session_number(handoff)
+    session_num = live_state.get("session_count", "?")
     summary = extract_summary(handoff)
 
     # Time-based warnings
