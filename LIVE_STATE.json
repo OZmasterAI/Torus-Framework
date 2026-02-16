@@ -1,27 +1,25 @@
 {
-  "session_count": 90,
+  "session_count": 92,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "exit-code-fix+gate6-deadlock",
-  "feature_status": "shipped",
-  "test_count": 1034,
+  "feature": "hybrid-memory-linking",
+  "feature_status": "shipped-pending-restart",
+  "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
-    "hooks/enforcer.py",
-    "hooks/gates/gate_06_save_fix.py",
-    "hooks/tracker.py",
-    "hooks/test_framework.py",
-    "rules/hooks.md",
-    "CLAUDE.md"
+    "hooks/memory_server.py",
+    "hooks/test_framework.py"
   ],
   "improvements_shipped": [
-    "sys.exit(1) → sys.exit(2) in all 7 enforcer.py blocking paths",
-    "Gate 6 deadlock fix: removed save_state(), clear verified_fixes on remember_this()",
-    "Exclude /tmp paths from verified_fixes, ESCALATION_THRESHOLD 2→5",
-    "AKIRA adoption: 1/4 implemented, 3/4 skipped"
+    "Hybrid memory linking: resolves:/resolved_by: bidirectional tags",
+    "Search co-retrieval: linked memories appended with linked=True after top_k",
+    "Response hints: type:fix without resolves: gets suggestion",
+    "9 new test cases for linking (guarded by MEMORY_SERVER_RUNNING skip)"
   ],
   "next_steps": [
+    "Restart MCP server to activate hybrid linking",
+    "Live-test resolves:/resolved_by: co-retrieval",
     "Fix stats-cache.json memory_count gap",
     "Clean up stale hook registrations",
     "Activate get_teammate_context()",
@@ -31,13 +29,14 @@
   "known_issues": [
     "stats-cache.json lacks memory_count key",
     "Plan mode exit loop bug",
-    "gather.py UDS socket unreachable during wrap-up"
+    "gather.py UDS socket unreachable during wrap-up",
+    "Linking tests skip when MCP server running"
   ],
   "last_session_metrics": {
-    "reads": 15,
-    "edits": 12,
+    "reads": 8,
+    "edits": 4,
     "errors": 0,
-    "verified": 1,
+    "verified": 0,
     "pending": 0
   }
 }
