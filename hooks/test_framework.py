@@ -9594,6 +9594,149 @@ if _citation_imports_ok:
 
 
 # ─────────────────────────────────────────────────
+# Hybrid Memory Linking: resolves:/resolved_by: co-retrieval
+# ─────────────────────────────────────────────────
+if not MEMORY_SERVER_RUNNING:
+    print("\n--- Hybrid Memory Linking ---")
+
+    from memory_server import remember_this as _hl_remember, search_knowledge as _hl_search, collection as _hl_col
+
+    # Test 1: resolves:ID creates bidirectional link (target gets resolved_by:)
+    _hl_problem = _hl_remember(
+        "LINK TEST PROBLEM: Gate 99 deadlock occurs when two agents acquire locks in opposite order causing indefinite blocking",
+        "hybrid linking test", "type:error,area:testing,link-test"
+    )
+    _hl_problem_id = _hl_problem.get("id") or _hl_problem.get("existing_id", "")
+    _hl_fix = _hl_remember(
+        "LINK TEST FIX: Fixed Gate 99 deadlock by enforcing consistent lock acquisition order across all agents in the framework",
+        "hybrid linking test", f"type:fix,area:testing,link-test,resolves:{_hl_problem_id}"
+    )
+    _hl_fix_id = _hl_fix.get("id") or _hl_fix.get("existing_id", "")
+    # Verify the fix response has linked_to field
+    test("Link: resolves:ID → linked_to in response",
+         _hl_fix.get("linked_to") == _hl_problem_id,
+         f"linked_to={_hl_fix.get('linked_to')}, expected={_hl_problem_id}")
+    # Verify the target got resolved_by: back-link
+    _hl_target_meta = _hl_col.get(ids=[_hl_problem_id], include=["metadatas"])
+    _hl_target_tags = _hl_target_meta["metadatas"][0].get("tags", "") if _hl_target_meta.get("metadatas") else ""
+    test("Link: target gets resolved_by: back-link",
+         f"resolved_by:{_hl_fix_id}" in _hl_target_tags,
+         f"target tags={_hl_target_tags}")
+
+    # Test 2: Search co-retrieves linked memory with "linked": True flag
+    _hl_search_result = _hl_search("LINK TEST PROBLEM Gate 99 deadlock", top_k=5)
+    _hl_linked_found = False
+    for _hl_r in _hl_search_result.get("results", []):
+        if _hl_r.get("id") == _hl_fix_id and _hl_r.get("linked"):
+            _hl_linked_found = True
+            break
+    # Also check if fix appears organically (which means linked flag won't be set)
+    _hl_organic_fix = any(r.get("id") == _hl_fix_id and not r.get("linked") for r in _hl_search_result.get("results", []))
+    test("Link: search co-retrieves fix with linked=True (or organic)",
+         _hl_linked_found or _hl_organic_fix,
+         f"fix_id={_hl_fix_id} not in results")
+
+    # Test 3: Invalid resolves:ID → warning in response, no crash
+    _hl_bad_link = _hl_remember(
+        "LINK TEST BAD: Attempted fix for nonexistent problem memory that should produce a warning but not crash",
+        "hybrid linking test", "type:fix,area:testing,link-test,resolves:FAKE_NONEXISTENT_ID_12345"
+    )
+    test("Link: invalid resolves:ID → link_warning",
+         "link_warning" in _hl_bad_link and _hl_bad_link.get("linked_to") is None,
+         f"warning={_hl_bad_link.get('link_warning')}, linked_to={_hl_bad_link.get('linked_to')}")
+
+    # Test 4: type:fix without resolves: → hint in response
+    _hl_no_resolve = _hl_remember(
+        "LINK TEST HINTCHECK: Fixed some issue without specifying which problem memory it resolves to verify hint appears",
+        "hybrid linking test", "type:fix,area:testing,link-test"
+    )
+    test("Link: type:fix without resolves: → hint",
+         "hint" in _hl_no_resolve,
+         f"keys={list(_hl_no_resolve.keys())}")
+
+    # Test 5: Multiple resolves: tags → first used, warning
+    _hl_multi = _hl_remember(
+        "LINK TEST MULTI: Fix with multiple resolves tags should use first and warn about the extra ones being ignored",
+        "hybrid linking test",
+        f"type:fix,area:testing,link-test,resolves:{_hl_problem_id},resolves:ANOTHER_ID"
+    )
+    test("Link: multiple resolves: → warning",
+         _hl_multi.get("link_warning") is not None and "Multiple" in (_hl_multi.get("link_warning") or ""),
+         f"warning={_hl_multi.get('link_warning')}")
+
+    # Test 6: Tag overflow (>500 chars) → link skipped, warning
+    # Create a problem with very long tags already near the 500 char limit
+    _hl_long_tags = "type:error,area:testing," + ",".join(f"filler-tag-{i:03d}" for i in range(30))
+    _hl_long_problem = _hl_remember(
+        "LINK TEST OVERFLOW: Problem memory with excessively long tags to test the 500 character tag overflow protection",
+        "hybrid linking test", _hl_long_tags[:497] + "..."
+    )
+    _hl_long_id = _hl_long_problem.get("id") or _hl_long_problem.get("existing_id", "")
+    _hl_overflow_fix = _hl_remember(
+        "LINK TEST OVERFLOW FIX: Fix that tries to link to the long-tag problem which should trigger tag overflow warning",
+        "hybrid linking test", f"type:fix,area:testing,link-test,resolves:{_hl_long_id}"
+    )
+    # Either it linked successfully (tags had room) or warned about overflow
+    _hl_overflow_ok = _hl_overflow_fix.get("linked_to") == _hl_long_id or (
+        _hl_overflow_fix.get("link_warning") is not None and "overflow" in (_hl_overflow_fix.get("link_warning") or "").lower()
+    )
+    test("Link: tag overflow → link or warning",
+         _hl_overflow_ok,
+         f"linked_to={_hl_overflow_fix.get('linked_to')}, warning={_hl_overflow_fix.get('link_warning')}")
+
+    # Test 7: Deduplication — linked memory already in organic results → not duplicated
+    _hl_dedup_search = _hl_search("LINK TEST FIX Gate 99 deadlock lock acquisition", top_k=15)
+    _hl_dedup_ids = [r.get("id") for r in _hl_dedup_search.get("results", [])]
+    _hl_dedup_counts = {}
+    for _did in _hl_dedup_ids:
+        _hl_dedup_counts[_did] = _hl_dedup_counts.get(_did, 0) + 1
+    _hl_any_dups = any(c > 1 for c in _hl_dedup_counts.values())
+    test("Link: no duplicate IDs in search results",
+         not _hl_any_dups,
+         f"dups={[k for k, v in _hl_dedup_counts.items() if v > 1]}")
+
+    # Test 8: Fail-open — simulated exception in linking doesn't break remember_this
+    # (Already proven by Test 3 — invalid ID didn't crash. Also verify the result has all expected fields)
+    test("Link: fail-open — bad link still returns valid result",
+         _hl_bad_link.get("result") == "Memory stored successfully!" and "id" in _hl_bad_link,
+         f"result={_hl_bad_link.get('result')}")
+
+    # Cleanup test memories
+    _hl_cleanup_ids = [_hl_problem_id, _hl_fix_id]
+    if _hl_bad_link.get("id"):
+        _hl_cleanup_ids.append(_hl_bad_link["id"])
+    if _hl_no_resolve.get("id"):
+        _hl_cleanup_ids.append(_hl_no_resolve["id"])
+    if _hl_multi.get("id"):
+        _hl_cleanup_ids.append(_hl_multi["id"])
+    if _hl_long_id:
+        _hl_cleanup_ids.append(_hl_long_id)
+    if _hl_overflow_fix.get("id"):
+        _hl_cleanup_ids.append(_hl_overflow_fix["id"])
+    _hl_cleanup_ids = [i for i in _hl_cleanup_ids if i]
+    if _hl_cleanup_ids:
+        try:
+            _hl_col.delete(ids=_hl_cleanup_ids)
+        except Exception:
+            pass  # Cleanup failure is non-critical
+
+else:
+    print("\n[SKIP] Hybrid Memory Linking tests skipped (memory MCP server running)")
+    for _hl_skip_name in [
+        "Link: resolves:ID → linked_to in response",
+        "Link: target gets resolved_by: back-link",
+        "Link: search co-retrieves fix with linked=True (or organic)",
+        "Link: invalid resolves:ID → link_warning",
+        "Link: type:fix without resolves: → hint",
+        "Link: multiple resolves: → warning",
+        "Link: tag overflow → link or warning",
+        "Link: no duplicate IDs in search results",
+        "Link: fail-open — bad link still returns valid result",
+    ]:
+        skip(_hl_skip_name)
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

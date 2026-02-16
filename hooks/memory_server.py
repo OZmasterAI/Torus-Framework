@@ -1341,12 +1341,58 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     # Trim to requested top_k after all merging
     formatted = formatted[:top_k]
 
+    # --- Hybrid Memory Linking: co-retrieve linked memories ---
+    linked_memories_count = 0
+    try:
+        # Collect linked IDs from resolves: and resolved_by: tags
+        organic_ids = {r.get("id") for r in formatted if r.get("id")}
+        linked_ids = set()
+        for r in formatted:
+            r_tags = r.get("tags", "") or ""
+            for tag in r_tags.split(","):
+                tag = tag.strip()
+                if tag.startswith("resolves:"):
+                    lid = tag.split(":", 1)[1].strip()
+                    if lid and lid not in organic_ids:
+                        linked_ids.add(lid)
+                elif tag.startswith("resolved_by:"):
+                    lid = tag.split(":", 1)[1].strip()
+                    if lid and lid not in organic_ids:
+                        linked_ids.add(lid)
+
+        # Batch fetch linked memories
+        if linked_ids:
+            linked_results = collection.get(
+                ids=list(linked_ids),
+                include=["metadatas", "documents"],
+            )
+            if linked_results and linked_results.get("ids"):
+                l_ids = linked_results["ids"]
+                l_metas = linked_results.get("metadatas") or [{}] * len(l_ids)
+                l_docs = linked_results.get("documents") or [""] * len(l_ids)
+                for i, lid in enumerate(l_ids):
+                    meta = l_metas[i] if i < len(l_metas) else {}
+                    doc = l_docs[i] if i < len(l_docs) else ""
+                    preview = meta.get("preview", "") or (doc[:120] + "..." if doc and len(doc) > 120 else doc)
+                    formatted.append({
+                        "id": lid,
+                        "preview": preview,
+                        "tags": meta.get("tags", ""),
+                        "timestamp": meta.get("timestamp", ""),
+                        "linked": True,
+                    })
+                    linked_memories_count += 1
+    except Exception:
+        pass  # Fail-open: linking errors don't break search
+
     result = {
         "results": formatted,
         "total_memories": count,
         "query": query,
         "mode": mode,
     }
+    if linked_memories_count > 0:
+        result["linked_memories_count"] = linked_memories_count
     if tag_expanded:
         result["tag_expanded"] = True
         result["expanded_tags"] = expanded_tags
@@ -1519,6 +1565,65 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
 
     _touch_memory_timestamp()
 
+    # --- Hybrid Memory Linking: resolves:ID → resolved_by:ID bidirectional link ---
+    resolves_id = None
+    link_warning = None
+    try:
+        if tags:
+            resolves_tags = [t.strip() for t in tags.split(",") if t.strip().startswith("resolves:")]
+            if len(resolves_tags) > 1:
+                link_warning = f"Multiple resolves: tags found; using first: {resolves_tags[0]}"
+            if resolves_tags:
+                resolves_id = resolves_tags[0].split(":", 1)[1].strip()
+                if not resolves_id:
+                    resolves_id = None
+                    link_warning = "resolves: tag has empty ID"
+    except Exception as e:
+        link_warning = f"Tag parse error: {e}"
+        resolves_id = None
+
+    # Validate target exists and create bidirectional link
+    linked_to = None
+    if resolves_id:
+        try:
+            target = collection.get(ids=[resolves_id], include=["metadatas"])
+            if not target or not target.get("ids") or len(target["ids"]) == 0:
+                link_warning = f"resolves:{resolves_id} — target memory not found"
+                resolves_id = None
+            else:
+                # Create bidirectional link: update target's tags with resolved_by:NEW_ID
+                target_meta = target["metadatas"][0] if target.get("metadatas") else {}
+                target_tags = target_meta.get("tags", "") or ""
+                back_link = f"resolved_by:{doc_id}"
+
+                if back_link not in target_tags:
+                    new_tags = f"{target_tags},{back_link}" if target_tags else back_link
+                    if len(new_tags) > 500:
+                        link_warning = f"Tag overflow (>{500} chars) — skipped resolved_by: back-link on target"
+                    else:
+                        target_meta_updated = dict(target_meta)
+                        target_meta_updated["tags"] = new_tags
+                        collection.update(ids=[resolves_id], metadatas=[target_meta_updated])
+
+                        # Keep FTS5 index in sync for updated target tags
+                        try:
+                            fts_index.add_entry(
+                                resolves_id,
+                                target.get("documents", [""])[0] if target.get("documents") else "",
+                                target_meta.get("preview", ""),
+                                new_tags,
+                                target_meta.get("timestamp", ""),
+                                target_meta.get("session_time", 0.0),
+                                target_meta.get("primary_source", ""),
+                            )
+                        except Exception:
+                            pass  # FTS sync failure is non-critical
+
+                linked_to = resolves_id
+        except Exception as e:
+            link_warning = f"Linking error: {e}"
+            resolves_id = None
+
     # Option B bridge: auto-write to fix_outcomes when type:fix tag detected
     bridge_result = None
     if tags and "type:fix" in tags:
@@ -1533,6 +1638,15 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
     if bridge_result:
         result["fix_outcome_bridged"] = True
         result["bridge_chain_id"] = bridge_result.get("chain_id", "")
+
+    # Hybrid linking response fields
+    if linked_to:
+        result["linked_to"] = linked_to
+    if link_warning:
+        result["link_warning"] = link_warning
+    if tags and "type:fix" in tags and not resolves_id and not linked_to:
+        result["hint"] = "Tip: add a resolves:MEMORY_ID tag to link this fix to the problem memory it resolves"
+
     return result
 
 
