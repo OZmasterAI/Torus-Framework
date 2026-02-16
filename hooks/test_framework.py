@@ -9472,6 +9472,128 @@ test("GetContext: returns dict with teammates and count keys", isinstance(_t12_r
 os.remove(_t12_state_path)
 
 # ─────────────────────────────────────────────────
+# Citation URL Extraction Tests
+# ─────────────────────────────────────────────────
+print("\n--- Citation URL Extraction ---")
+
+# Import the citation functions directly (no ChromaDB needed)
+try:
+    from memory_server import _validate_url, _rank_url_authority, _extract_citations, FTS5Index
+    _citation_imports_ok = True
+except ImportError:
+    _citation_imports_ok = False
+    test("Citation imports available", False, "Could not import citation functions")
+
+if _citation_imports_ok:
+    # Test 1: [source: URL] extracts primary, strips marker
+    _c1 = _extract_citations("Found fix [source: https://github.com/foo/bar] in repo", "")
+    test("Citation: [source:] extracts primary", _c1["primary_source"] == "https://github.com/foo/bar")
+    test("Citation: [source:] stripped from content", "[source:" not in _c1["clean_content"])
+
+    # Test 2: [ref: URL] extracts reference, strips marker
+    _c2 = _extract_citations("See [ref: https://docs.python.org/3/lib] for details", "")
+    test("Citation: [ref:] extracts reference", "https://docs.python.org/3/lib" in _c2["related_urls"])
+    test("Citation: [ref:] stripped from content", "[ref:" not in _c2["clean_content"])
+
+    # Test 3: Multiple [ref:] markers all captured
+    _c3 = _extract_citations(
+        "Check [ref: https://github.com/a] and [ref: https://dev.to/b]",
+        ""
+    )
+    test("Citation: multiple refs captured", "https://github.com/a" in _c3["related_urls"] and "https://dev.to/b" in _c3["related_urls"])
+
+    # Test 4: Mixed explicit + auto-extracted URLs
+    _c4 = _extract_citations(
+        "[source: https://github.com/main] also see https://stackoverflow.com/q/123",
+        ""
+    )
+    test("Citation: mixed explicit+auto", _c4["primary_source"] == "https://github.com/main" and "stackoverflow.com" in _c4["related_urls"])
+
+    # Test 5: Auto-ranking: high-authority domain becomes primary
+    _c5 = _extract_citations(
+        "Read https://medium.com/article and https://github.com/repo",
+        ""
+    )
+    test("Citation: auto-ranking promotes high authority", _c5["primary_source"] == "https://github.com/repo")
+
+    # Test 6: Invalid URLs rejected
+    test("Citation: validate_url rejects no scheme", _validate_url("not-a-url.com") == "")
+    test("Citation: validate_url rejects no netloc", _validate_url("http://") == "")
+    test("Citation: validate_url rejects no dot", _validate_url("http://localhost") == "")
+
+    # Test 7: Trailing punctuation stripped
+    test("Citation: trailing punctuation stripped", _validate_url("https://example.org/page.") == "https://example.org/page")
+    test("Citation: trailing paren stripped", _validate_url("https://example.org/page)") == "https://example.org/page")
+
+    # Test 8: Empty content/context → no crash
+    _c8 = _extract_citations("", "")
+    test("Citation: empty content no crash", _c8["source_method"] == "none" and _c8["primary_source"] == "")
+
+    # Test 9: Malformed marker → fallback to auto
+    _c9 = _extract_citations("See [source: broken and https://github.com/fallback", "")
+    test("Citation: malformed marker falls back", _c9["primary_source"] == "https://github.com/fallback")
+
+    # Test 10: URL deduplication
+    _c10 = _extract_citations(
+        "URL https://github.com/repo appears here",
+        "Also https://github.com/repo in context"
+    )
+    test("Citation: dedup across content+context", _c10["related_urls"].count("https://github.com/repo") <= 1)
+
+    # Test 11: Cap enforcement (>4 URLs → only 4 kept)
+    _c11 = _extract_citations(
+        "https://github.com/a https://github.com/b https://github.com/c https://github.com/d https://github.com/e",
+        ""
+    )
+    _total_urls = (1 if _c11["primary_source"] else 0) + len([u for u in _c11["related_urls"].split(",") if u.strip()])
+    test("Citation: cap at MAX_CITATION_URLS", _total_urls <= 4)
+
+    # Test 12: Noise URL filtering (localhost, example.com skipped)
+    _c12 = _extract_citations("See http://localhost:3000/api and https://github.com/real", "")
+    test("Citation: noise URLs filtered", "localhost" not in _c12["primary_source"] and "localhost" not in _c12["related_urls"])
+
+    # Test 13: source_method values
+    _c13a = _extract_citations("[source: https://github.com/x] content here", "")
+    test("Citation: source_method=explicit for markers", _c13a["source_method"] == "explicit")
+    _c13b = _extract_citations("See https://github.com/auto content here", "")
+    test("Citation: source_method=auto for bare URLs", _c13b["source_method"] == "auto")
+    _c13c = _extract_citations("No URLs in this content at all", "")
+    test("Citation: source_method=none when no URLs", _c13c["source_method"] == "none")
+
+    # Test 14: URL authority ranking
+    test("Citation: github.com is high authority", _rank_url_authority("https://github.com/x") == 1)
+    test("Citation: medium.com is medium authority", _rank_url_authority("https://medium.com/x") == 2)
+    test("Citation: localhost is low authority", _rank_url_authority("http://localhost:3000") == 3)
+
+    # Test 15: FTS5 url column works
+    _fts_test = FTS5Index(":memory:")
+    _fts_test.add_entry("test1", "test content here", "test...", "tag1", "2026-01-01", 0.0, "https://github.com/test")
+    _fts_result = _fts_test.keyword_search("test", top_k=1)
+    test("FTS5: keyword_search returns url", len(_fts_result) > 0 and _fts_result[0].get("url") == "https://github.com/test")
+
+    # Test 16: FTS5 tag_search returns url
+    _fts_tag_result = _fts_test.tag_search(["tag1"], top_k=1)
+    test("FTS5: tag_search returns url", len(_fts_tag_result) > 0 and _fts_tag_result[0].get("url") == "https://github.com/test")
+
+    # Test 17: FTS5 get_preview returns url
+    _fts_preview = _fts_test.get_preview("test1")
+    test("FTS5: get_preview returns url", _fts_preview is not None and _fts_preview.get("url") == "https://github.com/test")
+
+    # Test 18: FTS5 entry without url → no url key
+    _fts_test.add_entry("test2", "another entry", "another...", "tag2", "2026-01-01", 0.0)
+    _fts_result2 = _fts_test.keyword_search("another", top_k=1)
+    test("FTS5: no url key when empty", len(_fts_result2) > 0 and "url" not in _fts_result2[0])
+
+    # Test 19: Extraction failure → returns defaults (fail-open)
+    _c19 = _extract_citations(None, None)  # type: ignore — intentional bad input
+    test("Citation: fail-open on bad input", _c19["source_method"] == "none")
+
+    # Test 20: validate_url caps long URLs
+    _long_url = "https://example.org/" + "a" * 600
+    test("Citation: long URL rejected", _validate_url(_long_url) == "")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

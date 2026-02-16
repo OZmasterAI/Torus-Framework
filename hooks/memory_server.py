@@ -173,6 +173,17 @@ NOISE_REGEXES = [_re.compile(p, _re.IGNORECASE) for p in NOISE_PATTERNS]
 # Near-dedup: cosine distance threshold
 DEDUP_THRESHOLD = 0.05  # distance < 0.05 means >95% similar
 
+# Citation URL extraction
+MAX_CITATION_URLS = 4  # 1 primary + 3 related
+MAX_URL_LENGTH = 500
+DOMAIN_AUTHORITY = {
+    "high": {"github.com", "docs.openzeppelin.com", "eips.ethereum.org",
+             "developer.mozilla.org", "docs.soliditylang.org", "react.dev",
+             "developer.x.com", "docs.python.org", "stackoverflow.com"},
+    "medium": {"medium.com", "dev.to", "hackmd.io", "mirror.xyz"},
+    "low": {"localhost", "127.0.0.1", "example.com", "0.0.0.0"},
+}
+
 # Observation promotion settings
 MAX_PROMOTIONS_PER_CYCLE = 10
 PROMOTION_TAGS = "type:auto-promoted,area:framework"
@@ -243,6 +254,140 @@ def _migrate_previews():
 
 
 # ──────────────────────────────────────────────────
+# Citation URL Extraction
+# ──────────────────────────────────────────────────
+from urllib.parse import urlparse as _urlparse
+
+# Regex for [source: URL] and [ref: URL] markers
+_SOURCE_MARKER_RE = _re.compile(r'\[source:\s*(https?://[^\]\s]+)\s*\]', _re.IGNORECASE)
+_REF_MARKER_RE = _re.compile(r'\[ref:\s*(https?://[^\]\s]+)\s*\]', _re.IGNORECASE)
+# General URL regex for auto-extraction
+_URL_RE = _re.compile(r'https?://[^\s<>\'")\]]+')
+
+
+def _validate_url(url_str: str) -> str:
+    """Validate and clean a URL string. Returns cleaned URL or empty string."""
+    try:
+        url_str = url_str.strip()
+        # Strip trailing punctuation that often clings to URLs in text
+        while url_str and url_str[-1] in '.,;:!?)':
+            url_str = url_str[:-1]
+        if len(url_str) > MAX_URL_LENGTH:
+            return ""
+        parsed = _urlparse(url_str)
+        if parsed.scheme in ("http", "https") and parsed.netloc and "." in parsed.netloc:
+            return url_str
+        return ""
+    except Exception:
+        return ""
+
+
+def _rank_url_authority(url: str) -> int:
+    """Rank URL authority: 1=high, 2=medium, 3=low/unknown."""
+    try:
+        netloc = _urlparse(url).netloc.lower()
+        # Strip port if present
+        if ":" in netloc:
+            netloc = netloc.split(":")[0]
+        for domain in DOMAIN_AUTHORITY["high"]:
+            if netloc == domain or netloc.endswith("." + domain):
+                return 1
+        for domain in DOMAIN_AUTHORITY["medium"]:
+            if netloc == domain or netloc.endswith("." + domain):
+                return 2
+        for domain in DOMAIN_AUTHORITY["low"]:
+            if netloc == domain or netloc.endswith("." + domain):
+                return 3
+        return 2  # Unknown domains default to medium
+    except Exception:
+        return 3
+
+
+def _extract_citations(content: str, context: str) -> dict:
+    """Extract citation URLs from content and context.
+
+    Supports explicit markers [source: URL] and [ref: URL] plus
+    auto-extraction of bare URLs. Returns dict with primary_source,
+    related_urls (comma-separated), source_method, and clean_content.
+    Entire function is fail-open: returns empty defaults on any error.
+    """
+    defaults = {
+        "primary_source": "",
+        "related_urls": "",
+        "source_method": "none",
+        "clean_content": content,
+    }
+    try:
+        primary = ""
+        refs = []
+        clean = content
+
+        # 1. Parse [source: URL] marker (take first match only)
+        source_match = _SOURCE_MARKER_RE.search(clean)
+        if source_match:
+            candidate = _validate_url(source_match.group(1))
+            if candidate:
+                primary = candidate
+            clean = _SOURCE_MARKER_RE.sub("", clean).strip()
+
+        # 2. Parse [ref: URL] markers
+        ref_matches = _REF_MARKER_RE.findall(clean)
+        for ref_url in ref_matches:
+            validated = _validate_url(ref_url)
+            if validated and validated != primary:
+                refs.append(validated)
+        clean = _REF_MARKER_RE.sub("", clean).strip()
+
+        method = "explicit" if (primary or refs) else "none"
+
+        # 3. Auto-extract remaining URLs from content + context
+        auto_urls = []
+        combined_text = clean + " " + (context or "")
+        for url_match in _URL_RE.findall(combined_text):
+            validated = _validate_url(url_match)
+            if not validated:
+                continue
+            if validated == primary or validated in refs:
+                continue
+            # Filter noise domains
+            rank = _rank_url_authority(validated)
+            if rank >= 3:
+                continue  # Skip low-authority (localhost, example.com)
+            auto_urls.append((rank, validated))
+
+        # Sort auto URLs by authority (best first)
+        auto_urls.sort(key=lambda x: x[0])
+
+        # 4. If no explicit primary, promote best auto URL
+        if not primary and auto_urls:
+            primary = auto_urls[0][1]
+            auto_urls = auto_urls[1:]
+            method = "auto"
+        elif not primary and not refs:
+            method = "none"
+
+        # 5. Merge refs + auto into related, cap at MAX_CITATION_URLS - 1
+        all_related = refs + [u[1] for u in auto_urls]
+        # Deduplicate while preserving order
+        seen = set()
+        deduped = []
+        for u in all_related:
+            if u not in seen and u != primary:
+                seen.add(u)
+                deduped.append(u)
+        related = deduped[:MAX_CITATION_URLS - 1]
+
+        return {
+            "primary_source": primary,
+            "related_urls": ",".join(related),
+            "source_method": method,
+            "clean_content": clean,
+        }
+    except Exception:
+        return defaults
+
+
+# ──────────────────────────────────────────────────
 # FTS5 Hybrid Search Index
 # ──────────────────────────────────────────────────
 import sqlite3
@@ -283,6 +428,11 @@ class FTS5Index:
         c.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_tags_mid ON tags(memory_id)")
         c.execute("CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)")
+        # Migration: add url column for citation tracking
+        try:
+            c.execute("ALTER TABLE mem_lookup ADD COLUMN url TEXT DEFAULT ''")
+        except Exception:
+            pass  # Column already exists
         c.commit()
 
     def is_synced(self, chromadb_count):
@@ -342,13 +492,14 @@ class FTS5Index:
                 except (ValueError, TypeError):
                     session_time = 0.0
 
-            self._insert_entry(mid, doc, preview, tags_str, timestamp, session_time)
+            url = meta.get("primary_source", "")
+            self._insert_entry(mid, doc, preview, tags_str, timestamp, session_time, url)
 
         self.conn.commit()
         self._update_sync_count(len(ids))
         return len(ids)
 
-    def _insert_entry(self, memory_id, content, preview, tags_str, timestamp, session_time):
+    def _insert_entry(self, memory_id, content, preview, tags_str, timestamp, session_time, url=""):
         """Insert a single entry into FTS5 + lookup + tags tables."""
         c = self.conn
         # Upsert: delete old entry if exists
@@ -363,8 +514,8 @@ class FTS5Index:
         c.execute("INSERT INTO mem_fts(content, preview) VALUES (?, ?)", (content, preview))
         rowid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
         c.execute(
-            "INSERT INTO mem_lookup(fts_rowid, memory_id, tags, timestamp, session_time) VALUES (?,?,?,?,?)",
-            (rowid, memory_id, tags_str, timestamp, session_time),
+            "INSERT INTO mem_lookup(fts_rowid, memory_id, tags, timestamp, session_time, url) VALUES (?,?,?,?,?,?)",
+            (rowid, memory_id, tags_str, timestamp, session_time, url),
         )
 
         # Normalize tags into tag table
@@ -374,10 +525,10 @@ class FTS5Index:
                 if tag:
                     c.execute("INSERT INTO tags(memory_id, tag) VALUES (?, ?)", (memory_id, tag))
 
-    def add_entry(self, memory_id, content, preview, tags_str, timestamp, session_time):
+    def add_entry(self, memory_id, content, preview, tags_str, timestamp, session_time, url=""):
         """Add or update an entry (dual-write from remember_this)."""
         with self._lock:
-            self._insert_entry(memory_id, content, preview, tags_str, timestamp, session_time)
+            self._insert_entry(memory_id, content, preview, tags_str, timestamp, session_time, url)
             self.conn.commit()
             # Keep sync_count in step with additions
             row = self.conn.execute(
@@ -396,7 +547,7 @@ class FTS5Index:
             try:
                 rows = self.conn.execute("""
                     SELECT l.memory_id, f.preview, l.tags, l.timestamp,
-                           rank * -1 as score
+                           rank * -1 as score, l.url
                     FROM mem_fts f
                     JOIN mem_lookup l ON l.fts_rowid = f.rowid
                     WHERE mem_fts MATCH ?
@@ -408,13 +559,16 @@ class FTS5Index:
 
         results = []
         for row in rows:
-            results.append({
+            entry = {
                 "id": row[0],
                 "preview": row[1],
                 "tags": row[2],
                 "timestamp": row[3],
                 "fts_score": round(row[4], 4),
-            })
+            }
+            if row[5]:
+                entry["url"] = row[5]
+            results.append(entry)
         return results
 
     def tag_search(self, tags_list, match_all=False, top_k=15):
@@ -428,7 +582,8 @@ class FTS5Index:
                 placeholders = ",".join("?" * len(tags_list))
                 query = f"""
                     SELECT t.memory_id, l.tags, l.timestamp,
-                           (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
+                           (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview,
+                           l.url
                     FROM tags t
                     JOIN mem_lookup l ON l.memory_id = t.memory_id
                     WHERE t.tag IN ({placeholders})
@@ -442,7 +597,8 @@ class FTS5Index:
                 placeholders = ",".join("?" * len(tags_list))
                 query = f"""
                     SELECT DISTINCT t.memory_id, l.tags, l.timestamp,
-                           (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
+                           (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview,
+                           l.url
                     FROM tags t
                     JOIN mem_lookup l ON l.memory_id = t.memory_id
                     WHERE t.tag IN ({placeholders})
@@ -452,12 +608,15 @@ class FTS5Index:
 
         results = []
         for row in rows:
-            results.append({
+            entry = {
                 "id": row[0],
                 "tags": row[1],
                 "timestamp": row[2],
                 "preview": row[3] or "(no preview)",
-            })
+            }
+            if row[4]:
+                entry["url"] = row[4]
+            results.append(entry)
         return results
 
     def get_preview(self, memory_id):
@@ -465,13 +624,17 @@ class FTS5Index:
         with self._lock:
             row = self.conn.execute("""
                 SELECT l.tags, l.timestamp,
-                       (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview
+                       (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview,
+                       l.url
                 FROM mem_lookup l
                 WHERE l.memory_id = ?
             """, (memory_id,)).fetchone()
         if not row:
             return None
-        return {"id": memory_id, "tags": row[0], "timestamp": row[1], "preview": row[2]}
+        result = {"id": memory_id, "tags": row[0], "timestamp": row[1], "preview": row[2]}
+        if row[3]:
+            result["url"] = row[3]
+        return result
 
     @staticmethod
     def _sanitize_fts_query(query):
@@ -789,6 +952,8 @@ def format_summaries(results) -> list[dict]:
         if meta:
             entry["tags"] = meta.get("tags", "")
             entry["timestamp"] = meta.get("timestamp", "")
+            if meta.get("primary_source"):
+                entry["url"] = meta["primary_source"]
         formatted.append(entry)
 
         # Queue retrieval tracking update
@@ -1312,6 +1477,13 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
     except Exception:
         pass  # Dedup failure falls through to normal save
 
+    # Citation URL extraction (fail-open)
+    citation = _extract_citations(content, context)
+    content = citation["clean_content"]
+    primary_source = citation["primary_source"]
+    related_urls = citation["related_urls"]
+    source_method = citation["source_method"]
+
     doc_id = generate_id(content)
     timestamp = datetime.now().isoformat()
 
@@ -1330,12 +1502,15 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
             "timestamp": timestamp,
             "session_time": now,
             "preview": preview,
+            "primary_source": primary_source,
+            "related_urls": related_urls,
+            "source_method": source_method,
         }],
         ids=[doc_id],
     )
 
     # Dual-write: keep FTS5 index in sync
-    fts_index.add_entry(doc_id, content, preview, tags, timestamp, now)
+    fts_index.add_entry(doc_id, content, preview, tags, timestamp, now, primary_source)
 
     # Mark tag co-occurrence matrix as dirty (new tags may change co-occurrence rates)
     global _tag_cooccurrence_dirty
@@ -1444,6 +1619,16 @@ def get_memory(id: str) -> dict:
                 entry["context"] = meta.get("context", "")
                 entry["tags"] = meta.get("tags", "")
                 entry["timestamp"] = meta.get("timestamp", "")
+
+                # Citation URLs
+                primary = meta.get("primary_source", "")
+                related = meta.get("related_urls", "")
+                if primary or related:
+                    entry["citations"] = {
+                        "primary_source": primary,
+                        "related_urls": [u.strip() for u in related.split(",") if u.strip()],
+                        "source_method": meta.get("source_method", ""),
+                    }
 
                 # Retrieval tracking: increment count and update timestamp
                 try:
