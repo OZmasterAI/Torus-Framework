@@ -1,21 +1,18 @@
-# Session 88 — Handoff
+# Session 88 — Auto-Generated Handoff
 
 ## What Was Done
-1. **Reconstructed Session 86 data** — recovered lost work from desktop screenshots (MCP 15→7, Gate 15, -21% tokens)
-2. **Deep 6-agent audit** — full framework security review, 0 critical vulns remaining
-3. **C1 FIX (CRITICAL)**: `state.py:448` — negative timestamp bypass, added double-sided clamp `max(0, min(ts, now))`
-4. **C2 FIX (HIGH)**: `chromadb_socket.py:69` — unbounded buffer, added 10MB cap
-5. **CLAUDE.md optimized** — 964→851 tokens (-12%), added Gates 13+14 documentation
-6. **Gate 13 tests** — 9 functional tests added (was zero coverage)
-7. **FTS5 thread safety** — `threading.Lock()` on keyword_search, tag_search, add_entry, get_preview
-8. **FTS5 query cap** — 5000 chars in `_sanitize_fts_query()` (DoS prevention)
-9. **Statusline** — session number as separate field (#88), EXPECTED_GATES=15, EXPECTED_SKILLS=22
+*(Auto-generated — /wrap-up was not run. Metrics below show session activity.)*
 
-## Session Metrics
-- **Tests**: 995 → 1005 (+10, 0 failures)
-- **Memories**: 398 → 402
-- **CLAUDE.md**: 964 → 851 tokens (-12%)
-- **Files Modified**: state.py, chromadb_socket.py, memory_server.py, CLAUDE.md, statusline.py, test_framework.py
+## Session Metrics (auto-generated)
+- **Duration**: 1h 15m
+- **Tool Calls**: 107 (Read: 42, Grep: 40, Bash: 15, mcp__memory__search_knowledge: 4, Task: 3, mcp__memory__remember_this: 1)
+- **Files Modified**: 1 (0 verified, 1 pending)
+- **Errors**: 4 (ToolFail:Read x2, ToolFail:Bash x2)
+- **Tests**: none this session
+- **Subagents**: 3 launched, 9,758 tokens
+
+**Files changed:**
+- `/home/crab/.claude/plans/lively-tinkering-adleman.md` (pending)
 
 ## What's Next
 1. Fix stats-cache.json `memory_count` gap (carried from Session 70)

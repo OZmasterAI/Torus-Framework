@@ -1,5 +1,5 @@
 {
-  "session_count": 88,
+  "session_count": 89,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
@@ -18,7 +18,7 @@
   "improvements_shipped": [
     "C1 fix: timestamp bypass in state.py",
     "C2 fix: buffer overflow in chromadb_socket.py",
-    "CLAUDE.md optimized 964→851 tokens",
+    "CLAUDE.md optimized 964\u2192851 tokens",
     "Gate 13 tests added (9 tests)",
     "FTS5 thread lock + 5000-char query cap",
     "Statusline session number field"
@@ -36,10 +36,10 @@
     "gather.py UDS socket unreachable during wrap-up"
   ],
   "last_session_metrics": {
-    "reads": 15,
-    "edits": 12,
-    "errors": 0,
-    "verified": 7,
-    "pending": 0
+    "reads": 5,
+    "edits": 1,
+    "errors": 2,
+    "verified": 0,
+    "pending": 1
   }
 }
