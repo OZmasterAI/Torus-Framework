@@ -1,25 +1,22 @@
 {
-  "session_count": 111,
+  "session_count": 112,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
   "feature": "framework-documentation",
-  "feature_status": "in-progress",
+  "feature_status": "completed",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
     "/home/crab/.claude/HANDOFF.md",
     "/home/crab/.claude/LIVE_STATE.json",
-    "/home/crab/Desktop/Megaman-Framework-v2.4.5-Feature-Report.md"
+    "/home/crab/Desktop/Megaman-Framework-v2.4.5-Build-Guide.md"
   ],
   "improvements_shipped": [
-    "Framework feature report saved to Desktop",
-    "Full + core backups saved to Desktop",
-    "Known issues list cleaned up (5 → 2 real issues)",
-    "Model mix decision: drop Haiku, use Opus+Sonnet"
+    "Full-source build guide (137 files, 24K lines, 960KB)",
+    "Correction saved: don't announce writes, just do them"
   ],
   "next_steps": [
-    "Write build guide to Desktop (content ready, Gate 6 blocked write)",
     "Apply Haiku→Sonnet change to agents/researcher.md"
   ],
   "dormant_agent_teams": [
@@ -28,13 +25,14 @@
   ],
   "known_issues": [
     "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access — tests skip when MCP running, correct behavior"
+    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
+    "Gate 2 false-positives on 'source' in heredocs"
   ],
   "last_session_metrics": {
-    "reads": 2,
-    "edits": 0,
-    "errors": 2,
+    "reads": 5,
+    "edits": 2,
+    "errors": 3,
     "verified": 0,
-    "pending": 0
+    "pending": 1
   }
 }
