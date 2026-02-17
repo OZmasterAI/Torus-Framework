@@ -411,10 +411,21 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         state["memory_last_queried"] = time.time()
 
     if tool_name == "mcp__memory__remember_this":
-        state["unlogged_errors"] = []
-        state["error_pattern_counts"] = {}
-        state["gate6_warn_count"] = 0  # Reset Gate 6 escalation on memory save
-        state["verified_fixes"] = []  # Clear verified fixes — user saved to memory
+        # Only reset Gate 6 counters if memory was actually saved (not deduped/rejected)
+        resp = {}
+        if isinstance(tool_response, dict):
+            resp = tool_response
+        elif isinstance(tool_response, str):
+            try:
+                resp = json.loads(tool_response)
+            except Exception:
+                pass
+        was_rejected = resp.get("rejected", False) or resp.get("deduplicated", False)
+        if not was_rejected:
+            state["unlogged_errors"] = []
+            state["error_pattern_counts"] = {}
+            state["gate6_warn_count"] = 0  # Reset Gate 6 escalation on memory save
+            state["verified_fixes"] = []  # Clear verified fixes — user saved to memory
 
     # Track skill invocations
     if tool_name == "Skill":

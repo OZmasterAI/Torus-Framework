@@ -108,6 +108,7 @@ collection = None
 fix_outcomes = None
 observations = None
 web_pages = None
+quarantine = None
 _chromadb_degraded = False
 
 
@@ -117,7 +118,7 @@ def _init_chromadb():
     Called from _ensure_initialized() on first MCP tool use.
     Safe to call multiple times — idempotent after first run.
     """
-    global client, collection, fix_outcomes, observations, web_pages, _chromadb_degraded
+    global client, collection, fix_outcomes, observations, web_pages, quarantine, _chromadb_degraded
     if client is not None:
         return
     try:
@@ -138,6 +139,11 @@ def _init_chromadb():
         # Web page indexing collection (used by /web skill)
         web_pages = client.get_or_create_collection(
             name="web_pages",
+            metadata={"hnsw:space": "cosine"},
+        )
+        # Quarantine: holds deduplicated memories (recoverable, not deleted)
+        quarantine = client.get_or_create_collection(
+            name="quarantine",
             metadata={"hnsw:space": "cosine"},
         )
     except Exception as e:
@@ -170,8 +176,11 @@ NOISE_PATTERNS = [
 import re as _re
 NOISE_REGEXES = [_re.compile(p, _re.IGNORECASE) for p in NOISE_PATTERNS]
 
-# Near-dedup: cosine distance threshold
-DEDUP_THRESHOLD = 0.05  # distance < 0.05 means >95% similar
+# Near-dedup: cosine distance thresholds
+DEDUP_THRESHOLD = 0.10        # distance < 0.10 = hard skip (was 0.05)
+DEDUP_SOFT_THRESHOLD = 0.15   # 0.10-0.15 = save but tag as possible-dupe
+FIX_DEDUP_THRESHOLD = 0.03    # Stricter threshold for type:fix memories
+_FIX_DEDUP_EXEMPT = False      # DORMANT — flip True to skip dedup for all type:fix
 
 # Citation URL extraction
 MAX_CITATION_URLS = 4  # 1 primary + 3 related
@@ -536,6 +545,18 @@ class FTS5Index:
             ).fetchone()
             if row:
                 self._update_sync_count(int(row[0]) + 1)
+
+    def remove_entry(self, memory_id):
+        """Remove an entry from FTS5 index (used by dedup sweep)."""
+        with self._lock:
+            existing = self.conn.execute(
+                "SELECT fts_rowid FROM mem_lookup WHERE memory_id = ?", (memory_id,)
+            ).fetchone()
+            if existing:
+                self.conn.execute("DELETE FROM mem_fts WHERE rowid = ?", (existing[0],))
+                self.conn.execute("DELETE FROM mem_lookup WHERE memory_id = ?", (memory_id,))
+                self.conn.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
+                self.conn.commit()
 
     def keyword_search(self, query, top_k=15):
         """FTS5 keyword search with BM25 ranking."""
@@ -1521,13 +1542,14 @@ def _bridge_to_fix_outcomes(content, context, tags):
 
 @mcp.tool()
 @crash_proof
-def remember_this(content: str, context: str = "", tags: str = "") -> dict:
+def remember_this(content: str, context: str = "", tags: str = "", force: bool = False) -> dict:
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
     Args:
         content: The knowledge to remember (be specific and detailed)
         context: What you were doing when you learned this
         tags: Comma-separated tags for categorization (e.g., "bug,fix,auth")
+        force: Skip dedup check entirely (escape hatch if threshold is wrong)
     """
     if _chromadb_degraded:
         return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
@@ -1552,25 +1574,35 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
                 "total_memories": collection.count(),
             }
 
-    # --- Near-dedup: skip if >95% similar entry already exists ---
-    try:
-        count = collection.count()
-        if count > 0:
-            similar = collection.query(
-                query_texts=[content], n_results=1,
-                include=["distances"],
-            )
-            if (similar and similar.get("distances") and similar["distances"][0]
-                    and similar["distances"][0][0] < DEDUP_THRESHOLD):
-                existing_id = similar["ids"][0][0]
-                return {
-                    "result": "Deduplicated: very similar memory already exists",
-                    "existing_id": existing_id,
-                    "distance": round(similar["distances"][0][0], 4),
-                    "total_memories": count,
-                }
-    except Exception:
-        pass  # Dedup failure falls through to normal save
+    # --- Near-dedup: tiered threshold with soft-dupe tagging ---
+    _soft_dupe_tag = None  # set if in soft zone (0.10-0.15)
+    if not force and not (_FIX_DEDUP_EXEMPT and "type:fix" in tags):
+        try:
+            count = collection.count()
+            if count > 0:
+                similar = collection.query(
+                    query_texts=[content], n_results=1,
+                    include=["distances"],
+                )
+                if (similar and similar.get("distances") and similar["distances"][0]
+                        and similar["distances"][0][0] is not None):
+                    dist = similar["distances"][0][0]
+                    existing_id = similar["ids"][0][0]
+                    # Pick threshold: stricter for type:fix memories
+                    threshold = FIX_DEDUP_THRESHOLD if "type:fix" in tags else DEDUP_THRESHOLD
+                    if dist < threshold:
+                        return {
+                            "result": "Deduplicated: very similar memory already exists",
+                            "deduplicated": True,
+                            "existing_id": existing_id,
+                            "distance": round(dist, 4),
+                            "total_memories": count,
+                        }
+                    elif dist < DEDUP_SOFT_THRESHOLD:
+                        # Soft zone: save but tag as possible-dupe
+                        _soft_dupe_tag = f"possible-dupe:{existing_id}"
+        except Exception:
+            pass  # Dedup failure falls through to normal save
 
     # Citation URL extraction (fail-open)
     citation = _extract_citations(content, context)
@@ -1588,6 +1620,10 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
         preview += "..."
 
     now = time.time()
+
+    # Append soft-dupe tag if in borderline zone
+    if _soft_dupe_tag:
+        tags = f"{tags},{_soft_dupe_tag}" if tags else _soft_dupe_tag
 
     collection.upsert(
         documents=[content],
@@ -1697,6 +1733,106 @@ def remember_this(content: str, context: str = "", tags: str = "") -> dict:
         result["hint"] = "Tip: add a resolves:MEMORY_ID tag to link this fix to the problem memory it resolves"
 
     return result
+
+
+@mcp.tool()
+@crash_proof
+def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
+    """Batch scan for duplicate memories. Dry-run by default — shows candidates without acting.
+
+    Args:
+        dry_run: If True (default), only report candidate pairs. If False, move dupes to quarantine.
+        threshold: Cosine distance threshold for duplicate detection (default 0.15)
+    """
+    _ensure_initialized()
+    if _chromadb_degraded:
+        return {"error": "ChromaDB unavailable — running in degraded mode"}
+    threshold = _validate_distance_threshold(threshold, default=0.15, min_val=0.03, max_val=0.5)
+
+    count = collection.count()
+    if count == 0:
+        return {"candidates": [], "moved": 0, "message": "No memories to scan"}
+
+    # Export backup before any changes
+    backup_file = os.path.join(MEMORY_DIR, f"dedup_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    all_data = collection.get(limit=count, include=["documents", "metadatas", "embeddings"])
+    with open(backup_file, "w") as f:
+        # Embeddings are lists of floats — JSON-serializable
+        json.dump({
+            "ids": all_data.get("ids", []),
+            "documents": all_data.get("documents", []),
+            "metadatas": all_data.get("metadatas", []),
+            "count": count,
+            "exported_at": datetime.now().isoformat(),
+        }, f)
+
+    # Scan for duplicates
+    candidates = []
+    seen_pairs = set()
+    ids = all_data.get("ids", [])
+    docs = all_data.get("documents", []) or []
+    metas = all_data.get("metadatas", []) or []
+
+    for i, doc in enumerate(docs):
+        if not doc:
+            continue
+        try:
+            similar = collection.query(
+                query_texts=[doc], n_results=2,
+                include=["distances"],
+            )
+            if not similar or not similar.get("distances") or not similar["distances"][0]:
+                continue
+            # First result is self (distance ~0), second is nearest neighbor
+            for j, (sid, sdist) in enumerate(zip(similar["ids"][0], similar["distances"][0])):
+                if sid == ids[i]:
+                    continue  # skip self
+                if sdist < threshold:
+                    pair_key = tuple(sorted([ids[i], sid]))
+                    if pair_key not in seen_pairs:
+                        seen_pairs.add(pair_key)
+                        candidates.append({
+                            "id_a": ids[i],
+                            "id_b": sid,
+                            "distance": round(sdist, 4),
+                            "preview_a": (metas[i].get("preview", "") if i < len(metas) else "")[:80],
+                        })
+        except Exception:
+            continue
+
+    moved = 0
+    if not dry_run and quarantine is not None:
+        for cand in candidates:
+            try:
+                # Move the second item (id_b) to quarantine
+                victim_id = cand["id_b"]
+                victim = collection.get(ids=[victim_id], include=["documents", "metadatas"])
+                if victim and victim.get("ids") and victim["ids"]:
+                    v_doc = victim["documents"][0] if victim.get("documents") else ""
+                    v_meta = victim["metadatas"][0] if victim.get("metadatas") else {}
+                    v_meta["quarantine_reason"] = f"dedup_sweep:distance={cand['distance']}"
+                    v_meta["quarantine_pair"] = cand["id_a"]
+                    v_meta["quarantined_at"] = datetime.now().isoformat()
+                    quarantine.upsert(documents=[v_doc], metadatas=[v_meta], ids=[victim_id])
+                    collection.delete(ids=[victim_id])
+                    # Remove from FTS5 index too
+                    try:
+                        fts_index.remove_entry(victim_id)
+                    except Exception:
+                        pass
+                    moved += 1
+            except Exception:
+                continue
+
+    return {
+        "candidates": candidates[:100],  # Cap report at 100 pairs
+        "total_candidates": len(candidates),
+        "moved": moved,
+        "dry_run": dry_run,
+        "threshold": threshold,
+        "backup_file": backup_file,
+        "total_memories": collection.count(),
+    }
 
 
 # DORMANT (Session 86) — covered by handoff files + search_knowledge(recency_weight=1.0)

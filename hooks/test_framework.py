@@ -1018,6 +1018,40 @@ test("Repair loop: remember_this clears pattern counts",
      state.get("error_pattern_counts", {}) == {},
      f"counts={state.get('error_pattern_counts', {})}")
 
+# Test: deduped remember_this does NOT clear pattern counts (Gate 6 accuracy)
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+for _ in range(3):
+    run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
+                 tool_response="Traceback (most recent call last):\nError")
+state = load_state(session_id=MAIN_SESSION)
+_pre_dedup_counts = dict(state.get("error_pattern_counts", {}))
+_pre_dedup_warn = state.get("gate6_warn_count", 0)
+# Simulate deduped response
+run_enforcer("PostToolUse", "mcp__memory__remember_this",
+             {"content": "Fixed it", "tags": "type:fix"},
+             tool_response='{"deduplicated": true, "existing_id": "abc123", "distance": 0.02}')
+state = load_state(session_id=MAIN_SESSION)
+test("Repair loop: deduped save does NOT clear pattern counts",
+     state.get("error_pattern_counts", {}) == _pre_dedup_counts,
+     f"counts={state.get('error_pattern_counts', {})}, expected={_pre_dedup_counts}")
+
+# Test: rejected remember_this does NOT clear pattern counts
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+for _ in range(2):
+    run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
+                 tool_response="Traceback (most recent call last):\nError")
+state = load_state(session_id=MAIN_SESSION)
+_pre_reject_counts = dict(state.get("error_pattern_counts", {}))
+run_enforcer("PostToolUse", "mcp__memory__remember_this",
+             {"content": "x", "tags": ""},
+             tool_response='{"rejected": true, "result": "Rejected: content too short"}')
+state = load_state(session_id=MAIN_SESSION)
+test("Repair loop: rejected save does NOT clear pattern counts",
+     state.get("error_pattern_counts", {}) == _pre_reject_counts,
+     f"counts={state.get('error_pattern_counts', {})}, expected={_pre_reject_counts}")
+
 # Test: Gate 6 emits REPAIR LOOP warning when count >= 3
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
@@ -2826,12 +2860,26 @@ if not MEMORY_SERVER_RUNNING:
              "id" in _dedup_r4 and _dedup_r4.get("rejected") is not True,
              f"result={_dedup_r4}")
 
-        # 5. Dedup failure is non-fatal (we can't easily trigger this, so just verify the field exists)
-        from memory_server import DEDUP_THRESHOLD
-        test("Dedup: threshold configured", DEDUP_THRESHOLD == 0.05, f"got={DEDUP_THRESHOLD}")
+        # 5. Dedup thresholds configured correctly
+        from memory_server import DEDUP_THRESHOLD, DEDUP_SOFT_THRESHOLD, FIX_DEDUP_THRESHOLD, _FIX_DEDUP_EXEMPT
+        test("Dedup: threshold configured (0.10)", DEDUP_THRESHOLD == 0.10, f"got={DEDUP_THRESHOLD}")
+        test("Dedup: soft threshold configured (0.15)", DEDUP_SOFT_THRESHOLD == 0.15, f"got={DEDUP_SOFT_THRESHOLD}")
+        test("Dedup: fix threshold configured (0.03)", FIX_DEDUP_THRESHOLD == 0.03, f"got={FIX_DEDUP_THRESHOLD}")
+        test("Dedup: fix exempt dormant", _FIX_DEDUP_EXEMPT is False, f"got={_FIX_DEDUP_EXEMPT}")
+
+        # 6. Dedup returns 'deduplicated' key
+        test("Dedup: returns deduplicated key",
+             _dedup_r2.get("deduplicated") is True,
+             f"r2={_dedup_r2}")
+
+        # 7. Force override bypasses dedup
+        _dedup_force = _rt_filter(_dedup_content, "force test", "test:dedup", force=True)
+        test("Dedup: force=True bypasses dedup",
+             "id" in _dedup_force and _dedup_force.get("deduplicated") is not True,
+             f"result={_dedup_force}")
 
         # Cleanup
-        for _did in [_dedup_r1.get("id"), _dedup_r4.get("id")]:
+        for _did in [_dedup_r1.get("id"), _dedup_r4.get("id"), _dedup_force.get("id")]:
             if _did:
                 try:
                     collection.delete(ids=[_did])
