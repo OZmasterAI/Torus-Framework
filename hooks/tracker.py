@@ -629,6 +629,19 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
 
     _capture_observation(tool_name, tool_input, tool_response, session_id, state)
 
+    # Session duration nudge — once per milestone (1h, 2h, 3h)
+    session_hours = (time.time() - state.get("session_start", time.time())) / 3600
+    last_nudge = state.get("session_duration_nudge_hour", 0)
+    if session_hours >= 3 and last_nudge < 3:
+        state["session_duration_nudge_hour"] = 3
+        print("[SESSION] ADVISORY: Session running 3h+. Save progress with /wrap-up before context degrades.", file=sys.stderr)
+    elif session_hours >= 2 and last_nudge < 2:
+        state["session_duration_nudge_hour"] = 2
+        print("[SESSION] ADVISORY: Session running 2h+. Consider saving key findings to memory.", file=sys.stderr)
+    elif session_hours >= 1 and last_nudge < 1:
+        state["session_duration_nudge_hour"] = 1
+        print("[SESSION] ADVISORY: Session running 1h+. Good time for a memory checkpoint.", file=sys.stderr)
+
     save_state(state, session_id=session_id)
 
 
