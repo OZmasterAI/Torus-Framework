@@ -71,11 +71,11 @@ def _check_signals(state):
     pending = state.get("pending_verification", [])
     if len(pending) > 0:
         failures.append(f"{len(pending)} file(s) with unverified edits")
-    # Signal 3: memory freshness
-    mem_ts = get_memory_last_queried(state)
-    age = time.time() - mem_ts if mem_ts else float("inf")
-    if age > MEMORY_FRESHNESS_SECONDS:
-        failures.append(f"memory last queried {int(age)}s ago (>{MEMORY_FRESHNESS_SECONDS}s)")
+    # Signal 3: memory freshness — DORMANT (redundant with Gate 4)
+    # mem_ts = get_memory_last_queried(state)
+    # age = time.time() - mem_ts if mem_ts else float("inf")
+    # if age > MEMORY_FRESHNESS_SECONDS:
+    #     failures.append(f"memory last queried {int(age)}s ago (>{MEMORY_FRESHNESS_SECONDS}s)")
     return failures
 
 
