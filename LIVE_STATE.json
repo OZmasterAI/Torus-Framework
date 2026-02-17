@@ -1,9 +1,9 @@
 {
-  "session_count": 114,
+  "session_count": 115,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "github-sync",
+  "feature": "github-sync-and-xrdp-fix",
   "feature_status": "completed",
   "test_count": 1043,
   "test_failures": 0,
@@ -11,10 +11,12 @@
     "~/Desktop/torus-framework/framework/hooks/enforcer.py",
     "~/Desktop/torus-framework/framework/hooks/gates/gate_14_confidence_check.py",
     "~/Desktop/torus-framework/framework/hooks/tracker.py",
-    "~/Desktop/torus-framework/framework/hooks/test_framework.py"
+    "~/Desktop/torus-framework/framework/hooks/test_framework.py",
+    "~/.xsessionrc"
   ],
   "improvements_shipped": [
-    "Gate optimizations synced to GitHub (commit b527307)"
+    "Gate optimizations synced to GitHub (commit b527307)",
+    "XRDP login loop fixed (DBUS conflict in .xsessionrc)"
   ],
   "next_steps": [
     "Apply Haiku→Sonnet change to agents/researcher.md",
@@ -32,10 +34,10 @@
     "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy"
   ],
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 5,
-    "errors": 3,
-    "verified": 1,
+    "reads": 15,
+    "edits": 6,
+    "errors": 4,
+    "verified": 2,
     "pending": 0
   }
 }
