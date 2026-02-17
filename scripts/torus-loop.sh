@@ -1,11 +1,11 @@
 #!/bin/bash
-# megaman-loop.sh — External orchestrator for fresh-context task execution
+# torus-loop.sh — External orchestrator for fresh-context task execution
 #
 # Spawns a fresh Claude instance per task from a PRP's tasks.json.
 # Each instance gets peak reasoning quality (no context degradation).
 # Memory MCP bridges knowledge between instances.
 #
-# Usage: megaman-loop.sh <prp-name> [--max-iterations N] [--model opus|sonnet] [--timeout SECONDS]
+# Usage: torus-loop.sh <prp-name> [--max-iterations N] [--model opus|sonnet] [--timeout SECONDS]
 
 set -euo pipefail
 
@@ -14,7 +14,7 @@ CLAUDE_DIR="$HOME/.claude"
 PRP_DIR="$CLAUDE_DIR/PRPs"
 SCRIPTS_DIR="$CLAUDE_DIR/scripts"
 TASK_MANAGER="$PRP_DIR/task_manager.py"
-PROMPT_TEMPLATE="$SCRIPTS_DIR/megaman-prompt.md"
+PROMPT_TEMPLATE="$SCRIPTS_DIR/torus-prompt.md"
 
 # ── Defaults ───────────────────────────────────────────────────────
 MAX_ITERATIONS=50
@@ -24,7 +24,7 @@ TASK_TIMEOUT=600  # 10 minutes per task
 # ── Parse arguments ────────────────────────────────────────────────
 PRP_NAME="${1:-}"
 if [[ -z "$PRP_NAME" ]]; then
-    echo "Usage: megaman-loop.sh <prp-name> [--max-iterations N] [--model opus|sonnet] [--timeout SECONDS]"
+    echo "Usage: torus-loop.sh <prp-name> [--max-iterations N] [--model opus|sonnet] [--timeout SECONDS]"
     exit 1
 fi
 shift
@@ -58,7 +58,7 @@ rm -f "$STOP_SENTINEL"
 
 # ── Initialize activity log ────────────────────────────────────────
 {
-    echo "# Megaman Loop: $PRP_NAME"
+    echo "# Torus Loop: $PRP_NAME"
     echo ""
     echo "**Started**: $(date -Iseconds)"
     echo "**Model**: $MODEL"
@@ -111,7 +111,7 @@ Run this command to verify: \`$validate_cmd\`
 2. Read all files before editing
 3. Implement ONLY this task — do not touch other tasks
 4. Run the validation command and show output
-5. If validation passes, save to memory: remember_this("Completed task $task_id: $task_name", "megaman-loop iteration", "type:fix,area:framework")
+5. If validation passes, save to memory: remember_this("Completed task $task_id: $task_name", "torus-loop iteration", "type:fix,area:framework")
 6. If validation fails, describe what went wrong clearly
 PROMPT
     fi
@@ -119,7 +119,7 @@ PROMPT
 
 # ── Main loop ──────────────────────────────────────────────────────
 ITERATION=0
-echo "Starting megaman-loop for PRP: $PRP_NAME"
+echo "Starting torus-loop for PRP: $PRP_NAME"
 echo ""
 
 while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
@@ -170,7 +170,7 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
         STATUS="PASSED"
         # Git commit on success
         if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-            git add -A && git commit -m "megaman-loop: task $TASK_ID - $TASK_NAME" --no-verify 2>/dev/null || true
+            git add -A && git commit -m "torus-loop: task $TASK_ID - $TASK_NAME" --no-verify 2>/dev/null || true
         fi
     else
         STATUS="FAILED"

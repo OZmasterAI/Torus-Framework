@@ -14,7 +14,7 @@ Run this command to verify: `{validate_command}`
 2. Read all files before editing
 3. Implement ONLY this task — do not touch other tasks
 4. Run the validation command and show output
-5. If validation passes, save to memory: remember_this("Completed task {task_id}: {task_name}", "megaman-loop iteration", "type:fix,area:framework")
+5. If validation passes, save to memory: remember_this("Completed task {task_id}: {task_name}", "torus-loop iteration", "type:fix,area:framework")
 6. If validation fails, describe what went wrong clearly
 
 ## Context
