@@ -1,31 +1,32 @@
 {
-  "session_count": 120,
+  "session_count": 123,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "memory-deduplication",
+  "feature": "lazy-load-gate-dispatch",
   "feature_status": "completed",
-  "test_count": 1045,
+  "test_count": 1068,
   "test_failures": 0,
   "files_modified": [
-    "~/.claude/hooks/memory_server.py",
-    "~/.claude/hooks/tracker.py",
+    "~/.claude/hooks/enforcer.py",
     "~/.claude/hooks/test_framework.py",
-    "~/Desktop/torus-framework/framework/hooks/memory_server.py"
+    "~/Desktop/torus-framework/framework/hooks/enforcer.py",
+    "~/Desktop/torus-framework/framework/hooks/test_framework.py"
   ],
   "improvements_shipped": [
-    "Tiered dedup: 0.10 general, 0.03 type:fix, 0.15 soft zone",
-    "force=True param on remember_this() for dedup bypass",
-    "Quarantine collection for recoverable dupe storage",
-    "deduplicate_sweep() MCP tool with dry-run default",
-    "Gate 6 accuracy: deduped/rejected saves don't reset counters",
-    "GitHub export synced"
+    "GATE_TOOL_MAP: static gate→tool mapping for filtered dispatch",
+    "_ensure_gates_loaded(): one-time gate import + cache",
+    "_gates_for_tool(): tool-scoped gate filtering",
+    "Gate reduction: Bash 15→5, Task 15→4, Skill/other 15→1",
+    "Hot-reload updates _loaded_gates cache directly",
+    "8 new dispatch tests"
   ],
   "next_steps": [
     "Monitor dedup thresholds in practice",
     "Run deduplicate_sweep(dry_run=True) to audit existing corpus",
     "Apply Haiku→Sonnet change to agents/researcher.md",
-    "Sync Megaman→Torus rename to GitHub export"
+    "Sync Megaman→Torus rename to GitHub export",
+    "Add test_framework.py to tracker's recognized test keywords"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
@@ -35,13 +36,14 @@
     "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
     "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest"
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
+    "Gate 3 doesn't recognize python3 test_framework.py as test run"
   ],
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 10,
+    "reads": 5,
+    "edits": 4,
     "errors": 0,
-    "verified": 4,
+    "verified": 1,
     "pending": 0
   }
 }
