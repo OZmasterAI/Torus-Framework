@@ -217,6 +217,12 @@ def main():
     recent_learnings = gather_recent_learnings(warnings)
     risk_level = compute_risk_level(handoff, git, memory)
 
+    # Memory pruning nudge — threshold check, no MCP call
+    memory_pruning_nudge = ""
+    mem_count = memory.get("count", 0)
+    if mem_count >= 700:
+        memory_pruning_nudge = f"Memory DB at {mem_count} entries. Run maintenance(action='stale') to find cleanup candidates."
+
     result = {
         "live_state": live_state,
         "handoff": handoff,
@@ -227,6 +233,7 @@ def main():
         "recent_learnings": recent_learnings,
         "risk_level": risk_level,
         "warnings": warnings,
+        "memory_pruning_nudge": memory_pruning_nudge,
     }
 
     json.dump(result, sys.stdout, indent=2)
