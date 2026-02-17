@@ -411,7 +411,7 @@ def inject_memories_via_socket(handoff_content, live_state):
 
 
 # Audit log rotation settings
-_AUDIT_COMPRESS_AFTER_DAYS = 1   # Gzip .jsonl files older than this
+_AUDIT_COMPRESS_AFTER_DAYS = 2   # Gzip .jsonl files older than this
 _AUDIT_DELETE_AFTER_DAYS = 30    # Delete .gz files older than this (DORMANT — set to 0 to activate)
 _AUDIT_DELETE_ENABLED = False    # Flip to True to enable deletion of old .gz files
 
