@@ -160,13 +160,37 @@ def get_gate_dependencies():
     return GATE_DEPENDENCIES
 
 
-# ── Hot-Reload State ─────────────────────────────────────────────
-# Track gate module file modification times for live reloading.
-# Only check filesystem every RELOAD_CHECK_INTERVAL seconds.
+# ── Tool-Scoped Gate Dispatch ─────────────────────────────────────
+# Maps gate module name → set of tools it watches.
+# None = watches all tools (universal gate).
+GATE_TOOL_MAP = {
+    "gates.gate_01_read_before_edit": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_02_no_destroy": {"Bash"},
+    "gates.gate_03_test_before_deploy": {"Bash"},
+    "gates.gate_04_memory_first": {"Edit", "Write", "NotebookEdit", "Task"},
+    "gates.gate_05_proof_before_fixed": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_06_save_fix": {"Edit", "Write", "Task", "Bash"},
+    "gates.gate_07_critical_file_guard": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_09_strategy_ban": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_10_model_enforcement": {"Task"},
+    "gates.gate_11_rate_limit": None,  # Universal
+    "gates.gate_12_plan_mode_save": {"Edit", "Write", "Bash", "NotebookEdit"},
+    "gates.gate_13_workspace_isolation": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_14_confidence_check": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_15_causal_chain": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_16_code_quality": {"Edit", "Write", "NotebookEdit"},
+}
+
+
+# ── Gate Cache & Hot-Reload State ────────────────────────────────
+# Loaded gate modules are cached after first import.
+# Hot-reload checks filesystem every RELOAD_CHECK_INTERVAL seconds.
 
 RELOAD_CHECK_INTERVAL = 30  # seconds between mtime checks
 _gate_mtimes = {}           # module_name -> last known mtime
 _last_reload_check = 0.0    # timestamp of last mtime scan
+_loaded_gates = {}           # module_name -> module (cached after first load)
+_gates_loaded = False        # True after first successful full load
 
 
 def _get_gate_file_path(module_name):
@@ -180,9 +204,9 @@ def _check_and_reload_gates():
     """Check if any gate files have been modified and reload them.
 
     Only checks filesystem every RELOAD_CHECK_INTERVAL seconds.
-    Logs reloaded gates to audit trail.
+    Logs reloaded gates to audit trail. Updates _loaded_gates cache directly.
     """
-    global _last_reload_check, _gate_mtimes
+    global _last_reload_check, _gate_mtimes, _loaded_gates
 
     now = time.time()
     if now - _last_reload_check < RELOAD_CHECK_INTERVAL:
@@ -203,6 +227,9 @@ def _check_and_reload_gates():
                 if module_name in sys.modules:
                     mod = sys.modules[module_name]
                     importlib.reload(mod)
+                    # Update cache directly
+                    if hasattr(mod, "check"):
+                        _loaded_gates[module_name] = mod
                     log_gate_decision(
                         module_name, "reload", "pass",
                         f"Gate reloaded (file modified, mtime {current_mtime:.0f})",
@@ -215,17 +242,21 @@ def _check_and_reload_gates():
             pass  # Reload failures are non-fatal
 
 
-def load_gates():
-    """Dynamically load all available gate modules, with hot-reload support."""
-    # Check for modified gate files before loading
+def _ensure_gates_loaded():
+    """Load all gate modules once. Called on first use and after hot-reload."""
+    global _loaded_gates, _gates_loaded
+
+    # Check for modified gate files (respects RELOAD_CHECK_INTERVAL)
     _check_and_reload_gates()
 
-    gates = []
+    if _gates_loaded:
+        return
+
     for module_name in GATE_MODULES:
         try:
             mod = importlib.import_module(module_name)
             if hasattr(mod, "check"):
-                gates.append(mod)
+                _loaded_gates[module_name] = mod
                 # Record initial mtime if not yet tracked
                 if module_name not in _gate_mtimes:
                     try:
@@ -234,13 +265,11 @@ def load_gates():
                     except OSError:
                         pass
         except ImportError as e:
-            # Non-Tier-1 gate: log warning so missing gates are visible
-            # Tier 1 missing gates are caught by the check below (fail-closed)
             if module_name not in TIER1_SAFETY_GATES:
                 print(f"[ENFORCER] Warning: Gate '{module_name}' failed to load: {e}", file=sys.stderr)
 
     # Verify all Tier 1 safety gates loaded successfully (fail-closed)
-    loaded_names = {gate.__name__ for gate in gates}
+    loaded_names = set(_loaded_gates.keys())
     missing_tier1 = TIER1_SAFETY_GATES - loaded_names
     if missing_tier1:
         print(
@@ -249,7 +278,27 @@ def load_gates():
         )
         sys.exit(2)
 
-    return gates
+    _gates_loaded = True
+
+
+def _gates_for_tool(tool_name):
+    """Return only gate modules that watch this tool, in priority order."""
+    _ensure_gates_loaded()
+    result = []
+    for module_name in GATE_MODULES:  # Preserves priority order
+        mod = _loaded_gates.get(module_name)
+        if mod is None:
+            continue
+        watched = GATE_TOOL_MAP.get(module_name)
+        if watched is None or tool_name in watched:
+            result.append(mod)
+    return result
+
+
+def load_gates():
+    """Legacy wrapper — returns all loaded gates. Kept for backward compatibility."""
+    _ensure_gates_loaded()
+    return [_loaded_gates[m] for m in GATE_MODULES if m in _loaded_gates]
 
 
 def handle_pre_tool_use(tool_name, tool_input, state):
@@ -257,7 +306,7 @@ def handle_pre_tool_use(tool_name, tool_input, state):
     if is_always_allowed(tool_name):
         return
 
-    gates = load_gates()
+    gates = _gates_for_tool(tool_name)
     for gate in gates:
         try:
             t0 = time.time()

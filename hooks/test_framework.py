@@ -9890,6 +9890,80 @@ test("G16: TODO never escalates (5 TODOs, still not blocked)", _g16_r.blocked is
 
 
 # ─────────────────────────────────────────────────
+# Lazy-Load Gate Dispatch (GATE_TOOL_MAP)
+# ─────────────────────────────────────────────────
+print("\n--- Lazy-Load Gate Dispatch ---")
+
+from enforcer import (
+    GATE_MODULES, GATE_TOOL_MAP, _gates_for_tool, _ensure_gates_loaded, _loaded_gates, _gates_loaded,
+)
+
+# 1. Registry completeness: every GATE_MODULES entry has a GATE_TOOL_MAP entry
+_all_have_map = all(m in GATE_TOOL_MAP for m in GATE_MODULES)
+test("GATE_TOOL_MAP: every GATE_MODULES entry has mapping", _all_have_map)
+
+# 2. No stale entries: every GATE_TOOL_MAP key is in GATE_MODULES
+_no_stale = all(k in GATE_MODULES for k in GATE_TOOL_MAP)
+test("GATE_TOOL_MAP: no stale entries (all keys in GATE_MODULES)", _no_stale)
+
+# 3. Bash gets only relevant gates (02, 03, 06, 11, 12)
+_bash_gates = _gates_for_tool("Bash")
+_bash_names = {g.__name__ for g in _bash_gates}
+_bash_expected = {
+    "gates.gate_02_no_destroy",
+    "gates.gate_03_test_before_deploy",
+    "gates.gate_06_save_fix",
+    "gates.gate_11_rate_limit",
+    "gates.gate_12_plan_mode_save",
+}
+test("Dispatch: Bash gets 5 gates (02,03,06,11,12)", _bash_names == _bash_expected,
+     f"got {_bash_names}")
+
+# 4. Edit gets 13 gates (all except 02, 03, 10)
+_edit_gates = _gates_for_tool("Edit")
+_edit_names = {g.__name__ for g in _edit_gates}
+_edit_excluded = {
+    "gates.gate_02_no_destroy",
+    "gates.gate_03_test_before_deploy",
+    "gates.gate_10_model_enforcement",
+}
+_edit_expected = {m for m in GATE_MODULES} - _edit_excluded
+test("Dispatch: Edit gets 13 gates (all except 02,03,10)", _edit_names == _edit_expected,
+     f"missing={_edit_expected - _edit_names}, extra={_edit_names - _edit_expected}")
+
+# 5. Task gets only relevant gates (04, 06, 10, 11)
+_task_gates = _gates_for_tool("Task")
+_task_names = {g.__name__ for g in _task_gates}
+_task_expected = {
+    "gates.gate_04_memory_first",
+    "gates.gate_06_save_fix",
+    "gates.gate_10_model_enforcement",
+    "gates.gate_11_rate_limit",
+}
+test("Dispatch: Task gets 4 gates (04,06,10,11)", _task_names == _task_expected,
+     f"got {_task_names}")
+
+# 6. Unknown tool gets universal gates only (gate 11)
+_skill_gates = _gates_for_tool("Skill")
+_skill_names = {g.__name__ for g in _skill_gates}
+test("Dispatch: unknown tool (Skill) gets gate 11 only",
+     _skill_names == {"gates.gate_11_rate_limit"},
+     f"got {_skill_names}")
+
+# 7. Gate priority order preserved (returned in GATE_MODULES order)
+_edit_order = [g.__name__ for g in _edit_gates]
+_expected_order = [m for m in GATE_MODULES if m not in _edit_excluded]
+test("Dispatch: Edit gates in GATE_MODULES priority order", _edit_order == _expected_order,
+     f"got {_edit_order}")
+
+# 8. Gates are cached (calling _gates_for_tool twice returns same module objects)
+_first = _gates_for_tool("Bash")
+_second = _gates_for_tool("Bash")
+test("Dispatch: gate modules cached (same objects on repeated calls)",
+     all(a is b for a, b in zip(_first, _second)))
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()
