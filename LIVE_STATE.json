@@ -1,40 +1,40 @@
 {
-  "session_count": 108,
+  "session_count": 111,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "chromadb-observations-repair",
-  "feature_status": "completed",
+  "feature": "framework-documentation",
+  "feature_status": "in-progress",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
     "/home/crab/.claude/HANDOFF.md",
-    "/home/crab/.claude/LIVE_STATE.json"
+    "/home/crab/.claude/LIVE_STATE.json",
+    "/home/crab/Desktop/Megaman-Framework-v2.4.5-Feature-Report.md"
   ],
   "improvements_shipped": [
-    "Dropped and recreated corrupt observations collection",
-    "Verified all 5 ChromaDB collections healthy"
+    "Framework feature report saved to Desktop",
+    "Full + core backups saved to Desktop",
+    "Known issues list cleaned up (5 → 2 real issues)",
+    "Model mix decision: drop Haiku, use Opus+Sonnet"
   ],
   "next_steps": [
-    "Restart Claude Code so MCP reconnects to rebuilt ChromaDB",
-    "Document session_count contract in session_end.py docstring"
+    "Write build guide to Desktop (content ready, Gate 6 blocked write)",
+    "Apply Haiku→Sonnet change to agents/researcher.md"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
     "Privacy tags — <private> edge stripping in tracker.py/observation.py"
   ],
   "known_issues": [
-    "Plan mode exit loop bug",
-    "gather.py UDS socket unreachable during wrap-up",
-    "Linking tests skip when MCP server running",
-    "Backup UDS dispatch needs MCP server restart",
-    "test_framework.py collection error (pre-existing)"
+    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access — tests skip when MCP running, correct behavior"
   ],
   "last_session_metrics": {
     "reads": 2,
     "edits": 0,
-    "errors": 1,
-    "verified": 5,
+    "errors": 2,
+    "verified": 0,
     "pending": 0
   }
 }
