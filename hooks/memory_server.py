@@ -2914,6 +2914,84 @@ def rebuild_tag_index() -> dict:
         return {"error": f"Failed to rebuild tag index: {str(e)}"}
 
 
+def _batch_rename_memories():
+    """Rename megaman→torus in all memory content and tags. One-time migration."""
+    CONTENT_REPLACEMENTS = [
+        ("Megaman Framework", "Torus Framework"),
+        ("Megaman-Framework", "Torus-Framework"),
+        ("megaman-framework", "torus-framework"),
+        ("megaman framework", "torus framework"),
+        ("Megaman framework", "Torus framework"),
+        ("megaman-loop", "torus-loop"),
+        ("megaman_loop", "torus_loop"),
+        ("of Megaman", "of Torus"),
+        ("for Megaman", "for Torus"),
+        ("the Megaman", "the Torus"),
+        ("our Megaman", "our Torus"),
+        ("in Megaman", "in Torus"),
+        ("Megaman memory", "Torus memory"),
+        ("Megaman v2", "Torus v2"),
+        ("megaman v2", "torus v2"),
+        ("~/Desktop/megaman-framework", "~/Desktop/torus-framework"),
+        ("/megaman-framework/", "/torus-framework/"),
+    ]
+    TAG_REPLACEMENTS = [("megaman-loop", "torus-loop"), ("megaman", "torus")]
+
+    all_data = collection.get(include=["documents", "metadatas"])
+    ids = all_data["ids"]
+    docs = all_data["documents"] or []
+    metas = all_data["metadatas"] or []
+
+    content_updated = 0
+    tag_updated = 0
+    updated_ids = []
+
+    for doc_id, doc, meta in zip(ids, docs, metas):
+        if not doc:
+            continue
+        tags = (meta or {}).get("tags", "") or ""
+        if "megaman" not in doc.lower() and "megaman" not in tags.lower():
+            continue
+
+        new_doc = doc
+        for old, new in CONTENT_REPLACEMENTS:
+            new_doc = new_doc.replace(old, new)
+
+        new_tags = tags
+        for old_tag, new_tag in TAG_REPLACEMENTS:
+            new_tags = new_tags.replace(old_tag, new_tag)
+
+        doc_changed = new_doc != doc
+        tags_changed = new_tags != tags
+
+        if doc_changed or tags_changed:
+            update_kwargs = {"ids": [doc_id]}
+            if doc_changed:
+                update_kwargs["documents"] = [new_doc]
+                content_updated += 1
+            if tags_changed:
+                new_meta = dict(meta) if meta else {}
+                new_meta["tags"] = new_tags
+                update_kwargs["metadatas"] = [new_meta]
+                tag_updated += 1
+            collection.update(**update_kwargs)
+            updated_ids.append(doc_id[:8])
+
+    # Rebuild FTS index to reflect changes
+    if content_updated > 0 or tag_updated > 0:
+        try:
+            rebuild_tag_index()
+        except Exception:
+            pass
+
+    return {
+        "content_updated": content_updated,
+        "tag_updated": tag_updated,
+        "updated_ids": updated_ids,
+        "message": f"Renamed megaman→torus: {content_updated} content, {tag_updated} tags",
+    }
+
+
 @mcp.tool()
 @crash_proof
 def maintenance(action: str, top_k: int | None = None, days: int | None = None,
@@ -2958,6 +3036,8 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
         return memory_health_report()
     elif action == "rebuild_tags":
         return rebuild_tag_index()
+    elif action == "batch_rename":
+        return _batch_rename_memories()
     else:
         return {
             "error": f"Unknown action: {action!r}",
@@ -2967,6 +3047,7 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
                 "cluster": "Group related memories into clusters (min_cluster_size, distance_threshold)",
                 "health": "Generate memory health metrics (no params)",
                 "rebuild_tags": "Rebuild tag co-occurrence matrix (no params)",
+                "batch_rename": "Rename megaman→torus in all memory content and tags",
             },
         }
 
