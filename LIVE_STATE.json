@@ -1,24 +1,29 @@
 {
-  "session_count": 119,
+  "session_count": 120,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "search-relevance",
+  "feature": "memory-deduplication",
   "feature_status": "completed",
-  "test_count": 1043,
+  "test_count": 1045,
   "test_failures": 0,
   "files_modified": [
     "~/.claude/hooks/memory_server.py",
+    "~/.claude/hooks/tracker.py",
     "~/.claude/hooks/test_framework.py",
     "~/Desktop/torus-framework/framework/hooks/memory_server.py"
   ],
   "improvements_shipped": [
-    "RRF hybrid merge (k=60) replaces flat +0.1 bonus in _merge_results()",
-    "Keyword overlap reranker (+0.05 boost) for all search modes",
-    "Pipeline: tag expansion → keyword rerank → recency boost",
-    "GitHub export synced (commit a6fc01e)"
+    "Tiered dedup: 0.10 general, 0.03 type:fix, 0.15 soft zone",
+    "force=True param on remember_this() for dedup bypass",
+    "Quarantine collection for recoverable dupe storage",
+    "deduplicate_sweep() MCP tool with dry-run default",
+    "Gate 6 accuracy: deduped/rejected saves don't reset counters",
+    "GitHub export synced"
   ],
   "next_steps": [
+    "Monitor dedup thresholds in practice",
+    "Run deduplicate_sweep(dry_run=True) to audit existing corpus",
     "Apply Haiku→Sonnet change to agents/researcher.md",
     "Sync Megaman→Torus rename to GitHub export"
   ],
@@ -33,10 +38,10 @@
     "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest"
   ],
   "last_session_metrics": {
-    "reads": 6,
-    "edits": 7,
+    "reads": 12,
+    "edits": 10,
     "errors": 0,
-    "verified": 3,
+    "verified": 4,
     "pending": 0
   }
 }
