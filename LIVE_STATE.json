@@ -3,7 +3,7 @@
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "gate-optimization",
+  "feature": "torus-export-complete",
   "feature_status": "completed",
   "test_count": 1043,
   "test_failures": 0,
@@ -12,18 +12,17 @@
     "/home/crab/.claude/hooks/gates/gate_14_confidence_check.py",
     "/home/crab/.claude/hooks/tracker.py",
     "/home/crab/.claude/hooks/test_framework.py",
-    "~/Desktop/torus-framework/ (93 files)"
+    "~/Desktop/torus-framework/ (130 files)"
   ],
   "improvements_shipped": [
-    "Torus Framework v2.4.5 packaged and pushed to GitHub",
-    "Gate 8 dormanted — late-night blocking removed",
-    "Gate 14 optimized — per-file counter, expanded exemptions, suppressed warnings",
-    "Session duration nudges moved to tracker.py (one-shot per milestone)"
+    "Torus Framework v2.4.5 exported (130 files, 1043/1043 tests)",
+    "Gate 8 dormanted, Gate 14 optimized (3 fixes)",
+    "Session duration nudges moved to tracker.py",
+    "Export test suite fully portable (relative paths)"
   ],
   "next_steps": [
     "Apply Haiku→Sonnet change to agents/researcher.md",
-    "Fix export test_framework.py dashboard reference",
-    "Update Torus Framework GitHub repo with gate fixes"
+    "Sync gate fixes to Torus Framework GitHub repo"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
@@ -35,10 +34,10 @@
     "Gate 2 false-positives on 'source' in heredocs"
   ],
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 6,
-    "errors": 4,
-    "verified": 1,
+    "reads": 15,
+    "edits": 8,
+    "errors": 6,
+    "verified": 2,
     "pending": 0
   }
 }
