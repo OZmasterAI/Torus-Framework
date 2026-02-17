@@ -1,19 +1,16 @@
-# Session 113 — Handoff
+# Session 114 — Handoff
 
 ## What Was Done
-- **Packaged Torus Framework v2.4.5** for GitHub distribution (130 files, 35K lines)
-  - Pushed to https://github.com/OZmasterAI/Torus-Framework (2 commits)
-  - Dashboard, scripts, PRPs, seed ChromaDB, install/uninstall scripts
-- **Gate 8 (Temporal Awareness) dormanted** — commented out in enforcer.py
-- **Gate 14 (Confidence Check) optimized** — per-file counter, expanded exemptions, suppressed warnings
-- **Session duration nudges moved to tracker.py** — one-shot per milestone (1h/2h/3h)
-- **Export test suite fixed** — 8 failures → 0 via _FRAMEWORK_ROOT relative paths
-- **Renamed local framework** from Megaman → Torus across 12 active files + 2 script renames
-- 1043/1043 tests passing
+- **Synced gate optimizations to GitHub** — commit `b527307` pushed to OZmasterAI/Torus-Framework
+  - Gate 8 dormanted in export's enforcer.py
+  - Gate 14 fixes applied to export (per-file counter, EXEMPT_EXTENSIONS, suppressed warnings, signal 3 dormant)
+  - Session duration nudges added to export's tracker.py
+  - 4 Gate 14 tests updated in export's test_framework.py (per-file counter)
+- 1043/1043 tests passing in both local and export
 
 ## What's Next
 - Apply Haiku→Sonnet change to agents/researcher.md (decided session 111, deferred)
-- Sync gate optimization + rename changes to Torus Framework GitHub repo
+- Sync Megaman→Torus rename to GitHub export (not included in this push)
 - Dormant: agent team context tool (`get_teammate_context()`)
 - Dormant: privacy tags (`<private>` edge stripping)
 
@@ -22,11 +19,12 @@
 - ChromaDB concurrent access — tests skip when MCP running, correct behavior
 - Gate 2 false-positives on "source" in heredocs/comments
 - Memory entries still reference "megaman" historically — search both names
+- Export test_framework.py uses _FRAMEWORK_ROOT relative paths — must merge changes, not copy
 
 ## Service Status
-- Memory MCP: HEALTHY (486 memories, 5 collections)
+- Memory MCP: HEALTHY (488 memories, 5 collections)
 - Tests: 1043 passed, 0 failed
 - Framework version: v2.4.5 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 13 active gates (Gate 8 dormant)
 - Ramdisk: active at /run/user/1000/claude-hooks
-- GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI)
+- GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI, 4 commits)

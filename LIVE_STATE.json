@@ -1,31 +1,24 @@
 {
-  "session_count": 113,
+  "session_count": 114,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "torus-rename-complete",
+  "feature": "github-sync",
   "feature_status": "completed",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
-    "/home/crab/.claude/CLAUDE.md",
-    "/home/crab/.claude/USAGE_GUIDE.md",
-    "/home/crab/.claude/skills/loop/SKILL.md",
-    "/home/crab/.claude/hooks/test_framework.py",
-    "/home/crab/.claude/scripts/torus-loop.sh",
-    "/home/crab/.claude/scripts/torus-prompt.md",
-    "~/Desktop/torus-framework/ (130 files)"
+    "~/Desktop/torus-framework/framework/hooks/enforcer.py",
+    "~/Desktop/torus-framework/framework/hooks/gates/gate_14_confidence_check.py",
+    "~/Desktop/torus-framework/framework/hooks/tracker.py",
+    "~/Desktop/torus-framework/framework/hooks/test_framework.py"
   ],
   "improvements_shipped": [
-    "Torus Framework v2.4.5 exported + pushed to GitHub (130 files)",
-    "Gate 8 dormanted, Gate 14 optimized (3 fixes)",
-    "Session duration nudges in tracker.py",
-    "Export test suite portable (relative paths, 1043/1043)",
-    "Local framework renamed Megaman → Torus"
+    "Gate optimizations synced to GitHub (commit b527307)"
   ],
   "next_steps": [
     "Apply Haiku→Sonnet change to agents/researcher.md",
-    "Sync changes to Torus Framework GitHub repo"
+    "Sync Megaman→Torus rename to GitHub export"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
@@ -35,13 +28,14 @@
     "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
     "Gate 2 false-positives on 'source' in heredocs",
-    "Memory entries still reference 'megaman' historically — search both names"
+    "Memory entries still reference 'megaman' historically — search both names",
+    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy"
   ],
   "last_session_metrics": {
-    "reads": 18,
-    "edits": 10,
-    "errors": 8,
-    "verified": 3,
+    "reads": 12,
+    "edits": 5,
+    "errors": 3,
+    "verified": 1,
     "pending": 0
   }
 }
