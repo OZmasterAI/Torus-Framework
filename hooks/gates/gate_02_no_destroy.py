@@ -69,7 +69,7 @@ DANGEROUS_PATTERNS = [
     (r"<<<\s*", "heredoc execution (<<<)"),
     (r"(?<!<)<<(?!<)\s*", "heredoc input (<<)"),
     (r"\bexec\s+", "exec (replace current process)"),
-    (r"\bsource\s+", "source (execute script in current shell)"),
+    (r"(?:^|[;&|]\s*)source\s+", "source (execute script in current shell)"),
     # SQL mass deletion without WHERE clause
     (r"\bDELETE\s+FROM\s+", "DELETE FROM (SQL mass deletion)"),
     # Git destructive operations (additional)
