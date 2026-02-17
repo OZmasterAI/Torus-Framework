@@ -6642,6 +6642,15 @@ test("v2.2.6: Tracker saves last_test_command",
      _s226_9.get("last_test_command") == "pytest tests/",
      f"Expected 'pytest tests/', got {_s226_9.get('last_test_command')!r}")
 
+# Test 9b: Tracker recognizes test_framework.py as a test run
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+run_enforcer("PostToolUse", "Bash", {"command": "python3 test_framework.py"})
+_s_tf = load_state(session_id=MAIN_SESSION)
+test("Tracker recognizes test_framework.py as test run",
+     _s_tf.get("last_test_run") is not None and _s_tf.get("last_test_run") > 0,
+     f"last_test_run={_s_tf.get('last_test_run')!r}")
+
 # ── Feature 3: Boot _extract_test_status ──
 
 from boot import _extract_test_status
