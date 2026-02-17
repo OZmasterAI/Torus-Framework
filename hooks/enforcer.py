@@ -36,7 +36,7 @@ GATE_MODULES = [
     "gates.gate_05_proof_before_fixed",
     "gates.gate_06_save_fix",
     "gates.gate_07_critical_file_guard",
-    "gates.gate_08_temporal",
+    # "gates.gate_08_temporal",  # DORMANT — re-enable by uncommenting
     "gates.gate_09_strategy_ban",
     "gates.gate_10_model_enforcement",
     "gates.gate_11_rate_limit",
@@ -112,10 +112,10 @@ GATE_DEPENDENCIES = {
         "reads": ["memory_last_queried"],
         "writes": [],
     },
-    "gate_08_temporal": {
-        "reads": ["session_start", "memory_last_queried"],
-        "writes": [],
-    },
+    # "gate_08_temporal": {  # DORMANT
+    #     "reads": ["session_start", "memory_last_queried"],
+    #     "writes": [],
+    # },
     "gate_09_strategy_ban": {
         "reads": ["current_strategy_id", "active_bans", "successful_strategies"],
         "writes": [],
