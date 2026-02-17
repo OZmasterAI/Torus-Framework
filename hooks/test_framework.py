@@ -9812,6 +9812,84 @@ else:
 
 
 # ─────────────────────────────────────────────────
+# Gate 16: Code Quality Guard
+# ─────────────────────────────────────────────────
+from gates.gate_16_code_quality import check as gate16_check
+
+def _g16(tool_name, tool_input, state=None):
+    if state is None:
+        state = default_state()
+    return gate16_check(tool_name, tool_input, state)
+
+# 1. Secret detection
+_g16_r = _g16("Edit", {"file_path": "/tmp/app.py", "new_string": 'api_key = "sk-abc123def456789"'})
+test("G16: secret in code → warns", _g16_r.message is not None and "secret-in-code" in _g16_r.message)
+
+# 2. Debug print
+_g16_r = _g16("Edit", {"file_path": "/tmp/app.py", "new_string": '    print("debug value")\n'})
+test("G16: debug print → warns", _g16_r.message is not None and "debug-print" in _g16_r.message)
+
+# 3. Broad except
+_g16_r = _g16("Edit", {"file_path": "/tmp/app.py", "new_string": 'try:\n    pass\nexcept:\n    pass'})
+test("G16: broad except → warns", _g16_r.message is not None and "broad-except" in _g16_r.message)
+
+# 4. TODO detection
+_g16_r = _g16("Edit", {"file_path": "/tmp/app.py", "new_string": '# TODO fix this later'})
+test("G16: TODO → warns (informational)", _g16_r.message is not None and "todo-fixme" in _g16_r.message)
+
+# 5. Clean code — no warning
+_g16_r = _g16("Edit", {"file_path": "/tmp/app.py", "new_string": 'def hello():\n    return "world"'})
+test("G16: clean code → no warning", _g16_r.message is None or _g16_r.message == "")
+
+# 6. Progressive: 3 warns → 4th blocks
+_g16_state = default_state()
+_g16_state["code_quality_warnings_per_file"] = {"/tmp/prog.py": 3}  # Already at 3
+_g16_r = _g16("Edit", {"file_path": "/tmp/prog.py", "new_string": 'password = "supersecretvalue123"'}, _g16_state)
+test("G16: 4th violation → blocks", _g16_r.blocked is True)
+
+# 7. Counter reset on clean edit
+_g16_state = default_state()
+_g16_state["code_quality_warnings_per_file"] = {"/tmp/reset.py": 2}
+_g16_r = _g16("Edit", {"file_path": "/tmp/reset.py", "new_string": 'x = 42'}, _g16_state)
+test("G16: clean edit resets counter", _g16_state["code_quality_warnings_per_file"].get("/tmp/reset.py") is None)
+
+# 8. Test file exempt
+_g16_r = _g16("Edit", {"file_path": "/tmp/test_foo.py", "new_string": 'print("debug")'})
+test("G16: test file exempt", _g16_r.blocked is False and (not _g16_r.message))
+
+# 9. Non-code exempt (.json)
+_g16_r = _g16("Edit", {"file_path": "/tmp/config.json", "new_string": '"password": "abc12345678"'})
+test("G16: .json file exempt", _g16_r.blocked is False and (not _g16_r.message))
+
+# 10. Skills dir exempt
+_g16_r = _g16("Edit", {"file_path": "/home/crab/.claude/skills/foo.py", "new_string": 'print("debug")'})
+test("G16: skills dir exempt", _g16_r.blocked is False and (not _g16_r.message))
+
+# 11. Empty content exempt
+_g16_r = _g16("Edit", {"file_path": "/tmp/app.py", "new_string": ""})
+test("G16: empty content exempt", _g16_r.blocked is False and (not _g16_r.message))
+
+# 12. Short secret exempt (< 8 chars)
+_g16_r = _g16("Edit", {"file_path": "/tmp/app.py", "new_string": 'password = "x"'})
+test("G16: short secret not flagged", _g16_r.blocked is False and (not _g16_r.message))
+
+# 13. NotebookEdit with debug → warns
+_g16_r = _g16("NotebookEdit", {"notebook_path": "/tmp/nb.py", "new_source": 'import pdb\npdb.set_trace()'})
+test("G16: NotebookEdit debug → warns", _g16_r.message is not None and "debug-print" in _g16_r.message)
+
+# 14. Multiple violations → single warning listing all
+_g16_r = _g16("Edit", {"file_path": "/tmp/multi.py", "new_string": 'api_key = "sk-abc123def456"\nexcept:\n    pass'})
+test("G16: multiple violations in one warning", _g16_r.message is not None and "secret-in-code" in _g16_r.message and "broad-except" in _g16_r.message)
+
+# 15. TODO never escalates counter
+_g16_state = default_state()
+for _i in range(5):
+    _g16("Edit", {"file_path": "/tmp/todo.py", "new_string": '# TODO something'}, _g16_state)
+_g16_r = _g16("Edit", {"file_path": "/tmp/todo.py", "new_string": '# FIXME urgent'}, _g16_state)
+test("G16: TODO never escalates (5 TODOs, still not blocked)", _g16_r.blocked is False)
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

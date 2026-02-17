@@ -107,6 +107,8 @@ def default_state():
         "recent_test_failure": None,     # {pattern, timestamp, command} when tests fail; None when passing
         "fix_history_queried": 0,        # Timestamp of last query_fix_history call
         "fixing_error": False,           # True when actively fixing a detected error
+        # v3 fields (code quality gate)
+        "code_quality_warnings_per_file": {},  # Gate 16: {filepath: warn_count}
     }
 
 
@@ -156,6 +158,7 @@ def get_state_schema():
         "recent_test_failure": {"type": "dict", "description": "Error info from most recent test failure", "category": "gate15"},
         "fix_history_queried": {"type": "float", "description": "Timestamp of last query_fix_history call", "category": "gate15"},
         "fixing_error": {"type": "bool", "description": "Whether actively fixing a detected error", "category": "gate15"},
+        "code_quality_warnings_per_file": {"type": "dict", "description": "Per-file code quality warning counter", "category": "gate16"},
     }
 
 
