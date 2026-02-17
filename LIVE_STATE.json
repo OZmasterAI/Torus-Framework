@@ -1,26 +1,27 @@
 {
-  "session_count": 115,
+  "session_count": 116,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "github-sync-and-xrdp-fix",
+  "feature": "framework-hardening",
   "feature_status": "completed",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
-    "~/Desktop/torus-framework/framework/hooks/enforcer.py",
-    "~/Desktop/torus-framework/framework/hooks/gates/gate_14_confidence_check.py",
-    "~/Desktop/torus-framework/framework/hooks/tracker.py",
-    "~/Desktop/torus-framework/framework/hooks/test_framework.py",
-    "~/.xsessionrc"
+    "~/.claude/hooks/gates/gate_02_no_destroy.py",
+    "~/.claude/hooks/memory_server.py",
+    "~/.claude/skills/wrap-up/scripts/gather.py"
   ],
   "improvements_shipped": [
-    "Gate optimizations synced to GitHub (commit b527307)",
-    "XRDP login loop fixed (DBUS conflict in .xsessionrc)"
+    "Gate 2 source regex fixed (no more false positives in heredocs)",
+    "Query alias expansion: torus↔megaman auto-search",
+    "Batch renamed 32 megaman→torus memories",
+    "Memory pruning nudge in gather.py (Option B, zero tokens)"
   ],
   "next_steps": [
-    "Apply Haiku→Sonnet change to agents/researcher.md",
-    "Sync Megaman→Torus rename to GitHub export"
+    "Save session 116 learnings to memory (MCP was disconnected)",
+    "Sync recent fixes to GitHub export",
+    "Apply Haiku→Sonnet change to agents/researcher.md"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
@@ -29,15 +30,15 @@
   "known_issues": [
     "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
-    "Gate 2 false-positives on 'source' in heredocs",
-    "Memory entries still reference 'megaman' historically — search both names",
-    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy"
+    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
+    "MCP server restarted mid-session — may need reconnect next session",
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest"
   ],
   "last_session_metrics": {
-    "reads": 15,
-    "edits": 6,
-    "errors": 4,
-    "verified": 2,
-    "pending": 0
+    "reads": 20,
+    "edits": 8,
+    "errors": 3,
+    "verified": 4,
+    "pending": 1
   }
 }
