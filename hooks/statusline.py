@@ -50,7 +50,7 @@ CACHE_TTL = 60
 # Expected component counts (update when adding new gates/skills/hooks)
 EXPECTED_GATES = 15
 EXPECTED_SKILLS = 22
-EXPECTED_HOOK_EVENTS = 13
+EXPECTED_HOOK_EVENTS = 11
 
 # Health bar characters
 BAR_FULL = "\u2588"   # █
