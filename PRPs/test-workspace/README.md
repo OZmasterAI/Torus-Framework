@@ -1,11 +1,11 @@
 # Test Workspace
 
 **Created**: 2026-02-14
-**Purpose**: Isolated environment for validating Megaman Framework gates and workflows
+**Purpose**: Isolated environment for validating Torus Framework gates and workflows
 
 ## Overview
 
-This workspace is used for testing and validating the Megaman Framework without impacting production workflows. It serves as a safe sandbox for:
+This workspace is used for testing and validating the Torus Framework without impacting production workflows. It serves as a safe sandbox for:
 
 - Testing gate enforcement behavior
 - Validating PRP workflow mechanics

@@ -9276,19 +9276,19 @@ with open(_tm_template) as _f:
     _tm_tmpl = json.load(_f)
 test("TaskManager: template has tasks array", "tasks" in _tm_tmpl and isinstance(_tm_tmpl["tasks"], list))
 
-# Test: megaman-loop.sh exists and is executable
-_ml_script = os.path.expanduser("~/.claude/scripts/megaman-loop.sh")
-test("MegamanLoop: script exists", os.path.isfile(_ml_script))
-test("MegamanLoop: script is executable", os.access(_ml_script, os.X_OK))
+# Test: torus-loop.sh exists and is executable
+_ml_script = os.path.expanduser("~/.claude/scripts/torus-loop.sh")
+test("TorusLoop: script exists", os.path.isfile(_ml_script))
+test("TorusLoop: script is executable", os.access(_ml_script, os.X_OK))
 
-# Test: megaman-prompt.md exists
-_ml_prompt = os.path.expanduser("~/.claude/scripts/megaman-prompt.md")
-test("MegamanLoop: prompt template exists", os.path.isfile(_ml_prompt))
+# Test: torus-prompt.md exists
+_ml_prompt = os.path.expanduser("~/.claude/scripts/torus-prompt.md")
+test("TorusLoop: prompt template exists", os.path.isfile(_ml_prompt))
 with open(_ml_prompt) as _f:
     _ml_prompt_src = _f.read()
-test("MegamanLoop: prompt has task_id placeholder", "{task_id}" in _ml_prompt_src)
-test("MegamanLoop: prompt has validate_command placeholder", "{validate_command}" in _ml_prompt_src)
-test("MegamanLoop: prompt has search_knowledge rule", "search_knowledge" in _ml_prompt_src)
+test("TorusLoop: prompt has task_id placeholder", "{task_id}" in _ml_prompt_src)
+test("TorusLoop: prompt has validate_command placeholder", "{validate_command}" in _ml_prompt_src)
+test("TorusLoop: prompt has search_knowledge rule", "search_knowledge" in _ml_prompt_src)
 
 # Test: /loop SKILL.md exists and has required commands
 _loop_skill = os.path.expanduser("~/.claude/skills/loop/SKILL.md")
@@ -9298,7 +9298,7 @@ with open(_loop_skill) as _f:
 test("LoopSkill: has start command", "/loop start" in _loop_src)
 test("LoopSkill: has status command", "/loop status" in _loop_src)
 test("LoopSkill: has stop command", "/loop stop" in _loop_src)
-test("LoopSkill: references megaman-loop.sh", "megaman-loop.sh" in _loop_src)
+test("LoopSkill: references torus-loop.sh", "torus-loop.sh" in _loop_src)
 test("LoopSkill: references stop sentinel", ".stop" in _loop_src)
 
 # Test: base.md template has Validate field
@@ -9314,14 +9314,14 @@ with open(_prp_skill) as _f:
 test("PRP: SKILL.md has /prp status command", "/prp status" in _prp_src)
 test("PRP: SKILL.md has tasks.json generation step", "tasks.json" in _prp_src)
 
-# Test: megaman-loop.sh has stop sentinel check
+# Test: torus-loop.sh has stop sentinel check
 with open(_ml_script) as _f:
     _ml_src = _f.read()
-test("MegamanLoop: checks stop sentinel", "STOP_SENTINEL" in _ml_src)
-test("MegamanLoop: has max iterations", "MAX_ITERATIONS" in _ml_src)
-test("MegamanLoop: has git commit on success", "git commit" in _ml_src)
-test("MegamanLoop: uses --dangerously-skip-permissions", "--dangerously-skip-permissions" in _ml_src)
-test("MegamanLoop: has activity log", "activity.md" in _ml_src or "ACTIVITY_LOG" in _ml_src)
+test("TorusLoop: checks stop sentinel", "STOP_SENTINEL" in _ml_src)
+test("TorusLoop: has max iterations", "MAX_ITERATIONS" in _ml_src)
+test("TorusLoop: has git commit on success", "git commit" in _ml_src)
+test("TorusLoop: uses --dangerously-skip-permissions", "--dangerously-skip-permissions" in _ml_src)
+test("TorusLoop: has activity log", "activity.md" in _ml_src or "ACTIVITY_LOG" in _ml_src)
 
 # Cleanup test file
 try:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Task manager for PRP JSON task tracking.
 
-Used by megaman-loop.sh orchestrator and /prp status command.
+Used by torus-loop.sh orchestrator and /prp status command.
 Reads/writes ~/.claude/PRPs/<prp-name>.tasks.json alongside PRP markdown files.
 """
 

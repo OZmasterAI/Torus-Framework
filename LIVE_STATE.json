@@ -1,28 +1,31 @@
 {
   "session_count": 113,
   "status": "idle",
-  "project": "megaman-framework",
+  "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "torus-export-complete",
+  "feature": "torus-rename-complete",
   "feature_status": "completed",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
-    "/home/crab/.claude/hooks/enforcer.py",
-    "/home/crab/.claude/hooks/gates/gate_14_confidence_check.py",
-    "/home/crab/.claude/hooks/tracker.py",
+    "/home/crab/.claude/CLAUDE.md",
+    "/home/crab/.claude/USAGE_GUIDE.md",
+    "/home/crab/.claude/skills/loop/SKILL.md",
     "/home/crab/.claude/hooks/test_framework.py",
+    "/home/crab/.claude/scripts/torus-loop.sh",
+    "/home/crab/.claude/scripts/torus-prompt.md",
     "~/Desktop/torus-framework/ (130 files)"
   ],
   "improvements_shipped": [
-    "Torus Framework v2.4.5 exported (130 files, 1043/1043 tests)",
+    "Torus Framework v2.4.5 exported + pushed to GitHub (130 files)",
     "Gate 8 dormanted, Gate 14 optimized (3 fixes)",
-    "Session duration nudges moved to tracker.py",
-    "Export test suite fully portable (relative paths)"
+    "Session duration nudges in tracker.py",
+    "Export test suite portable (relative paths, 1043/1043)",
+    "Local framework renamed Megaman → Torus"
   ],
   "next_steps": [
     "Apply Haiku→Sonnet change to agents/researcher.md",
-    "Sync gate fixes to Torus Framework GitHub repo"
+    "Sync changes to Torus Framework GitHub repo"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
@@ -31,13 +34,14 @@
   "known_issues": [
     "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
-    "Gate 2 false-positives on 'source' in heredocs"
+    "Gate 2 false-positives on 'source' in heredocs",
+    "Memory entries still reference 'megaman' historically — search both names"
   ],
   "last_session_metrics": {
-    "reads": 15,
-    "edits": 8,
-    "errors": 6,
-    "verified": 2,
+    "reads": 18,
+    "edits": 10,
+    "errors": 8,
+    "verified": 3,
     "pending": 0
   }
 }
