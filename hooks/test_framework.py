@@ -1913,7 +1913,7 @@ if not MEMORY_SERVER_RUNNING:
         from memory_server import (
             remember_this, search_knowledge, format_summaries, _migrate_previews,
             generate_id, collection, SUMMARY_LENGTH, fts_index, _detect_query_mode,
-            _merge_results, FTS5Index,
+            _merge_results, _rerank_keyword_overlap, FTS5Index,
         )
 
         _test_content = "Test progressive disclosure: this is a long content string that exceeds the summary length to verify that preview truncation works correctly in the metadata."
@@ -2027,7 +2027,7 @@ if not MEMORY_SERVER_RUNNING:
         test("detect_mode: question mark → semantic",
              _detect_query_mode("what is this?") == "semantic")
 
-        # Test: Hybrid merge deduplicates and applies bonus
+        # Test: RRF hybrid merge deduplicates and ranks both-engine items higher
         _fts_res = [{"id": "a1", "preview": "P1", "tags": "t1", "timestamp": "2026-01-01", "fts_score": 5.0}]
         _chroma_res = [
             {"id": "a1", "preview": "P1", "tags": "t1", "timestamp": "2026-01-01", "relevance": 0.8},
@@ -2035,9 +2035,26 @@ if not MEMORY_SERVER_RUNNING:
         ]
         _merged = _merge_results(_fts_res, _chroma_res, top_k=10)
         _a1 = [m for m in _merged if m["id"] == "a1"][0]
-        test("Hybrid merge deduplicates and boosts",
-             len(_merged) == 2 and _a1["relevance"] == 0.9 and _a1.get("match") == "both",
-             f"count={len(_merged)}, a1_rel={_a1.get('relevance')}")
+        _b2 = [m for m in _merged if m["id"] == "b2"][0]
+        test("RRF merge: both-engine item ranks higher",
+             len(_merged) == 2 and _a1["relevance"] > _b2["relevance"] and _a1.get("match") == "both",
+             f"count={len(_merged)}, a1_rel={_a1.get('relevance'):.4f}, b2_rel={_b2.get('relevance'):.4f}")
+
+        # Test: Keyword reranker boosts exact-term matches
+        _rerank_input = [
+            {"id": "x1", "preview": "unrelated content here", "tags": "misc", "relevance": 0.52},
+            {"id": "x2", "preview": "gate fix applied to source", "tags": "gate,fix", "relevance": 0.5},
+        ]
+        _reranked = _rerank_keyword_overlap(_rerank_input, "gate fix")
+        test("Keyword reranker: exact terms boost relevance",
+             _reranked[0]["id"] == "x2" and _reranked[0]["relevance"] > 0.5,
+             f"top={_reranked[0]['id']}, rel={_reranked[0]['relevance']:.4f}")
+
+        # Test: Keyword reranker no-ops on empty query
+        _noop_input = [{"id": "z1", "preview": "hello", "tags": "", "relevance": 0.4}]
+        _noop_out = _rerank_keyword_overlap(list(_noop_input), "")
+        test("Keyword reranker: empty query is no-op",
+             _noop_out[0]["relevance"] == 0.4)
 
         # Test: search_knowledge mode=keyword uses FTS5
         _sk_kw = search_knowledge("OBSERVATION_TTL_DAYS")

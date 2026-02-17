@@ -718,36 +718,68 @@ def _apply_recency_boost(results, recency_weight=0.15):
     return results
 
 
-def _merge_results(fts_results, chroma_summaries, top_k=15):
-    """Merge FTS5 and ChromaDB results, dedup by memory_id.
+_STOPWORDS = {"the", "a", "an", "is", "it", "to", "in", "of", "and", "for"}
 
-    Entries appearing in both sources get a +0.1 relevance bonus.
+
+def _rerank_keyword_overlap(results, query, boost_weight=0.05):
+    """Post-retrieval reranker: boost results that contain exact query terms.
+
+    Adds boost_weight * (matched_terms / total_terms) to each result's relevance.
+    Works on all search modes, giving keyword signal to semantic-only results.
     """
-    seen = {}  # memory_id -> entry
+    if not results or not query or boost_weight <= 0:
+        return results
+    terms = [w.lower() for w in query.split() if w.lower() not in _STOPWORDS]
+    if not terms:
+        return results
+    total = len(terms)
+    for entry in results:
+        text = (entry.get("preview", "") + " " + entry.get("tags", "")).lower()
+        matched = sum(1 for t in terms if t in text)
+        if matched > 0:
+            entry["relevance"] = entry.get("relevance", 0) + boost_weight * (matched / total)
+    results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+    return results
 
-    # Add ChromaDB results first (they have relevance scores)
-    for entry in chroma_summaries:
-        mid = entry.get("id", "")
-        if mid:
-            seen[mid] = dict(entry)
 
-    # Merge FTS5 results
-    for entry in fts_results:
+def _merge_results(fts_results, chroma_summaries, top_k=15):
+    """Merge FTS5 and ChromaDB results using Reciprocal Rank Fusion (RRF).
+
+    RRF gives each engine equal weight: score = sum(1/(k+rank)) across engines.
+    Items appearing in both engines naturally score ~2x higher.
+    k=60 is the standard RRF constant (dampens rank position differences).
+    """
+    k = 60  # RRF smoothing constant
+    scores = {}   # memory_id -> rrf_score
+    entries = {}  # memory_id -> best entry dict
+    sources = {}  # memory_id -> set of source names
+
+    # Score ChromaDB results by rank
+    for rank, entry in enumerate(chroma_summaries, start=1):
         mid = entry.get("id", "")
         if not mid:
             continue
-        if mid in seen:
-            # Boost: appeared in both semantic + keyword
-            if "relevance" in seen[mid]:
-                seen[mid]["relevance"] = min(1.0, seen[mid]["relevance"] + 0.1)
-            seen[mid]["match"] = "both"
-        else:
-            seen[mid] = dict(entry)
-            seen[mid]["match"] = "keyword"
+        scores[mid] = scores.get(mid, 0) + 1 / (k + rank)
+        entries[mid] = dict(entry)
+        sources[mid] = {"semantic"}
 
-    # Sort: items with relevance first (descending), then by fts_score
-    results = list(seen.values())
-    results.sort(key=lambda x: (x.get("relevance", 0), x.get("fts_score", 0)), reverse=True)
+    # Score FTS5 results by rank
+    for rank, entry in enumerate(fts_results, start=1):
+        mid = entry.get("id", "")
+        if not mid:
+            continue
+        scores[mid] = scores.get(mid, 0) + 1 / (k + rank)
+        if mid not in entries:
+            entries[mid] = dict(entry)
+        sources.setdefault(mid, set()).add("keyword")
+
+    # Inject RRF score as relevance and set match label
+    for mid, entry in entries.items():
+        entry["relevance"] = scores[mid]
+        entry["match"] = "both" if len(sources[mid]) > 1 else sources[mid].pop()
+
+    results = list(entries.values())
+    results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
 
     return results[:top_k]
 
@@ -1311,6 +1343,12 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                 tag_expanded = True
     except Exception:
         pass  # Tag expansion failure must not break search
+
+    # Keyword overlap reranker — gives keyword signal to all modes
+    try:
+        formatted = _rerank_keyword_overlap(formatted, query)
+    except Exception:
+        pass  # Reranker failure must not break search
 
     # Apply recency boost and re-sort
     if recency_weight > 0:
