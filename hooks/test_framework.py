@@ -8992,21 +8992,21 @@ test("Gate14: no test baseline → warns first time (not blocked)",
      not _g14_r1.blocked)
 test("Gate14: no test baseline → WARNING in message",
      "WARNING" in (_g14_r1.message or ""))
-test("Gate14: warning counter incremented to 1",
-     _g14_state1.get("confidence_warnings") == 1)
+test("Gate14: per-file warning counter incremented to 1",
+     _g14_state1.get("confidence_warnings_per_file", {}).get("/tmp/new_feature.py") == 1)
 
-# Test 2: Second new file → warns again (2/2)
-_g14_r2 = _g14_check("Edit", {"file_path": "/tmp/another_file.py"}, _g14_state1)
-test("Gate14: second attempt → warns again (not blocked)",
+# Test 2: Same file again → per-file counter increments (suppressed warning, already warned)
+_g14_r2 = _g14_check("Edit", {"file_path": "/tmp/new_feature.py"}, _g14_state1)
+test("Gate14: second attempt same file → not blocked",
      not _g14_r2.blocked)
-test("Gate14: second attempt → WARNING 2/2 in message",
-     "2/2" in (_g14_r2.message or ""))
+test("Gate14: second attempt same file → per-file counter is 2",
+     _g14_state1.get("confidence_warnings_per_file", {}).get("/tmp/new_feature.py") == 2)
 
-# Test 3: Third new file → BLOCKED
-_g14_r3 = _g14_check("Write", {"file_path": "/tmp/third_file.py"}, _g14_state1)
-test("Gate14: third attempt → BLOCKED",
+# Test 3: Third attempt same file → BLOCKED (per-file counter exceeds MAX_WARNINGS)
+_g14_r3 = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state1)
+test("Gate14: third attempt same file → BLOCKED",
      _g14_r3.blocked)
-test("Gate14: third attempt → BLOCKED in message",
+test("Gate14: third attempt same file → BLOCKED in message",
      "BLOCKED" in (_g14_r3.message or ""))
 
 # Test 4: After test run + fresh memory → allowed
@@ -9014,7 +9014,7 @@ _g14_state2 = default_state()
 _g14_state2["session_test_baseline"] = True
 _g14_state2["pending_verification"] = []
 _g14_state2["memory_last_queried"] = time.time()  # fresh
-_g14_state2["confidence_warnings"] = 0
+_g14_state2["confidence_warnings_per_file"] = {}
 _g14_r4 = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state2)
 test("Gate14: all signals pass → allowed",
      not _g14_r4.blocked)
@@ -9026,7 +9026,7 @@ _g14_state3 = default_state()
 _g14_state3["session_test_baseline"] = False
 _g14_state3["pending_verification"] = ["/tmp/existing_edit.py"]
 _g14_state3["memory_last_queried"] = 0
-_g14_state3["confidence_warnings"] = 5  # would block if not exempt
+_g14_state3["confidence_warnings_per_file"] = {"/tmp/other.py": 5}  # would block if not exempt
 _g14_r5 = _g14_check("Edit", {"file_path": "/tmp/existing_edit.py"}, _g14_state3)
 test("Gate14: re-edit of pending file → allowed (iteration exemption)",
      not _g14_r5.blocked)

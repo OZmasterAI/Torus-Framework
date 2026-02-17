@@ -1,36 +1,35 @@
 """Gate 14: PRE-IMPLEMENTATION CONFIDENCE (Tier 2 — Quality)
 
 Checks confidence signals before allowing new file creation via Edit/Write/NotebookEdit.
-Progressive enforcement: warns 2x, blocks on 3rd attempt.
+Progressive enforcement: warns once per signal per session, blocks on 3rd per-file attempt.
 
 Confidence signals checked:
-  1. session_test_baseline — has a test been run this session?
+  1. session_test_baseline — has a test been run this session? (code files only)
   2. pending_verification — are previous edits verified?
-  3. memory_last_queried — is memory fresh (< 5 min)?
+  3. memory_last_queried — DORMANT (redundant with Gate 4)
 
 Exemptions:
   - Re-edits of files already in pending_verification (iteration, not new work)
   - Test files (*test*, *spec*), config files (HANDOFF.md, LIVE_STATE.json,
-    CLAUDE.md, __init__.py), and skills/ directory
+    CLAUDE.md, __init__.py), skills/ directory, and non-code files (.md, .json, .sh, etc.)
 
 Tier 2 (non-safety): gate crash = warn + continue, not block.
 """
 import os
 import sys
-import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
-from shared.state import get_memory_last_queried
 
 GATE_NAME = "GATE 14: CONFIDENCE CHECK"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
-MEMORY_FRESHNESS_SECONDS = 300  # 5 minutes
-MAX_WARNINGS = 2  # Block on attempt MAX_WARNINGS + 1
+MAX_WARNINGS = 2  # Block on per-file attempt MAX_WARNINGS + 1
 
 # Files/patterns exempt from confidence checks
 EXEMPT_BASENAMES = {"HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md", "__init__.py"}
 EXEMPT_PATTERNS = ("test_", "_test.", ".test.", "spec_", "_spec.", ".spec.")
+# Non-code file extensions exempt from confidence checks
+EXEMPT_EXTENSIONS = {".md", ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".txt", ".sh", ".bash", ".css", ".html", ".xml", ".csv", ".lock"}
 
 
 def _is_exempt(file_path):
@@ -48,6 +47,10 @@ def _is_exempt(file_path):
     # Exempt skills/ directory
     norm = os.path.normpath(file_path)
     if "/skills/" in norm or "\\skills\\" in norm:
+        return True
+    # Exempt non-code files
+    _, ext = os.path.splitext(basename)
+    if ext.lower() in EXEMPT_EXTENSIONS:
         return True
     return False
 
@@ -100,28 +103,41 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     # Check confidence signals
     failures = _check_signals(state)
     if not failures:
-        # All signals pass — reset warning counter
-        state["confidence_warnings"] = 0
+        # All signals pass — reset per-file warning counter
+        per_file = state.get("confidence_warnings_per_file", {})
+        per_file.pop(file_path, None)
+        state["confidence_warnings_per_file"] = per_file
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # Progressive enforcement
-    warnings = state.get("confidence_warnings", 0)
-    warnings += 1
-    state["confidence_warnings"] = warnings
+    # Per-file progressive enforcement
+    per_file = state.get("confidence_warnings_per_file", {})
+    file_warnings = per_file.get(file_path, 0) + 1
+    per_file[file_path] = file_warnings
+    state["confidence_warnings_per_file"] = per_file
     failure_str = "; ".join(failures)
 
-    if warnings > MAX_WARNINGS:
+    if file_warnings > MAX_WARNINGS:
         msg = (
             f"[{GATE_NAME}] BLOCKED: Low confidence ({failure_str}). "
             f"Run tests, verify pending edits, or query memory before creating new files. "
-            f"({warnings} attempts — exceeded {MAX_WARNINGS} warning limit)"
+            f"({file_warnings} attempts on {os.path.basename(file_path)} — exceeded {MAX_WARNINGS} warning limit)"
         )
         return GateResult(blocked=True, gate_name=GATE_NAME, message=msg, severity="warn")
 
+    # Suppress repeated warnings — only warn once per signal per session
+    warned_signals = state.get("confidence_warned_signals", set())
+    if isinstance(warned_signals, list):
+        warned_signals = set(warned_signals)
+    new_failures = [f for f in failures if f not in warned_signals]
+    if not new_failures:
+        # Already warned about these signals — pass silently
+        return GateResult(blocked=False, gate_name=GATE_NAME)
+
+    warned_signals.update(failures)
+    state["confidence_warned_signals"] = list(warned_signals)
     msg = (
-        f"[{GATE_NAME}] WARNING ({warnings}/{MAX_WARNINGS}): Low confidence ({failure_str}). "
-        f"Consider running tests, verifying pending edits, or querying memory first."
+        f"[{GATE_NAME}] WARNING ({file_warnings}/{MAX_WARNINGS}): Low confidence ({failure_str}). "
+        f"Consider running tests or verifying pending edits first."
     )
-    # Print warning but don't block
     print(msg, file=sys.stderr)
     return GateResult(blocked=False, gate_name=GATE_NAME, message=msg, severity="warn")
