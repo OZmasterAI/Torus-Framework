@@ -1,23 +1,26 @@
 {
-  "session_count": 112,
+  "session_count": 113,
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "framework-documentation",
+  "feature": "github-distribution",
   "feature_status": "completed",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
     "/home/crab/.claude/HANDOFF.md",
     "/home/crab/.claude/LIVE_STATE.json",
-    "/home/crab/Desktop/Megaman-Framework-v2.4.5-Build-Guide.md"
+    "~/Desktop/torus-framework/ (93 files)"
   ],
   "improvements_shipped": [
-    "Full-source build guide (137 files, 24K lines, 960KB)",
-    "Correction saved: don't announce writes, just do them"
+    "Torus Framework v2.4.5 packaged and pushed to GitHub (93 files, 25K lines)",
+    "Renamed Megaman → Torus across entire distribution",
+    "Seed ChromaDB with 15 foundational memories",
+    "install.sh + uninstall.sh for automated setup/removal"
   ],
   "next_steps": [
-    "Apply Haiku→Sonnet change to agents/researcher.md"
+    "Apply Haiku→Sonnet change to agents/researcher.md",
+    "Fix export test_framework.py dashboard reference"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
@@ -26,13 +29,14 @@
   "known_issues": [
     "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
-    "Gate 2 false-positives on 'source' in heredocs"
+    "Gate 2 false-positives on 'source' in heredocs",
+    "Gate 14 confidence spiral during bulk file creation"
   ],
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 2,
-    "errors": 3,
+    "reads": 8,
+    "edits": 0,
+    "errors": 2,
     "verified": 0,
-    "pending": 1
+    "pending": 0
   }
 }
