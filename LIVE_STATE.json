@@ -3,24 +3,27 @@
   "status": "idle",
   "project": "megaman-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "github-distribution",
+  "feature": "gate-optimization",
   "feature_status": "completed",
   "test_count": 1043,
   "test_failures": 0,
   "files_modified": [
-    "/home/crab/.claude/HANDOFF.md",
-    "/home/crab/.claude/LIVE_STATE.json",
+    "/home/crab/.claude/hooks/enforcer.py",
+    "/home/crab/.claude/hooks/gates/gate_14_confidence_check.py",
+    "/home/crab/.claude/hooks/tracker.py",
+    "/home/crab/.claude/hooks/test_framework.py",
     "~/Desktop/torus-framework/ (93 files)"
   ],
   "improvements_shipped": [
-    "Torus Framework v2.4.5 packaged and pushed to GitHub (93 files, 25K lines)",
-    "Renamed Megaman → Torus across entire distribution",
-    "Seed ChromaDB with 15 foundational memories",
-    "install.sh + uninstall.sh for automated setup/removal"
+    "Torus Framework v2.4.5 packaged and pushed to GitHub",
+    "Gate 8 dormanted — late-night blocking removed",
+    "Gate 14 optimized — per-file counter, expanded exemptions, suppressed warnings",
+    "Session duration nudges moved to tracker.py (one-shot per milestone)"
   ],
   "next_steps": [
     "Apply Haiku→Sonnet change to agents/researcher.md",
-    "Fix export test_framework.py dashboard reference"
+    "Fix export test_framework.py dashboard reference",
+    "Update Torus Framework GitHub repo with gate fixes"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
@@ -29,14 +32,13 @@
   "known_issues": [
     "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
-    "Gate 2 false-positives on 'source' in heredocs",
-    "Gate 14 confidence spiral during bulk file creation"
+    "Gate 2 false-positives on 'source' in heredocs"
   ],
   "last_session_metrics": {
-    "reads": 8,
-    "edits": 0,
-    "errors": 2,
-    "verified": 0,
+    "reads": 12,
+    "edits": 6,
+    "errors": 4,
+    "verified": 1,
     "pending": 0
   }
 }
