@@ -1,12 +1,12 @@
-# Megaman-Framework Usage Guide
+# Torus-Framework Usage Guide
 
 ## What Is This?
 
-**Claude Code** is Anthropic's CLI tool for working with Claude. **Megaman-framework** is a customization layer built on top of it that adds persistent memory, quality gates, session continuity, and enforced workflows.
+**Claude Code** is Anthropic's CLI tool for working with Claude. **Torus-framework** is a customization layer built on top of it that adds persistent memory, quality gates, session continuity, and enforced workflows.
 
 ```
 ┌─────────────────────────────────────────┐
-│          megaman-framework              │
+│          torus-framework              │
 │  (hooks, gates, memory, sessions)       │
 │                                         │
 │  ┌───────────────────────────────────┐  │
