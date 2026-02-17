@@ -1246,6 +1246,17 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     if not mode:
         mode = _detect_query_mode(query)
 
+    # Query alias expansion: historical name mappings
+    QUERY_ALIASES = {
+        "torus": "megaman",
+        "megaman": "torus",
+    }
+    query_lower = query.lower()
+    for alias_from, alias_to in QUERY_ALIASES.items():
+        if alias_from in query_lower and alias_to not in query_lower:
+            query = f"{query} {alias_to}"
+            break
+
     # Handle observations-only mode
     if mode == "observations":
         result = _search_observations_internal(query, top_k, recency_weight)
