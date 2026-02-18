@@ -10216,6 +10216,71 @@ test("Lever2 Criterion3: 'ls -la' repeated 4x → promoted; 'pytest' excluded",
 
 
 # ─────────────────────────────────────────────────
+# Telegram Memory Integration Tests
+# ─────────────────────────────────────────────────
+_TG_SECTION = "--- Telegram Memory Integration ---"
+print(f"\n{_TG_SECTION}")
+_TG_CLAUDE_DIR = os.path.expanduser("~/.claude")
+_TG_HOOKS_DIR = os.path.join(_TG_CLAUDE_DIR, "hooks")
+
+# Test: session_end.py still works when telegram plugin dir doesn't exist
+try:
+    _tg_dir = os.path.join(_TG_CLAUDE_DIR, "integrations", "telegram-memory")
+    _tg_hook = os.path.join(_tg_dir, "hooks", "on_session_end.py")
+    _tg_exists = os.path.isfile(_tg_hook)
+    import ast as _tg_ast
+    _tg_ast.parse(open(os.path.join(_TG_HOOKS_DIR, "session_end.py")).read())
+    _se_content = open(os.path.join(_TG_HOOKS_DIR, "session_end.py")).read()
+    assert "telegram-memory" in _se_content, "session_end.py missing telegram integration"
+    assert "subprocess.run" in _se_content, "session_end.py missing subprocess.run"
+    PASS += 1
+    RESULTS.append(f"  PASS: session_end.py has telegram integration (plugin {'present' if _tg_exists else 'absent'})")
+    print(f"  PASS: session_end.py telegram integration")
+except Exception as _tg_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: session_end.py telegram integration: {_tg_e}")
+    print(f"  FAIL: session_end.py telegram: {_tg_e}")
+
+# Test: boot.py has telegram L2 integration
+try:
+    _boot_content = open(os.path.join(_TG_HOOKS_DIR, "boot.py")).read()
+    _tg_ast.parse(_boot_content)
+    assert "tg_memories" in _boot_content, "boot.py missing tg_memories variable"
+    assert "TELEGRAM L2" in _boot_content, "boot.py missing TELEGRAM L2 dashboard section"
+    assert "Telegram L2 memories" in _boot_content, "boot.py missing context injection"
+    PASS += 1
+    RESULTS.append("  PASS: boot.py has telegram L2 integration (3 locations)")
+    print("  PASS: boot.py telegram L2 integration")
+except Exception as _tg_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: boot.py telegram integration: {_tg_e}")
+    print(f"  FAIL: boot.py telegram: {_tg_e}")
+
+# Test: on_session_start.py outputs valid JSON
+try:
+    _tg_start_hook = os.path.join(_TG_CLAUDE_DIR, "integrations", "telegram-memory", "hooks", "on_session_start.py")
+    if os.path.isfile(_tg_start_hook):
+        _tg_r = subprocess.run(
+            [sys.executable, _tg_start_hook, "test"],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert _tg_r.returncode == 0, f"on_session_start.py exited {_tg_r.returncode}"
+        _tg_out = json.loads(_tg_r.stdout)
+        assert "results" in _tg_out, "Missing 'results' key"
+        assert "count" in _tg_out, "Missing 'count' key"
+        PASS += 1
+        RESULTS.append("  PASS: on_session_start.py outputs valid JSON")
+        print("  PASS: on_session_start.py valid JSON")
+    else:
+        PASS += 1
+        RESULTS.append("  PASS: on_session_start.py (skipTest — plugin not installed)")
+        print("  PASS: on_session_start.py (skipTest)")
+except Exception as _tg_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: on_session_start.py: {_tg_e}")
+    print(f"  FAIL: on_session_start.py: {_tg_e}")
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

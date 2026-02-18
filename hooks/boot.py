@@ -543,6 +543,22 @@ def main():
     # Inject relevant memories
     injected = inject_memories_via_socket(handoff, live_state) if _worker_available else []
 
+    # Telegram L2 memory: search Saved Messages for relevant context
+    tg_memories = []
+    try:
+        _tg_hook = os.path.join(CLAUDE_DIR, "integrations", "telegram-memory", "hooks", "on_session_start.py")
+        if os.path.isfile(_tg_hook):
+            _tg_query = f"{project_name} {live_state.get('feature', '')}"
+            _tg_result = subprocess.run(
+                [sys.executable, _tg_hook, _tg_query[:200]],
+                capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL,
+            )
+            if _tg_result.returncode == 0 and _tg_result.stdout.strip():
+                _tg_data = json.loads(_tg_result.stdout)
+                tg_memories = _tg_data.get("results", [])[:3]
+    except Exception:
+        pass  # Telegram integration is optional
+
     # Extract recent errors BEFORE reset_enforcement_state() wipes them
     recent_errors = _extract_recent_errors()
 
@@ -589,6 +605,15 @@ def main():
         dashboard += f"\n|  MEMORY CONTEXT ({len(injected)} relevant):{'':>42}|"
         for line in injected:
             dashboard += f"\n|    {line:<64}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
+    if tg_memories:
+        dashboard += f"\n|  TELEGRAM L2 ({len(tg_memories)} relevant):{'':>43}|"
+        for tm in tg_memories:
+            preview = tm.get("text", "")[:60]
+            if len(tm.get("text", "")) > 60:
+                preview += ".."
+            dashboard += f"\n|    {preview:<64}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
     if recent_errors:
@@ -655,6 +680,9 @@ def main():
         context_parts.append(f"Active tasks: {', '.join(active_tasks[:5])}")
     if injected:
         context_parts.append(f"Relevant memories: {'; '.join(injected)}")
+    if tg_memories:
+        tg_summaries = [f"[{tm.get('date', '?')}] {tm.get('text', '')[:100]}" for tm in tg_memories]
+        context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
     context_parts.append(
         "PROTOCOL: Present session number, brief summary, completed list (what was done last session), "
         "and remaining list (what's next) in ONE message. Ask: 'Continue or New task?' "

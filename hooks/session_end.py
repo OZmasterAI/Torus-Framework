@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 
@@ -396,6 +397,15 @@ def main():
 
         flush_capture_queue()
         backup_database()
+
+        # Telegram Memory Plugin: post session summary to Saved Messages
+        try:
+            _tg_hook = os.path.join(CLAUDE_DIR, "integrations", "telegram-memory", "hooks", "on_session_end.py")
+            if os.path.isfile(_tg_hook):
+                subprocess.run([sys.executable, _tg_hook], timeout=15, capture_output=False, stdin=subprocess.DEVNULL)
+        except Exception:
+            pass  # Telegram integration is optional, never block session end
+
         increment_session_count(metrics)
     except Exception as e:
         print(f"[SESSION_END] Error (non-fatal): {e}", file=sys.stderr)

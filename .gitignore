@@ -28,5 +28,9 @@ projects/
 backups/
 archive/
 
+# Telegram memory plugin
+integrations/telegram-memory/session/
+integrations/telegram-memory/index.db
+
 # Local settings (machine-specific)
 settings.local.json

@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import socket
+import subprocess
 import threading
 import time
 from datetime import datetime, timedelta
@@ -1517,6 +1518,31 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     except Exception:
         pass  # Fail-open: linking errors don't break search
 
+    # Telegram L2 fallback: if all results are low relevance, try Telegram
+    tg_fallback_count = 0
+    if formatted and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked")):
+        try:
+            _tg_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
+                                      "telegram-memory", "search.py")
+            if os.path.isfile(_tg_search):
+                _tg_result = subprocess.run(
+                    [_sys.executable, _tg_search, query, "--json", "--limit", "5"],
+                    capture_output=True, text=True, timeout=8, stdin=subprocess.DEVNULL,
+                )
+                if _tg_result.returncode == 0 and _tg_result.stdout.strip():
+                    _tg_data = json.loads(_tg_result.stdout)
+                    for tr in _tg_data.get("results", []):
+                        formatted.append({
+                            "id": f"tg_{tr.get('msg_id', '?')}",
+                            "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
+                            "relevance": 0.25,
+                            "source": "telegram_l2",
+                            "timestamp": tr.get("date", ""),
+                        })
+                        tg_fallback_count += 1
+        except Exception:
+            pass  # Telegram fallback is optional
+
     result = {
         "results": formatted,
         "total_memories": count,
@@ -1525,6 +1551,8 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     }
     if linked_memories_count > 0:
         result["linked_memories_count"] = linked_memories_count
+    if tg_fallback_count > 0:
+        result["telegram_l2_count"] = tg_fallback_count
     if tag_expanded:
         result["tag_expanded"] = True
         result["expanded_tags"] = expanded_tags
