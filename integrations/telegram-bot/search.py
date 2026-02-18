@@ -37,7 +37,7 @@ def main():
     from db import search_fts
     raw_results = search_fts(DB_PATH, args.query, limit=args.limit)
 
-    # Format for output compatibility with telegram-memory
+    # Format results
     results = [
         {
             "text": r["text"],

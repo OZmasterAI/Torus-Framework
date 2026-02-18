@@ -21,7 +21,7 @@ sys.path.insert(0, _PLUGIN_DIR)
 sys.path.insert(0, os.path.join(_PLUGIN_DIR, "hooks"))
 
 
-# --- TestFormatHtml (copied from telegram-memory, adapted) ---
+# --- TestFormatHtml ---
 
 class TestFormatHtml(unittest.TestCase):
     """Test HANDOFF.md -> Telegram HTML conversion."""
