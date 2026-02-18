@@ -411,6 +411,14 @@ def main():
         except Exception:
             pass  # Telegram integration is optional, never block session end
 
+        # Terminal History: index this session's conversation into FTS5
+        try:
+            _term_hook = os.path.join(CLAUDE_DIR, "integrations", "terminal-history", "hooks", "on_session_end.py")
+            if os.path.isfile(_term_hook):
+                subprocess.run([sys.executable, _term_hook], timeout=15, capture_output=False, stdin=subprocess.DEVNULL)
+        except Exception:
+            pass  # Terminal history integration is optional, never block session end
+
         increment_session_count(metrics)
     except Exception as e:
         print(f"[SESSION_END] Error (non-fatal): {e}", file=sys.stderr)

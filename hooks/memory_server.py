@@ -1535,13 +1535,38 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                         formatted.append({
                             "id": f"tg_{tr.get('msg_id', '?')}",
                             "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
-                            "relevance": 0.25,
-                            "source": "telegram_l2",
+                            "relevance": 0.2,
+                            "source": "telegram_l3",
                             "timestamp": tr.get("date", ""),
                         })
                         tg_fallback_count += 1
         except Exception:
             pass  # Telegram fallback is optional
+
+    # Terminal History L2 fallback: if results still low relevance, search raw session history
+    terminal_l2_count = 0
+    if formatted and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked")):
+        try:
+            _term_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
+                                        "terminal-history", "search.py")
+            if os.path.isfile(_term_search):
+                _term_result = subprocess.run(
+                    [_sys.executable, _term_search, query, "--json", "--limit", "5"],
+                    capture_output=True, text=True, timeout=8, stdin=subprocess.DEVNULL,
+                )
+                if _term_result.returncode == 0 and _term_result.stdout.strip():
+                    _term_data = json.loads(_term_result.stdout)
+                    for tr in _term_data.get("results", []):
+                        formatted.append({
+                            "id": f"term_{tr.get('session_id', '?')[:12]}",
+                            "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
+                            "relevance": 0.25,
+                            "source": "terminal_l2",
+                            "timestamp": tr.get("timestamp", ""),
+                        })
+                        terminal_l2_count += 1
+        except Exception:
+            pass  # Terminal history fallback is optional
 
     result = {
         "results": formatted,
@@ -1552,7 +1577,9 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     if linked_memories_count > 0:
         result["linked_memories_count"] = linked_memories_count
     if tg_fallback_count > 0:
-        result["telegram_l2_count"] = tg_fallback_count
+        result["telegram_l3_count"] = tg_fallback_count
+    if terminal_l2_count > 0:
+        result["terminal_l2_count"] = terminal_l2_count
     if tag_expanded:
         result["tag_expanded"] = True
         result["expanded_tags"] = expanded_tags
