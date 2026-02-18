@@ -688,17 +688,27 @@ def main():
     if tg_memories:
         tg_summaries = [f"[{tm.get('date', '?')}] {tm.get('text', '')[:100]}" for tm in tg_memories]
         context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
-    # Check current enrichment state for boot prompt
+    # Check current toggle states for boot prompt
+    _term_l2_state = live_state.get("terminal_l2_always", True) if live_state else True
     _enrichment_state = live_state.get("context_enrichment", False) if live_state else False
+    _tg_l3_state = live_state.get("tg_l3_always", False) if live_state else False
+    _tg_enrich_state = live_state.get("tg_enrichment", False) if live_state else False
+    _term_l2_label = "ON" if _term_l2_state else "OFF"
     _enrichment_label = "ON" if _enrichment_state else "OFF"
+    _tg_l3_label = "ON" if _tg_l3_state else "OFF"
+    _tg_enrich_label = "ON" if _tg_enrich_state else "OFF"
     context_parts.append(
         "PROTOCOL: Present session number, brief summary, completed list (what was done last session), "
         "and remaining list (what's next) in ONE message. "
-        f"Context enrichment is currently {_enrichment_label}. "
-        "Ask: 'Continue or New task?' and 'Context enrichment: keep "
-        f"{_enrichment_label} or switch?' "
+        "Search toggles: "
+        f"Terminal L2 always-on: {_term_l2_label} | "
+        f"Terminal L2 enrichment: {_enrichment_label} | "
+        f"TG L3 always-on: {_tg_l3_label} | "
+        f"TG L3 enrichment: {_tg_enrich_label}. "
+        "Ask: 'Continue or New task?' "
         "If user says continue, ask which item to tackle — do NOT auto-start work. "
-        "If user changes enrichment setting, update LIVE_STATE.json context_enrichment field."
+        "If user changes any toggle, update the corresponding LIVE_STATE.json field "
+        "(terminal_l2_always, context_enrichment, tg_l3_always, tg_enrichment)."
     )
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))

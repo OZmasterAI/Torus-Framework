@@ -43,6 +43,7 @@ def main():
             "text": r["text"],
             "date": r["date"],
             "msg_id": r["msg_id"],
+            "bm25": r.get("bm25", 0),
             "source": "bot_fts",
         }
         for r in raw_results

@@ -50,7 +50,10 @@
     "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
     "Telethon installed with --break-system-packages (should use venv)"
   ],
+  "terminal_l2_always": true,
   "context_enrichment": false,
+  "tg_l3_always": false,
+  "tg_enrichment": false,
   "last_session_metrics": {
     "reads": 13,
     "edits": 3,

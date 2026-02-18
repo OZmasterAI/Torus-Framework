@@ -1408,37 +1408,55 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         )
         formatted = format_summaries(results)
 
-    # Terminal History L2: always search, compete on merit via BM25 scores
-    terminal_l2_count = 0
+    # Read LIVE_STATE toggles once for the pipeline
+    _live_state_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
+    _ls_toggles = {}
     try:
-        _term_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
-                                    "terminal-history", "search.py")
-        if os.path.isfile(_term_search):
-            _term_result = subprocess.run(
-                [_sys.executable, _term_search, query, "--json", "--limit", "5"],
-                capture_output=True, text=True, timeout=8, stdin=subprocess.DEVNULL,
-            )
-            if _term_result.returncode == 0 and _term_result.stdout.strip():
-                _term_data = json.loads(_term_result.stdout)
-                for tr in _term_data.get("results", []):
-                    # Normalize BM25: FTS5 rank is negative, more negative = better
-                    _bm25 = abs(float(tr.get("bm25", 0)))
-                    _relevance = min(1.0, _bm25 / 20.0)
-                    _entry = {
-                        "id": f"term_{tr.get('session_id', '?')[:12]}",
-                        "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
-                        "relevance": round(_relevance, 4),
-                        "source": "terminal_l2",
-                        "timestamp": tr.get("timestamp", ""),
-                    }
-                    if tr.get("tags"):
-                        _entry["tags"] = tr["tags"]
-                    if tr.get("linked_memory_ids"):
-                        _entry["linked_memory_ids"] = tr["linked_memory_ids"]
-                    formatted.append(_entry)
-                    terminal_l2_count += 1
+        if os.path.isfile(_live_state_path):
+            with open(_live_state_path, "r") as _lsf:
+                _ls_toggles = json.load(_lsf)
     except Exception:
-        pass  # Terminal history search is optional
+        pass
+    _terminal_l2_always = _ls_toggles.get("terminal_l2_always", True)
+    _tg_l3_always = _ls_toggles.get("tg_l3_always", False)
+    _enrichment_enabled = _ls_toggles.get("context_enrichment", False)
+    _tg_enrichment_enabled = _ls_toggles.get("tg_enrichment", False)
+
+    # Terminal History L2: search based on toggle
+    terminal_l2_count = 0
+    _run_terminal_l2 = _terminal_l2_always or (
+        formatted and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked"))
+    )
+    if _run_terminal_l2:
+        try:
+            _term_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
+                                        "terminal-history", "search.py")
+            if os.path.isfile(_term_search):
+                _term_result = subprocess.run(
+                    [_sys.executable, _term_search, query, "--json", "--limit", "5"],
+                    capture_output=True, text=True, timeout=8, stdin=subprocess.DEVNULL,
+                )
+                if _term_result.returncode == 0 and _term_result.stdout.strip():
+                    _term_data = json.loads(_term_result.stdout)
+                    for tr in _term_data.get("results", []):
+                        # Normalize BM25: FTS5 rank is negative, more negative = better
+                        _bm25 = abs(float(tr.get("bm25", 0)))
+                        _relevance = min(1.0, _bm25 / 20.0)
+                        _entry = {
+                            "id": f"term_{tr.get('session_id', '?')[:12]}",
+                            "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
+                            "relevance": round(_relevance, 4),
+                            "source": "terminal_l2",
+                            "timestamp": tr.get("timestamp", ""),
+                        }
+                        if tr.get("tags"):
+                            _entry["tags"] = tr["tags"]
+                        if tr.get("linked_memory_ids"):
+                            _entry["linked_memory_ids"] = tr["linked_memory_ids"]
+                        formatted.append(_entry)
+                        terminal_l2_count += 1
+        except Exception:
+            pass  # Terminal history search is optional
 
     # Tag expansion: find co-occurring tags and merge additional results
     tag_expanded = False
@@ -1585,9 +1603,12 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     except Exception:
         pass  # Fail-open: linking errors don't break search
 
-    # Telegram L2 fallback: if all results are low relevance, try Telegram
+    # Telegram L3: search based on toggle
     tg_fallback_count = 0
-    if formatted and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked")):
+    _run_tg_l3 = _tg_l3_always or (
+        formatted and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked"))
+    )
+    if _run_tg_l3:
         try:
             _tg_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
                                       "telegram-bot", "search.py")
@@ -1599,10 +1620,13 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                 if _tg_result.returncode == 0 and _tg_result.stdout.strip():
                     _tg_data = json.loads(_tg_result.stdout)
                     for tr in _tg_data.get("results", []):
+                        # Normalize BM25: FTS5 rank is negative, more negative = better
+                        _bm25 = abs(float(tr.get("bm25", 0)))
+                        _relevance = min(1.0, _bm25 / 20.0) if _bm25 > 0 else 0.2
                         formatted.append({
                             "id": f"tg_{tr.get('msg_id', '?')}",
                             "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
-                            "relevance": 0.2,
+                            "relevance": round(_relevance, 4),
                             "source": "telegram_l3",
                             "timestamp": tr.get("date", ""),
                         })
@@ -1613,13 +1637,6 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     # Session context enrichment: attach conversation context to ChromaDB hits
     enrichment_count = 0
     try:
-        _live_state_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
-        _enrichment_enabled = False
-        if os.path.isfile(_live_state_path):
-            with open(_live_state_path, "r") as _lsf:
-                _ls_data = json.load(_lsf)
-                _enrichment_enabled = _ls_data.get("context_enrichment", False)
-
         if _enrichment_enabled:
             _term_db = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
                                     "terminal-history", "terminal_history.db")
@@ -1647,6 +1664,35 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     except Exception:
         pass  # Enrichment is optional, never break search
 
+    # TG context enrichment: attach Telegram messages around ChromaDB hit timestamps
+    tg_enrichment_count = 0
+    try:
+        if _tg_enrichment_enabled:
+            _tg_db = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
+                                  "telegram-bot", "msg_log.db")
+            if os.path.isfile(_tg_db):
+                _tg_db_dir = os.path.join(os.path.expanduser("~"), ".claude",
+                                          "integrations", "telegram-bot")
+                if _tg_db_dir not in _sys.path:
+                    _sys.path.insert(0, _tg_db_dir)
+                from db import get_context_by_timestamp as _get_tg_ctx
+
+                for r in list(formatted):
+                    if r.get("linked") or r.get("source", "").startswith("telegram_"):
+                        continue  # Don't enrich already-linked or TG results
+                    ts = r.get("timestamp", "")
+                    if not ts:
+                        continue
+                    tg_ctx = _get_tg_ctx(_tg_db, ts, window_minutes=30, limit=3)
+                    if tg_ctx:
+                        tg_ctx_text = " | ".join(
+                            f"[{c['sender']}] {c['text'][:80]}" for c in tg_ctx
+                        )
+                        r["tg_context"] = tg_ctx_text[:300]
+                        tg_enrichment_count += 1
+    except Exception:
+        pass  # TG enrichment is optional, never break search
+
     result = {
         "results": formatted,
         "total_memories": count,
@@ -1661,6 +1707,8 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         result["terminal_l2_count"] = terminal_l2_count
     if enrichment_count > 0:
         result["enrichment_count"] = enrichment_count
+    if tg_enrichment_count > 0:
+        result["tg_enrichment_count"] = tg_enrichment_count
     if tag_expanded:
         result["tag_expanded"] = True
         result["expanded_tags"] = expanded_tags

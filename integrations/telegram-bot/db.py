@@ -66,7 +66,7 @@ def search_fts(db_path, query, limit=10):
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.execute(
-            "SELECT text, date, sender, chat_id, msg_id FROM tg_fts WHERE tg_fts MATCH ? ORDER BY rank LIMIT ?",
+            "SELECT text, date, sender, chat_id, msg_id, rank FROM tg_fts WHERE tg_fts MATCH ? ORDER BY rank LIMIT ?",
             (query, limit),
         )
         results = [
@@ -76,8 +76,42 @@ def search_fts(db_path, query, limit=10):
                 "sender": row[2],
                 "chat_id": row[3],
                 "msg_id": row[4],
+                "bm25": row[5],
                 "source": "bot_fts",
             }
+            for row in cursor
+        ]
+        conn.close()
+        return results
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        return []
+
+
+def get_context_by_timestamp(db_path, timestamp, window_minutes=30, limit=5):
+    """Find TG messages around a given timestamp.
+
+    Returns list of {text, sender, date}.
+    """
+    if not os.path.isfile(db_path):
+        return []
+    if not timestamp:
+        return []
+
+    try:
+        # Normalize: strip Z, fractional seconds, timezone offset for comparison
+        ts_clean = timestamp.replace("Z", "").split(".")[0].split("+")[0]
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "SELECT f.text, m.sender, m.date "
+            "FROM tg_meta m JOIN tg_fts f ON m.msg_id = f.msg_id "
+            "WHERE substr(m.date, 1, 19) BETWEEN "
+            "strftime('%Y-%m-%dT%H:%M:%S', ?, '-' || ? || ' minutes') AND "
+            "strftime('%Y-%m-%dT%H:%M:%S', ?, '+' || ? || ' minutes') "
+            "ORDER BY m.date LIMIT ?",
+            (ts_clean, str(window_minutes), ts_clean, str(window_minutes), limit),
+        )
+        results = [
+            {"text": row[0], "sender": row[1], "date": row[2]}
             for row in cursor
         ]
         conn.close()

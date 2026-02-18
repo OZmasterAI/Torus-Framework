@@ -32,7 +32,13 @@ async def run_claude(message, session_id=None, cwd=None, timeout=120):
     Raises:
         ClaudeError: On subprocess failure or timeout
     """
-    cmd = ["claude", "-p", message, "--output-format", "json", "--dangerously-skip-permissions"]
+    # Prepend learning prompt so bot saves preferences/decisions/corrections to memory
+    _learning_prefix = (
+        "[System: If OZ shares a preference, decision, correction, or important context, "
+        "call remember_this() to save it. Keep tags concise.]\n\n"
+    )
+    full_message = _learning_prefix + message
+    cmd = ["claude", "-p", full_message, "--output-format", "json", "--dangerously-skip-permissions"]
     if session_id:
         cmd += ["--resume", session_id]
 
