@@ -37,11 +37,22 @@ def init_db(db_path):
         "CREATE INDEX IF NOT EXISTS idx_term_meta_session "
         "ON term_meta(session_id, logged_at DESC)"
     )
+    # Schema migration: add tags and linked_memory_ids columns
+    _migrate_columns(conn)
     conn.commit()
     conn.close()
 
 
-def log_entry(db_path, session_id, role, text, timestamp, slug=""):
+def _migrate_columns(conn):
+    """Add tags and linked_memory_ids columns if missing."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(term_meta)").fetchall()}
+    if "tags" not in existing:
+        conn.execute("ALTER TABLE term_meta ADD COLUMN tags TEXT DEFAULT ''")
+    if "linked_memory_ids" not in existing:
+        conn.execute("ALTER TABLE term_meta ADD COLUMN linked_memory_ids TEXT DEFAULT ''")
+
+
+def log_entry(db_path, session_id, role, text, timestamp, slug="", tags="", linked_memory_ids=""):
     """Insert a message into FTS5 + metadata. Returns the synthetic row_id."""
     if not text or not text.strip():
         return None
@@ -57,9 +68,9 @@ def log_entry(db_path, session_id, role, text, timestamp, slug=""):
         (text, role, session_id, ts_str, slug),
     )
     conn.execute(
-        "INSERT INTO term_meta (row_id, session_id, role, timestamp, slug, logged_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (row_id, session_id, role, ts_str, slug, now),
+        "INSERT INTO term_meta (row_id, session_id, role, timestamp, slug, logged_at, tags, linked_memory_ids) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (row_id, session_id, role, ts_str, slug, now, tags, linked_memory_ids),
     )
     conn.commit()
     conn.close()
@@ -67,7 +78,7 @@ def log_entry(db_path, session_id, role, text, timestamp, slug=""):
 
 
 def search_fts(db_path, query, limit=10):
-    """FTS5 MATCH search. Returns list of dicts."""
+    """FTS5 MATCH search. Returns list of dicts with BM25 rank and tags."""
     if not os.path.isfile(db_path):
         return []
     if not query or not query.strip():
@@ -75,9 +86,13 @@ def search_fts(db_path, query, limit=10):
 
     try:
         conn = sqlite3.connect(db_path)
+        # Join with term_meta to get tags and linked_memory_ids
         cursor = conn.execute(
-            "SELECT text, role, session_id, timestamp, slug, rank "
-            "FROM term_fts WHERE term_fts MATCH ? ORDER BY rank LIMIT ?",
+            "SELECT f.text, f.role, f.session_id, f.timestamp, f.slug, f.rank, "
+            "m.tags, m.linked_memory_ids "
+            "FROM term_fts f "
+            "LEFT JOIN term_meta m ON f.rowid = m.rowid "
+            "WHERE term_fts MATCH ? ORDER BY f.rank LIMIT ?",
             (query, limit),
         )
         results = [
@@ -88,6 +103,8 @@ def search_fts(db_path, query, limit=10):
                 "timestamp": row[3],
                 "slug": row[4],
                 "bm25": row[5],
+                "tags": row[6] or "",
+                "linked_memory_ids": row[7] or "",
                 "source": "terminal_l2",
             }
             for row in cursor
@@ -96,6 +113,75 @@ def search_fts(db_path, query, limit=10):
         return results
     except (sqlite3.OperationalError, sqlite3.DatabaseError):
         return []
+
+
+def search_by_tags(db_path, tags, limit=10):
+    """Search terminal records by tags. Returns list of dicts."""
+    if not os.path.isfile(db_path):
+        return []
+    if not tags:
+        return []
+
+    try:
+        conn = sqlite3.connect(db_path)
+        # Build OR conditions for each tag
+        conditions = []
+        params = []
+        for tag in tags:
+            tag = tag.strip()
+            if tag:
+                conditions.append("m.tags LIKE ?")
+                params.append(f"%{tag}%")
+
+        if not conditions:
+            conn.close()
+            return []
+
+        sql = (
+            "SELECT f.text, f.role, f.session_id, f.timestamp, f.slug, "
+            "m.tags, m.linked_memory_ids "
+            "FROM term_meta m "
+            "JOIN term_fts f ON f.rowid = m.rowid "
+            f"WHERE ({' OR '.join(conditions)}) "
+            "ORDER BY m.logged_at DESC LIMIT ?"
+        )
+        params.append(limit)
+        cursor = conn.execute(sql, params)
+        results = [
+            {
+                "text": row[0],
+                "role": row[1],
+                "session_id": row[2],
+                "timestamp": row[3],
+                "slug": row[4],
+                "tags": row[5] or "",
+                "linked_memory_ids": row[6] or "",
+                "source": "terminal_l2",
+            }
+            for row in cursor
+        ]
+        conn.close()
+        return results
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        return []
+
+
+def update_session_tags(db_path, session_id, tags, linked_memory_ids=""):
+    """Update tags and linked_memory_ids for all records in a session."""
+    if not os.path.isfile(db_path):
+        return 0
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "UPDATE term_meta SET tags = ?, linked_memory_ids = ? WHERE session_id = ?",
+            (tags, linked_memory_ids, session_id),
+        )
+        count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return count
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        return 0
 
 
 def is_session_indexed(db_path, session_id):
@@ -130,7 +216,6 @@ def get_context_by_timestamp(db_path, timestamp, window_minutes=30, limit=5):
         ts_clean = timestamp.replace("Z", "").split(".")[0]  # "2026-02-18T16:27:04"
         conn = sqlite3.connect(db_path)
         # Find the session that contains records closest to this timestamp
-        # Use strftime to normalize stored timestamps for comparison
         cursor = conn.execute(
             "SELECT session_id FROM term_meta "
             "WHERE substr(timestamp, 1, 19) BETWEEN "

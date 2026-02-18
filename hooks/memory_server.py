@@ -1424,13 +1424,18 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                     # Normalize BM25: FTS5 rank is negative, more negative = better
                     _bm25 = abs(float(tr.get("bm25", 0)))
                     _relevance = min(1.0, _bm25 / 20.0)
-                    formatted.append({
+                    _entry = {
                         "id": f"term_{tr.get('session_id', '?')[:12]}",
                         "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
                         "relevance": round(_relevance, 4),
                         "source": "terminal_l2",
                         "timestamp": tr.get("timestamp", ""),
-                    })
+                    }
+                    if tr.get("tags"):
+                        _entry["tags"] = tr["tags"]
+                    if tr.get("linked_memory_ids"):
+                        _entry["linked_memory_ids"] = tr["linked_memory_ids"]
+                    formatted.append(_entry)
                     terminal_l2_count += 1
     except Exception:
         pass  # Terminal history search is optional
@@ -1441,10 +1446,9 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     try:
         expanded_tags = _get_expanded_tags(query)
         if expanded_tags:
+            seen_ids = {r.get("id") for r in formatted if r.get("id")}
             tag_results = fts_index.tag_search(expanded_tags, match_all=False, top_k=actual_k)
             if tag_results:
-                # Merge: deduplicate by ID, keep highest relevance
-                seen_ids = {r.get("id") for r in formatted if r.get("id")}
                 for tr in tag_results:
                     tid = tr.get("id", "")
                     if tid and tid not in seen_ids:
@@ -1452,6 +1456,34 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                         formatted.append(tr)
                         seen_ids.add(tid)
                 tag_expanded = True
+
+            # Terminal L2 tag search: find terminal records matching expanded tags
+            try:
+                _term_db_path = os.path.join(os.path.expanduser("~"), ".claude",
+                                             "integrations", "terminal-history",
+                                             "terminal_history.db")
+                if os.path.isfile(_term_db_path):
+                    _term_dir = os.path.join(os.path.expanduser("~"), ".claude",
+                                             "integrations", "terminal-history")
+                    if _term_dir not in _sys.path:
+                        _sys.path.insert(0, _term_dir)
+                    from db import search_by_tags as _search_by_tags
+                    _tag_term_results = _search_by_tags(_term_db_path, expanded_tags, limit=3)
+                    for ttr in _tag_term_results:
+                        _tid = f"term_tag_{ttr.get('session_id', '?')[:12]}"
+                        if _tid not in seen_ids:
+                            formatted.append({
+                                "id": _tid,
+                                "preview": (ttr.get("text", "")[:120] + "...") if len(ttr.get("text", "")) > 120 else ttr.get("text", ""),
+                                "relevance": 0.25,
+                                "source": "terminal_l2",
+                                "timestamp": ttr.get("timestamp", ""),
+                                "tags": ttr.get("tags", ""),
+                                "tag_expanded": True,
+                            })
+                            seen_ids.add(_tid)
+            except Exception:
+                pass  # Terminal tag search is optional
     except Exception:
         pass  # Tag expansion failure must not break search
 
@@ -1519,6 +1551,14 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                     lid = tag.split(":", 1)[1].strip()
                     if lid and lid not in organic_ids:
                         linked_ids.add(lid)
+
+            # Terminal L2 linked_memory_ids: ChromaDB memory IDs linked to terminal records
+            r_linked = r.get("linked_memory_ids", "") or ""
+            if r_linked and r.get("source") == "terminal_l2":
+                for mid in r_linked.split(","):
+                    mid = mid.strip()
+                    if mid and mid not in organic_ids:
+                        linked_ids.add(mid)
 
         # Batch fetch linked memories
         if linked_ids:

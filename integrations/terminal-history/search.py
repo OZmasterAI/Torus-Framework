@@ -44,6 +44,8 @@ def main():
             "role": r["role"],
             "session_id": r["session_id"],
             "bm25": r.get("bm25", 0),
+            "tags": r.get("tags", ""),
+            "linked_memory_ids": r.get("linked_memory_ids", ""),
             "source": "terminal_l2",
         }
         for r in raw_results
