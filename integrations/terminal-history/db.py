@@ -76,7 +76,7 @@ def search_fts(db_path, query, limit=10):
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.execute(
-            "SELECT text, role, session_id, timestamp, slug "
+            "SELECT text, role, session_id, timestamp, slug, rank "
             "FROM term_fts WHERE term_fts MATCH ? ORDER BY rank LIMIT ?",
             (query, limit),
         )
@@ -87,6 +87,7 @@ def search_fts(db_path, query, limit=10):
                 "session_id": row[2],
                 "timestamp": row[3],
                 "slug": row[4],
+                "bm25": row[5],
                 "source": "terminal_l2",
             }
             for row in cursor
@@ -111,6 +112,59 @@ def is_session_indexed(db_path, session_id):
         return found
     except (sqlite3.OperationalError, sqlite3.DatabaseError):
         return False
+
+
+def get_context_by_timestamp(db_path, timestamp, window_minutes=30, limit=5):
+    """Find conversation context around a given timestamp.
+
+    Looks up the session active at that time and returns surrounding messages.
+    Returns list of {text, role, timestamp, session_id}.
+    """
+    if not os.path.isfile(db_path):
+        return []
+    if not timestamp:
+        return []
+
+    try:
+        # Normalize timestamp: strip Z, ensure consistent format for comparison
+        ts_clean = timestamp.replace("Z", "").split(".")[0]  # "2026-02-18T16:27:04"
+        conn = sqlite3.connect(db_path)
+        # Find the session that contains records closest to this timestamp
+        # Use strftime to normalize stored timestamps for comparison
+        cursor = conn.execute(
+            "SELECT session_id FROM term_meta "
+            "WHERE substr(timestamp, 1, 19) BETWEEN "
+            "strftime('%Y-%m-%dT%H:%M:%S', ?, '-' || ? || ' minutes') AND "
+            "strftime('%Y-%m-%dT%H:%M:%S', ?, '+' || ? || ' minutes') "
+            "LIMIT 1",
+            (ts_clean, str(window_minutes), ts_clean, str(window_minutes)),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return []
+
+        session_id = row[0]
+        # Get messages from that session around the timestamp
+        cursor = conn.execute(
+            "SELECT text, role, timestamp FROM term_fts "
+            "WHERE session_id = ? "
+            "ORDER BY timestamp LIMIT ?",
+            (session_id, limit),
+        )
+        results = [
+            {
+                "text": r[0],
+                "role": r[1],
+                "timestamp": r[2],
+                "session_id": session_id,
+            }
+            for r in cursor
+        ]
+        conn.close()
+        return results
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        return []
 
 
 def mark_session_indexed(db_path, session_id, record_count):

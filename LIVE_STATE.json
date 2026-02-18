@@ -1,5 +1,5 @@
 {
-  "session_count": 138,
+  "session_count": 139,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -50,11 +50,12 @@
     "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
     "Telethon installed with --break-system-packages (should use venv)"
   ],
+  "context_enrichment": false,
   "last_session_metrics": {
-    "reads": 0,
-    "edits": 0,
-    "errors": 0,
+    "reads": 13,
+    "edits": 3,
+    "errors": 1,
     "verified": 0,
-    "pending": 0
+    "pending": 1
   }
 }

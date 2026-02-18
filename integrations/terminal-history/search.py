@@ -43,6 +43,7 @@ def main():
             "timestamp": r["timestamp"],
             "role": r["role"],
             "session_id": r["session_id"],
+            "bm25": r.get("bm25", 0),
             "source": "terminal_l2",
         }
         for r in raw_results

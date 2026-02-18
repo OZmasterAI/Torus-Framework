@@ -688,10 +688,17 @@ def main():
     if tg_memories:
         tg_summaries = [f"[{tm.get('date', '?')}] {tm.get('text', '')[:100]}" for tm in tg_memories]
         context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
+    # Check current enrichment state for boot prompt
+    _enrichment_state = live_state.get("context_enrichment", False) if live_state else False
+    _enrichment_label = "ON" if _enrichment_state else "OFF"
     context_parts.append(
         "PROTOCOL: Present session number, brief summary, completed list (what was done last session), "
-        "and remaining list (what's next) in ONE message. Ask: 'Continue or New task?' "
-        "If user says continue, ask which item to tackle — do NOT auto-start work."
+        "and remaining list (what's next) in ONE message. "
+        f"Context enrichment is currently {_enrichment_label}. "
+        "Ask: 'Continue or New task?' and 'Context enrichment: keep "
+        f"{_enrichment_label} or switch?' "
+        "If user says continue, ask which item to tackle — do NOT auto-start work. "
+        "If user changes enrichment setting, update LIVE_STATE.json context_enrichment field."
     )
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))

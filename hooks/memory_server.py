@@ -1408,6 +1408,33 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         )
         formatted = format_summaries(results)
 
+    # Terminal History L2: always search, compete on merit via BM25 scores
+    terminal_l2_count = 0
+    try:
+        _term_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
+                                    "terminal-history", "search.py")
+        if os.path.isfile(_term_search):
+            _term_result = subprocess.run(
+                [_sys.executable, _term_search, query, "--json", "--limit", "5"],
+                capture_output=True, text=True, timeout=8, stdin=subprocess.DEVNULL,
+            )
+            if _term_result.returncode == 0 and _term_result.stdout.strip():
+                _term_data = json.loads(_term_result.stdout)
+                for tr in _term_data.get("results", []):
+                    # Normalize BM25: FTS5 rank is negative, more negative = better
+                    _bm25 = abs(float(tr.get("bm25", 0)))
+                    _relevance = min(1.0, _bm25 / 20.0)
+                    formatted.append({
+                        "id": f"term_{tr.get('session_id', '?')[:12]}",
+                        "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
+                        "relevance": round(_relevance, 4),
+                        "source": "terminal_l2",
+                        "timestamp": tr.get("timestamp", ""),
+                    })
+                    terminal_l2_count += 1
+    except Exception:
+        pass  # Terminal history search is optional
+
     # Tag expansion: find co-occurring tags and merge additional results
     tag_expanded = False
     expanded_tags = []
@@ -1543,30 +1570,42 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         except Exception:
             pass  # Telegram fallback is optional
 
-    # Terminal History L2 fallback: if results still low relevance, search raw session history
-    terminal_l2_count = 0
-    if formatted and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked")):
-        try:
-            _term_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
-                                        "terminal-history", "search.py")
-            if os.path.isfile(_term_search):
-                _term_result = subprocess.run(
-                    [_sys.executable, _term_search, query, "--json", "--limit", "5"],
-                    capture_output=True, text=True, timeout=8, stdin=subprocess.DEVNULL,
-                )
-                if _term_result.returncode == 0 and _term_result.stdout.strip():
-                    _term_data = json.loads(_term_result.stdout)
-                    for tr in _term_data.get("results", []):
-                        formatted.append({
-                            "id": f"term_{tr.get('session_id', '?')[:12]}",
-                            "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
-                            "relevance": 0.25,
-                            "source": "terminal_l2",
-                            "timestamp": tr.get("timestamp", ""),
-                        })
-                        terminal_l2_count += 1
-        except Exception:
-            pass  # Terminal history fallback is optional
+    # Session context enrichment: attach conversation context to ChromaDB hits
+    enrichment_count = 0
+    try:
+        _live_state_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
+        _enrichment_enabled = False
+        if os.path.isfile(_live_state_path):
+            with open(_live_state_path, "r") as _lsf:
+                _ls_data = json.load(_lsf)
+                _enrichment_enabled = _ls_data.get("context_enrichment", False)
+
+        if _enrichment_enabled:
+            _term_db = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
+                                    "terminal-history", "terminal_history.db")
+            if os.path.isfile(_term_db):
+                # Lazy import to avoid overhead when enrichment is off
+                _term_db_dir = os.path.join(os.path.expanduser("~"), ".claude",
+                                            "integrations", "terminal-history")
+                if _term_db_dir not in _sys.path:
+                    _sys.path.insert(0, _term_db_dir)
+                from db import get_context_by_timestamp as _get_ctx
+
+                for r in list(formatted):
+                    if r.get("linked") or r.get("source", "").startswith("terminal_"):
+                        continue  # Don't enrich already-linked or terminal results
+                    ts = r.get("timestamp", "")
+                    if not ts:
+                        continue
+                    ctx = _get_ctx(_term_db, ts, window_minutes=30, limit=3)
+                    if ctx:
+                        ctx_text = " | ".join(
+                            f"[{c['role']}] {c['text'][:80]}" for c in ctx
+                        )
+                        r["session_context"] = ctx_text[:300]
+                        enrichment_count += 1
+    except Exception:
+        pass  # Enrichment is optional, never break search
 
     result = {
         "results": formatted,
@@ -1580,6 +1619,8 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         result["telegram_l3_count"] = tg_fallback_count
     if terminal_l2_count > 0:
         result["terminal_l2_count"] = terminal_l2_count
+    if enrichment_count > 0:
+        result["enrichment_count"] = enrichment_count
     if tag_expanded:
         result["tag_expanded"] = True
         result["expanded_tags"] = expanded_tags
