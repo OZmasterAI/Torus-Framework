@@ -32,5 +32,10 @@ archive/
 integrations/telegram-memory/session/
 integrations/telegram-memory/index.db
 
+# Telegram bot plugin
+integrations/telegram-bot/msg_log.db
+integrations/telegram-bot/sessions.json
+integrations/telegram-bot/config.json
+
 # Local settings (machine-specific)
 settings.local.json
