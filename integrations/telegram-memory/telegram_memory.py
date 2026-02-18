@@ -83,7 +83,9 @@ def post_session(text: str) -> int:
     cfg = _load_config()
     try:
         with _get_client(cfg) as client:
-            client.start(phone=lambda: cfg.get("phone"))
+            client.connect()
+            if not client.is_user_authorized():
+                raise TelegramError("Not authenticated. Run setup.py first.")
             msg = client.send_message("me", text, parse_mode="html")
             return msg.id
     except TelegramError:
@@ -111,7 +113,9 @@ def search(query: str, limit: int = 10) -> list:
     cfg = _load_config()
     try:
         with _get_client(cfg) as client:
-            client.start(phone=lambda: cfg.get("phone"))
+            client.connect()
+            if not client.is_user_authorized():
+                raise TelegramError("Not authenticated. Run setup.py first.")
             messages = client.get_messages("me", search=query, limit=limit)
             results = []
             for msg in messages:
@@ -143,7 +147,9 @@ def get_history(limit: int = 50) -> list:
     cfg = _load_config()
     try:
         with _get_client(cfg) as client:
-            client.start(phone=lambda: cfg.get("phone"))
+            client.connect()
+            if not client.is_user_authorized():
+                raise TelegramError("Not authenticated. Run setup.py first.")
             messages = client.get_messages("me", limit=limit)
             results = []
             for msg in messages:
