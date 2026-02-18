@@ -6604,7 +6604,7 @@ test("v2.2.6: Read does not add to files_edited",
 from gates.gate_03_test_before_deploy import _detect_test_framework
 
 # Test 5: Detect pytest from last_test_command
-_fw_state5 = {"last_test_command": "pytest hooks/test_framework.py"}
+_fw_state5 = {"last_test_command": "pytest tests/"}
 fw5 = _detect_test_framework(_fw_state5)
 test("v2.2.6: _detect_test_framework detects pytest",
      fw5 == "pytest",
@@ -6623,6 +6623,13 @@ fw7 = _detect_test_framework(_fw_state7)
 test("v2.2.6: _detect_test_framework detects cargo test",
      fw7 == "cargo test",
      f"Expected 'cargo test', got {fw7!r}")
+
+# Test 7b: Detect test_framework.py
+_fw_state7b = {"last_test_command": "python3 test_framework.py"}
+fw7b = _detect_test_framework(_fw_state7b)
+test("Gate 3: _detect_test_framework detects test_framework.py",
+     fw7b == "python3 test_framework.py",
+     f"Expected 'python3 test_framework.py', got {fw7b!r}")
 
 # Test 8: Unknown framework when no test command
 _fw_state8 = {}

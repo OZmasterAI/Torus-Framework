@@ -60,6 +60,8 @@ def _detect_test_framework(state):
     """
     # Check last test command if available
     last_test_cmd = state.get("last_test_command", "")
+    if "test_framework" in last_test_cmd:
+        return "python3 test_framework.py"
     if "pytest" in last_test_cmd or "python -m pytest" in last_test_cmd:
         return "pytest"
     if "npm test" in last_test_cmd:
