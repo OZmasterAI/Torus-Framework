@@ -1,10 +1,10 @@
 {
-  "session_count": 127,
+  "session_count": 138,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "telegram-memory-plugin",
-  "feature_status": "completed",
+  "feature": "telegram-bot",
+  "feature_status": "fixing",
   "test_count": 1086,
   "test_failures": 0,
   "files_modified": [
@@ -37,24 +37,24 @@
     "Monitor auto-remember queue",
     "Run deduplicate_sweep(dry_run=True) to audit corpus",
     "Sync changes to GitHub export repo",
-    "Apply Haiku→Sonnet change to agents/researcher.md"
+    "Apply Haiku\u2192Sonnet change to agents/researcher.md"
   ],
   "dormant_agent_teams": [
-    "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
-    "Privacy tags — <private> edge stripping in tracker.py/observation.py"
+    "Activate get_teammate_context() \u2014 @mcp.tool() + @crash_proof",
+    "Privacy tags \u2014 <private> edge stripping in tracker.py/observation.py"
   ],
   "known_issues": [
-    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
-    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
+    "Plan mode exit loop \u2014 platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access \u2014 tests skip when MCP running, correct behavior",
+    "Export test_framework.py uses _FRAMEWORK_ROOT \u2014 merge changes, don't copy",
+    "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
     "Telethon installed with --break-system-packages (should use venv)"
   ],
   "last_session_metrics": {
-    "reads": 36,
-    "edits": 14,
+    "reads": 0,
+    "edits": 0,
     "errors": 0,
-    "verified": 14,
+    "verified": 0,
     "pending": 0
   }
 }
