@@ -107,13 +107,23 @@ def main():
         # Convert to HTML
         html = _format_html(handoff_content, session_num)
 
-        # Post to Telegram
-        from telegram_memory import post_session, TelegramError
+        # Post to Saved Messages (L2 memory archive)
+        from telegram_memory import post_session, send_to_oz, TelegramError
         try:
             msg_id = post_session(html)
-            print(f"[TG_SESSION_END] Posted session {session_num} to Telegram (msg {msg_id})", file=sys.stderr)
+            print(f"[TG_SESSION_END] Posted session {session_num} to Saved Messages (msg {msg_id})", file=sys.stderr)
         except TelegramError as e:
-            print(f"[TG_SESSION_END] Telegram post failed (non-fatal): {e}", file=sys.stderr)
+            print(f"[TG_SESSION_END] Saved Messages post failed (non-fatal): {e}", file=sys.stderr)
+
+        # Send notification to OZ
+        try:
+            notify = f"Session {session_num} ended.\n{handoff_content[:500]}"
+            if len(handoff_content) > 500:
+                notify += "\n..."
+            send_to_oz(notify)
+            print(f"[TG_SESSION_END] Notified OZ on Telegram", file=sys.stderr)
+        except TelegramError as e:
+            print(f"[TG_SESSION_END] OZ notification failed (non-fatal): {e}", file=sys.stderr)
 
     except Exception as e:
         print(f"[TG_SESSION_END] Error (non-fatal): {e}", file=sys.stderr)
