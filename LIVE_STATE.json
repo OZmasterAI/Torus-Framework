@@ -1,29 +1,43 @@
 {
-  "session_count": 126,
+  "session_count": 127,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "framework-comparison",
+  "feature": "telegram-memory-plugin",
   "feature_status": "completed",
-  "test_count": 1082,
+  "test_count": 1086,
   "test_failures": 0,
   "files_modified": [
-    "~/.claude/hooks/gates/gate_03_test_before_deploy.py",
-    "~/.claude/hooks/test_framework.py"
+    "~/.claude/integrations/telegram-memory/telegram_memory.py",
+    "~/.claude/integrations/telegram-memory/setup.py",
+    "~/.claude/integrations/telegram-memory/hooks/on_session_end.py",
+    "~/.claude/integrations/telegram-memory/hooks/on_session_start.py",
+    "~/.claude/integrations/telegram-memory/sync.py",
+    "~/.claude/integrations/telegram-memory/search.py",
+    "~/.claude/integrations/telegram-memory/config.json",
+    "~/.claude/integrations/telegram-memory/requirements.txt",
+    "~/.claude/integrations/telegram-memory/tests/test_telegram_memory.py",
+    "~/.claude/hooks/session_end.py",
+    "~/.claude/hooks/boot.py",
+    "~/.claude/hooks/memory_server.py",
+    "~/.claude/hooks/test_framework.py",
+    "~/.claude/.gitignore"
   ],
   "improvements_shipped": [
-    "Gate 3: _detect_test_framework() now recognizes test_framework.py",
-    "New test for test_framework detection (1082 total)",
-    "Deep comparison of 6 Claude Code frameworks + vanilla baseline",
-    "3 memories saved (comparison research, scoring, claude-flow correction)"
+    "Telegram Memory Plugin: L2 memory layer via Telegram Saved Messages",
+    "Two-way Telegram chat: send_to_oz() and read_from_oz() helpers",
+    "Session end notifications to OZ on Telegram",
+    "Boot dashboard shows TELEGRAM L2 section",
+    "memory_server.py falls back to Telegram when ChromaDB results low",
+    "1086 tests (17 plugin + 3 framework integration)"
   ],
   "next_steps": [
-    "Monitor auto-remember queue — check if entries are useful",
-    "Monitor dedup thresholds for auto-captured noise",
+    "Install Telethon in venv instead of --break-system-packages",
+    "Build cheap polling queue for between-session messages",
+    "Monitor auto-remember queue",
     "Run deduplicate_sweep(dry_run=True) to audit corpus",
-    "Apply Haiku→Sonnet change to agents/researcher.md",
     "Sync changes to GitHub export repo",
-    "Explore Claudeception and cipher for ideas"
+    "Apply Haiku→Sonnet change to agents/researcher.md"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
@@ -33,13 +47,14 @@
     "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
     "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest"
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
+    "Telethon installed with --break-system-packages (should use venv)"
   ],
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 3,
+    "reads": 36,
+    "edits": 14,
     "errors": 0,
-    "verified": 1,
+    "verified": 14,
     "pending": 0
   }
 }
