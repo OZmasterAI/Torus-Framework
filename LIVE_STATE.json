@@ -1,36 +1,29 @@
 {
-  "session_count": 124,
+  "session_count": 126,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "memory-ingestion-levers",
+  "feature": "framework-comparison",
   "feature_status": "completed",
-  "test_count": 1081,
+  "test_count": 1082,
   "test_failures": 0,
   "files_modified": [
-    "~/.claude/CLAUDE.md",
-    "~/.claude/hooks/memory_server.py",
-    "~/.claude/hooks/shared/chromadb_socket.py",
-    "~/.claude/hooks/tracker.py",
-    "~/.claude/hooks/boot.py",
+    "~/.claude/hooks/gates/gate_03_test_before_deploy.py",
     "~/.claude/hooks/test_framework.py"
   ],
   "improvements_shipped": [
-    "Lever 1: CLAUDE.md save rule expanded (failed-approach, user-preference)",
-    "Lever 4: _auto_remember_event() with 4 triggers (test/commit/fix/edits)",
-    "Lever 4: auto_remember UDS dispatch + remember() socket wrapper",
-    "Lever 4: Boot-time queue ingestion (atomic read+clear)",
-    "Lever 2: 3 scoped promotion criteria (standalone-error, file-churn, repeated-command)",
-    "Lever 2: _check_dedup() extracted + _promote_observation() helper",
-    "13 new tests (1081 total)"
+    "Gate 3: _detect_test_framework() now recognizes test_framework.py",
+    "New test for test_framework detection (1082 total)",
+    "Deep comparison of 6 Claude Code frameworks + vanilla baseline",
+    "3 memories saved (comparison research, scoring, claude-flow correction)"
   ],
   "next_steps": [
-    "Monitor auto-remember queue — check if entries are useful when retrieved",
+    "Monitor auto-remember queue — check if entries are useful",
     "Monitor dedup thresholds for auto-captured noise",
-    "Run deduplicate_sweep(dry_run=True) to audit existing corpus",
+    "Run deduplicate_sweep(dry_run=True) to audit corpus",
     "Apply Haiku→Sonnet change to agents/researcher.md",
-    "Sync Megaman→Torus rename to GitHub export",
-    "Add test_framework.py to tracker's recognized test keywords"
+    "Sync changes to GitHub export repo",
+    "Explore Claudeception and cipher for ideas"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
@@ -40,14 +33,13 @@
     "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
     "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
-    "Gate 3 doesn't recognize python3 test_framework.py as test run"
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest"
   ],
   "last_session_metrics": {
-    "reads": 15,
-    "edits": 10,
+    "reads": 5,
+    "edits": 3,
     "errors": 0,
-    "verified": 6,
+    "verified": 1,
     "pending": 0
   }
 }
