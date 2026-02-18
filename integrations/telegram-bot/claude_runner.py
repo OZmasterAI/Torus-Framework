@@ -7,6 +7,7 @@ Runs Claude CLI as a subprocess and extracts result + session_id from JSON outpu
 import asyncio
 import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +36,16 @@ async def run_claude(message, session_id=None, cwd=None, timeout=120):
     if session_id:
         cmd += ["--resume", session_id]
 
+    # Strip CLAUDECODE env var to avoid nested-session block
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            env=env,
         )
     except FileNotFoundError:
         raise ClaudeError("claude CLI not found in PATH")
