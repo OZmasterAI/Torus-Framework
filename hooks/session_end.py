@@ -186,12 +186,102 @@ def _archive_handoff():
         print(f"[SESSION_END] Archive failed (non-fatal): {e}", file=sys.stderr)
 
 
-def generate_handoff(state):
+def _extract_transcript_excerpt(transcript_path, max_turns=40):
+    """Read the last N assistant+user turns from the transcript JSONL.
+
+    Claude Code transcript format: each line is a JSON object with:
+    - "type": "user"|"assistant"|"progress"|"file-history-snapshot"
+    - "message": {"role": "...", "content": "..." or [...]}
+
+    Returns a compact text excerpt suitable for Haiku summarization.
+    """
+    if not transcript_path or not os.path.isfile(transcript_path):
+        return ""
+    try:
+        turns = []
+        with open(transcript_path, "r") as f:
+            for raw_line in f:
+                raw_line = raw_line.strip()
+                if not raw_line:
+                    continue
+                try:
+                    entry = json.loads(raw_line)
+                except json.JSONDecodeError:
+                    continue
+                entry_type = entry.get("type", "")
+                if entry_type not in ("user", "assistant"):
+                    continue
+                msg = entry.get("message", {})
+                if not msg:
+                    continue
+                role = msg.get("role", entry_type)
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    text_parts = []
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                    content = "\n".join(text_parts)
+                if not content:
+                    continue
+                # Strip system-reminder tags to reduce noise
+                if "<system-reminder>" in content:
+                    import re as _re
+                    content = _re.sub(r"<system-reminder>.*?</system-reminder>", "", content, flags=_re.DOTALL)
+                content = content.strip()
+                if content:
+                    turns.append(f"[{role}]: {content[:500]}")
+        # Take last N turns, cap total at ~4000 chars for Haiku prompt
+        recent = turns[-max_turns:]
+        excerpt = "\n".join(recent)
+        if len(excerpt) > 4000:
+            excerpt = excerpt[-4000:]
+        return excerpt
+    except Exception:
+        return ""
+
+
+def _haiku_summarize(transcript_excerpt, metrics_text, session_num):
+    """Call claude -p --model haiku to generate a session summary.
+
+    Returns summary string or empty string on failure. Timeout: 15s.
+    """
+    if not transcript_excerpt:
+        return ""
+    prompt = (
+        f"You are summarizing Session {session_num} of a software project. "
+        "Based on the conversation excerpt and metrics below, write 3-5 concise bullet points "
+        "describing what was accomplished. Focus on outcomes, not process. "
+        "Start each bullet with a dash. No preamble, just the bullets.\n\n"
+        f"## Metrics\n{metrics_text}\n\n"
+        f"## Conversation (last turns)\n{transcript_excerpt}"
+    )
+    cmd = [
+        "claude", "-p", prompt,
+        "--model", "haiku",
+        "--output-format", "text",
+    ]
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    env["TORUS_BOT_SESSION"] = "1"  # Skip hooks in subprocess
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=15,
+            env=env, cwd=CLAUDE_DIR,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        print(f"[SESSION_END] Haiku summarize failed: {e}", file=sys.stderr)
+    return ""
+
+
+def generate_handoff(state, transcript_path=""):
     """Generate or update HANDOFF.md with session metrics.
 
     Mode A: Always appends a Session Metrics section.
-    If /wrap-up didn't run (HANDOFF.md mtime > 5min), also generates a full
-    metrics-only handoff, carrying forward What's Next and Known Issues.
+    If /wrap-up didn't run (HANDOFF.md mtime > 5min), calls Haiku to generate
+    an intelligent "What Was Done" from the transcript, falling back to
+    metrics-only if Haiku is unavailable.
     """
     try:
         live_state = _load_live_state()
@@ -227,8 +317,7 @@ def generate_handoff(state):
                     content = content[:last_pos].rstrip()
             content += "\n\n" + metrics_section + "\n"
         else:
-            # /wrap-up didn't run — generate full metrics-only handoff
-            # Archive the old one first
+            # /wrap-up didn't run — try Haiku auto-summary, fall back to metrics-only
             _archive_handoff()
 
             # Carry forward What's Next and Known Issues from previous handoff
@@ -236,11 +325,23 @@ def generate_handoff(state):
             known_issues = old_sections.get("known issues", "None carried forward.")
             service_status = old_sections.get("service status", "")
 
+            # Try Haiku summarization from transcript
+            excerpt = _extract_transcript_excerpt(transcript_path)
+            haiku_summary = _haiku_summarize(excerpt, metrics_section, session_num) if excerpt else ""
+
+            if haiku_summary:
+                what_was_done = haiku_summary
+                header_suffix = "Auto-Summary"
+                print("[SESSION_END] Haiku auto-summary generated", file=sys.stderr)
+            else:
+                what_was_done = "*(Auto-generated — no transcript available. Metrics below show session activity.)*"
+                header_suffix = "Auto-Generated Handoff"
+
             lines = [
-                f"# Session {session_num} — Auto-Generated Handoff",
+                f"# Session {session_num} — {header_suffix}",
                 "",
                 "## What Was Done",
-                "*(Auto-generated — /wrap-up was not run. Metrics below show session activity.)*",
+                what_was_done,
                 "",
                 metrics_section,
                 "",
@@ -378,11 +479,12 @@ def main():
             print("[SESSION_END] Bot session — skipping lifecycle ops", file=sys.stderr)
             sys.exit(0)
 
-        # Read stdin (session data, may include session_id)
+        # Read stdin (session data — includes session_id, transcript_path, reason)
         try:
             _session_data = json.loads(sys.stdin.read())
         except (json.JSONDecodeError, ValueError):
             _session_data = {}
+        transcript_path = _session_data.get("transcript_path", "")
 
         # Load state once, share across functions
         state = _load_latest_state()
@@ -396,7 +498,7 @@ def main():
 
         # Generate/update HANDOFF.md (before flush, while state is fresh)
         try:
-            generate_handoff(state)
+            generate_handoff(state, transcript_path=transcript_path)
         except Exception as e:
             print(f"[SESSION_END] Handoff error (non-fatal): {e}", file=sys.stderr)
 

@@ -1,41 +1,32 @@
 {
-  "session_count": 139,
+  "session_count": 140,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "telegram-bot",
-  "feature_status": "fixing",
+  "feature_status": "shipped",
   "test_count": 1086,
   "test_failures": 0,
   "files_modified": [
-    "~/.claude/integrations/telegram-memory/telegram_memory.py",
-    "~/.claude/integrations/telegram-memory/setup.py",
-    "~/.claude/integrations/telegram-memory/hooks/on_session_end.py",
-    "~/.claude/integrations/telegram-memory/hooks/on_session_start.py",
-    "~/.claude/integrations/telegram-memory/sync.py",
-    "~/.claude/integrations/telegram-memory/search.py",
-    "~/.claude/integrations/telegram-memory/config.json",
-    "~/.claude/integrations/telegram-memory/requirements.txt",
-    "~/.claude/integrations/telegram-memory/tests/test_telegram_memory.py",
+    "~/.claude/integrations/telegram-bot/tmux_runner.py",
+    "~/.claude/integrations/telegram-bot/bot.py",
+    "~/.claude/integrations/telegram-bot/config.json",
     "~/.claude/hooks/session_end.py",
     "~/.claude/hooks/boot.py",
-    "~/.claude/hooks/memory_server.py",
-    "~/.claude/hooks/test_framework.py",
-    "~/.claude/.gitignore"
+    "~/.claude/LIVE_STATE.json",
+    "~/.claude/HANDOFF.md"
   ],
   "improvements_shipped": [
-    "Telegram Memory Plugin: L2 memory layer via Telegram Saved Messages",
-    "Two-way Telegram chat: send_to_oz() and read_from_oz() helpers",
-    "Session end notifications to OZ on Telegram",
-    "Boot dashboard shows TELEGRAM L2 section",
-    "memory_server.py falls back to Telegram when ChromaDB results low",
-    "1086 tests (17 plugin + 3 framework integration)"
+    "TG bot tmux routing: 3.5s responses via tmux send-keys + capture-pane",
+    "Marker-based extraction: TORUS_MSG_{ts} anchors prevent pane dump bug",
+    "Auto wrap-up via Haiku: session_end.py summarizes transcript when /wrap-up not run",
+    "5th boot toggle: TG bot tmux ON/OFF"
   ],
   "next_steps": [
     "Install Telethon in venv instead of --break-system-packages",
     "Build cheap polling queue for between-session messages",
     "Monitor auto-remember queue",
-    "Run deduplicate_sweep(dry_run=True) to audit corpus",
+    "Run deduplicate_sweep(dry_run=True) to audit corpus (600 memories)",
     "Sync changes to GitHub export repo",
     "Apply Haiku\u2192Sonnet change to agents/researcher.md"
   ],
@@ -48,17 +39,19 @@
     "ChromaDB concurrent access \u2014 tests skip when MCP running, correct behavior",
     "Export test_framework.py uses _FRAMEWORK_ROOT \u2014 merge changes, don't copy",
     "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
-    "Telethon installed with --break-system-packages (should use venv)"
+    "Telethon installed with --break-system-packages (should use venv)",
+    "tmux routing shared session causes interference \u2014 use dedicated claude-bot"
   ],
   "terminal_l2_always": true,
   "context_enrichment": false,
   "tg_l3_always": false,
   "tg_enrichment": false,
+  "tg_bot_tmux": true,
   "last_session_metrics": {
-    "reads": 13,
-    "edits": 3,
-    "errors": 1,
-    "verified": 0,
-    "pending": 1
+    "reads": 14,
+    "edits": 9,
+    "errors": 0,
+    "verified": 6,
+    "pending": 3
   }
 }

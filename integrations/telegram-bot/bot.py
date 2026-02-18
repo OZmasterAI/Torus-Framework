@@ -25,6 +25,7 @@ from telegram.constants import ChatAction, ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from claude_runner import ClaudeError, run_claude
+from tmux_runner import TmuxError, run_claude_tmux, is_tmux_session_alive
 from config import load_config
 from db import init_db, log_message, search_fts
 from sessions import get_session_id, save_session
@@ -34,9 +35,21 @@ logger = logging.getLogger(__name__)
 # Paths
 DB_PATH = os.path.join(_PLUGIN_DIR, "msg_log.db")
 SESSIONS_PATH = os.path.join(_PLUGIN_DIR, "sessions.json")
+LIVE_STATE_PATH = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
 
 # Loaded at startup
 CFG = {}
+
+
+def _is_tmux_mode():
+    """Check if tg_bot_tmux toggle is enabled in LIVE_STATE.json."""
+    try:
+        with open(LIVE_STATE_PATH) as f:
+            import json as _json
+            state = _json.load(f)
+            return state.get("tg_bot_tmux", False)
+    except (FileNotFoundError, ValueError):
+        return False
 
 
 def _is_authorized(user_id, chat_id):
@@ -84,23 +97,44 @@ async def handle_message(update: Update, context):
     # Send typing indicator
     await chat.send_action(ChatAction.TYPING)
 
-    # Look up session
-    session_id = get_session_id(SESSIONS_PATH, chat.id)
+    # Route: tmux mode or subprocess mode
+    use_tmux = _is_tmux_mode()
+    result = None
+    new_session_id = None
 
-    # Run Claude
-    try:
-        result, new_session_id = await run_claude(
-            text,
-            session_id=session_id,
-            cwd=CFG.get("claude_cwd"),
-            timeout=CFG.get("claude_timeout", 120),
-        )
-    except ClaudeError as e:
-        logger.error("Claude error: %s", e)
-        await msg.reply_text(f"Error: {e}")
-        return
+    if use_tmux:
+        tmux_target = CFG.get("tmux_target", "claude-bot")
+        try:
+            if await is_tmux_session_alive(tmux_target):
+                result, _ = await run_claude_tmux(
+                    text,
+                    tmux_target=tmux_target,
+                    timeout=CFG.get("claude_timeout", 120),
+                )
+                logger.info("tmux response: %d chars", len(result) if result else 0)
+            else:
+                logger.warning("tmux target '%s' not alive, falling back to claude -p", tmux_target)
+                use_tmux = False
+        except TmuxError as e:
+            logger.warning("tmux error, falling back to claude -p: %s", e)
+            use_tmux = False
 
-    # Save session
+    if not use_tmux or result is None:
+        # Subprocess fallback
+        session_id = get_session_id(SESSIONS_PATH, chat.id)
+        try:
+            result, new_session_id = await run_claude(
+                text,
+                session_id=session_id,
+                cwd=CFG.get("claude_cwd"),
+                timeout=CFG.get("claude_timeout", 120),
+            )
+        except ClaudeError as e:
+            logger.error("Claude error: %s", e)
+            await msg.reply_text(f"Error: {e}")
+            return
+
+    # Save session (only relevant for subprocess mode)
     if new_session_id:
         save_session(SESSIONS_PATH, chat.id, new_session_id)
 
