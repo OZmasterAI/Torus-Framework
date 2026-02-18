@@ -32,7 +32,7 @@ async def run_claude(message, session_id=None, cwd=None, timeout=120):
     Raises:
         ClaudeError: On subprocess failure or timeout
     """
-    cmd = ["claude", "-p", message, "--output-format", "json", "--dangerously-skip-permissions", "--model", "haiku"]
+    cmd = ["claude", "-p", message, "--output-format", "json", "--dangerously-skip-permissions"]
     if session_id:
         cmd += ["--resume", session_id]
 
