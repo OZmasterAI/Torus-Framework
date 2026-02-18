@@ -1,28 +1,32 @@
 {
-  "session_count": 123,
+  "session_count": 124,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "lazy-load-gate-dispatch",
+  "feature": "memory-ingestion-levers",
   "feature_status": "completed",
-  "test_count": 1068,
+  "test_count": 1081,
   "test_failures": 0,
   "files_modified": [
-    "~/.claude/hooks/enforcer.py",
-    "~/.claude/hooks/test_framework.py",
-    "~/Desktop/torus-framework/framework/hooks/enforcer.py",
-    "~/Desktop/torus-framework/framework/hooks/test_framework.py"
+    "~/.claude/CLAUDE.md",
+    "~/.claude/hooks/memory_server.py",
+    "~/.claude/hooks/shared/chromadb_socket.py",
+    "~/.claude/hooks/tracker.py",
+    "~/.claude/hooks/boot.py",
+    "~/.claude/hooks/test_framework.py"
   ],
   "improvements_shipped": [
-    "GATE_TOOL_MAP: static gate→tool mapping for filtered dispatch",
-    "_ensure_gates_loaded(): one-time gate import + cache",
-    "_gates_for_tool(): tool-scoped gate filtering",
-    "Gate reduction: Bash 15→5, Task 15→4, Skill/other 15→1",
-    "Hot-reload updates _loaded_gates cache directly",
-    "8 new dispatch tests"
+    "Lever 1: CLAUDE.md save rule expanded (failed-approach, user-preference)",
+    "Lever 4: _auto_remember_event() with 4 triggers (test/commit/fix/edits)",
+    "Lever 4: auto_remember UDS dispatch + remember() socket wrapper",
+    "Lever 4: Boot-time queue ingestion (atomic read+clear)",
+    "Lever 2: 3 scoped promotion criteria (standalone-error, file-churn, repeated-command)",
+    "Lever 2: _check_dedup() extracted + _promote_observation() helper",
+    "13 new tests (1081 total)"
   ],
   "next_steps": [
-    "Monitor dedup thresholds in practice",
+    "Monitor auto-remember queue — check if entries are useful when retrieved",
+    "Monitor dedup thresholds for auto-captured noise",
     "Run deduplicate_sweep(dry_run=True) to audit existing corpus",
     "Apply Haiku→Sonnet change to agents/researcher.md",
     "Sync Megaman→Torus rename to GitHub export",
@@ -40,10 +44,10 @@
     "Gate 3 doesn't recognize python3 test_framework.py as test run"
   ],
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 4,
+    "reads": 15,
+    "edits": 10,
     "errors": 0,
-    "verified": 1,
+    "verified": 6,
     "pending": 0
   }
 }
