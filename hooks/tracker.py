@@ -23,6 +23,51 @@ sys.path.insert(0, os.path.dirname(__file__))
 from shared.state import load_state, save_state
 from shared.error_normalizer import fnv1a_hash
 
+# Auto-remember imports (fail-open: if UDS unavailable, queue to disk)
+try:
+    from shared.chromadb_socket import remember as socket_remember, is_worker_available as _uds_available
+except ImportError:
+    socket_remember = None
+    _uds_available = lambda: False
+
+AUTO_REMEMBER_QUEUE = os.path.join(os.path.dirname(__file__), ".auto_remember_queue.jsonl")
+MAX_AUTO_REMEMBER_PER_SESSION = 10
+
+
+def _auto_remember_event(content, context="", tags="", critical=False, state=None):
+    """Queue or immediately save an auto-remember event.
+
+    critical=True: attempt UDS save immediately (useful in current session).
+    critical=False: append to .auto_remember_queue.jsonl for boot-time ingestion.
+    Rate-limited to MAX_AUTO_REMEMBER_PER_SESSION per session.
+    """
+    try:
+        if state is None:
+            state = {}
+        count = state.get("auto_remember_count", 0)
+        if count >= MAX_AUTO_REMEMBER_PER_SESSION:
+            return  # Rate limit hit
+        state["auto_remember_count"] = count + 1
+
+        if critical and socket_remember is not None:
+            try:
+                if _uds_available():
+                    socket_remember(content, context, tags)
+                    return
+            except Exception:
+                pass  # Fall through to queue
+
+        # Queue for boot-time ingestion
+        entry = json.dumps({
+            "content": content, "context": context, "tags": tags,
+            "timestamp": time.time(),
+        })
+        with open(AUTO_REMEMBER_QUEUE, "a") as f:
+            f.write(entry + "\n")
+    except Exception:
+        pass  # Auto-remember is fail-open
+
+
 # Auto-capture constants — expanded to include read/search/skill tools
 CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "Skill", "WebSearch", "WebFetch", "Task"}
 try:
@@ -483,8 +528,37 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                 state["fixing_error"] = True
             else:
                 # Tests passed — clear error state
+                # Trigger C: Error fix verified (critical — useful in current session)
+                was_fixing = state.get("fixing_error", False)
+                if was_fixing:
+                    error_info = state.get("recent_test_failure", {})
+                    pattern = error_info.get("pattern", "unknown") if isinstance(error_info, dict) else "unknown"
+                    edited = list(state.get("files_edited", state.get("pending_verification", [])))[-5:]
+                    _auto_remember_event(
+                        f"Error fixed: {pattern}. Files edited: {', '.join(edited)}",
+                        context=f"Test passed after fixing error: {command[:100]}",
+                        tags="type:auto-captured,type:fix,area:framework",
+                        critical=True, state=state,
+                    )
+                # Trigger A: Test run snapshot (queued for boot)
+                edited_files = list(state.get("files_edited", state.get("pending_verification", [])))[-10:]
+                _auto_remember_event(
+                    f"Tests passed: {command[:150]}. Files modified this session: {', '.join(edited_files) if edited_files else 'none'}",
+                    context="auto-captured test run snapshot",
+                    tags="type:auto-captured,area:testing",
+                    critical=False, state=state,
+                )
                 state["recent_test_failure"] = None
                 state["fixing_error"] = False
+
+        # Trigger B: Git commit (queued for boot)
+        if "git commit" in command:
+            _auto_remember_event(
+                f"Git commit: {command[:200]}",
+                context="auto-captured git commit",
+                tags="type:auto-captured,area:git",
+                critical=False, state=state,
+            )
 
     # Track edits for pending verification (including NotebookEdit)
     if tool_name in ("Edit", "Write", "NotebookEdit"):
@@ -498,7 +572,17 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         edit_streak = state.setdefault("edit_streak", {})
         file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
         if file_path:
-            edit_streak[file_path] = edit_streak.get(file_path, 0) + 1
+            old_count = edit_streak.get(file_path, 0)
+            edit_streak[file_path] = old_count + 1
+            # Trigger D: Heavy edit session (first time crossing threshold per file)
+            new_count = edit_streak[file_path]
+            if old_count < 3 and new_count >= 3:
+                _auto_remember_event(
+                    f"Heavy editing: {file_path} ({new_count} edits this session)",
+                    context="auto-captured heavy edit pattern",
+                    tags="type:auto-captured,area:framework",
+                    critical=False, state=state,
+                )
 
     # Progressive verification scoring: accumulate confidence scores for pending files
     if tool_name == "Bash":

@@ -3,7 +3,7 @@
 ## MEMORY FIRST (Non-Negotiable)
 BEFORE building/fixing ANYTHING: search_knowledge("[what you're about to do]")
 - \> 0.5 relevance: use directly | 0.2-0.5: get_memory(id) to verify | < 0.2: treat as unknown
-AFTER any fix/decision: remember_this(content, context, tags)
+AFTER any fix/decision/failed-approach/user-preference: remember_this(content, context, tags)
 For ERROR FIX: use the Causal Chain (below) then remember_this()
 
 ## THE LOOP
@@ -71,4 +71,4 @@ Gates checked by enforcer.py. Blocking = exit 2. Advisory = warn only.
 - ALL CAPS — Important point missed. Re-read carefully.
 
 ## MEMORY TAG CONVENTIONS
-Tags: type (error, learning, fix, feature-request, correction, decision) | priority (critical, high, medium, low) | area (frontend, backend, infra, framework, testing, docs) | outcome (success, failed) | error_pattern (Traceback, npm-ERR)
+Tags: type (error, learning, fix, feature-request, correction, decision, auto-captured, preference) | priority (critical, high, medium, low) | area (frontend, backend, infra, framework, testing, docs, git) | outcome (success, failed) | error_pattern (Traceback, npm-ERR)

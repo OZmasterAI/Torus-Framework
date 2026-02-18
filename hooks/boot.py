@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 # Add hooks dir to path for shared imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from shared.state import cleanup_all_states
-from shared.chromadb_socket import is_worker_available as socket_available, query as socket_query, count as socket_count, flush_queue as socket_flush, WorkerUnavailable
+from shared.chromadb_socket import is_worker_available as socket_available, query as socket_query, count as socket_count, flush_queue as socket_flush, remember as socket_remember, WorkerUnavailable
 
 try:
     from shared.ramdisk import ensure_ramdisk as _ramdisk_ensure, get_capture_queue, get_state_dir as _ramdisk_state_dir
@@ -683,6 +683,38 @@ def main():
         if _worker_available and os.path.exists(capture_queue) and os.path.getsize(capture_queue) > 0:
             flushed = socket_flush()
             print(f"  [BOOT] Flushed {flushed} stale observations via UDS", file=sys.stderr)
+    except Exception:
+        pass  # Boot must never crash
+
+    # Ingest auto-remember queue from previous session
+    try:
+        auto_queue = os.path.join(os.path.dirname(__file__), ".auto_remember_queue.jsonl")
+        if _worker_available and os.path.exists(auto_queue) and os.path.getsize(auto_queue) > 0:
+            # Atomically read and clear
+            tmp_path = auto_queue + ".ingesting"
+            os.replace(auto_queue, tmp_path)
+            ingested = 0
+            with open(tmp_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        socket_remember(
+                            entry.get("content", ""),
+                            entry.get("context", ""),
+                            entry.get("tags", ""),
+                        )
+                        ingested += 1
+                    except Exception:
+                        pass  # Skip malformed entries
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            if ingested > 0:
+                print(f"  [BOOT] Ingested {ingested} auto-remember entries via UDS", file=sys.stderr)
     except Exception:
         pass  # Boot must never crash
 

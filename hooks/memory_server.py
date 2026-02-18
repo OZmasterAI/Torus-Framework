@@ -1188,34 +1188,96 @@ def _compact_observations():
                 ids=[digest_id],
             )
 
-            # Promote high-value expired observations to curated knowledge
+            # Promote high-value expired observations to curated knowledge (scoped criteria)
             promoted = 0
+
+            def _promote_observation(doc, meta, criterion_tag):
+                """Upsert a promoted observation into knowledge collection."""
+                nonlocal promoted
+                if promoted >= MAX_PROMOTIONS_PER_CYCLE:
+                    return
+                promo_id = hashlib.sha256(f"promoted:{doc}".encode()).hexdigest()[:16]
+                promo_preview = doc[:SUMMARY_LENGTH].replace("\n", " ")
+                if len(doc) > SUMMARY_LENGTH:
+                    promo_preview += "..."
+                collection.upsert(
+                    documents=[doc],
+                    metadatas=[{
+                        "context": "auto-promoted from observation",
+                        "tags": f"{PROMOTION_TAGS},{criterion_tag}",
+                        "timestamp": datetime.now().isoformat(),
+                        "session_time": time.time(),
+                        "preview": promo_preview,
+                        "original_error_pattern": meta.get("error_pattern", ""),
+                    }],
+                    ids=[promo_id],
+                )
+                promoted += 1
+
+            # Criterion 1: Standalone errors (never fixed in same session)
+            # Group by session, track which tools succeeded after errors
+            session_success_tools = {}  # session_id -> set of tool names that succeeded
+            session_errors = []  # (index, doc, meta) of error observations
             for i, doc in enumerate(exp_docs):
+                meta = exp_metas[i] if i < len(exp_metas) else {}
+                sid = meta.get("session_id", "")
+                has_error = meta.get("has_error", "false")
+                if has_error == "true" or meta.get("error_pattern", ""):
+                    session_errors.append((i, doc, meta))
+                else:
+                    # Track successful tool uses per session
+                    if sid:
+                        session_success_tools.setdefault(sid, set()).add(meta.get("tool_name", ""))
+
+            for idx, doc, meta in session_errors:
                 if promoted >= MAX_PROMOTIONS_PER_CYCLE:
                     break
+                sid = meta.get("session_id", "")
+                tool = meta.get("tool_name", "")
+                # Only promote if no subsequent success for same tool in same session
+                if sid and tool and tool in session_success_tools.get(sid, set()):
+                    continue  # Tool succeeded later — skip
+                _promote_observation(doc, meta, "criterion:standalone-error")
+
+            # Criterion 2: Cross-session file churn
+            file_sessions = {}  # file_path -> set of session_ids
+            for i, doc in enumerate(exp_docs):
                 meta = exp_metas[i] if i < len(exp_metas) else {}
-                ep = meta.get("error_pattern", "")
-                has_error = meta.get("has_error", "false")
-                if ep or has_error == "true":
-                    promo_id = hashlib.sha256(
-                        f"promoted:{doc}".encode()
-                    ).hexdigest()[:16]
-                    promo_preview = doc[:SUMMARY_LENGTH].replace("\n", " ")
-                    if len(doc) > SUMMARY_LENGTH:
-                        promo_preview += "..."
-                    collection.upsert(
-                        documents=[doc],
-                        metadatas=[{
-                            "context": "auto-promoted from observation",
-                            "tags": PROMOTION_TAGS,
-                            "timestamp": datetime.now().isoformat(),
-                            "session_time": time.time(),
-                            "preview": promo_preview,
-                            "original_error_pattern": ep,
-                        }],
-                        ids=[promo_id],
-                    )
-                    promoted += 1
+                sid = meta.get("session_id", "")
+                tool = meta.get("tool_name", "")
+                if tool in ("Edit", "Write") and sid:
+                    parts = doc.split(":", 1)
+                    if len(parts) > 1:
+                        fp = parts[1].strip().split(" ")[0]
+                        if fp:
+                            file_sessions.setdefault(fp, set()).add(sid)
+
+            for fp, sids in sorted(file_sessions.items(), key=lambda x: -len(x[1])):
+                if promoted >= MAX_PROMOTIONS_PER_CYCLE:
+                    break
+                if len(sids) >= 5:
+                    churn_doc = f"High-churn file: {fp} (edited in {len(sids)} sessions)"
+                    _promote_observation(churn_doc, {}, "criterion:file-churn")
+
+            # Criterion 3: Repeated command patterns (non-test, non-commit)
+            cmd_counts = {}  # command -> count
+            for i, doc in enumerate(exp_docs):
+                meta = exp_metas[i] if i < len(exp_metas) else {}
+                if meta.get("tool_name") != "Bash":
+                    continue
+                cmd = doc.split(":", 1)[1].strip() if ":" in doc else doc
+                cmd = cmd[:200]  # Normalize length
+                # Skip test and commit commands
+                if any(kw in cmd for kw in ["pytest", "test_framework", "npm test", "cargo test", "go test", "git commit"]):
+                    continue
+                cmd_counts[cmd] = cmd_counts.get(cmd, 0) + 1
+
+            for cmd, cnt in sorted(cmd_counts.items(), key=lambda x: -x[1]):
+                if promoted >= MAX_PROMOTIONS_PER_CYCLE:
+                    break
+                if cnt >= 3:
+                    repeat_doc = f"Repeated command: {cmd} ({cnt} occurrences)"
+                    _promote_observation(repeat_doc, {}, "criterion:repeated-command")
 
             # Delete expired observations
             if exp_ids:
@@ -1540,6 +1602,37 @@ def _bridge_to_fix_outcomes(content, context, tags):
         return None
 
 
+def _check_dedup(content, tags=""):
+    """Check if content is a near-duplicate of existing knowledge.
+
+    Returns None if unique, or a dict:
+      - {"blocked": True, "existing_id": ..., "distance": ...} if hard-dedup
+      - {"soft_dupe_tag": "possible-dupe:ID"} if in soft zone
+    """
+    if _FIX_DEDUP_EXEMPT and "type:fix" in tags:
+        return None
+    try:
+        cnt = collection.count()
+        if cnt == 0:
+            return None
+        similar = collection.query(
+            query_texts=[content], n_results=1,
+            include=["distances"],
+        )
+        if (similar and similar.get("distances") and similar["distances"][0]
+                and similar["distances"][0][0] is not None):
+            dist = similar["distances"][0][0]
+            existing_id = similar["ids"][0][0]
+            threshold = FIX_DEDUP_THRESHOLD if "type:fix" in tags else DEDUP_THRESHOLD
+            if dist < threshold:
+                return {"blocked": True, "existing_id": existing_id, "distance": round(dist, 4)}
+            elif dist < DEDUP_SOFT_THRESHOLD:
+                return {"soft_dupe_tag": f"possible-dupe:{existing_id}"}
+    except Exception:
+        pass
+    return None
+
+
 @mcp.tool()
 @crash_proof
 def remember_this(content: str, context: str = "", tags: str = "", force: bool = False) -> dict:
@@ -1576,33 +1669,18 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
 
     # --- Near-dedup: tiered threshold with soft-dupe tagging ---
     _soft_dupe_tag = None  # set if in soft zone (0.10-0.15)
-    if not force and not (_FIX_DEDUP_EXEMPT and "type:fix" in tags):
-        try:
-            count = collection.count()
-            if count > 0:
-                similar = collection.query(
-                    query_texts=[content], n_results=1,
-                    include=["distances"],
-                )
-                if (similar and similar.get("distances") and similar["distances"][0]
-                        and similar["distances"][0][0] is not None):
-                    dist = similar["distances"][0][0]
-                    existing_id = similar["ids"][0][0]
-                    # Pick threshold: stricter for type:fix memories
-                    threshold = FIX_DEDUP_THRESHOLD if "type:fix" in tags else DEDUP_THRESHOLD
-                    if dist < threshold:
-                        return {
-                            "result": "Deduplicated: very similar memory already exists",
-                            "deduplicated": True,
-                            "existing_id": existing_id,
-                            "distance": round(dist, 4),
-                            "total_memories": count,
-                        }
-                    elif dist < DEDUP_SOFT_THRESHOLD:
-                        # Soft zone: save but tag as possible-dupe
-                        _soft_dupe_tag = f"possible-dupe:{existing_id}"
-        except Exception:
-            pass  # Dedup failure falls through to normal save
+    dedup_result = _check_dedup(content, tags) if not force else None
+    if dedup_result:
+        if dedup_result.get("blocked"):
+            return {
+                "result": "Deduplicated: very similar memory already exists",
+                "deduplicated": True,
+                "existing_id": dedup_result["existing_id"],
+                "distance": dedup_result["distance"],
+                "total_memories": collection.count(),
+            }
+        elif dedup_result.get("soft_dupe_tag"):
+            _soft_dupe_tag = dedup_result["soft_dupe_tag"]
 
     # Citation URL extraction (fail-open)
     citation = _extract_citations(content, context)
@@ -3501,6 +3579,43 @@ def _dispatch_request(req):
         if method == "backup":
             result = _backup_database()
             return {"ok": True, "result": result}
+
+        if method == "auto_remember":
+            content = params.get("content", "")
+            context = params.get("context", "")
+            tags = params.get("tags", "")
+            if not content or len(content.strip()) < MIN_CONTENT_LENGTH:
+                return {"ok": True, "result": {"saved": False, "reason": "content too short"}}
+            # Dedup check
+            dedup = _check_dedup(content, tags)
+            if dedup and dedup.get("blocked"):
+                return {"ok": True, "result": {"saved": False, "reason": "deduplicated",
+                        "existing_id": dedup["existing_id"], "distance": dedup["distance"]}}
+            # Cap metadata
+            if len(context) > 500:
+                context = context[:497] + "..."
+            if len(tags) > 500:
+                tags = tags[:497] + "..."
+            # Append soft-dupe tag if borderline
+            if dedup and dedup.get("soft_dupe_tag"):
+                tags = f"{tags},{dedup['soft_dupe_tag']}" if tags else dedup["soft_dupe_tag"]
+            doc_id = generate_id(content)
+            timestamp = datetime.now().isoformat()
+            preview = content[:SUMMARY_LENGTH].replace("\n", " ")
+            if len(content) > SUMMARY_LENGTH:
+                preview += "..."
+            now = time.time()
+            collection.upsert(
+                documents=[content],
+                metadatas=[{
+                    "context": context, "tags": tags, "timestamp": timestamp,
+                    "session_time": now, "preview": preview,
+                    "primary_source": "", "related_urls": "", "source_method": "auto_remember",
+                }],
+                ids=[doc_id],
+            )
+            fts_index.add_entry(doc_id, content, preview, tags, timestamp, now, "")
+            return {"ok": True, "result": {"saved": True, "id": doc_id}}
 
         # Collection-based operations require a valid collection name
         col_map = {

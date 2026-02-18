@@ -9973,6 +9973,242 @@ test("Dispatch: gate modules cached (same objects on repeated calls)",
 
 
 # ─────────────────────────────────────────────────
+# Memory Ingestion Levers Tests
+# ─────────────────────────────────────────────────
+print("\n--- Memory Ingestion Levers ---")
+
+# Test 1: Lever 1 — CLAUDE.md contains expanded save rule
+_claude_md_path = os.path.join(os.path.dirname(__file__), "..", "CLAUDE.md")
+with open(_claude_md_path) as _f:
+    _claude_md = _f.read()
+test("Lever1: CLAUDE.md has 'failed-approach' in save rule",
+     "failed-approach" in _claude_md)
+test("Lever1: CLAUDE.md has 'user-preference' in save rule",
+     "user-preference" in _claude_md)
+
+# Test 2-7: Lever 4 — Auto-remember queue and triggers
+import tempfile as _tempfile
+from tracker import _auto_remember_event, AUTO_REMEMBER_QUEUE, MAX_AUTO_REMEMBER_PER_SESSION
+
+# Use a temp file for queue during tests
+_orig_queue = AUTO_REMEMBER_QUEUE
+import tracker as _tracker_mod
+_test_queue = os.path.join(_tempfile.gettempdir(), ".test_auto_remember_queue.jsonl")
+_tracker_mod.AUTO_REMEMBER_QUEUE = _test_queue
+# Also patch the module-level constant for _auto_remember_event closure
+import types
+# Clean up any leftover test queue
+if os.path.exists(_test_queue):
+    os.unlink(_test_queue)
+
+# Test 2: Queue write — simulate trigger, verify queue gets entry
+_test_state_ar = {"auto_remember_count": 0}
+_auto_remember_event("Test memory content for queue write", context="test", tags="type:test",
+                     critical=False, state=_test_state_ar)
+_queue_exists = os.path.exists(_test_queue)
+_queue_content = ""
+if _queue_exists:
+    with open(_test_queue) as _qf:
+        _queue_content = _qf.read()
+test("Lever4: Queue write — entry written to .auto_remember_queue.jsonl",
+     _queue_exists and "Test memory content for queue write" in _queue_content)
+
+# Test 3: Rate limit — simulate 15 triggers, verify only MAX written
+if os.path.exists(_test_queue):
+    os.unlink(_test_queue)
+_test_state_rl = {"auto_remember_count": 0}
+for _i in range(15):
+    _auto_remember_event(f"Rate limit test entry {_i}", context="test", tags="type:test",
+                         critical=False, state=_test_state_rl)
+_rl_count = 0
+if os.path.exists(_test_queue):
+    with open(_test_queue) as _qf:
+        _rl_count = sum(1 for line in _qf if line.strip())
+test("Lever4: Rate limit — only 10 entries written from 15 triggers",
+     _rl_count == MAX_AUTO_REMEMBER_PER_SESSION,
+     f"got {_rl_count}, expected {MAX_AUTO_REMEMBER_PER_SESSION}")
+
+# Test 4: Trigger A — test run with exit 0 → queue entry
+if os.path.exists(_test_queue):
+    os.unlink(_test_queue)
+_test_state_ta = default_state()
+_test_state_ta["auto_remember_count"] = 0
+_test_state_ta["pending_verification"] = ["/tmp/test_file.py"]
+from tracker import handle_post_tool_use as _hptu
+_hptu("Bash", {"command": "python3 test_framework.py"},
+      _test_state_ta, session_id="test-lever4-a",
+      tool_response={"exit_code": 0})
+_ta_content = ""
+if os.path.exists(_test_queue):
+    with open(_test_queue) as _qf:
+        _ta_content = _qf.read()
+test("Lever4 TriggerA: Test pass → queue entry with test info",
+     "Tests passed" in _ta_content and "test_framework" in _ta_content,
+     f"queue content: {_ta_content[:200]}")
+
+# Test 5: Trigger B — git commit command → queue entry
+if os.path.exists(_test_queue):
+    os.unlink(_test_queue)
+_test_state_tb = default_state()
+_test_state_tb["auto_remember_count"] = 0
+_hptu("Bash", {"command": 'git commit -m "test commit"'},
+      _test_state_tb, session_id="test-lever4-b",
+      tool_response={"exit_code": 0})
+_tb_content = ""
+if os.path.exists(_test_queue):
+    with open(_test_queue) as _qf:
+        _tb_content = _qf.read()
+test("Lever4 TriggerB: Git commit → queue entry",
+     "Git commit" in _tb_content,
+     f"queue content: {_tb_content[:200]}")
+
+# Test 6: Trigger C — fixing_error=True + test pass → critical save attempted
+# (Without UDS available, should fall through to queue)
+if os.path.exists(_test_queue):
+    os.unlink(_test_queue)
+_test_state_tc = default_state()
+_test_state_tc["auto_remember_count"] = 0
+_test_state_tc["fixing_error"] = True
+_test_state_tc["recent_test_failure"] = {"pattern": "ImportError: no module named foo", "timestamp": time.time()}
+_test_state_tc["pending_verification"] = ["/tmp/foo.py"]
+_hptu("Bash", {"command": "pytest tests/"},
+      _test_state_tc, session_id="test-lever4-c",
+      tool_response={"exit_code": 0})
+_tc_content = ""
+if os.path.exists(_test_queue):
+    with open(_test_queue) as _qf:
+        _tc_content = _qf.read()
+test("Lever4 TriggerC: Error fix verified → queue entry (UDS unavailable fallback)",
+     "Error fixed" in _tc_content and "ImportError" in _tc_content,
+     f"queue content: {_tc_content[:200]}")
+
+# Test 7: Trigger D — 3+ edits to same file → queue entry (only on first crossing)
+if os.path.exists(_test_queue):
+    os.unlink(_test_queue)
+_test_state_td = default_state()
+_test_state_td["auto_remember_count"] = 0
+_test_state_td["edit_streak"] = {}
+for _i in range(4):
+    _hptu("Edit", {"file_path": "/tmp/heavy_file.py", "old_string": "a", "new_string": "b"},
+          _test_state_td, session_id="test-lever4-d")
+_td_content = ""
+if os.path.exists(_test_queue):
+    with open(_test_queue) as _qf:
+        _td_content = _qf.read()
+_td_lines = [l for l in _td_content.strip().split("\n") if l.strip()] if _td_content.strip() else []
+test("Lever4 TriggerD: Heavy edit (3+ edits) → queue entry",
+     "Heavy editing" in _td_content and "heavy_file.py" in _td_content,
+     f"queue content: {_td_content[:200]}")
+test("Lever4 TriggerD: Only one entry on first crossing (not repeated)",
+     len(_td_lines) == 1,
+     f"got {len(_td_lines)} entries, expected 1")
+
+# Cleanup test queue
+if os.path.exists(_test_queue):
+    os.unlink(_test_queue)
+_tracker_mod.AUTO_REMEMBER_QUEUE = _orig_queue
+
+# Test 8-10: Lever 2 scoped — promotion criteria (unit tests on promotion logic)
+# These test the criteria logic in memory_server._compact_observations
+# We test the data structures and filtering rather than full ChromaDB integration
+
+# Test 8: Standalone error criterion — error with no follow-up success should be promotable
+_exp_docs_l2 = [
+    "Bash: python3 foo.py",       # 0: error
+    "Edit: /tmp/foo.py fixed",    # 1: edit (not Bash success)
+    "Bash: python3 bar.py",       # 2: success for bar
+]
+_exp_metas_l2 = [
+    {"tool_name": "Bash", "has_error": "true", "error_pattern": "ImportError", "session_id": "s1"},
+    {"tool_name": "Edit", "has_error": "false", "session_id": "s1"},
+    {"tool_name": "Bash", "has_error": "false", "session_id": "s1"},
+]
+# Reproduce criterion 1 logic: standalone errors
+_session_success_tools_l2 = {}
+_session_errors_l2 = []
+for _i, _doc in enumerate(_exp_docs_l2):
+    _meta = _exp_metas_l2[_i]
+    _sid = _meta.get("session_id", "")
+    if _meta.get("has_error") == "true" or _meta.get("error_pattern", ""):
+        _session_errors_l2.append((_i, _doc, _meta))
+    else:
+        if _sid:
+            _session_success_tools_l2.setdefault(_sid, set()).add(_meta.get("tool_name", ""))
+
+_standalone_errors = []
+for _idx, _doc, _meta in _session_errors_l2:
+    _sid = _meta.get("session_id", "")
+    _tool = _meta.get("tool_name", "")
+    if _sid and _tool and _tool in _session_success_tools_l2.get(_sid, set()):
+        continue  # Tool succeeded later
+    _standalone_errors.append(_doc)
+
+test("Lever2 Criterion1: Standalone error — Bash error NOT promoted (Bash succeeded later in session)",
+     len(_standalone_errors) == 0,
+     f"got {len(_standalone_errors)} standalone errors: {_standalone_errors}")
+
+# Test with a truly standalone error (no Bash success in session)
+_exp_metas_l2b = [
+    {"tool_name": "Bash", "has_error": "true", "error_pattern": "SegFault", "session_id": "s2"},
+    {"tool_name": "Edit", "has_error": "false", "session_id": "s2"},
+]
+_session_success_tools_l2b = {}
+_session_errors_l2b = []
+for _i, _doc in enumerate(["Bash: crash", "Edit: fix"]):
+    _meta = _exp_metas_l2b[_i]
+    _sid = _meta.get("session_id", "")
+    if _meta.get("has_error") == "true" or _meta.get("error_pattern", ""):
+        _session_errors_l2b.append((_i, _doc, _meta))
+    else:
+        if _sid:
+            _session_success_tools_l2b.setdefault(_sid, set()).add(_meta.get("tool_name", ""))
+
+_standalone_l2b = [d for _, d, m in _session_errors_l2b
+                   if not (m.get("session_id") and m.get("tool_name") and
+                           m["tool_name"] in _session_success_tools_l2b.get(m["session_id"], set()))]
+test("Lever2 Criterion1: Truly standalone error IS promotable",
+     len(_standalone_l2b) == 1 and "crash" in _standalone_l2b[0])
+
+# Test 9: File churn criterion — file in 5+ sessions → promoted
+_file_sessions_l2 = {}
+_churn_docs = [f"Edit: /tmp/hot.py edit {i}" for i in range(6)]
+_churn_metas = [{"tool_name": "Edit", "session_id": f"session-{i}"} for i in range(6)]
+for _i, _doc in enumerate(_churn_docs):
+    _meta = _churn_metas[_i]
+    _sid = _meta.get("session_id", "")
+    _tool = _meta.get("tool_name", "")
+    if _tool in ("Edit", "Write") and _sid:
+        _parts = _doc.split(":", 1)
+        if len(_parts) > 1:
+            _fp = _parts[1].strip().split(" ")[0]
+            if _fp:
+                _file_sessions_l2.setdefault(_fp, set()).add(_sid)
+
+_churn_promoted = [fp for fp, sids in _file_sessions_l2.items() if len(sids) >= 5]
+test("Lever2 Criterion2: File in 6 sessions → churn promoted",
+     len(_churn_promoted) == 1 and "/tmp/hot.py" in _churn_promoted[0])
+
+# Test 10: Repeated command criterion — command 3+ times → promoted
+_cmd_counts_l2 = {}
+_repeat_docs = ["Bash: ls -la"] * 4 + ["Bash: pytest tests/"] * 2
+_repeat_metas = [{"tool_name": "Bash"}] * 4 + [{"tool_name": "Bash"}] * 2
+for _i, _doc in enumerate(_repeat_docs):
+    _meta = _repeat_metas[_i]
+    if _meta.get("tool_name") != "Bash":
+        continue
+    _cmd = _doc.split(":", 1)[1].strip() if ":" in _doc else _doc
+    _cmd = _cmd[:200]
+    if any(kw in _cmd for kw in ["pytest", "test_framework", "npm test", "cargo test", "go test", "git commit"]):
+        continue
+    _cmd_counts_l2[_cmd] = _cmd_counts_l2.get(_cmd, 0) + 1
+
+_repeated_promoted = [cmd for cmd, cnt in _cmd_counts_l2.items() if cnt >= 3]
+test("Lever2 Criterion3: 'ls -la' repeated 4x → promoted; 'pytest' excluded",
+     len(_repeated_promoted) == 1 and "ls -la" in _repeated_promoted[0],
+     f"promoted: {_repeated_promoted}")
+
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

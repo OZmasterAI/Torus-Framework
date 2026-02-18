@@ -134,6 +134,13 @@ def delete(collection, ids):
     return request("delete", collection=collection, params={"ids": ids})
 
 
+def remember(content, context="", tags=""):
+    """Save a memory to knowledge via UDS. Returns result dict."""
+    return request("auto_remember", params={
+        "content": content, "context": context, "tags": tags,
+    })
+
+
 def flush_queue():
     """Flush the capture queue to ChromaDB observations."""
     return request("flush_queue")
