@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 """Telegram Memory Plugin — Core Telethon Wrapper
 
-All other scripts import from this module. Provides three public functions:
+Public functions:
 - post_session(text) -> int  — sends HTML to Saved Messages, returns msg ID
 - search(query, limit) -> list[dict]  — searches Saved Messages
 - get_history(limit) -> list[dict]  — fetches recent messages
+- send_to_oz(text) -> int  — sends message to OZ (@***REDACTED***)
+- read_from_oz(limit) -> list[dict]  — reads chat with OZ
 
 Uses sync Telethon client with per-call open/close pattern (safe for subprocess).
 """
 
 import json
 import os
+from contextlib import contextmanager
 
 _PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_PATH = os.path.join(_PLUGIN_DIR, "config.json")
+
+OZ_USERNAME = "@***REDACTED***"
+OZ_USER_ID = ***TG_USER_ID***
 
 
 class TelegramError(Exception):
@@ -32,7 +38,6 @@ def _load_config():
     if not cfg.get("api_id") or not cfg.get("api_hash"):
         raise TelegramError("api_id and api_hash must be set in config.json")
 
-    # Expand ~ in session_path
     cfg["session_path"] = os.path.expanduser(cfg.get(
         "session_path",
         os.path.join(_PLUGIN_DIR, "session", "telegram")
@@ -41,16 +46,12 @@ def _load_config():
 
 
 def _get_client(cfg):
-    """Create a TelegramClient instance from config.
-
-    Usage: `with _get_client(cfg) as client: ...`
-    """
+    """Create a TelegramClient instance from config."""
     try:
         from telethon.sync import TelegramClient
     except ImportError:
         raise TelegramError("Telethon not installed. Run: pip install telethon")
 
-    # Ensure session directory exists
     session_dir = os.path.dirname(cfg["session_path"])
     os.makedirs(session_dir, exist_ok=True)
 
@@ -61,31 +62,30 @@ def _get_client(cfg):
     )
 
 
+@contextmanager
+def _connected_client():
+    """Context manager: yields an authenticated Telethon client."""
+    cfg = _load_config()
+    client = _get_client(cfg)
+    client.connect()
+    if not client.is_user_authorized():
+        client.disconnect()
+        raise TelegramError("Not authenticated. Run setup.py first.")
+    try:
+        yield client
+    finally:
+        client.disconnect()
+
+
 def post_session(text: str) -> int:
-    """Send HTML text to Telegram Saved Messages.
-
-    Args:
-        text: HTML-formatted message (max 4096 chars, will be truncated)
-
-    Returns:
-        Message ID of the sent message.
-
-    Raises:
-        TelegramError on any failure.
-    """
+    """Send HTML text to Telegram Saved Messages. Returns msg ID."""
     if not text or not text.strip():
         raise TelegramError("Empty message text")
-
-    # Telegram message limit
     if len(text) > 4096:
         text = text[:4090] + "\n..."
 
-    cfg = _load_config()
     try:
-        with _get_client(cfg) as client:
-            client.connect()
-            if not client.is_user_authorized():
-                raise TelegramError("Not authenticated. Run setup.py first.")
+        with _connected_client() as client:
             msg = client.send_message("me", text, parse_mode="html")
             return msg.id
     except TelegramError:
@@ -95,37 +95,17 @@ def post_session(text: str) -> int:
 
 
 def search(query: str, limit: int = 10) -> list:
-    """Search Telegram Saved Messages.
-
-    Args:
-        query: Search text
-        limit: Max results to return (default 10)
-
-    Returns:
-        List of dicts: [{id, text, date}, ...]
-
-    Raises:
-        TelegramError on any failure.
-    """
+    """Search Telegram Saved Messages. Returns [{id, text, date}, ...]."""
     if not query or not query.strip():
         return []
 
-    cfg = _load_config()
     try:
-        with _get_client(cfg) as client:
-            client.connect()
-            if not client.is_user_authorized():
-                raise TelegramError("Not authenticated. Run setup.py first.")
+        with _connected_client() as client:
             messages = client.get_messages("me", search=query, limit=limit)
-            results = []
-            for msg in messages:
-                if msg.text:
-                    results.append({
-                        "id": msg.id,
-                        "text": msg.text,
-                        "date": msg.date.isoformat() if msg.date else None,
-                    })
-            return results
+            return [
+                {"id": m.id, "text": m.text, "date": m.date.isoformat() if m.date else None}
+                for m in messages if m.text
+            ]
     except TelegramError:
         raise
     except Exception as e:
@@ -133,34 +113,52 @@ def search(query: str, limit: int = 10) -> list:
 
 
 def get_history(limit: int = 50) -> list:
-    """Fetch recent messages from Telegram Saved Messages.
-
-    Args:
-        limit: Number of messages to fetch (default 50)
-
-    Returns:
-        List of dicts: [{id, text, date}, ...]
-
-    Raises:
-        TelegramError on any failure.
-    """
-    cfg = _load_config()
+    """Fetch recent messages from Saved Messages. Returns [{id, text, date}, ...]."""
     try:
-        with _get_client(cfg) as client:
-            client.connect()
-            if not client.is_user_authorized():
-                raise TelegramError("Not authenticated. Run setup.py first.")
+        with _connected_client() as client:
             messages = client.get_messages("me", limit=limit)
-            results = []
-            for msg in messages:
-                if msg.text:
-                    results.append({
-                        "id": msg.id,
-                        "text": msg.text,
-                        "date": msg.date.isoformat() if msg.date else None,
-                    })
-            return results
+            return [
+                {"id": m.id, "text": m.text, "date": m.date.isoformat() if m.date else None}
+                for m in messages if m.text
+            ]
     except TelegramError:
         raise
     except Exception as e:
         raise TelegramError(f"get_history failed: {e}")
+
+
+def send_to_oz(text: str) -> int:
+    """Send a message to OZ (@***REDACTED***). Returns msg ID."""
+    if not text or not text.strip():
+        raise TelegramError("Empty message text")
+    if len(text) > 4096:
+        text = text[:4090] + "\n..."
+
+    try:
+        with _connected_client() as client:
+            msg = client.send_message(OZ_USERNAME, text)
+            return msg.id
+    except TelegramError:
+        raise
+    except Exception as e:
+        raise TelegramError(f"send_to_oz failed: {e}")
+
+
+def read_from_oz(limit: int = 10) -> list:
+    """Read recent messages from chat with OZ. Returns [{sender, text, date, id}, ...]."""
+    try:
+        with _connected_client() as client:
+            messages = client.get_messages(OZ_USERNAME, limit=limit)
+            return [
+                {
+                    "id": m.id,
+                    "sender": "Claude" if m.out else "OZ",
+                    "text": m.text,
+                    "date": m.date.isoformat() if m.date else None,
+                }
+                for m in messages if m.text
+            ]
+    except TelegramError:
+        raise
+    except Exception as e:
+        raise TelegramError(f"read_from_oz failed: {e}")

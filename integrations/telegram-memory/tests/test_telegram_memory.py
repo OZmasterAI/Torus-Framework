@@ -190,10 +190,21 @@ class TestConfigValidation(unittest.TestCase):
     """Test config.json loading and validation."""
 
     def test_empty_api_id_raises(self):
-        from telegram_memory import TelegramError, _load_config
-        # Default config has api_id=0, should raise
-        with self.assertRaises(TelegramError):
-            _load_config()
+        from telegram_memory import TelegramError
+        import telegram_memory
+        import tempfile
+        # Create a temp config with api_id=0
+        tmpf = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        tmpf.write('{"api_id": 0, "api_hash": "", "phone": ""}')
+        tmpf.close()
+        original = telegram_memory._CONFIG_PATH
+        telegram_memory._CONFIG_PATH = tmpf.name
+        try:
+            with self.assertRaises(TelegramError):
+                telegram_memory._load_config()
+        finally:
+            telegram_memory._CONFIG_PATH = original
+            os.unlink(tmpf.name)
 
     def test_missing_config_raises(self):
         from telegram_memory import TelegramError
