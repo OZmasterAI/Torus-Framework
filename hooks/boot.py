@@ -472,6 +472,11 @@ def _rotate_audit_logs():
 
 
 def main():
+    # Bot subprocess sessions are lightweight — skip heavy boot
+    if os.environ.get("TORUS_BOT_SESSION") == "1":
+        print("[BOOT] Bot session — skipping full boot", file=sys.stderr)
+        sys.exit(0)
+
     now = datetime.now()
     hour = now.hour
     day = now.strftime("%A")

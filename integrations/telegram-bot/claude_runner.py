@@ -37,7 +37,9 @@ async def run_claude(message, session_id=None, cwd=None, timeout=120):
         cmd += ["--resume", session_id]
 
     # Strip CLAUDECODE env var to avoid nested-session block
+    # Set TORUS_BOT_SESSION so hooks skip heavy session lifecycle ops
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    env["TORUS_BOT_SESSION"] = "1"
 
     try:
         proc = await asyncio.create_subprocess_exec(

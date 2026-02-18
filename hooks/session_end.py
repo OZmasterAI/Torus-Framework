@@ -373,6 +373,11 @@ def increment_session_count(metrics=None):
 
 def main():
     try:
+        # Bot subprocess sessions are lightweight — skip heavy lifecycle ops
+        if os.environ.get("TORUS_BOT_SESSION") == "1":
+            print("[SESSION_END] Bot session — skipping lifecycle ops", file=sys.stderr)
+            sys.exit(0)
+
         # Read stdin (session data, may include session_id)
         try:
             _session_data = json.loads(sys.stdin.read())
