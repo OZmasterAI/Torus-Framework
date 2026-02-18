@@ -9,7 +9,6 @@
 - E2E tested: 3.5s response time via tmux (vs ~9s subprocess cold start)
 
 ## What's Next
-- Install Telethon in venv instead of --break-system-packages
 - Build cheap polling queue for between-session messages
 - Monitor auto-remember queue — check if entries are useful
 - Run deduplicate_sweep(dry_run=True) to audit corpus (600 memories)
@@ -23,7 +22,6 @@
 - ChromaDB concurrent access — tests skip when MCP running, correct behavior
 - Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy
 - Observations at 5,635 (over 5K cap) — will auto-compact on next ingest
-- Telethon installed with --break-system-packages (should use venv)
 - tmux routing: shared session mode (tmux_target=claude) causes interference — use dedicated claude-bot session
 
 ## Service Status
@@ -32,7 +30,20 @@
 - Framework version: v2.4.5 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 15 active gates
 - Ramdisk: active at /run/user/1000/claude-hooks
-- Telegram: LIVE (Claude = "Hans" ***PHONE_REMOVED***, OZ = @***REDACTED***)
+- Telegram: LIVE (OZ = @***REDACTED***)
 - TG bot tmux: ON (tmux_target=claude-bot, 3.5s response time)
 - GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI)
 - XRDP: WORKING (XFCE4, DBUS fix applied)
+
+## Session Metrics (auto-generated)
+- **Duration**: 20m
+- **Tool Calls**: 46 (Bash: 31, Edit: 5, Read: 3, mcp__memory__remember_this: 3, Write: 2, mcp__memory__search_knowledge: 1)
+- **Files Modified**: 3 (0 verified, 0 pending)
+- **Errors**: 0
+- **Tests**: none this session
+- **Subagents**: 11 launched, 0 tokens
+
+**Files changed:**
+- `/home/crab/.claude/hooks/session_end.py`
+- `/home/crab/.claude/HANDOFF.md`
+- `/home/crab/.claude/LIVE_STATE.json`

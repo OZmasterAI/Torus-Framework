@@ -1,5 +1,5 @@
 {
-  "session_count": 140,
+  "session_count": 141,
   "status": "idle",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -23,7 +23,6 @@
     "5th boot toggle: TG bot tmux ON/OFF"
   ],
   "next_steps": [
-    "Install Telethon in venv instead of --break-system-packages",
     "Build cheap polling queue for between-session messages",
     "Monitor auto-remember queue",
     "Run deduplicate_sweep(dry_run=True) to audit corpus (600 memories)",
@@ -39,7 +38,6 @@
     "ChromaDB concurrent access \u2014 tests skip when MCP running, correct behavior",
     "Export test_framework.py uses _FRAMEWORK_ROOT \u2014 merge changes, don't copy",
     "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
-    "Telethon installed with --break-system-packages (should use venv)",
     "tmux routing shared session causes interference \u2014 use dedicated claude-bot"
   ],
   "terminal_l2_always": true,
@@ -48,10 +46,10 @@
   "tg_enrichment": false,
   "tg_bot_tmux": true,
   "last_session_metrics": {
-    "reads": 14,
-    "edits": 9,
+    "reads": 3,
+    "edits": 3,
     "errors": 0,
-    "verified": 6,
-    "pending": 3
+    "verified": 0,
+    "pending": 0
   }
 }

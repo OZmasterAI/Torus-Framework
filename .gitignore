@@ -28,10 +28,6 @@ projects/
 backups/
 archive/
 
-# Telegram memory plugin
-integrations/telegram-memory/session/
-integrations/telegram-memory/index.db
-
 # Telegram bot plugin
 integrations/telegram-bot/msg_log.db
 integrations/telegram-bot/sessions.json
