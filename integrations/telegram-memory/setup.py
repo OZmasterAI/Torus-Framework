@@ -70,34 +70,48 @@ def main():
     os.makedirs(session_dir, exist_ok=True)
 
     print("Connecting to Telegram...")
-    print("(You may receive an SMS code or Telegram notification)\n")
+    print("(You will receive an SMS code or Telegram notification)\n")
 
     try:
-        with TelegramClient(session_path, api_id, api_hash) as client:
-            client.start(
-                phone=lambda: phone,
-                code_callback=lambda: input("Enter the code you received: "),
-                password=lambda: input("Enter 2FA password (if enabled): "),
-            )
+        client = TelegramClient(session_path, api_id, api_hash)
+        client.connect()
 
-            # Verify connection
-            me = client.get_me()
-            print(f"Authenticated as: {me.first_name} (@{me.username or 'no username'})")
-            print()
+        if not client.is_user_authorized():
+            # Request code
+            print(f"Sending login code to {phone}...")
+            client.send_code_request(phone)
+            code = input("\nEnter the code you received: ").strip()
 
-            # Send test message
-            test_msg = (
-                "<b>Telegram Memory Plugin connected.</b>\n\n"
-                "This account is now linked to the Torus Framework.\n"
-                "Session summaries will appear here as searchable messages.\n\n"
-                "#torus #setup"
-            )
-            msg = client.send_message("me", test_msg, parse_mode="html")
-            print(f"Test message sent (ID: {msg.id})")
-            print(f"Check your Telegram Saved Messages to confirm.\n")
-            print(f"Session file: {session_path}.session")
-            print("WARNING: Keep the session file secure — it grants account access.")
-            print("\nSetup complete!")
+            try:
+                client.sign_in(phone, code)
+            except Exception as e:
+                # Might need 2FA password
+                if "Two-steps verification" in str(e) or "password" in str(e).lower():
+                    password = input("Enter your 2FA password: ").strip()
+                    client.sign_in(password=password)
+                else:
+                    raise
+
+        # Verify connection
+        me = client.get_me()
+        print(f"\nAuthenticated as: {me.first_name} (@{me.username or 'no username'})")
+        print()
+
+        # Send test message
+        test_msg = (
+            "<b>Telegram Memory Plugin connected.</b>\n\n"
+            "This account is now linked to the Torus Framework.\n"
+            "Session summaries will appear here as searchable messages.\n\n"
+            "#torus #setup"
+        )
+        msg = client.send_message("me", test_msg, parse_mode="html")
+        print(f"Test message sent (ID: {msg.id})")
+        print(f"Check your Telegram Saved Messages to confirm.\n")
+        print(f"Session file: {session_path}.session")
+        print("WARNING: Keep the session file secure — it grants account access.")
+        print("\nSetup complete!")
+
+        client.disconnect()
 
     except Exception as e:
         print(f"\nERROR: {e}")
