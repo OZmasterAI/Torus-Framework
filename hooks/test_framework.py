@@ -10225,13 +10225,13 @@ _TG_HOOKS_DIR = os.path.join(_TG_CLAUDE_DIR, "hooks")
 
 # Test: session_end.py still works when telegram plugin dir doesn't exist
 try:
-    _tg_dir = os.path.join(_TG_CLAUDE_DIR, "integrations", "telegram-memory")
+    _tg_dir = os.path.join(_TG_CLAUDE_DIR, "integrations", "telegram-bot")
     _tg_hook = os.path.join(_tg_dir, "hooks", "on_session_end.py")
     _tg_exists = os.path.isfile(_tg_hook)
     import ast as _tg_ast
     _tg_ast.parse(open(os.path.join(_TG_HOOKS_DIR, "session_end.py")).read())
     _se_content = open(os.path.join(_TG_HOOKS_DIR, "session_end.py")).read()
-    assert "telegram-memory" in _se_content, "session_end.py missing telegram integration"
+    assert "telegram-bot" in _se_content, "session_end.py missing telegram integration"
     assert "subprocess.run" in _se_content, "session_end.py missing subprocess.run"
     PASS += 1
     RESULTS.append(f"  PASS: session_end.py has telegram integration (plugin {'present' if _tg_exists else 'absent'})")
@@ -10258,7 +10258,7 @@ except Exception as _tg_e:
 
 # Test: on_session_start.py outputs valid JSON
 try:
-    _tg_start_hook = os.path.join(_TG_CLAUDE_DIR, "integrations", "telegram-memory", "hooks", "on_session_start.py")
+    _tg_start_hook = os.path.join(_TG_CLAUDE_DIR, "integrations", "telegram-bot", "hooks", "on_session_start.py")
     if os.path.isfile(_tg_start_hook):
         _tg_r = subprocess.run(
             [sys.executable, _tg_start_hook, "test"],

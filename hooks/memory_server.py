@@ -1523,7 +1523,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     if formatted and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked")):
         try:
             _tg_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
-                                      "telegram-memory", "search.py")
+                                      "telegram-bot", "search.py")
             if os.path.isfile(_tg_search):
                 _tg_result = subprocess.run(
                     [_sys.executable, _tg_search, query, "--json", "--limit", "5"],

@@ -398,9 +398,9 @@ def main():
         flush_capture_queue()
         backup_database()
 
-        # Telegram Memory Plugin: post session summary to Saved Messages
+        # Telegram Bot: post session summary to FTS5 + notify OZ
         try:
-            _tg_hook = os.path.join(CLAUDE_DIR, "integrations", "telegram-memory", "hooks", "on_session_end.py")
+            _tg_hook = os.path.join(CLAUDE_DIR, "integrations", "telegram-bot", "hooks", "on_session_end.py")
             if os.path.isfile(_tg_hook):
                 subprocess.run([sys.executable, _tg_hook], timeout=15, capture_output=False, stdin=subprocess.DEVNULL)
         except Exception:

@@ -546,7 +546,7 @@ def main():
     # Telegram L2 memory: search Saved Messages for relevant context
     tg_memories = []
     try:
-        _tg_hook = os.path.join(CLAUDE_DIR, "integrations", "telegram-memory", "hooks", "on_session_start.py")
+        _tg_hook = os.path.join(CLAUDE_DIR, "integrations", "telegram-bot", "hooks", "on_session_start.py")
         if os.path.isfile(_tg_hook):
             _tg_query = f"{project_name} {live_state.get('feature', '')}"
             _tg_result = subprocess.run(
