@@ -20,6 +20,8 @@ _CONFIG_PATH = os.path.join(_PLUGIN_DIR, "config.json")
 
 OZ_USERNAME = "@***REDACTED***"
 OZ_USER_ID = ***TG_USER_ID***
+_OUTBOX_FILE = os.path.join(_PLUGIN_DIR, ".outbox.jsonl")
+_PID_FILE = os.path.join(_PLUGIN_DIR, ".watcher.pid")
 
 
 class TelegramError(Exception):
@@ -127,12 +129,36 @@ def get_history(limit: int = 50) -> list:
         raise TelegramError(f"get_history failed: {e}")
 
 
+def _watcher_is_running():
+    """Check if the watcher process is alive (by PID file)."""
+    try:
+        with open(_PID_FILE) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)  # signal 0 = check if process exists
+        return True
+    except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
+        return False
+
+
+def _queue_outbox(text: str):
+    """Write a message to .outbox.jsonl for the watcher to send."""
+    import json as _json
+    entry = {"text": text}
+    with open(_OUTBOX_FILE, "a") as f:
+        f.write(_json.dumps(entry) + "\n")
+
+
 def send_to_oz(text: str) -> int:
-    """Send a message to OZ (@***REDACTED***). Returns msg ID."""
+    """Send a message to OZ (@***REDACTED***). Returns msg ID or 0 if queued via outbox."""
     if not text or not text.strip():
         raise TelegramError("Empty message text")
     if len(text) > 4096:
         text = text[:4090] + "\n..."
+
+    # If watcher is running, route through outbox to avoid session lock
+    if _watcher_is_running():
+        _queue_outbox(text)
+        return 0  # queued, no msg ID available
 
     try:
         with _connected_client() as client:
