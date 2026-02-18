@@ -23,12 +23,13 @@ Implemented the full memory ingestion levers plan from sessions 122-123. Three l
 
 **Analysis:** Provided before/after comparison across token cost, speed, consistency, learning, quality, memory, and reliability. Also analyzed Gate 6 blocking impact — decided to leave as-is (advisory + escalation at 5).
 
+**GitHub sync:** Synced all 5 files to export repo, pushed to GitHub (`14733dd`).
+
 ## What's Next
 - Monitor auto-remember queue in practice — check if entries are useful when retrieved
 - Monitor dedup thresholds — tune if auto-captured memories create too much noise
 - Run `deduplicate_sweep(dry_run=True)` to audit existing corpus for duplicates
 - Apply Haiku→Sonnet change to agents/researcher.md (decided session 111, deferred)
-- Sync Megaman→Torus rename to GitHub export
 - Add `python3 test_framework.py` to tracker's recognized test keywords
 - Dormant: agent team context tool (`get_teammate_context()`)
 - Dormant: privacy tags (`<private>` edge stripping)
@@ -41,10 +42,10 @@ Implemented the full memory ingestion levers plan from sessions 122-123. Three l
 - Gate 3 doesn't recognize `python3 test_framework.py` as test run (tracker keyword mismatch)
 
 ## Service Status
-- Memory MCP: RUNNING (509 memories, 6 collections incl. quarantine)
+- Memory MCP: RUNNING (511 memories, 6 collections incl. quarantine)
 - Tests: 1081 passed, 0 failed
 - Framework version: v2.4.5 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 15 active gates (Gate 8 dormant), tool-scoped dispatch
 - Ramdisk: active at /run/user/1000/claude-hooks
-- GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI, 6 commits)
+- GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI, 7 commits, up to date)
 - XRDP: WORKING (XFCE4, DBUS fix applied)
