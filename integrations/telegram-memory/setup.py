@@ -74,7 +74,11 @@ def main():
 
     try:
         with TelegramClient(session_path, api_id, api_hash) as client:
-            client.start(phone=phone)
+            client.start(
+                phone=lambda: phone,
+                code_callback=lambda: input("Enter the code you received: "),
+                password=lambda: input("Enter 2FA password (if enabled): "),
+            )
 
             # Verify connection
             me = client.get_me()
