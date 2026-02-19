@@ -80,12 +80,12 @@ Audit logs, state files, and the capture queue are written to a systemd tmpfs (`
 │   ├── boot.py             # SessionStart boot sequence (779 lines)
 │   ├── session_end.py      # SessionEnd handler + auto wrap-up (531 lines)
 │   ├── memory_server.py    # ChromaDB MCP server + UDS gateway (3,942 lines)
-│   ├── statusline.py       # Status line renderer (847 lines)
+│   ├── statusline.py       # Live telemetry renderer (847 lines)
 │   ├── auto_commit.py      # Stage-on-edit + batch-commit-on-prompt (99 lines)
 │   ├── auto_approve.py     # PermissionRequest deny-before-allow (136 lines)
 │   ├── user_prompt_capture.py  # Correction/feature signal detection (160 lines)
 │   ├── subagent_context.py # SubagentStart context injection (316 lines)
-│   ├── pre_compact.py      # PreCompact state snapshot (232 lines)
+│   ├── pre_compact.py      # PreCompact enriched state snapshot (232 lines)
 │   ├── event_logger.py     # SubagentStop/Notification/etc. logging (298 lines)
 │   ├── test_framework.py   # Full test suite — 1,086 tests (10,302 lines)
 │   ├── setup_ramdisk.sh    # Mount tmpfs at /run/user/{uid}/claude-hooks
@@ -302,7 +302,8 @@ memory_server.py (MCP server process)
       ├─ knowledge collection    (curated, 619 entries)
       ├─ observations collection (auto-captured, 5,635 entries)
       ├─ fix_outcomes collection (causal chain records)
-      └─ quarantine collection   (deduplication targets)
+      ├─ quarantine collection   (deduplication targets)
+      └─ web_pages collection    (/web skill index)
       │
       │ UDS socket (.chromadb.sock)
       ▼
@@ -319,7 +320,7 @@ chroma.sqlite3 (ChromaDB persistent store)
 | Tool | Purpose |
 |------|---------|
 | `search_knowledge(query, top_k, mode, recency_weight, match_all)` | Semantic/keyword/hybrid/tag search. Auto-detects mode. |
-| `remember_this(content, context, tags, force)` | Save memory. FNV-1a dedup. Caps metadata at 500 chars. |
+| `remember_this(content, context, tags, force)` | Save memory. 3-way write: ChromaDB knowledge + FTS5 dual-write (atomic sync) + fix_outcomes bridge (auto-triggered on `type:fix` tag). FNV-1a dedup — on collision, updates tags rather than rejecting. |
 | `get_memory(id)` | Fetch full memory by ID. Supports comma-separated batch. |
 | `deduplicate_sweep(dry_run, threshold)` | Find and quarantine near-duplicate memories by cosine distance. |
 | `record_attempt(error_text, strategy_id)` | Causal chain: log a fix attempt → returns `chain_id`. |
@@ -560,11 +561,11 @@ Socket protocol: JSON lines. Supported operations: `query`, `count`, `remember`,
 | `UserPromptSubmit` | 3,000ms | `user_prompt_capture.py` + `auto_commit.py commit` |
 | `PermissionRequest` | 3,000ms | `auto_approve.py` |
 | `SubagentStart` | 3,000ms | `subagent_context.py` |
-| `PreCompact` | 3,000ms | `pre_compact.py` |
+| `PreCompact` | 3,000ms | `pre_compact.py` — snapshots full gate state before context compression: tool_call_count, files_read, pending/verified counts, elapsed time, error_pattern_counts, pending_chain_ids, active_bans, gate6_warn_count, error_windows, tool_stats, edit_streak → written to `.capture_queue.jsonl` so gate context survives compaction |
 | `SubagentStop` | 3,000ms | `event_logger.py --event SubagentStop` |
 | `PostToolUseFailure` | 3,000ms | `event_logger.py --event PostToolUseFailure` |
 | `Notification` | 3,000ms | `event_logger.py --event Notification` |
-| `statusLine` | — | `statusline.py` |
+| `statusLine` | — | `statusline.py` — live telemetry: gate count, memory count (stats-cache.json TTL), git branch (/tmp 10s cache), tool call rate, context window %, cost, session age/number, error pressure + velocity, verification ratio, plan mode warns, subagent token counts (active + cumulative), active mode, most used tool, ramdisk health, model color-coded (dark orange = Opus) |
 
 Additional settings: `model: sonnet`, `effortLevel: medium`, `skipDangerousModePermissionPrompt: true`.
 
