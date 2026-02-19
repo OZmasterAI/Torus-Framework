@@ -32,13 +32,13 @@ Gates checked by enforcer.py. Blocking = exit 2. Advisory = warn only.
 - Gate 4: MEMORY FIRST — Must query memory before editing
 - Gate 5: PROOF BEFORE FIXED — Verify changes before making more
 - Gate 7: CRITICAL FILE GUARD — Extra checks for high-risk files
-- Gate 8: TEMPORAL AWARENESS — Extra caution during late-night hours
 - Gate 9: STRATEGY BAN — Blocks proven-ineffective fix strategies
 - Gate 10: MODEL COST GUARD — Blocks expensive model usage without justification
 - Gate 11: RATE LIMIT — Blocks runaway tool call loops (rolling window)
 - Gate 13: WORKSPACE ISOLATION — Prevents concurrent file edits across agents
 - Gate 14: CONFIDENCE CHECK — Progressive readiness enforcement (3-strike escalation)
 - Gate 15: CAUSAL CHAIN — Blocks edits after test failure until query_fix_history called
+- Gate 16: CODE QUALITY — Blocks repeated bad patterns (debug prints, hardcoded secrets, broad excepts) after 3 warnings per file
 
 **Advisory gates** (warn only, never block):
 - Gate 6: SAVE VERIFIED FIX — Warns when verified fixes not saved to memory
