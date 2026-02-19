@@ -1,25 +1,48 @@
 {
-  "session_count": 144,
+  "session_count": 145,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "",
-  "feature_status": "in-progress",
+  "feature": "audit-sweep-144",
+  "feature_status": "complete",
   "test_count": 1086,
   "test_failures": 0,
-  "files_modified": [],
-  "improvements_shipped": [],
+  "files_modified": [
+    "agents/researcher.md",
+    "hooks/session_end.py",
+    "CLAUDE.md",
+    "hooks/enforcer.py",
+    "settings.json",
+    "hooks/shared/state.py",
+    "plugins/blocklist.json",
+    "agents/stress-tester.md",
+    "rules/hooks.md",
+    "hooks/test_framework.py"
+  ],
+  "improvements_shipped": [
+    "researcher model haiku→sonnet",
+    "session_end model string fixed",
+    "session_end CAPTURE_QUEUE ramdisk fix",
+    "Gate 16 documented in CLAUDE.md",
+    "TaskOutput removed from ALWAYS_ALLOWED_TOOLS",
+    "settings.json timeouts ms→seconds",
+    "GATE_DEPENDENCIES gates 10+14 fixed",
+    "state.py 47 fields fully documented",
+    "blocklist.json test entry removed",
+    "stress-tester causal tools added",
+    "Gate 13 exemption documented"
+  ],
   "next_steps": [],
   "dormant_agent_teams": [
-    "Activate get_teammate_context() \u2014 @mcp.tool() + @crash_proof",
-    "Privacy tags \u2014 <private> edge stripping in tracker.py/observation.py"
+    "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
+    "Privacy tags — <private> edge stripping in tracker.py/observation.py"
   ],
   "known_issues": [
-    "Plan mode exit loop \u2014 platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access \u2014 tests skip when MCP running, correct behavior",
-    "Export test_framework.py uses _FRAMEWORK_ROOT \u2014 merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
-    "tmux routing shared session causes interference \u2014 use dedicated claude-bot"
+    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
+    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
+    "tmux routing shared session causes interference — use dedicated claude-bot"
   ],
   "terminal_l2_always": true,
   "context_enrichment": false,
@@ -27,10 +50,10 @@
   "tg_enrichment": false,
   "tg_bot_tmux": true,
   "last_session_metrics": {
-    "reads": 0,
-    "edits": 0,
+    "reads": 12,
+    "edits": 12,
     "errors": 0,
-    "verified": 0,
+    "verified": 12,
     "pending": 0
   }
 }
