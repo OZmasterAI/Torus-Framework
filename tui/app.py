@@ -385,4 +385,8 @@ class TorusApp(App):
 
 
 if __name__ == "__main__":
+    if os.environ.get("CLAUDECODE"):
+        print("ERROR: Do not run app.py from Claude's Bash tool — it will kill the session.")
+        print("Use: bash ~/.claude/tui/launch.sh")
+        sys.exit(1)
     TorusApp().run()
