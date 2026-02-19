@@ -5,12 +5,11 @@
 - **tg_mirror_messages toggle + Stop hook** — Mirrors ALL Claude responses to Telegram in real-time via `tg_mirror.py` Stop hook. Reads new assistant turns from transcript JSONL, sends via Bot API. Cursor tracking prevents re-sending
 - **Mirror first-run fix** — Fixed bug where enabling Mirror replayed entire transcript history. Now skips to end on first activation
 - **Toggle reorder** — Budget moved below Mirror per user preference. New order: L2, Enrich, TG, TGe, Bot, Tune, Chain, Notify, Mirror, Budget, TokBgt
-- **Safety guard explanation** — Documented app.py risk (Textual hijacks stdin when run from Claude Bash tool). Mechanical guard still needed
+- **Safety guard for app.py** — Added CLAUDECODE env var check at `__main__`, exits with error instead of launching Textual from Claude's Bash tool
 - Tests: 1116 passed, 0 failed
 
 ## What's Next
 - Merge self-evolve-test-branch to main (many commits ahead)
-- Add safety guard to app.py (refuse to run inside Claude Bash tool)
 - Enable gate_auto_tune — effectiveness data now accumulating
 - Enable budget_degradation + set session_token_budget (4-tier ready)
 
