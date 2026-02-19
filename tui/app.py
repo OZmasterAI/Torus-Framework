@@ -2,7 +2,7 @@
 """Torus Framework TUI Dashboard.
 
 Live monitoring and toggle control for the Torus self-healing framework.
-Designed to run as a left tmux pane alongside Claude Code.
+Sidebar layout: toggles + memory on left, tabbed content on right.
 
 Launch: python3 ~/.claude/tui/app.py
   or:   bash ~/.claude/tui/launch.sh  (splits tmux left pane)
@@ -18,12 +18,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
-from textual.widgets import Footer, TabbedContent, TabPane
+from textual.containers import Horizontal, Vertical
+from textual.widgets import Header, Footer, TabbedContent, TabPane, Static, Label, Switch
+from textual import on
 
 from data import DataLayer, TOGGLES
 from widgets.header_bar import HeaderBar
-from widgets.toggles import TogglePanel, ToggleRow, BudgetRow
+from widgets.toggles import BudgetRow
 from widgets.gates import GateTable
 from widgets.audit_feed import AuditFeed
 from widgets.memory import MemoryPanel
@@ -62,26 +63,41 @@ class TorusApp(App):
         self.paused = False
 
     def compose(self) -> ComposeResult:
-        yield HeaderBar()
-        with Vertical():
-            yield TogglePanel(TOGGLES, self.data.live_state(), id="toggle-panel")
-            with TabbedContent(id="tab-content"):
-                with TabPane("Gates", id="gates"):
-                    yield GateTable()
-                with TabPane("Audit", id="audit"):
-                    yield AuditFeed()
-                with TabPane("Memory", id="memory"):
-                    yield MemoryPanel()
-                with TabPane("Session", id="session"):
-                    yield SessionPanel()
-                with TabPane("Errors", id="errors"):
-                    yield ErrorPanel()
-                with TabPane("Skills", id="skills"):
-                    yield SkillPanel()
-                with TabPane("Tests", id="tests"):
-                    yield TestPanel()
-                with TabPane("Trend", id="trend"):
-                    yield ActivityPanel()
+        yield Header(show_clock=True)
+        yield HeaderBar(id="torus-header")
+        with Horizontal():
+            # Sidebar: toggles + memory
+            with Vertical(id="sidebar"):
+                yield Label("[ TOGGLES ]")
+                live = self.data.live_state()
+                for label, key, default, desc in TOGGLES:
+                    val = live.get(key, default)
+                    short = label
+                    with Horizontal(classes="toggle-row"):
+                        yield Label(short, classes="toggle-label")
+                        yield Switch(value=val, id=f"sw_{key}")
+                yield BudgetRow(live.get("session_token_budget", 0))
+                yield MemoryPanel()
+            # Main: tabbed content
+            with Vertical(id="main"):
+                with TabbedContent("Gates", "Audit", "Memory", "Session",
+                                   "Errors", "Skills", "Tests", "Trend"):
+                    with TabPane("Gates", id="gates"):
+                        yield GateTable()
+                    with TabPane("Audit", id="audit"):
+                        yield AuditFeed()
+                    with TabPane("Memory", id="memory"):
+                        yield SessionPanel()  # memory details in sidebar; session here
+                    with TabPane("Session", id="session"):
+                        yield SessionPanel()
+                    with TabPane("Errors", id="errors"):
+                        yield ErrorPanel()
+                    with TabPane("Skills", id="skills"):
+                        yield SkillPanel()
+                    with TabPane("Tests", id="tests"):
+                        yield TestPanel()
+                    with TabPane("Trend", id="trend"):
+                        yield ActivityPanel()
         yield Footer()
 
     def on_mount(self):
@@ -98,70 +114,96 @@ class TorusApp(App):
         state = self.data.session_state()
         audit = self.data.audit_tail()
 
+        # Header banner
         try:
             self.query_one(HeaderBar).update_data(live, mem)
         except Exception:
             pass
 
-        try:
-            self.query_one(TogglePanel).refresh_data(live)
-        except Exception:
-            pass
+        # Sidebar toggles — sync switch states
+        for _label, key, default, _desc in TOGGLES:
+            val = live.get(key, default)
+            try:
+                sw = self.query_one(f"#sw_{key}", Switch)
+                if sw.value != val:
+                    sw.value = val
+            except Exception:
+                pass
 
+        # Gates table
         try:
             self.query_one(GateTable).refresh_data(eff)
         except Exception:
             pass
 
+        # Audit feed
         try:
             self.query_one(AuditFeed).refresh_data(audit)
         except Exception:
             pass
 
+        # Sidebar memory
         try:
             self.query_one(MemoryPanel).refresh_data(mem, live)
         except Exception:
             pass
 
+        # Session panels
         try:
-            self.query_one(SessionPanel).refresh_data(state)
+            for panel in self.query(SessionPanel):
+                panel.refresh_data(state)
         except Exception:
             pass
 
+        # Errors
         try:
             self.query_one(ErrorPanel).refresh_data(state)
         except Exception:
             pass
 
+        # Skills
         try:
             self.query_one(SkillPanel).refresh_data(state)
         except Exception:
             pass
 
+        # Tests
         try:
             self.query_one(TestPanel).refresh_data(state, live)
         except Exception:
             pass
 
+        # Activity sparkline
         try:
             buckets = self.data.activity_buckets()
             self.query_one(ActivityPanel).refresh_data(buckets)
         except Exception:
             pass
 
-    def on_toggle_row_changed(self, event: ToggleRow.Changed):
-        self.data.set_toggle(event.key, event.value)
+    # --- Toggle handling ---
+
+    @on(Switch.Changed)
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        switch_id = event.switch.id or ""
+        if switch_id.startswith("sw_"):
+            key = switch_id[3:]
+            self.data.set_toggle(key, event.value)
+            state = "ON" if event.value else "OFF"
+            self.notify(f"{key} -> {state}", timeout=2)
 
     def on_budget_row_changed(self, event: BudgetRow.Changed):
         self.data.set_toggle("session_token_budget", event.value)
 
+    # --- Actions ---
+
     def action_refresh(self):
         self.data.invalidate()
         self._refresh_data()
+        self.notify("Refreshed", timeout=1)
 
     def action_focus_toggles(self):
         try:
-            self.query_one(TogglePanel).focus()
+            self.query_one("#sidebar").focus()
         except Exception:
             pass
 

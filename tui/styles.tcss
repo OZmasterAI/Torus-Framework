@@ -1,31 +1,62 @@
-/* Torus TUI Dashboard — Dark Theme */
+/* Torus TUI Dashboard — Dark Theme (sidebar layout) */
 
 Screen {
     background: $surface;
 }
 
-.panel-title {
+/* Accent banner below header */
+#torus-header {
+    background: $accent;
+    color: $text;
+    padding: 0 2;
+    text-align: center;
+    height: 3;
+}
+
+/* Sidebar: toggles + memory stats */
+#sidebar {
+    width: 32;
+    background: $panel;
+    border-right: solid $accent;
+    padding: 1;
+}
+
+#sidebar Label {
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+#sidebar .section-label {
+    color: $text-muted;
     text-style: bold;
-    color: $accent;
+    margin-top: 1;
+}
+
+/* Main content area */
+#main {
+    width: 1fr;
+}
+
+/* Toggle rows in sidebar */
+.toggle-row {
+    height: 3;
     padding: 0 1;
-    height: 1;
 }
 
-#toggle-panel {
+.toggle-label {
+    width: 1fr;
+    content-align: left middle;
+}
+
+/* Memory stats box in sidebar */
+MemoryPanel {
+    border: solid $accent;
+    margin: 1 0;
+    padding: 1;
     height: auto;
-    max-height: 14;
-    border: solid $primary;
 }
 
-#tab-content {
-    height: 1fr;
-    border: solid $primary;
-}
-
-Footer {
-    background: $primary-background;
-}
-
+/* Tab content */
 TabPane {
     padding: 0;
 }
@@ -42,28 +73,28 @@ Sparkline {
     height: 3;
 }
 
-ToggleRow {
+Footer {
+    background: $primary-background;
+}
+
+.panel-title {
+    text-style: bold;
+    color: $accent;
+    padding: 0 1;
     height: 1;
 }
 
-ToggleRow Label {
-    width: 1fr;
-    color: $text;
-}
-
-ToggleRow Switch {
-    height: 1;
-}
-
+/* Budget input in sidebar */
 BudgetRow {
-    height: 1;
+    height: 3;
+    padding: 0 1;
 }
 
 BudgetRow Label {
     width: 1fr;
+    content-align: left middle;
 }
 
 BudgetRow Input {
-    width: 12;
-    height: 1;
+    width: 10;
 }
