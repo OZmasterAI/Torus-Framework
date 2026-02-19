@@ -31,12 +31,12 @@ Torus is a **self-healing AI development environment** layered on top of Claude 
 
 The framework is not a separate application — it runs entirely through Claude Code's hook system. Hooks fire on events (PreToolUse, PostToolUse, SessionStart, etc.), enforce quality gates, track state, and feed a ChromaDB memory store. Claude Code itself never needs modification.
 
-**Key numbers (Session 143):**
-- 14 active gates (2 dormant/disabled)
-- 619 curated memories, 5,635 observations
+**Key numbers (Session 144):**
+- 15 active gates (1 dormant — Gate 8 only)
+- 633 curated memories, 5,635 observations
 - 1,086 tests passing, 0 failing
 - 22+ slash-command skills
-- 133 committed sessions over the project lifetime
+- 134 committed sessions over the project lifetime
 
 ---
 
@@ -131,7 +131,7 @@ Audit logs, state files, and the capture queue are written to a systemd tmpfs (`
 ├── agents/                 # Agent persona configs
 │   ├── builder.md          # Opus — full implementation
 │   ├── auditor.md          # Sonnet — security review
-│   ├── researcher.md       # Haiku — read-only exploration
+│   ├── researcher.md       # Sonnet — read-only exploration
 │   └── stress-tester.md    # Sonnet — test suites
 │
 ├── integrations/
@@ -245,7 +245,7 @@ Active session
 Session closes
       │
       ▼
-session_end.py (SessionEnd, 10s timeout)
+session_end.py (SessionEnd, 30s timeout)
   1. Compute session metrics (tool call counts, files modified, errors)
   2. If /wrap-up was not run manually:
      → Auto wrap-up via Haiku: generates HANDOFF.md update + LIVE_STATE.json update
@@ -277,7 +277,7 @@ Result: one tidy commit per user message, not one per edit
 | 1 | Read Before Edit | Tier 1 Safety | ACTIVE | Edit, Write, NotebookEdit | Block edits to code files unless Read first this session. Extensions: .py .js .ts .jsx .tsx .rs .go .java .c .cpp .rb .php .sh .sql .tf .ipynb. Exemptions: CLAUDE.md, HANDOFF.md, state.json, new files. Related-read: reading test_foo.py satisfies editing foo.py (stem matching). |
 | 2 | No Destroy | Tier 1 Safety | ACTIVE | Bash | 28 patterns incl. eval, bash -c, pipe-to-shell, fork bombs. SAFE_EXCEPTIONS with regex overrides. shlex-based parsing for split flags. |
 | 3 | Test Before Deploy | Tier 1 Safety | ACTIVE | Bash | No tests in 30min OR last test exit code non-zero = block. 28 deploy patterns. |
-| 4 | Memory First | Tier 2 | TEMP DISABLED | Edit, Write, NotebookEdit, Task | Block edits if memory not queried in last 5 minutes |
+| 4 | Memory First | Tier 2 | ACTIVE | Edit, Write, NotebookEdit, Task | Block edits if memory not queried in last 5 minutes |
 | 5 | Proof Before Fixed | Tier 2 | ACTIVE | Edit, Write, NotebookEdit | Cross-file: block if effective_unverified >= 3 (partial verification = 0.5 weight). Same-file: warn at 4th edit, block at 6th. Test files exempt. |
 | 6 | Save Verified Fix | Tier 2 Advisory | ACTIVE | Edit, Write, Task, Bash | Advisory. WARN_THRESHOLD=2. 20-min stale decay. Also warns: unlogged errors, repair loop (3x same pattern in 10min), edit churn (3+ edits to same file). |
 | 7 | Critical File Guard | Tier 3 | ACTIVE | Edit, Write, NotebookEdit | High-risk files (auth, payments, .env, CI/CD, nginx) need recent memory query |
@@ -309,7 +309,7 @@ Comment out the entry in `GATE_MODULES` in `enforcer.py`. The gate file stays in
 ### Enforcer internals
 
 **Always-allowed tools (bypass all gates):**
-`Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`, `TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet`, `TeamCreate`, `TeamDelete`, `SendMessage`, `TaskOutput`, `TaskStop`, and all MCP memory tools (prefixed `mcp__memory__` or `mcp_memory_`).
+`Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`, `TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet`, `TeamCreate`, `TeamDelete`, `SendMessage`, `TaskStop`, and all MCP memory tools (prefixed `mcp__memory__` or `mcp_memory_`).
 
 **Hot-reload:** Gate modules check file mtimes, but since enforcer.py is re-invoked per tool call (not a daemon), the 30s throttle resets each invocation — effectively every call checks mtimes.
 
@@ -503,8 +503,8 @@ tracker.py PostToolUse
 |-------|-------|-------|----------|
 | `builder` | opus | Read, Glob, Grep, Edit, Write, Bash, NotebookEdit + search_knowledge, get_memory, remember_this, record_attempt, record_outcome, query_fix_history (subset of memory tools — not deduplicate_sweep or maintenance) | Feature implementation, bug fixes, refactoring |
 | `auditor` | sonnet | Read, Glob, Grep, Bash + search/get/remember memory tools | Security review, OWASP audit, credential scanning |
-| `researcher` | haiku | Read, Glob, Grep, WebFetch, WebSearch + search/get memory tools | Codebase exploration, documentation lookup, research |
-| `stress-tester` | sonnet | Read, Glob, Grep, Bash + search/get/remember memory tools | Test suite execution, edge case hunting, benchmarking |
+| `researcher` | sonnet | Read, Glob, Grep, WebFetch, WebSearch + search/get memory tools | Codebase exploration, documentation lookup, research |
+| `stress-tester` | sonnet | Read, Glob, Grep, Bash + search/get/remember/record_attempt/record_outcome memory tools | Test suite execution, edge case hunting, benchmarking |
 
 ### Delegation rules (from CLAUDE.md)
 
@@ -634,15 +634,15 @@ Socket protocol: JSON lines. Supported operations: `query`, `count`, `remember`,
 
 | Event | Timeout | Handler |
 |-------|---------|---------|
-| `PreToolUse` | 5,000ms | `enforcer.py --event PreToolUse` |
-| `PostToolUse` | 3,000ms | `tracker.py` |
-| `PostToolUse` (Edit\|Write) | 3,000ms | `auto_commit.py stage` |
-| `SessionStart` | 15,000ms | `boot.py` |
-| `SessionEnd` | 10,000ms | `session_end.py` |
-| `UserPromptSubmit` | 3,000ms | `user_prompt_capture.py` + `auto_commit.py commit` |
-| `PermissionRequest` | 3,000ms | `auto_approve.py` |
-| `SubagentStart` | 3,000ms | `subagent_context.py` |
-| `PreCompact` | 3,000ms | `pre_compact.py` — snapshots full gate state before context compression: tool_call_count, files_read, pending/verified counts, elapsed time, error_pattern_counts, pending_chain_ids, active_bans, gate6_warn_count, error_windows, tool_stats, edit_streak → written to `.capture_queue.jsonl` so gate context survives compaction |
+| `PreToolUse` | 5s | `enforcer.py --event PreToolUse` |
+| `PostToolUse` | 3s | `tracker.py` |
+| `PostToolUse` (Edit\|Write) | 3s | `auto_commit.py stage` |
+| `SessionStart` | 15s | `boot.py` |
+| `SessionEnd` | 30s | `session_end.py` |
+| `UserPromptSubmit` | 3s | `user_prompt_capture.py` + `auto_commit.py commit` |
+| `PermissionRequest` | 3s | `auto_approve.py` |
+| `SubagentStart` | 3s | `subagent_context.py` |
+| `PreCompact` | 3s | `pre_compact.py` — snapshots full gate state before context compression: tool_call_count, files_read, pending/verified counts, elapsed time, error_pattern_counts, pending_chain_ids, active_bans, gate6_warn_count, error_windows, tool_stats, edit_streak → written to `.capture_queue.jsonl` so gate context survives compaction |
 | `SubagentStop` | 3,000ms | `event_logger.py --event SubagentStop` |
 | `PostToolUseFailure` | 3,000ms | `event_logger.py --event PostToolUseFailure` |
 | `Notification` | 3,000ms | `event_logger.py --event Notification` |
@@ -734,7 +734,7 @@ Current: ~1,321 tokens. Hard limit: 2,000 tokens. Every line is injected into ev
 | Export test_framework.py uses `_FRAMEWORK_ROOT` | Known drift | Merge changes, never copy |
 | Observations at 5,635 (over 5K cap) | Monitoring | Auto-compact on next ingest |
 | tmux routing shared session interference | Fixed | Dedicated `claude-bot` tmux target required |
-| `session_end.py` CAPTURE_QUEUE hardcoded to disk path | Known | Ramdisk capture queue not flushed by session_end; boot.py flushes correctly |
+| `session_end.py` CAPTURE_QUEUE ramdisk path | Fixed (Session 144) | Now uses `_get_capture_queue()` — ramdisk-aware resolver |
 | `subagent_context.py` STATE_DIR hardcoded to disk path | Known | May miss state files when ramdisk is active |
 | `get_plan_mode_warns()` reads non-existent `gate12_warn_count` | Known | Always returns 0; plan mode warn count not displayed in statusline |
 | Statusline health formula uses EXPECTED_GATES=15, EXPECTED_SKILLS=22 | Known | Doc says 16 gates, 22 skills — health score slightly inflated |
@@ -742,4 +742,4 @@ Current: ~1,321 tokens. Hard limit: 2,000 tokens. Every line is injected into ev
 
 ---
 
-*Generated by Torus Framework — Session 143*
+*Generated by Torus Framework — Session 143 | Updated Session 144*
