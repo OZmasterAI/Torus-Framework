@@ -1,32 +1,24 @@
-# Session 145 — New Task
+# Session 146 Handoff
 
-## What Was Done (Session 144)
-- **Audit sweep**: 7 Sonnet 4.6 subagents ran deep analytics on entire framework
-- Fixed all 10 audit findings:
-  1. `agents/researcher.md` — model `haiku` → `sonnet`
-  2. `session_end.py` — model string `haiku` → `claude-haiku-4-5-20251001`
-  3. `session_end.py` — CAPTURE_QUEUE silent data loss fixed (ramdisk-aware path)
-  4. `CLAUDE.md` — Gate 16 (CODE QUALITY) added to gate documentation
-  5. `enforcer.py` — `TaskOutput` removed from `ALWAYS_ALLOWED_TOOLS`
-  6. `settings.json` — all timeouts corrected ms→seconds; session_end raised to 30s
-  7. `enforcer.py` — `GATE_DEPENDENCIES` fixed for gates 10 and 14
-  8. `shared/state.py` — 10 undocumented fields added to `default_state()` + `get_state_schema()` (now 47 fields, fully in sync)
-  9. `plugins/blocklist.json` — removed test entry (`code-review@claude-plugins-official`)
-  10. `agents/stress-tester.md` — added `record_attempt` + `record_outcome` causal tools
-  11. `rules/hooks.md` — Gate 13 main-session exemption documented
-  12. `test_framework.py` — updated researcher model test haiku→sonnet
-- Tests: **1086 passed, 0 failed**
+## What Was Done
+- **Self-evolving framework** — Implemented all 4 pieces from the plan on `self-evolve-test-branch`:
+  1. Gate effectiveness tracking (blocks/overrides/prevented per gate)
+  2. Budget-aware model degradation (70%/85%/95% thresholds in Gate 10)
+  3. Skill chain memory SDK (ChainStepWrapper + /chain skill updates)
+  4. Gate auto-tune with auto-apply (boot.py computes effectiveness → writes threshold overrides)
+- **Boot.py toggle display** — Added all 9 toggles to session start greeting with descriptions
+- **Fixed toggle descriptions** — Terminal L2 and enrichment are independent pipeline steps, not trigger+action
+- **Telegram bot toggle** — Renamed from "TG bot tmux" to "Telegram bot", now handles full lifecycle (start/stop bot, prompt for credentials)
+- **LIVE_STATE.json** — Set tg_bot_tmux default to false
+- **Squashed commits** — 3 auto-commits → 1 clean commit (9f2e098)
+- 15 files changed, 629 insertions, 12 new tests (1103 total, 0 failures)
 
 ## What's Next
-- TBD (new task from user)
-
-## Backlog
-- Clean up reclaimable disk space (~18.7GB): empty trash, delete Mega-Framework backup, purge debug/backups
-- Build cheap polling queue for between-session messages
-- Run deduplicate_sweep(dry_run=True) to audit corpus (633 memories)
-- Sync changes to GitHub export repo
-- Dormant: agent team context tool (get_teammate_context())
-- Dormant: privacy tags (<private> edge stripping)
+- Run tests on self-evolve-test-branch to verify all 1103 pass
+- Consider merging self-evolve-test-branch to main after testing
+- Enable gate_auto_tune toggle to start collecting effectiveness data
+- Enable budget_degradation + set session_token_budget to test model degradation
+- Test Telegram bot toggle lifecycle (ON → prompt credentials → start bot)
 
 ## Known Issues
 - Plan mode exit loop — platform limitation, mitigated by behavioral rule
@@ -36,12 +28,11 @@
 - tmux routing shared session causes interference — use dedicated claude-bot
 
 ## Service Status
-- Memory MCP: RUNNING (633 memories, 6 collections incl. quarantine)
-- Tests: 1086 passed, 0 failed
+- Memory MCP: RUNNING (651 memories)
+- Tests: 1103 passed, 0 failed
 - Framework version: v2.4.5 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 15 active gates (Gate 8 dormant)
 - Ramdisk: active at /run/user/1000/claude-hooks
-- Telegram: LIVE (OZ = @***REDACTED***)
-- TG bot tmux: ON (tmux_target=claude-bot)
+- Telegram bot: NOT RUNNING (configured, toggle OFF)
 - GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI)
-- XRDP: WORKING (XFCE4, DBUS fix applied)
+- Branch: self-evolve-test-branch (4 commits ahead of main)

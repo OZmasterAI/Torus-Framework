@@ -3,46 +3,52 @@
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "audit-sweep-144",
+  "feature": "self-evolve-framework",
   "feature_status": "complete",
-  "test_count": 1086,
+  "test_count": 1103,
   "test_failures": 0,
   "files_modified": [
-    "agents/researcher.md",
-    "hooks/session_end.py",
-    "CLAUDE.md",
-    "hooks/enforcer.py",
-    "settings.json",
     "hooks/shared/state.py",
-    "plugins/blocklist.json",
-    "agents/stress-tester.md",
-    "rules/hooks.md",
-    "hooks/test_framework.py"
+    "hooks/shared/chain_sdk.py",
+    "hooks/enforcer.py",
+    "hooks/tracker.py",
+    "hooks/gates/gate_10_model_enforcement.py",
+    "hooks/gates/gate_04_memory_first.py",
+    "hooks/gates/gate_05_proof_before_fixed.py",
+    "hooks/gates/gate_06_save_fix.py",
+    "hooks/gates/gate_11_rate_limit.py",
+    "hooks/gates/gate_15_causal_chain.py",
+    "hooks/boot.py",
+    "hooks/memory_server.py",
+    "hooks/test_framework.py",
+    "skills/chain/SKILL.md",
+    "LIVE_STATE.json"
   ],
   "improvements_shipped": [
-    "researcher model haiku\u2192sonnet",
-    "session_end model string fixed",
-    "session_end CAPTURE_QUEUE ramdisk fix",
-    "Gate 16 documented in CLAUDE.md",
-    "TaskOutput removed from ALWAYS_ALLOWED_TOOLS",
-    "settings.json timeouts ms\u2192seconds",
-    "GATE_DEPENDENCIES gates 10+14 fixed",
-    "state.py 47 fields fully documented",
-    "blocklist.json test entry removed",
-    "stress-tester causal tools added",
-    "Gate 13 exemption documented"
+    "Gate effectiveness tracking (blocks/overrides/prevented)",
+    "Budget-aware model degradation (Gate 10)",
+    "Skill chain memory SDK (ChainStepWrapper)",
+    "Gate auto-tune with auto-apply",
+    "Boot.py toggle display — all 9 toggles with descriptions",
+    "Fixed misleading toggle descriptions (L2/enrichment independent)",
+    "Telegram bot toggle lifecycle (start/stop + credential prompt)",
+    "tg_bot_tmux default OFF"
   ],
-  "next_steps": [],
+  "next_steps": [
+    "Merge self-evolve-test-branch to main",
+    "Test toggle lifecycle for Telegram bot",
+    "Enable gate_auto_tune to collect data"
+  ],
   "dormant_agent_teams": [
-    "Activate get_teammate_context() \u2014 @mcp.tool() + @crash_proof",
-    "Privacy tags \u2014 <private> edge stripping in tracker.py/observation.py"
+    "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
+    "Privacy tags — <private> edge stripping in tracker.py/observation.py"
   ],
   "known_issues": [
-    "Plan mode exit loop \u2014 platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access \u2014 tests skip when MCP running, correct behavior",
-    "Export test_framework.py uses _FRAMEWORK_ROOT \u2014 merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
-    "tmux routing shared session causes interference \u2014 use dedicated claude-bot"
+    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
+    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
+    "tmux routing shared session causes interference — use dedicated claude-bot"
   ],
   "terminal_l2_always": true,
   "context_enrichment": false,
@@ -54,10 +60,10 @@
   "session_token_budget": 0,
   "chain_memory": false,
   "last_session_metrics": {
-    "reads": 9,
-    "edits": 1,
-    "errors": 1,
-    "verified": 0,
-    "pending": 1
+    "reads": 12,
+    "edits": 6,
+    "errors": 0,
+    "verified": 6,
+    "pending": 0
   }
 }
