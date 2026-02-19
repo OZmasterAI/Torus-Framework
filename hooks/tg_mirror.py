@@ -54,7 +54,17 @@ def _save_cursor(session_id, line_num):
 def _extract_new_assistant_turns(transcript_path, session_id):
     """Read new assistant turns since last cursor position."""
     cursor = _load_json(_CURSOR_FILE, {})
-    last_line = cursor.get(session_id, 0)
+    last_line = cursor.get(session_id, -1)  # -1 = no cursor yet
+
+    # First run for this session: skip to end (don't replay history)
+    if last_line == -1:
+        try:
+            with open(transcript_path) as f:
+                last_line = sum(1 for _ in f)
+        except (FileNotFoundError, OSError):
+            last_line = 0
+        _save_cursor(session_id, last_line)
+        return [], last_line
 
     turns = []
     current_line = 0
