@@ -258,7 +258,7 @@ def _haiku_summarize(transcript_excerpt, metrics_text, session_num):
     )
     cmd = [
         "claude", "-p", prompt,
-        "--model", "haiku",
+        "--model", "claude-haiku-4-5-20251001",
         "--output-format", "text",
     ]
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
