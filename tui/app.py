@@ -163,7 +163,7 @@ class GateView(Static):
             dot = "[green]\u25cf[/green]" if p >= 90 else "[yellow]\u25cf[/yellow]" if p >= 70 else "[red]\u25cf[/red]"
             stat = f"{b:>3}"
         tb = "[red]B[/red]" if gtype == "B" else "[yellow]A[/yellow]"
-        return f"{dot}{tb}[dim]{gid}[/dim] {name:<7}{stat}"
+        return f"{dot}{tb}[dim]{gid}[/dim] {name:<7} {stat}"
 
 
 class AuditView(Static):
