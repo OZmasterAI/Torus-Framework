@@ -123,7 +123,7 @@ GATE_DEPENDENCIES = {
     },
     "gate_10_model_enforcement": {
         "reads": [],
-        "writes": [],
+        "writes": ["model_agent_usage"],
     },
     "gate_11_rate_limit": {
         "reads": ["tool_call_count", "session_start"],
@@ -138,8 +138,8 @@ GATE_DEPENDENCIES = {
         "writes": [],
     },
     "gate_14_confidence_check": {
-        "reads": ["session_test_baseline", "pending_verification", "memory_last_queried", "confidence_warnings"],
-        "writes": ["confidence_warnings"],
+        "reads": ["session_test_baseline", "pending_verification", "memory_last_queried", "confidence_warnings_per_file"],
+        "writes": ["confidence_warnings_per_file", "confidence_warned_signals"],
     },
     "gate_15_causal_chain": {
         "reads": ["recent_test_failure", "fix_history_queried", "fixing_error"],
