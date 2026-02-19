@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gather all prerequisite data for wrap-up and output JSON to stdout.
 
-Claude uses this JSON to write the intelligent parts (HANDOFF.md, LIVE_STATE.json).
+Claude uses this JSON to write the intelligent parts (LIVE_STATE.json).
 Every data source is wrapped in try/except so failures are non-fatal (fail-open).
 """
 
@@ -14,7 +14,6 @@ import time
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
-HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 
 # Make shared modules importable
 sys.path.insert(0, HOOKS_DIR)
@@ -39,14 +38,15 @@ def gather_live_state(warnings):
 
 
 def gather_handoff(warnings):
-    """Load HANDOFF.md content and staleness info."""
+    """Load last session summary and staleness info from LIVE_STATE.json."""
     result = {"content": "", "age_hours": 999.0, "stale": True}
     try:
-        with open(HANDOFF_FILE, "r") as f:
-            result["content"] = f.read()
-        age_hours = (time.time() - os.path.getmtime(HANDOFF_FILE)) / 3600
+        age_hours = (time.time() - os.path.getmtime(LIVE_STATE_FILE)) / 3600
         result["age_hours"] = round(age_hours, 2)
         result["stale"] = age_hours > 4
+        with open(LIVE_STATE_FILE, "r") as f:
+            live = json.load(f)
+        result["content"] = live.get("what_was_done", "")
     except Exception as e:
         warnings.append(f"handoff: {e}")
     return result

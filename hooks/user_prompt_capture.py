@@ -127,7 +127,7 @@ def main():
     if _SESSION_END_RE.search(prompt) or _DONE_RE.search(prompt):
         print(
             "<session_ending>User appears to be ending the session. "
-            "Run /wrap-up to save progress, update HANDOFF.md, and commit changes "
+            "Run /wrap-up to save progress, update LIVE_STATE.json, and commit changes "
             "before the session ends.</session_ending>"
         )
 

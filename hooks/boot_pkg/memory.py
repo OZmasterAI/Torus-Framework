@@ -42,7 +42,7 @@ def inject_memories_via_socket(handoff_content, live_state, _socket_count=None, 
     except (WorkerUnavailable, RuntimeError):
         return []
 
-    # Build search query from handoff context
+    # Build search query from live_state context
     query_parts = []
     project = live_state.get("project", "")
     if project:
@@ -50,18 +50,12 @@ def inject_memories_via_socket(handoff_content, live_state, _socket_count=None, 
     feature = live_state.get("feature", "")
     if feature:
         query_parts.append(feature)
-    if handoff_content:
-        in_next = False
-        for line in handoff_content.split("\n"):
-            stripped = line.strip()
-            if "what's next" in stripped.lower() or "whats next" in stripped.lower():
-                in_next = True
-                continue
-            if in_next:
-                if stripped.startswith("#") or stripped.startswith("---"):
-                    break
-                if stripped:
-                    query_parts.append(stripped[:100])
+    what_was_done = live_state.get("what_was_done", "")
+    if what_was_done:
+        query_parts.append(what_was_done[:200])
+    next_steps = live_state.get("next_steps", [])
+    if next_steps:
+        query_parts.append(" ".join(next_steps)[:200])
     if not query_parts:
         query_parts.append("recent session activity framework")
     search_query = " ".join(query_parts)[:500]

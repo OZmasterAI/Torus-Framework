@@ -6,7 +6,7 @@ import sys
 
 from datetime import datetime
 
-from boot_pkg.util import CLAUDE_DIR, read_file, extract_summary, load_live_state
+from boot_pkg.util import CLAUDE_DIR, read_file, load_live_state
 from boot_pkg.memory import (
     inject_memories_via_socket, _write_sideband_timestamp,
     socket_available, socket_flush, socket_remember,
@@ -53,10 +53,9 @@ def main():
         pass  # Rotation failure is non-fatal
 
     # Load context
-    handoff = read_file(os.path.join(CLAUDE_DIR, "HANDOFF.md"))
     live_state = load_live_state()
     session_num = live_state.get("session_count", "?")
-    summary = extract_summary(handoff)
+    summary = (live_state.get("what_was_done", "") or "No prior session data")[:100]
 
     # Time-based warnings
     time_warning = ""
@@ -102,7 +101,7 @@ def main():
         pass
 
     # Inject relevant memories
-    injected = inject_memories_via_socket(handoff, live_state) if _worker_available else []
+    injected = inject_memories_via_socket(None, live_state) if _worker_available else []
 
     # Telegram L2 memory: search Saved Messages for relevant context
     tg_memories = []
@@ -238,10 +237,6 @@ def main():
     # Print to stdout (INJECTED INTO CLAUDE'S CONVERSATION CONTEXT)
     context_parts = [f"<session-start-context>"]
     context_parts.append(f"Session {session_num} | Project: {project_name}")
-    if handoff:
-        context_parts.append(f"HANDOFF.md contents:\n{handoff}")
-    else:
-        context_parts.append("No HANDOFF.md found — this may be a fresh project.")
     if live_state:
         context_parts.append(f"LIVE_STATE.json: {json.dumps(live_state, indent=2)}")
     if active_tasks:
@@ -251,69 +246,11 @@ def main():
     if tg_memories:
         tg_summaries = [f"[{tm.get('date', '?')}] {tm.get('text', '')[:100]}" for tm in tg_memories]
         context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
-    # Build toggle status table from LIVE_STATE — (key, default, description)
-    _toggles = [
-        ("Terminal L2 always-on",  "terminal_l2_always", True,  "Always run terminal FTS5 search (OFF = only when L1 < 0.3)"),
-        ("Terminal L2 enrichment", "context_enrichment",  False, "Attach ±30min terminal history to ChromaDB results"),
-        ("TG L3 always-on",       "tg_l3_always",        False, "Always run Telegram FTS5 search (OFF = only when L1 < 0.3)"),
-        ("TG L3 enrichment",      "tg_enrichment",       False, "Attach ±30min Telegram messages to ChromaDB results"),
-        ("Telegram bot",           "tg_bot_tmux",         False, "Start/stop Telegram bot in dedicated tmux session"),
-        ("Gate auto-tune",        "gate_auto_tune",      False, "Auto-adjust gate thresholds based on effectiveness data"),
-        ("Chain memory",          "chain_memory",        False, "Remember and reuse successful skill chain sequences"),
-        ("Session notify",        "tg_session_notify",   False, "Send session summary to Telegram on end"),
-        ("Mirror messages",       "tg_mirror_messages",  False, "Send all Claude responses to Telegram"),
-        ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
-    ]
-    _toggle_lines = []
-    _toggle_keys = []
-    for label, key, default, desc in _toggles:
-        val = live_state.get(key, default) if live_state else default
-        _toggle_lines.append(f"{label}: {'ON' if val else 'OFF'} — {desc}")
-        _toggle_keys.append(key)
-    # Budget has a numeric value too
-    _budget_val = live_state.get("session_token_budget", 0) if live_state else 0
-    _toggle_lines.append(f"Session token budget: {_budget_val} — Max tokens per session (0 = unlimited)")
-    _toggle_keys.append("session_token_budget")
-    # Check Telegram bot config status
-    _tg_config_path = os.path.join(CLAUDE_DIR, "integrations", "telegram-bot", "config.json")
-    _tg_config_status = "not configured"
-    try:
-        with open(_tg_config_path) as f:
-            _tg_conf = json.load(f)
-        _tg_token = _tg_conf.get("bot_token", "")
-        _tg_users = _tg_conf.get("allowed_users", [])
-        if _tg_token and _tg_users:
-            _tg_config_status = f"configured (token: ...{_tg_token[-6:]}, users: {_tg_users})"
-        else:
-            _tg_config_status = "incomplete — missing " + (
-                "bot_token" if not _tg_token else "allowed_users"
-            )
-    except (OSError, json.JSONDecodeError):
-        _tg_config_status = "config.json missing"
-
-    _toggle_display = " | ".join(_toggle_lines)
-    _toggle_key_list = ", ".join(_toggle_keys)
     context_parts.append(
         "PROTOCOL: Present session number, brief summary, completed list (what was done last session), "
         "and remaining list (what's next) in ONE message. "
-        "IMPORTANT — Always display the current toggle states table to the user in your greeting. "
-        f"Current toggles: {_toggle_display}. "
-        f"Telegram bot config: {_tg_config_status}. "
         "Ask: 'Continue or New task?' "
-        "If user says continue, ask which item to tackle — do NOT auto-start work. "
-        "If user changes any toggle, update the corresponding LIVE_STATE.json field "
-        f"({_toggle_key_list}). "
-        "SPECIAL — Telegram bot toggle (tg_bot_tmux): "
-        "When user turns ON: (1) Check config at integrations/telegram-bot/config.json — "
-        "if bot_token or allowed_users missing, ask user for them using AskUserQuestion "
-        "(bot token from @BotFather, Telegram user ID for whitelist). "
-        "If already configured, ask if they want to keep or change the current bot_token and allowed_users. "
-        "(2) Update config.json with any changes. "
-        "(3) Start the bot: create tmux session 'claude-bot' and run "
-        "'python3 integrations/telegram-bot/bot.py' in it. "
-        "(4) Update LIVE_STATE.json tg_bot_tmux=true. "
-        "When user turns OFF: (1) Kill the bot process in tmux session 'claude-bot'. "
-        "(2) Update LIVE_STATE.json tg_bot_tmux=false."
+        "If user says continue, ask which item to tackle — do NOT auto-start work."
     )
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))

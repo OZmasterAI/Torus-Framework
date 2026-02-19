@@ -4,7 +4,6 @@ import os
 import socket
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
-HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 
 try:
@@ -20,17 +19,6 @@ def read_file(path):
             return f.read()
     except FileNotFoundError:
         return None
-
-
-def extract_summary(handoff_content):
-    """Extract the first meaningful line from HANDOFF.md as a summary."""
-    if not handoff_content:
-        return "No handoff file found"
-    for line in handoff_content.split("\n"):
-        line = line.strip()
-        if line and not line.startswith("#") and not line.startswith("---"):
-            return line[:70]
-    return "Handoff exists but no summary found"
 
 
 def load_live_state():

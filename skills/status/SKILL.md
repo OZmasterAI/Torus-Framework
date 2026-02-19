@@ -8,7 +8,7 @@ When the user says "status", "check", "health", or wants a system overview.
 2. Display the output to the user exactly as-is (it's a pre-formatted dashboard)
 3. If the script fails or returns an error, fall back to manual gathering:
    - Read ~/.claude/LIVE_STATE.json for current project state
-   - Read ~/.claude/HANDOFF.md for last session summary
+   - Read `what_was_done` from ~/.claude/LIVE_STATE.json for last session summary
    - Check maintenance(action="health") for memory count and health score
    - Run `python3 ~/.claude/hooks/boot.py` for session info
    - Display a summary of the gathered data

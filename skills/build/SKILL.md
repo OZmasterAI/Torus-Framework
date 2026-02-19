@@ -43,7 +43,7 @@ When the user says "build", "implement", "create", or wants the full quality wor
 ### 6. SHIP
 - Save to memory: `remember_this("[what was built and how]", "[context]", "type:feature,outcome:success")`
 - If the user wants a commit, invoke the `/commit` skill
-- Update HANDOFF.md and LIVE_STATE.json if this was significant work
+- Update LIVE_STATE.json if this was significant work
 
 ## Kill Rule
 If after 15 minutes of trying, the approach isn't working:

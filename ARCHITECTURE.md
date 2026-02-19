@@ -540,7 +540,7 @@ Gate 10 blocks Task calls without a model param and warns on apparent mismatches
 
 ### Telegram Bot (`integrations/telegram-bot/`)
 
-Bridges Telegram messages to Claude Code sessions. The user (@***REDACTED***) sends messages via Telegram; the bot routes them to an active Claude session and returns the response.
+Bridges Telegram messages to Claude Code sessions. The user sends messages via Telegram; the bot routes them to an active Claude session and returns the response.
 
 **Components:**
 - `bot.py` — python-telegram-bot v21, long-polling loop

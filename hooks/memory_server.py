@@ -1997,7 +1997,8 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     return result
 
 
-@mcp.tool()
+# DORMANT — saves ~70 tokens/prompt. Uncomment @mcp.tool() to reactivate.
+# @mcp.tool()
 @crash_proof
 def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
     """Batch scan for duplicate memories. Dry-run by default — shows candidates without acting.
@@ -2210,6 +2211,31 @@ def get_memory(id: str) -> dict:
     except Exception as e:
         return {"error": f"Failed to retrieve memory: {str(e)}"}
 
+
+
+# DORMANT — saves ~50 tokens/prompt. Uncomment @mcp.tool() to reactivate.
+# @mcp.tool()
+@crash_proof
+def delete_memory(id: str) -> dict:
+    """Delete a memory by ID. Use for removing sensitive or incorrect data.
+
+    Args:
+        id: The memory ID to delete (from search results). Comma-separated for batch delete.
+    """
+    if _chromadb_degraded:
+        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+    try:
+        ids = [i.strip() for i in id.split(",") if i.strip()]
+        if not ids:
+            return {"error": "No valid ID provided"}
+        existing = collection.get(ids=ids)
+        found = existing.get("ids", []) if existing else []
+        if not found:
+            return {"error": f"No memories found with ids: {ids}"}
+        collection.delete(ids=found)
+        return {"deleted": found, "count": len(found)}
+    except Exception as e:
+        return {"error": f"Failed to delete memory: {str(e)}"}
 
 
 # DORMANT (Session 86) — consolidated into search_knowledge(mode="observations"|"all") + auto-fallback
@@ -3483,7 +3509,8 @@ def _gate_effectiveness_report() -> dict:
     }
 
 
-@mcp.tool()
+# DORMANT — saves ~180 tokens/prompt. Uncomment @mcp.tool() to reactivate.
+# @mcp.tool()
 @crash_proof
 def maintenance(action: str, top_k: int | None = None, days: int | None = None,
                 min_cluster_size: int | None = None,

@@ -28,4 +28,4 @@ When the user says "deploy", "push to prod", "ship it", or wants to deploy to a 
 6. **POST-DEPLOY**:
    - remember_this() with deployment details, version, and timestamp
    - Update LIVE_STATE.json with deployment info
-   - Update HANDOFF.md
+   - Update LIVE_STATE.json

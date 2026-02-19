@@ -16,13 +16,7 @@ globs: .claude/hooks/memory_server.py, **/mcp_server/**
 - ChromaDB can segfault under concurrent access — handle gracefully
 
 ## Ingestion Validation
-- Validate content is non-empty before upserting
-- IDs must be unique — use `fnv1a_hash(content)` for deterministic IDs
-- Metadata values must be str, int, float, or bool — no nested objects
-- Cap metadata string values at 500 chars to prevent ChromaDB errors
+- Validate non-empty, use `fnv1a_hash(content)` for IDs, metadata must be str/int/float/bool (no nested objects, 500 char cap)
 
 ## Sideband Timestamp Protocol
-- File: `hooks/.memory_last_queried` — JSON with `{"timestamp": epoch_float}`
-- Written by boot.py (auto-injection) and read by gate_04 (memory-first check)
-- Use atomic write (write to .tmp then os.replace) to prevent corruption
-- This file bridges the gap between MCP tool calls and hook-level state
+- Gate 4 sideband: boot.py writes `hooks/.memory_last_queried` (atomic write), gate_04 reads it to verify memory was queried. See `docs/sideband-protocol.md` for details.

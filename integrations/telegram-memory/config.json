@@ -1,6 +1,0 @@
-{
-  "api_id": ***TG_API_ID***,
-  "api_hash": "***TG_API_HASH***",
-  "phone": "***PHONE_REMOVED***",
-  "session_path": "~/.claude/integrations/telegram-memory/session/telegram"
-}

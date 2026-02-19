@@ -2,8 +2,7 @@
 """Self-Healing Claude Framework — Session End Hook
 
 Fires on SessionEnd to:
-1. Generate/update HANDOFF.md with session metrics (always appends metrics;
-   writes full metrics-only handoff if /wrap-up didn't run)
+1. Update LIVE_STATE.json with session metrics and auto-summary if /wrap-up didn't run
 2. Flush the capture queue to ChromaDB (observations collection)
 3. Increment session_count in LIVE_STATE.json
 
@@ -27,6 +26,9 @@ LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 ARCHIVE_DIR = os.path.join(CLAUDE_DIR, "archive")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
+WRAPUP_RECENCY_SECONDS = 1800  # 30 minutes
+
+
 def _get_capture_queue():
     """Return the active capture queue path (ramdisk or disk fallback)."""
     try:
@@ -34,9 +36,6 @@ def _get_capture_queue():
         return get_capture_queue()
     except ImportError:
         return os.path.join(HOOKS_DIR, ".capture_queue.jsonl")
-
-# If HANDOFF.md was modified within this window, /wrap-up already ran
-WRAPUP_RECENCY_SECONDS = 300  # 5 minutes
 
 
 def _find_state_dir():
@@ -78,6 +77,7 @@ def _parse_handoff_sections(content):
     """Parse HANDOFF.md into sections by ## headers.
 
     Returns dict: {header_lower: content_str} e.g. {"what's next": "1. Fix..."}
+    Left as dead code — no longer called by generate_handoff.
     """
     sections = {}
     current_header = None
@@ -177,7 +177,10 @@ def _build_metrics_section(state):
 
 
 def _archive_handoff():
-    """Archive current HANDOFF.md if it exists."""
+    """Archive current HANDOFF.md if it exists.
+
+    Left as dead code — no longer called by generate_handoff.
+    """
     if not os.path.exists(HANDOFF_FILE):
         return
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
@@ -282,93 +285,60 @@ def _haiku_summarize(transcript_excerpt, metrics_text, session_num):
 
 
 def generate_handoff(state, transcript_path=""):
-    """Generate or update HANDOFF.md with session metrics.
+    """Update LIVE_STATE.json with session metrics and optional auto-summary.
 
-    Mode A: Always appends a Session Metrics section.
-    If /wrap-up didn't run (HANDOFF.md mtime > 5min), calls Haiku to generate
-    an intelligent "What Was Done" from the transcript, falling back to
-    metrics-only if Haiku is unavailable.
+    If /wrap-up ran recently (LIVE_STATE.json has a non-empty what_was_done
+    and was modified within the last 30 minutes), just update session_metrics.
+    Otherwise, run Haiku auto-summary and write what_was_done + session_metrics
+    to LIVE_STATE.json.
+
+    HANDOFF.md is no longer written by this function.
     """
     try:
         live_state = _load_live_state()
         session_num = live_state.get("session_count", "?")
 
-        # Check if /wrap-up already ran (HANDOFF.md recently modified)
+        # Check if /wrap-up already ran:
+        # LIVE_STATE.json must have a non-empty what_was_done AND be recently modified
         wrapup_ran = False
-        old_sections = {}
-        old_content = ""
-        if os.path.exists(HANDOFF_FILE):
+        if live_state.get("what_was_done", "").strip():
             try:
-                mtime = os.path.getmtime(HANDOFF_FILE)
+                mtime = os.path.getmtime(LIVE_STATE_FILE)
                 wrapup_ran = (time.time() - mtime) < WRAPUP_RECENCY_SECONDS
-                with open(HANDOFF_FILE, "r") as f:
-                    old_content = f.read()
-                old_sections = _parse_handoff_sections(old_content)
             except OSError:
                 pass
 
         metrics_section = _build_metrics_section(state)
 
         if wrapup_ran:
-            # /wrap-up already wrote narrative — just append metrics
-            # Strip any previous trailing auto-generated metrics section
-            content = old_content.rstrip()
-            marker = "## Session Metrics (auto-generated)"
-            if marker in content:
-                # Use rfind to strip only the LAST occurrence (in case it appears mid-doc)
-                last_pos = content.rfind(marker)
-                # Only strip if it's the last ## section (nothing but metrics after it)
-                after_marker = content[last_pos + len(marker):]
-                if "## " not in after_marker:
-                    content = content[:last_pos].rstrip()
-            content += "\n\n" + metrics_section + "\n"
+            # /wrap-up already wrote narrative — just update session_metrics
+            live_state["session_metrics"] = metrics_section
+            print("[SESSION_END] Wrap-up detected — updated session_metrics in LIVE_STATE.json", file=sys.stderr)
         else:
-            # /wrap-up didn't run — try Haiku auto-summary, fall back to metrics-only
-            _archive_handoff()
-
-            # Carry forward What's Next and Known Issues from previous handoff
-            whats_next = old_sections.get("what's next", "No prior data — run /wrap-up for intelligent prioritization.")
-            known_issues = old_sections.get("known issues", "None carried forward.")
-            service_status = old_sections.get("service status", "")
-
-            # Try Haiku summarization from transcript
+            # /wrap-up didn't run — try Haiku auto-summary
             excerpt = _extract_transcript_excerpt(transcript_path)
             haiku_summary = _haiku_summarize(excerpt, metrics_section, session_num) if excerpt else ""
 
             if haiku_summary:
-                what_was_done = haiku_summary
-                header_suffix = "Auto-Summary"
+                live_state["what_was_done"] = haiku_summary
                 print("[SESSION_END] Haiku auto-summary generated", file=sys.stderr)
             else:
-                what_was_done = "*(Auto-generated — no transcript available. Metrics below show session activity.)*"
-                header_suffix = "Auto-Generated Handoff"
+                live_state["what_was_done"] = (
+                    "Auto-generated — no transcript available. "
+                    "Metrics below show session activity."
+                )
 
-            lines = [
-                f"# Session {session_num} — {header_suffix}",
-                "",
-                "## What Was Done",
-                what_was_done,
-                "",
-                metrics_section,
-                "",
-                "## What's Next",
-                whats_next,
-                "",
-                "## Known Issues",
-                known_issues,
-            ]
-            if service_status:
-                lines += ["", "## Service Status", service_status]
-            content = "\n".join(lines) + "\n"
+            live_state["session_metrics"] = metrics_section
 
-        # Atomic write
-        tmp = HANDOFF_FILE + ".tmp"
+        # Atomic write back to LIVE_STATE.json
+        tmp = LIVE_STATE_FILE + ".tmp"
         with open(tmp, "w") as f:
-            f.write(content)
-        os.replace(tmp, HANDOFF_FILE)
+            json.dump(live_state, f, indent=2)
+            f.write("\n")
+        os.replace(tmp, LIVE_STATE_FILE)
 
-        mode = "appended metrics" if wrapup_ran else "full auto-handoff"
-        print(f"[SESSION_END] Handoff updated ({mode})", file=sys.stderr)
+        mode = "updated session_metrics" if wrapup_ran else "wrote what_was_done + session_metrics"
+        print(f"[SESSION_END] LIVE_STATE.json updated ({mode})", file=sys.stderr)
 
     except Exception as e:
         print(f"[SESSION_END] Handoff generation failed (non-fatal): {e}", file=sys.stderr)
@@ -503,7 +473,7 @@ def main():
         except Exception as e:
             print(f"[SESSION_END] Summary error (non-fatal): {e}", file=sys.stderr)
 
-        # Generate/update HANDOFF.md (before flush, while state is fresh)
+        # Update LIVE_STATE.json with metrics and auto-summary (before flush, while state is fresh)
         try:
             generate_handoff(state, transcript_path=transcript_path)
         except Exception as e:
