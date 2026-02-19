@@ -10390,10 +10390,11 @@ try:
         handle_pre_tool_use("Edit", {"file_path": "/tmp/nonexistent_gate_eff_test.py", "old_string": "a", "new_string": "b"}, _se_eff_state)
     except SystemExit:
         pass  # Expected — gate blocks via sys.exit(2)
-    # Check gate_effectiveness was recorded
-    ge = _se_eff_state.get("gate_effectiveness", {})
-    assert "gate_01_read_before_edit" in ge, f"Expected gate_01 in effectiveness, got {ge.keys()}"
-    assert ge["gate_01_read_before_edit"]["blocks"] >= 1, "Expected at least 1 block"
+    # Check gate_effectiveness was recorded in persistent file
+    from shared.state import load_gate_effectiveness, EFFECTIVENESS_FILE
+    _se_eff_data = load_gate_effectiveness()
+    assert "gate_01_read_before_edit" in _se_eff_data, f"Expected gate_01 in persistent effectiveness, got {_se_eff_data.keys()}"
+    assert _se_eff_data["gate_01_read_before_edit"]["blocks"] >= 1, "Expected at least 1 block"
     # Check gate_block_outcomes was recorded
     outcomes = _se_eff_state.get("gate_block_outcomes", [])
     assert len(outcomes) >= 1, "Expected at least 1 block outcome"
@@ -10470,15 +10471,26 @@ except Exception as _se_e:
 # Test: _resolve_gate_block_outcomes (override path)
 try:
     from tracker import _resolve_gate_block_outcomes
+    from shared.state import load_gate_effectiveness, EFFECTIVENESS_FILE
+    # Clean persistent file for isolated test
+    _se_eff_backup = None
+    if os.path.exists(EFFECTIVENESS_FILE):
+        with open(EFFECTIVENESS_FILE) as _f: _se_eff_backup = _f.read()
+        os.remove(EFFECTIVENESS_FILE)
     _se_resolve_state = default_state()
     _se_resolve_state["gate_block_outcomes"] = [
         {"gate": "gate_04_memory_first", "tool": "Edit", "file": "/tmp/test.py", "timestamp": time.time() - 60, "resolved_by": None}
     ]
-    _se_resolve_state["gate_effectiveness"] = {"gate_04_memory_first": {"blocks": 1, "overrides": 0, "prevented": 0}}
     _se_resolve_state["memory_last_queried"] = 0  # No memory query after block
     _se_resolve_state["fix_history_queried"] = 0
     _resolve_gate_block_outcomes("Edit", {"file_path": "/tmp/test.py"}, _se_resolve_state)
-    assert _se_resolve_state["gate_effectiveness"]["gate_04_memory_first"]["overrides"] == 1, "Should be override (no memory query)"
+    _se_eff_data = load_gate_effectiveness()
+    assert _se_eff_data.get("gate_04_memory_first", {}).get("overrides", 0) == 1, "Should be override (no memory query)"
+    # Restore backup
+    if _se_eff_backup is not None:
+        with open(EFFECTIVENESS_FILE, "w") as _f: _f.write(_se_eff_backup)
+    elif os.path.exists(EFFECTIVENESS_FILE):
+        os.remove(EFFECTIVENESS_FILE)
     PASS += 1
     RESULTS.append("  PASS: _resolve_gate_block_outcomes (override path)")
     print("  PASS: _resolve_gate_block_outcomes (override path)")
@@ -10489,15 +10501,25 @@ except Exception as _se_e:
 
 # Test: _resolve_gate_block_outcomes (prevented path)
 try:
+    # Clean persistent file for isolated test
+    _se_eff_backup2 = None
+    if os.path.exists(EFFECTIVENESS_FILE):
+        with open(EFFECTIVENESS_FILE) as _f: _se_eff_backup2 = _f.read()
+        os.remove(EFFECTIVENESS_FILE)
     _se_prevent_state = default_state()
     _block_ts = time.time() - 60
     _se_prevent_state["gate_block_outcomes"] = [
         {"gate": "gate_04_memory_first", "tool": "Edit", "file": "/tmp/test.py", "timestamp": _block_ts, "resolved_by": None}
     ]
-    _se_prevent_state["gate_effectiveness"] = {"gate_04_memory_first": {"blocks": 1, "overrides": 0, "prevented": 0}}
     _se_prevent_state["memory_last_queried"] = _block_ts + 30  # Memory queried AFTER block
     _resolve_gate_block_outcomes("Edit", {"file_path": "/tmp/test.py"}, _se_prevent_state)
-    assert _se_prevent_state["gate_effectiveness"]["gate_04_memory_first"]["prevented"] == 1, "Should be prevented (memory queried after block)"
+    _se_eff_data2 = load_gate_effectiveness()
+    assert _se_eff_data2.get("gate_04_memory_first", {}).get("prevented", 0) == 1, "Should be prevented (memory queried after block)"
+    # Restore backup
+    if _se_eff_backup2 is not None:
+        with open(EFFECTIVENESS_FILE, "w") as _f: _f.write(_se_eff_backup2)
+    elif os.path.exists(EFFECTIVENESS_FILE):
+        os.remove(EFFECTIVENESS_FILE)
     PASS += 1
     RESULTS.append("  PASS: _resolve_gate_block_outcomes (prevented path)")
     print("  PASS: _resolve_gate_block_outcomes (prevented path)")

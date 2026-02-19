@@ -20,7 +20,7 @@ import time
 
 # Add parent to path for shared imports
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.state import load_state, save_state
+from shared.state import load_state, save_state, update_gate_effectiveness
 from shared.error_normalizer import fnv1a_hash
 
 # Auto-remember imports (fail-open: if UDS unavailable, queue to disk)
@@ -396,7 +396,6 @@ def _resolve_gate_block_outcomes(tool_name, tool_input, state):
         if not file_path:
             return
 
-        effectiveness = state.setdefault("gate_effectiveness", {})
         now = time.time()
         remaining = []
         for outcome in outcomes:
@@ -406,16 +405,15 @@ def _resolve_gate_block_outcomes(tool_name, tool_input, state):
             # Match: same tool+file combo, within 30 minutes
             if outcome.get("tool") == tool_name and outcome.get("file") == file_path and (now - outcome.get("timestamp", 0)) < 1800:
                 gate = outcome.get("gate", "")
-                ge = effectiveness.setdefault(gate, {"blocks": 0, "overrides": 0, "prevented": 0})
                 # If memory was queried after the block, it's "prevented" (block forced better approach)
                 mem_ts = state.get("memory_last_queried", 0)
                 fix_ts = state.get("fix_history_queried", 0)
                 block_ts = outcome.get("timestamp", 0)
                 if mem_ts > block_ts or fix_ts > block_ts:
-                    ge["prevented"] = ge.get("prevented", 0) + 1
+                    update_gate_effectiveness(gate, "prevented")
                     outcome["resolved_by"] = "prevented"
                 else:
-                    ge["overrides"] = ge.get("overrides", 0) + 1
+                    update_gate_effectiveness(gate, "overrides")
                     outcome["resolved_by"] = "override"
             remaining.append(outcome)
 

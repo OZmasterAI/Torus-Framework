@@ -542,3 +542,40 @@ def cleanup_all_states():
             os.remove(legacy)
         except OSError:
             pass
+
+
+# --- Persistent gate effectiveness (survives across sessions) ---
+
+EFFECTIVENESS_FILE = os.path.join(_DISK_STATE_DIR, ".gate_effectiveness.json")
+
+
+def update_gate_effectiveness(gate: str, field: str):
+    """Atomically increment a gate effectiveness counter in the persistent file.
+
+    Fields: "blocks", "overrides", "prevented".
+    Uses _DISK_STATE_DIR (not ramdisk) so data survives reboots.
+    """
+    try:
+        data = {}
+        if os.path.exists(EFFECTIVENESS_FILE):
+            with open(EFFECTIVENESS_FILE) as f:
+                data = json.load(f)
+        ge = data.setdefault(gate, {"blocks": 0, "overrides": 0, "prevented": 0})
+        ge[field] = ge.get(field, 0) + 1
+        tmp = EFFECTIVENESS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, EFFECTIVENESS_FILE)
+    except Exception:
+        pass  # fail-open — don't break enforcement over stats
+
+
+def load_gate_effectiveness():
+    """Load the persistent gate effectiveness data."""
+    try:
+        if os.path.exists(EFFECTIVENESS_FILE):
+            with open(EFFECTIVENESS_FILE) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}

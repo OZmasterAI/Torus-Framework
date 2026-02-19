@@ -23,9 +23,10 @@ import time
 
 # Add parent to path for shared imports
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.state import load_state, save_state
+from shared.state import load_state, save_state, update_gate_effectiveness
 from shared.gate_result import GateResult
 from shared.audit_log import log_gate_decision
+
 
 # Gate modules to load (in order of priority)
 GATE_MODULES = [
@@ -338,10 +339,8 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 # Track gate block counts for diagnostics
                 block_counts = state.setdefault("gate_block_counts", {})
                 block_counts[gate_short] = block_counts.get(gate_short, 0) + 1
-                # Track gate effectiveness (self-evolving)
-                effectiveness = state.setdefault("gate_effectiveness", {})
-                ge = effectiveness.setdefault(gate_short, {"blocks": 0, "overrides": 0, "prevented": 0})
-                ge["blocks"] = ge.get("blocks", 0) + 1
+                # Track gate effectiveness (self-evolving) — persistent across sessions
+                update_gate_effectiveness(gate_short, "blocks")
                 # Record block outcome for later resolution tracking
                 file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "") or tool_input.get("command", "")[:100]
                 outcomes = state.setdefault("gate_block_outcomes", [])

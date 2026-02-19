@@ -338,24 +338,23 @@ def _extract_gate_effectiveness_suggestions():
     Overrides are written to session state and read by gates at runtime.
     """
     try:
-        from shared.state import get_live_toggle
+        from shared.state import get_live_toggle, load_gate_effectiveness
         if not get_live_toggle("gate_auto_tune", False):
             return [], {}
 
-        pattern = os.path.join(STATE_DIR, "state_*.json")
-        state_files = glob.glob(pattern)
-        if not state_files:
-            return [], {}
-
-        most_recent = max(state_files, key=os.path.getmtime)
-        with open(most_recent) as f:
-            state_data = json.load(f)
-
-        effectiveness = state_data.get("gate_effectiveness", {})
+        # Read from persistent effectiveness file (accumulates across sessions)
+        effectiveness = load_gate_effectiveness()
         if not effectiveness:
             return [], {}
 
-        prev_overrides = state_data.get("gate_tune_overrides", {})
+        # Read previous overrides from most recent session state
+        pattern = os.path.join(STATE_DIR, "state_*.json")
+        state_files = glob.glob(pattern)
+        prev_overrides = {}
+        if state_files:
+            most_recent = max(state_files, key=os.path.getmtime)
+            with open(most_recent) as f:
+                prev_overrides = json.load(f).get("gate_tune_overrides", {})
 
         suggestions = []
         overrides = {}
