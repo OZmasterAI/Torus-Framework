@@ -1,16 +1,19 @@
-# Session 147 Handoff
+# Session 148 — TUI Toggle Sync Fix
 
 ## What Was Done
-- **Persistent gate effectiveness** — Gate effectiveness data now persists across sessions via `hooks/.gate_effectiveness.json` instead of resetting per-session in state files. Changed enforcer.py, tracker.py, boot.py, and shared/state.py to use shared `update_gate_effectiveness()` / `load_gate_effectiveness()`. Atomic writes via `.tmp` + `os.replace`.
-- **Terminal L2 toggle** — Turned OFF per user request
-- **Tests** — Updated 3 effectiveness tests for persistent file (with backup/restore isolation). 1103 passed, 0 failed.
-- Already collecting data: 8 gates with 79 events from this session alone
+- Fixed TUI dashboard toggle definitions to match boot.py descriptions
+  - `tui/data.py`: Updated all 8 descriptions, fixed `terminal_l2_always` default (True→False), added missing `session_token_budget` (9th toggle)
+  - `tui/app.py`: Numeric toggles render as labels (not Switches), refresh handles both types, added `.toggle-value` CSS
+- Diagnosed previous session crash: Textual app was run directly via `python3 app.py` instead of `launch.sh`, hijacking Claude's terminal
+- Saved TUI launch safety rule to memory (always use `launch.sh` for tmux split)
+- Framework tests: 1103 passed, 0 failed
 
 ## What's Next
-- Merge self-evolve-test-branch to main (now 4+ commits ahead)
-- Enable gate_auto_tune toggle — effectiveness data is now accumulating
-- Enable budget_degradation + set session_token_budget to test model degradation
-- Test Telegram bot toggle lifecycle (ON → prompt credentials → start bot)
+- Merge self-evolve-test-branch to main (4+ commits ahead)
+- Add safety guard to app.py (refuse to run inside Claude Bash tool)
+- Enable gate_auto_tune — effectiveness data now accumulating
+- Enable budget_degradation + set session_token_budget
+- Test Telegram bot toggle lifecycle
 
 ## Known Issues
 - Plan mode exit loop — platform limitation, mitigated by behavioral rule
@@ -20,7 +23,7 @@
 - tmux routing shared session causes interference — use dedicated claude-bot
 
 ## Service Status
-- Memory MCP: RUNNING (652 memories)
+- Memory MCP: RUNNING (664 memories)
 - Tests: 1103 passed, 0 failed
 - Framework version: v2.4.5 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 15 active gates (Gate 8 dormant)
@@ -29,10 +32,7 @@
 - GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI)
 - Branch: self-evolve-test-branch
 
-**Files changed:**
-- `hooks/shared/state.py` — Added update_gate_effectiveness(), load_gate_effectiveness(), EFFECTIVENESS_FILE
-- `hooks/enforcer.py` — Uses shared persistent effectiveness for blocks
-- `hooks/tracker.py` — Uses shared persistent effectiveness for overrides/prevented
-- `hooks/boot.py` — Auto-tune reads from persistent file via load_gate_effectiveness()
-- `hooks/test_framework.py` — Updated 3 tests for persistent effectiveness
-- `LIVE_STATE.json` — terminal_l2_always OFF
+## Session Metrics
+- **Files Modified**: 2 (tui/data.py, tui/app.py)
+- **Tests**: 1103 passed, 0 failed
+- **Errors**: 0

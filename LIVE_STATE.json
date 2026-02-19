@@ -1,5 +1,5 @@
 {
-  "session_count": 147,
+  "session_count": 148,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -8,21 +8,8 @@
   "test_count": 1103,
   "test_failures": 0,
   "files_modified": [
-    "hooks/shared/state.py",
-    "hooks/shared/chain_sdk.py",
-    "hooks/enforcer.py",
-    "hooks/tracker.py",
-    "hooks/gates/gate_10_model_enforcement.py",
-    "hooks/gates/gate_04_memory_first.py",
-    "hooks/gates/gate_05_proof_before_fixed.py",
-    "hooks/gates/gate_06_save_fix.py",
-    "hooks/gates/gate_11_rate_limit.py",
-    "hooks/gates/gate_15_causal_chain.py",
-    "hooks/boot.py",
-    "hooks/memory_server.py",
-    "hooks/test_framework.py",
-    "skills/chain/SKILL.md",
-    "LIVE_STATE.json"
+    "tui/data.py",
+    "tui/app.py"
   ],
   "improvements_shipped": [
     "Gate effectiveness tracking (blocks/overrides/prevented)",
@@ -37,9 +24,10 @@
   ],
   "next_steps": [
     "Merge self-evolve-test-branch to main",
+    "Add safety guard to app.py (refuse to run inside Claude Bash tool)",
     "Enable gate_auto_tune \u2014 effectiveness data now accumulating",
-    "Test toggle lifecycle for Telegram bot",
-    "Enable budget_degradation + set session_token_budget"
+    "Enable budget_degradation + set session_token_budget",
+    "Test Telegram bot toggle lifecycle"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() \u2014 @mcp.tool() + @crash_proof",
@@ -53,8 +41,8 @@
     "tmux routing shared session causes interference \u2014 use dedicated claude-bot"
   ],
   "terminal_l2_always": false,
-  "context_enrichment": false,
-  "tg_l3_always": false,
+  "context_enrichment": true,
+  "tg_l3_always": true,
   "tg_enrichment": false,
   "tg_bot_tmux": false,
   "gate_auto_tune": false,
@@ -62,10 +50,10 @@
   "session_token_budget": 0,
   "chain_memory": false,
   "last_session_metrics": {
-    "reads": 16,
-    "edits": 3,
+    "reads": 2,
+    "edits": 1,
     "errors": 0,
     "verified": 0,
-    "pending": 2
+    "pending": 1
   }
 }
