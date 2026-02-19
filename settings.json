@@ -3,7 +3,7 @@
   "permissions": {
     "defaultMode": "default"
   },
-  "model": "opus",
+  "model": "sonnet",
   "hooks": {
     "PreToolUse": [
       {
@@ -12,7 +12,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/enforcer.py\" --event PreToolUse",
-            "timeout": 5000
+            "timeout": 5
           }
         ]
       }
@@ -24,7 +24,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/tracker.py\"",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       },
@@ -34,7 +34,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/auto_commit.py\" stage",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
@@ -46,7 +46,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/boot.py\"",
-            "timeout": 15000
+            "timeout": 15
           }
         ]
       }
@@ -57,7 +57,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/user_prompt_capture.py\"",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       },
@@ -66,7 +66,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/auto_commit.py\" commit",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
@@ -78,7 +78,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/auto_approve.py\"",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
@@ -90,7 +90,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/subagent_context.py\"",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
@@ -102,7 +102,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/pre_compact.py\"",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
@@ -114,7 +114,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/session_end.py\"",
-            "timeout": 10000
+            "timeout": 10
           }
         ]
       }
@@ -126,7 +126,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/event_logger.py\" --event SubagentStop",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
@@ -138,7 +138,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/event_logger.py\" --event PostToolUseFailure",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
@@ -150,12 +150,22 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/event_logger.py\" --event Notification",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"$HOME/.claude/hooks/statusline.py\""
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
+  },
+  "skipDangerousModePermissionPrompt": true,
   "disabled_hooks": {
     "TeammateIdle": [
       {
@@ -164,7 +174,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/event_logger.py\" --event TeammateIdle",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
@@ -176,21 +186,11 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/event_logger.py\" --event TaskCompleted",
-            "timeout": 3000
+            "timeout": 3
           }
         ]
       }
     ]
   },
-  "enabledPlugins": {
-    "pyright-lsp@claude-plugins-official": true,
-    "rust-analyzer-lsp@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
-  },
-  "skipDangerousModePermissionPrompt": true,
-  "effortLevel": "medium",
-  "statusLine": {
-    "type": "command",
-    "command": "python3 \"$HOME/.claude/hooks/statusline.py\""
-  }
+  "effortLevel": "medium"
 }
