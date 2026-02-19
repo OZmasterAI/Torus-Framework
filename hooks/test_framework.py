@@ -3811,11 +3811,28 @@ if os.path.isfile(_skill_review_path):
 # ─────────────────────────────────────────────────
 print("\n--- v2.0.4 Features (Session 27) ---")
 
+# Helper: read all .py source from a _pkg/ directory (supports refactored packages)
+def _read_pkg_source(pkg_dir):
+    """Read and concatenate all .py files in a _pkg/ directory."""
+    combined = ""
+    if os.path.isdir(pkg_dir):
+        for fname in sorted(os.listdir(pkg_dir)):
+            if fname.endswith(".py"):
+                try:
+                    with open(os.path.join(pkg_dir, fname)) as pf:
+                        combined += pf.read() + "\n"
+                except OSError:
+                    pass
+    return combined
+
+_tracker_pkg_dir = os.path.join(os.path.dirname(__file__), "tracker_pkg")
+_boot_pkg_dir = os.path.join(os.path.dirname(__file__), "boot_pkg")
+
 # 1. Dashboard auto-start (boot.py port check)
 _boot_path = os.path.expanduser("~/.claude/hooks/boot.py")
 if os.path.isfile(_boot_path):
     with open(_boot_path) as _bf204:
-        _boot_src = _bf204.read()
+        _boot_src = _bf204.read() + _read_pkg_source(_boot_pkg_dir)
 
     test("v2.0.4: boot.py has port 7777 or socket check for dashboard auto-start",
          "7777" in _boot_src or "socket" in _boot_src,
@@ -3827,7 +3844,7 @@ else:
 _tracker_path = os.path.join(os.path.dirname(__file__), "tracker.py")
 if os.path.isfile(_tracker_path):
     with open(_tracker_path) as _tf204:
-        _tracker_src = _tf204.read()
+        _tracker_src = _tf204.read() + _read_pkg_source(_tracker_pkg_dir)
 
     test("v2.0.4: tracker.py has skill_usage state tracking",
          "skill_usage" in _tracker_src,
@@ -3985,7 +4002,7 @@ else:
 # 2. Gate 5 scoring in tracker
 if os.path.isfile(_tracker_path_206):
     with open(_tracker_path_206) as _tf206:
-        _tracker_src_206 = _tf206.read()
+        _tracker_src_206 = _tf206.read() + _read_pkg_source(_tracker_pkg_dir)
 
     test("v2.0.6: Tracker has scoring logic",
          any(s in _tracker_src_206 for s in ["100", "70", "50"]),
@@ -4058,7 +4075,7 @@ _indexhtml_path_207 = os.path.expanduser("~/.claude/dashboard/static/index.html"
 # 1. Context-aware observations in tracker
 if os.path.isfile(_tracker_path_207):
     with open(_tracker_path_207) as _tf207:
-        _tracker_src_207 = _tf207.read()
+        _tracker_src_207 = _tf207.read() + _read_pkg_source(_tracker_pkg_dir)
 
     test("v2.0.7: Tracker has context-aware observations",
          "exit_code" in _tracker_src_207 or "cmd" in _tracker_src_207 or "priority" in _tracker_src_207,
@@ -4418,7 +4435,7 @@ else:
 _tracker_path = os.path.join(os.path.dirname(__file__), "tracker.py")
 if os.path.isfile(_tracker_path):
     with open(_tracker_path) as _trackf:
-        _tracker_src = _trackf.read()
+        _tracker_src = _trackf.read() + _read_pkg_source(_tracker_pkg_dir)
 
     # Tracker debug logging (3 tests)
     test("v2.0.9: Tracker has TRACKER_DEBUG_LOG constant",
@@ -4491,7 +4508,7 @@ print("\n--- v2.1.0 Features ---")
 _boot_path = os.path.join(os.path.dirname(__file__), "boot.py")
 if os.path.isfile(_boot_path):
     with open(_boot_path) as _bootf:
-        _boot_src = _bootf.read()
+        _boot_src = _bootf.read() + _read_pkg_source(_boot_pkg_dir)
 
     # Boot error injection (3 tests)
     test("v2.1.0: boot.py reads error patterns from previous session",
@@ -5088,7 +5105,7 @@ else:
 tracker_path = os.path.join(os.path.dirname(__file__), "tracker.py")
 if os.path.isfile(tracker_path):
     with open(tracker_path) as f:
-        tracker_src = f.read()
+        tracker_src = f.read() + _read_pkg_source(_tracker_pkg_dir)
 
     # 13. tracker.py source contains "WebSearch" in CAPTURABLE_TOOLS
     test("v2.1.3: tracker.py has WebSearch in CAPTURABLE_TOOLS",
@@ -5131,7 +5148,7 @@ print("\n--- v2.1.4 Features ---")
 tracker_path = os.path.join(os.path.dirname(__file__), "tracker.py")
 if os.path.isfile(tracker_path):
     with open(tracker_path) as f:
-        tracker_src = f.read()
+        tracker_src = f.read() + _read_pkg_source(_tracker_pkg_dir)
 
     # 1. tracker.py source contains "_observation_key" function
     test("v2.1.4: tracker.py has _observation_key function",
@@ -5223,8 +5240,8 @@ try:
         [sys.executable, "-c",
          f"import sys; sys.path.insert(0, '/home/crab/.claude/hooks'); "
          f"from tracker import _is_recent_duplicate, CAPTURE_QUEUE; "
-         f"import tracker; "
-         f"tracker.CAPTURE_QUEUE = '{queue_path}'; "
+         f"import tracker; import tracker_pkg.auto_remember as _arm; import tracker_pkg.observations as _obs; "
+         f"tracker.CAPTURE_QUEUE = '{queue_path}'; _arm.CAPTURE_QUEUE = '{queue_path}'; _obs.CAPTURE_QUEUE = '{queue_path}'; "
          f"print(_is_recent_duplicate('test_hash_123'))"],
         capture_output=True, text=True, timeout=5
     )
@@ -5249,8 +5266,8 @@ try:
         [sys.executable, "-c",
          f"import sys; sys.path.insert(0, '/home/crab/.claude/hooks'); "
          f"from tracker import _is_recent_duplicate, CAPTURE_QUEUE; "
-         f"import tracker; "
-         f"tracker.CAPTURE_QUEUE = '{queue_path}'; "
+         f"import tracker; import tracker_pkg.auto_remember as _arm; import tracker_pkg.observations as _obs; "
+         f"tracker.CAPTURE_QUEUE = '{queue_path}'; _arm.CAPTURE_QUEUE = '{queue_path}'; _obs.CAPTURE_QUEUE = '{queue_path}'; "
          f"print(_is_recent_duplicate('different_hash_000'))"],
         capture_output=True, text=True, timeout=5
     )
@@ -5589,7 +5606,7 @@ except Exception as e:
 tracker_path = os.path.join(os.path.dirname(__file__), "tracker.py")
 try:
     with open(tracker_path, "r") as f:
-        tracker_source = f.read()
+        tracker_source = f.read() + _read_pkg_source(_tracker_pkg_dir)
     test("v2.1.6: tracker.py contains edit_streak tracking",
          "edit_streak" in tracker_source,
          "edit_streak not found in tracker.py")
@@ -5720,7 +5737,7 @@ test("v2.1.7: Gate 08 uses severity='warn'",
      "Expected severity='warn' in Gate 08")
 
 # tracker.py tool_stats field (source check)
-tracker_src = open(os.path.join(os.path.dirname(__file__), "tracker.py")).read()
+tracker_src = open(os.path.join(os.path.dirname(__file__), "tracker.py")).read() + _read_pkg_source(_tracker_pkg_dir)
 test("v2.1.7: tracker.py has tool_stats in source",
      "tool_stats" in tracker_src and 'state.setdefault("tool_stats"' in tracker_src,
      "Expected tool_stats tracking in tracker.py")
@@ -5891,7 +5908,7 @@ test("v2.1.9: default_state contains last_test_exit_code",
 boot_path = "/home/crab/.claude/hooks/boot.py"
 try:
     with open(boot_path) as f:
-        boot_content = f.read()
+        boot_content = f.read() + _read_pkg_source(_boot_pkg_dir)
 except FileNotFoundError:
     boot_content = ""
 
@@ -6052,7 +6069,7 @@ test("v2.2.1: observation.py has Task tool handler",
 # Test 2: Task tool in tracker
 try:
     with open("/home/crab/.claude/hooks/tracker.py") as f:
-        tracker_content = f.read()
+        tracker_content = f.read() + _read_pkg_source(_tracker_pkg_dir)
 except FileNotFoundError:
     tracker_content = ""
 
@@ -8165,7 +8182,7 @@ test("v2.4.0: GateResult repr includes severity",
 # Test 6: tool_call_counts field exists in tracker source
 import inspect as _insp240
 import tracker as _tracker240
-_tracker_src = _insp240.getsource(_tracker240)
+_tracker_src = _insp240.getsource(_tracker240) + _read_pkg_source(_tracker_pkg_dir)
 test("v2.4.0: Tracker has tool_call_counts logic",
      "tool_call_counts" in _tracker_src and "total_tool_calls" in _tracker_src,
      "Expected tool_call_counts and total_tool_calls in tracker source")
@@ -10035,7 +10052,9 @@ _orig_queue = AUTO_REMEMBER_QUEUE
 import tracker as _tracker_mod
 _test_queue = os.path.join(_tempfile.gettempdir(), ".test_auto_remember_queue.jsonl")
 _tracker_mod.AUTO_REMEMBER_QUEUE = _test_queue
-# Also patch the module-level constant for _auto_remember_event closure
+# Also patch the source module (tracker_pkg.auto_remember) where the function reads the constant
+import tracker_pkg.auto_remember as _ar_mod
+_ar_mod.AUTO_REMEMBER_QUEUE = _test_queue
 import types
 # Clean up any leftover test queue
 if os.path.exists(_test_queue):
@@ -10147,6 +10166,7 @@ test("Lever4 TriggerD: Only one entry on first crossing (not repeated)",
 if os.path.exists(_test_queue):
     os.unlink(_test_queue)
 _tracker_mod.AUTO_REMEMBER_QUEUE = _orig_queue
+_ar_mod.AUTO_REMEMBER_QUEUE = _orig_queue
 
 # Test 8-10: Lever 2 scoped — promotion criteria (unit tests on promotion logic)
 # These test the criteria logic in memory_server._compact_observations
@@ -10276,8 +10296,7 @@ except Exception as _tg_e:
 
 # Test: boot.py has telegram L2 integration
 try:
-    _boot_content = open(os.path.join(_TG_HOOKS_DIR, "boot.py")).read()
-    _tg_ast.parse(_boot_content)
+    _boot_content = open(os.path.join(_TG_HOOKS_DIR, "boot.py")).read() + _read_pkg_source(_boot_pkg_dir)
     assert "tg_memories" in _boot_content, "boot.py missing tg_memories variable"
     assert "TELEGRAM L2" in _boot_content, "boot.py missing TELEGRAM L2 dashboard section"
     assert "Telegram L2 memories" in _boot_content, "boot.py missing context injection"
