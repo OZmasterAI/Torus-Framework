@@ -59,7 +59,7 @@ ALWAYS_ALLOWED_TOOLS = {
     "Read", "Glob", "Grep", "WebFetch", "WebSearch",
     "AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
     "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
-    "TeamCreate", "TeamDelete", "SendMessage", "TaskOutput", "TaskStop",
+    "TeamCreate", "TeamDelete", "SendMessage", "TaskStop",
 }
 
 # MCP memory tools are always allowed
