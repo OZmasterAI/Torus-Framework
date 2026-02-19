@@ -48,7 +48,7 @@
   "context_enrichment": false,
   "tg_l3_always": false,
   "tg_enrichment": false,
-  "tg_bot_tmux": true,
+  "tg_bot_tmux": false,
   "gate_auto_tune": false,
   "budget_degradation": false,
   "session_token_budget": 0,
