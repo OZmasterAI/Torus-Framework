@@ -16,6 +16,10 @@ AUDIT_DIR = os.path.join(HOOKS_DIR, "audit")
 EFFECTIVENESS_FILE = os.path.join(HOOKS_DIR, ".gate_effectiveness.json")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 STATS_CACHE_FILE = os.path.join(CLAUDE_DIR, "stats-cache.json")
+SNAPSHOT_FILE = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
+MEMORY_TS_FILE = os.path.join(HOOKS_DIR, ".memory_last_queried")
+GIT_CACHE_FILE = "/tmp/statusline-git-cache"
+MODES_DIR = os.path.join(CLAUDE_DIR, "modes")
 
 # Toggle definitions: (label, json_key, default, description)
 # Descriptions and defaults must match boot.py _toggles (lines 770-789)
@@ -208,3 +212,46 @@ class DataLayer:
                 "total_blocks": total,
             }
         return self._cached("block_summary", self._cache_ttl * 5, _load)
+
+    def statusline_snapshot(self):
+        """Read the statusline bridge snapshot (2s TTL)."""
+        def _load():
+            with open(SNAPSHOT_FILE) as f:
+                return json.load(f)
+        return self._cached("snapshot", self._cache_ttl, _load) or {}
+
+    def memory_freshness(self):
+        """Minutes since last memory query, or None."""
+        def _load():
+            with open(MEMORY_TS_FILE) as f:
+                data = json.load(f)
+            ts = data.get("timestamp", 0)
+            if ts <= 0:
+                return None
+            return int(time.time() - ts) // 60
+        return self._cached("mem_fresh", self._cache_ttl, _load, default=None)
+
+    def git_branch(self):
+        """Current git branch from statusline cache."""
+        def _load():
+            with open(GIT_CACHE_FILE) as f:
+                return f.read().strip() or None
+        return self._cached("git_branch", 10.0, _load, default=None)
+
+    def active_mode(self):
+        """Active behavioral mode name, or None."""
+        def _load():
+            with open(os.path.join(MODES_DIR, ".active")) as f:
+                name = f.read().strip()
+            if not name:
+                return None
+            abbrevs = {"coding": "code", "review": "rev", "debug": "dbg", "docs": "docs"}
+            return abbrevs.get(name, name[:6])
+        return self._cached("active_mode", self._cache_ttl, _load, default=None)
+
+    def verification_ratio(self):
+        """Return (verified, total) from session state."""
+        state = self.session_state()
+        verified = len(state.get("verified_fixes", []))
+        pending = len(state.get("pending_verification", []))
+        return (verified, verified + pending)

@@ -838,6 +838,60 @@ def main():
     print(" | ".join(line1_parts))
     print(" | ".join(line2_parts))
 
+    # ── LINE 3: Toggle switches ──
+    try:
+        with open(LIVE_STATE_FILE) as f:
+            ls = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        ls = {}
+
+    def _tog(key, default=False):
+        return "\u2705" if ls.get(key, default) else "\U0001f518"
+
+    budget_val = ls.get("session_token_budget", 0) or 0
+    line3 = (
+        f"{_tog('terminal_l2_always')}L2 "
+        f"{_tog('context_enrichment')}Enrich "
+        f"{_tog('tg_l3_always')}TG "
+        f"{_tog('tg_bot_tmux')}Bot "
+        f"{_tog('gate_auto_tune')}Tune "
+        f"{_tog('budget_degradation')}Budget "
+        f"{_tog('chain_memory')}Chain "
+        f"B:{budget_val}"
+    )
+    print(line3)
+
+    # ── SNAPSHOT: write bridge file for TUI ──
+    # Check UDS socket health
+    uds_ok = False
+    try:
+        uds_ok = is_worker_available()
+    except Exception:
+        pass
+
+    snapshot = {
+        "ts": time.time(),
+        "model": model_short,
+        "cost_usd": cost if isinstance(cost, (int, float)) else 0,
+        "duration_min": minutes,
+        "context_pct": ctx_pct_val,
+        "compressions": cmp_count,
+        "session_tokens": fmt_tokens(session_tokens) if session_tokens > 0 else "0",
+        "last_turn": last_tok_str or "",
+        "lines_added": lines_added,
+        "lines_removed": lines_removed,
+        "health_pct": health_pct,
+        "uds_ok": uds_ok,
+    }
+    snap_path = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
+    snap_tmp = snap_path + ".tmp"
+    try:
+        with open(snap_tmp, "w") as f:
+            json.dump(snapshot, f)
+        os.replace(snap_tmp, snap_path)
+    except OSError:
+        pass
+
 
 if __name__ == "__main__":
     try:

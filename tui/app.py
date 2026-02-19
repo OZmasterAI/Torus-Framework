@@ -41,7 +41,7 @@ GATE_INFO = [
 
 
 class StatusBar(Static):
-    """Top bar: session, health, context."""
+    """Top bar: model, branch, session, context%."""
 
     def __init__(self, data: DataLayer):
         super().__init__()
@@ -50,61 +50,76 @@ class StatusBar(Static):
     def render(self) -> str:
         live = self._data.live_state()
         mem = self._data.memory_stats()
+        snap = self._data.statusline_snapshot()
         s = live.get("session_count", "?")
-        t = live.get("test_count", "?")
-        f = live.get("test_failures", 0)
         m = mem.get("mem_count", "?")
-        t_col = "green" if f == 0 else "red"
+        model = snap.get("model", "?")
+        ctx = snap.get("context_pct", 0)
+        branch = self._data.git_branch() or "?"
+
+        # Color context %
+        if ctx >= 70:
+            ctx_col = "red"
+        elif ctx >= 50:
+            ctx_col = "yellow"
+        else:
+            ctx_col = "green"
+
         return (
-            f"[bold]S{s}[/bold]  "
-            f"T:[{t_col}]{t}[/{t_col}]  "
-            f"M:[cyan]{m}[/cyan]  "
-            f"G:[green]15[/green]"
+            f"[bold][{model}][/bold] {branch} #[bold]{s}[/bold] | "
+            f"G:[green]15[/green] M:[cyan]{m}[/cyan] | "
+            f"Ctx:[{ctx_col}]{ctx}%[/{ctx_col}]"
         )
 
 
 class HealthBar(Static):
-    """Framework health + error velocity."""
+    """Health bar + cost + duration + lines changed."""
 
     def __init__(self, data: DataLayer):
         super().__init__()
         self._data = data
 
     def render(self) -> str:
+        snap = self._data.statusline_snapshot()
         state = self._data.session_state()
-        live = self._data.live_state()
-        mem = self._data.memory_stats()
 
-        mem_ok = isinstance(mem.get("mem_count", 0), int) and mem.get("mem_count", 0) > 0
-        health = 100 if mem_ok else 85
+        health = snap.get("health_pct", 100) if snap else 100
 
+        # Error velocity from session state
         error_windows = state.get("error_windows", [])
         now = time.time()
         recent = sum(
             e.get("count", 1) for e in error_windows
             if isinstance(e, dict) and now - e.get("last_seen", 0) < 300
         )
-        total_err = sum(e.get("count", 1) for e in error_windows if isinstance(e, dict))
 
         filled = health // 10
         hc = "green" if health >= 90 else "yellow" if health >= 70 else "red"
         bar = f"[{hc}]{'\u2588' * filled}{'\u2591' * (10 - filled)} {health}%[/{hc}]"
 
         parts = [f"HP:{bar}"]
+
         if recent > 0:
             parts.append(f"[red]ERR:{recent}[/red]")
-        elif total_err > 0:
-            parts.append(f"[yellow]err:{total_err}[/yellow]")
 
-        issues = live.get("known_issues", [])
-        if issues:
-            parts.append(f"[dim]issues:{len(issues)}[/dim]")
+        # Cost, duration, lines from snapshot
+        if snap:
+            cost = snap.get("cost_usd", 0)
+            if cost:
+                parts.append(f"${cost:.2f}")
+            dur = snap.get("duration_min", 0)
+            if dur:
+                parts.append(f"{dur}m")
+            la = snap.get("lines_added", 0)
+            lr = snap.get("lines_removed", 0)
+            if la or lr:
+                parts.append(f"+{la}/-{lr}")
 
         return "  ".join(parts)
 
 
 class SessionMetrics(Static):
-    """Live session stats."""
+    """Live session stats with verification, memory freshness, mode."""
 
     def __init__(self, data: DataLayer):
         super().__init__()
@@ -114,16 +129,29 @@ class SessionMetrics(Static):
         state = self._data.session_state()
         calls = state.get("total_tool_calls", 0)
         edited = len(state.get("files_edited", []))
-        verified = len(state.get("verified_fixes", []))
-        pending = len(state.get("pending_verification", []))
+        v_ok, v_total = self._data.verification_ratio()
 
         tc = state.get("tool_call_counts", {})
         top = sorted(tc.items(), key=lambda x: -x[1])[:3]
         tool_str = " ".join(f"[dim]{t}[/dim]:{c}" for t, c in top) if top else "[dim]none[/dim]"
 
+        # Memory freshness
+        fresh = self._data.memory_freshness()
+        fresh_str = f"\u2191{fresh}m" if fresh is not None else ""
+
+        # Active mode
+        mode = self._data.active_mode()
+        mode_str = f"[bold]{mode}[/bold]" if mode else ""
+
+        line2_parts = [f"TC:{calls}", f"Files:{edited}", f"V:{v_ok}/{v_total}"]
+        if fresh_str:
+            line2_parts.append(fresh_str)
+        if mode_str:
+            line2_parts.append(mode_str)
+
         return (
             f"[bold dim]SESSION[/bold dim]\n"
-            f" TC:{calls}  Files:{edited}  V:{verified}/{verified+pending}\n"
+            f" {'  '.join(line2_parts)}\n"
             f" {tool_str}"
         )
 
@@ -186,11 +214,48 @@ class AuditPanel(Static):
         return "\n".join(lines)
 
 
+class InfoBar(Static):
+    """Tokens, compression, UDS status from statusline snapshot.
+    Only renders content if snapshot exists and is fresh (<30s)."""
+
+    def __init__(self, data: DataLayer):
+        super().__init__()
+        self._data = data
+
+    def render(self) -> str:
+        snap = self._data.statusline_snapshot()
+        if not snap:
+            return ""
+        # Check freshness — skip if stale
+        ts = snap.get("ts", 0)
+        if time.time() - ts > 30:
+            return "[dim]snapshot stale[/dim]"
+
+        parts = []
+        tok = snap.get("session_tokens", "0")
+        if tok and tok != "0":
+            last = snap.get("last_turn", "")
+            s = f"[cyan]{tok}[/cyan] tok"
+            if last:
+                s += f" ({last})"
+            parts.append(s)
+
+        cmp = snap.get("compressions", 0)
+        if cmp:
+            parts.append(f"CMP:{cmp}")
+
+        uds = snap.get("uds_ok", False)
+        parts.append(f"UDS:[green]ok[/green]" if uds else "UDS:[yellow]down[/yellow]")
+
+        return "  ".join(parts) if parts else ""
+
+
 class TorusApp(App):
     CSS = """
     Screen { background: $surface; }
     StatusBar { height: 1; background: $accent; color: $text; padding: 0 1; }
     HealthBar { height: 1; padding: 0 1; }
+    InfoBar { height: 1; padding: 0 1; }
     SessionMetrics { height: auto; padding: 0 1; }
     GatePanel { height: auto; padding: 0 1; }
     AuditPanel { height: auto; padding: 0 1; }
@@ -218,6 +283,7 @@ class TorusApp(App):
         yield StatusBar(self.data)
         yield HealthBar(self.data)
         with VerticalScroll():
+            yield InfoBar(self.data)
             yield SessionMetrics(self.data)
             yield Static("[dim]\u2500[/dim]", classes="sep")
             yield GatePanel(self.data)
@@ -245,7 +311,7 @@ class TorusApp(App):
         if self.paused:
             return
         self.data.invalidate()
-        for w in (StatusBar, HealthBar, SessionMetrics, GatePanel, AuditPanel):
+        for w in (StatusBar, HealthBar, InfoBar, SessionMetrics, GatePanel, AuditPanel):
             try:
                 self.query_one(w).refresh()
             except Exception:
