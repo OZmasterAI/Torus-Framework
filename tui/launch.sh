@@ -6,7 +6,7 @@ SCRIPT="$(cd "$(dirname "$0")" && pwd)/app.py"
 
 if [ -n "$TMUX" ]; then
     # Split LEFT — TUI on left, Claude stays on right
-    tmux split-window -hb -l 45% "python3 $SCRIPT"
+    tmux split-window -hb -l 25% "python3 $SCRIPT"
 else
     python3 "$SCRIPT"
 fi
