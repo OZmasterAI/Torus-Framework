@@ -196,10 +196,9 @@ class TorusApp(App):
     AuditPanel { height: auto; padding: 0 1; }
     #tog-label { color: $text-muted; text-style: bold; padding: 0 1; height: 1; }
     .trow { height: 3; padding: 0 1; }
-    .trow Label { width: 1fr; content-align: left middle; }
     .trow Switch { width: auto; }
-    .tdesc { color: $text-muted; padding: 0 1 0 3; height: 1; }
-    .tval { width: auto; content-align: right middle; color: $accent; }
+    .tlabel { width: 1fr; content-align: left middle; }
+    .tval { width: 4; content-align: center middle; color: $accent; }
     .sep { height: 1; color: $accent-darken-2; padding: 0 1; }
     Footer { background: $primary-background; }
     """
@@ -227,14 +226,14 @@ class TorusApp(App):
             live = self.data.live_state()
             for label, key, default, desc in TOGGLES:
                 val = live.get(key, default)
-                with Horizontal(classes="trow"):
-                    yield Label(label)
-                    if isinstance(default, bool):
+                if isinstance(default, bool):
+                    with Horizontal(classes="trow"):
                         yield Switch(value=bool(val), id=f"sw_{key}")
-                    else:
-                        display = str(val) if val else "0"
-                        yield Label(display, id=f"val_{key}", classes="tval")
-                yield Label(f"[dim]{desc}[/dim]", classes="tdesc")
+                        yield Label(f"{label} [dim]{desc}[/dim]", classes="tlabel")
+                else:
+                    with Horizontal(classes="trow"):
+                        yield Label(f"[bold]{val}[/bold]", classes="tval")
+                        yield Label(f"{label} [dim]{desc}[/dim]", classes="tlabel")
             yield Static("[dim]\u2500[/dim]", classes="sep")
             yield AuditPanel(self.data)
         yield Footer()
