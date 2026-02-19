@@ -195,7 +195,7 @@ class TorusApp(App):
     GatePanel { height: auto; padding: 0 1; }
     AuditPanel { height: auto; padding: 0 1; }
     #tog-label { color: $text-muted; text-style: bold; padding: 0 1; height: 1; }
-    .trow { height: 1; padding: 0 1; }
+    .trow { height: 3; padding: 0 1; }
     .trow Label { width: 1fr; content-align: left middle; }
     .trow Switch { width: auto; }
     .tdesc { color: $text-muted; padding: 0 1 0 3; height: 1; }
