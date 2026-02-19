@@ -1,5 +1,5 @@
 {
-  "session_count": 153,
+  "session_count": 155,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -8,14 +8,22 @@
   "test_count": 1116,
   "test_failures": 0,
   "files_modified": [
-    "dashboard/server.py",
-    "dashboard/static/index.html",
-    "dashboard/static/style.css",
-    "dashboard/static/modules/main.js",
-    "dashboard/static/modules/sse.js",
-    "dashboard/static/modules/panels/statusline.js",
-    "dashboard/static/modules/panels/toggles.js",
-    "dashboard/static/modules/chat.js"
+    "hooks/tracker.py",
+    "hooks/boot.py",
+    "hooks/tracker_pkg/__init__.py",
+    "hooks/tracker_pkg/errors.py",
+    "hooks/tracker_pkg/observations.py",
+    "hooks/tracker_pkg/verification.py",
+    "hooks/tracker_pkg/auto_remember.py",
+    "hooks/tracker_pkg/orchestrator.py",
+    "hooks/boot_pkg/__init__.py",
+    "hooks/boot_pkg/util.py",
+    "hooks/boot_pkg/memory.py",
+    "hooks/boot_pkg/context.py",
+    "hooks/boot_pkg/maintenance.py",
+    "hooks/boot_pkg/orchestrator.py",
+    "hooks/test_framework.py",
+    "settings.json"
   ],
   "improvements_shipped": [
     "Gate effectiveness tracking (blocks/overrides/prevented)",
@@ -36,10 +44,13 @@
     "tg_session_notify toggle — gate session-end Telegram notifications",
     "tg_mirror_messages + Stop hook — real-time Claude response mirroring to TG",
     "Toggle reorder — 11 toggles, Budget below Mirror",
-    "Web Dashboard Enhancement — statusline bar, interactive toggles, terminal chat, SSE live_state"
+    "Web Dashboard Enhancement — statusline bar, interactive toggles, terminal chat, SSE live_state",
+    "tracker.py + boot.py decomposition into _pkg packages — zero-breaking-change refactor",
+    "Agent teams re-enabled (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)"
   ],
   "next_steps": [
-    "Merge self-evolve-test-branch to main",
+    "Merge refactor1 branch to self-evolve-test-branch or main",
+    "Measure agent teams token overhead",
     "Enable gate_auto_tune — effectiveness data now accumulating",
     "Enable budget_degradation + set session_token_budget",
     "Test terminal chat end-to-end"
@@ -70,10 +81,10 @@
   "tg_session_notify": true,
   "tg_mirror_messages": false,
   "last_session_metrics": {
-    "reads": 36,
-    "edits": 20,
+    "reads": 15,
+    "edits": 5,
     "errors": 0,
-    "verified": 8,
+    "verified": 1,
     "pending": 0
   }
 }

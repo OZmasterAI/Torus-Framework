@@ -1,17 +1,16 @@
-# Session 152 — Web Dashboard Enhancement + Terminal Chat
+# Session 154 — Refactor & Agent Teams
 
 ## What Was Done
-- **Phase 1: Server Infrastructure** — Added `/api/statusline-snapshot` (git branch enrichment), `POST /api/toggles/{key}` (11-key whitelist, atomic write), SSE `live_state_event` mtime tracking, CORS POST support
-- **Phase 2: Statusline Metrics Bar** — Slim horizontal bar: model name (color-coded opus/sonnet/haiku), git branch, context% (5-tier color), cost, CMP, memory freshness, tokens, lines, budget tier badge
-- **Phase 3: Interactive Toggles Panel** — 11 toggle pills with POST on click, optimistic UI with rollback, numeric cycling for session_token_budget (0/50k/100k/200k), SSE cross-tab refresh
-- **Phase 4: Terminal Chat** — WebSocket handler spawning `claude -p` subprocess with `--resume` for session continuity, `--output-format stream-json`, `CLAUDECODE=0` env, token-by-token streaming, session management via sessionStorage UUID
-- **New files**: `statusline.js`, `toggles.js`, `chat.js`
-- **Modified**: `server.py`, `index.html`, `style.css`, `main.js`, `sse.js`
-- All 1116 tests passing, dashboard verified working on localhost:7777
-- **Gate review Q&A** — Reviewed all 17 gates (16 active, 1 dormant). Auto-tune has enough data for gates 04/05/06. Gate 14 assessed for tunability — decided against (too few fires, current 3-strike balanced). Gate 10 clarified: steps 1+2 always active, only budget tiers need toggle.
+- Completed tracker.py + boot.py decomposition into `_pkg` packages (5 commits, 23 files, +2043/-1845 lines)
+- All 1,116 tests pass with 0 failures after decomposition
+- Re-enabled agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in settings.json) — takes effect next session
+- Researched Claude GitHub Actions — would partially inherit Torus framework (CLAUDE.md + hooks load, but MCP/ramdisk/dashboard need CI plumbing)
+- Confirmed Gate 10 forces explicit model assignment on all subagents (no silent inheritance)
+- Corrected agent teams token cost: only 3 extra tools (TeamCreate, TeamDelete, SendMessage), not 10
 
 ## What's Next
-- Merge self-evolve-test-branch to main (many commits ahead)
+- Merge refactor1 branch to self-evolve-test-branch (or directly to main)
+- Measure agent teams token overhead next session (compare /context before vs after)
 - Enable gate_auto_tune — effectiveness data now accumulating
 - Enable budget_degradation + set session_token_budget (4-tier ready)
 - Test terminal chat end-to-end (WebSocket + claude -p subprocess)
@@ -27,15 +26,15 @@
 - UDS socket intermittently missing — gather.py warns but non-blocking
 
 ## Service Status
-- Memory MCP: RUNNING (684 memories)
+- Memory MCP: RUNNING (703 memories)
 - Tests: 1116 passed, 0 failed
 - Framework version: v2.5.0 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 16 active gates (Gate 8 dormant)
 - Ramdisk: active at /run/user/1000/claude-hooks
 - Telegram bot: NOT RUNNING (configured, toggle OFF)
-- Telegram mirror: configured (toggle OFF by default)
 - Telegram notify: ON
-- Web Dashboard: localhost:7777 (statusline + toggles + chat + SSE)
+- Web Dashboard: localhost:7777
 - GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI)
-- Branch: self-evolve-test-branch
+- Branch: refactor1 (branched from self-evolve-test-branch)
+- Agent teams: ENABLED (takes effect next session)
 - Toggles: 11 total
