@@ -65,14 +65,39 @@ class StatusView(Static):
         super().__init__()
         self._data = data
 
+    def _health_color(self, pct):
+        """Match statusline: cyan=100, green=90+, dark_orange=75+, yellow=50+, red=<50."""
+        if pct >= 100:
+            return "cyan"
+        if pct >= 90:
+            return "green"
+        if pct >= 75:
+            return "dark_orange"
+        if pct >= 50:
+            return "yellow"
+        return "red"
+
+    def _ctx_color(self, pct):
+        """Match statusline: cyan<40, green=40-49, dark_orange=50-59, yellow=60-69, red=70+."""
+        if pct >= 70:
+            return "red"
+        if pct >= 60:
+            return "yellow"
+        if pct >= 50:
+            return "dark_orange"
+        if pct >= 40:
+            return "green"
+        return "cyan"
+
     def render(self) -> str:
+        import time as _t
         lines = []
         snap = self._data.statusline_snapshot()
         live = self._data.live_state()
         state = self._data.session_state()
         mem = self._data.memory_stats()
 
-        # ── LINE 1 ──
+        # ── LINE 1: Identity ──
         model = snap.get("model", "?") if snap else "?"
         if model.startswith("claude-"):
             model = model[7:]
@@ -89,19 +114,19 @@ class StatusView(Static):
 
         l1 = f"[{mc}]\\[{m}][/{mc}]"
         if mode:
-            l1 += f" MODE:{mode}"
+            l1 += f" [bold cyan]MODE:{mode}[/bold cyan]"
         l1 += f" | \U0001f4c1 {live.get('project', 'torus')}"
         l1 += f" | \U0001f33f {br}"
-        l1 += f" | #{s}"
-        l1 += f" | \U0001f6e1\ufe0f G:{len(GATE_INFO)}"
+        l1 += f" | [bold]#{s}[/bold]"
+        l1 += f" | \U0001f6e1\ufe0f [cyan]G:{len(GATE_INFO)}[/cyan]"
         if fresh and fresh > 0:
-            l1 += f" | \U0001f9e0 M:{mc_} \u2191{fresh}m"
+            l1 += f" | \U0001f9e0 [cyan]M:{mc_}[/cyan] [green]\u2191{fresh}m[/green]"
         else:
-            l1 += f" | \U0001f9e0 M:{mc_}"
-        l1 += f" | \u26a1TC:{tc}"
+            l1 += f" | \U0001f9e0 [cyan]M:{mc_}[/cyan]"
+        l1 += f" | \u26a1[yellow]TC:{tc}[/yellow]"
         lines.append(l1)
 
-        # ── LINE 2 ──
+        # ── LINE 2: Health + metrics ──
         health = snap.get("health_pct", 100) if snap else 100
         ctx = snap.get("context_pct", 0) if snap else 0
         cost = snap.get("cost_usd", 0) if snap else 0
@@ -111,23 +136,44 @@ class StatusView(Static):
         stok = snap.get("session_tokens", "0") if snap else "0"
         cmp = snap.get("compressions", 0) if snap else 0
 
-        hc = "green" if health >= 80 else "yellow" if health >= 50 else "red"
-        filled = health // 10
-        bar = f"[{hc}]{'█' * filled}{'░' * (10 - filled)}[/{hc}]"
+        hc = self._health_color(health)
+        filled = max(0, min(10, round(health / 10)))
+        bar = f"[{hc}]HP:{'█' * filled}{'░' * (10 - filled)} {health}%[/{hc}]"
 
-        cc = "red" if ctx >= 70 else "yellow" if ctx >= 50 else "green"
+        cc = self._ctx_color(ctx)
+
+        # Error velocity
+        error_windows = state.get("error_windows", [])
+        now = _t.time()
+        recent_err = sum(
+            e.get("count", 1) for e in error_windows
+            if isinstance(e, dict) and now - e.get("last_seen", 0) < 300
+        )
+        total_err = sum(
+            e.get("count", 1) for e in error_windows if isinstance(e, dict)
+        )
+
+        # Verification
+        v_ok, v_total = self._data.verification_ratio()
 
         l2 = f"{bar} | [{cc}]\U0001f4e6{ctx}%[/{cc}]"
         if cmp:
-            l2 += f" CMP:{cmp}"
+            l2 += f" [yellow]CMP:{cmp}[/yellow]"
+        if recent_err > 0:
+            l2 += f" | [red]\u26a0\ufe0fE:{recent_err}\U0001f525[/red]"
+        elif total_err > 0:
+            l2 += f" | [yellow]\u26a0\ufe0fE:{total_err}[/yellow]"
         if stok and stok != "0":
-            l2 += f" | {stok} tok"
+            l2 += f" | [cyan]{stok} tok[/cyan]"
         if dur:
             l2 += f" | \u23f1\ufe0f {dur}m"
         if la or lr:
-            l2 += f" | +{la}/-{lr}"
+            l2 += f" | [green]+{la}[/green]/[red]-{lr}[/red]"
+        if v_total > 0:
+            vc = "green" if v_ok == v_total else "yellow"
+            l2 += f" | [{vc}]\u2705V:{v_ok}/{v_total}[/{vc}]"
         cost_v = cost if isinstance(cost, (int, float)) else 0
-        l2 += f" | \U0001f4b0${cost_v:.2f}"
+        l2 += f" | \U0001f4b0[cyan]${cost_v:.2f}[/cyan]"
         lines.append(l2)
 
         return "\n".join(lines)
