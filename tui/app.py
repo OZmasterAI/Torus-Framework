@@ -52,10 +52,10 @@ TOGGLE_DISPLAY = [
     ("tg_enrichment",        "TGe",    True,  "TG context"),
     ("tg_bot_tmux",          "Bot",    True,  "TG bot"),
     ("gate_auto_tune",       "Tune",   True,  "Auto-tune"),
-    ("budget_degradation",   "Budget", True,  "4-tier deg"),
     ("chain_memory",         "Chain",  True,  "Skill chain"),
     ("tg_session_notify",    "Notify", True,  "Session TG msg"),
     ("tg_mirror_messages",   "Mirror", True,  "All msgs→TG"),
+    ("budget_degradation",   "Budget", True,  "4-tier deg"),
     ("session_token_budget", "TokBgt", False, "Token limit"),
 ]
 

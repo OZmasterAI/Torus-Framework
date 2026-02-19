@@ -774,10 +774,10 @@ def main():
         ("TG L3 enrichment",      "tg_enrichment",       False, "Attach ±30min Telegram messages to ChromaDB results"),
         ("Telegram bot",           "tg_bot_tmux",         False, "Start/stop Telegram bot in dedicated tmux session"),
         ("Gate auto-tune",        "gate_auto_tune",      False, "Auto-adjust gate thresholds based on effectiveness data"),
-        ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
         ("Chain memory",          "chain_memory",        False, "Remember and reuse successful skill chain sequences"),
         ("Session notify",        "tg_session_notify",   False, "Send session summary to Telegram on end"),
         ("Mirror messages",       "tg_mirror_messages",  False, "Send all Claude responses to Telegram"),
+        ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
     ]
     _toggle_lines = []
     _toggle_keys = []
