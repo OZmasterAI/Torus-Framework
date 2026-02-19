@@ -27,7 +27,13 @@ LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 ARCHIVE_DIR = os.path.join(CLAUDE_DIR, "archive")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
-CAPTURE_QUEUE = os.path.join(HOOKS_DIR, ".capture_queue.jsonl")
+def _get_capture_queue():
+    """Return the active capture queue path (ramdisk or disk fallback)."""
+    try:
+        from shared.ramdisk import get_capture_queue
+        return get_capture_queue()
+    except ImportError:
+        return os.path.join(HOOKS_DIR, ".capture_queue.jsonl")
 
 # If HANDOFF.md was modified within this window, /wrap-up already ran
 WRAPUP_RECENCY_SECONDS = 300  # 5 minutes
@@ -404,13 +410,14 @@ def session_summary(state=None):
 
 
 def flush_capture_queue():
-    """Flush .capture_queue.jsonl via UDS socket to memory_server.py."""
-    if not os.path.exists(CAPTURE_QUEUE) or os.path.getsize(CAPTURE_QUEUE) == 0:
+    """Flush capture queue via UDS socket to memory_server.py."""
+    capture_queue = _get_capture_queue()
+    if not os.path.exists(capture_queue) or os.path.getsize(capture_queue) == 0:
         print("[SESSION_END] Flushed 0 observations", file=sys.stderr)
         return
 
     # Count lines for reporting
-    with open(CAPTURE_QUEUE, "r") as f:
+    with open(capture_queue, "r") as f:
         line_count = sum(1 for _ in f)
 
     # Try UDS socket flush (memory_server.py handles the actual ChromaDB upsert)
