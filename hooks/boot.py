@@ -767,26 +767,26 @@ def main():
     if tg_memories:
         tg_summaries = [f"[{tm.get('date', '?')}] {tm.get('text', '')[:100]}" for tm in tg_memories]
         context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
-    # Build toggle status table from LIVE_STATE
-    _toggles = {
-        "Terminal L2 always-on": ("terminal_l2_always", True),
-        "Terminal L2 enrichment": ("context_enrichment", False),
-        "TG L3 always-on": ("tg_l3_always", False),
-        "TG L3 enrichment": ("tg_enrichment", False),
-        "TG bot tmux": ("tg_bot_tmux", False),
-        "Gate auto-tune": ("gate_auto_tune", False),
-        "Budget degradation": ("budget_degradation", False),
-        "Chain memory": ("chain_memory", False),
-    }
+    # Build toggle status table from LIVE_STATE — (key, default, description)
+    _toggles = [
+        ("Terminal L2 always-on",  "terminal_l2_always", True,  "Auto-search memory on every terminal command"),
+        ("Terminal L2 enrichment", "context_enrichment",  False, "Inject matching memories into terminal results"),
+        ("TG L3 always-on",       "tg_l3_always",        False, "Auto-search memory on every Telegram message"),
+        ("TG L3 enrichment",      "tg_enrichment",       False, "Inject matching memories into Telegram replies"),
+        ("TG bot tmux",           "tg_bot_tmux",         False, "Route Telegram bot through dedicated tmux session"),
+        ("Gate auto-tune",        "gate_auto_tune",      False, "Auto-adjust gate thresholds based on effectiveness data"),
+        ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
+        ("Chain memory",          "chain_memory",        False, "Remember and reuse successful skill chain sequences"),
+    ]
     _toggle_lines = []
     _toggle_keys = []
-    for label, (key, default) in _toggles.items():
+    for label, key, default, desc in _toggles:
         val = live_state.get(key, default) if live_state else default
-        _toggle_lines.append(f"{label}: {'ON' if val else 'OFF'}")
+        _toggle_lines.append(f"{label}: {'ON' if val else 'OFF'} — {desc}")
         _toggle_keys.append(key)
     # Budget has a numeric value too
     _budget_val = live_state.get("session_token_budget", 0) if live_state else 0
-    _toggle_lines.append(f"Session token budget: {_budget_val}")
+    _toggle_lines.append(f"Session token budget: {_budget_val} — Max tokens per session (0 = unlimited)")
     _toggle_keys.append("session_token_budget")
     _toggle_display = " | ".join(_toggle_lines)
     _toggle_key_list = ", ".join(_toggle_keys)
