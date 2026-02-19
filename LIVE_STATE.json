@@ -1,45 +1,25 @@
 {
-  "session_count": 142,
-  "status": "idle",
+  "session_count": 144,
+  "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "cleanup-docs",
-  "feature_status": "shipped",
+  "feature": "",
+  "feature_status": "in-progress",
   "test_count": 1086,
   "test_failures": 0,
-  "files_modified": [
-    "~/.claude/HANDOFF.md",
-    "~/.claude/LIVE_STATE.json",
-    "~/.claude/.gitignore",
-    "~/.claude/integrations/telegram-bot/search.py",
-    "~/.claude/integrations/telegram-bot/tests/test_telegram_bot.py",
-    "~/Desktop/Commits and upgrades.md",
-    "~/Desktop/OClaw-Backup-19-2-26.tar.gz"
-  ],
-  "improvements_shipped": [
-    "Cleaned stale telegram-memory/Telethon/Hans refs from 5 files",
-    "Complete commit history: 133 commits, 441 upgrades, timestamps, sequence numbers",
-    "Full .claude directory audit with ~18.7GB reclaimable identified",
-    "OpenClaw backup created (2.7GB compressed)"
-  ],
-  "next_steps": [
-    "Clean up reclaimable disk space (~18.7GB)",
-    "Build cheap polling queue for between-session messages",
-    "Monitor auto-remember queue",
-    "Run deduplicate_sweep(dry_run=True) to audit corpus (614 memories)",
-    "Sync changes to GitHub export repo",
-    "Apply Haiku→Sonnet change to agents/researcher.md"
-  ],
+  "files_modified": [],
+  "improvements_shipped": [],
+  "next_steps": [],
   "dormant_agent_teams": [
-    "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
-    "Privacy tags — <private> edge stripping in tracker.py/observation.py"
+    "Activate get_teammate_context() \u2014 @mcp.tool() + @crash_proof",
+    "Privacy tags \u2014 <private> edge stripping in tracker.py/observation.py"
   ],
   "known_issues": [
-    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
-    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
-    "tmux routing shared session causes interference — use dedicated claude-bot"
+    "Plan mode exit loop \u2014 platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access \u2014 tests skip when MCP running, correct behavior",
+    "Export test_framework.py uses _FRAMEWORK_ROOT \u2014 merge changes, don't copy",
+    "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
+    "tmux routing shared session causes interference \u2014 use dedicated claude-bot"
   ],
   "terminal_l2_always": true,
   "context_enrichment": false,
@@ -47,8 +27,8 @@
   "tg_enrichment": false,
   "tg_bot_tmux": true,
   "last_session_metrics": {
-    "reads": 8,
-    "edits": 10,
+    "reads": 0,
+    "edits": 0,
     "errors": 0,
     "verified": 0,
     "pending": 0
