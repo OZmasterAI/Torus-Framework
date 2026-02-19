@@ -1,21 +1,27 @@
 # Session 150 Handoff
 
 ## What Was Done
-- **TUI Feature Parity** — StatusLine→TUI bridge via `.statusline_snapshot.json`, 3rd toggle line on statusline, enhanced TUI widgets (StatusBar, HealthBar, InfoBar, SessionMetrics), UDS health check
-- **TUI Rework** — Modernized TUI: 2-column gates, compact toggles, colored dots, slim health bar
-- **Conway Deep Research** — Researched Conway Automaton framework (4 URLs), produced detailed Torus vs Conway comparison analysis
-- **Cherry-pick Implementation (2+3+4 of 4)**:
+- **Cherry-pick Implementation (3 features from Conway analysis)**:
   1. **ULID Audit IDs** — Inline ULID generator in `shared/audit_log.py`, 26-char base32 sortable IDs on every audit entry
-  2. **Gate 17: Injection Defense** — New gate scanning PostToolUse results from external tools for 6 injection categories (instruction override, authority claims, boundary manipulation, obfuscation, financial, self-harm)
-  3. **4-tier Budget Degradation** — Enhanced Gate 10: NORMAL (0-40%), LOW_COMPUTE (40-80% opus→sonnet), CRITICAL (80-95% all→haiku), DEAD (95%+ block)
-- **StatusLine line 3 completeness** — Added missing `tg_enrichment` toggle + budget tier indicator (DEAD/CRIT/LOW)
-- Tests: 1116 passed, 0 failed (+13 new tests)
+  2. **Gate 17: Injection Defense** — New PostToolUse gate scanning external tools for 6 injection categories (instruction override, authority claims, boundary manipulation, obfuscation, financial, self-harm)
+  3. **4-tier Budget Degradation** — Enhanced Gate 10: NORMAL (0-40%), LOW_COMPUTE (40-80% opus->sonnet), CRITICAL (80-95% all->haiku), DEAD (95%+ block)
+- **TUI Terminal Redesign** — Rewrote TUI to match statusline terminal aesthetic:
+  - Single-widget terminal text rendering (no Textual widget bloat)
+  - Clickable toggles with descriptions (bool flip, numeric cycles 0/50k/100k/200k)
+  - Colors match statusline exactly (5-tier health, 5-tier context%, model colors, error/lines/cost colors)
+  - Layout: statusline -> gates -> toggles -> audit
+  - Pane size reduced from 25% to 18%
+  - All icons restored (📁🌿🛡️🧠⚡📦⏱️💰✅⚠️🔥📜)
+  - Gate alignment fixed (7-char names, right-aligned block counts, 2-column grid)
+- **StatusLine completeness** — Added missing `tg_enrichment` toggle + budget tier indicator on line 3
+- **Conway Deep Research** — Full comparison analysis (Torus vs Conway), cherry-pick evaluation
+- Tests: 1116 passed, 0 failed (+13 new)
 
 ## What's Next
 - Merge self-evolve-test-branch to main (many commits ahead)
 - Add safety guard to app.py (refuse to run inside Claude Bash tool)
 - Enable gate_auto_tune — effectiveness data now accumulating
-- Enable budget_degradation + set session_token_budget (now 4-tier ready)
+- Enable budget_degradation + set session_token_budget (4-tier ready)
 - Consider tg_session_notify toggle for session-end Telegram messages
 
 ## Known Issues
@@ -29,7 +35,7 @@
 - UDS socket intermittently missing — gather.py warns but non-blocking
 
 ## Service Status
-- Memory MCP: RUNNING (672 memories)
+- Memory MCP: RUNNING (675 memories)
 - Tests: 1116 passed, 0 failed
 - Framework version: v2.5.0 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 16 active gates (Gate 8 dormant)
