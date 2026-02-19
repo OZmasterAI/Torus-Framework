@@ -8,6 +8,7 @@
 - **New files**: `statusline.js`, `toggles.js`, `chat.js`
 - **Modified**: `server.py`, `index.html`, `style.css`, `main.js`, `sse.js`
 - All 1116 tests passing, dashboard verified working on localhost:7777
+- **Gate review Q&A** — Reviewed all 17 gates (16 active, 1 dormant). Auto-tune has enough data for gates 04/05/06. Gate 14 assessed for tunability — decided against (too few fires, current 3-strike balanced). Gate 10 clarified: steps 1+2 always active, only budget tiers need toggle.
 
 ## What's Next
 - Merge self-evolve-test-branch to main (many commits ahead)
