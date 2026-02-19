@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Torus Framework TUI Dashboard.
+"""Torus Framework — Monitoring Dashboard (Textual)
 
-Live monitoring and toggle control for the Torus self-healing framework.
-Sidebar layout: toggles + memory on left, tabbed content on right.
+Live version of the preview dashboard — same visual style, real data.
+Sidebar: toggles + memory stats. Main: gate table + tabbed content.
 
 Launch: python3 ~/.claude/tui/app.py
-  or:   bash ~/.claude/tui/launch.sh  (splits tmux left pane)
-
-Keys: q=quit  r=refresh  t=toggles  1-8=tabs  p=pause  ?=help
+  or:   bash ~/.claude/tui/launch.sh
 """
 
 import sys
@@ -17,44 +15,110 @@ sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from textual.app import App, ComposeResult
-from textual.binding import Binding
+from textual.widgets import (
+    Header, Footer, DataTable, Switch, Static, Label, TabbedContent, TabPane
+)
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Header, Footer, TabbedContent, TabPane, Static, Label, Switch
 from textual import on
+from rich.text import Text
 
 from data import DataLayer, TOGGLES
-from widgets.header_bar import HeaderBar
-from widgets.toggles import BudgetRow
-from widgets.gates import GateTable
-from widgets.audit_feed import AuditFeed
-from widgets.memory import MemoryPanel
-from widgets.session import SessionPanel
-from widgets.errors import ErrorPanel
-from widgets.activity import ActivityPanel
-from widgets.skills import SkillPanel
-from widgets.tests import TestPanel
+
+# Gate info: (effectiveness_key, display_id, display_name, type)
+GATE_INFO = [
+    ("gate_01_read_before_edit",    "G1",  "Read Before Edit",    "Blocking"),
+    ("gate_02_no_destroy",          "G2",  "No Destroy",          "Blocking"),
+    ("gate_03_test_before_deploy",  "G3",  "Test Before Deploy",  "Blocking"),
+    ("gate_04_memory_first",        "G4",  "Memory First",        "Blocking"),
+    ("gate_05_proof_before_fixed",  "G5",  "Proof Before Fixed",  "Blocking"),
+    ("gate_06_save_fix",            "G6",  "Save Verified Fix",   "Advisory"),
+    ("gate_07_critical_file_guard", "G7",  "Critical File Guard", "Blocking"),
+    ("gate_09_strategy_ban",        "G9",  "Strategy Ban",        "Blocking"),
+    ("gate_10_model_enforcement",   "G10", "Model Cost Guard",    "Blocking"),
+    ("gate_11_rate_limit",          "G11", "Rate Limit",          "Blocking"),
+    ("gate_12_plan_mode_save",      "G12", "Plan Mode Save",      "Advisory"),
+    ("gate_13_workspace_isolation", "G13", "Workspace Isolation", "Blocking"),
+    ("gate_14_confidence_check",    "G14", "Confidence Check",    "Blocking"),
+    ("gate_15_causal_chain",        "G15", "Causal Chain",        "Blocking"),
+    ("gate_16_code_quality",        "G16", "Code Quality",        "Blocking"),
+]
+
+
+class TorusHeader(Static):
+    DEFAULT_CSS = """
+    TorusHeader {
+        background: $accent;
+        color: $text;
+        padding: 0 2;
+        text-align: center;
+        height: 3;
+    }
+    """
+
+    def __init__(self, data: DataLayer):
+        super().__init__()
+        self._data = data
+
+    def render(self) -> str:
+        live = self._data.live_state()
+        mem = self._data.memory_stats()
+        session = live.get("session_count", "?")
+        tests = live.get("test_count", "?")
+        failures = live.get("test_failures", 0)
+        memories = mem.get("mem_count", "?")
+        test_str = str(tests) if failures == 0 else f"{tests} ({failures} FAIL)"
+        return (
+            f"Torus Framework \u2014 Session {session}  |  "
+            f"Tests: {test_str}  |  Gates: 15  |  Memories: {memories}"
+        )
+
+
+class MemoryStats(Static):
+    DEFAULT_CSS = "MemoryStats { padding: 1 2; height: auto; }"
+
+    def __init__(self, data: DataLayer):
+        super().__init__()
+        self._data = data
+
+    def render(self) -> str:
+        mem = self._data.memory_stats()
+        live = self._data.live_state()
+        count = mem.get("mem_count", 0)
+        issues = live.get("known_issues", [])
+        return (
+            "[bold cyan]Memory Stats[/bold cyan]\n"
+            f"  Total memories : [green]{count}[/green]\n"
+            f"  Collections    : knowledge, observations\n"
+            f"  Known issues   : {len(issues)}\n"
+            f"  Status         : [green]RUNNING[/green]"
+        )
 
 
 class TorusApp(App):
-    """Torus Framework TUI Dashboard."""
-
-    TITLE = "Torus Dashboard"
-    CSS_PATH = "styles.tcss"
+    CSS = """
+    Screen { background: $surface; }
+    #sidebar {
+        width: 30;
+        background: $panel;
+        border-right: solid $accent;
+        padding: 1;
+    }
+    #sidebar Label { color: $text-muted; margin-bottom: 1; }
+    #main { width: 1fr; }
+    DataTable { height: 1fr; }
+    .toggle-row { height: 3; padding: 0 1; }
+    .toggle-label { width: 1fr; content-align: left middle; }
+    MemoryStats { border: solid $accent; margin: 1; }
+    """
 
     BINDINGS = [
-        Binding("q", "quit", "Quit"),
-        Binding("r", "refresh", "Refresh"),
-        Binding("t", "focus_toggles", "Toggles"),
-        Binding("p", "toggle_pause", "Pause"),
-        Binding("question_mark", "help", "Help"),
-        Binding("1", "tab('gates')", "Gates", show=False),
-        Binding("2", "tab('audit')", "Audit", show=False),
-        Binding("3", "tab('memory')", "Memory", show=False),
-        Binding("4", "tab('session')", "Session", show=False),
-        Binding("5", "tab('errors')", "Errors", show=False),
-        Binding("6", "tab('skills')", "Skills", show=False),
-        Binding("7", "tab('tests')", "Tests", show=False),
-        Binding("8", "tab('trend')", "Trend", show=False),
+        ("q", "quit", "Quit"),
+        ("r", "refresh", "Refresh"),
+        ("p", "toggle_pause", "Pause"),
+        ("question_mark", "help", "Help"),
+        ("1", "tab('gates-tab')", "Gates"),
+        ("2", "tab('audit-tab')", "Audit"),
+        ("3", "tab('session-tab')", "Session"),
     ]
 
     def __init__(self):
@@ -64,9 +128,8 @@ class TorusApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield HeaderBar(id="torus-header")
+        yield TorusHeader(self.data)
         with Horizontal():
-            # Sidebar: toggles + memory
             with Vertical(id="sidebar"):
                 yield Label("[ TOGGLES ]")
                 live = self.data.live_state()
@@ -76,51 +139,131 @@ class TorusApp(App):
                     with Horizontal(classes="toggle-row"):
                         yield Label(short, classes="toggle-label")
                         yield Switch(value=val, id=f"sw_{key}")
-                yield BudgetRow(live.get("session_token_budget", 0))
-                yield MemoryPanel()
-            # Main: tabbed content
+                yield MemoryStats(self.data)
             with Vertical(id="main"):
-                with TabbedContent("Gates", "Audit", "Memory", "Session",
-                                   "Errors", "Skills", "Tests", "Trend"):
-                    with TabPane("Gates", id="gates"):
-                        yield GateTable()
-                    with TabPane("Audit", id="audit"):
-                        yield AuditFeed()
-                    with TabPane("Memory", id="memory"):
-                        yield SessionPanel()  # memory details in sidebar; session here
-                    with TabPane("Session", id="session"):
-                        yield SessionPanel()
-                    with TabPane("Errors", id="errors"):
-                        yield ErrorPanel()
-                    with TabPane("Skills", id="skills"):
-                        yield SkillPanel()
-                    with TabPane("Tests", id="tests"):
-                        yield TestPanel()
-                    with TabPane("Trend", id="trend"):
-                        yield ActivityPanel()
+                with TabbedContent("Gates", "Audit", "Session"):
+                    with TabPane("Gates", id="gates-tab"):
+                        yield DataTable(id="gate-table", zebra_stripes=True)
+                    with TabPane("Audit", id="audit-tab"):
+                        yield Static("", id="audit-panel")
+                    with TabPane("Session", id="session-tab"):
+                        yield Static("", id="session-panel")
         yield Footer()
 
-    def on_mount(self):
-        self.set_interval(2.0, self._refresh_data)
-        self._refresh_data()
+    def on_mount(self) -> None:
+        table = self.query_one("#gate-table", DataTable)
+        table.add_columns("ID", "Gate Name", "Type", "Effectiveness", "Actions")
+        self._populate_gates()
+        self.set_interval(2.0, self._refresh)
 
-    def _refresh_data(self):
+    def _bar(self, pct: int) -> Text:
+        filled = pct // 10
+        color = "green" if pct >= 90 else "yellow" if pct >= 75 else "red"
+        bar = "\u2588" * filled + "\u2591" * (10 - filled)
+        return Text(f"{bar} {pct}%", style=color)
+
+    def _populate_gates(self):
+        table = self.query_one("#gate-table", DataTable)
+        table.clear()
+        eff_data = self.data.gate_effectiveness()
+
+        for gate_key, gid, name, gtype in GATE_INFO:
+            data = eff_data.get(gate_key, {})
+            blocks = data.get("blocks", 0)
+            overrides = data.get("overrides", 0)
+            total = blocks + overrides
+            eff = int((blocks / total * 100) if total > 0 else 100)
+
+            type_text = (
+                Text(gtype, style="bold red")
+                if gtype == "Blocking"
+                else Text(gtype, style="yellow")
+            )
+
+            if total == 0:
+                eff_bar = Text("\u2591" * 10 + " --", style="dim")
+                actions = "no data"
+            else:
+                eff_bar = self._bar(eff)
+                actions = f"{blocks} blocked"
+
+            table.add_row(gid, name, type_text, eff_bar, actions)
+
+    def _build_audit_text(self) -> str:
+        entries = self.data.audit_tail(30)
+        if not entries:
+            return "[dim]No audit entries today[/dim]"
+        lines = ["[bold cyan]Audit Feed (today)[/bold cyan]\n"]
+        for entry in entries[-20:]:
+            decision = entry.get("decision", "?")
+            gate = entry.get("gate", "?")[:25]
+            tool = entry.get("tool", "?")
+            reason = entry.get("reason", "")[:40]
+            ts = entry.get("timestamp", "")
+            time_part = ts[11:19] if len(ts) >= 19 else ts
+            if decision == "block":
+                icon = "[red][X][/red]"
+            elif decision == "warn":
+                icon = "[yellow][!][/yellow]"
+            else:
+                icon = "[green][ ][/green]"
+            lines.append(f"  {icon} {time_part}  {gate}  {tool}  {reason}")
+        return "\n".join(lines)
+
+    def _build_session_text(self) -> str:
+        live = self.data.live_state()
+        state = self.data.session_state()
+        session = live.get("session_count", "?")
+        tests = live.get("test_count", "?")
+        failures = live.get("test_failures", 0)
+        memories = self.data.memory_stats().get("mem_count", "?")
+        total_calls = state.get("total_tool_calls", 0)
+        tokens = state.get("session_token_estimate", 0)
+        pending = len(state.get("pending_verification", []))
+        verified = len(state.get("verified_fixes", []))
+        edited = len(state.get("files_edited", []))
+
+        lines = [
+            f"[bold cyan]Session {session} Summary[/bold cyan]\n",
+            f"  Branch      : self-evolve-test-branch",
+            f"  Tests total : [green]{tests}[/green] ({failures} failures)",
+            f"  Gates active: [green]15[/green] / 15",
+            f"  Memories    : [green]{memories}[/green]",
+            f"  Tool calls  : {total_calls}",
+            f"  Tokens est  : {tokens:,}",
+            f"  Pending     : {pending}  |  Verified: {verified}",
+            f"  Files edited: {edited}",
+        ]
+
+        # Top tools
+        tool_counts = state.get("tool_call_counts", {})
+        if tool_counts:
+            lines.append("\n[bold]Top Tools[/bold]")
+            for tool, count in sorted(tool_counts.items(), key=lambda x: -x[1])[:5]:
+                lines.append(f"  {tool}: {count}")
+
+        return "\n".join(lines)
+
+    def _refresh(self):
         if self.paused:
             return
+        self.data.invalidate()
 
-        live = self.data.live_state()
-        mem = self.data.memory_stats()
-        eff = self.data.gate_effectiveness()
-        state = self.data.session_state()
-        audit = self.data.audit_tail()
-
-        # Header banner
+        # Refresh header + memory (they use render())
         try:
-            self.query_one(HeaderBar).update_data(live, mem)
+            self.query_one(TorusHeader).refresh()
+            self.query_one(MemoryStats).refresh()
         except Exception:
             pass
 
-        # Sidebar toggles — sync switch states
+        # Refresh gates
+        try:
+            self._populate_gates()
+        except Exception:
+            pass
+
+        # Refresh sidebar toggle states
+        live = self.data.live_state()
         for _label, key, default, _desc in TOGGLES:
             val = live.get(key, default)
             try:
@@ -130,57 +273,15 @@ class TorusApp(App):
             except Exception:
                 pass
 
-        # Gates table
+        # Refresh audit + session panels
         try:
-            self.query_one(GateTable).refresh_data(eff)
+            self.query_one("#audit-panel", Static).update(self._build_audit_text())
         except Exception:
             pass
-
-        # Audit feed
         try:
-            self.query_one(AuditFeed).refresh_data(audit)
+            self.query_one("#session-panel", Static).update(self._build_session_text())
         except Exception:
             pass
-
-        # Sidebar memory
-        try:
-            self.query_one(MemoryPanel).refresh_data(mem, live)
-        except Exception:
-            pass
-
-        # Session panels
-        try:
-            for panel in self.query(SessionPanel):
-                panel.refresh_data(state)
-        except Exception:
-            pass
-
-        # Errors
-        try:
-            self.query_one(ErrorPanel).refresh_data(state)
-        except Exception:
-            pass
-
-        # Skills
-        try:
-            self.query_one(SkillPanel).refresh_data(state)
-        except Exception:
-            pass
-
-        # Tests
-        try:
-            self.query_one(TestPanel).refresh_data(state, live)
-        except Exception:
-            pass
-
-        # Activity sparkline
-        try:
-            buckets = self.data.activity_buckets()
-            self.query_one(ActivityPanel).refresh_data(buckets)
-        except Exception:
-            pass
-
-    # --- Toggle handling ---
 
     @on(Switch.Changed)
     def on_switch_changed(self, event: Switch.Changed) -> None:
@@ -189,23 +290,11 @@ class TorusApp(App):
             key = switch_id[3:]
             self.data.set_toggle(key, event.value)
             state = "ON" if event.value else "OFF"
-            self.notify(f"{key} -> {state}", timeout=2)
+            self.notify(f"{key} \u2192 {state}", timeout=2)
 
-    def on_budget_row_changed(self, event: BudgetRow.Changed):
-        self.data.set_toggle("session_token_budget", event.value)
-
-    # --- Actions ---
-
-    def action_refresh(self):
-        self.data.invalidate()
-        self._refresh_data()
-        self.notify("Refreshed", timeout=1)
-
-    def action_focus_toggles(self):
-        try:
-            self.query_one("#sidebar").focus()
-        except Exception:
-            pass
+    def action_refresh(self) -> None:
+        self._refresh()
+        self.notify("Dashboard refreshed", timeout=1)
 
     def action_toggle_pause(self):
         self.paused = not self.paused
@@ -219,13 +308,8 @@ class TorusApp(App):
             pass
 
     def action_help(self):
-        self.notify(
-            "Keys: q=quit r=refresh t=toggles 1-8=tabs p=pause",
-            title="Help",
-            timeout=5,
-        )
+        self.notify("q=quit r=refresh p=pause 1=gates 2=audit 3=session", timeout=5)
 
 
 if __name__ == "__main__":
-    app = TorusApp()
-    app.run()
+    TorusApp().run()
