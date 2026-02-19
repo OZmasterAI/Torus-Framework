@@ -3001,10 +3001,10 @@ for _afile in _expected_agents:
         break
 test("Agents: YAML frontmatter has required keys", _agent_yaml_ok, _agent_yaml_detail)
 
-# 3. researcher uses haiku model
+# 3. researcher uses sonnet model
 with open(os.path.join(_agents_dir, "researcher.md")) as _rf:
     _r_content = _rf.read()
-test("Agents: researcher uses haiku", "haiku" in _r_content.split("---")[1])
+test("Agents: researcher uses sonnet", "sonnet" in _r_content.split("---")[1])
 
 # 4. builder uses opus model
 with open(os.path.join(_agents_dir, "builder.md")) as _bf:

@@ -109,6 +109,17 @@ def default_state():
         "fixing_error": False,           # True when actively fixing a detected error
         # v3 fields (code quality gate)
         "code_quality_warnings_per_file": {},  # Gate 16: {filepath: warn_count}
+        # v3 fields (previously undocumented — used by gates/tracker via .get() defaults)
+        "gate4_exemptions": {},              # Gate 4: {filename: count} exempt files from memory-first check
+        "model_agent_usage": {},            # Gate 10: {agent_type: usage_count}
+        "gate12_warn_count": 0,             # Gate 12: escalation counter
+        "confidence_warnings_per_file": {}, # Gate 14: {filepath: warn_count}
+        "confidence_warned_signals": [],    # Gate 14: signals already warned this session
+        "verification_timestamps": {},      # Gate 6: {filepath: last_verified_ts}
+        "last_test_command": "",            # Gate 3: last test command run (hint display)
+        "files_edited": [],                 # tracker: files edited this session
+        "session_duration_nudge_hour": 0,   # tracker: last milestone hour nudged (1/2/3)
+        "auto_remember_count": 0,           # tracker: auto-remember calls this session
     }
 
 
@@ -159,6 +170,17 @@ def get_state_schema():
         "fix_history_queried": {"type": "float", "description": "Timestamp of last query_fix_history call", "category": "gate15"},
         "fixing_error": {"type": "bool", "description": "Whether actively fixing a detected error", "category": "gate15"},
         "code_quality_warnings_per_file": {"type": "dict", "description": "Per-file code quality warning counter", "category": "gate16"},
+        # v3 fields (previously undocumented)
+        "gate4_exemptions": {"type": "dict", "description": "Exempt files from memory-first check: {filename: count}", "category": "gate4"},
+        "model_agent_usage": {"type": "dict", "description": "Agent type usage counts for model enforcement", "category": "gate10"},
+        "gate12_warn_count": {"type": "int", "description": "Gate 12 plan-mode-save escalation counter", "category": "gate12"},
+        "confidence_warnings_per_file": {"type": "dict", "description": "Per-file confidence warning counts", "category": "gate14"},
+        "confidence_warned_signals": {"type": "list", "description": "Signals already warned this session by Gate 14", "category": "gate14"},
+        "verification_timestamps": {"type": "dict", "description": "Last verified timestamp per file", "category": "gate6"},
+        "last_test_command": {"type": "str", "description": "Last test command run (shown in Gate 3 hints)", "category": "gate3"},
+        "files_edited": {"type": "list", "description": "Files edited this session (tracker)", "category": "metrics"},
+        "session_duration_nudge_hour": {"type": "int", "description": "Last session-length milestone hour nudged (1/2/3)", "category": "metrics"},
+        "auto_remember_count": {"type": "int", "description": "Auto-remember calls made this session", "category": "metrics"},
     }
 
 
