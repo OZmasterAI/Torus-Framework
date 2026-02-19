@@ -392,7 +392,11 @@ def _extract_gate_blocks():
     Returns count of blocked decisions from last 24h, or 0 if none/error.
     """
     try:
-        audit_dir = os.path.join(os.path.dirname(__file__), "audit")
+        try:
+            from shared.audit_log import AUDIT_DIR
+            audit_dir = AUDIT_DIR
+        except ImportError:
+            audit_dir = os.path.join(os.path.dirname(__file__), "audit")
         if not os.path.isdir(audit_dir):
             return 0
 

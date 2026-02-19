@@ -1,4 +1,4 @@
-"""Gate 11: RATE LIMIT (Tier 1 — Safety)
+"""Gate 11: RATE LIMIT (Tier 2 — Quality)
 
 Blocks tool calls when the rate exceeds 60 calls/minute to prevent
 runaway loops. Warns at >40 calls/minute to encourage slowing down.

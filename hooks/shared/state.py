@@ -79,7 +79,7 @@ def default_state():
         "pending_chain_ids": [],
         "current_strategy_id": "",
         "current_error_signature": "",
-        "active_bans": [],
+        "active_bans": {},
         "last_exit_plan_mode": 0,
         # v2 fields
         "error_windows": [],
@@ -288,7 +288,7 @@ def _validate_consistency(state):
 
     # Deduplicate lists
     for list_key in ("files_read", "pending_verification", "verified_fixes",
-                     "unlogged_errors", "pending_chain_ids", "active_bans",
+                     "unlogged_errors", "pending_chain_ids",
                      "error_windows", "recent_skills"):
         lst = state.get(list_key)
         if isinstance(lst, list):
@@ -316,7 +316,23 @@ def _validate_consistency(state):
     _cap_list(state, "verified_fixes", MAX_VERIFIED_FIXES, corrections)
     _cap_list(state, "pending_verification", MAX_PENDING_VERIFICATION, corrections)
     _cap_list(state, "unlogged_errors", MAX_UNLOGGED_ERRORS, corrections)
-    _cap_list(state, "active_bans", MAX_ACTIVE_BANS, corrections)
+    # active_bans: support both legacy list and new dict format
+    bans = state.get("active_bans", {})
+    if isinstance(bans, list):
+        migrated = {}
+        for item in bans:
+            if isinstance(item, str):
+                migrated[item] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
+        state["active_bans"] = migrated
+        bans = migrated
+        corrections.append(f"active_bans: migrated {len(migrated)} entries from list to dict")
+    if isinstance(bans, dict) and len(bans) > MAX_ACTIVE_BANS:
+        sorted_keys = sorted(bans, key=lambda k: bans[k].get("last_failed", 0) if isinstance(bans[k], dict) else 0)
+        excess = sorted_keys[:len(bans) - MAX_ACTIVE_BANS]
+        for k in excess:
+            del bans[k]
+        state["active_bans"] = bans
+        corrections.append(f"active_bans: trimmed to {MAX_ACTIVE_BANS}")
     _cap_list(state, "pending_chain_ids", MAX_PENDING_CHAINS, corrections)
 
     # Cap error_pattern_counts dict
@@ -428,10 +444,20 @@ def save_state(state, session_id="main"):
         sorted_streak = sorted(edit_streak.items(), key=lambda x: x[1], reverse=True)
         state["edit_streak"] = dict(sorted_streak[:MAX_EDIT_STREAK])
 
-    # Cap active_bans list
-    bans = state.get("active_bans", [])
-    if len(bans) > MAX_ACTIVE_BANS:
-        state["active_bans"] = bans[-MAX_ACTIVE_BANS:]
+    # Cap active_bans dict — migrate list if needed, then cap
+    bans = state.get("active_bans", {})
+    if isinstance(bans, list):
+        migrated = {}
+        for item in bans:
+            if isinstance(item, str):
+                migrated[item] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
+        state["active_bans"] = migrated
+        bans = migrated
+    if isinstance(bans, dict) and len(bans) > MAX_ACTIVE_BANS:
+        sorted_keys = sorted(bans, key=lambda k: bans[k].get("last_failed", 0) if isinstance(bans[k], dict) else 0)
+        for k in sorted_keys[:len(bans) - MAX_ACTIVE_BANS]:
+            del bans[k]
+        state["active_bans"] = bans
 
     # Cap pending_chain_ids list
     chains = state.get("pending_chain_ids", [])
@@ -447,7 +473,7 @@ def save_state(state, session_id="main"):
     with open(lock_path, "a+") as lock_fd:
         try:
             fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
-            tmp = state_file + ".tmp"
+            tmp = state_file + f".tmp.{os.getpid()}"
             with open(tmp, "w") as f:
                 json.dump(state, f, indent=2)
             os.replace(tmp, state_file)
