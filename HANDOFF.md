@@ -1,28 +1,18 @@
-# Session 150 Handoff
+# Session 151 Handoff
 
 ## What Was Done
-- **Cherry-pick Implementation (3 features from Conway analysis)**:
-  1. **ULID Audit IDs** — Inline ULID generator in `shared/audit_log.py`, 26-char base32 sortable IDs on every audit entry
-  2. **Gate 17: Injection Defense** — New PostToolUse gate scanning external tools for 6 injection categories (instruction override, authority claims, boundary manipulation, obfuscation, financial, self-harm)
-  3. **4-tier Budget Degradation** — Enhanced Gate 10: NORMAL (0-40%), LOW_COMPUTE (40-80% opus->sonnet), CRITICAL (80-95% all->haiku), DEAD (95%+ block)
-- **TUI Terminal Redesign** — Rewrote TUI to match statusline terminal aesthetic:
-  - Single-widget terminal text rendering (no Textual widget bloat)
-  - Clickable toggles with descriptions (bool flip, numeric cycles 0/50k/100k/200k)
-  - Colors match statusline exactly (5-tier health, 5-tier context%, model colors, error/lines/cost colors)
-  - Layout: statusline -> gates -> toggles -> audit
-  - Pane size reduced from 25% to 18%
-  - All icons restored (📁🌿🛡️🧠⚡📦⏱️💰✅⚠️🔥📜)
-  - Gate alignment fixed (7-char names, right-aligned block counts, 2-column grid)
-- **StatusLine completeness** — Added missing `tg_enrichment` toggle + budget tier indicator on line 3
-- **Conway Deep Research** — Full comparison analysis (Torus vs Conway), cherry-pick evaluation
-- Tests: 1116 passed, 0 failed (+13 new)
+- **tg_session_notify toggle** — Gates session-end Telegram notifications (was always-on). Added to session_end.py, statusline, TUI, boot.py
+- **tg_mirror_messages toggle + Stop hook** — Mirrors ALL Claude responses to Telegram in real-time via `tg_mirror.py` Stop hook. Reads new assistant turns from transcript JSONL, sends via Bot API. Cursor tracking prevents re-sending
+- **Mirror first-run fix** — Fixed bug where enabling Mirror replayed entire transcript history. Now skips to end on first activation
+- **Toggle reorder** — Budget moved below Mirror per user preference. New order: L2, Enrich, TG, TGe, Bot, Tune, Chain, Notify, Mirror, Budget, TokBgt
+- **Safety guard explanation** — Documented app.py risk (Textual hijacks stdin when run from Claude Bash tool). Mechanical guard still needed
+- Tests: 1116 passed, 0 failed
 
 ## What's Next
 - Merge self-evolve-test-branch to main (many commits ahead)
 - Add safety guard to app.py (refuse to run inside Claude Bash tool)
 - Enable gate_auto_tune — effectiveness data now accumulating
 - Enable budget_degradation + set session_token_budget (4-tier ready)
-- Consider tg_session_notify toggle for session-end Telegram messages
 
 ## Known Issues
 - Plan mode exit loop — platform limitation, mitigated by behavioral rule
@@ -35,11 +25,14 @@
 - UDS socket intermittently missing — gather.py warns but non-blocking
 
 ## Service Status
-- Memory MCP: RUNNING (675 memories)
+- Memory MCP: RUNNING (678 memories)
 - Tests: 1116 passed, 0 failed
 - Framework version: v2.5.0 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 16 active gates (Gate 8 dormant)
 - Ramdisk: active at /run/user/1000/claude-hooks
 - Telegram bot: NOT RUNNING (configured, toggle OFF)
+- Telegram mirror: configured (toggle OFF by default)
+- Telegram notify: ON
 - GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI)
 - Branch: self-evolve-test-branch
+- Toggles: 11 total (was 9)

@@ -8,14 +8,14 @@
   "test_count": 1116,
   "test_failures": 0,
   "files_modified": [
-    "hooks/shared/audit_log.py",
-    "hooks/gates/gate_17_injection_defense.py",
-    "hooks/gates/gate_10_model_enforcement.py",
-    "hooks/enforcer.py",
+    "hooks/tg_mirror.py",
+    "hooks/session_end.py",
     "hooks/statusline.py",
-    "hooks/test_framework.py",
+    "hooks/boot.py",
     "tui/app.py",
-    "tui/data.py"
+    "tui/data.py",
+    "settings.json",
+    "LIVE_STATE.json"
   ],
   "improvements_shipped": [
     "Gate effectiveness tracking (blocks/overrides/prevented)",
@@ -32,14 +32,16 @@
     "Gate 17: Injection Defense \u2014 6-category PostToolUse scanner",
     "4-tier budget degradation \u2014 NORMAL/LOW_COMPUTE/CRITICAL/DEAD",
     "TUI feature parity + modern rework",
-    "StatusLine 3rd line \u2014 all 9 toggles + budget tier indicator"
+    "StatusLine 3rd line \u2014 all 9 toggles + budget tier indicator",
+    "tg_session_notify toggle \u2014 gate session-end Telegram notifications",
+    "tg_mirror_messages + Stop hook \u2014 real-time Claude response mirroring to TG",
+    "Toggle reorder \u2014 11 toggles, Budget below Mirror"
   ],
   "next_steps": [
     "Merge self-evolve-test-branch to main",
     "Add safety guard to app.py (refuse to run inside Claude Bash tool)",
     "Enable gate_auto_tune \u2014 effectiveness data now accumulating",
-    "Enable budget_degradation + set session_token_budget",
-    "Consider tg_session_notify toggle for session-end Telegram messages"
+    "Enable budget_degradation + set session_token_budget"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() \u2014 @mcp.tool() + @crash_proof",
@@ -52,7 +54,8 @@
     "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
     "tmux routing shared session causes interference \u2014 use dedicated claude-bot",
     "TaskCompleted hook disabled \u2014 was firing premature quality warnings",
-    "auto_commit Co-Authored-By hardcoded Opus 4.6 \u2014 wrong when on Sonnet"
+    "auto_commit Co-Authored-By hardcoded Opus 4.6 \u2014 wrong when on Sonnet",
+    "UDS socket intermittently missing \u2014 gather.py warns but non-blocking"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
