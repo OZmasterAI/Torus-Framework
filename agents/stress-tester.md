@@ -9,6 +9,8 @@ tools:
   - mcp__memory__search_knowledge
   - mcp__memory__get_memory
   - mcp__memory__remember_this
+  - mcp__memory__record_attempt
+  - mcp__memory__record_outcome
 model: sonnet
 permissionMode: default
 ---
