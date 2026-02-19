@@ -18,15 +18,17 @@ LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 STATS_CACHE_FILE = os.path.join(CLAUDE_DIR, "stats-cache.json")
 
 # Toggle definitions: (label, json_key, default, description)
+# Descriptions and defaults must match boot.py _toggles (lines 770-789)
 TOGGLES = [
-    ("Terminal L2 always-on",  "terminal_l2_always", True,  "Always run terminal FTS5 search"),
-    ("Terminal L2 enrichment", "context_enrichment",  False, "Attach ±30min terminal history"),
-    ("TG L3 always-on",       "tg_l3_always",        False, "Always run Telegram FTS5 search"),
-    ("TG L3 enrichment",      "tg_enrichment",       False, "Attach ±30min Telegram messages"),
-    ("Telegram bot",           "tg_bot_tmux",         False, "Start/stop Telegram bot in tmux"),
-    ("Gate auto-tune",        "gate_auto_tune",      False, "Auto-adjust gate thresholds"),
-    ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models near budget"),
-    ("Chain memory",          "chain_memory",        False, "Remember successful skill chains"),
+    ("Terminal L2 always-on",  "terminal_l2_always", False, "Always run terminal FTS5 search (OFF = only when L1 < 0.3)"),
+    ("Terminal L2 enrichment", "context_enrichment",  False, "Attach ±30min terminal history to ChromaDB results"),
+    ("TG L3 always-on",       "tg_l3_always",        False, "Always run Telegram FTS5 search (OFF = only when L1 < 0.3)"),
+    ("TG L3 enrichment",      "tg_enrichment",       False, "Attach ±30min Telegram messages to ChromaDB results"),
+    ("Telegram bot",           "tg_bot_tmux",         False, "Start/stop Telegram bot in dedicated tmux session"),
+    ("Gate auto-tune",        "gate_auto_tune",      False, "Auto-adjust gate thresholds based on effectiveness data"),
+    ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
+    ("Chain memory",          "chain_memory",        False, "Remember and reuse successful skill chain sequences"),
+    ("Session budget",        "session_token_budget", 0,     "Max tokens per session (0 = unlimited)"),
 ]
 
 

@@ -108,6 +108,7 @@ class TorusApp(App):
     DataTable { height: 1fr; }
     .toggle-row { height: 3; padding: 0 1; }
     .toggle-label { width: 1fr; content-align: left middle; }
+    .toggle-value { width: auto; content-align: right middle; color: $accent; }
     MemoryStats { border: solid $accent; margin: 1; }
     """
 
@@ -135,10 +136,14 @@ class TorusApp(App):
                 live = self.data.live_state()
                 for label, key, default, desc in TOGGLES:
                     val = live.get(key, default)
-                    short = label
                     with Horizontal(classes="toggle-row"):
-                        yield Label(short, classes="toggle-label")
-                        yield Switch(value=val, id=f"sw_{key}")
+                        yield Label(label, classes="toggle-label")
+                        if isinstance(default, bool):
+                            yield Switch(value=bool(val), id=f"sw_{key}")
+                        else:
+                            # Numeric toggles (e.g. session_token_budget)
+                            display = str(val) if val else "0"
+                            yield Label(display, id=f"val_{key}", classes="toggle-value")
                 yield MemoryStats(self.data)
             with Vertical(id="main"):
                 with TabbedContent("Gates", "Audit", "Session"):
@@ -266,12 +271,20 @@ class TorusApp(App):
         live = self.data.live_state()
         for _label, key, default, _desc in TOGGLES:
             val = live.get(key, default)
-            try:
-                sw = self.query_one(f"#sw_{key}", Switch)
-                if sw.value != val:
-                    sw.value = val
-            except Exception:
-                pass
+            if isinstance(default, bool):
+                try:
+                    sw = self.query_one(f"#sw_{key}", Switch)
+                    if sw.value != bool(val):
+                        sw.value = bool(val)
+                except Exception:
+                    pass
+            else:
+                try:
+                    lbl = self.query_one(f"#val_{key}", Label)
+                    display = str(val) if val else "0"
+                    lbl.update(display)
+                except Exception:
+                    pass
 
         # Refresh audit + session panels
         try:
