@@ -44,17 +44,17 @@ GATE_INFO = [
     ("gate_17_injection_defense",   "17", "InjDef",     "B"),
 ]
 
-# Toggle display: (key, short_label, is_bool)
+# Toggle display: (key, short_label, is_bool, description)
 TOGGLE_DISPLAY = [
-    ("terminal_l2_always",   "L2",     True),
-    ("context_enrichment",   "Enrich", True),
-    ("tg_l3_always",         "TG",     True),
-    ("tg_enrichment",        "TGe",    True),
-    ("tg_bot_tmux",          "Bot",    True),
-    ("gate_auto_tune",       "Tune",   True),
-    ("budget_degradation",   "Budget", True),
-    ("chain_memory",         "Chain",  True),
-    ("session_token_budget", "TokBgt", False),
+    ("terminal_l2_always",   "L2",     True,  "FTS5 search"),
+    ("context_enrichment",   "Enrich", True,  "Terminal ctx"),
+    ("tg_l3_always",         "TG",     True,  "TG search"),
+    ("tg_enrichment",        "TGe",    True,  "TG context"),
+    ("tg_bot_tmux",          "Bot",    True,  "TG bot"),
+    ("gate_auto_tune",       "Tune",   True,  "Auto-tune"),
+    ("budget_degradation",   "Budget", True,  "4-tier deg"),
+    ("chain_memory",         "Chain",  True,  "Skill chain"),
+    ("session_token_budget", "TokBgt", False, "Token limit"),
 ]
 
 
@@ -204,11 +204,12 @@ class ToggleItem(Static):
             self.key = key
             self.new_val = new_val
 
-    def __init__(self, key: str, label: str, is_bool: bool, data: DataLayer):
+    def __init__(self, key: str, label: str, is_bool: bool, desc: str, data: DataLayer):
         super().__init__(id=f"tog_{key}")
         self._key = key
         self._label = label
         self._is_bool = is_bool
+        self._desc = desc
         self._data = data
 
     def render(self) -> str:
@@ -216,9 +217,9 @@ class ToggleItem(Static):
         v = live.get(self._key)
         if self._is_bool:
             icon = "\u2705" if v else "\U0001f518"
-            return f" {icon} {self._label}"
+            return f"{icon}{self._label} [dim]{self._desc}[/dim]"
         else:
-            return f" [cyan]{v or 0}[/cyan] {self._label}"
+            return f"[cyan]{v or 0}[/cyan] {self._label} [dim]{self._desc}[/dim]"
 
     def on_click(self) -> None:
         live = self._data.live_state()
@@ -296,10 +297,10 @@ class TorusApp(App):
         with VerticalScroll():
             yield StatusView(self.data)
             yield GateView(self.data)
-            yield AuditView(self.data)
             yield Static("[dim]\u2500\u2500 TOGGLES \u2500\u2500[/dim]", classes="tog-hdr")
-            for key, label, is_bool in TOGGLE_DISPLAY:
-                yield ToggleItem(key, label, is_bool, self.data)
+            for key, label, is_bool, desc in TOGGLE_DISPLAY:
+                yield ToggleItem(key, label, is_bool, desc, self.data)
+            yield AuditView(self.data)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -314,7 +315,7 @@ class TorusApp(App):
                 self.query_one(cls).refresh()
             except Exception:
                 pass
-        for key, _, _ in TOGGLE_DISPLAY:
+        for key, _, _, _ in TOGGLE_DISPLAY:
             try:
                 self.query_one(f"#tog_{key}").refresh()
             except Exception:
