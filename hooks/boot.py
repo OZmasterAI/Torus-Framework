@@ -593,7 +593,7 @@ def main():
     # Check if UDS worker (memory_server.py) is available for ChromaDB access
     _worker_available = False
     try:
-        _worker_available = socket_available(retries=2, delay=0.3)
+        _worker_available = socket_available(retries=1, delay=0.1)
     except Exception:
         pass
 

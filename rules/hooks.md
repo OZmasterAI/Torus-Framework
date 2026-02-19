@@ -7,7 +7,7 @@ globs: .claude/hooks/**, .claude/hooks/gates/**
 ## Gate Contract
 - Every gate module MUST export a `check(tool_name, tool_input, state, event_type="PreToolUse")` function
 - Return type: `GateResult(blocked=bool, message=str, gate_name=str, severity=str)`
-- severity values: "info", "warn", "error"
+- severity values: "info", "warn", "error", "critical"
 - Use `from shared.gate_result import GateResult` — never construct dicts
 
 ## Exit Codes

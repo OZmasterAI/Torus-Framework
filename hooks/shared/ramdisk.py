@@ -11,7 +11,10 @@ Graceful fallback: if tmpfs is unavailable, all callers get the original disk pa
 
 import os
 import shutil
-import threading
+from concurrent.futures import ThreadPoolExecutor
+
+# Bounded thread pool for async disk mirror writes (replaces per-write Thread spawning)
+_mirror_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ramdisk-mirror")
 
 # ── Path constants ────────────────────────────────────────────────────────────
 
@@ -164,8 +167,7 @@ def async_mirror_append(tmpfs_path, content):
         except (OSError, IOError):
             pass  # Mirror failure is non-fatal
 
-    t = threading.Thread(target=_mirror, daemon=True)
-    t.start()
+    _mirror_pool.submit(_mirror)
 
 
 # ── Backup / Restore ─────────────────────────────────────────────────────────

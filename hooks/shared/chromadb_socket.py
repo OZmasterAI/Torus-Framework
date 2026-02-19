@@ -16,7 +16,7 @@ import time
 SOCKET_PATH = os.path.join(
     os.path.expanduser("~"), ".claude", "hooks", ".chromadb.sock"
 )
-SOCKET_TIMEOUT = 5  # seconds
+SOCKET_TIMEOUT = 2  # seconds (kept low to avoid boot timeout — 15s hook limit)
 
 
 class WorkerUnavailable(Exception):
