@@ -125,6 +125,21 @@ TOGGLE_KEYS = {
     "session_token_budget",
 }
 
+# Expected types per toggle (for POST validation)
+TOGGLE_TYPES = {
+    "terminal_l2_always": bool,
+    "context_enrichment": bool,
+    "tg_l3_always": bool,
+    "tg_enrichment": bool,
+    "tg_bot_tmux": bool,
+    "gate_auto_tune": bool,
+    "chain_memory": bool,
+    "tg_session_notify": bool,
+    "tg_mirror_messages": bool,
+    "budget_degradation": bool,
+    "session_token_budget": int,
+}
+
 # ── Chat session storage ─────────────────────────────────────────
 chat_sessions = {}  # chat_id -> claude session_id
 
@@ -240,8 +255,10 @@ def get_memory_count():
     try:
         cnt = safe_count("knowledge")
         try:
-            with open(STATS_CACHE, "w") as f:
+            tmp = STATS_CACHE + ".tmp"
+            with open(tmp, "w") as f:
                 json.dump({"ts": time.time(), "mem_count": cnt}, f)
+            os.replace(tmp, STATS_CACHE)
         except OSError:
             pass
         return cnt
@@ -1723,6 +1740,12 @@ async def api_toggle_write(request):
         return JSONResponse({"error": "Missing 'value' field"}, status_code=400)
 
     value = body["value"]
+    expected_type = TOGGLE_TYPES.get(key)
+    if expected_type and not isinstance(value, expected_type):
+        return JSONResponse(
+            {"error": f"Expected {expected_type.__name__} for '{key}', got {type(value).__name__}"},
+            status_code=400,
+        )
     try:
         with open(LIVE_STATE_FILE) as f:
             data = json.load(f)
