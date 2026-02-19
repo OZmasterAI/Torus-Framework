@@ -1,15 +1,21 @@
 {
-  "session_count": 149,
+  "session_count": 151,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-framework",
   "feature_status": "complete",
-  "test_count": 1103,
+  "test_count": 1116,
   "test_failures": 0,
   "files_modified": [
-    "~/Desktop/Torus-Self-Evolve-Diagram.md",
-    "~/Desktop/torus-self-evolve-diagram.html"
+    "hooks/shared/audit_log.py",
+    "hooks/gates/gate_17_injection_defense.py",
+    "hooks/gates/gate_10_model_enforcement.py",
+    "hooks/enforcer.py",
+    "hooks/statusline.py",
+    "hooks/test_framework.py",
+    "tui/app.py",
+    "tui/data.py"
   ],
   "improvements_shipped": [
     "Gate effectiveness tracking (blocks/overrides/prevented)",
@@ -21,7 +27,12 @@
     "Telegram bot toggle lifecycle (start/stop + credential prompt)",
     "tg_bot_tmux default OFF",
     "Persistent gate effectiveness across sessions (.gate_effectiveness.json)",
-    "Torus-Self-Evolve-Diagram (.md + .html) — updated architecture docs"
+    "Torus-Self-Evolve-Diagram (.md + .html) — updated architecture docs",
+    "ULID audit IDs — 26-char sortable unique IDs on every audit entry",
+    "Gate 17: Injection Defense — 6-category PostToolUse scanner",
+    "4-tier budget degradation — NORMAL/LOW_COMPUTE/CRITICAL/DEAD",
+    "TUI feature parity + modern rework",
+    "StatusLine 3rd line — all 9 toggles + budget tier indicator"
   ],
   "next_steps": [
     "Merge self-evolve-test-branch to main",
@@ -53,10 +64,10 @@
   "session_token_budget": 0,
   "chain_memory": false,
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 0,
+    "reads": 23,
+    "edits": 12,
     "errors": 0,
-    "verified": 0,
+    "verified": 1116,
     "pending": 0
   }
 }
