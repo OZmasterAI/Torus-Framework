@@ -17,6 +17,35 @@ import os
 import time
 from datetime import datetime, timezone
 
+
+# ── Inline ULID generator (no external dependency) ──────────────
+# ULID = 48-bit timestamp (ms) + 80-bit random, base32-encoded to 26 chars.
+_ULID_CHARS = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def _ulid_new():
+    """Generate a ULID: 26-char lexicographically sortable unique ID."""
+    ts_ms = int(time.time() * 1000)
+    rand_bytes = os.urandom(10)  # 10 bytes (80 bits)
+
+    # Encode timestamp (48 bits) → 10 base32 chars (MSB first for sort order)
+    ts_chars = []
+    t = ts_ms
+    for _ in range(10):
+        ts_chars.append(_ULID_CHARS[t % 32])
+        t //= 32
+    ts_chars.reverse()
+
+    # Encode random (80 bits) → 16 base32 chars
+    r = int.from_bytes(rand_bytes, "big")
+    rand_chars = []
+    for _ in range(16):
+        rand_chars.append(_ULID_CHARS[r % 32])
+        r //= 32
+    rand_chars.reverse()
+
+    return "".join(ts_chars) + "".join(rand_chars)
+
 try:
     from shared.ramdisk import get_audit_dir, is_ramdisk_available, async_mirror_append, BACKUP_AUDIT_DIR
     _HAS_RAMDISK = True
@@ -127,6 +156,7 @@ def log_gate_decision(gate_name, tool_name, decision, reason, session_id="", sta
                 pass
 
         entry = {
+            "id": _ulid_new(),
             "timestamp": now.isoformat(),
             "gate": gate_name,
             "tool": tool_name,

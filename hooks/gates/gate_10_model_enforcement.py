@@ -6,6 +6,12 @@ Step 1 (BLOCKING): Blocks Task calls with no explicit model parameter.
   Forces every sub-agent spawn to include a deliberate model choice,
   preventing silent inheritance of the parent's expensive model.
 
+Step 1b (BUDGET): 4-tier budget degradation when budget_degradation=ON:
+  - NORMAL  (0-40% used):   No restrictions
+  - LOW_COMPUTE (40-80%):   opus → sonnet (auto-downgrade)
+  - CRITICAL (80-95%):      everything → haiku (auto-downgrade)
+  - DEAD     (95%+):        Block all sub-agent spawns
+
 Step 2 (ADVISORY): Warns when the chosen model seems mismatched for the
   agent type. For example, using opus for a read-only Explore agent, or
   haiku for a general-purpose builder that needs full capabilities.
@@ -87,40 +93,63 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             ),
         )
 
-    # ── Step 1b: Budget-aware degradation ──
+    # ── Step 1b: 4-tier budget degradation ──
+    # Tiers: NORMAL (0-40%) → LOW_COMPUTE (40-80%) → CRITICAL (80-95%) → DEAD (95%+)
     # Reads LIVE_STATE.json only when toggle is ON (0 file reads when OFF)
+    budget_tier = "normal"
     try:
         from shared.state import get_live_toggle
         budget_on = get_live_toggle("budget_degradation", False)
-        budget_limit = get_live_toggle("session_token_budget", 0) if budget_on else 0
+        budget_limit = int(get_live_toggle("session_token_budget", 0) or 0) if budget_on else 0
         if budget_on and budget_limit > 0:
             subagent_tokens = state.get("subagent_total_tokens", 0)
             session_tokens = state.get("session_token_estimate", 0)
-            usage_pct = (subagent_tokens + session_tokens) / budget_limit
+            used = subagent_tokens + session_tokens
+            usage_pct = used / budget_limit
+
+            # Determine tier
             if usage_pct >= 0.95:
+                budget_tier = "dead"
+            elif usage_pct >= 0.80:
+                budget_tier = "critical"
+            elif usage_pct >= 0.40:
+                budget_tier = "low_compute"
+            # else: normal (default)
+
+            # Store tier in state for other gates/statusline to read
+            state["budget_tier"] = budget_tier
+
+            if budget_tier == "dead":
                 return GateResult(
                     blocked=True,
                     gate_name=GATE_NAME,
                     message=(
-                        f"[{GATE_NAME}] BLOCKED: 95% of session token budget reached "
-                        f"({subagent_tokens + session_tokens:,}/{budget_limit:,} tokens). "
-                        f"No more sub-agent spawns allowed. Use /wrap-up to end session."
+                        f"[{GATE_NAME}] BLOCKED [DEAD TIER]: 95%+ of session token budget "
+                        f"({used:,}/{budget_limit:,} tokens, {usage_pct:.0%}). "
+                        f"No more sub-agent spawns. Use /wrap-up to end session."
                     ),
                 )
-            if usage_pct >= 0.85 and model != "haiku":
-                print(
-                    f"[{GATE_NAME}] BUDGET: 85%+ budget used — forcing model to haiku "
-                    f"({subagent_tokens + session_tokens:,}/{budget_limit:,} tokens)",
-                    file=sys.stderr,
-                )
-                tool_input["model"] = "haiku"
-                model = "haiku"
-            elif usage_pct >= 0.70 and model == "opus":
-                print(
-                    f"[{GATE_NAME}] BUDGET: 70%+ budget used with opus — consider sonnet "
-                    f"({subagent_tokens + session_tokens:,}/{budget_limit:,} tokens)",
-                    file=sys.stderr,
-                )
+
+            if budget_tier == "critical":
+                if model != "haiku":
+                    original = model
+                    tool_input["model"] = "haiku"
+                    model = "haiku"
+                    print(
+                        f"[{GATE_NAME}] CRITICAL TIER: {usage_pct:.0%} budget used — "
+                        f"downgrading {original}→haiku ({used:,}/{budget_limit:,} tokens)",
+                        file=sys.stderr,
+                    )
+
+            elif budget_tier == "low_compute":
+                if model == "opus":
+                    tool_input["model"] = "sonnet"
+                    model = "sonnet"
+                    print(
+                        f"[{GATE_NAME}] LOW_COMPUTE TIER: {usage_pct:.0%} budget used — "
+                        f"downgrading opus→sonnet ({used:,}/{budget_limit:,} tokens)",
+                        file=sys.stderr,
+                    )
     except Exception:
         pass  # Budget check is fail-open
 

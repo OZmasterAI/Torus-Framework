@@ -46,6 +46,7 @@ GATE_MODULES = [
     "gates.gate_14_confidence_check",
     "gates.gate_15_causal_chain",
     "gates.gate_16_code_quality",
+    "gates.gate_17_injection_defense",
 ]
 
 # Tier 1 safety gates that MUST fail-closed (exceptions = block, not pass)
@@ -150,6 +151,10 @@ GATE_DEPENDENCIES = {
         "reads": ["code_quality_warnings_per_file"],
         "writes": ["code_quality_warnings_per_file"],
     },
+    "gate_17_injection_defense": {
+        "reads": ["injection_attempts"],
+        "writes": ["injection_attempts"],
+    },
 }
 
 
@@ -180,6 +185,7 @@ GATE_TOOL_MAP = {
     "gates.gate_14_confidence_check": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_15_causal_chain": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_16_code_quality": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_17_injection_defense": {"WebFetch", "WebSearch"},  # + MCP tools checked internally
 }
 
 
