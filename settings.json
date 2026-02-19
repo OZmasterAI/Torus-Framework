@@ -114,7 +114,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/session_end.py\"",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
