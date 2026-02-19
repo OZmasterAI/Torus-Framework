@@ -145,7 +145,7 @@ class GateView(Static):
             left = self._gs(*GATE_INFO[i], eff)
             if i + 1 < len(GATE_INFO):
                 right = self._gs(*GATE_INFO[i + 1], eff)
-                lines.append(f"{left} {right}")
+                lines.append(f"{left}  {right}")
             else:
                 lines.append(left)
         return "\n".join(lines)
@@ -157,13 +157,13 @@ class GateView(Static):
         t = b + o
         if t == 0:
             dot = "[dim]\u25cb[/dim]"
-            stat = "[dim] \u2014[/dim]"
+            stat = "[dim]  \u2014[/dim]"
         else:
             p = int(b / t * 100)
             dot = "[green]\u25cf[/green]" if p >= 90 else "[yellow]\u25cf[/yellow]" if p >= 70 else "[red]\u25cf[/red]"
             stat = f"{b:>3}"
         tb = "[red]B[/red]" if gtype == "B" else "[yellow]A[/yellow]"
-        return f"{dot}{tb}[dim]{gid}[/dim]{name:<6}{stat}"
+        return f"{dot}{tb}[dim]{gid}[/dim] {name:<7}{stat}"
 
 
 class AuditView(Static):
