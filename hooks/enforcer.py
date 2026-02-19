@@ -32,7 +32,7 @@ GATE_MODULES = [
     "gates.gate_01_read_before_edit",
     "gates.gate_02_no_destroy",
     "gates.gate_03_test_before_deploy",
-    # "gates.gate_04_memory_first",  # TEMP DISABLED — re-enable after arch doc
+    "gates.gate_04_memory_first",
     "gates.gate_05_proof_before_fixed",
     "gates.gate_06_save_fix",
     "gates.gate_07_critical_file_guard",
