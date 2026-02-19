@@ -769,10 +769,10 @@ def main():
         context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
     # Build toggle status table from LIVE_STATE — (key, default, description)
     _toggles = [
-        ("Terminal L2 always-on",  "terminal_l2_always", True,  "Auto-search memory on every terminal command"),
-        ("Terminal L2 enrichment", "context_enrichment",  False, "Inject matching memories into terminal results"),
-        ("TG L3 always-on",       "tg_l3_always",        False, "Auto-search memory on every Telegram message"),
-        ("TG L3 enrichment",      "tg_enrichment",       False, "Inject matching memories into Telegram replies"),
+        ("Terminal L2 always-on",  "terminal_l2_always", True,  "Always run terminal FTS5 search (OFF = only when L1 < 0.3)"),
+        ("Terminal L2 enrichment", "context_enrichment",  False, "Attach ±30min terminal history to ChromaDB results"),
+        ("TG L3 always-on",       "tg_l3_always",        False, "Always run Telegram FTS5 search (OFF = only when L1 < 0.3)"),
+        ("TG L3 enrichment",      "tg_enrichment",       False, "Attach ±30min Telegram messages to ChromaDB results"),
         ("Telegram bot",           "tg_bot_tmux",         False, "Start/stop Telegram bot in dedicated tmux session"),
         ("Gate auto-tune",        "gate_auto_tune",      False, "Auto-adjust gate thresholds based on effectiveness data"),
         ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
