@@ -140,7 +140,7 @@ class GateView(Static):
 
     def render(self) -> str:
         eff = self._data.gate_effectiveness()
-        lines = ["[dim]\u2500\u2500 GATES \u2500\u2500[/dim]"]
+        lines = ["[dim]\u2500\u2500[/dim] \U0001f6e1\ufe0f [dim]GATES \u2500\u2500[/dim]"]
         for i in range(0, len(GATE_INFO), 2):
             left = self._gs(*GATE_INFO[i], eff)
             if i + 1 < len(GATE_INFO):
@@ -175,7 +175,7 @@ class AuditView(Static):
 
     def render(self) -> str:
         entries = self._data.audit_tail(12)
-        lines = ["[dim]\u2500\u2500 AUDIT \u2500\u2500[/dim]"]
+        lines = ["[dim]\u2500\u2500[/dim] \U0001f4dc [dim]AUDIT \u2500\u2500[/dim]"]
         if not entries:
             lines.append("[dim]no entries[/dim]")
         else:
