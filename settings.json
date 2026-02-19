@@ -191,5 +191,6 @@
       }
     ]
   },
-  "effortLevel": "medium"
+  "effortLevel": "medium",
+  "model": "claude-opus-4-6"
 }
