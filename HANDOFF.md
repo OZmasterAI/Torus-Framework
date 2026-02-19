@@ -1,17 +1,18 @@
-# Session 140 — TGTMUX
+# Session 141 — Cleanup & Documentation
 
 ## What Was Done
-- Built TG bot tmux routing (tmux_runner.py): sends Telegram messages into dedicated `claude-bot` tmux session via `tmux send-keys`, polls `capture-pane` for END sentinel, returns clean response
-- Fixed pane dump bug: initial `capture-pane -S -` grabbed full scrollback; switched to marker-based extraction (`TORUS_MSG_{timestamp}` anchors) — captures only between marker and sentinel
-- Updated bot.py with tmux routing: reads `tg_bot_tmux` toggle from LIVE_STATE.json, routes via tmux when on + session alive, falls back to `claude -p` subprocess
-- Built auto wrap-up via Haiku in session_end.py: when `/wrap-up` wasn't run, reads transcript JSONL, calls `claude -p --model haiku` to generate 3-5 bullet "What Was Done" summary
-- Added 5th toggle to boot.py context injection: `TG bot tmux: ON/OFF`
-- E2E tested: 3.5s response time via tmux (vs ~9s subprocess cold start)
+- Cleaned all stale telegram-memory/Telethon/Hans references from 5 files (HANDOFF.md, LIVE_STATE.json, .gitignore, search.py, test_telegram_bot.py)
+- Built complete expanded commit history on Desktop: `Commits and upgrades.md` — 133 commits, 441 upgrades, timestamps on every session, global sequence numbers
+- Full ~/.claude directory audit — categorized files as framework core / platform / stale
+- Identified ~18.7GB reclaimable disk space (trash 13GB, Mega-Framework backup 1.6GB, ~/backups 3.1GB, debug 409MB, .claude/backups 378MB)
+- Found OpenClaw at ~/.openclaw/ (5.5GB), created backup: ~/Desktop/OClaw-Backup-19-2-26.tar.gz (2.7GB)
+- Deleted orphaned openclaw transcript from .claude/projects/
 
 ## What's Next
+- Clean up reclaimable disk space (~18.7GB): empty trash, delete Mega-Framework backup, purge debug/backups
 - Build cheap polling queue for between-session messages
-- Monitor auto-remember queue — check if entries are useful
-- Run deduplicate_sweep(dry_run=True) to audit corpus (600 memories)
+- Monitor auto-remember queue
+- Run deduplicate_sweep(dry_run=True) to audit corpus (614 memories)
 - Sync changes to GitHub export repo
 - Apply Haiku→Sonnet change to agents/researcher.md
 - Dormant: agent team context tool (get_teammate_context())
@@ -22,10 +23,10 @@
 - ChromaDB concurrent access — tests skip when MCP running, correct behavior
 - Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy
 - Observations at 5,635 (over 5K cap) — will auto-compact on next ingest
-- tmux routing: shared session mode (tmux_target=claude) causes interference — use dedicated claude-bot session
+- tmux routing shared session causes interference — use dedicated claude-bot
 
 ## Service Status
-- Memory MCP: RUNNING (600 memories, 6 collections incl. quarantine)
+- Memory MCP: RUNNING (614 memories, 6 collections incl. quarantine)
 - Tests: 1086 passed, 0 failed
 - Framework version: v2.4.5 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 15 active gates
@@ -34,16 +35,3 @@
 - TG bot tmux: ON (tmux_target=claude-bot, 3.5s response time)
 - GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI)
 - XRDP: WORKING (XFCE4, DBUS fix applied)
-
-## Session Metrics (auto-generated)
-- **Duration**: 20m
-- **Tool Calls**: 46 (Bash: 31, Edit: 5, Read: 3, mcp__memory__remember_this: 3, Write: 2, mcp__memory__search_knowledge: 1)
-- **Files Modified**: 3 (0 verified, 0 pending)
-- **Errors**: 0
-- **Tests**: none this session
-- **Subagents**: 11 launched, 0 tokens
-
-**Files changed:**
-- `/home/crab/.claude/hooks/session_end.py`
-- `/home/crab/.claude/HANDOFF.md`
-- `/home/crab/.claude/LIVE_STATE.json`
