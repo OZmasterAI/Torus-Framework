@@ -1,5 +1,5 @@
 {
-  "session_count": 151,
+  "session_count": 153,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -8,54 +8,55 @@
   "test_count": 1116,
   "test_failures": 0,
   "files_modified": [
-    "hooks/tg_mirror.py",
-    "hooks/session_end.py",
-    "hooks/statusline.py",
-    "hooks/boot.py",
-    "tui/app.py",
-    "tui/data.py",
-    "settings.json",
-    "LIVE_STATE.json"
+    "dashboard/server.py",
+    "dashboard/static/index.html",
+    "dashboard/static/style.css",
+    "dashboard/static/modules/main.js",
+    "dashboard/static/modules/sse.js",
+    "dashboard/static/modules/panels/statusline.js",
+    "dashboard/static/modules/panels/toggles.js",
+    "dashboard/static/modules/chat.js"
   ],
   "improvements_shipped": [
     "Gate effectiveness tracking (blocks/overrides/prevented)",
     "Budget-aware model degradation (Gate 10)",
     "Skill chain memory SDK (ChainStepWrapper)",
     "Gate auto-tune with auto-apply",
-    "Boot.py toggle display \u2014 all 9 toggles with descriptions",
+    "Boot.py toggle display — all 9 toggles with descriptions",
     "Fixed misleading toggle descriptions (L2/enrichment independent)",
     "Telegram bot toggle lifecycle (start/stop + credential prompt)",
     "tg_bot_tmux default OFF",
     "Persistent gate effectiveness across sessions (.gate_effectiveness.json)",
-    "Torus-Self-Evolve-Diagram (.md + .html) \u2014 updated architecture docs",
-    "ULID audit IDs \u2014 26-char sortable unique IDs on every audit entry",
-    "Gate 17: Injection Defense \u2014 6-category PostToolUse scanner",
-    "4-tier budget degradation \u2014 NORMAL/LOW_COMPUTE/CRITICAL/DEAD",
+    "Torus-Self-Evolve-Diagram (.md + .html) — updated architecture docs",
+    "ULID audit IDs — 26-char sortable unique IDs on every audit entry",
+    "Gate 17: Injection Defense — 6-category PostToolUse scanner",
+    "4-tier budget degradation — NORMAL/LOW_COMPUTE/CRITICAL/DEAD",
     "TUI feature parity + modern rework",
-    "StatusLine 3rd line \u2014 all 9 toggles + budget tier indicator",
-    "tg_session_notify toggle \u2014 gate session-end Telegram notifications",
-    "tg_mirror_messages + Stop hook \u2014 real-time Claude response mirroring to TG",
-    "Toggle reorder \u2014 11 toggles, Budget below Mirror"
+    "StatusLine 3rd line — all 9 toggles + budget tier indicator",
+    "tg_session_notify toggle — gate session-end Telegram notifications",
+    "tg_mirror_messages + Stop hook — real-time Claude response mirroring to TG",
+    "Toggle reorder — 11 toggles, Budget below Mirror",
+    "Web Dashboard Enhancement — statusline bar, interactive toggles, terminal chat, SSE live_state"
   ],
   "next_steps": [
     "Merge self-evolve-test-branch to main",
-    "Add safety guard to app.py (refuse to run inside Claude Bash tool)",
-    "Enable gate_auto_tune \u2014 effectiveness data now accumulating",
-    "Enable budget_degradation + set session_token_budget"
+    "Enable gate_auto_tune — effectiveness data now accumulating",
+    "Enable budget_degradation + set session_token_budget",
+    "Test terminal chat end-to-end"
   ],
   "dormant_agent_teams": [
-    "Activate get_teammate_context() \u2014 @mcp.tool() + @crash_proof",
-    "Privacy tags \u2014 <private> edge stripping in tracker.py/observation.py"
+    "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
+    "Privacy tags — <private> edge stripping in tracker.py/observation.py"
   ],
   "known_issues": [
-    "Plan mode exit loop \u2014 platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access \u2014 tests skip when MCP running, correct behavior",
-    "Export test_framework.py uses _FRAMEWORK_ROOT \u2014 merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
-    "tmux routing shared session causes interference \u2014 use dedicated claude-bot",
-    "TaskCompleted hook disabled \u2014 was firing premature quality warnings",
-    "auto_commit Co-Authored-By hardcoded Opus 4.6 \u2014 wrong when on Sonnet",
-    "UDS socket intermittently missing \u2014 gather.py warns but non-blocking"
+    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
+    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
+    "tmux routing shared session causes interference — use dedicated claude-bot",
+    "TaskCompleted hook disabled — was firing premature quality warnings",
+    "auto_commit Co-Authored-By hardcoded Opus 4.6 — wrong when on Sonnet",
+    "UDS socket intermittently missing — gather.py warns but non-blocking"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -69,10 +70,10 @@
   "tg_session_notify": true,
   "tg_mirror_messages": false,
   "last_session_metrics": {
-    "reads": 23,
-    "edits": 12,
+    "reads": 36,
+    "edits": 20,
     "errors": 0,
-    "verified": 1116,
+    "verified": 8,
     "pending": 0
   }
 }
