@@ -89,14 +89,16 @@ class StatusView(Static):
 
         l1 = f"[{mc}]\\[{m}][/{mc}]"
         if mode:
-            l1 += f" {mode}"
-        l1 += f" \U0001f33f{br} #{s}"
-        l1 += f" G:{len(GATE_INFO)}"
+            l1 += f" MODE:{mode}"
+        l1 += f" | \U0001f4c1 {live.get('project', 'torus')}"
+        l1 += f" | \U0001f33f {br}"
+        l1 += f" | #{s}"
+        l1 += f" | \U0001f6e1\ufe0f G:{len(GATE_INFO)}"
         if fresh and fresh > 0:
-            l1 += f" M:{mc_}\u2191{fresh}m"
+            l1 += f" | \U0001f9e0 M:{mc_} \u2191{fresh}m"
         else:
-            l1 += f" M:{mc_}"
-        l1 += f" TC:{tc}"
+            l1 += f" | \U0001f9e0 M:{mc_}"
+        l1 += f" | \u26a1TC:{tc}"
         lines.append(l1)
 
         # ── LINE 2 ──
@@ -115,17 +117,17 @@ class StatusView(Static):
 
         cc = "red" if ctx >= 70 else "yellow" if ctx >= 50 else "green"
 
-        l2 = f"{bar} [{cc}]{ctx}%[/{cc}]"
+        l2 = f"{bar} | [{cc}]\U0001f4e6{ctx}%[/{cc}]"
         if cmp:
-            l2 += f" C:{cmp}"
+            l2 += f" CMP:{cmp}"
         if stok and stok != "0":
-            l2 += f" {stok}"
+            l2 += f" | {stok} tok"
         if dur:
-            l2 += f" {dur}m"
+            l2 += f" | \u23f1\ufe0f {dur}m"
         if la or lr:
-            l2 += f" +{la}/-{lr}"
+            l2 += f" | +{la}/-{lr}"
         cost_v = cost if isinstance(cost, (int, float)) else 0
-        l2 += f" ${cost_v:.2f}"
+        l2 += f" | \U0001f4b0${cost_v:.2f}"
         lines.append(l2)
 
         return "\n".join(lines)
