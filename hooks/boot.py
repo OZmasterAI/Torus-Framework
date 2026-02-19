@@ -773,7 +773,7 @@ def main():
         ("Terminal L2 enrichment", "context_enrichment",  False, "Inject matching memories into terminal results"),
         ("TG L3 always-on",       "tg_l3_always",        False, "Auto-search memory on every Telegram message"),
         ("TG L3 enrichment",      "tg_enrichment",       False, "Inject matching memories into Telegram replies"),
-        ("TG bot tmux",           "tg_bot_tmux",         False, "Route Telegram bot through dedicated tmux session"),
+        ("Telegram bot",           "tg_bot_tmux",         False, "Start/stop Telegram bot in dedicated tmux session"),
         ("Gate auto-tune",        "gate_auto_tune",      False, "Auto-adjust gate thresholds based on effectiveness data"),
         ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
         ("Chain memory",          "chain_memory",        False, "Remember and reuse successful skill chain sequences"),
@@ -788,6 +788,23 @@ def main():
     _budget_val = live_state.get("session_token_budget", 0) if live_state else 0
     _toggle_lines.append(f"Session token budget: {_budget_val} — Max tokens per session (0 = unlimited)")
     _toggle_keys.append("session_token_budget")
+    # Check Telegram bot config status
+    _tg_config_path = os.path.join(CLAUDE_DIR, "integrations", "telegram-bot", "config.json")
+    _tg_config_status = "not configured"
+    try:
+        with open(_tg_config_path) as f:
+            _tg_conf = json.load(f)
+        _tg_token = _tg_conf.get("bot_token", "")
+        _tg_users = _tg_conf.get("allowed_users", [])
+        if _tg_token and _tg_users:
+            _tg_config_status = f"configured (token: ...{_tg_token[-6:]}, users: {_tg_users})"
+        else:
+            _tg_config_status = "incomplete — missing " + (
+                "bot_token" if not _tg_token else "allowed_users"
+            )
+    except (OSError, json.JSONDecodeError):
+        _tg_config_status = "config.json missing"
+
     _toggle_display = " | ".join(_toggle_lines)
     _toggle_key_list = ", ".join(_toggle_keys)
     context_parts.append(
@@ -795,10 +812,22 @@ def main():
         "and remaining list (what's next) in ONE message. "
         "IMPORTANT — Always display the current toggle states table to the user in your greeting. "
         f"Current toggles: {_toggle_display}. "
+        f"Telegram bot config: {_tg_config_status}. "
         "Ask: 'Continue or New task?' "
         "If user says continue, ask which item to tackle — do NOT auto-start work. "
         "If user changes any toggle, update the corresponding LIVE_STATE.json field "
-        f"({_toggle_key_list})."
+        f"({_toggle_key_list}). "
+        "SPECIAL — Telegram bot toggle (tg_bot_tmux): "
+        "When user turns ON: (1) Check config at integrations/telegram-bot/config.json — "
+        "if bot_token or allowed_users missing, ask user for them using AskUserQuestion "
+        "(bot token from @BotFather, Telegram user ID for whitelist). "
+        "If already configured, ask if they want to keep or change the current bot_token and allowed_users. "
+        "(2) Update config.json with any changes. "
+        "(3) Start the bot: create tmux session 'claude-bot' and run "
+        "'python3 integrations/telegram-bot/bot.py' in it. "
+        "(4) Update LIVE_STATE.json tg_bot_tmux=true. "
+        "When user turns OFF: (1) Kill the bot process in tmux session 'claude-bot'. "
+        "(2) Update LIVE_STATE.json tg_bot_tmux=false."
     )
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))
