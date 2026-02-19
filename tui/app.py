@@ -54,6 +54,7 @@ TOGGLE_DISPLAY = [
     ("gate_auto_tune",       "Tune",   True,  "Auto-tune"),
     ("budget_degradation",   "Budget", True,  "4-tier deg"),
     ("chain_memory",         "Chain",  True,  "Skill chain"),
+    ("tg_session_notify",    "Notify", True,  "Session TG msg"),
     ("session_token_budget", "TokBgt", False, "Token limit"),
 ]
 

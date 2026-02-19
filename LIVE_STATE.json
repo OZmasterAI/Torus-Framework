@@ -63,6 +63,7 @@
   "budget_degradation": false,
   "session_token_budget": 0,
   "chain_memory": false,
+  "tg_session_notify": false,
   "last_session_metrics": {
     "reads": 23,
     "edits": 12,

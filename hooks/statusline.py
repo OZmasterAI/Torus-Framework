@@ -868,6 +868,7 @@ def main():
         f"{_tog('gate_auto_tune')}Tune "
         f"{_tog('budget_degradation')}Budget "
         f"{_tog('chain_memory')}Chain "
+        f"{_tog('tg_session_notify')}Notify "
         f"B:{budget_val}{budget_tier_str}"
     )
     print(line3)

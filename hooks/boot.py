@@ -776,6 +776,7 @@ def main():
         ("Gate auto-tune",        "gate_auto_tune",      False, "Auto-adjust gate thresholds based on effectiveness data"),
         ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
         ("Chain memory",          "chain_memory",        False, "Remember and reuse successful skill chain sequences"),
+        ("Session notify",        "tg_session_notify",   False, "Send session summary to Telegram on end"),
     ]
     _toggle_lines = []
     _toggle_keys = []

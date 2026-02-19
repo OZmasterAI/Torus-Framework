@@ -512,10 +512,16 @@ def main():
         flush_capture_queue()
         backup_database()
 
-        # Telegram Bot: post session summary to FTS5 + notify OZ
+        # Telegram Bot: post session summary to FTS5 + notify OZ (gated by toggle)
         try:
+            _tg_notify = False
+            try:
+                with open(LIVE_STATE_FILE) as _f:
+                    _tg_notify = json.load(_f).get("tg_session_notify", False)
+            except Exception:
+                pass
             _tg_hook = os.path.join(CLAUDE_DIR, "integrations", "telegram-bot", "hooks", "on_session_end.py")
-            if os.path.isfile(_tg_hook):
+            if _tg_notify and os.path.isfile(_tg_hook):
                 subprocess.run([sys.executable, _tg_hook], timeout=15, capture_output=False, stdin=subprocess.DEVNULL)
         except Exception:
             pass  # Telegram integration is optional, never block session end

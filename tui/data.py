@@ -32,6 +32,7 @@ TOGGLES = [
     ("Gate auto-tune",        "gate_auto_tune",      False, "Auto-adjust gate thresholds based on effectiveness data"),
     ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
     ("Chain memory",          "chain_memory",        False, "Remember and reuse successful skill chain sequences"),
+    ("Session notify",        "tg_session_notify",   False, "Send session summary to Telegram on end"),
     ("Session budget",        "session_token_budget", 0,     "Max tokens per session (0 = unlimited)"),
 ]
 
