@@ -767,30 +767,38 @@ def main():
     if tg_memories:
         tg_summaries = [f"[{tm.get('date', '?')}] {tm.get('text', '')[:100]}" for tm in tg_memories]
         context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
-    # Check current toggle states for boot prompt
-    _term_l2_state = live_state.get("terminal_l2_always", True) if live_state else True
-    _enrichment_state = live_state.get("context_enrichment", False) if live_state else False
-    _tg_l3_state = live_state.get("tg_l3_always", False) if live_state else False
-    _tg_enrich_state = live_state.get("tg_enrichment", False) if live_state else False
-    _tg_bot_tmux_state = live_state.get("tg_bot_tmux", False) if live_state else False
-    _term_l2_label = "ON" if _term_l2_state else "OFF"
-    _enrichment_label = "ON" if _enrichment_state else "OFF"
-    _tg_l3_label = "ON" if _tg_l3_state else "OFF"
-    _tg_enrich_label = "ON" if _tg_enrich_state else "OFF"
-    _tg_bot_tmux_label = "ON" if _tg_bot_tmux_state else "OFF"
+    # Build toggle status table from LIVE_STATE
+    _toggles = {
+        "Terminal L2 always-on": ("terminal_l2_always", True),
+        "Terminal L2 enrichment": ("context_enrichment", False),
+        "TG L3 always-on": ("tg_l3_always", False),
+        "TG L3 enrichment": ("tg_enrichment", False),
+        "TG bot tmux": ("tg_bot_tmux", False),
+        "Gate auto-tune": ("gate_auto_tune", False),
+        "Budget degradation": ("budget_degradation", False),
+        "Chain memory": ("chain_memory", False),
+    }
+    _toggle_lines = []
+    _toggle_keys = []
+    for label, (key, default) in _toggles.items():
+        val = live_state.get(key, default) if live_state else default
+        _toggle_lines.append(f"{label}: {'ON' if val else 'OFF'}")
+        _toggle_keys.append(key)
+    # Budget has a numeric value too
+    _budget_val = live_state.get("session_token_budget", 0) if live_state else 0
+    _toggle_lines.append(f"Session token budget: {_budget_val}")
+    _toggle_keys.append("session_token_budget")
+    _toggle_display = " | ".join(_toggle_lines)
+    _toggle_key_list = ", ".join(_toggle_keys)
     context_parts.append(
         "PROTOCOL: Present session number, brief summary, completed list (what was done last session), "
         "and remaining list (what's next) in ONE message. "
-        "Search toggles: "
-        f"Terminal L2 always-on: {_term_l2_label} | "
-        f"Terminal L2 enrichment: {_enrichment_label} | "
-        f"TG L3 always-on: {_tg_l3_label} | "
-        f"TG L3 enrichment: {_tg_enrich_label} | "
-        f"TG bot tmux: {_tg_bot_tmux_label}. "
+        "IMPORTANT — Always display the current toggle states table to the user in your greeting. "
+        f"Current toggles: {_toggle_display}. "
         "Ask: 'Continue or New task?' "
         "If user says continue, ask which item to tackle — do NOT auto-start work. "
         "If user changes any toggle, update the corresponding LIVE_STATE.json field "
-        "(terminal_l2_always, context_enrichment, tg_l3_always, tg_enrichment, tg_bot_tmux)."
+        f"({_toggle_key_list})."
     )
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))
