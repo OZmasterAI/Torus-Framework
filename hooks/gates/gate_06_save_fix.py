@@ -31,6 +31,9 @@ ESCALATION_THRESHOLD = 5
 # Verified fixes older than this are considered stale (expired)
 STALE_FIX_SECONDS = 1200  # 20 minutes
 
+# Read-only subagent types — no Edit/Write/Bash, can't create unsaved fixes
+READ_ONLY_AGENTS = {"researcher", "Explore"}
+
 # Paths excluded from verified_fixes tracking (temp files, non-project files)
 EXCLUDED_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/")
 
@@ -42,6 +45,12 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     if tool_name not in ("Edit", "Write", "Task", "Bash"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
+
+    # Read-only subagents can't create unsaved fixes — skip
+    if tool_name == "Task":
+        subagent_type = tool_input.get("subagent_type", "")
+        if subagent_type in READ_ONLY_AGENTS:
+            return GateResult(blocked=False, gate_name=GATE_NAME)
 
     warn_count = state.get("gate6_warn_count", 0)
     issued_warning = False

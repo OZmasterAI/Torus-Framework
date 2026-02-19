@@ -24,6 +24,9 @@ MEMORY_FRESHNESS_WINDOW = 300  # 5 minutes
 # Tools that require recent memory query
 GATED_TOOLS = {"Edit", "Write", "NotebookEdit", "Task"}
 
+# Read-only subagent types — no Edit/Write/Bash, can't modify files
+READ_ONLY_AGENTS = {"researcher", "Explore"}
+
 # Files exempt by basename
 EXEMPT_BASENAMES = {"state.json", "HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md"}
 
@@ -50,6 +53,12 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     if tool_name not in GATED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
+
+    # Read-only subagents don't edit files — skip memory freshness check
+    if tool_name == "Task":
+        subagent_type = tool_input.get("subagent_type", "")
+        if subagent_type in READ_ONLY_AGENTS:
+            return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check file exemptions
     file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")

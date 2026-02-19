@@ -360,6 +360,19 @@ reset_state(session_id=MAIN_SESSION)
 code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"})
 test("Edit HANDOFF.md without memory → allowed", code == 0, msg)
 
+# Read-only subagent exemption: researcher/Explore skip Gate 4
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
+# No memory query — stale window
+code, msg = run_enforcer("PreToolUse", "Task", {"subagent_type": "researcher", "model": "sonnet", "description": "research"})
+test("Task researcher without memory → allowed (read-only exempt)", code == 0, msg)
+
+code, msg = run_enforcer("PreToolUse", "Task", {"subagent_type": "Explore", "model": "sonnet", "description": "explore"})
+test("Task Explore without memory → allowed (read-only exempt)", code == 0, msg)
+
+code, msg = run_enforcer("PreToolUse", "Task", {"subagent_type": "builder", "model": "sonnet", "description": "build"})
+test("Task builder without memory → blocked (write agent)", code != 0, msg)
+
 # ─────────────────────────────────────────────────
 # Test: Always-Allowed Tools
 # ─────────────────────────────────────────────────
@@ -6746,6 +6759,29 @@ test("v2.2.7: Gate 6 edit streak shows basename",
 test("v2.2.7: Gate 6 edit streak shows count",
      "4 edits" in _g6_output,
      f"Expected '4 edits' in output, got: {_g6_output[:100]!r}")
+
+# ── Read-only subagent exemption for Gate 6 ──
+
+# Test: Gate 6 skips researcher Task even with unsaved fixes
+_g6_ro_state1 = default_state()
+_g6_ro_state1["verified_fixes"] = ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py"]
+_g6_ro_state1["gate6_warn_count"] = 6  # Above escalation threshold
+_g6_ro_state1["_session_id"] = MAIN_SESSION
+_g6_ro_result1 = gate6_check("Task", {"subagent_type": "researcher", "model": "sonnet"}, _g6_ro_state1)
+test("Gate 6: Task researcher exempt (read-only)",
+     not _g6_ro_result1.blocked,
+     f"Expected not blocked, got blocked={_g6_ro_result1.blocked}")
+
+_g6_ro_result2 = gate6_check("Task", {"subagent_type": "Explore", "model": "sonnet"}, _g6_ro_state1)
+test("Gate 6: Task Explore exempt (read-only)",
+     not _g6_ro_result2.blocked,
+     f"Expected not blocked, got blocked={_g6_ro_result2.blocked}")
+
+# Test: Gate 6 still blocks builder Task with unsaved fixes
+_g6_ro_result3 = gate6_check("Task", {"subagent_type": "builder", "model": "sonnet"}, _g6_ro_state1)
+test("Gate 6: Task builder NOT exempt (write agent)",
+     _g6_ro_result3.blocked,
+     f"Expected blocked=True, got blocked={_g6_ro_result3.blocked}")
 
 # ── Feature 2: StatusLine pending verification count ──
 
