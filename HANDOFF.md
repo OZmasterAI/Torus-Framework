@@ -1,22 +1,14 @@
-# Session 146 Handoff
+# Session 147 Handoff
 
 ## What Was Done
-- **Self-evolving framework** — Implemented all 4 pieces from the plan on `self-evolve-test-branch`:
-  1. Gate effectiveness tracking (blocks/overrides/prevented per gate)
-  2. Budget-aware model degradation (70%/85%/95% thresholds in Gate 10)
-  3. Skill chain memory SDK (ChainStepWrapper + /chain skill updates)
-  4. Gate auto-tune with auto-apply (boot.py computes effectiveness → writes threshold overrides)
-- **Boot.py toggle display** — Added all 9 toggles to session start greeting with descriptions
-- **Fixed toggle descriptions** — Terminal L2 and enrichment are independent pipeline steps, not trigger+action
-- **Telegram bot toggle** — Renamed from "TG bot tmux" to "Telegram bot", now handles full lifecycle (start/stop bot, prompt for credentials)
-- **LIVE_STATE.json** — Set tg_bot_tmux default to false
-- **Squashed commits** — 3 auto-commits → 1 clean commit (9f2e098)
-- 15 files changed, 629 insertions, 12 new tests (1103 total, 0 failures)
+- **Persistent gate effectiveness** — Gate effectiveness data now persists across sessions via `hooks/.gate_effectiveness.json` instead of resetting per-session in state files. Changed enforcer.py, tracker.py, boot.py, and shared/state.py to use shared `update_gate_effectiveness()` / `load_gate_effectiveness()`. Atomic writes via `.tmp` + `os.replace`.
+- **Terminal L2 toggle** — Turned OFF per user request
+- **Tests** — Updated 3 effectiveness tests for persistent file (with backup/restore isolation). 1103 passed, 0 failed.
+- Already collecting data: 8 gates with 79 events from this session alone
 
 ## What's Next
-- Run tests on self-evolve-test-branch to verify all 1103 pass
-- Consider merging self-evolve-test-branch to main after testing
-- Enable gate_auto_tune toggle to start collecting effectiveness data
+- Merge self-evolve-test-branch to main (now 4+ commits ahead)
+- Enable gate_auto_tune toggle — effectiveness data is now accumulating
 - Enable budget_degradation + set session_token_budget to test model degradation
 - Test Telegram bot toggle lifecycle (ON → prompt credentials → start bot)
 
@@ -28,11 +20,19 @@
 - tmux routing shared session causes interference — use dedicated claude-bot
 
 ## Service Status
-- Memory MCP: RUNNING (651 memories)
+- Memory MCP: RUNNING (652 memories)
 - Tests: 1103 passed, 0 failed
 - Framework version: v2.4.5 (Torus)
 - Gate enforcement: MECHANICAL (exit code 2) — 15 active gates (Gate 8 dormant)
 - Ramdisk: active at /run/user/1000/claude-hooks
 - Telegram bot: NOT RUNNING (configured, toggle OFF)
 - GitHub: OZmasterAI/Torus-Framework (gh auth on OZmasterAI)
-- Branch: self-evolve-test-branch (4 commits ahead of main)
+- Branch: self-evolve-test-branch
+
+**Files changed:**
+- `hooks/shared/state.py` — Added update_gate_effectiveness(), load_gate_effectiveness(), EFFECTIVENESS_FILE
+- `hooks/enforcer.py` — Uses shared persistent effectiveness for blocks
+- `hooks/tracker.py` — Uses shared persistent effectiveness for overrides/prevented
+- `hooks/boot.py` — Auto-tune reads from persistent file via load_gate_effectiveness()
+- `hooks/test_framework.py` — Updated 3 tests for persistent effectiveness
+- `LIVE_STATE.json` — terminal_l2_always OFF

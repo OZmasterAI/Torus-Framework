@@ -32,12 +32,14 @@
     "Boot.py toggle display \u2014 all 9 toggles with descriptions",
     "Fixed misleading toggle descriptions (L2/enrichment independent)",
     "Telegram bot toggle lifecycle (start/stop + credential prompt)",
-    "tg_bot_tmux default OFF"
+    "tg_bot_tmux default OFF",
+    "Persistent gate effectiveness across sessions (.gate_effectiveness.json)"
   ],
   "next_steps": [
     "Merge self-evolve-test-branch to main",
+    "Enable gate_auto_tune \u2014 effectiveness data now accumulating",
     "Test toggle lifecycle for Telegram bot",
-    "Enable gate_auto_tune to collect data"
+    "Enable budget_degradation + set session_token_budget"
   ],
   "dormant_agent_teams": [
     "Activate get_teammate_context() \u2014 @mcp.tool() + @crash_proof",
