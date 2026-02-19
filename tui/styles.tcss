@@ -1,0 +1,69 @@
+/* Torus TUI Dashboard — Dark Theme */
+
+Screen {
+    background: $surface;
+}
+
+.panel-title {
+    text-style: bold;
+    color: $accent;
+    padding: 0 1;
+    height: 1;
+}
+
+#toggle-panel {
+    height: auto;
+    max-height: 14;
+    border: solid $primary;
+}
+
+#tab-content {
+    height: 1fr;
+    border: solid $primary;
+}
+
+Footer {
+    background: $primary-background;
+}
+
+TabPane {
+    padding: 0;
+}
+
+DataTable {
+    height: 1fr;
+}
+
+RichLog {
+    height: 1fr;
+}
+
+Sparkline {
+    height: 3;
+}
+
+ToggleRow {
+    height: 1;
+}
+
+ToggleRow Label {
+    width: 1fr;
+    color: $text;
+}
+
+ToggleRow Switch {
+    height: 1;
+}
+
+BudgetRow {
+    height: 1;
+}
+
+BudgetRow Label {
+    width: 1fr;
+}
+
+BudgetRow Input {
+    width: 12;
+    height: 1;
+}
