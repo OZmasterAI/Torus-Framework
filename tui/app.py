@@ -39,9 +39,22 @@ GATE_INFO = [
     ("gate_16_code_quality",        "16", "CodeQual",    "B"),
 ]
 
+# Short labels for toggles — avoids wrapping in narrow pane
+TOGGLE_SHORT = {
+    "terminal_l2_always":    "Term L2",
+    "context_enrichment":    "L2 enrich",
+    "tg_l3_always":          "TG L3",
+    "tg_enrichment":         "TG enrich",
+    "tg_bot_tmux":           "TG bot",
+    "gate_auto_tune":        "AutoTune",
+    "budget_degradation":    "BudgetDeg",
+    "chain_memory":          "ChainMem",
+    "session_token_budget":  "TokBudget",
+}
+
 
 class StatusBar(Static):
-    """Top bar: model, branch, session, context%."""
+    """Top bar: model, branch, session#, context%."""
 
     def __init__(self, data: DataLayer):
         super().__init__()
@@ -53,11 +66,13 @@ class StatusBar(Static):
         snap = self._data.statusline_snapshot()
         s = live.get("session_count", "?")
         m = mem.get("mem_count", "?")
-        model = snap.get("model", "?")
+        model = snap.get("model", "claude")
+        # Shorten model name: "claude-sonnet-4-6" -> "sonnet-4-6"
+        if model.startswith("claude-"):
+            model = model[7:]
         ctx = snap.get("context_pct", 0)
         branch = self._data.git_branch() or "?"
 
-        # Color context %
         if ctx >= 70:
             ctx_col = "red"
         elif ctx >= 50:
@@ -66,9 +81,11 @@ class StatusBar(Static):
             ctx_col = "green"
 
         return (
-            f"[bold][{model}][/bold] {branch} #[bold]{s}[/bold] | "
-            f"G:[green]15[/green] M:[cyan]{m}[/cyan] | "
-            f"Ctx:[{ctx_col}]{ctx}%[/{ctx_col}]"
+            f" [bold]{model}[/bold]"
+            f"  [dim]{branch}[/dim]"
+            f"  [dim]#{s}[/dim]"
+            f"  [dim]M:{m}[/dim]"
+            f"  [{ctx_col}]{ctx}%[/{ctx_col}]"
         )
 
 
@@ -85,7 +102,6 @@ class HealthBar(Static):
 
         health = snap.get("health_pct", 100) if snap else 100
 
-        # Error velocity from session state
         error_windows = state.get("error_windows", [])
         now = time.time()
         recent = sum(
@@ -94,32 +110,81 @@ class HealthBar(Static):
         )
 
         filled = health // 10
-        hc = "green" if health >= 90 else "yellow" if health >= 70 else "red"
-        bar = f"[{hc}]{'\u2588' * filled}{'\u2591' * (10 - filled)} {health}%[/{hc}]"
+        if health >= 90:
+            hc = "green"
+            dot = "\u25cf"  # filled circle
+        elif health >= 70:
+            hc = "yellow"
+            dot = "\u25cf"
+        else:
+            hc = "red"
+            dot = "\u25cf"
 
-        parts = [f"HP:{bar}"]
+        # Slim 8-block bar
+        bar_filled = "\u2588" * (health // 12)
+        bar_empty = "\u2591" * (8 - len(bar_filled))
+        bar = f"[{hc}]{bar_filled}{bar_empty}[/{hc}]"
+
+        parts = [f"[{hc}]{dot}[/{hc}] {bar} [dim]{health}%[/dim]"]
 
         if recent > 0:
-            parts.append(f"[red]ERR:{recent}[/red]")
+            parts.append(f"[red]\u26a0 {recent}[/red]")
 
-        # Cost, duration, lines from snapshot
         if snap:
             cost = snap.get("cost_usd", 0)
             if cost:
-                parts.append(f"${cost:.2f}")
+                parts.append(f"[dim]${cost:.2f}[/dim]")
             dur = snap.get("duration_min", 0)
             if dur:
-                parts.append(f"{dur}m")
+                parts.append(f"[dim]{dur}m[/dim]")
             la = snap.get("lines_added", 0)
             lr = snap.get("lines_removed", 0)
             if la or lr:
-                parts.append(f"+{la}/-{lr}")
+                parts.append(f"[green]+{la}[/green][dim]/[/dim][red]-{lr}[/red]")
 
-        return "  ".join(parts)
+        return " ".join(parts)
+
+
+class InfoBar(Static):
+    """Tokens, compression, UDS status — only shown when snapshot is fresh."""
+
+    def __init__(self, data: DataLayer):
+        super().__init__()
+        self._data = data
+
+    def render(self) -> str:
+        snap = self._data.statusline_snapshot()
+        if not snap:
+            return ""
+        ts = snap.get("ts", 0)
+        age = time.time() - ts
+        if age > 30:
+            return f"[dim]\u231b snapshot {int(age)}s ago[/dim]"
+
+        parts = []
+        tok = snap.get("session_tokens", "0")
+        if tok and tok != "0":
+            last = snap.get("last_turn", "")
+            s = f"[cyan]{tok}[/cyan]"
+            if last:
+                s += f"[dim]+{last}[/dim]"
+            parts.append(s)
+
+        cmp = snap.get("compressions", 0)
+        if cmp:
+            parts.append(f"[yellow]\u21ba{cmp}[/yellow]")
+
+        uds = snap.get("uds_ok", False)
+        if uds:
+            parts.append("[green]\u25cf[/green][dim]UDS[/dim]")
+        else:
+            parts.append("[yellow]\u25cb[/yellow][dim]UDS[/dim]")
+
+        return " [dim]\u2502[/dim] ".join(parts) if parts else ""
 
 
 class SessionMetrics(Static):
-    """Live session stats with verification, memory freshness, mode."""
+    """Live session stats: tool calls, files, verification, memory freshness, mode."""
 
     def __init__(self, data: DataLayer):
         super().__init__()
@@ -133,31 +198,53 @@ class SessionMetrics(Static):
 
         tc = state.get("tool_call_counts", {})
         top = sorted(tc.items(), key=lambda x: -x[1])[:3]
-        tool_str = " ".join(f"[dim]{t}[/dim]:{c}" for t, c in top) if top else "[dim]none[/dim]"
 
-        # Memory freshness
         fresh = self._data.memory_freshness()
-        fresh_str = f"\u2191{fresh}m" if fresh is not None else ""
-
-        # Active mode
         mode = self._data.active_mode()
-        mode_str = f"[bold]{mode}[/bold]" if mode else ""
 
-        line2_parts = [f"TC:{calls}", f"Files:{edited}", f"V:{v_ok}/{v_total}"]
-        if fresh_str:
-            line2_parts.append(fresh_str)
-        if mode_str:
-            line2_parts.append(mode_str)
+        # Verification color
+        if v_total == 0:
+            v_str = "[dim]0/0[/dim]"
+        elif v_ok == v_total:
+            v_str = f"[green]{v_ok}/{v_total}[/green]"
+        else:
+            v_str = f"[yellow]{v_ok}/{v_total}[/yellow]"
 
-        return (
-            f"[bold dim]SESSION[/bold dim]\n"
-            f" {'  '.join(line2_parts)}\n"
-            f" {tool_str}"
+        # Memory freshness indicator
+        if fresh is None:
+            mem_str = "[dim]\u2014[/dim]"
+        elif fresh <= 5:
+            mem_str = f"[green]\u25cf {fresh}m[/green]"
+        elif fresh <= 15:
+            mem_str = f"[yellow]\u25cf {fresh}m[/yellow]"
+        else:
+            mem_str = f"[red]\u25cb {fresh}m[/red]"
+
+        mode_str = f"  [bold cyan]{mode}[/bold cyan]" if mode else ""
+
+        row1 = (
+            f"[dim]TC[/dim] [bold]{calls}[/bold]"
+            f"  [dim]F[/dim] [bold]{edited}[/bold]"
+            f"  [dim]V[/dim] {v_str}"
+            f"  [dim]M[/dim] {mem_str}"
+            f"{mode_str}"
         )
+
+        if top:
+            tool_parts = []
+            for t, c in top:
+                # shorten tool names
+                short = t[:4] if len(t) > 4 else t
+                tool_parts.append(f"[dim]{short}[/dim]:{c}")
+            row2 = "  ".join(tool_parts)
+        else:
+            row2 = "[dim]no tool calls yet[/dim]"
+
+        return f"{row1}\n [dim]{row2}[/dim]"
 
 
 class GatePanel(Static):
-    """Compact gate list."""
+    """Compact 2-column gate list with colored dot indicators."""
 
     def __init__(self, data: DataLayer):
         super().__init__()
@@ -165,107 +252,172 @@ class GatePanel(Static):
 
     def render(self) -> str:
         eff = self._data.gate_effectiveness()
-        lines = ["[bold dim]GATES[/bold dim]"]
-        for key, gid, name, gtype in GATE_INFO:
+
+        def gate_line(key, gid, name, gtype):
             d = eff.get(key, {})
             blocks = d.get("blocks", 0)
             overrides = d.get("overrides", 0)
             total = blocks + overrides
+
+            # Status dot
             if total == 0:
-                bar = "[dim]\u2591\u2591\u2591\u2591\u2591[/dim]"
-                stat = ""
+                dot = "[dim]\u25cb[/dim]"
+                stat = "[dim]  \u2014[/dim]"
             else:
                 pct = int(blocks / total * 100)
-                fl = pct // 20
-                c = "green" if pct >= 90 else "yellow" if pct >= 70 else "red"
-                bar = f"[{c}]{'\u2588' * fl}{'\u2591' * (5 - fl)}[/{c}]"
-                stat = f"[dim]{blocks}[/dim]"
-            t = "[red]B[/red]" if gtype == "B" else "[yellow]A[/yellow]"
-            lines.append(f" {gid} {bar} {name:<11}{t} {stat}")
+                if pct >= 90:
+                    dot = "[green]\u25cf[/green]"
+                elif pct >= 70:
+                    dot = "[yellow]\u25cf[/yellow]"
+                else:
+                    dot = "[red]\u25cf[/red]"
+                stat = f"[dim]{blocks:>3}[/dim]"
+
+            # Type badge
+            t_badge = "[red]B[/red]" if gtype == "B" else "[yellow]A[/yellow]"
+            return f" {dot}{t_badge}[dim]{gid}[/dim] {name:<10}{stat}"
+
+        lines = ["[bold dim]GATES[/bold dim]"]
+        # Render in 2-column pairs
+        for i in range(0, len(GATE_INFO), 2):
+            left = gate_line(*GATE_INFO[i])
+            if i + 1 < len(GATE_INFO):
+                right = gate_line(*GATE_INFO[i + 1])
+                lines.append(f"{left}  {right}")
+            else:
+                lines.append(left)
         return "\n".join(lines)
 
 
 class AuditPanel(Static):
-    """Recent audit feed."""
+    """Recent audit entries — monospace aligned, dim timestamps."""
 
     def __init__(self, data: DataLayer):
         super().__init__()
         self._data = data
 
     def render(self) -> str:
-        entries = self._data.audit_tail(10)
+        entries = self._data.audit_tail(12)
         if not entries:
             return "[bold dim]AUDIT[/bold dim]\n [dim]no entries today[/dim]"
+
         lines = ["[bold dim]AUDIT[/bold dim]"]
-        for entry in entries[-8:]:
+        for entry in entries[-10:]:
             decision = entry.get("decision", "?")
             gate = entry.get("gate", "")
             tool = entry.get("tool", "?")
             ts = entry.get("timestamp", "")
-            tp = ts[11:16] if len(ts) >= 16 else ""
-            gs = gate.split(": ", 1)[-1][:12] if ": " in gate else gate[:12]
-            if decision == "block":
-                icon = "[red]X[/red]"
-            elif decision == "warn":
-                icon = "[yellow]![/yellow]"
+            tp = ts[11:16] if len(ts) >= 16 else "     "
+
+            # Shorten gate label
+            gs = gate.split(": ", 1)[-1] if ": " in gate else gate
+            # Remove "gate_NN_" prefix if present
+            parts_g = gs.split("_", 2)
+            if len(parts_g) == 3 and parts_g[0] == "gate":
+                gs = parts_g[2][:9]
             else:
-                icon = "[dim].[/dim]"
-            lines.append(f" {icon} {tp} {gs:<12} {tool}")
+                gs = gs[:9]
+
+            # Shorten tool name
+            tool_short = tool[:8] if len(tool) > 8 else tool
+
+            if decision == "block":
+                icon = "[red]\u2715[/red]"
+            elif decision == "warn":
+                icon = "[yellow]\u26a0[/yellow]"
+            else:
+                icon = "[dim]\u00b7[/dim]"
+
+            lines.append(
+                f" {icon} [dim]{tp}[/dim] [dim]{gs:<9}[/dim] {tool_short}"
+            )
         return "\n".join(lines)
-
-
-class InfoBar(Static):
-    """Tokens, compression, UDS status from statusline snapshot.
-    Only renders content if snapshot exists and is fresh (<30s)."""
-
-    def __init__(self, data: DataLayer):
-        super().__init__()
-        self._data = data
-
-    def render(self) -> str:
-        snap = self._data.statusline_snapshot()
-        if not snap:
-            return ""
-        # Check freshness — skip if stale
-        ts = snap.get("ts", 0)
-        if time.time() - ts > 30:
-            return "[dim]snapshot stale[/dim]"
-
-        parts = []
-        tok = snap.get("session_tokens", "0")
-        if tok and tok != "0":
-            last = snap.get("last_turn", "")
-            s = f"[cyan]{tok}[/cyan] tok"
-            if last:
-                s += f" ({last})"
-            parts.append(s)
-
-        cmp = snap.get("compressions", 0)
-        if cmp:
-            parts.append(f"CMP:{cmp}")
-
-        uds = snap.get("uds_ok", False)
-        parts.append(f"UDS:[green]ok[/green]" if uds else "UDS:[yellow]down[/yellow]")
-
-        return "  ".join(parts) if parts else ""
 
 
 class TorusApp(App):
     CSS = """
-    Screen { background: $surface; }
-    StatusBar { height: 1; background: $accent; color: $text; padding: 0 1; }
-    HealthBar { height: 1; padding: 0 1; }
-    InfoBar { height: 1; padding: 0 1; }
-    SessionMetrics { height: auto; padding: 0 1; }
-    GatePanel { height: auto; padding: 0 1; }
-    AuditPanel { height: auto; padding: 0 1; }
-    #tog-label { color: $text-muted; text-style: bold; padding: 0 1; height: 1; }
-    .trow { height: 3; padding: 0 1; }
-    .trow Switch { width: auto; }
-    .tlabel { width: 1fr; content-align: left middle; }
-    .tval { width: 4; content-align: center middle; color: $accent; }
-    .sep { height: 1; color: $accent-darken-2; padding: 0 1; }
-    Footer { background: $primary-background; }
+    Screen {
+        background: $surface;
+        overflow: hidden hidden;
+    }
+
+    StatusBar {
+        height: 1;
+        background: $accent-darken-2;
+        color: $text;
+        padding: 0 0;
+    }
+
+    HealthBar {
+        height: 1;
+        padding: 0 1;
+        color: $text-muted;
+    }
+
+    InfoBar {
+        height: 1;
+        padding: 0 1;
+        color: $text-muted;
+    }
+
+    SessionMetrics {
+        height: auto;
+        padding: 0 1;
+    }
+
+    GatePanel {
+        height: auto;
+        padding: 0 1;
+    }
+
+    AuditPanel {
+        height: auto;
+        padding: 0 1;
+    }
+
+    .sep {
+        height: 1;
+        color: $primary-darken-3;
+        padding: 0 1;
+    }
+
+    /* Toggles */
+    #tog-header {
+        height: 1;
+        color: $text-muted;
+        text-style: bold;
+        padding: 0 1;
+    }
+
+    .trow {
+        height: 1;
+        padding: 0 1;
+    }
+
+    .trow Switch {
+        width: 5;
+        min-width: 5;
+        height: 1;
+        border: none;
+        background: transparent;
+    }
+
+    .tlabel {
+        width: 1fr;
+        content-align: left middle;
+        color: $text-muted;
+    }
+
+    .tval {
+        width: 4;
+        content-align: center middle;
+        color: $accent;
+    }
+
+    Footer {
+        background: $primary-background;
+        height: 1;
+    }
     """
 
     BINDINGS = [
@@ -285,22 +437,23 @@ class TorusApp(App):
         with VerticalScroll():
             yield InfoBar(self.data)
             yield SessionMetrics(self.data)
-            yield Static("[dim]\u2500[/dim]", classes="sep")
+            yield Static("[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]", classes="sep")
             yield GatePanel(self.data)
-            yield Static("[dim]\u2500[/dim]", classes="sep")
-            yield Label("TOGGLES", id="tog-label")
+            yield Static("[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]", classes="sep")
+            yield Label("[dim bold]TOGGLES[/dim bold]", id="tog-header")
             live = self.data.live_state()
             for label, key, default, desc in TOGGLES:
+                short = TOGGLE_SHORT.get(key, label[:10])
                 val = live.get(key, default)
                 if isinstance(default, bool):
                     with Horizontal(classes="trow"):
                         yield Switch(value=bool(val), id=f"sw_{key}")
-                        yield Label(f"{label} [dim]{desc}[/dim]", classes="tlabel")
+                        yield Label(short, classes="tlabel")
                 else:
                     with Horizontal(classes="trow"):
-                        yield Label(f"[bold]{val}[/bold]", classes="tval")
-                        yield Label(f"{label} [dim]{desc}[/dim]", classes="tlabel")
-            yield Static("[dim]\u2500[/dim]", classes="sep")
+                        yield Label(f"[bold]{val}[/bold]", id=f"val_{key}", classes="tval")
+                        yield Label(short, classes="tlabel")
+            yield Static("[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]", classes="sep")
             yield AuditPanel(self.data)
         yield Footer()
 
