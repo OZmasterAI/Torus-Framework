@@ -338,6 +338,16 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 # Track gate block counts for diagnostics
                 block_counts = state.setdefault("gate_block_counts", {})
                 block_counts[gate_short] = block_counts.get(gate_short, 0) + 1
+                # Track gate effectiveness (self-evolving)
+                effectiveness = state.setdefault("gate_effectiveness", {})
+                ge = effectiveness.setdefault(gate_short, {"blocks": 0, "overrides": 0, "prevented": 0})
+                ge["blocks"] = ge.get("blocks", 0) + 1
+                # Record block outcome for later resolution tracking
+                file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "") or tool_input.get("command", "")[:100]
+                outcomes = state.setdefault("gate_block_outcomes", [])
+                outcomes.append({"gate": gate_short, "tool": tool_name, "file": file_path, "timestamp": time.time(), "resolved_by": None})
+                if len(outcomes) > 100:
+                    state["gate_block_outcomes"] = outcomes[-100:]
                 print(result.message, file=sys.stderr)
                 save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(2)

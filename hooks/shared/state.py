@@ -45,6 +45,7 @@ MAX_ERROR_PATTERNS = 50
 MAX_ACTIVE_BANS = 50
 MAX_PENDING_CHAINS = 10
 MAX_EDIT_STREAK = 50
+MAX_GATE_BLOCK_OUTCOMES = 100
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,11 @@ def default_state():
         "files_edited": [],                 # tracker: files edited this session
         "session_duration_nudge_hour": 0,   # tracker: last milestone hour nudged (1/2/3)
         "auto_remember_count": 0,           # tracker: auto-remember calls this session
+        # v3.1 fields (self-evolving framework)
+        "gate_effectiveness": {},            # {gate_name: {blocks: N, overrides: N, prevented: N}}
+        "gate_block_outcomes": [],           # [{gate, tool, file, timestamp, resolved_by}] capped at 100
+        "session_token_estimate": 0,         # Estimated total tokens this session
+        "gate_tune_overrides": {},           # {gate_name: {param: value}} — written by boot.py auto-tune
     }
 
 
@@ -181,6 +187,11 @@ def get_state_schema():
         "files_edited": {"type": "list", "description": "Files edited this session (tracker)", "category": "metrics"},
         "session_duration_nudge_hour": {"type": "int", "description": "Last session-length milestone hour nudged (1/2/3)", "category": "metrics"},
         "auto_remember_count": {"type": "int", "description": "Auto-remember calls made this session", "category": "metrics"},
+        # v3.1 fields (self-evolving framework)
+        "gate_effectiveness": {"type": "dict", "description": "Per-gate effectiveness tracking: {gate: {blocks, overrides, prevented}}", "category": "evolve"},
+        "gate_block_outcomes": {"type": "list", "description": "Recent gate block outcomes for effectiveness analysis", "category": "evolve", "max_size": MAX_GATE_BLOCK_OUTCOMES},
+        "session_token_estimate": {"type": "int", "description": "Estimated total tokens consumed this session", "category": "evolve"},
+        "gate_tune_overrides": {"type": "dict", "description": "Auto-tune threshold overrides per gate: {gate: {param: value}}", "category": "evolve"},
     }
 
 
@@ -474,6 +485,26 @@ def get_memory_last_queried(state):
     except (json.JSONDecodeError, IOError, OSError):
         pass
     return max(enforcer_ts, sideband_ts)
+
+
+_live_state_cache = None  # Per-process cache (each hook invocation is a fresh process)
+
+
+def get_live_toggle(key, default=None):
+    """Read a toggle value from LIVE_STATE.json.
+
+    Used by gates and boot.py to check self-evolving feature flags.
+    File is read once per process and cached — multiple calls cost zero I/O.
+    """
+    global _live_state_cache
+    if _live_state_cache is None:
+        live_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
+        try:
+            with open(live_path) as f:
+                _live_state_cache = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            _live_state_cache = {}
+    return _live_state_cache.get(key, default)
 
 
 def reset_state(session_id="main"):

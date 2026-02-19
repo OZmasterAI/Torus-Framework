@@ -112,7 +112,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         else:
             effective_unverified += 1.0
 
-    if effective_unverified >= MAX_UNVERIFIED:
+    max_unverified = state.get("gate_tune_overrides", {}).get("gate_05_proof_before_fixed", {}).get("max_unverified", MAX_UNVERIFIED)
+    if effective_unverified >= max_unverified:
         file_list = ", ".join(os.path.basename(p) for p in pending_other[:3])
         return GateResult(
             blocked=True,

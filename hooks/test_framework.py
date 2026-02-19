@@ -10317,6 +10317,234 @@ except Exception as _tg_e:
     print(f"  FAIL: on_session_start.py: {_tg_e}")
 
 # ─────────────────────────────────────────────────
+# Self-Evolving Framework Tests
+# ─────────────────────────────────────────────────
+print("\n--- Self-Evolving Framework Tests ---")
+
+# Test: State fields exist
+try:
+    _se_state = default_state()
+    assert "gate_effectiveness" in _se_state, "Missing gate_effectiveness"
+    assert "gate_block_outcomes" in _se_state, "Missing gate_block_outcomes"
+    assert "session_token_estimate" in _se_state, "Missing session_token_estimate"
+    assert isinstance(_se_state["gate_effectiveness"], dict)
+    assert isinstance(_se_state["gate_block_outcomes"], list)
+    assert _se_state["session_token_estimate"] == 0
+    PASS += 1
+    RESULTS.append("  PASS: self-evolving state fields exist")
+    print("  PASS: self-evolving state fields exist")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: self-evolving state fields: {_se_e}")
+    print(f"  FAIL: self-evolving state fields: {_se_e}")
+
+# Test: get_live_toggle helper
+try:
+    from shared.state import get_live_toggle
+    # Test with real LIVE_STATE.json
+    _toggle_val = get_live_toggle("gate_auto_tune", False)
+    assert _toggle_val is False or _toggle_val is True, f"Unexpected toggle type: {type(_toggle_val)}"
+    # Test default for missing key
+    _toggle_missing = get_live_toggle("nonexistent_toggle_xyz", "default_val")
+    assert _toggle_missing == "default_val", f"Expected 'default_val', got {_toggle_missing}"
+    PASS += 1
+    RESULTS.append("  PASS: get_live_toggle helper")
+    print("  PASS: get_live_toggle helper")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: get_live_toggle: {_se_e}")
+    print(f"  FAIL: get_live_toggle: {_se_e}")
+
+# Test: Token estimation in tracker
+try:
+    from tracker import handle_post_tool_use as _se_hptu
+    _se_tok_state = default_state()
+    _se_tok_state["_session_id"] = "test_token_est"
+    _se_hptu("Read", {"file_path": "/tmp/test.py"}, _se_tok_state, session_id="test_token_est")
+    assert _se_tok_state["session_token_estimate"] == 800, f"Read should add 800, got {_se_tok_state['session_token_estimate']}"
+    _se_hptu("Bash", {"command": "ls"}, _se_tok_state, session_id="test_token_est")
+    assert _se_tok_state["session_token_estimate"] == 2800, f"Read+Bash should be 2800, got {_se_tok_state['session_token_estimate']}"
+    _se_hptu("Edit", {"file_path": "/tmp/test.py", "old_string": "a", "new_string": "b"}, _se_tok_state, session_id="test_token_est")
+    assert _se_tok_state["session_token_estimate"] == 4300, f"Read+Bash+Edit should be 4300, got {_se_tok_state['session_token_estimate']}"
+    # Task should NOT add to session_token_estimate (tracked separately)
+    _se_prev = _se_tok_state["session_token_estimate"]
+    _se_hptu("Task", {"model": "haiku", "description": "test", "subagent_type": "Explore"}, _se_tok_state, session_id="test_token_est")
+    assert _se_tok_state["session_token_estimate"] == _se_prev, "Task should not change session_token_estimate"
+    PASS += 1
+    RESULTS.append("  PASS: token estimation in tracker")
+    print("  PASS: token estimation in tracker")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: token estimation: {_se_e}")
+    print(f"  FAIL: token estimation: {_se_e}")
+
+# Test: Gate effectiveness recording in enforcer
+try:
+    from enforcer import handle_pre_tool_use, _loaded_gates, _ensure_gates_loaded
+    _se_eff_state = default_state()
+    _se_eff_state["_session_id"] = "test_gate_eff"
+    # Simulate a gate block by setting up state that triggers Gate 1
+    # (Edit without prior Read)
+    _se_eff_state["files_read"] = []  # No files read
+    try:
+        handle_pre_tool_use("Edit", {"file_path": "/tmp/nonexistent_gate_eff_test.py", "old_string": "a", "new_string": "b"}, _se_eff_state)
+    except SystemExit:
+        pass  # Expected — gate blocks via sys.exit(2)
+    # Check gate_effectiveness was recorded
+    ge = _se_eff_state.get("gate_effectiveness", {})
+    assert "gate_01_read_before_edit" in ge, f"Expected gate_01 in effectiveness, got {ge.keys()}"
+    assert ge["gate_01_read_before_edit"]["blocks"] >= 1, "Expected at least 1 block"
+    # Check gate_block_outcomes was recorded
+    outcomes = _se_eff_state.get("gate_block_outcomes", [])
+    assert len(outcomes) >= 1, "Expected at least 1 block outcome"
+    assert outcomes[-1]["gate"] == "gate_01_read_before_edit"
+    PASS += 1
+    RESULTS.append("  PASS: gate effectiveness recording in enforcer")
+    print("  PASS: gate effectiveness recording in enforcer")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: gate effectiveness recording: {_se_e}")
+    print(f"  FAIL: gate effectiveness recording: {_se_e}")
+
+# Test: Gate 10 budget degradation (toggle off)
+try:
+    from gates.gate_10_model_enforcement import check as g10_check
+    _se_budget_state = default_state()
+    _se_budget_state["session_token_estimate"] = 96000
+    # Toggle off — should pass through normally
+    _se_budget_result = g10_check("Task", {"model": "opus", "subagent_type": "builder", "description": "test"}, _se_budget_state)
+    assert not _se_budget_result.blocked, "Budget off — should not block"
+    PASS += 1
+    RESULTS.append("  PASS: Gate 10 budget degradation (toggle off)")
+    print("  PASS: Gate 10 budget degradation (toggle off)")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Gate 10 budget degradation: {_se_e}")
+    print(f"  FAIL: Gate 10 budget degradation: {_se_e}")
+
+# Test: ChainStepWrapper
+try:
+    from shared.chain_sdk import ChainStepWrapper, format_chain_mapping
+    _se_chain_state = default_state()
+    _se_chain_state["session_token_estimate"] = 1000
+    _se_chain_state["tool_call_count"] = 5
+    _se_wrapper = ChainStepWrapper("fix", 1, 3, _se_chain_state, "test")
+    _se_chain_state["session_token_estimate"] = 5000
+    _se_chain_state["tool_call_count"] = 12
+    _se_metrics = _se_wrapper.complete(_se_chain_state, outcome="success", summary="Fixed bug")
+    assert _se_metrics["skill"] == "fix"
+    assert _se_metrics["step"] == "1/3"
+    assert _se_metrics["tokens_est"] == 4000
+    assert _se_metrics["tool_calls"] == 7
+    _se_mapping = format_chain_mapping("fix bugs", ["fix", "test"], [_se_metrics], 10.0, 7, "success")
+    assert "Chain mapping" in _se_mapping
+    assert "fix -> test" in _se_mapping
+    PASS += 1
+    RESULTS.append("  PASS: ChainStepWrapper + format_chain_mapping")
+    print("  PASS: ChainStepWrapper + format_chain_mapping")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: ChainStepWrapper: {_se_e}")
+    print(f"  FAIL: ChainStepWrapper: {_se_e}")
+
+# Test: LIVE_STATE.json has all 4 new toggles (gate_auto_apply removed — folded into gate_auto_tune)
+try:
+    import json as _se_json
+    with open(os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")) as _se_f:
+        _se_live = _se_json.load(_se_f)
+    for _se_key in ("gate_auto_tune", "budget_degradation", "session_token_budget", "chain_memory"):
+        assert _se_key in _se_live, f"Missing toggle: {_se_key}"
+    assert "gate_auto_apply" not in _se_live, "gate_auto_apply should be removed"
+    assert _se_live["gate_auto_tune"] is False
+    assert _se_live["budget_degradation"] is False
+    assert _se_live["session_token_budget"] == 0
+    assert _se_live["chain_memory"] is False
+    PASS += 1
+    RESULTS.append("  PASS: LIVE_STATE.json has all 4 new toggles")
+    print("  PASS: LIVE_STATE.json has all 4 new toggles")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: LIVE_STATE.json toggles: {_se_e}")
+    print(f"  FAIL: LIVE_STATE.json toggles: {_se_e}")
+
+# Test: _resolve_gate_block_outcomes (override path)
+try:
+    from tracker import _resolve_gate_block_outcomes
+    _se_resolve_state = default_state()
+    _se_resolve_state["gate_block_outcomes"] = [
+        {"gate": "gate_04_memory_first", "tool": "Edit", "file": "/tmp/test.py", "timestamp": time.time() - 60, "resolved_by": None}
+    ]
+    _se_resolve_state["gate_effectiveness"] = {"gate_04_memory_first": {"blocks": 1, "overrides": 0, "prevented": 0}}
+    _se_resolve_state["memory_last_queried"] = 0  # No memory query after block
+    _se_resolve_state["fix_history_queried"] = 0
+    _resolve_gate_block_outcomes("Edit", {"file_path": "/tmp/test.py"}, _se_resolve_state)
+    assert _se_resolve_state["gate_effectiveness"]["gate_04_memory_first"]["overrides"] == 1, "Should be override (no memory query)"
+    PASS += 1
+    RESULTS.append("  PASS: _resolve_gate_block_outcomes (override path)")
+    print("  PASS: _resolve_gate_block_outcomes (override path)")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: _resolve_gate_block_outcomes override: {_se_e}")
+    print(f"  FAIL: _resolve_gate_block_outcomes override: {_se_e}")
+
+# Test: _resolve_gate_block_outcomes (prevented path)
+try:
+    _se_prevent_state = default_state()
+    _block_ts = time.time() - 60
+    _se_prevent_state["gate_block_outcomes"] = [
+        {"gate": "gate_04_memory_first", "tool": "Edit", "file": "/tmp/test.py", "timestamp": _block_ts, "resolved_by": None}
+    ]
+    _se_prevent_state["gate_effectiveness"] = {"gate_04_memory_first": {"blocks": 1, "overrides": 0, "prevented": 0}}
+    _se_prevent_state["memory_last_queried"] = _block_ts + 30  # Memory queried AFTER block
+    _resolve_gate_block_outcomes("Edit", {"file_path": "/tmp/test.py"}, _se_prevent_state)
+    assert _se_prevent_state["gate_effectiveness"]["gate_04_memory_first"]["prevented"] == 1, "Should be prevented (memory queried after block)"
+    PASS += 1
+    RESULTS.append("  PASS: _resolve_gate_block_outcomes (prevented path)")
+    print("  PASS: _resolve_gate_block_outcomes (prevented path)")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: _resolve_gate_block_outcomes prevented: {_se_e}")
+    print(f"  FAIL: _resolve_gate_block_outcomes prevented: {_se_e}")
+
+# Test: State schema includes new fields
+try:
+    _se_schema = get_state_schema()
+    for _se_field in ("gate_effectiveness", "gate_block_outcomes", "session_token_estimate", "gate_tune_overrides"):
+        assert _se_field in _se_schema, f"Missing schema entry: {_se_field}"
+        assert _se_schema[_se_field]["category"] == "evolve", f"Expected category 'evolve' for {_se_field}"
+    PASS += 1
+    RESULTS.append("  PASS: state schema includes new evolve fields")
+    print("  PASS: state schema includes new evolve fields")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: state schema: {_se_e}")
+    print(f"  FAIL: state schema: {_se_e}")
+
+# Test: Gate auto-tune overrides are read by gates
+try:
+    _at_state = default_state()
+    _at_state["_session_id"] = "test_autotune_no_sideband"  # Avoid sideband file
+    # Gate 04: default freshness_window=300, override to 600
+    _at_state["gate_tune_overrides"] = {"gate_04_memory_first": {"freshness_window": 600}}
+    _at_state["memory_last_queried"] = time.time() - 400  # 400s ago — beyond 300 default, within 600 override
+    from gates.gate_04_memory_first import check as _at_g04
+    _at_r = _at_g04("Edit", {"file_path": "/tmp/test_autotune.py"}, _at_state)
+    assert not _at_r.blocked, "Should pass with loosened freshness_window override"
+    # Without override, same state should block (use non-main session to avoid sideband)
+    _at_state2 = default_state()
+    _at_state2["_session_id"] = "test_autotune_no_sideband"
+    _at_state2["memory_last_queried"] = time.time() - 400
+    _at_r2 = _at_g04("Edit", {"file_path": "/tmp/test_autotune.py"}, _at_state2)
+    assert _at_r2.blocked, "Should block without override (400s > 300s default)"
+    PASS += 1
+    RESULTS.append("  PASS: gate auto-tune overrides read by gates")
+    print("  PASS: gate auto-tune overrides read by gates")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: gate auto-tune overrides: {_se_e}")
+    print(f"  FAIL: gate auto-tune overrides: {_se_e}")
+
+# ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
 cleanup_test_states()

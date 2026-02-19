@@ -73,7 +73,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     last_query = get_memory_last_queried(state)
     elapsed = time.time() - last_query
 
-    if elapsed > MEMORY_FRESHNESS_WINDOW:
+    freshness_window = state.get("gate_tune_overrides", {}).get("gate_04_memory_first", {}).get("freshness_window", MEMORY_FRESHNESS_WINDOW)
+    if elapsed > freshness_window:
         if last_query == 0:
             msg = f"[{GATE_NAME}] BLOCKED: Query memory before editing. Use search_knowledge() to check for existing knowledge about what you're changing."
         else:

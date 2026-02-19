@@ -152,7 +152,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         # Do NOT save_state here — it races with external state clears
         # and overwrites resets from remember_this(), causing deadlocks.
 
-        if warn_count >= ESCALATION_THRESHOLD:
+        escalation_threshold = state.get("gate_tune_overrides", {}).get("gate_06_save_fix", {}).get("escalation_threshold", ESCALATION_THRESHOLD)
+        if warn_count >= escalation_threshold:
             return GateResult(
                 blocked=True,
                 message=f"[{GATE_NAME}] BLOCKED: {warn_count} verified fixes unsaved. "

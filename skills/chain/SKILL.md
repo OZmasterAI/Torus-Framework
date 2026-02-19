@@ -26,6 +26,7 @@ Examples:
 ### 2. MEMORY CHECK
 - `search_knowledge("chain execution")` — find prior chain runs and lessons learned
 - `search_knowledge("[first skill in chain]")` — check for known issues with lead skill
+- **Chain memory** (when `chain_memory` toggle is ON in LIVE_STATE.json): `search_knowledge("[user goal text]", mode="semantic")` — if a matching chain+outcome is found with >0.7 relevance, suggest reusing it: "Found prior chain for similar goal: [chain]. Reuse? (Y/N)"
 - Note any past chain failures or gotchas to watch for during execution
 
 ### 3. EXECUTE SEQUENTIALLY
@@ -39,6 +40,7 @@ For each skill in the chain (N = current, M = total):
 **Execute:**
 - Follow that skill's SKILL.md steps faithfully
 - Memory context flows naturally — each skill's `remember_this` calls are visible to subsequent skills via `search_knowledge`
+- **SDK wrapping:** Before each skill step, note the current `tool_call_count` and time. After each step completes, compute elapsed time and tool calls used for that step. (See `hooks/shared/chain_sdk.py:ChainStepWrapper` for the utility class.)
 
 **On failure** (tests fail, errors, tool failures):
 - STOP the chain immediately
@@ -57,20 +59,22 @@ After each skill completes successfully:
 - This creates a breadcrumb trail that later skills (and future sessions) can reference
 
 ### 5. SUMMARY
-After the chain finishes (all skills complete or chain aborted), display results:
+After the chain finishes (all skills complete or chain aborted), display results with per-step metrics:
 
 ```
 Chain Results
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  /skill_1 .... OK
-  /skill_2 .... OK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  /skill_1 .... OK     (12.3s, 8 calls, ~6400 tokens)
+  /skill_2 .... OK     (5.1s, 3 calls, ~2400 tokens)
   /skill_3 .... FAILED (reason)
   /skill_4 .... SKIPPED
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Completed: 2/4 | Failed: 1 | Skipped: 1
+Total: 17.4s, 11 calls
 ```
 
 ### 6. SAVE
-- `remember_this("Chain [skill_1 -> skill_2 -> ...]: [N/M completed]. Outcomes: [brief per-skill results]", "chain pipeline execution", "type:learning,area:framework")`
+- `remember_this("Chain mapping: '[user goal]' → [skill_1 -> skill_2 -> ...]. Per-step: [skill1(success, 12.3s, 8 calls); skill2(success, 5.1s, 3 calls)]. Total: 17.4s, 11 tool calls. Outcome: [result]", "chain mapping", "type:learning,area:framework,chain-mapping")`
 - Include which skills succeeded, which failed, and why
 - Tag failures with relevant error patterns for future `query_fix_history` lookups
+- The `chain-mapping` tag enables future chain memory lookups to find this mapping

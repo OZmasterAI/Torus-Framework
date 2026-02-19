@@ -55,7 +55,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     # Calculate windowed rate: calls in window / window size in minutes
     windowed_rate = len(recent) / (WINDOW_SECONDS / 60.0)  # calls per minute
 
-    if windowed_rate > BLOCK_THRESHOLD:
+    block_threshold = state.get("gate_tune_overrides", {}).get("gate_11_rate_limit", {}).get("block_threshold", BLOCK_THRESHOLD)
+    if windowed_rate > block_threshold:
         return GateResult(
             blocked=True,
             gate_name=GATE_NAME,

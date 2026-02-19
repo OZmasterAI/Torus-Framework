@@ -81,7 +81,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     now = time.time()
     age = now - fix_history_ts if fix_history_ts else float("inf")
 
-    if age <= FIX_HISTORY_FRESHNESS:
+    fix_freshness = state.get("gate_tune_overrides", {}).get("gate_15_causal_chain", {}).get("fix_history_freshness", FIX_HISTORY_FRESHNESS)
+    if age <= fix_freshness:
         # Fix history was queried recently — allow
         return GateResult(blocked=False, gate_name=GATE_NAME)
 

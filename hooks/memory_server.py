@@ -3428,6 +3428,61 @@ def _batch_rename_memories():
     }
 
 
+def _gate_effectiveness_report() -> dict:
+    """Analyze gate effectiveness from the most recent session state.
+
+    Reads gate_effectiveness from state files and computes per-gate scores.
+    Returns suggestions for gates that may need tuning.
+    """
+    import glob as _glob
+    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+    # Also check ramdisk
+    ramdisk_dir = f"/run/user/{os.getuid()}/claude-hooks"
+    search_dirs = [ramdisk_dir, state_dir] if os.path.isdir(ramdisk_dir) else [state_dir]
+
+    effectiveness = {}
+    for sdir in search_dirs:
+        pattern = os.path.join(sdir, "state_*.json")
+        for fpath in _glob.glob(pattern):
+            try:
+                with open(fpath) as f:
+                    data = json.load(f)
+                ge = data.get("gate_effectiveness", {})
+                for gate, stats in ge.items():
+                    if gate not in effectiveness:
+                        effectiveness[gate] = {"blocks": 0, "overrides": 0, "prevented": 0}
+                    for k in ("blocks", "overrides", "prevented"):
+                        effectiveness[gate][k] += stats.get(k, 0)
+            except Exception:
+                continue
+
+    if not effectiveness:
+        return {"message": "No gate effectiveness data found", "gates": {}}
+
+    results = {}
+    suggestions = []
+    for gate, stats in sorted(effectiveness.items()):
+        blocks = stats["blocks"]
+        overrides = stats["overrides"]
+        prevented = stats["prevented"]
+        total_resolved = prevented + overrides
+        eff_pct = round(100 * prevented / total_resolved) if total_resolved > 0 else None
+        results[gate] = {
+            "blocks": blocks,
+            "overrides": overrides,
+            "prevented": prevented,
+            "effectiveness_pct": eff_pct,
+        }
+        if total_resolved >= 3 and eff_pct is not None and eff_pct < 50:
+            suggestions.append(f"{gate} at {eff_pct}% — consider loosening thresholds")
+
+    return {
+        "gates": results,
+        "suggestions": suggestions,
+        "message": f"Analyzed {len(results)} gates" + (f", {len(suggestions)} need attention" if suggestions else ""),
+    }
+
+
 @mcp.tool()
 @crash_proof
 def maintenance(action: str, top_k: int | None = None, days: int | None = None,
@@ -3474,6 +3529,8 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
         return rebuild_tag_index()
     elif action == "batch_rename":
         return _batch_rename_memories()
+    elif action == "gate_effectiveness":
+        return _gate_effectiveness_report()
     else:
         return {
             "error": f"Unknown action: {action!r}",
@@ -3484,6 +3541,7 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
                 "health": "Generate memory health metrics (no params)",
                 "rebuild_tags": "Rebuild tag co-occurrence matrix (no params)",
                 "batch_rename": "Rename megaman→torus in all memory content and tags",
+                "gate_effectiveness": "Analyze gate block effectiveness from session state",
             },
         }
 

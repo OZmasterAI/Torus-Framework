@@ -87,6 +87,43 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             ),
         )
 
+    # ── Step 1b: Budget-aware degradation ──
+    # Reads LIVE_STATE.json only when toggle is ON (0 file reads when OFF)
+    try:
+        from shared.state import get_live_toggle
+        budget_on = get_live_toggle("budget_degradation", False)
+        budget_limit = get_live_toggle("session_token_budget", 0) if budget_on else 0
+        if budget_on and budget_limit > 0:
+            subagent_tokens = state.get("subagent_total_tokens", 0)
+            session_tokens = state.get("session_token_estimate", 0)
+            usage_pct = (subagent_tokens + session_tokens) / budget_limit
+            if usage_pct >= 0.95:
+                return GateResult(
+                    blocked=True,
+                    gate_name=GATE_NAME,
+                    message=(
+                        f"[{GATE_NAME}] BLOCKED: 95% of session token budget reached "
+                        f"({subagent_tokens + session_tokens:,}/{budget_limit:,} tokens). "
+                        f"No more sub-agent spawns allowed. Use /wrap-up to end session."
+                    ),
+                )
+            if usage_pct >= 0.85 and model != "haiku":
+                print(
+                    f"[{GATE_NAME}] BUDGET: 85%+ budget used — forcing model to haiku "
+                    f"({subagent_tokens + session_tokens:,}/{budget_limit:,} tokens)",
+                    file=sys.stderr,
+                )
+                tool_input["model"] = "haiku"
+                model = "haiku"
+            elif usage_pct >= 0.70 and model == "opus":
+                print(
+                    f"[{GATE_NAME}] BUDGET: 70%+ budget used with opus — consider sonnet "
+                    f"({subagent_tokens + session_tokens:,}/{budget_limit:,} tokens)",
+                    file=sys.stderr,
+                )
+    except Exception:
+        pass  # Budget check is fail-open
+
     # ── Step 2: Model mismatch → WARN (never block) ──
     # Track model usage by agent type for learning
     model_usage = state.setdefault("model_agent_usage", {})

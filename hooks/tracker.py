@@ -80,6 +80,9 @@ MAX_QUEUE_LINES = 500
 # Debug logging (opt-in: only writes if file exists)
 TRACKER_DEBUG_LOG = os.path.join(os.path.dirname(__file__), ".tracker_debug.log")
 
+# Token estimation per tool (module-level to avoid per-call dict creation)
+_TOKEN_ESTIMATES = {"Bash": 2000, "Edit": 1500, "Write": 1500, "Read": 800, "Glob": 500, "Grep": 500, "NotebookEdit": 1500}
+
 # MCP memory tools
 MEMORY_TOOL_PREFIXES = [
     "mcp__memory__",
@@ -376,6 +379,52 @@ def _cap_queue_file():
         _log_debug(f"cap_queue_file failed: {e}")
 
 
+def _resolve_gate_block_outcomes(tool_name, tool_input, state):
+    """Resolve pending gate block outcomes for effectiveness tracking.
+
+    When a tool call succeeds after a previous block on the same tool+file combo,
+    it means the user worked around the block (override) or the block forced a
+    better approach (prevented). We distinguish by checking if fix_history was
+    queried or memory was checked between the block and the success.
+    """
+    try:
+        outcomes = state.get("gate_block_outcomes", [])
+        if not outcomes:
+            return
+
+        file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "") or tool_input.get("command", "")[:100]
+        if not file_path:
+            return
+
+        effectiveness = state.setdefault("gate_effectiveness", {})
+        now = time.time()
+        remaining = []
+        for outcome in outcomes:
+            if outcome.get("resolved_by") is not None:
+                remaining.append(outcome)
+                continue
+            # Match: same tool+file combo, within 30 minutes
+            if outcome.get("tool") == tool_name and outcome.get("file") == file_path and (now - outcome.get("timestamp", 0)) < 1800:
+                gate = outcome.get("gate", "")
+                ge = effectiveness.setdefault(gate, {"blocks": 0, "overrides": 0, "prevented": 0})
+                # If memory was queried after the block, it's "prevented" (block forced better approach)
+                mem_ts = state.get("memory_last_queried", 0)
+                fix_ts = state.get("fix_history_queried", 0)
+                block_ts = outcome.get("timestamp", 0)
+                if mem_ts > block_ts or fix_ts > block_ts:
+                    ge["prevented"] = ge.get("prevented", 0) + 1
+                    outcome["resolved_by"] = "prevented"
+                else:
+                    ge["overrides"] = ge.get("overrides", 0) + 1
+                    outcome["resolved_by"] = "override"
+            remaining.append(outcome)
+
+        # Prune resolved outcomes older than 30 minutes
+        state["gate_block_outcomes"] = [o for o in remaining if (now - o.get("timestamp", 0)) < 1800 or o.get("resolved_by") is None]
+    except Exception:
+        pass  # Effectiveness tracking is fail-open
+
+
 def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_response=None):
     """Track state after a tool call completes."""
     state["tool_call_count"] = state.get("tool_call_count", 0) + 1
@@ -394,6 +443,14 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     tool_stats = state.setdefault("tool_stats", {})
     tool_entry = tool_stats.setdefault(tool_name, {"count": 0})
     tool_entry["count"] += 1
+
+    # Token estimation (self-evolving: budget-aware degradation)
+    token_est = _TOKEN_ESTIMATES.get(tool_name, 800)  # Default 800 for unknown tools
+    if tool_name != "Task":  # Task tokens tracked separately in subagent_total_tokens
+        state["session_token_estimate"] = state.get("session_token_estimate", 0) + token_est
+
+    # Gate effectiveness: resolve pending block outcomes
+    _resolve_gate_block_outcomes(tool_name, tool_input, state)
 
     # Track file reads (normalize paths to prevent bypass via ./foo vs foo)
     if tool_name == "Read":

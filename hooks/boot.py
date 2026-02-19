@@ -319,6 +319,74 @@ def _extract_tool_activity():
         return (0, None)
 
 
+# Tunable gate parameters: gate_name -> (param_name, default, loosen_by, tighten_by, min_val, max_val)
+_TUNABLE_GATES = {
+    "gate_04_memory_first":      ("freshness_window",      300,  120,  -60,   120,  900),
+    "gate_05_proof_before_fixed": ("max_unverified",        3,    1,    -1,    2,    8),
+    "gate_06_save_fix":          ("escalation_threshold",   5,    2,    -1,    3,    10),
+    "gate_11_rate_limit":        ("block_threshold",        60,   10,   -5,    30,   120),
+    "gate_15_causal_chain":      ("fix_history_freshness",  300,  120,  -60,   120,  900),
+}
+
+
+def _extract_gate_effectiveness_suggestions():
+    """Extract gate effectiveness suggestions and compute auto-tune overrides.
+
+    Returns (suggestions_list, overrides_dict).
+    Only active when gate_auto_tune toggle is ON.
+    When ON: low-effectiveness gates get loosened, high-effectiveness gates get tightened.
+    Overrides are written to session state and read by gates at runtime.
+    """
+    try:
+        from shared.state import get_live_toggle
+        if not get_live_toggle("gate_auto_tune", False):
+            return [], {}
+
+        pattern = os.path.join(STATE_DIR, "state_*.json")
+        state_files = glob.glob(pattern)
+        if not state_files:
+            return [], {}
+
+        most_recent = max(state_files, key=os.path.getmtime)
+        with open(most_recent) as f:
+            state_data = json.load(f)
+
+        effectiveness = state_data.get("gate_effectiveness", {})
+        if not effectiveness:
+            return [], {}
+
+        prev_overrides = state_data.get("gate_tune_overrides", {})
+
+        suggestions = []
+        overrides = {}
+        for gate, stats in effectiveness.items():
+            overrides_count = stats.get("overrides", 0)
+            prevented = stats.get("prevented", 0)
+            total_resolved = prevented + overrides_count
+            if total_resolved < 3:
+                continue
+            eff_pct = round(100 * prevented / total_resolved)
+
+            tunable = _TUNABLE_GATES.get(gate)
+            if not tunable:
+                continue
+            param, default, loosen_by, tighten_by, min_val, max_val = tunable
+            current = prev_overrides.get(gate, {}).get(param, default)
+
+            if eff_pct < 50:
+                new_val = min(current + loosen_by, max_val)
+                overrides[gate] = {param: new_val}
+                suggestions.append(f"{gate} {eff_pct}% -> {param}: {current}->{new_val}")
+            elif eff_pct >= 90:
+                new_val = max(current + tighten_by, min_val)
+                overrides[gate] = {param: new_val}
+                suggestions.append(f"{gate} {eff_pct}% -> {param}: {current}->{new_val}")
+
+        return suggestions[:5], overrides
+    except Exception:
+        return [], {}
+
+
 def _extract_gate_blocks():
     """Extract total gate blocks from recent audit logs.
 
@@ -564,6 +632,9 @@ def main():
     except Exception:
         pass  # Telegram integration is optional
 
+    # Extract gate effectiveness suggestions + auto-tune overrides (self-evolving)
+    gate_suggestions, gate_overrides = _extract_gate_effectiveness_suggestions()
+
     # Extract recent errors BEFORE reset_enforcement_state() wipes them
     recent_errors = _extract_recent_errors()
 
@@ -660,6 +731,14 @@ def main():
         dashboard += f"\n|  {block_line:<66}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
+    # Gate effectiveness suggestions (self-evolving)
+    if gate_suggestions:
+        dashboard += "\n|  GATE EFFECTIVENESS (auto-tune):                                   |"
+        for gs in gate_suggestions:
+            gs_display = gs[:62]
+            dashboard += f"\n|    {gs_display:<64}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
     dashboard += """
 |  TIP: Query memory about your task before starting work.           |
 +====================================================================+
@@ -721,6 +800,17 @@ def main():
 
     # Reset state
     reset_enforcement_state()
+
+    # Write auto-tune overrides to fresh session state (gates read these at runtime)
+    if gate_overrides:
+        try:
+            from shared.state import load_state, save_state
+            _tune_state = load_state(session_id="main")
+            _tune_state["gate_tune_overrides"] = gate_overrides
+            save_state(_tune_state, session_id="main")
+            print(f"  [BOOT] Auto-tune: {len(gate_overrides)} gate threshold(s) adjusted", file=sys.stderr)
+        except Exception:
+            pass  # Boot must never crash
 
     # Clean up workspace isolation claims (fresh session = fresh claims)
     claims_file = os.path.join(os.path.dirname(__file__), ".file_claims.json")
