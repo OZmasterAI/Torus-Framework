@@ -849,6 +849,16 @@ def main():
         return "\u2705" if ls.get(key, default) else "\U0001f518"
 
     budget_val = ls.get("session_token_budget", 0) or 0
+    # Compute budget tier for display
+    budget_tier_str = ""
+    if ls.get("budget_degradation") and budget_val > 0 and session_tokens > 0:
+        usage_pct = session_tokens / budget_val
+        if usage_pct >= 0.95:
+            budget_tier_str = " \u2620\ufe0fDEAD"
+        elif usage_pct >= 0.80:
+            budget_tier_str = " \U0001f534CRIT"
+        elif usage_pct >= 0.40:
+            budget_tier_str = " \U0001f7e1LOW"
     line3 = (
         f"{_tog('terminal_l2_always')}L2 "
         f"{_tog('context_enrichment')}Enrich "
@@ -858,7 +868,7 @@ def main():
         f"{_tog('gate_auto_tune')}Tune "
         f"{_tog('budget_degradation')}Budget "
         f"{_tog('chain_memory')}Chain "
-        f"B:{budget_val}"
+        f"B:{budget_val}{budget_tier_str}"
     )
     print(line3)
 
