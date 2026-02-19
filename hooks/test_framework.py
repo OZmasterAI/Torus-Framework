@@ -6934,18 +6934,18 @@ test("v2.2.8: get_plan_mode_warns returns 0 with no state",
      pm5 == 0,
      f"Expected 0, got {pm5!r}")
 
-# Test 6: get_plan_mode_warns reads gate12_warn_count
+# Test 6: get_plan_mode_warns reads gate6_warn_count (merged from gate12)
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 _pm6_state = load_state(session_id=MAIN_SESSION)
-_pm6_state["gate12_warn_count"] = 2
+_pm6_state["gate6_warn_count"] = 2
 save_state(_pm6_state, session_id=MAIN_SESSION)
 pm6 = get_plan_mode_warns()
-test("v2.2.8: get_plan_mode_warns reads gate12_warn_count",
+test("v2.2.8: get_plan_mode_warns reads gate6_warn_count",
      pm6 == 2,
      f"Expected 2, got {pm6!r}")
 
-# Test 7: get_plan_mode_warns returns 0 when gate12_warn_count not set
+# Test 7: get_plan_mode_warns returns 0 when gate6_warn_count not set
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 pm7 = get_plan_mode_warns()
@@ -6957,7 +6957,7 @@ test("v2.2.8: get_plan_mode_warns returns 0 for default state",
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 _pm8_state = load_state(session_id=MAIN_SESSION)
-_pm8_state["gate12_warn_count"] = 5
+_pm8_state["gate6_warn_count"] = 5
 save_state(_pm8_state, session_id=MAIN_SESSION)
 pm8 = get_plan_mode_warns()
 test("v2.2.8: get_plan_mode_warns reads high value",
@@ -9100,7 +9100,7 @@ _g14_state1 = default_state()
 _g14_state1["session_test_baseline"] = False
 _g14_state1["pending_verification"] = []
 _g14_state1["memory_last_queried"] = 0  # stale
-_g14_state1["confidence_warnings"] = 0
+    # confidence_warnings removed in refactor1 (orphaned key)
 _g14_r1 = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state1)
 test("Gate14: no test baseline → warns first time (not blocked)",
      not _g14_r1.blocked)
@@ -9149,7 +9149,7 @@ test("Gate14: re-edit of pending file → allowed (iteration exemption)",
 _g14_state4 = default_state()
 _g14_state4["session_test_baseline"] = False
 _g14_state4["memory_last_queried"] = 0
-_g14_state4["confidence_warnings"] = 99
+    # confidence_warnings removed in refactor1 (orphaned key)
 for _exempt_file, _exempt_label in [
     ("test_something.py", "test file"),
     ("HANDOFF.md", "HANDOFF.md"),

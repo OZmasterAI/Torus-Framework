@@ -72,7 +72,7 @@ def default_state():
         "last_test_run": 0,
         "verified_fixes": [],
         "session_start": time.time(),
-        "edits_locked": False,
+        # edits_locked: removed in refactor1 (never read by any gate)
         "tool_call_count": 0,
         "unlogged_errors": [],
         "error_pattern_counts": {},
@@ -103,7 +103,7 @@ def default_state():
         "subagent_history": [],     # Completed: [{agent_id, agent_type, tokens, duration_s}]
         # v2.4.2 fields (confidence gate)
         "session_test_baseline": False,  # Has any test been run this session?
-        "confidence_warnings": 0,        # Progressive warning counter for Gate 14
+        # confidence_warnings: removed in refactor1 (replaced by confidence_warnings_per_file)
         # v3 fields (causal chain enforcement)
         "recent_test_failure": None,     # {pattern, timestamp, command} when tests fail; None when passing
         "fix_history_queried": 0,        # Timestamp of last query_fix_history call
@@ -113,7 +113,7 @@ def default_state():
         # v3 fields (previously undocumented — used by gates/tracker via .get() defaults)
         "gate4_exemptions": {},              # Gate 4: {filename: count} exempt files from memory-first check
         "model_agent_usage": {},            # Gate 10: {agent_type: usage_count}
-        "gate12_warn_count": 0,             # Gate 12: escalation counter
+        # gate12_warn_count: removed in refactor1 (Gate 12 merged into Gate 6)
         "confidence_warnings_per_file": {}, # Gate 14: {filepath: warn_count}
         "confidence_warned_signals": [],    # Gate 14: signals already warned this session
         "verification_timestamps": {},      # Gate 6: {filepath: last_verified_ts}
@@ -145,15 +145,15 @@ def get_state_schema():
         "last_test_run": {"type": "float", "description": "Timestamp of last test run", "category": "gate3"},
         "verified_fixes": {"type": "list", "description": "Files with verified fixes", "category": "gate6", "max_size": MAX_VERIFIED_FIXES},
         "session_start": {"type": "float", "description": "Session start timestamp", "category": "session"},
-        "edits_locked": {"type": "bool", "description": "Emergency edit lock flag", "category": "safety"},
+        # edits_locked: removed in refactor1
         "tool_call_count": {"type": "int", "description": "Total tool calls this session", "category": "metrics"},
         "unlogged_errors": {"type": "list", "description": "Errors not saved to memory", "category": "gate6", "max_size": MAX_UNLOGGED_ERRORS},
         "error_pattern_counts": {"type": "dict", "description": "Error pattern frequencies", "category": "gate6", "max_size": MAX_ERROR_PATTERNS},
         "pending_chain_ids": {"type": "list", "description": "Causal chains awaiting outcome", "category": "causal", "max_size": MAX_PENDING_CHAINS},
         "current_strategy_id": {"type": "str", "description": "Active fix strategy ID", "category": "causal"},
         "current_error_signature": {"type": "str", "description": "Active error signature hash", "category": "causal"},
-        "active_bans": {"type": "list", "description": "Banned strategy IDs", "category": "gate9", "max_size": MAX_ACTIVE_BANS},
-        "last_exit_plan_mode": {"type": "float", "description": "Timestamp of last plan mode exit", "category": "gate12"},
+        "active_bans": {"type": "dict", "description": "Banned strategy IDs: {id: {fail_count, first_failed, last_failed}}", "category": "gate9", "max_size": MAX_ACTIVE_BANS},
+        "last_exit_plan_mode": {"type": "float", "description": "Timestamp of last plan mode exit", "category": "gate6"},
         "error_windows": {"type": "list", "description": "Time-windowed error tracking", "category": "gate6"},
         "skill_usage": {"type": "dict", "description": "Skill invocation counts", "category": "skills"},
         "recent_skills": {"type": "list", "description": "Recently used skills", "category": "skills"},
@@ -171,7 +171,7 @@ def get_state_schema():
         "subagent_total_tokens": {"type": "int", "description": "Cumulative tokens from completed subagents", "category": "subagents"},
         "subagent_history": {"type": "list", "description": "Completed subagent records", "category": "subagents"},
         "session_test_baseline": {"type": "bool", "description": "Whether any test has been run this session", "category": "gate14"},
-        "confidence_warnings": {"type": "int", "description": "Progressive warning counter for Gate 14", "category": "gate14"},
+        # confidence_warnings: removed in refactor1 (replaced by confidence_warnings_per_file)
         "recent_test_failure": {"type": "dict", "description": "Error info from most recent test failure", "category": "gate15"},
         "fix_history_queried": {"type": "float", "description": "Timestamp of last query_fix_history call", "category": "gate15"},
         "fixing_error": {"type": "bool", "description": "Whether actively fixing a detected error", "category": "gate15"},
@@ -179,7 +179,7 @@ def get_state_schema():
         # v3 fields (previously undocumented)
         "gate4_exemptions": {"type": "dict", "description": "Exempt files from memory-first check: {filename: count}", "category": "gate4"},
         "model_agent_usage": {"type": "dict", "description": "Agent type usage counts for model enforcement", "category": "gate10"},
-        "gate12_warn_count": {"type": "int", "description": "Gate 12 plan-mode-save escalation counter", "category": "gate12"},
+        # gate12_warn_count: removed in refactor1 (Gate 12 merged into Gate 6)
         "confidence_warnings_per_file": {"type": "dict", "description": "Per-file confidence warning counts", "category": "gate14"},
         "confidence_warned_signals": {"type": "list", "description": "Signals already warned this session by Gate 14", "category": "gate14"},
         "verification_timestamps": {"type": "dict", "description": "Last verified timestamp per file", "category": "gate6"},
@@ -353,6 +353,13 @@ def _validate_consistency(state):
     if not isinstance(state.get("skill_usage"), dict):
         state["skill_usage"] = {}
         corrections.append("skill_usage: reset to empty dict (was not a dict)")
+
+    # Remove orphaned keys from previous schema versions
+    _ORPHANED_KEYS = {"edits_locked", "confidence_warnings", "gate12_warn_count"}
+    for key in _ORPHANED_KEYS:
+        if key in state:
+            del state[key]
+            corrections.append(f"{key}: removed (orphaned)")
 
     if corrections:
         logger.warning("State consistency corrections: %s", "; ".join(corrections))

@@ -18,8 +18,22 @@ import subprocess
 import sys
 
 CLAUDE_DIR = os.path.expanduser("~/.claude")
-CO_AUTHOR = "Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 MAX_FILES_IN_MSG = 3
+
+
+def _get_co_author():
+    """Read current model from statusline snapshot, fall back to generic."""
+    try:
+        snap_path = os.path.join(CLAUDE_DIR, "hooks", ".statusline_snapshot.json")
+        with open(snap_path) as f:
+            model = json.load(f).get("model", "")
+        if model:
+            # e.g. "claude-opus-4-6" → "Claude Opus 4.6"
+            name = model.replace("claude-", "").replace("-", " ").title()
+            return f"Co-Authored-By: Claude {name} <noreply@anthropic.com>"
+    except Exception:
+        pass
+    return "Co-Authored-By: Claude <noreply@anthropic.com>"
 
 
 def git(*args, timeout=5):
@@ -75,7 +89,7 @@ def commit():
         shown = ", ".join(basenames[:MAX_FILES_IN_MSG])
         file_list = f"{shown} +{len(basenames) - MAX_FILES_IN_MSG} more"
 
-    message = f"auto: update {file_list}\n\n{CO_AUTHOR}"
+    message = f"auto: update {file_list}\n\n{_get_co_author()}"
     git("commit", "-m", message)
 
 

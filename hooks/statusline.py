@@ -370,7 +370,10 @@ def get_active_mode():
 
 
 def get_plan_mode_warns():
-    """Return gate12 plan-mode escalation warn count from session state."""
+    """Return Gate 6 save-to-memory escalation warn count from session state.
+
+    Gate 12 was merged into Gate 6 in refactor1 — now uses gate6_warn_count.
+    """
     import glob as globmod
     pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
@@ -380,7 +383,7 @@ def get_plan_mode_warns():
     try:
         with open(files[0]) as f:
             state = json.load(f)
-        return state.get("gate12_warn_count", 0)
+        return state.get("gate6_warn_count", 0)
     except (json.JSONDecodeError, OSError):
         return 0
 
