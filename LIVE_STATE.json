@@ -1,5 +1,5 @@
 {
-  "session_count": 148,
+  "session_count": 149,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -8,41 +8,44 @@
   "test_count": 1103,
   "test_failures": 0,
   "files_modified": [
-    "tui/data.py",
-    "tui/app.py"
+    "~/Desktop/Torus-Self-Evolve-Diagram.md",
+    "~/Desktop/torus-self-evolve-diagram.html"
   ],
   "improvements_shipped": [
     "Gate effectiveness tracking (blocks/overrides/prevented)",
     "Budget-aware model degradation (Gate 10)",
     "Skill chain memory SDK (ChainStepWrapper)",
     "Gate auto-tune with auto-apply",
-    "Boot.py toggle display \u2014 all 9 toggles with descriptions",
+    "Boot.py toggle display — all 9 toggles with descriptions",
     "Fixed misleading toggle descriptions (L2/enrichment independent)",
     "Telegram bot toggle lifecycle (start/stop + credential prompt)",
     "tg_bot_tmux default OFF",
-    "Persistent gate effectiveness across sessions (.gate_effectiveness.json)"
+    "Persistent gate effectiveness across sessions (.gate_effectiveness.json)",
+    "Torus-Self-Evolve-Diagram (.md + .html) — updated architecture docs"
   ],
   "next_steps": [
     "Merge self-evolve-test-branch to main",
     "Add safety guard to app.py (refuse to run inside Claude Bash tool)",
-    "Enable gate_auto_tune \u2014 effectiveness data now accumulating",
+    "Enable gate_auto_tune — effectiveness data now accumulating",
     "Enable budget_degradation + set session_token_budget",
-    "Test Telegram bot toggle lifecycle"
+    "Consider tg_session_notify toggle for session-end Telegram messages"
   ],
   "dormant_agent_teams": [
-    "Activate get_teammate_context() \u2014 @mcp.tool() + @crash_proof",
-    "Privacy tags \u2014 <private> edge stripping in tracker.py/observation.py"
+    "Activate get_teammate_context() — @mcp.tool() + @crash_proof",
+    "Privacy tags — <private> edge stripping in tracker.py/observation.py"
   ],
   "known_issues": [
-    "Plan mode exit loop \u2014 platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access \u2014 tests skip when MCP running, correct behavior",
-    "Export test_framework.py uses _FRAMEWORK_ROOT \u2014 merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
-    "tmux routing shared session causes interference \u2014 use dedicated claude-bot"
+    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
+    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
+    "tmux routing shared session causes interference — use dedicated claude-bot",
+    "TaskCompleted hook disabled — was firing premature quality warnings",
+    "auto_commit Co-Authored-By hardcoded Opus 4.6 — wrong when on Sonnet"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
-  "tg_l3_always": true,
+  "tg_l3_always": false,
   "tg_enrichment": false,
   "tg_bot_tmux": false,
   "gate_auto_tune": false,
@@ -50,10 +53,10 @@
   "session_token_budget": 0,
   "chain_memory": false,
   "last_session_metrics": {
-    "reads": 2,
-    "edits": 1,
+    "reads": 5,
+    "edits": 0,
     "errors": 0,
     "verified": 0,
-    "pending": 1
+    "pending": 0
   }
 }
