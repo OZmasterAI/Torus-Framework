@@ -869,6 +869,7 @@ def main():
         f"{_tog('budget_degradation')}Budget "
         f"{_tog('chain_memory')}Chain "
         f"{_tog('tg_session_notify')}Notify "
+        f"{_tog('tg_mirror_messages')}Mirror "
         f"B:{budget_val}{budget_tier_str}"
     )
     print(line3)

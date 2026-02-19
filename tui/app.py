@@ -55,6 +55,7 @@ TOGGLE_DISPLAY = [
     ("budget_degradation",   "Budget", True,  "4-tier deg"),
     ("chain_memory",         "Chain",  True,  "Skill chain"),
     ("tg_session_notify",    "Notify", True,  "Session TG msg"),
+    ("tg_mirror_messages",   "Mirror", True,  "All msgs→TG"),
     ("session_token_budget", "TokBgt", False, "Token limit"),
 ]
 

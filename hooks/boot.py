@@ -777,6 +777,7 @@ def main():
         ("Budget degradation",    "budget_degradation",  False, "Auto-degrade models when approaching token budget"),
         ("Chain memory",          "chain_memory",        False, "Remember and reuse successful skill chain sequences"),
         ("Session notify",        "tg_session_notify",   False, "Send session summary to Telegram on end"),
+        ("Mirror messages",       "tg_mirror_messages",  False, "Send all Claude responses to Telegram"),
     ]
     _toggle_lines = []
     _toggle_keys = []
