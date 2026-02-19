@@ -9,7 +9,7 @@ tools:
   - WebSearch
   - mcp__memory__search_knowledge
   - mcp__memory__get_memory
-model: haiku
+model: sonnet
 permissionMode: default
 ---
 
