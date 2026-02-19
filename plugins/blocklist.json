@@ -1,0 +1,11 @@
+{
+  "fetchedAt": "2026-02-19T01:18:38.569Z",
+  "plugins": [
+    {
+      "plugin": "fizz@testmkt-marketplace",
+      "added_at": "2026-02-12T00:00:00.000Z",
+      "reason": "security",
+      "text": "this is a security test"
+    }
+  ]
+}
