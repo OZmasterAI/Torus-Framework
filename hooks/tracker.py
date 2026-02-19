@@ -23,6 +23,13 @@ sys.path.insert(0, os.path.dirname(__file__))
 from shared.state import load_state, save_state, update_gate_effectiveness
 from shared.error_normalizer import fnv1a_hash
 
+# Gate 17 injection scanning — imported here to run on PostToolUse results
+try:
+    from gates.gate_17_injection_defense import check as gate_17_check, _is_external_tool as _g17_is_external
+except ImportError:
+    gate_17_check = None
+    _g17_is_external = None
+
 # Auto-remember imports (fail-open: if UDS unavailable, queue to disk)
 try:
     from shared.chromadb_socket import remember as socket_remember, is_worker_available as _uds_available
@@ -776,6 +783,26 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                     bans[sid] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
         except Exception as e:
             _log_debug(f"query_fix_history tracking failed: {e}")
+
+    # Gate 17: Injection defense — scan external tool results for prompt injection
+    if gate_17_check is not None and _g17_is_external is not None:
+        try:
+            if _g17_is_external(tool_name) and tool_response:
+                # Build tool_input-like dict with response content for gate_17 to scan
+                resp_content = tool_response
+                if isinstance(tool_response, dict):
+                    resp_content = tool_response.get("content", "") or tool_response.get("output", "") or str(tool_response)
+                g17_input = {"content": str(resp_content)[:50000]}  # Cap scan size
+                result = gate_17_check(tool_name, g17_input, state, event_type="PostToolUse")
+                if result.message:
+                    print(result.message, file=sys.stderr)
+                    # Record effectiveness
+                    try:
+                        update_gate_effectiveness("gate_17_injection_defense", "block")
+                    except Exception:
+                        pass
+        except Exception as e:
+            _log_debug(f"Gate 17 scan failed (non-blocking): {e}")
 
     _capture_observation(tool_name, tool_input, tool_response, session_id, state)
 
