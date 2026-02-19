@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Self-Healing Claude Framework — Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=4">
+    <link rel="stylesheet" href="/static/style.css?v=5">
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 </head>
 <body>
@@ -29,12 +29,33 @@
         </div>
     </header>
 
+    <!-- Statusline Metrics Bar -->
+    <div id="statusline-bar" class="statusline-bar">
+        <span id="sl-model" class="sl-item sl-model">--</span>
+        <span id="sl-branch" class="sl-item sl-branch">--</span>
+        <span id="sl-context" class="sl-item sl-context">ctx:--</span>
+        <span id="sl-cost" class="sl-item sl-cost">$--</span>
+        <span id="sl-cmp" class="sl-item sl-cmp">CMP:--</span>
+        <span id="sl-memory" class="sl-item sl-memory-fresh">--</span>
+        <span id="sl-tokens" class="sl-item sl-tokens">--</span>
+        <span id="sl-lines" class="sl-item sl-lines">--</span>
+        <span id="sl-budget" class="sl-item sl-budget hidden"></span>
+    </div>
+
     <!-- Main grid -->
     <main class="dashboard-grid">
         <!-- Health (left column) -->
         <section class="card" id="panel-health">
             <h2>Health Overview</h2>
             <div id="health-content" class="panel-body">
+                <div class="loading">Loading...</div>
+            </div>
+        </section>
+
+        <!-- Toggles -->
+        <section class="card" id="panel-toggles">
+            <h2>Toggles</h2>
+            <div id="toggles-content" class="panel-body">
                 <div class="loading">Loading...</div>
             </div>
         </section>
@@ -201,6 +222,22 @@
             </div>
         </section>
     </main>
+
+    <!-- Chat Panel -->
+    <section class="chat-panel" id="panel-chat">
+        <div class="chat-header">
+            <h2>Terminal Chat</h2>
+            <button class="btn-sm" id="chat-clear-btn">Clear</button>
+            <button class="btn-sm chat-minimize-btn" id="chat-minimize-btn" title="Minimize/expand chat">&#9660;</button>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+            <div class="chat-welcome">Send a message to start chatting with Claude...</div>
+        </div>
+        <div class="chat-input-row">
+            <input type="text" id="chat-input" class="chat-input" placeholder="Ask Claude..." autocomplete="off">
+            <button class="btn-sm" id="chat-send-btn">Send</button>
+        </div>
+    </section>
 
     <!-- Expandable detail overlay -->
     <div id="detail-overlay" class="overlay hidden">

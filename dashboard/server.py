@@ -22,8 +22,9 @@ from pathlib import Path
 from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, RedirectResponse, PlainTextResponse
-from starlette.routing import Route, Mount
+from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
+from starlette.websockets import WebSocketDisconnect
 
 try:
     from sse_starlette.sse import EventSourceResponse
@@ -114,6 +115,18 @@ SETTINGS_FILE = os.path.join(CLAUDE_DIR, "settings.json")
 STATS_CACHE = os.path.join(CLAUDE_DIR, "stats-cache.json")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+SNAPSHOT_FILE = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
+
+# ── Toggle whitelist ─────────────────────────────────────────────
+TOGGLE_KEYS = {
+    "terminal_l2_always", "context_enrichment", "tg_l3_always",
+    "tg_enrichment", "tg_bot_tmux", "gate_auto_tune", "chain_memory",
+    "tg_session_notify", "tg_mirror_messages", "budget_degradation",
+    "session_token_budget",
+}
+
+# ── Chat session storage ─────────────────────────────────────────
+chat_sessions = {}  # chat_id -> claude session_id
 
 # ── Constants (mirrored from statusline.py) ──────────────────────
 EXPECTED_GATES = 12
@@ -1384,6 +1397,12 @@ async def api_stream(request):
         last_mem_count = get_memory_count()
         # Track error pressure for change detection
         last_error_pressure = get_error_pressure()
+        # Track LIVE_STATE.json mtime for toggle changes
+        last_live_state_mtime = 0
+        try:
+            last_live_state_mtime = os.path.getmtime(LIVE_STATE_FILE)
+        except OSError:
+            pass
 
         ping_counter = 0
         while True:
@@ -1461,6 +1480,20 @@ async def api_stream(request):
                     }
                     last_error_pressure = current_error_pressure
             except Exception:
+                pass
+
+            # Check for LIVE_STATE.json changes (toggle updates)
+            try:
+                current_live_state_mtime = os.path.getmtime(LIVE_STATE_FILE)
+                if current_live_state_mtime > last_live_state_mtime:
+                    last_live_state_mtime = current_live_state_mtime
+                    live_data = _read_json(LIVE_STATE_FILE)
+                    if live_data:
+                        yield {
+                            "event": "live_state_event",
+                            "data": json.dumps(live_data),
+                        }
+            except OSError:
                 pass
 
             # Health ping every 10 seconds (5 loops x 2s)
@@ -1665,6 +1698,147 @@ async def api_live_metrics(request):
     })
 
 
+async def api_statusline_snapshot(request):
+    """Read the statusline bridge snapshot file, enriched with git branch."""
+    data = _read_json(SNAPSHOT_FILE) or {}
+    # Add git branch from cache file
+    try:
+        with open("/tmp/statusline-git-cache") as f:
+            data["branch"] = f.read().strip() or None
+    except (FileNotFoundError, OSError):
+        data["branch"] = None
+    return JSONResponse(data)
+
+
+async def api_toggle_write(request):
+    """Write a single toggle value to LIVE_STATE.json (atomic)."""
+    key = request.path_params["key"]
+    if key not in TOGGLE_KEYS:
+        return JSONResponse({"error": f"Unknown toggle key: {key}"}, status_code=400)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    if "value" not in body:
+        return JSONResponse({"error": "Missing 'value' field"}, status_code=400)
+
+    value = body["value"]
+    try:
+        with open(LIVE_STATE_FILE) as f:
+            data = json.load(f)
+        data[key] = value
+        tmp = LIVE_STATE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        os.replace(tmp, LIVE_STATE_FILE)
+        return JSONResponse({"ok": True, "key": key, "value": value})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def api_chat_ws(websocket):
+    """WebSocket handler for terminal chat using claude -p subprocess."""
+    await websocket.accept()
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "text": "Invalid JSON"})
+                continue
+
+            chat_id = msg.get("chat_id", "")
+            text = msg.get("text", "").strip()
+            if not text:
+                await websocket.send_json({"type": "error", "text": "Empty message"})
+                continue
+
+            # Build claude command
+            cmd = ["claude", "-p", text, "--output-format", "stream-json",
+                   "--dangerously-skip-permissions"]
+            session_id = chat_sessions.get(chat_id)
+            if session_id:
+                cmd.extend(["--resume", session_id])
+
+            env = os.environ.copy()
+            env["CLAUDECODE"] = "0"  # prevent hook interference
+
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env,
+                )
+                buffer = b""
+                while True:
+                    chunk = await proc.stdout.read(4096)
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    # Process complete JSON lines
+                    while b"\n" in buffer:
+                        line_bytes, buffer = buffer.split(b"\n", 1)
+                        line = line_bytes.decode("utf-8", errors="replace").strip()
+                        if not line:
+                            continue
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        etype = event.get("type", "")
+                        if etype == "assistant" and "message" in event:
+                            # Extract text content blocks
+                            for block in event["message"].get("content", []):
+                                if block.get("type") == "text":
+                                    await websocket.send_json({
+                                        "type": "token",
+                                        "text": block["text"],
+                                    })
+                        elif etype == "content_block_delta":
+                            delta = event.get("delta", {})
+                            if delta.get("type") == "text_delta":
+                                await websocket.send_json({
+                                    "type": "token",
+                                    "text": delta["text"],
+                                })
+                        elif etype == "result":
+                            # Extract session_id for resume
+                            sid = event.get("session_id", "")
+                            if sid and chat_id:
+                                chat_sessions[chat_id] = sid
+                            # Also extract final text if present
+                            result_text = event.get("result", "")
+                            if result_text:
+                                await websocket.send_json({
+                                    "type": "token",
+                                    "text": result_text,
+                                })
+                            await websocket.send_json({
+                                "type": "done",
+                                "session_id": sid,
+                            })
+
+                await proc.wait()
+                # If no 'done' was sent yet (e.g. process exited early)
+                stderr_out = await proc.stderr.read()
+                if proc.returncode != 0:
+                    err_text = stderr_out.decode("utf-8", errors="replace").strip()
+                    await websocket.send_json({
+                        "type": "error",
+                        "text": err_text or f"claude exited with code {proc.returncode}",
+                    })
+            except Exception as e:
+                await websocket.send_json({
+                    "type": "error",
+                    "text": str(e),
+                })
+    except WebSocketDisconnect:
+        pass
+
+
 async def index_redirect(request):
     return RedirectResponse(url="/static/index.html")
 
@@ -1703,7 +1877,10 @@ routes = [
     Route("/api/history", api_history),
     Route("/api/history/{filename}", api_history_detail),
     Route("/api/live-metrics", api_live_metrics),
+    Route("/api/statusline-snapshot", api_statusline_snapshot),
+    Route("/api/toggles/{key}", api_toggle_write, methods=["POST"]),
     Route("/api/stream", api_stream),
+    WebSocketRoute("/ws/chat", api_chat_ws),
     Mount("/static", StaticFiles(directory=STATIC_DIR), name="static"),
 ]
 
@@ -1711,7 +1888,7 @@ app = Starlette(routes=routes)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 

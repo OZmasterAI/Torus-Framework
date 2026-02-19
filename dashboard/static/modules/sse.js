@@ -38,13 +38,14 @@ export function clearNotificationBadge() {
  * allowing the main module to update panels without circular imports.
  *
  * @param {Object} callbacks
- * @param {Function} callbacks.onAuditEntry  - Called with parsed audit entry object
- * @param {Function} callbacks.onHealthUpdate - Called with parsed health data object
- * @param {Function} callbacks.onGateEvent   - Called with parsed gate event object
- * @param {Function} callbacks.onMemoryEvent - Called with parsed memory event object
- * @param {Function} callbacks.onErrorEvent  - Called with parsed error event object
+ * @param {Function} callbacks.onAuditEntry    - Called with parsed audit entry object
+ * @param {Function} callbacks.onHealthUpdate   - Called with parsed health data object
+ * @param {Function} callbacks.onGateEvent     - Called with parsed gate event object
+ * @param {Function} callbacks.onMemoryEvent   - Called with parsed memory event object
+ * @param {Function} callbacks.onErrorEvent    - Called with parsed error event object
+ * @param {Function} callbacks.onLiveStateEvent - Called with parsed LIVE_STATE data
  */
-export function connectSSE({ onAuditEntry, onHealthUpdate, onGateEvent, onMemoryEvent, onErrorEvent } = {}) {
+export function connectSSE({ onAuditEntry, onHealthUpdate, onGateEvent, onMemoryEvent, onErrorEvent, onLiveStateEvent } = {}) {
     if (sseSource) {
         sseSource.close();
     }
@@ -147,13 +148,21 @@ export function connectSSE({ onAuditEntry, onHealthUpdate, onGateEvent, onMemory
             } catch {}
         });
 
+        // Handle live_state_event: toggle changes from TUI or other tabs
+        sseSource.addEventListener('live_state_event', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (onLiveStateEvent) onLiveStateEvent(data);
+            } catch {}
+        });
+
         sseSource.onerror = () => {
             indicator.classList.remove('on');
             indicator.classList.add('off');
             // Auto-reconnect after 5s
             setTimeout(() => {
                 if (sseSource.readyState === EventSource.CLOSED) {
-                    connectSSE({ onAuditEntry, onHealthUpdate, onGateEvent, onMemoryEvent, onErrorEvent });
+                    connectSSE({ onAuditEntry, onHealthUpdate, onGateEvent, onMemoryEvent, onErrorEvent, onLiveStateEvent });
                 }
             }, 5000);
         };

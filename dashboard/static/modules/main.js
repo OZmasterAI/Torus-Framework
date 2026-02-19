@@ -20,6 +20,9 @@ import { renderLiveMetrics, renderToolStats, renderEditStreak, renderActivityTre
 import { renderErrors } from './panels/errors.js';
 import { renderComponents, renderComponentTab } from './panels/components.js';
 import { renderHistory, compareSessions, populateDateSelects } from './panels/history.js';
+import { renderStatuslineMetrics } from './panels/statusline.js';
+import { renderToggles, handleLiveStateEvent } from './panels/toggles.js';
+import { initChat } from './chat.js';
 
 // ── Overlay ─────────────────────────────────────────────
 
@@ -53,6 +56,7 @@ async function refreshAll() {
         renderLiveMetrics(),
         renderEditStreak(),
         renderActivityTrend(),
+        renderStatuslineMetrics(),
     ]);
 }
 
@@ -133,6 +137,7 @@ async function init() {
     setupEventListeners();
     setupPanelCollapse();
     setupPopoverClose();
+    initChat();
 
     // Initial render — all panels in parallel
     const gatePerf = renderGatePerf();
@@ -159,6 +164,8 @@ async function init() {
         renderComponents(),
         renderHistory(),
         populateDateSelects(),
+        renderStatuslineMetrics(),
+        renderToggles(),
     ]);
 
     // Start SSE with callbacks
@@ -173,6 +180,10 @@ async function init() {
         onMemoryEvent: () => {},
         onErrorEvent: () => {
             renderErrors();
+        },
+        onLiveStateEvent: (data) => {
+            handleLiveStateEvent(data);
+            renderStatuslineMetrics();
         },
     });
 
