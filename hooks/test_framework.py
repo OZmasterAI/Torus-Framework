@@ -2427,25 +2427,24 @@ if not MEMORY_SERVER_RUNNING:
         test("Gate 11: elapsed floor prevents false block", not _g11_floor.blocked)
 
         # ─────────────────────────────────────────────────
-        # Test: Sprint 2 — Gate 12: Plan Mode Save
+        # Test: Sprint 2 — Gate 6 Plan Mode Check (merged from Gate 12)
         # ─────────────────────────────────────────────────
-        print("\n--- Gate 12: Plan Mode Save ---")
+        print("\n--- Gate 6: Plan Mode Save (merged from Gate 12) ---")
 
-        from gates.gate_12_plan_mode_save import check as g12_check
+        from gates.gate_06_save_fix import check as g06_check
 
-        # 1. No plan mode exit → pass
-        _g12_none = g12_check("Edit", {}, {"last_exit_plan_mode": 0, "memory_last_queried": 0})
-        test("Gate 12: no plan exit → pass", not _g12_none.blocked)
-        test("Gate 12: no plan exit → no message", _g12_none.message == "")
+        # 1. No plan mode exit → pass (plan mode signal inactive)
+        _g06_none = g06_check("Edit", {}, {"last_exit_plan_mode": 0, "memory_last_queried": 0})
+        test("Gate 6 plan: no plan exit → pass", not _g06_none.blocked)
 
         # 2. Plan exited but memory queried after → pass
-        _g12_ok = g12_check("Edit", {}, {"last_exit_plan_mode": 100, "memory_last_queried": 200})
-        test("Gate 12: memory after plan → pass", not _g12_ok.blocked)
+        _g06_ok = g06_check("Edit", {}, {"last_exit_plan_mode": 100, "memory_last_queried": 200})
+        test("Gate 6 plan: memory after plan → pass", not _g06_ok.blocked)
 
-        # 3. Plan exited, no memory after → warns (never blocks)
-        _g12_warn = g12_check("Write", {}, {"last_exit_plan_mode": 200, "memory_last_queried": 100})
-        test("Gate 12: plan without save → warns", "remember_this" in _g12_warn.message)
-        test("Gate 12: plan without save → not blocked", not _g12_warn.blocked)
+        # 3. Plan exited, no memory after → warns (plan mode signal fires)
+        _g06_warn = g06_check("Write", {}, {"last_exit_plan_mode": time.time(), "memory_last_queried": time.time() - 120})
+        test("Gate 6 plan: plan without save → warns", "plan mode" in (_g06_warn.message or "").lower() or _g06_warn.severity == "warn")
+        test("Gate 6 plan: plan without save → not blocked", not _g06_warn.blocked)
 
         # ─────────────────────────────────────────────────
         # Sprint 3: Feature 1 — Auto-Approve (PermissionRequest)
@@ -6376,40 +6375,37 @@ test("v2.2.4: loaded state includes rate_window_timestamps",
      "rate_window_timestamps" in s and isinstance(s["rate_window_timestamps"], list),
      f"Expected list field, got {type(s.get('rate_window_timestamps'))}")
 
-# ── Gate 12 escalation display ──
+# ── Gate 6 plan mode signal (merged from Gate 12) ──
 
-# Test 5: Gate 12 warning message includes escalation counter format
+# Test 5: Gate 6 plan mode warning mentions "plan mode" when plan exited without memory save
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 s = load_state(session_id=MAIN_SESSION)
 s["_session_id"] = MAIN_SESSION
 s["files_read"] = ["foo.py"]
-s["memory_last_queried"] = time.time()
+s["memory_last_queried"] = time.time() - 120
 s["last_exit_plan_mode"] = time.time()  # plan exited after memory query
-s["gate12_warn_count"] = 0
 save_state(s, session_id=MAIN_SESSION)
 rc12_5, stderr12_5 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
-test("v2.2.4: Gate 12 warning includes escalation counter (N/M format)",
-     "1/" in stderr12_5 or "(1/" in stderr12_5,
-     f"Expected '1/' in stderr, got: {stderr12_5[:200]}")
+test("v2.2.4: Gate 6 plan mode warning mentions plan mode",
+     "plan mode" in stderr12_5.lower(),
+     f"Expected 'plan mode' in stderr, got: {stderr12_5[:200]}")
 
-# Test 6: Gate 12 counter resets when memory is fresh
+# Test 6: Gate 6 plan mode — no warning when memory is fresh (merged from Gate 12)
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 s = load_state(session_id=MAIN_SESSION)
 s["_session_id"] = MAIN_SESSION
 s["files_read"] = ["foo.py"]
 s["memory_last_queried"] = time.time()
-s["last_exit_plan_mode"] = time.time() - 60  # plan exited in the past
-s["gate12_warn_count"] = 2
+s["last_exit_plan_mode"] = time.time() - 60  # plan exited but memory is fresh
 save_state(s, session_id=MAIN_SESSION)
 rc12_6, stderr12_6 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
-s_after = load_state(session_id=MAIN_SESSION)
-test("v2.2.4: Gate 12 counter resets when memory is fresh",
-     s_after.get("gate12_warn_count") == 0,
-     f"Expected gate12_warn_count=0, got {s_after.get('gate12_warn_count')}")
+test("v2.2.4: Gate 6 plan mode — no warning when memory is fresh",
+     "plan mode" not in stderr12_6.lower(),
+     f"Expected no plan mode warning, got: {stderr12_6[:200]}")
 
-# Test 7: Gate 12 blocks after ESCALATION_THRESHOLD warnings
+# Test 7: Gate 6 plan mode — warns when plan exited without memory save (merged from Gate 12)
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 s = load_state(session_id=MAIN_SESSION)
@@ -6417,24 +6413,25 @@ s["_session_id"] = MAIN_SESSION
 s["files_read"] = ["foo.py"]
 s["memory_last_queried"] = time.time() - 120
 s["last_exit_plan_mode"] = time.time()  # plan exited after memory
-s["gate12_warn_count"] = 2  # already at threshold-1
 save_state(s, session_id=MAIN_SESSION)
 rc12_7, stderr12_7 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
-test("v2.2.4: Gate 12 blocks after ESCALATION_THRESHOLD warnings",
-     rc12_7 != 0 and "BLOCKED" in stderr12_7,
-     f"Expected non-zero rc and BLOCKED, got rc={rc12_7}, stderr={stderr12_7[:200]}")
+test("v2.2.4: Gate 6 plan mode — warns when plan exited without memory save",
+     "plan mode" in stderr12_7.lower() and "remember_this" in stderr12_7.lower(),
+     f"Expected plan mode warning, got: {stderr12_7[:200]}")
 
-# Test 8: Gate 12 and Gate 6 use separate counters
+# Test 8: Gate 6 plan mode — stale plan auto-forgiven (merged from Gate 12)
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 s = load_state(session_id=MAIN_SESSION)
-s["gate6_warn_count"] = 5
-s["gate12_warn_count"] = 1
+s["_session_id"] = MAIN_SESSION
+s["files_read"] = ["foo.py"]
+s["memory_last_queried"] = time.time() - 3600
+s["last_exit_plan_mode"] = time.time() - 2000  # >30min ago = stale
 save_state(s, session_id=MAIN_SESSION)
-s = load_state(session_id=MAIN_SESSION)
-test("v2.2.4: Gate 12 and Gate 6 use separate counters",
-     s.get("gate6_warn_count") == 5 and s.get("gate12_warn_count") == 1,
-     f"Expected gate6=5, gate12=1, got gate6={s.get('gate6_warn_count')}, gate12={s.get('gate12_warn_count')}")
+rc12_8, stderr12_8 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
+test("v2.2.4: Gate 6 plan mode — stale plan auto-forgiven",
+     "plan mode" not in stderr12_8.lower(),
+     f"Expected no plan mode warning for stale plan, got: {stderr12_8[:200]}")
 
 # ── Observation sentiment ──
 
@@ -9958,7 +9955,7 @@ test("GATE_TOOL_MAP: every GATE_MODULES entry has mapping", _all_have_map)
 _no_stale = all(k in GATE_MODULES for k in GATE_TOOL_MAP)
 test("GATE_TOOL_MAP: no stale entries (all keys in GATE_MODULES)", _no_stale)
 
-# 3. Bash gets only relevant gates (02, 03, 06, 11, 12)
+# 3. Bash gets only relevant gates (02, 03, 06, 11) — gate 12 merged into 06
 _bash_gates = _gates_for_tool("Bash")
 _bash_names = {g.__name__ for g in _bash_gates}
 _bash_expected = {
@@ -9966,12 +9963,11 @@ _bash_expected = {
     "gates.gate_03_test_before_deploy",
     "gates.gate_06_save_fix",
     "gates.gate_11_rate_limit",
-    "gates.gate_12_plan_mode_save",
 }
-test("Dispatch: Bash gets 5 gates (02,03,06,11,12)", _bash_names == _bash_expected,
+test("Dispatch: Bash gets 4 gates (02,03,06,11)", _bash_names == _bash_expected,
      f"got {_bash_names}")
 
-# 4. Edit gets 13 gates (all except 02, 03, 10, 17)
+# 4. Edit gets 12 gates (all except 02, 03, 10, 17) — gate 12 merged into 06
 _edit_gates = _gates_for_tool("Edit")
 _edit_names = {g.__name__ for g in _edit_gates}
 _edit_excluded = {
@@ -9981,7 +9977,7 @@ _edit_excluded = {
     "gates.gate_17_injection_defense",
 }
 _edit_expected = {m for m in GATE_MODULES} - _edit_excluded
-test("Dispatch: Edit gets 13 gates (all except 02,03,10,17)", _edit_names == _edit_expected,
+test("Dispatch: Edit gets 12 gates (all except 02,03,10,17)", _edit_names == _edit_expected,
      f"missing={_edit_expected - _edit_names}, extra={_edit_names - _edit_expected}")
 
 # 5. Task gets only relevant gates (04, 06, 10, 11)

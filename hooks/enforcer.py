@@ -41,7 +41,7 @@ GATE_MODULES = [
     "gates.gate_09_strategy_ban",
     "gates.gate_10_model_enforcement",
     "gates.gate_11_rate_limit",
-    "gates.gate_12_plan_mode_save",
+    # "gates.gate_12_plan_mode_save",  # MERGED into gate_06 (refactor1)
     "gates.gate_13_workspace_isolation",
     "gates.gate_14_confidence_check",
     "gates.gate_15_causal_chain",
@@ -108,7 +108,7 @@ GATE_DEPENDENCIES = {
         "writes": [],
     },
     "gate_06_save_fix": {
-        "reads": ["gate6_warn_count", "verified_fixes", "unlogged_errors", "error_pattern_counts", "pending_chain_ids"],
+        "reads": ["gate6_warn_count", "verified_fixes", "unlogged_errors", "error_pattern_counts", "pending_chain_ids", "last_exit_plan_mode", "memory_last_queried"],
         "writes": ["gate6_warn_count"],
     },
     "gate_07_critical_file_guard": {
@@ -131,10 +131,7 @@ GATE_DEPENDENCIES = {
         "reads": ["tool_call_count", "session_start"],
         "writes": [],
     },
-    "gate_12_plan_mode_save": {
-        "reads": ["last_exit_plan_mode", "memory_last_queried"],
-        "writes": [],
-    },
+    # "gate_12_plan_mode_save" — MERGED into gate_06_save_fix (refactor1)
     "gate_13_workspace_isolation": {
         "reads": [],
         "writes": [],
@@ -175,12 +172,12 @@ GATE_TOOL_MAP = {
     "gates.gate_03_test_before_deploy": {"Bash"},
     "gates.gate_04_memory_first": {"Edit", "Write", "NotebookEdit", "Task"},
     "gates.gate_05_proof_before_fixed": {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_06_save_fix": {"Edit", "Write", "Task", "Bash"},
+    "gates.gate_06_save_fix": {"Edit", "Write", "Task", "Bash", "NotebookEdit"},
     "gates.gate_07_critical_file_guard": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_09_strategy_ban": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_10_model_enforcement": {"Task"},
     "gates.gate_11_rate_limit": None,  # Universal
-    "gates.gate_12_plan_mode_save": {"Edit", "Write", "Bash", "NotebookEdit"},
+    # "gates.gate_12_plan_mode_save": {"Edit", "Write", "Bash", "NotebookEdit"},  # MERGED into gate_06
     "gates.gate_13_workspace_isolation": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_14_confidence_check": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_15_causal_chain": {"Edit", "Write", "NotebookEdit"},

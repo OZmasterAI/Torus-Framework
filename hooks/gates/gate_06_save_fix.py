@@ -1,11 +1,15 @@
-"""Gate 6: SAVE VERIFIED FIX (Tier 2 — Quality)
+"""Gate 6: SAVE TO MEMORY (Tier 2 — Quality)
 
-After verifying a fix works, nudges (does not hard-block) to save
-the knowledge to memory before continuing with new work.
+Unified "save to memory" reminder gate. Nudges (does not hard-block)
+to save knowledge before continuing with new work.
 
-This gate is softer than others — it tracks verified fixes and
-reminds rather than blocks, since hard-blocking here would be
-too disruptive to workflow.
+Checks:
+  1. Verified fixes not saved (tests passed after edits)
+  2. Unlogged errors
+  3. Repair loops (same error 3+ times)
+  4. Edit streak churn (high-churn files)
+  5. Pending causal chain outcomes
+  6. Plan mode exited without saving (absorbed from former Gate 12)
 
 The verified_fixes list is populated by the PostToolUse handler
 when tests pass after edits were made.
@@ -18,7 +22,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
 
-GATE_NAME = "GATE 6: SAVE VERIFIED FIX"
+GATE_NAME = "GATE 6: SAVE TO MEMORY"
 
 # How many unsaved verified fixes before we warn (not block)
 WARN_THRESHOLD = 2
@@ -30,6 +34,9 @@ ESCALATION_THRESHOLD = 5
 
 # Verified fixes older than this are considered stale (expired)
 STALE_FIX_SECONDS = 1200  # 20 minutes
+
+# Plan mode: how long before a plan exit is considered stale
+PLAN_STALE_SECONDS = 1800  # 30 minutes
 
 # Read-only subagent types — no Edit/Write/Bash, can't create unsaved fixes
 READ_ONLY_AGENTS = {"researcher", "Explore"}
@@ -143,6 +150,24 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             file=sys.stderr,
         )
         issued_warning = True
+
+    # Plan mode: warn if plan mode exited without saving to memory (former Gate 12)
+    last_exit_plan_mode = state.get("last_exit_plan_mode", 0)
+    memory_last_queried = state.get("memory_last_queried", 0)
+    if last_exit_plan_mode > 0:
+        plan_age = time.time() - last_exit_plan_mode
+        if plan_age > PLAN_STALE_SECONDS:
+            # Stale — auto-forgive
+            state["last_exit_plan_mode"] = 0
+        elif last_exit_plan_mode > memory_last_queried:
+            plan_age_min = int(plan_age / 60)
+            print(
+                f"[{GATE_NAME}] WARNING: Plan mode exited without saving plan to memory. "
+                f"Consider using remember_this() to preserve your plan. "
+                f"Plan created {plan_age_min} min ago.",
+                file=sys.stderr,
+            )
+            issued_warning = True
 
     # Escalation: track warning count and block after threshold
     if issued_warning:

@@ -40,9 +40,8 @@ Gates checked by enforcer.py. Blocking = exit 2. Advisory = warn only.
 - Gate 15: CAUSAL CHAIN — Blocks edits after test failure until query_fix_history called
 - Gate 16: CODE QUALITY — Blocks repeated bad patterns (debug prints, hardcoded secrets, broad excepts) after 3 warnings per file
 
-**Advisory gates** (warn only, never block):
-- Gate 6: SAVE VERIFIED FIX — Warns when verified fixes not saved to memory
-- Gate 12: PLAN MODE SAVE — Warns if exiting plan mode without saving to memory
+**Advisory gate** (warn only, escalates to block after 5 warnings):
+- Gate 6: SAVE TO MEMORY — Warns when verified fixes or plan insights not saved to memory
 
 ## SESSION START (Non-Negotiable)
 1. Read HANDOFF.md & LIVE_STATE.json
