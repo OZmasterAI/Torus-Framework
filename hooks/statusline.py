@@ -853,6 +853,7 @@ def main():
         f"{_tog('terminal_l2_always')}L2 "
         f"{_tog('context_enrichment')}Enrich "
         f"{_tog('tg_l3_always')}TG "
+        f"{_tog('tg_enrichment')}TGe "
         f"{_tog('tg_bot_tmux')}Bot "
         f"{_tog('gate_auto_tune')}Tune "
         f"{_tog('budget_degradation')}Budget "
