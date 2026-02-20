@@ -1,5 +1,5 @@
 {
-  "session_count": 157,
+  "session_count": 158,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -7,9 +7,10 @@
   "feature_status": "complete",
   "test_count": 1115,
   "test_failures": 0,
-  "what_was_done": "Session 156: Context window optimization. Reduced session start injection by 36% (4,284 to 2,725 tokens). Consolidated HANDOFF.md into LIVE_STATE.json (single source of truth). Removed toggle descriptions and Telegram bot instructions from boot.py protocol. Trimmed historical arrays from LIVE_STATE.json. Added delete_memory MCP tool. Removed sensitive info (Telegram user ID, bot token). Merged refactor1 into self-evolve-test-branch.",
-  "service_status": "Memory MCP: RUNNING (711 memories) | Tests: 1115 passed, 0 failed | Framework: v2.5.0 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Dashboard: localhost:7777 | Branch: self-evolve-test-branch | Agent teams: DISABLED",
+  "what_was_done": "Session 157: Token optimization sprint. Made 3 MCP tools dormant (delete_memory, deduplicate_sweep, maintenance) saving ~300 tok/prompt. Trimmed all 3 rules/ files (hooks.md, framework.md, memory.md) saving ~520 tok/prompt. Moved Gate 13 table and sideband protocol to docs/ reference files. Git cleanup: committed telegram-memory + audit log deletions saving ~240 tok on first prompt. Added paste-cache/ to .gitignore. Remaining .gitignore additions deferred to next session.",
+  "service_status": "Memory MCP: RUNNING (716 memories) | Tests: 1114 passed, 1 failed | Framework: v2.5.0 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Dashboard: localhost:7777 | Branch: self-evolve-test-branch | Agent teams: DISABLED | MCP tools: 6 active, 6 dormant",
   "next_steps": [
+    "Finish .gitignore cleanup (pycache, lock files, chroma.sqlite3, audit logs, runtime state files)",
     "Enable budget_degradation + set session_token_budget",
     "Test terminal chat end-to-end"
   ],

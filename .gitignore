@@ -13,6 +13,7 @@ hooks/shared/__pycache__/
 hooks/venv/
 
 # Transient directories
+paste-cache/
 cache/
 debug/
 downloads/
