@@ -285,6 +285,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name != "Bash":
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+
     command = tool_input.get("command", "")
 
     for pattern, description in DANGEROUS_PATTERNS:

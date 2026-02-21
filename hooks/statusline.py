@@ -67,11 +67,14 @@ COLOR_DARK_ORANGE = "\033[38;5;166m"  # dark orange — Opus model bracket
 COLOR_RESET = "\033[0m"
 
 
+DORMANT_GATES = {"gate_08_temporal.py", "gate_12_plan_mode_save.py"}
+
 def count_gates():
-    """Count gate_*.py files in the gates directory."""
+    """Count active gate_*.py files in the gates directory (excludes dormant/merged)."""
     if not os.path.isdir(GATES_DIR):
         return 0
-    return len([f for f in os.listdir(GATES_DIR) if f.startswith("gate_") and f.endswith(".py")])
+    return len([f for f in os.listdir(GATES_DIR)
+                if f.startswith("gate_") and f.endswith(".py") and f not in DORMANT_GATES])
 
 
 def get_memory_count():

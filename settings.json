@@ -38,6 +38,16 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/auto_format.py\"",
+            "timeout": 3
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -48,6 +58,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/boot.py\"",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/integrity_check.py\"",
+            "timeout": 5
           }
         ]
       }
@@ -128,6 +143,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/tg_mirror.py\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/stop_cleanup.py\"",
+            "timeout": 5
           }
         ]
       }
@@ -151,6 +171,11 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/event_logger.py\" --event PostToolUseFailure",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/failure_recovery.py\"",
             "timeout": 3
           }
         ]

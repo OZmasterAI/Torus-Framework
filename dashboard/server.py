@@ -206,11 +206,13 @@ def _read_latest_state():
         return None
 
 
+DORMANT_GATES = {"gate_08_temporal.py", "gate_12_plan_mode_save.py"}
+
 def count_gates():
     if not os.path.isdir(GATES_DIR):
         return 0
     return len([f for f in os.listdir(GATES_DIR)
-                if f.startswith("gate_") and f.endswith(".py")])
+                if f.startswith("gate_") and f.endswith(".py") and f not in DORMANT_GATES])
 
 
 def count_skills():

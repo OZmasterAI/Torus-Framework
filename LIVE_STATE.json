@@ -1,30 +1,28 @@
 {
-  "session_count": 167,
+  "session_count": 168,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1530,
-  "test_failures": 46,
-  "what_was_done": "Session 167: Sprint 2 agent wind-down. Monitored ~40 agents completing their tasks. Gate 17 enhanced with 5 new detections (homoglyphs, HTML/markdown, nested JSON, template literals, tool input scanning - 83 tests). Gate 18 canary created and wired to enforcer. Gate 2 hardened (2 real security fixes + 103 tests). Gate router pyright fixed. Enforcer got LRU gate cache. Hot-reload, gate correlator, dashboard, pipeline optimizer, tool patterns Markov, memory maintenance, session analytics, state migrator, skill mapper, skill health, gate graph, event replay, hook profiler all completed. Anomaly detector enhanced (EMA, consensus). 3 research reports delivered (hooks patterns, safety benchmarks, observability). Tests 1409->1530, failures 75->46. Disabled agent-teams, reverted settings. Memory 993->1058.",
-  "service_status": "Memory MCP: RUNNING (1058 memories) | Tests: 1530 total, 46 failures | Framework: v2.5.3 (Torus) | Gates: 18 active (Gate 8 dormant) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50+ | Agents: 13 | Skills: 37 | Plugins: 9 enabled",
+  "test_count": 1533,
+  "test_failures": 0,
+  "what_was_done": "Session 168: Sprint 2 cleanup and hardening. Verified 46 test failures already fixed (1533 pass, 0 fail). Added isinstance(tool_input, dict) guard to 9 gates preventing None-input crashes. Optimized Gate 11 rate_limit by removing redundant save_state (3.64ms->0.005ms, 728x faster). Wired auto_format.py into PostToolUse hooks. Created 3 research-pattern hooks: stop_cleanup.py (Stop), failure_recovery.py (PostToolUseFailure), integrity_check.py (SessionStart). Deleted merged Gate 12 file. Fixed statusline.py and dashboard/server.py to show 16 active gates (excluding dormant/merged). Cleaned .rej/.orig artifacts. Generated comprehensive Sprint 2 changelog HTML. Memory 1058->1068.",
+  "service_status": "Memory MCP: RUNNING (1068 memories) | Tests: 1533 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50+ | Agents: 13 | Skills: 37 | Plugins: 9 enabled",
   "next_steps": [
-    "Fix 46 remaining test failures (Gate 1 E1/E2 crash, cascade blocking, Gate 18 counts)",
-    "Commit Sprint 2 work (massive uncommitted changes)",
-    "Add isinstance(tool_input, dict) guard to 9 gates that crash on None input (fuzzer finding)",
-    "Apply research patterns: Stop hook verification, PostToolUseFailure recovery, dependency supply chain protection",
-    "Wire auto_format.py into settings.json PostToolUse hooks",
-    "Optimize Gate 11 rate_limit (save_state I/O on every call, p95=3.64ms)"
+    "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
+    "Fix auto_commit Co-Authored-By to detect current model (hardcoded Opus 4.6)",
+    "Resolve test_framework.py Pyright import errors for shared modules",
+    "Consider reactivating Gate 8 (temporal patterns) with improved implementation",
+    "Investigate UDS socket intermittent missing warnings in gather.py"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
-    "46 test failures - Gate 1 E1/E2 crash + cascade blocking + Gate 18 count mismatch",
-    "9 of 15 gates crash on None/non-dict tool_input (fuzzer finding, need isinstance guard)",
     "auto_commit Co-Authored-By hardcoded Opus 4.6 - wrong when on Sonnet",
     "UDS socket intermittently missing - gather.py warns but non-blocking",
-    "test_framework.py Pyright import errors for shared modules (path resolution)"
+    "test_framework.py Pyright import errors for shared modules (path resolution)",
+    "Gate 8 dormant - temporal pattern detection disabled, code preserved for reactivation"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -39,10 +37,10 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: ~20m\n- **Tool Calls**: ~40\n- **Files Modified**: 2 (settings.json, LIVE_STATE.json)\n- **Errors**: 0\n- **Tests**: none run directly this session (agents ran tests)",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 0m\n- **Tool Calls**: 2 (Bash: 1, mcp__memory__remember_this: 1)\n- **Files Modified**: 0 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 1 launched, 0 tokens",
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 3,
+    "reads": 0,
+    "edits": 0,
     "errors": 0,
     "verified": 0,
     "pending": 0
