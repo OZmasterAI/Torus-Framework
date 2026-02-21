@@ -1,5 +1,5 @@
 {
-  "session_count": 174,
+  "session_count": 175,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -7,10 +7,9 @@
   "feature_status": "in-progress",
   "test_count": 1533,
   "test_failures": 0,
-  "what_was_done": "Session 173: Attempted Memory-Architecture-Diagram.html creation. First version (7-tab high-level) written but user wanted full .md depth. Comprehensive 11-tab version hit 32000 output token limit twice, builder subagent got stuck. Set CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000 in ~/.bashrc. Explained claude_runner.py suggested refactor (not needed). Answered token limit question.",
-  "service_status": "Memory MCP: RUNNING (1104 memories) | Tests: 1533 total, 1 pre-existing failure | Framework: v2.5.3 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
+  "what_was_done": "Session 175: (1) Created Memory-Architecture-Diagram.html — 1845 lines, 92KB, 11 interactive tabs, dark theme (#0d1117, JetBrains Mono). Used Option B: 3 Sonnet subagents in chunks. All 900 lines of .md faithfully converted. (2) Comprehensive 3-branch comparison (master vs self-evolve-test-branch vs Self-Sprint-2) — scored across 12 dimensions with raw git metrics. Sprint-2: 96/120, evolve-test: 79, master: 66. (3) Cleaned up Gate 12 remnants — removed stale refs from 4 files, git rm'd tracked-but-deleted file. (4) Analyzed Gate 17 injection defense timing and execution order.",
+  "service_status": "Memory MCP: RUNNING (1109 memories) | Tests: 1533 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
   "next_steps": [
-    "Create Memory-Architecture-Diagram.html on Desktop \u2014 use Sonnet subagent writing in chunks (CSS+skeleton first, then each tab). Source: ~/Desktop/Memory-Architecture-Diagram.md (900 lines, 11 sections). Token limit now 64000.",
     "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop",
     "Fix pre-existing test failures: test_edit_streak.py (gate 5 behavior change), test_state_migrator.py (int/float schema mismatch)",
@@ -20,7 +19,7 @@
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Gate 8 dormant - temporal pattern detection disabled, code preserved for reactivation",
+    "Gate 8 dormant - temporal pattern detection disabled, code preserved in dormant/gates/",
     "Auto-commit test failure (pre-existing, commit message formatting)",
     "test_edit_streak.py expects gate 5 block at streak=5 (behavior changed)",
     "test_state_migrator.py int/float type mismatch in schema validator"
@@ -37,13 +36,5 @@
   "security_profile": "balanced",
   "chain_memory": true,
   "tg_session_notify": true,
-  "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 23m\n- **Tool Calls**: 16 (Read: 6, Bash: 6, mcp__memory__search_knowledge: 1, mcp__memory__remember_this: 1, Skill: 1, Edit: 1)\n- **Files Modified**: 1 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: none this session\n- **Subagents**: 2 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`",
-  "last_session_metrics": {
-    "reads": 4,
-    "edits": 1,
-    "errors": 0,
-    "verified": 0,
-    "pending": 0
-  }
+  "tg_mirror_messages": true
 }
