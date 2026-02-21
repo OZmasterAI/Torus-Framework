@@ -3,6 +3,8 @@
 **Created**: {date}
 **Status**: draft | approved | implemented | abandoned
 **Confidence**: {1-10}/10
+**Milestone**: {milestone-number}
+**Phase**: {phase-number}
 
 ## Goal
 {What needs to be built — specific end state}
@@ -52,8 +54,10 @@
 ## Implementation Tasks (ordered)
 
 ### Task 1: {name}
+- **Requirement**: {R-id this task fulfills}
 - **Files**: {create/modify list}
 - **Validate**: `{exact command to verify this task}`
+- **Done**: {specific observable outcome proving task is complete}
 - **Pattern**: {existing code to mirror}
 - **Pseudocode**:
   ```
@@ -61,8 +65,10 @@
   ```
 
 ### Task 2: {name}
+- **Requirement**: {R-id}
 - **Files**: {create/modify list}
 - **Validate**: `{exact command to verify this task}`
+- **Done**: {specific observable outcome}
 - **Pattern**: {existing code to mirror}
 - **Pseudocode**:
   ```

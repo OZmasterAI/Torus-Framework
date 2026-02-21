@@ -15,6 +15,7 @@ PRP_DIR="$CLAUDE_DIR/PRPs"
 SCRIPTS_DIR="$CLAUDE_DIR/scripts"
 TASK_MANAGER="$PRP_DIR/task_manager.py"
 PROMPT_TEMPLATE="$SCRIPTS_DIR/torus-prompt.md"
+MEMORY_PREFETCH="$SCRIPTS_DIR/memory-prefetch.py"
 
 # ── Defaults ───────────────────────────────────────────────────────
 MAX_ITERATIONS=50
@@ -56,6 +57,12 @@ fi
 # ── Clean up any stale stop sentinel ───────────────────────────────
 rm -f "$STOP_SENTINEL"
 
+# ── Clean up old agent messages (fail-open) ───────────────────────
+python3 -c "
+import sys; sys.path.insert(0, '$CLAUDE_DIR/hooks')
+from shared.agent_channel import cleanup; cleanup()
+" 2>/dev/null || true
+
 # ── Initialize activity log ────────────────────────────────────────
 {
     echo "# Torus Loop: $PRP_NAME"
@@ -77,6 +84,13 @@ build_prompt() {
     task_name=$(echo "$task_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
     file_list=$(echo "$task_json" | python3 -c "import sys,json; print('\n'.join(json.load(sys.stdin).get('files', [])))")
     validate_cmd=$(echo "$task_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('validate', 'echo no validation'))")
+
+    # Pre-fetch relevant memories (read-only FTS5, fail-open)
+    local memory_context=""
+    if [[ -f "$MEMORY_PREFETCH" ]]; then
+        # shellcheck disable=SC2086
+        memory_context=$(python3 "$MEMORY_PREFETCH" "$task_name" $file_list 2>/dev/null || true)
+    fi
 
     if [[ -f "$PROMPT_TEMPLATE" ]]; then
         # Use Python for safe template substitution (sed breaks on |, /, etc. in values)
@@ -113,7 +127,46 @@ Run this command to verify: \`$validate_cmd\`
 4. Run the validation command and show output
 5. If validation passes, save to memory: remember_this("Completed task $task_id: $task_name", "torus-loop iteration", "type:fix,area:framework")
 6. If validation fails, describe what went wrong clearly
+7. If you discover something other agents should know, broadcast it:
+   \`\`\`python
+   import sys; sys.path.insert(0, '/home/crab/.claude/hooks')
+   from shared.agent_channel import post_message
+   post_message('task-$task_id', 'discovery', 'what you found')
+   \`\`\`
 PROMPT
+    fi
+
+    # Append pre-fetched memories if any were found
+    if [[ -n "$memory_context" ]]; then
+        echo ""
+        echo "$memory_context"
+    fi
+
+    # Inject recent agent messages (fail-open)
+    local agent_msgs
+    agent_msgs=$(python3 -c "
+import sys, time
+sys.path.insert(0, '$CLAUDE_DIR/hooks')
+from shared.agent_channel import read_messages
+msgs = read_messages(since_ts=time.time()-3600, limit=5)
+if msgs:
+    print('## Recent Agent Messages')
+    for m in msgs:
+        print(f\"- [{m['from_agent']}] ({m['msg_type']}): {m['content']}\")
+" 2>/dev/null || true)
+    if [[ -n "$agent_msgs" ]]; then
+        echo ""
+        echo "$agent_msgs"
+    fi
+
+    # Inject locked decisions from CONTEXT.md (fail-open)
+    local context_file="$PRP_DIR/${PRP_NAME}/CONTEXT.md"
+    if [[ ! -f "$context_file" ]]; then
+        context_file="$PRP_DIR/${PRP_NAME}.context.md"
+    fi
+    if [[ -f "$context_file" ]]; then
+        echo ""
+        cat "$context_file"
     fi
 }
 
@@ -174,7 +227,20 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
         fi
     else
         STATUS="FAILED"
+        # Log on_fail routing if applicable
+        ON_FAIL=$(echo "$TASK_JSON" | python3 -c "import sys,json; t=json.load(sys.stdin); print(t.get('on_fail',''))" 2>/dev/null || true)
+        if [[ -n "$ON_FAIL" ]]; then
+            echo "  on_fail routing → task $ON_FAIL activated"
+            echo "- **on_fail**: routed to task $ON_FAIL" >> "$ACTIVITY_LOG"
+        fi
     fi
+
+    # Post result to agent channel (fail-open)
+    python3 -c "
+import sys; sys.path.insert(0, '$CLAUDE_DIR/hooks')
+from shared.agent_channel import post_message
+post_message('loop-iter-$ITERATION', 'result', 'Task $TASK_ID ($TASK_NAME): $STATUS')
+" 2>/dev/null || true
 
     # Log to activity
     {

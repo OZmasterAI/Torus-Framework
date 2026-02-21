@@ -45,9 +45,19 @@ def cmd_status(prp_name):
         counts[task["status"]] = counts.get(task["status"], 0) + 1
     summary = {
         "prp": prp_name,
+        "milestone": data.get("milestone", 0),
+        "phase": data.get("phase", 0),
         "total": len(data["tasks"]),
         "counts": counts,
-        "tasks": [{"id": t["id"], "name": t["name"], "status": t["status"]} for t in data["tasks"]],
+        "tasks": [
+            {
+                "id": t["id"],
+                "name": t["name"],
+                "status": t["status"],
+                "requirement_id": t.get("requirement_id", ""),
+            }
+            for t in data["tasks"]
+        ],
     }
     print(json.dumps(summary, indent=2))
 
@@ -59,6 +69,9 @@ def cmd_next(prp_name):
     for status in ("failed", "pending"):
         for task in data["tasks"]:
             if task["status"] == status:
+                # Skip failed tasks that have on_fail routing (target handles it)
+                if status == "failed" and task.get("on_fail") is not None:
+                    continue
                 # Check dependencies are all passed
                 deps_met = all(
                     t["status"] == "passed"
@@ -123,6 +136,13 @@ def cmd_validate(prp_name, task_id):
         )
         new_status = "passed" if result.returncode == 0 else "failed"
         task["status"] = new_status
+        # on_fail routing: activate fallback task when this one fails
+        if new_status == "failed" and task.get("on_fail") is not None:
+            target_id = task["on_fail"]
+            for t in data["tasks"]:
+                if t["id"] == target_id and t["status"] != "passed":
+                    t["status"] = "pending"
+                    break
         save_tasks(prp_name, data)
         output = {
             "id": task["id"],
@@ -140,10 +160,163 @@ def cmd_validate(prp_name, task_id):
         sys.exit(1)
 
 
+def cmd_wave(prp_name):
+    """Print all currently eligible tasks as a JSON array. Exit 1 if none."""
+    data = load_tasks(prp_name)
+    eligible = []
+    for status in ("failed", "pending"):
+        for task in data["tasks"]:
+            if task["status"] == status:
+                # Skip failed tasks that have on_fail routing
+                if status == "failed" and task.get("on_fail") is not None:
+                    continue
+                deps_met = all(
+                    t["status"] == "passed"
+                    for t in data["tasks"]
+                    if t["id"] in task.get("depends_on", [])
+                )
+                if deps_met:
+                    eligible.append(task)
+    if not eligible:
+        print(json.dumps({"done": True}))
+        sys.exit(1)
+    print(json.dumps(eligible, indent=2))
+
+
+def cmd_plan_check(prp_name, requirements_file):
+    """Check if tasks cover all requirements. Returns gaps."""
+    data = load_tasks(prp_name)
+
+    # Load requirements file and extract R-ids
+    if not os.path.exists(requirements_file):
+        print(f"Error: Requirements file not found: {requirements_file}", file=sys.stderr)
+        sys.exit(1)
+    with open(requirements_file) as f:
+        req_content = f.read()
+
+    # Extract requirement IDs (### R1:, ### R2:, etc.)
+    import re
+    req_ids = set(re.findall(r"###\s+(R\d+):", req_content))
+
+    # Map tasks to requirement IDs
+    covered = set()
+    orphan_tasks = []
+    for task in data["tasks"]:
+        rid = task.get("requirement_id", "")
+        if rid and rid in req_ids:
+            covered.add(rid)
+        elif rid:
+            orphan_tasks.append({"task_id": task["id"], "requirement_id": rid})
+        else:
+            orphan_tasks.append({"task_id": task["id"], "requirement_id": "(none)"})
+
+    uncovered = sorted(req_ids - covered)
+    result = {
+        "prp": prp_name,
+        "total_requirements": len(req_ids),
+        "covered": len(covered),
+        "uncovered": uncovered,
+        "orphan_tasks": orphan_tasks,
+        "pass": len(uncovered) == 0 and len(orphan_tasks) == 0,
+    }
+    print(json.dumps(result, indent=2))
+    sys.exit(0 if result["pass"] else 1)
+
+
+def cmd_verify_phase(prp_name):
+    """3-level verification of completed tasks: exists, substantive, wired."""
+    data = load_tasks(prp_name)
+    results = []
+
+    for task in data["tasks"]:
+        if task["status"] != "passed":
+            continue
+
+        task_result = {
+            "task_id": task["id"],
+            "name": task["name"],
+            "level_1_exists": True,
+            "level_2_substantive": True,
+            "level_3_wired": True,
+            "issues": [],
+        }
+
+        for filepath in task.get("files", []):
+            expanded = os.path.expanduser(filepath)
+            # Level 1: File exists
+            if not os.path.exists(expanded):
+                task_result["level_1_exists"] = False
+                task_result["issues"].append(f"MISSING: {filepath}")
+                continue
+
+            # Level 2: Not a stub (check for TODO, placeholder, pass-only)
+            # Line-by-line check: skip lines that are inside string literals (stub detection code)
+            with open(expanded) as f:
+                lines = f.readlines()
+            stub_patterns = [
+                ("TODO", r'\bTODO\b'),
+                ("FIXME", r'\bFIXME\b'),
+                ("NotImplementedError", r'raise\s+NotImplementedError'),
+                ("placeholder", r'pass\s*#\s*placeholder'),
+            ]
+            import re as _re
+            for marker_name, pattern in stub_patterns:
+                for line_num, line in enumerate(lines, 1):
+                    stripped = line.strip()
+                    # Skip comments that are checking for stubs (meta-detection)
+                    if stripped.startswith("#") or stripped.startswith("//"):
+                        continue
+                    # Skip lines inside string literals (e.g. stub_markers = ["TODO", ...])
+                    if '["' in stripped or "'" + marker_name + "'" in stripped or '"' + marker_name + '"' in stripped:
+                        continue
+                    if _re.search(pattern, line):
+                        task_result["level_2_substantive"] = False
+                        task_result["issues"].append(f"STUB: {filepath}:{line_num} matches '{marker_name}'")
+                        break  # One hit per pattern per file is enough
+
+            # Level 3: Wired (file is imported/referenced somewhere)
+            basename = os.path.basename(filepath)
+            name_no_ext = os.path.splitext(basename)[0]
+            parent_dir = os.path.dirname(expanded)
+            wired = False
+            if parent_dir and os.path.isdir(parent_dir):
+                for other in os.listdir(parent_dir):
+                    other_path = os.path.join(parent_dir, other)
+                    if other_path == expanded or not os.path.isfile(other_path):
+                        continue
+                    try:
+                        with open(other_path) as of:
+                            other_content = of.read(10000)
+                        if name_no_ext in other_content or basename in other_content:
+                            wired = True
+                            break
+                    except (UnicodeDecodeError, PermissionError):
+                        continue
+            if not wired:
+                task_result["level_3_wired"] = False
+                task_result["issues"].append(f"UNWIRED: {filepath} not referenced by sibling files")
+
+        results.append(task_result)
+
+    all_pass = all(
+        r["level_1_exists"] and r["level_2_substantive"] and r["level_3_wired"]
+        for r in results
+    )
+    output = {
+        "prp": prp_name,
+        "phase": data.get("phase", 0),
+        "verified_tasks": len(results),
+        "all_pass": all_pass,
+        "results": results,
+    }
+    print(json.dumps(output, indent=2))
+    sys.exit(0 if all_pass else 1)
+
+
 def main():
     if len(sys.argv) < 3:
         print("Usage: task_manager.py <command> <prp-name> [args...]", file=sys.stderr)
-        print("Commands: status, next, update <task-id> <status>, validate <task-id>", file=sys.stderr)
+        print("Commands: status, wave, next, update, validate, plan-check, verify-phase", file=sys.stderr)
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -151,6 +324,8 @@ def main():
 
     if cmd == "status":
         cmd_status(prp_name)
+    elif cmd == "wave":
+        cmd_wave(prp_name)
     elif cmd == "next":
         cmd_next(prp_name)
     elif cmd == "update":
@@ -163,6 +338,13 @@ def main():
             print("Usage: task_manager.py validate <prp-name> <task-id>", file=sys.stderr)
             sys.exit(1)
         cmd_validate(prp_name, sys.argv[3])
+    elif cmd == "plan-check":
+        if len(sys.argv) < 4:
+            print("Usage: task_manager.py plan-check <prp-name> <requirements-file>", file=sys.stderr)
+            sys.exit(1)
+        cmd_plan_check(prp_name, sys.argv[3])
+    elif cmd == "verify-phase":
+        cmd_verify_phase(prp_name)
     else:
         print(f"Error: Unknown command '{cmd}'", file=sys.stderr)
         sys.exit(1)

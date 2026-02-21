@@ -336,7 +336,15 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 log_gate_decision(gate_label, tool_name, "slow",
                                   f"gate took {elapsed_ms:.0f}ms (>100ms threshold)", session_id, state_keys_read,
                                   severity="warn")
-            if result.blocked:
+            if result.is_ask:
+                # Graduated escalation: ask user for permission instead of blocking
+                log_gate_decision(gate_label, tool_name, "ask", result.message, session_id, state_keys_read,
+                                  severity=result.severity)
+                hook_decision = result.to_hook_decision()
+                print(json.dumps(hook_decision), file=sys.stdout)
+                save_state(state, session_id=state.get("_session_id", "main"))
+                sys.exit(0)
+            elif result.blocked:
                 log_gate_decision(gate_label, tool_name, "block", result.message, session_id, state_keys_read,
                                   severity=result.severity)
                 # Track gate block counts for diagnostics

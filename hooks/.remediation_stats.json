@@ -1,0 +1,62 @@
+{
+  "GATE 1: READ BEFORE EDIT::read-file-first": {
+    "gate": "GATE 1: READ BEFORE EDIT",
+    "strategy": "read-file-first",
+    "fired": 2,
+    "applied": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "first_seen": 1771611375.2090368,
+    "last_seen": 1771611375.215479
+  },
+  "GATE 4: MEMORY FIRST::query-memory-inferred": {
+    "gate": "GATE 4: MEMORY FIRST",
+    "strategy": "query-memory-inferred",
+    "fired": 3,
+    "applied": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "first_seen": 1771611375.209523,
+    "last_seen": 1771611375.2108119
+  },
+  "GATE 5: PROOF BEFORE FIXED::run-tests-to-verify": {
+    "gate": "GATE 5: PROOF BEFORE FIXED",
+    "strategy": "run-tests-to-verify",
+    "fired": 2,
+    "applied": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "first_seen": 1771611375.211272,
+    "last_seen": 1771611375.2117853
+  },
+  "GATE 11: RATE LIMIT::wait-for-rate-window": {
+    "gate": "GATE 11: RATE LIMIT",
+    "strategy": "wait-for-rate-window",
+    "fired": 2,
+    "applied": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "first_seen": 1771611375.2122612,
+    "last_seen": 1771611375.2126749
+  },
+  "GATE 15: CAUSAL CHAIN ENFORCEMENT::query-fix-history": {
+    "gate": "GATE 15: CAUSAL CHAIN ENFORCEMENT",
+    "strategy": "query-fix-history",
+    "fired": 2,
+    "applied": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "first_seen": 1771611375.2134483,
+    "last_seen": 1771611375.214373
+  },
+  "GATE 1: READ BEFORE EDIT::custom": {
+    "gate": "GATE 1: READ BEFORE EDIT",
+    "strategy": "custom",
+    "fired": 1,
+    "applied": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "first_seen": 1771611375.2149756,
+    "last_seen": 1771611375.2149773
+  }
+}

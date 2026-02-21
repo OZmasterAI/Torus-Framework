@@ -1,0 +1,58 @@
+{
+  "gate_10_model_enforcement": {
+    "blocks": 8,
+    "overrides": 0,
+    "prevented": 0
+  },
+  "gate_17_injection_defense": {
+    "blocks": 0,
+    "overrides": 0,
+    "prevented": 0,
+    "block": 7
+  },
+  "gate_06_save_fix": {
+    "blocks": 51,
+    "overrides": 0,
+    "prevented": 5
+  },
+  "gate_05_proof_before_fixed": {
+    "blocks": 162,
+    "overrides": 0,
+    "prevented": 4
+  },
+  "gate_01_read_before_edit": {
+    "blocks": 4159,
+    "overrides": 2,
+    "prevented": 4
+  },
+  "gate_02_no_destroy": {
+    "blocks": 3556,
+    "overrides": 0,
+    "prevented": 0
+  },
+  "gate_03_test_before_deploy": {
+    "blocks": 1163,
+    "overrides": 0,
+    "prevented": 0
+  },
+  "gate_04_memory_first": {
+    "blocks": 730,
+    "overrides": 0,
+    "prevented": 14
+  },
+  "gate_07_critical_file_guard": {
+    "blocks": 671,
+    "overrides": 0,
+    "prevented": 1
+  },
+  "gate_09_strategy_ban": {
+    "blocks": 188,
+    "overrides": 0,
+    "prevented": 0
+  },
+  "gate_15_causal_chain": {
+    "blocks": 6,
+    "overrides": 0,
+    "prevented": 0
+  }
+}

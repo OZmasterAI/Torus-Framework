@@ -17,6 +17,14 @@ Run this command to verify: `{validate_command}`
 5. If validation passes, save to memory: remember_this("Completed task {task_id}: {task_name}", "torus-loop iteration", "type:fix,area:framework")
 6. If validation fails, describe what went wrong clearly
 
+## Agent Channel
+If you discover something other agents should know (API patterns, gotchas, interface changes), broadcast it:
+```python
+import sys; sys.path.insert(0, '/home/crab/.claude/hooks')
+from shared.agent_channel import post_message
+post_message('task-{task_id}', 'discovery', 'what you found')
+```
+
 ## Context
 - You have access to Memory MCP — use search_knowledge() to find relevant prior work
 - All framework gates are active — follow the read-before-edit pattern

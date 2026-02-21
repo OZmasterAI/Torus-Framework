@@ -4,10 +4,29 @@
 # Session & runtime state
 history.jsonl
 hooks/state_*.json
+hooks/state_*.json.lock
 hooks/.memory_last_queried
+hooks/.capture_queue.jsonl
+hooks/.prompt_last_hash
+hooks/.auto_remember_queue.jsonl
+hooks/.auto_remember_queue.jsonl.ingesting
+hooks/.file_claims.json
+hooks/.statusline_snapshot.json
+hooks/.tg_mirror_cursor.json
 hooks/__pycache__/
 hooks/gates/__pycache__/
 hooks/shared/__pycache__/
+hooks/boot_pkg/__pycache__/
+hooks/tracker_pkg/__pycache__/
+
+# Databases (runtime, not portable)
+hooks/chroma.sqlite3
+hooks/agent_channel.db
+hooks/agent_channel.db.lock
+
+# Audit logs (large, rotated)
+hooks/audit/
+hooks/.disk_backup/
 
 # Python venv
 hooks/venv/
@@ -28,11 +47,20 @@ plans/
 projects/
 backups/
 archive/
+tui/__pycache__/
+tui/widgets/__pycache__/
+
+# Runtime state files
+LIVE_STATE.json
+stats-cache.json
 
 # Telegram bot plugin
 integrations/telegram-bot/msg_log.db
 integrations/telegram-bot/sessions.json
 integrations/telegram-bot/config.json
+integrations/telegram-bot/.sentinel_sent
+integrations/terminal-history/__pycache__/
+integrations/terminal-history/terminal_history.db
 
 # Local settings (machine-specific)
 settings.local.json

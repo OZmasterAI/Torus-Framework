@@ -38,6 +38,47 @@ MODEL_GUIDANCE = (
     "sonnet (analysis/testing), opus (complex implementation)"
 )
 
+# ── Role-Based Model Profiles ──
+# Users set active profile in LIVE_STATE.json "model_profile" field.
+# Each profile maps agent ROLES (planning/execution/verification) to models.
+# Gate 10 infers the role from subagent_type, then enforces the profile's model.
+
+# Agent type → role mapping
+AGENT_ROLE_MAP = {
+    # Planning role: research, exploration, architecture
+    "Plan":             "planning",
+    "Explore":          "planning",
+    "researcher":       "planning",
+    "claude-code-guide": "planning",
+    # Execution role: building, implementing, writing code
+    "builder":          "execution",
+    "general-purpose":  "execution",
+    "Bash":             "execution",
+    "statusline-setup": "execution",
+    # Verification role: testing, auditing, reviewing
+    "stress-tester":    "verification",
+    "auditor":          "verification",
+}
+
+# Profile → role → model
+MODEL_PROFILES = {
+    "quality": {
+        "description": "Maximum quality — opus for planning+execution, sonnet for verification",
+        "role_models": {"planning": "opus", "execution": "opus", "verification": "sonnet"},
+        "warn_on_opus": False,
+    },
+    "balanced": {
+        "description": "Default — opus for planning, sonnet for execution+verification",
+        "role_models": {"planning": "opus", "execution": "sonnet", "verification": "sonnet"},
+        "warn_on_opus": True,
+    },
+    "budget": {
+        "description": "Cost-minimizing — sonnet for planning+execution, haiku for verification",
+        "role_models": {"planning": "sonnet", "execution": "sonnet", "verification": "haiku"},
+        "warn_on_opus": True,
+    },
+}
+
 # Recommended models per agent type.
 # Key: subagent_type → set of recommended models.
 # Any model not in the set triggers an advisory warning.
@@ -152,6 +193,30 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
                     )
     except Exception:
         pass  # Budget check is fail-open
+
+    # ── Step 1c: Role-based model profile enforcement ──
+    # Reads "model_profile" from LIVE_STATE.json (quality/balanced/budget)
+    # Infers agent role from subagent_type, then enforces profile's model for that role
+    try:
+        from shared.state import get_live_toggle
+        profile_name = get_live_toggle("model_profile", "balanced") or "balanced"
+        profile = MODEL_PROFILES.get(profile_name, MODEL_PROFILES["balanced"])
+
+        role = AGENT_ROLE_MAP.get(subagent_type)
+        if role:
+            role_models = profile.get("role_models", {})
+            target_model = role_models.get(role)
+            if target_model and target_model != model:
+                original = model
+                model = target_model
+                tool_input["model"] = model
+                print(
+                    f"[{GATE_NAME}] PROFILE '{profile_name}': {original}→{model} "
+                    f"({role} role) for {subagent_type} agent '{description}'",
+                    file=sys.stderr,
+                )
+    except Exception:
+        pass  # Profile check is fail-open
 
     # ── Step 2: Model mismatch → WARN (never block) ──
     # Track model usage by agent type for learning

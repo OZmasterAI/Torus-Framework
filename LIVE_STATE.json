@@ -1,5 +1,5 @@
 {
-  "session_count": 158,
+  "session_count": 163,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -7,22 +7,24 @@
   "feature_status": "complete",
   "test_count": 1115,
   "test_failures": 0,
-  "what_was_done": "Session 157: Token optimization sprint. Made 3 MCP tools dormant (delete_memory, deduplicate_sweep, maintenance) saving ~300 tok/prompt. Trimmed all 3 rules/ files (hooks.md, framework.md, memory.md) saving ~520 tok/prompt. Moved Gate 13 table and sideband protocol to docs/ reference files. Git cleanup: committed telegram-memory + audit log deletions saving ~240 tok on first prompt. Added paste-cache/ to .gitignore. Remaining .gitignore additions deferred to next session.",
-  "service_status": "Memory MCP: RUNNING (716 memories) | Tests: 1114 passed, 1 failed | Framework: v2.5.0 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Dashboard: localhost:7777 | Branch: self-evolve-test-branch | Agent teams: DISABLED | MCP tools: 6 active, 6 dormant",
+  "what_was_done": "Housekeeping session: Created full backup (1.7GB) and framework-only backup to Desktop (9.4MB). Merged SelfSprint1 into self-evolve-test-branch. Committed accumulated uncommitted files (diagrams, PRP templates, plugin configs). Created new branch Self-Sprint-2 from self-evolve-test-branch. Discussed which files should be in .gitignore vs committed.",
+  "service_status": "Memory MCP: RUNNING (845 memories) | Tests: 1114 passed, 1 failed | Framework: v2.5.0 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Dashboard: localhost:7777 | Branch: Self-Sprint-2 | Agent teams: ENABLED | MCP tools: 6 active, 6 dormant",
   "next_steps": [
-    "Finish .gitignore cleanup (pycache, lock files, chroma.sqlite3, audit logs, runtime state files)",
+    "Finish .gitignore cleanup (pycache, lock files, chroma.sqlite3, audit logs, runtime state files, LIVE_STATE.json, stats-cache.json)",
+    "Test wave plan verification step end-to-end with a PRP that has requirements",
     "Enable budget_degradation + set session_token_budget",
-    "Test terminal chat end-to-end"
+    "Test terminal chat end-to-end",
+    "Pop stash on Self-Sprint-2 (stashed working changes from SelfSprint1)"
   ],
   "known_issues": [
-    "Plan mode exit loop \u2014 platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access \u2014 tests skip when MCP running, correct behavior",
-    "Export test_framework.py uses _FRAMEWORK_ROOT \u2014 merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) \u2014 will auto-compact on next ingest",
-    "tmux routing shared session causes interference \u2014 use dedicated claude-bot",
-    "TaskCompleted hook disabled \u2014 was firing premature quality warnings",
-    "auto_commit Co-Authored-By hardcoded Opus 4.6 \u2014 wrong when on Sonnet",
-    "UDS socket intermittently missing \u2014 gather.py warns but non-blocking"
+    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
+    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
+    "tmux routing shared session causes interference — use dedicated claude-bot",
+    "TaskCompleted hook disabled — was firing premature quality warnings",
+    "auto_commit Co-Authored-By hardcoded Opus 4.6 — wrong when on Sonnet",
+    "UDS socket intermittently missing — gather.py warns but non-blocking"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -32,15 +34,8 @@
   "gate_auto_tune": true,
   "budget_degradation": false,
   "session_token_budget": 0,
-  "chain_memory": false,
+  "model_profile": "balanced",
+  "chain_memory": true,
   "tg_session_notify": true,
-  "tg_mirror_messages": false,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 12m\n- **Tool Calls**: 23 (Bash: 18, mcp__memory__remember_this: 2, Skill: 1, Read: 1, Write: 1)\n- **Files Modified**: 1 (1 verified, 0 pending)\n- **Errors**: 1 (ToolFail:Bash x1)\n- **Tests**: exit code 0\n- **Subagents**: 10 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json` (verified)",
-  "last_session_metrics": {
-    "reads": 1,
-    "edits": 1,
-    "errors": 1,
-    "verified": 1,
-    "pending": 0
-  }
+  "tg_mirror_messages": true
 }

@@ -126,6 +126,8 @@ def default_state():
         "gate_block_outcomes": [],           # [{gate, tool, file, timestamp, resolved_by}] capped at 100
         "session_token_estimate": 0,         # Estimated total tokens this session
         "gate_tune_overrides": {},           # {gate_name: {param: value}} — written by boot.py auto-tune
+        # v3.2 fields (error recovery — deferred items)
+        "deferred_items": [],               # [{strategy, error_signature, fail_count, file, deferred_at}] capped at 50
     }
 
 
@@ -192,6 +194,8 @@ def get_state_schema():
         "gate_block_outcomes": {"type": "list", "description": "Recent gate block outcomes for effectiveness analysis", "category": "evolve", "max_size": MAX_GATE_BLOCK_OUTCOMES},
         "session_token_estimate": {"type": "int", "description": "Estimated total tokens consumed this session", "category": "evolve"},
         "gate_tune_overrides": {"type": "dict", "description": "Auto-tune threshold overrides per gate: {gate: {param: value}}", "category": "evolve"},
+        # v3.2 fields (error recovery — deferred items)
+        "deferred_items": {"type": "list", "description": "Deferred error recovery items: [{strategy, error_signature, fail_count, file, deferred_at}]", "category": "causal", "max_size": 50},
     }
 
 
@@ -491,22 +495,16 @@ def save_state(state, session_id="main"):
 def get_memory_last_queried(state):
     """Get the most recent memory query timestamp.
 
-    For team members (session_id != "main"), only the per-agent enforcer
-    timestamp is used. This prevents the global sideband file (written by
-    the MCP server) from letting one agent's memory query satisfy Gate 4
-    for a different agent.
-
-    For the main agent, both the enforcer state and the sideband file are
-    checked for backward compatibility.
+    Checks both the per-agent enforcer state AND the global sideband file
+    (written by the MCP server on every memory tool call). Returns the max
+    of both timestamps. The sideband file is always checked because:
+    - The MCP server writes it on every memory tool call
+    - The main session may have a UUID session_id (not "main")
+    - PostToolUse tracker also updates state, but sideband is more reliable
     """
     enforcer_ts = state.get("memory_last_queried", 0)
 
-    # Team members use only their own per-agent state (no sideband leakage)
-    session_id = state.get("_session_id", "main")
-    if session_id != "main":
-        return enforcer_ts
-
-    # Main agent also checks sideband (backward compat)
+    # Always check sideband — MCP server writes it on every memory tool call
     sideband_ts = 0
     try:
         if os.path.exists(MEMORY_TIMESTAMP_FILE):
