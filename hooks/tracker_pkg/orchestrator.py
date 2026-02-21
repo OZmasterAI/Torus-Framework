@@ -124,6 +124,13 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     # Track memory queries
     if is_memory_tool(tool_name):
         state["memory_last_queried"] = time.time()
+        # F1: Redundant sideband write — keeps sideband fresh so Gate 4
+        # doesn't block long-running subagents after the 5-min window
+        try:
+            from boot_pkg.memory import _write_sideband_timestamp
+            _write_sideband_timestamp()
+        except Exception:
+            pass  # Best-effort redundancy
 
     if tool_name == "mcp__memory__remember_this":
         # Only reset Gate 6 counters if memory was actually saved (not deduped/rejected)

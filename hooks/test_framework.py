@@ -10861,6 +10861,11 @@ except Exception as _se_e:
     print(f"  FAIL: state schema: {_se_e}")
 
 # Test: Gate auto-tune overrides are read by gates
+# Remove sideband so direct gate calls test state timestamps, not global sideband
+try:
+    os.remove(MEMORY_TIMESTAMP_FILE)
+except FileNotFoundError:
+    pass
 try:
     _at_state = default_state()
     _at_state["_session_id"] = "test_autotune_no_sideband"  # Avoid sideband file
@@ -10883,6 +10888,108 @@ except Exception as _se_e:
     FAIL += 1
     RESULTS.append(f"  FAIL: gate auto-tune overrides: {_se_e}")
     print(f"  FAIL: gate auto-tune overrides: {_se_e}")
+
+# ─────────────────────────────────────────────────
+# Gate 4 Staleness Loop Fix (F2e + F3)
+# ─────────────────────────────────────────────────
+print("\n--- Gate 4: Staleness Loop Fix (F2e new-file exempt + F3 per-tool windows) ---")
+
+# Remove sideband so direct gate calls test state timestamps, not global sideband
+try:
+    os.remove(MEMORY_TIMESTAMP_FILE)
+except FileNotFoundError:
+    pass
+
+from gates.gate_04_memory_first import check as _sl_g04, WRITE_FRESHNESS_WINDOW as _sl_wfw
+
+# Test 1 (F2e): Write to non-existent file with memory_last_queried > 0 → passes
+try:
+    _sl_state1 = default_state()
+    _sl_state1["_session_id"] = "test_staleness_no_sideband"
+    _sl_state1["memory_last_queried"] = time.time() - 400  # stale for Edit (>300s) but memory was queried
+    _sl_path1 = "/tmp/_test_gate4_nonexistent_" + str(int(time.time())) + ".py"
+    _sl_r1 = _sl_g04("Write", {"file_path": _sl_path1}, _sl_state1)
+    assert not _sl_r1.blocked, f"Write to new file with prior memory query should pass, got: {_sl_r1.message}"
+    PASS += 1
+    RESULTS.append("  PASS: F2e — Write new file with memory queried → passes")
+    print("  PASS: F2e — Write new file with memory queried → passes")
+except Exception as _sl_e1:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: F2e new file pass: {_sl_e1}")
+    print(f"  FAIL: F2e new file pass: {_sl_e1}")
+
+# Test 2 (F2e safety): Write to non-existent file with memory_last_queried == 0 → blocks
+try:
+    _sl_state2 = default_state()
+    _sl_state2["_session_id"] = "test_staleness_no_sideband"
+    _sl_state2["memory_last_queried"] = 0  # never queried
+    _sl_path2 = "/tmp/_test_gate4_nonexistent2_" + str(int(time.time())) + ".py"
+    _sl_r2 = _sl_g04("Write", {"file_path": _sl_path2}, _sl_state2)
+    assert _sl_r2.blocked, "Write to new file WITHOUT any memory query should block"
+    PASS += 1
+    RESULTS.append("  PASS: F2e safety — Write new file without memory → blocks")
+    print("  PASS: F2e safety — Write new file without memory → blocks")
+except Exception as _sl_e2:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: F2e safety: {_sl_e2}")
+    print(f"  FAIL: F2e safety: {_sl_e2}")
+
+# Test 3 (F2e): Write to existing file with stale memory → blocks (existing-file enforcement kept)
+try:
+    _sl_state3 = default_state()
+    _sl_state3["_session_id"] = "test_staleness_no_sideband"
+    _sl_state3["memory_last_queried"] = time.time() - 700  # stale beyond even 600s Write window
+    # Use a file that definitely exists
+    _sl_r3 = _sl_g04("Write", {"file_path": "/home/crab/.claude/hooks/test_framework.py"}, _sl_state3)
+    assert _sl_r3.blocked, "Write to existing file with stale memory should block"
+    PASS += 1
+    RESULTS.append("  PASS: F2e — Write existing file with stale memory → blocks")
+    print("  PASS: F2e — Write existing file with stale memory → blocks")
+except Exception as _sl_e3:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: F2e existing file block: {_sl_e3}")
+    print(f"  FAIL: F2e existing file block: {_sl_e3}")
+
+# Test 4 (F3): Write with memory 400s ago → passes (within 600s Write window)
+try:
+    _sl_state4 = default_state()
+    _sl_state4["_session_id"] = "test_staleness_no_sideband"
+    _sl_state4["memory_last_queried"] = time.time() - 400  # 400s ago: >300 Edit window, <600 Write window
+    _sl_r4 = _sl_g04("Write", {"file_path": "/home/crab/.claude/hooks/test_framework.py"}, _sl_state4)
+    assert not _sl_r4.blocked, f"Write with 400s-old memory should pass (600s window), got: {_sl_r4.message}"
+    PASS += 1
+    RESULTS.append("  PASS: F3 — Write 400s ago → passes (600s window)")
+    print("  PASS: F3 — Write 400s ago → passes (600s window)")
+except Exception as _sl_e4:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: F3 Write window: {_sl_e4}")
+    print(f"  FAIL: F3 Write window: {_sl_e4}")
+
+# Test 5 (F3): Edit with memory 400s ago → blocks (Edit stays at 300s)
+try:
+    _sl_state5 = default_state()
+    _sl_state5["_session_id"] = "test_staleness_no_sideband"
+    _sl_state5["memory_last_queried"] = time.time() - 400  # 400s ago: >300 Edit window
+    _sl_r5 = _sl_g04("Edit", {"file_path": "/home/crab/.claude/hooks/test_framework.py"}, _sl_state5)
+    assert _sl_r5.blocked, "Edit with 400s-old memory should block (300s window)"
+    PASS += 1
+    RESULTS.append("  PASS: F3 — Edit 400s ago → blocks (300s window)")
+    print("  PASS: F3 — Edit 400s ago → blocks (300s window)")
+except Exception as _sl_e5:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: F3 Edit window: {_sl_e5}")
+    print(f"  FAIL: F3 Edit window: {_sl_e5}")
+
+# Verify WRITE_FRESHNESS_WINDOW constant is 600
+try:
+    assert _sl_wfw == 600, f"WRITE_FRESHNESS_WINDOW should be 600, got {_sl_wfw}"
+    PASS += 1
+    RESULTS.append("  PASS: WRITE_FRESHNESS_WINDOW == 600")
+    print("  PASS: WRITE_FRESHNESS_WINDOW == 600")
+except Exception as _sl_e6:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: WRITE_FRESHNESS_WINDOW: {_sl_e6}")
+    print(f"  FAIL: WRITE_FRESHNESS_WINDOW: {_sl_e6}")
 
 # ─────────────────────────────────────────────────
 # v2.5.0 — Cherry-pick features: ULID, Gate 17, 4-tier budget

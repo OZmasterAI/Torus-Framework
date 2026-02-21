@@ -20,6 +20,7 @@ GATE_NAME = "GATE 4: MEMORY FIRST"
 
 # Max time (seconds) since last memory query before edits are blocked
 MEMORY_FRESHNESS_WINDOW = 300  # 5 minutes
+WRITE_FRESHNESS_WINDOW = 600   # 10 minutes — Write gets more time (large file composition)
 
 # Tools that require recent memory query
 GATED_TOOLS = {"Edit", "Write", "NotebookEdit", "Task"}
@@ -72,11 +73,21 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         exempt_stats[basename] = exempt_stats.get(basename, 0) + 1
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
+    # F2e: Write to non-existent file (new file creation) is exempt from staleness
+    # window IF memory was queried at least once this session. This prevents the
+    # staleness loop where subagents research, compose, then get blocked by Write.
+    if tool_name == "Write" and file_path and not os.path.exists(file_path):
+        if get_memory_last_queried(state) > 0:
+            return GateResult(blocked=False, gate_name=GATE_NAME)
+        # Memory never queried — fall through to normal block
+
     # Check if memory was queried recently (checks both enforcer state AND MCP sideband file)
     last_query = get_memory_last_queried(state)
     elapsed = time.time() - last_query
 
-    freshness_window = state.get("gate_tune_overrides", {}).get("gate_04_memory_first", {}).get("freshness_window", MEMORY_FRESHNESS_WINDOW)
+    # F3: Per-tool freshness windows — Write gets 10 min (composition takes longer)
+    base_window = WRITE_FRESHNESS_WINDOW if tool_name == "Write" else MEMORY_FRESHNESS_WINDOW
+    freshness_window = state.get("gate_tune_overrides", {}).get("gate_04_memory_first", {}).get("freshness_window", base_window)
     if elapsed > freshness_window:
         if last_query == 0:
             msg = f"[{GATE_NAME}] BLOCKED: Query memory before editing. Use search_knowledge() to check for existing knowledge about what you're changing."

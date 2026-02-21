@@ -596,6 +596,22 @@ def main():
     state = load_state(session_id=session_id)
     state["_session_id"] = session_id
 
+    # F4: Subagent mini-boot — refresh sideband timestamp on first encounter
+    # of a new session_id. Gives subagents a fresh Gate 4 window at startup
+    # without requiring a full SessionStart boot sequence.
+    # Only triggers for UUID-pattern session IDs (real subagent sessions).
+    # Main sessions get sideband from SessionStart boot; test sessions are excluded.
+    if (not state.get("_sideband_refreshed")
+            and len(session_id) >= 8 and session_id[8:9] == "-"
+            and all(c in "0123456789abcdef" for c in session_id[:8])):
+        try:
+            from boot_pkg.memory import _write_sideband_timestamp
+            _write_sideband_timestamp()
+        except Exception:
+            pass  # Best-effort — subagent can still query memory to refresh
+        state["_sideband_refreshed"] = True
+        save_state(state, session_id=session_id)
+
     # Sync security_profile from LIVE_STATE.json (source of truth for profile toggle)
     live_profile = get_live_toggle("security_profile")
     if live_profile:
