@@ -1,5 +1,5 @@
 {
-  "session_count": 169,
+  "session_count": 170,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -7,7 +7,7 @@
   "feature_status": "in-progress",
   "test_count": 1533,
   "test_failures": 0,
-  "what_was_done": "Session 169: Deep memory pipeline analysis and two fixes. (1) Fixed UDS socket intermittent warnings in gather.py — bumped retries 1→2, silenced cosmetic warning. (2) Added 3rd trim to search_knowledge() pipeline (line 1638) fixing L3/linked results bypassing top_k budget. (3) Full pipeline trace with 3 research agents: write path (14 steps), search path (19 steps), auto-capture (6 steps), causal chain, infrastructure. (4) Confirmed L2/L3 asymmetry is intentional (L3 backup-only, harder to trigger). (5) Created Memory-Architecture-Diagram.md on Desktop. HTML version pending.",
+  "what_was_done": "Session 169: Deep memory pipeline analysis and two fixes. (1) Fixed UDS socket intermittent warnings in gather.py \u2014 bumped retries 1\u21922, silenced cosmetic warning. (2) Added 3rd trim to search_knowledge() pipeline (line 1638) fixing L3/linked results bypassing top_k budget. (3) Full pipeline trace with 3 research agents: write path (14 steps), search path (19 steps), auto-capture (6 steps), causal chain, infrastructure. (4) Confirmed L2/L3 asymmetry is intentional (L3 backup-only, harder to trigger). (5) Created Memory-Architecture-Diagram.md on Desktop. HTML version pending.",
   "service_status": "Memory MCP: RUNNING (1099 memories) | Tests: 1533 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
   "next_steps": [
     "Create Memory-Architecture-Diagram.html on Desktop (matching dark theme)",
@@ -36,7 +36,7 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "session_metrics": "",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 0m\n- **Tool Calls**: 0 (none tracked)\n- **Files Modified**: 0 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: none this session",
   "last_session_metrics": {
     "reads": 0,
     "edits": 0,
