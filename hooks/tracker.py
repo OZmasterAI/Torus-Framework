@@ -2,7 +2,7 @@
 """PostToolUse hook — thin shim, delegates to tracker_pkg/.
 
 All imports are re-exported so that existing consumers (test_framework.py,
-test_edit_streak.py, etc.) continue to work with `from tracker import X`.
+tests/test_edit_streak.py, etc.) continue to work with `from tracker import X`.
 """
 import os
 import sys
