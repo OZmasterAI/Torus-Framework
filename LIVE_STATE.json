@@ -1,5 +1,5 @@
 {
-  "session_count": 173,
+  "session_count": 174,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -10,7 +10,7 @@
   "what_was_done": "Session 173: Attempted Memory-Architecture-Diagram.html creation. First version (7-tab high-level) written but user wanted full .md depth. Comprehensive 11-tab version hit 32000 output token limit twice, builder subagent got stuck. Set CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000 in ~/.bashrc. Explained claude_runner.py suggested refactor (not needed). Answered token limit question.",
   "service_status": "Memory MCP: RUNNING (1104 memories) | Tests: 1533 total, 1 pre-existing failure | Framework: v2.5.3 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
   "next_steps": [
-    "Create Memory-Architecture-Diagram.html on Desktop — use Sonnet subagent writing in chunks (CSS+skeleton first, then each tab). Source: ~/Desktop/Memory-Architecture-Diagram.md (900 lines, 11 sections). Token limit now 64000.",
+    "Create Memory-Architecture-Diagram.html on Desktop \u2014 use Sonnet subagent writing in chunks (CSS+skeleton first, then each tab). Source: ~/Desktop/Memory-Architecture-Diagram.md (900 lines, 11 sections). Token limit now 64000.",
     "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop",
     "Fix pre-existing test failures: test_edit_streak.py (gate 5 behavior change), test_state_migrator.py (int/float schema mismatch)",
@@ -38,10 +38,10 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 18m\n- **Tool Calls**: 17 (Bash: 10, Read: 2, Edit: 2, Grep: 1, Skill: 1, mcp__memory__remember_this: 1)\n- **Files Modified**: 2 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 6 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/hooks/tracker.py`\n- `/home/crab/.claude/LIVE_STATE.json`",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 23m\n- **Tool Calls**: 16 (Read: 6, Bash: 6, mcp__memory__search_knowledge: 1, mcp__memory__remember_this: 1, Skill: 1, Edit: 1)\n- **Files Modified**: 1 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: none this session\n- **Subagents**: 2 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`",
   "last_session_metrics": {
-    "reads": 2,
-    "edits": 2,
+    "reads": 4,
+    "edits": 1,
     "errors": 0,
     "verified": 0,
     "pending": 0
