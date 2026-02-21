@@ -128,6 +128,8 @@ def default_state():
         "gate_tune_overrides": {},           # {gate_name: {param: value}} — written by boot.py auto-tune
         # v3.2 fields (error recovery — deferred items)
         "deferred_items": [],               # [{strategy, error_signature, fail_count, file, deferred_at}] capped at 50
+        # v3.3 fields (security profiles)
+        "security_profile": "balanced",     # Active risk profile: "strict" | "balanced" | "permissive"
     }
 
 
@@ -196,6 +198,8 @@ def get_state_schema():
         "gate_tune_overrides": {"type": "dict", "description": "Auto-tune threshold overrides per gate: {gate: {param: value}}", "category": "evolve"},
         # v3.2 fields (error recovery — deferred items)
         "deferred_items": {"type": "list", "description": "Deferred error recovery items: [{strategy, error_signature, fail_count, file, deferred_at}]", "category": "causal", "max_size": 50},
+        # v3.3 fields (security profiles)
+        "security_profile": {"type": "str", "description": "Active security risk profile: strict | balanced | permissive", "category": "security"},
     }
 
 
@@ -358,6 +362,21 @@ def _validate_consistency(state):
         state["skill_usage"] = {}
         corrections.append("skill_usage: reset to empty dict (was not a dict)")
 
+    # Cap gate_timing_stats dict
+    timing = state.get("gate_timing_stats", {})
+    if len(timing) > 20:
+        sorted_timing = sorted(timing.items(), key=lambda x: x[1].get("count", 0), reverse=True)
+        state["gate_timing_stats"] = dict(sorted_timing[:20])
+        corrections.append(f"gate_timing_stats: trimmed from {len(timing)} to 20")
+
+    # Cap canary state lists (Gate 18)
+    for canary_key in ("canary_short_timestamps", "canary_long_timestamps"):
+        ts_list = state.get(canary_key)
+        if isinstance(ts_list, list) and len(ts_list) > 600:
+            old_len = len(ts_list)
+            state[canary_key] = ts_list[-600:]
+            corrections.append(f"{canary_key}: trimmed from {old_len} to 600")
+
     # Remove orphaned keys from previous schema versions
     _ORPHANED_KEYS = {"edits_locked", "confidence_warnings", "gate12_warn_count"}
     for key in _ORPHANED_KEYS:
@@ -474,6 +493,26 @@ def save_state(state, session_id="main"):
     chains = state.get("pending_chain_ids", [])
     if len(chains) > MAX_PENDING_CHAINS:
         state["pending_chain_ids"] = chains[-MAX_PENDING_CHAINS:]
+
+    # Cap gate_timing_stats dict — keep only active gates (max 20 entries)
+    timing = state.get("gate_timing_stats", {})
+    if len(timing) > 20:
+        sorted_timing = sorted(timing.items(), key=lambda x: x[1].get("count", 0), reverse=True)
+        state["gate_timing_stats"] = dict(sorted_timing[:20])
+
+    # Cap canary timestamp lists to prevent unbounded growth (Gate 18)
+    for canary_key in ("canary_short_timestamps", "canary_long_timestamps"):
+        ts_list = state.get(canary_key)
+        if isinstance(ts_list, list) and len(ts_list) > 600:
+            state[canary_key] = ts_list[-600:]
+    canary_seq = state.get("canary_recent_seq")
+    if isinstance(canary_seq, list) and len(canary_seq) > 10:
+        state["canary_recent_seq"] = canary_seq[-10:]
+
+    # Cap gate_block_outcomes list
+    outcomes = state.get("gate_block_outcomes", [])
+    if isinstance(outcomes, list) and len(outcomes) > MAX_GATE_BLOCK_OUTCOMES:
+        state["gate_block_outcomes"] = outcomes[-MAX_GATE_BLOCK_OUTCOMES:]
 
     # Ensure version is set
     state["_version"] = STATE_VERSION

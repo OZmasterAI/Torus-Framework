@@ -3,35 +3,92 @@
   "plugins": {
     "pyright-lsp@claude-plugins-official": [
       {
-        "scope": "project",
+        "scope": "user",
         "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0",
         "version": "1.0.0",
         "installedAt": "2026-02-13T01:18:50.368Z",
-        "lastUpdated": "2026-02-13T01:35:16.632Z",
-        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3",
-        "projectPath": "/home/crab"
+        "lastUpdated": "2026-02-20T19:47:30.973Z",
+        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
       }
     ],
     "rust-analyzer-lsp@claude-plugins-official": [
       {
-        "scope": "project",
+        "scope": "user",
         "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0",
         "version": "1.0.0",
         "installedAt": "2026-02-13T01:35:16.632Z",
-        "lastUpdated": "2026-02-13T01:35:16.632Z",
-        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3",
-        "projectPath": "/home/crab"
+        "lastUpdated": "2026-02-20T19:47:30.973Z",
+        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
       }
     ],
     "typescript-lsp@claude-plugins-official": [
       {
-        "scope": "project",
+        "scope": "user",
         "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/typescript-lsp/1.0.0",
         "version": "1.0.0",
         "installedAt": "2026-02-13T01:35:16.632Z",
-        "lastUpdated": "2026-02-13T01:35:16.632Z",
-        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3",
-        "projectPath": "/home/crab"
+        "lastUpdated": "2026-02-20T19:47:30.973Z",
+        "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
+      }
+    ],
+    "feature-dev@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/feature-dev/aa296ec81e8c",
+        "version": "aa296ec81e8c",
+        "installedAt": "2026-02-20T19:47:32.244Z",
+        "lastUpdated": "2026-02-20T19:47:32.244Z",
+        "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
+      }
+    ],
+    "pr-review-toolkit@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/pr-review-toolkit/aa296ec81e8c",
+        "version": "aa296ec81e8c",
+        "installedAt": "2026-02-20T19:47:33.606Z",
+        "lastUpdated": "2026-02-20T19:47:33.606Z",
+        "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
+      }
+    ],
+    "code-review@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/code-review/aa296ec81e8c",
+        "version": "aa296ec81e8c",
+        "installedAt": "2026-02-20T19:47:34.127Z",
+        "lastUpdated": "2026-02-20T19:47:34.127Z",
+        "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
+      }
+    ],
+    "hookify@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/hookify/aa296ec81e8c",
+        "version": "aa296ec81e8c",
+        "installedAt": "2026-02-20T19:47:34.478Z",
+        "lastUpdated": "2026-02-20T19:47:34.478Z",
+        "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
+      }
+    ],
+    "skill-creator@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/skill-creator/aa296ec81e8c",
+        "version": "aa296ec81e8c",
+        "installedAt": "2026-02-20T19:47:34.679Z",
+        "lastUpdated": "2026-02-20T19:47:34.679Z",
+        "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
+      }
+    ],
+    "code-simplifier@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/home/crab/.claude/plugins/cache/claude-plugins-official/code-simplifier/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-02-20T19:47:34.838Z",
+        "lastUpdated": "2026-02-20T19:47:34.838Z",
+        "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
       }
     ]
   }

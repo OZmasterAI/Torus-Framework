@@ -339,6 +339,222 @@ def reset(service: str) -> None:
         pass  # Fail-open
 
 
+# ── Gate circuit-breaker integration ────────────────────────────────────────────
+#
+# Gate-specific circuit breaker tracks crashes (exceptions) in individual gate
+# modules and temporarily skips them when they crash repeatedly.  This is
+# separate from the general service circuit breaker above.
+#
+# Design:
+#   - Tier 1 safety gates (01-03) are NEVER skipped regardless of crash count.
+#   - 3 crashes within a 5-minute sliding window → circuit OPENS.
+#   - After 60-second cooldown the circuit enters HALF_OPEN (one probe allowed).
+#   - A successful probe → circuit CLOSES.  Another crash → re-OPEN.
+#   - Gate state is persisted to a dedicated file (survives reboots).
+
+_GATE_CRASH_THRESHOLD = 3    # crashes within window → OPEN
+_GATE_CRASH_WINDOW    = 300  # sliding window in seconds (5 minutes)
+_GATE_COOLDOWN        = 60   # seconds in OPEN before HALF_OPEN
+_GATE_SUCCESS_NEEDED  = 1    # successes in HALF_OPEN → CLOSED
+
+_GATE_STATE_PATH = os.path.join(
+    os.path.expanduser("~"), ".claude", "hooks", ".circuit_breaker_state.json"
+)
+
+# Tier 1 safety gates: never skipped.
+_TIER1_GATE_NAMES = {
+    "gate_01_read_before_edit",
+    "gate_02_no_destroy",
+    "gate_03_test_before_deploy",
+}
+
+_gate_lock = threading.Lock()
+
+
+def _load_gate_state() -> Dict[str, Any]:
+    """Load gate circuit-breaker state from disk (fail-open)."""
+    try:
+        if os.path.isfile(_GATE_STATE_PATH):
+            with open(_GATE_STATE_PATH, "r") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                return data
+    except (OSError, IOError, json.JSONDecodeError, ValueError):
+        pass
+    return {}
+
+
+def _save_gate_state(data: Dict[str, Any]) -> None:
+    """Atomically save gate circuit-breaker state (fail-open)."""
+    try:
+        dir_ = os.path.dirname(_GATE_STATE_PATH)
+        os.makedirs(dir_, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_, prefix=".gcb_tmp_")
+        try:
+            with os.fdopen(fd, "w") as fh:
+                json.dump(data, fh, indent=2)
+            os.replace(tmp_path, _GATE_STATE_PATH)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    except (OSError, IOError, ValueError):
+        pass
+
+
+def _default_gate_record() -> Dict[str, Any]:
+    """Return a fresh gate circuit-breaker record."""
+    return {
+        "state":            STATE_CLOSED,
+        "crash_timestamps": [],  # list of epoch floats (sliding window)
+        "opened_at":        None,
+        "total_crashes":    0,
+        "total_skips":      0,
+    }
+
+
+def _get_or_create_gate(data: Dict[str, Any], gate_name: str) -> Dict[str, Any]:
+    """Fetch or create a gate record, back-filling missing keys."""
+    if gate_name not in data:
+        data[gate_name] = _default_gate_record()
+    rec = data[gate_name]
+    defaults = _default_gate_record()
+    for key, val in defaults.items():
+        rec.setdefault(key, val)
+    return rec
+
+
+def _prune_crash_window(rec: Dict[str, Any]) -> None:
+    """Remove crash timestamps outside the sliding window."""
+    cutoff = time.time() - _GATE_CRASH_WINDOW
+    rec["crash_timestamps"] = [t for t in rec["crash_timestamps"] if t >= cutoff]
+
+
+def _gate_maybe_recover(rec: Dict[str, Any]) -> None:
+    """Transition OPEN → HALF_OPEN if cooldown has elapsed."""
+    if rec["state"] == STATE_OPEN:
+        opened_at = rec.get("opened_at") or 0
+        if time.time() - opened_at >= _GATE_COOLDOWN:
+            rec["state"] = STATE_HALF_OPEN
+
+
+def should_skip_gate(gate_name: str) -> bool:
+    """Return True if *gate_name*'s circuit is OPEN (caller should skip it).
+
+    Returns False for CLOSED (normal) and HALF_OPEN (probe allowed through).
+    Tier 1 safety gates always return False — they are never skipped.
+    Defaults to False (fail-open) on any error.
+    """
+    if gate_name in _TIER1_GATE_NAMES:
+        return False
+    try:
+        with _gate_lock:
+            data = _load_gate_state()
+            if gate_name not in data:
+                return False
+            rec = data[gate_name]
+            _gate_maybe_recover(rec)
+            if rec["state"] == STATE_OPEN:
+                rec["total_skips"] = rec.get("total_skips", 0) + 1
+                _save_gate_state(data)
+                return True
+            if rec["state"] == STATE_HALF_OPEN:
+                _save_gate_state(data)
+            return False
+    except Exception:
+        return False  # Fail-open
+
+
+def record_gate_result(gate_name: str, success: bool) -> None:
+    """Record a gate execution outcome for circuit-breaker tracking.
+
+    On crash (success=False):
+      - Append timestamp to sliding window.
+      - Prune entries outside _GATE_CRASH_WINDOW.
+      - If crash count >= _GATE_CRASH_THRESHOLD → OPEN.
+      - In HALF_OPEN on crash → re-OPEN.
+
+    On success (success=True):
+      - In HALF_OPEN → CLOSED (probe succeeded).
+      - In CLOSED → no-op (normal operation).
+
+    Tier 1 gates are tracked but never put into OPEN state (safety invariant).
+    Silently swallows all errors (fail-open).
+    """
+    try:
+        with _gate_lock:
+            data = _load_gate_state()
+            rec = _get_or_create_gate(data, gate_name)
+            _gate_maybe_recover(rec)
+
+            if not success:
+                # Crash: record in sliding window
+                now = time.time()
+                rec["crash_timestamps"].append(now)
+                _prune_crash_window(rec)
+                rec["total_crashes"] = rec.get("total_crashes", 0) + 1
+
+                # Never open Tier 1 gate circuits
+                if gate_name not in _TIER1_GATE_NAMES:
+                    if rec["state"] == STATE_HALF_OPEN:
+                        rec["state"]     = STATE_OPEN
+                        rec["opened_at"] = now
+                    elif rec["state"] == STATE_CLOSED:
+                        if len(rec["crash_timestamps"]) >= _GATE_CRASH_THRESHOLD:
+                            rec["state"]     = STATE_OPEN
+                            rec["opened_at"] = now
+            else:
+                # Success: probe in HALF_OPEN closes the circuit
+                if rec["state"] == STATE_HALF_OPEN:
+                    rec["state"]            = STATE_CLOSED
+                    rec["crash_timestamps"] = []
+                    rec["opened_at"]        = None
+
+            _save_gate_state(data)
+    except Exception:
+        pass  # Fail-open
+
+
+def get_gate_circuit_state(gate_name: str) -> str:
+    """Return the circuit-breaker state string for *gate_name*.
+
+    Returns STATE_CLOSED on unknown gate or error (fail-open).
+    """
+    try:
+        with _gate_lock:
+            data = _load_gate_state()
+            if gate_name not in data:
+                return STATE_CLOSED
+            rec = data[gate_name]
+            _gate_maybe_recover(rec)
+            _save_gate_state(data)
+            return rec["state"]
+    except Exception:
+        return STATE_CLOSED
+
+
+def reset_gate_circuit(gate_name: str) -> None:
+    """Force the gate circuit for *gate_name* back to CLOSED (for tests)."""
+    try:
+        with _gate_lock:
+            data = _load_gate_state()
+            data[gate_name] = _default_gate_record()
+            _save_gate_state(data)
+    except Exception:
+        pass
+
+
+def get_all_gate_states() -> Dict[str, Dict[str, Any]]:
+    """Return a snapshot of all tracked gate circuit-breaker records."""
+    try:
+        with _gate_lock:
+            data = _load_gate_state()
+            return {k: dict(v) for k, v in data.items()}
+    except Exception:
+        return {}
+
+
 # ── Smoke test / CLI entry point ────────────────────────────────────────────────
 
 if __name__ == "__main__":

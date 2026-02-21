@@ -1,7 +1,32 @@
-# /security-scan — Framework Security Audit
+---
+name: security-scan
+description: Run a comprehensive security scan of the framework
+user_invocable: true
+---
+
+# Security Scan
+
+Run a comprehensive security scan of the Torus framework's gates, hooks, state files, and MCP tools.
+
+## Steps
+1. Check all 17 gate files exist and export proper `check()` functions
+2. Verify Gate 17 injection defense patterns are up to date
+3. Scan MCP tool registrations for description mismatches
+4. Check for hardcoded secrets in hooks/shared/*.py
+5. Verify state files don't contain sensitive data
+6. Check circuit breaker state for stuck-open gates
+7. Audit .file_claims.json for stale claims
+8. Report findings with severity levels
+
+## Usage
+Use this skill to run a security audit of the framework before deploying changes or after adding new components.
+
+Run `python3 /home/crab/.claude/skills/security-scan/scripts/scan.py` for a programmatic scan report.
+
+---
 
 ## When to use
-When user says "security scan", "scan for vulnerabilities", "check security", "audit security",
+When the user says "security scan", "scan for vulnerabilities", "check security", "audit security",
 "security audit", "find security issues", or wants to review the framework for risks.
 
 ## Commands

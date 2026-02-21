@@ -1,11 +1,20 @@
 """Session analytics for the Torus self-healing framework.
 
-Analyses session patterns over time from JSONL audit logs:
-- Tool call frequency distribution per session
-- Gate fire rate trends and spike detection
-- Error frequency and recurring pattern identification
-- Session productivity scoring
-- Trend comparison against rolling history
+Analyses session patterns over time from multiple data sources:
+- JSONL audit logs (hooks/audit/*.jsonl)
+- Gate effectiveness counters (.gate_effectiveness.json)
+- Observation capture queue (.capture_queue.jsonl)
+- Per-session state files (state_<session_id>.json)
+
+Public API:
+  get_session_summary(session_id=None) -> Dict
+      Returns a rich dict of per-session (or aggregate) metrics drawn from
+      gate_effectiveness.json, capture_queue.jsonl, and state files.
+  compare_sessions(session_a, session_b) -> Dict
+      Returns field-by-field deltas between two session IDs (string IDs).
+      Pass dicts directly to use the legacy compare_sessions_metrics() API.
+  analyse_session(...)
+      Full audit-log-based analysis (original API, preserved).
 
 Audit log entries are JSONL with keys:
   id, timestamp, gate, tool, decision, reason, session_id, state_keys, severity
@@ -16,10 +25,520 @@ import json
 import math
 import os
 import re
+import glob as _glob
+import time
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+
+# ── File-system paths ────────────────────────────────────────────────────────
+
+_HOOKS_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+_GATE_EFFECTIVENESS_FILE = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
+_CAPTURE_QUEUE_FILE = os.path.join(_HOOKS_DIR, ".capture_queue.jsonl")
+
+# State files live on the ramdisk when available, otherwise on disk
+try:
+    from shared.ramdisk import get_state_dir
+    _STATE_DIR = get_state_dir()
+except Exception:
+    _STATE_DIR = _HOOKS_DIR
+
+
+# ── Low-level data loaders ───────────────────────────────────────────────────
+
+
+def _load_gate_effectiveness() -> Dict[str, Dict[str, int]]:
+    """Load the persistent gate effectiveness counters.
+
+    Reads ~/.claude/hooks/.gate_effectiveness.json.
+
+    Returns:
+        Dict mapping gate_name -> {"blocks": N, "overrides": N, "prevented": N}.
+        Empty dict if file is missing or malformed.
+
+    Example::
+
+        {
+          "gate_01_read_before_edit": {"blocks": 2211, "overrides": 0, "prevented": 1},
+          "gate_04_memory_first":     {"blocks": 327,  "overrides": 0, "prevented": 1},
+        }
+    """
+    try:
+        with open(_GATE_EFFECTIVENESS_FILE) as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            return data
+    except (IOError, OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def _load_capture_queue(max_entries: int = 5000) -> List[Dict]:
+    """Load observation entries from the capture queue JSONL.
+
+    Reads ~/.claude/hooks/.capture_queue.jsonl.  Each line is a JSON object
+    with at minimum a "metadata" dict containing "session_id", "tool_name",
+    "timestamp", "sentiment", "has_error", and "exit_code".
+
+    Args:
+        max_entries: Maximum number of lines to read (tail of file).
+
+    Returns:
+        List of entry dicts; empty list on any I/O error.
+    """
+    entries: List[Dict] = []
+    try:
+        with open(_CAPTURE_QUEUE_FILE, "r", encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()
+        # Take the tail if there are more lines than max_entries
+        if len(lines) > max_entries:
+            lines = lines[-max_entries:]
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    entries.append(obj)
+            except json.JSONDecodeError:
+                continue
+    except (IOError, OSError):
+        pass
+    return entries
+
+
+def _load_all_state_files() -> Dict[str, Dict]:
+    """Enumerate and load all per-session state JSON files.
+
+    Checks the ramdisk state directory first, then the disk fallback.
+    Silently skips files that cannot be parsed.
+
+    Returns:
+        Dict mapping session_id -> state_dict.  The session_id is derived
+        from the filename (state_<session_id>.json).
+    """
+    result: Dict[str, Dict] = {}
+    dirs_to_check = [_STATE_DIR]
+    # Always include the disk directory in case ramdisk != disk
+    disk_dir = _HOOKS_DIR
+    if disk_dir != _STATE_DIR:
+        dirs_to_check.append(disk_dir)
+
+    seen_sessions: set = set()
+    for directory in dirs_to_check:
+        pattern = os.path.join(directory, "state_*.json")
+        for fpath in _glob.glob(pattern):
+            # Skip lock and tmp files
+            if fpath.endswith(".lock") or ".tmp." in fpath:
+                continue
+            basename = os.path.basename(fpath)
+            # Extract session_id from filename: state_<session_id>.json
+            session_id = basename[len("state_"):-len(".json")]
+            if session_id in seen_sessions:
+                continue  # ramdisk copy takes precedence
+            try:
+                with open(fpath) as fh:
+                    state = json.load(fh)
+                if isinstance(state, dict):
+                    result[session_id] = state
+                    seen_sessions.add(session_id)
+            except (IOError, OSError, json.JSONDecodeError):
+                continue
+    return result
+
+
+def _state_session_metrics(session_id: str, state: Dict) -> Dict[str, Any]:
+    """Extract per-session metric fields from a loaded state dict.
+
+    Args:
+        session_id: The session identifier string.
+        state:      The loaded state dict.
+
+    Returns:
+        A flat metrics dict with the following keys:
+
+        session_id          - str
+        session_start       - float (Unix timestamp)
+        session_start_iso   - str (ISO 8601)
+        duration_minutes    - float (minutes since session_start; 0 if not started)
+        total_tool_calls    - int
+        tool_distribution   - dict {tool_name: count}
+        blocks_this_session - int  (sum of gate_effectiveness blocks added since start)
+        warnings_this_session - int (gate6_warn_count)
+        files_read_count    - int
+        files_edited_count  - int
+        memory_queries      - int  (from tool_call_counts for memory search tools)
+        memory_saves        - int  (from tool_call_counts for remember_this)
+        gate_effectiveness  - dict (gate_effectiveness field, may be empty)
+        security_profile    - str
+        pending_verification_count - int
+        active_bans_count   - int
+        subagent_count      - int
+        auto_remember_count - int
+        last_test_exit_code - int or None
+    """
+    now = time.time()
+    session_start = float(state.get("session_start", 0))
+    duration_minutes = (now - session_start) / 60.0 if session_start > 0 else 0.0
+
+    tool_counts: Dict[str, int] = state.get("tool_call_counts", {})
+    total_calls = int(state.get("total_tool_calls", 0)) or sum(tool_counts.values())
+
+    # Memory tool names used in state tracking
+    _MEM_SEARCH_TOOLS = {
+        "mcp__memory__search_knowledge", "search_knowledge",
+        "mcp__memory__search_observations", "search_observations",
+    }
+    _MEM_SAVE_TOOLS = {
+        "mcp__memory__remember_this", "remember_this",
+    }
+    memory_queries = sum(v for k, v in tool_counts.items() if k in _MEM_SEARCH_TOOLS)
+    memory_saves = sum(v for k, v in tool_counts.items() if k in _MEM_SAVE_TOOLS)
+
+    iso_start = ""
+    if session_start > 0:
+        try:
+            iso_start = datetime.fromtimestamp(session_start, tz=timezone.utc).isoformat()
+        except (OSError, ValueError, OverflowError):
+            pass
+
+    bans = state.get("active_bans", {})
+    bans_count = len(bans) if isinstance(bans, dict) else 0
+
+    subagents = state.get("active_subagents", [])
+    subagent_count = len(subagents) if isinstance(subagents, list) else 0
+
+    return {
+        "session_id": session_id,
+        "session_start": session_start,
+        "session_start_iso": iso_start,
+        "duration_minutes": round(duration_minutes, 2),
+        "total_tool_calls": total_calls,
+        "tool_distribution": dict(tool_counts),
+        "warnings_this_session": int(state.get("gate6_warn_count", 0)),
+        "files_read_count": len(state.get("files_read", [])),
+        "files_edited_count": len(state.get("files_edited", [])),
+        "memory_queries": memory_queries,
+        "memory_saves": memory_saves,
+        "gate_effectiveness": state.get("gate_effectiveness", {}),
+        "security_profile": state.get("security_profile", "balanced"),
+        "pending_verification_count": len(state.get("pending_verification", [])),
+        "active_bans_count": bans_count,
+        "subagent_count": subagent_count,
+        "auto_remember_count": int(state.get("auto_remember_count", 0)),
+        "last_test_exit_code": state.get("last_test_exit_code"),
+    }
+
+
+# ── get_session_summary ──────────────────────────────────────────────────────
+
+
+def get_session_summary(
+    session_id: Optional[str] = None,
+    include_capture_queue: bool = True,
+) -> Dict[str, Any]:
+    """Return a consolidated per-session (or aggregate) metrics snapshot.
+
+    Data is pulled from three sources:
+
+    1. **.gate_effectiveness.json** — cumulative gate fire/block/prevented counts
+       across all sessions (since these are never reset).
+    2. **.capture_queue.jsonl** — observation entries; used for sentiment
+       distribution, error-rate, and per-session tool call counts derived
+       from the queue metadata.
+    3. **state_<session_id>.json** — per-session state; used for tool_distribution,
+       total_tool_calls, warnings, files read/edited, memory usage, etc.
+
+    Args:
+        session_id:
+            If given, restrict state-file and capture-queue metrics to this
+            session only.  Pass ``None`` to return aggregate figures across all
+            live sessions.
+        include_capture_queue:
+            Whether to parse the capture queue (can be slow for large queues).
+            Defaults to True.
+
+    Returns:
+        Dict with the following top-level keys:
+
+        session_id (str|None)
+            The queried session ID, or None for aggregate.
+
+        state (dict|None)
+            Extracted metrics from the session state file.  Contains:
+            total_tool_calls, tool_distribution, warnings_this_session,
+            files_read_count, files_edited_count, memory_queries, memory_saves,
+            gate_effectiveness, security_profile, pending_verification_count,
+            active_bans_count, subagent_count, auto_remember_count,
+            last_test_exit_code, duration_minutes, session_start_iso.
+            ``None`` if no matching state file found.
+
+        all_sessions (list[dict])
+            List of state-metric dicts for every discovered session (only
+            populated when session_id is None).
+
+        gate_effectiveness (dict)
+            Cumulative gate effectiveness counters from the persistent JSON
+            file.  Keys are gate names; values are {blocks, overrides,
+            prevented}.
+
+        top_fired_gates (list[dict])
+            Top 10 gates by block count from gate_effectiveness, each entry:
+            {"gate": str, "blocks": int, "overrides": int, "prevented": int}.
+
+        capture_queue_stats (dict)
+            Metrics derived from capture queue entries for the target session
+            (or all sessions when session_id is None):
+
+            entry_count    - total observations in queue (scoped to session)
+            tool_distribution - {tool_name: count} from queue metadata
+            error_rate     - fraction of entries with has_error == "true"
+            sentiment_counts - {sentiment_label: count}
+            sessions_in_queue - number of distinct session IDs in queue
+
+            Populated as an empty dict when ``include_capture_queue=False``.
+
+        blocks_total (int)
+            Total blocks across all gates from gate_effectiveness.
+
+        generated_at (str)
+            ISO 8601 timestamp of when this summary was generated.
+    """
+    now = time.time()
+    generated_at = datetime.fromtimestamp(now, tz=timezone.utc).isoformat()
+
+    # --- 1. Gate effectiveness (global, cumulative) ---
+    gate_eff = _load_gate_effectiveness()
+    blocks_total = sum(v.get("blocks", 0) for v in gate_eff.values())
+
+    # Top-fired gates sorted by blocks descending
+    sorted_gates = sorted(
+        [
+            {
+                "gate": gname,
+                "blocks": gdata.get("blocks", 0),
+                "overrides": gdata.get("overrides", 0),
+                "prevented": gdata.get("prevented", 0),
+            }
+            for gname, gdata in gate_eff.items()
+        ],
+        key=lambda x: x["blocks"],
+        reverse=True,
+    )[:10]
+
+    # --- 2. State files ---
+    all_states = _load_all_state_files()
+    all_session_metrics: List[Dict] = []
+    for sid, sdata in all_states.items():
+        # Skip test fixtures (state_test-* files)
+        if sid.startswith("test-"):
+            continue
+        all_session_metrics.append(_state_session_metrics(sid, sdata))
+
+    # Find the specific session if requested
+    target_state_metrics: Optional[Dict] = None
+    if session_id is not None:
+        target_state = all_states.get(session_id)
+        if target_state is not None:
+            target_state_metrics = _state_session_metrics(session_id, target_state)
+    else:
+        # For aggregate, pick the most recently started session as "current"
+        if all_session_metrics:
+            target_state_metrics = max(
+                all_session_metrics, key=lambda m: m["session_start"]
+            )
+
+    # --- 3. Capture queue ---
+    cq_stats: Dict[str, Any] = {}
+    if include_capture_queue:
+        queue_entries = _load_capture_queue()
+        if session_id:
+            scoped = [
+                e for e in queue_entries
+                if e.get("metadata", {}).get("session_id") == session_id
+            ]
+        else:
+            scoped = queue_entries
+
+        tool_ctr: Counter = Counter()
+        sentiment_ctr: Counter = Counter()
+        error_count = 0
+        distinct_sessions: set = set()
+        for entry in scoped:
+            meta = entry.get("metadata", {})
+            tool_name = meta.get("tool_name", "unknown")
+            if tool_name:
+                tool_ctr[tool_name] += 1
+            sentiment = meta.get("sentiment", "neutral")
+            if sentiment:
+                sentiment_ctr[sentiment] += 1
+            if meta.get("has_error", "false") == "true":
+                error_count += 1
+            sid_ = meta.get("session_id", "")
+            if sid_:
+                distinct_sessions.add(sid_)
+
+        total_scoped = len(scoped)
+        cq_stats = {
+            "entry_count": total_scoped,
+            "tool_distribution": dict(tool_ctr.most_common()),
+            "error_rate": round(error_count / total_scoped, 4) if total_scoped else 0.0,
+            "sentiment_counts": dict(sentiment_ctr.most_common()),
+            "sessions_in_queue": len(distinct_sessions),
+        }
+
+    return {
+        "session_id": session_id,
+        "state": target_state_metrics,
+        "all_sessions": all_session_metrics if session_id is None else [],
+        "gate_effectiveness": gate_eff,
+        "top_fired_gates": sorted_gates,
+        "capture_queue_stats": cq_stats,
+        "blocks_total": blocks_total,
+        "generated_at": generated_at,
+    }
+
+
+# ── compare_sessions ─────────────────────────────────────────────────────────
+
+
+def compare_sessions(
+    session_a: Any,
+    session_b: Any,
+    window: int = 10,
+) -> Dict[str, Any]:
+    """Compare two sessions and return field-by-field deltas.
+
+    Two calling conventions are supported:
+
+    **Session-ID mode** (new):
+        Pass two session-ID strings.  State files are loaded from disk/ramdisk,
+        metrics are extracted, and deltas are computed.
+
+        Example::
+
+            compare_sessions("0eae7019-...", "83f262b3-...")
+
+    **Legacy metrics-dict mode** (backward-compatible):
+        Pass a metrics dict as ``session_a`` and a list of historical dicts
+        as ``session_b``.  Delegates to :func:`compare_sessions_metrics`.
+
+        Example::
+
+            compare_sessions(current_metrics_dict, [hist1, hist2, ...])
+
+    Args:
+        session_a: Session ID string, or current-session metrics dict.
+        session_b: Session ID string, or list of historical metrics dicts.
+        window:    Rolling window for legacy mode (default 10).
+
+    Returns:
+        In session-ID mode:
+
+        Dict with keys:
+          - session_a_id:     str
+          - session_b_id:     str
+          - session_a_metrics: dict  (state metrics for session A)
+          - session_b_metrics: dict  (state metrics for session B)
+          - deltas:           dict  {field: {"a": val_a, "b": val_b, "delta": b - a}}
+            Numeric fields compared: total_tool_calls, warnings_this_session,
+            files_read_count, files_edited_count, memory_queries, memory_saves,
+            pending_verification_count, active_bans_count, subagent_count,
+            auto_remember_count, duration_minutes.
+          - gate_effectiveness_delta: dict {gate: {"a_blocks": N, "b_blocks": N, "delta": N}}
+            (uses state.gate_effectiveness if present; otherwise empty)
+          - summary: str  Human-readable one-liner.
+
+        In legacy mode: result of compare_sessions_metrics().
+    """
+    # Detect legacy mode: session_b is a list (of history dicts)
+    if isinstance(session_b, list):
+        return compare_sessions_metrics(session_a, session_b, window=window)
+
+    # Session-ID mode
+    sid_a = str(session_a)
+    sid_b = str(session_b)
+
+    all_states = _load_all_state_files()
+
+    def _get_metrics(sid: str) -> Optional[Dict]:
+        state = all_states.get(sid)
+        if state is None:
+            return None
+        return _state_session_metrics(sid, state)
+
+    m_a = _get_metrics(sid_a)
+    m_b = _get_metrics(sid_b)
+
+    _NUMERIC_FIELDS = [
+        "total_tool_calls",
+        "warnings_this_session",
+        "files_read_count",
+        "files_edited_count",
+        "memory_queries",
+        "memory_saves",
+        "pending_verification_count",
+        "active_bans_count",
+        "subagent_count",
+        "auto_remember_count",
+        "duration_minutes",
+    ]
+
+    deltas: Dict[str, Dict] = {}
+    if m_a is not None and m_b is not None:
+        for field in _NUMERIC_FIELDS:
+            val_a = m_a.get(field, 0) or 0
+            val_b = m_b.get(field, 0) or 0
+            try:
+                delta = round(float(val_b) - float(val_a), 4)
+            except (TypeError, ValueError):
+                delta = None
+            deltas[field] = {"a": val_a, "b": val_b, "delta": delta}
+
+    # Gate-level delta (from state.gate_effectiveness, which is per-session not global)
+    gate_eff_delta: Dict[str, Dict] = {}
+    if m_a is not None and m_b is not None:
+        ge_a: Dict = m_a.get("gate_effectiveness", {})
+        ge_b: Dict = m_b.get("gate_effectiveness", {})
+        all_gates = set(ge_a.keys()) | set(ge_b.keys())
+        for gate in sorted(all_gates):
+            a_blocks = ge_a.get(gate, {}).get("blocks", 0)
+            b_blocks = ge_b.get(gate, {}).get("blocks", 0)
+            gate_eff_delta[gate] = {
+                "a_blocks": a_blocks,
+                "b_blocks": b_blocks,
+                "delta": b_blocks - a_blocks,
+            }
+
+    # Build human-readable summary
+    if m_a is None and m_b is None:
+        summary = f"Neither session '{sid_a}' nor '{sid_b}' found."
+    elif m_a is None:
+        summary = f"Session '{sid_a}' not found; session '{sid_b}' has {m_b.get('total_tool_calls', 0)} tool calls."
+    elif m_b is None:
+        summary = f"Session '{sid_b}' not found; session '{sid_a}' has {m_a.get('total_tool_calls', 0)} tool calls."
+    else:
+        call_delta = deltas.get("total_tool_calls", {}).get("delta", 0)
+        sign = "+" if call_delta >= 0 else ""
+        summary = (
+            f"Session '{sid_b}' vs '{sid_a}': "
+            f"{sign}{call_delta} tool calls, "
+            f"{sign}{deltas.get('memory_queries', {}).get('delta', 0)} memory queries, "
+            f"{sign}{deltas.get('warnings_this_session', {}).get('delta', 0)} warnings."
+        )
+
+    return {
+        "session_a_id": sid_a,
+        "session_b_id": sid_b,
+        "session_a_metrics": m_a,
+        "session_b_metrics": m_b,
+        "deltas": deltas,
+        "gate_effectiveness_delta": gate_eff_delta,
+        "summary": summary,
+    }
 
 # ── Audit log directory ──────────────────────────────────────────────────────
 
@@ -348,7 +867,7 @@ def _compute_resolve_score(entries: List[Dict]) -> float:
 # ── Trend / comparison ───────────────────────────────────────────────────────
 
 
-def compare_sessions(
+def compare_sessions_metrics(
     current: Dict,
     history: List[Dict],
     window: int = 10,

@@ -48,8 +48,8 @@ SETTINGS_FILE = os.path.join(CLAUDE_DIR, "settings.json")
 CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
-EXPECTED_GATES = 16
-EXPECTED_SKILLS = 28
+EXPECTED_GATES = 17
+EXPECTED_SKILLS = 37
 EXPECTED_HOOK_EVENTS = 11
 
 # Health bar characters

@@ -37,16 +37,17 @@ GATE_MODULES = [
     "gates.gate_05_proof_before_fixed",
     "gates.gate_06_save_fix",
     "gates.gate_07_critical_file_guard",
-    "gates.gate_08_temporal",
+    # "gates.gate_08_temporal",  # DORMANT
     "gates.gate_09_strategy_ban",
     "gates.gate_10_model_enforcement",
     "gates.gate_11_rate_limit",
-    "gates.gate_12_plan_mode_save",
+    # "gates.gate_12_plan_mode_save",  # MERGED into gate_06
     "gates.gate_13_workspace_isolation",
     "gates.gate_14_confidence_check",
     "gates.gate_15_causal_chain",
     "gates.gate_16_code_quality",
     "gates.gate_17_injection_defense",
+    "gates.gate_18_canary",
 ]
 
 #: Component names for degraded-mode detection.

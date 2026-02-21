@@ -1,30 +1,30 @@
 {
-  "session_count": 163,
+  "session_count": 167,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "self-evolve-framework",
-  "feature_status": "complete",
-  "test_count": 1115,
-  "test_failures": 0,
-  "what_was_done": "Housekeeping session: Created full backup (1.7GB) and framework-only backup to Desktop (9.4MB). Merged SelfSprint1 into self-evolve-test-branch. Committed accumulated uncommitted files (diagrams, PRP templates, plugin configs). Created new branch Self-Sprint-2 from self-evolve-test-branch. Discussed which files should be in .gitignore vs committed.",
-  "service_status": "Memory MCP: RUNNING (845 memories) | Tests: 1114 passed, 1 failed | Framework: v2.5.0 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Dashboard: localhost:7777 | Branch: Self-Sprint-2 | Agent teams: ENABLED | MCP tools: 6 active, 6 dormant",
+  "feature": "self-evolve-sprint-2",
+  "feature_status": "in-progress",
+  "test_count": 1530,
+  "test_failures": 46,
+  "what_was_done": "Session 167: Sprint 2 agent wind-down. Monitored ~40 agents completing their tasks. Gate 17 enhanced with 5 new detections (homoglyphs, HTML/markdown, nested JSON, template literals, tool input scanning - 83 tests). Gate 18 canary created and wired to enforcer. Gate 2 hardened (2 real security fixes + 103 tests). Gate router pyright fixed. Enforcer got LRU gate cache. Hot-reload, gate correlator, dashboard, pipeline optimizer, tool patterns Markov, memory maintenance, session analytics, state migrator, skill mapper, skill health, gate graph, event replay, hook profiler all completed. Anomaly detector enhanced (EMA, consensus). 3 research reports delivered (hooks patterns, safety benchmarks, observability). Tests 1409->1530, failures 75->46. Disabled agent-teams, reverted settings. Memory 993->1058.",
+  "service_status": "Memory MCP: RUNNING (1058 memories) | Tests: 1530 total, 46 failures | Framework: v2.5.3 (Torus) | Gates: 18 active (Gate 8 dormant) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50+ | Agents: 13 | Skills: 37 | Plugins: 9 enabled",
   "next_steps": [
-    "Finish .gitignore cleanup (pycache, lock files, chroma.sqlite3, audit logs, runtime state files, LIVE_STATE.json, stats-cache.json)",
-    "Test wave plan verification step end-to-end with a PRP that has requirements",
-    "Enable budget_degradation + set session_token_budget",
-    "Test terminal chat end-to-end",
-    "Pop stash on Self-Sprint-2 (stashed working changes from SelfSprint1)"
+    "Fix 46 remaining test failures (Gate 1 E1/E2 crash, cascade blocking, Gate 18 counts)",
+    "Commit Sprint 2 work (massive uncommitted changes)",
+    "Add isinstance(tool_input, dict) guard to 9 gates that crash on None input (fuzzer finding)",
+    "Apply research patterns: Stop hook verification, PostToolUseFailure recovery, dependency supply chain protection",
+    "Wire auto_format.py into settings.json PostToolUse hooks",
+    "Optimize Gate 11 rate_limit (save_state I/O on every call, p95=3.64ms)"
   ],
   "known_issues": [
-    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
-    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
-    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
-    "tmux routing shared session causes interference — use dedicated claude-bot",
-    "TaskCompleted hook disabled — was firing premature quality warnings",
-    "auto_commit Co-Authored-By hardcoded Opus 4.6 — wrong when on Sonnet",
-    "UDS socket intermittently missing — gather.py warns but non-blocking"
+    "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
+    "46 test failures - Gate 1 E1/E2 crash + cascade blocking + Gate 18 count mismatch",
+    "9 of 15 gates crash on None/non-dict tool_input (fuzzer finding, need isinstance guard)",
+    "auto_commit Co-Authored-By hardcoded Opus 4.6 - wrong when on Sonnet",
+    "UDS socket intermittently missing - gather.py warns but non-blocking",
+    "test_framework.py Pyright import errors for shared modules (path resolution)"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -35,7 +35,16 @@
   "budget_degradation": false,
   "session_token_budget": 0,
   "model_profile": "balanced",
+  "security_profile": "balanced",
   "chain_memory": true,
   "tg_session_notify": true,
-  "tg_mirror_messages": true
+  "tg_mirror_messages": true,
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: ~20m\n- **Tool Calls**: ~40\n- **Files Modified**: 2 (settings.json, LIVE_STATE.json)\n- **Errors**: 0\n- **Tests**: none run directly this session (agents ran tests)",
+  "last_session_metrics": {
+    "reads": 5,
+    "edits": 3,
+    "errors": 0,
+    "verified": 0,
+    "pending": 0
+  }
 }

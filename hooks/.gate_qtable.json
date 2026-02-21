@@ -1,0 +1,82 @@
+{
+  "gates.gate_05_proof_before_fixed": {
+    "Edit": -0.07527670704513971,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003
+  },
+  "gates.gate_06_save_fix": {
+    "Edit": -0.09852191170585654,
+    "Bash": -0.0981160922394768,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003,
+    "Task": -0.019000000000000003
+  },
+  "gates.gate_09_strategy_ban": {
+    "Edit": -0.06891890659411128,
+    "NotebookEdit": 0.07560999999999998,
+    "Write": -0.019000000000000003
+  },
+  "gates.gate_11_rate_limit": {
+    "Edit": -0.09852191170585654,
+    "Bash": -0.09991404955442829,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003,
+    "Task": -0.019000000000000003,
+    "TaskOutput": -0.019000000000000003,
+    "Skill": -0.010000000000000002
+  },
+  "gates.gate_13_workspace_isolation": {
+    "Edit": -0.09852191170585654,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003
+  },
+  "gates.gate_14_confidence_check": {
+    "Edit": -0.09852191170585654,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003
+  },
+  "gates.gate_15_causal_chain": {
+    "Edit": -0.09852191170585654,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003
+  },
+  "gates.gate_16_code_quality": {
+    "Edit": -0.09852191170585654,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003
+  },
+  "gates.gate_18_canary": {
+    "Edit": -0.09852191170585654,
+    "Bash": -0.09991404955442829,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003,
+    "Task": -0.019000000000000003,
+    "TaskOutput": -0.019000000000000003,
+    "Skill": -0.010000000000000002
+  },
+  "gates.gate_01_read_before_edit": {
+    "Edit": 0.19341784238166956,
+    "NotebookEdit": 0.32240789000000003,
+    "Write": -0.019000000000000003
+  },
+  "gates.gate_04_memory_first": {
+    "Edit": 0.07680961723981575,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003,
+    "Task": 0.08289999999999999
+  },
+  "gates.gate_07_critical_file_guard": {
+    "Edit": -0.03311085869010835,
+    "NotebookEdit": -0.027100000000000006,
+    "Write": -0.019000000000000003
+  },
+  "gates.gate_02_no_destroy": {
+    "Bash": 0.2434242143550848
+  },
+  "gates.gate_03_test_before_deploy": {
+    "Bash": -0.005652492178085486
+  },
+  "gates.gate_10_model_enforcement": {
+    "Task": -0.019000000000000003
+  }
+}

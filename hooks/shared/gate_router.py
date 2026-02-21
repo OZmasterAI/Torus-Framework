@@ -28,9 +28,11 @@ Usage
 """
 
 import importlib
+import json
 import os
 import sys
 import time
+import types
 from typing import Dict, List, Optional, Set
 
 from shared.gate_result import GateResult
@@ -59,6 +61,7 @@ GATE_MODULES: List[str] = [
     "gates.gate_15_causal_chain",
     "gates.gate_16_code_quality",
     "gates.gate_17_injection_defense",
+    "gates.gate_18_canary",
 ]
 
 # Tier membership sets (module names).  gate_router only uses Tier 1 for
@@ -96,6 +99,7 @@ GATE_TOOL_MAP: Dict[str, Optional[Set[str]]] = {
     "gates.gate_15_causal_chain":        {"Edit", "Write", "NotebookEdit"},
     "gates.gate_16_code_quality":        {"Edit", "Write", "NotebookEdit"},
     "gates.gate_17_injection_defense":   {"WebFetch", "WebSearch"},
+    "gates.gate_18_canary":              None,  # Universal — observes all tool calls
 }
 
 
@@ -112,6 +116,27 @@ _stats: Dict[str, object] = {
 }
 
 
+def _get_stat_int(key: str) -> int:
+    """Safely retrieve and cast an int stat, defaulting to 0."""
+    val = _stats.get(key, 0)
+    if isinstance(val, int):
+        return val
+    return 0
+
+
+def _set_stat_int(key: str, value: int) -> None:
+    """Safely set an int stat."""
+    _stats[key] = value
+
+
+def _get_stat_list(key: str) -> List[float]:
+    """Safely retrieve and cast a list stat, defaulting to empty list."""
+    val = _stats.get(key, [])
+    if isinstance(val, list):
+        return val
+    return []
+
+
 def _reset_stats() -> None:
     """Reset all routing stats.  Useful in tests."""
     _stats["calls"] = 0
@@ -126,10 +151,10 @@ def _reset_stats() -> None:
 # owns the hot-reload lifecycle).
 # ---------------------------------------------------------------------------
 
-_loaded: Dict[str, object] = {}  # module_name -> module
+_loaded: Dict[str, types.ModuleType] = {}  # module_name -> module
 
 
-def _load_gate(module_name: str) -> Optional[object]:
+def _load_gate(module_name: str) -> Optional[types.ModuleType]:
     """Import and cache a gate module.  Returns None on failure."""
     if module_name in _loaded:
         return _loaded[module_name]
@@ -221,7 +246,7 @@ def route_gates(
         on any entry to decide whether to halt further processing.
     """
     t_start = time.time()
-    _stats["calls"] = _stats.get("calls", 0) + 1  # type: ignore[operator]
+    _set_stat_int("calls", _get_stat_int("calls") + 1)
 
     applicable = get_applicable_gates(tool_name)
     total_possible = len(applicable)
@@ -231,18 +256,18 @@ def route_gates(
 
     for module_name in applicable:
         if short_circuited:
-            _stats["gates_skipped"] = _stats.get("gates_skipped", 0) + 1  # type: ignore[operator]
+            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + 1)
             continue
 
         mod = _load_gate(module_name)
         if mod is None:
             # Gate not loadable — count as skipped, do not block (non-Tier-1).
-            _stats["gates_skipped"] = _stats.get("gates_skipped", 0) + 1  # type: ignore[operator]
+            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + 1)
             continue
 
         try:
             t_gate = time.time()
-            result: GateResult = mod.check(  # type: ignore[attr-defined]
+            result: GateResult = mod.check(
                 tool_name, tool_input, state, event_type=event_type
             )
             result.duration_ms = (time.time() - t_gate) * 1000
@@ -265,22 +290,23 @@ def route_gates(
                     severity="warn",
                 )
 
-        _stats["gates_run"] = _stats.get("gates_run", 0) + 1  # type: ignore[operator]
+        _set_stat_int("gates_run", _get_stat_int("gates_run") + 1)
         results.append(result)
 
         # Short-circuit: Tier 1 block or ask triggers immediate halt.
         if _tier_of(module_name) == 1 and (result.blocked or result.is_ask):
-            _stats["tier1_blocks"] = _stats.get("tier1_blocks", 0) + 1  # type: ignore[operator]
+            _set_stat_int("tier1_blocks", _get_stat_int("tier1_blocks") + 1)
             short_circuited = True
 
     # Count gates that were in the applicable list but never reached.
     gates_run_count = len(results)
     skipped_this_call = total_possible - gates_run_count
-    _stats["gates_skipped"] = _stats.get("gates_skipped", 0) + skipped_this_call  # type: ignore[operator]
+    _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + skipped_this_call)
 
     elapsed_ms = (time.time() - t_start) * 1000
-    timing_list = _stats.get("timing_ms", [])
-    timing_list.append(elapsed_ms)  # type: ignore[union-attr]
+    timing_list = _get_stat_list("timing_ms")
+    timing_list.append(elapsed_ms)
+    _stats["timing_ms"] = timing_list
 
     return results
 
@@ -306,10 +332,11 @@ def get_routing_stats() -> dict:
     skip_rate : float
         Fraction of applicable gates skipped (0.0–1.0); 0.0 if nothing run.
     """
-    calls: int = _stats.get("calls", 0)  # type: ignore[assignment]
-    gates_run: int = _stats.get("gates_run", 0)  # type: ignore[assignment]
-    gates_skipped: int = _stats.get("gates_skipped", 0)  # type: ignore[assignment]
-    timing: list = _stats.get("timing_ms", [])  # type: ignore[assignment]
+    calls: int = _get_stat_int("calls")
+    gates_run: int = _get_stat_int("gates_run")
+    gates_skipped: int = _get_stat_int("gates_skipped")
+    tier1_blocks: int = _get_stat_int("tier1_blocks")
+    timing: List[float] = _get_stat_list("timing_ms")
 
     total_gates = gates_run + gates_skipped
     skip_rate = (gates_skipped / total_gates) if total_gates > 0 else 0.0
@@ -320,8 +347,100 @@ def get_routing_stats() -> dict:
         "calls": calls,
         "gates_run": gates_run,
         "gates_skipped": gates_skipped,
-        "tier1_blocks": _stats.get("tier1_blocks", 0),
+        "tier1_blocks": tier1_blocks,
         "avg_routing_ms": round(avg_ms, 3),
         "last_routing_ms": round(last_ms, 3),
         "skip_rate": round(skip_rate, 4),
     }
+
+
+# ---------------------------------------------------------------------------
+# Q-learning gate ordering — reorders Tier 2/3 gates by learned block probability.
+# ---------------------------------------------------------------------------
+
+_QTABLE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".gate_qtable.json")
+_Q_ALPHA = 0.1      # learning rate
+_Q_REWARD_BLOCK = 1.0   # reward when gate blocks
+_Q_REWARD_PASS = -0.1   # reward when gate passes (no block)
+
+
+def _load_qtable() -> Dict[str, Dict[str, float]]:
+    """Load Q-table from disk.  Returns empty dict if file missing or corrupt."""
+    try:
+        with open(_QTABLE_PATH) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def _save_qtable(qtable: Dict[str, Dict[str, float]]) -> None:
+    """Persist Q-table to disk.  Fail-open — errors are silently swallowed."""
+    try:
+        with open(_QTABLE_PATH, "w") as f:
+            json.dump(qtable, f, indent=2)
+    except OSError:
+        pass
+
+
+def get_optimal_gate_order(tool_name: str, gate_names: List[str]) -> List[str]:
+    """Return gate_names reordered for optimal early-exit performance.
+
+    Tier 1 gates (safety gates 01-03) are always kept first in their original
+    order.  Tier 2 and Tier 3 gates are reordered by descending Q-value for
+    the given tool — gates with higher learned block probability run first,
+    enabling earlier short-circuits.
+
+    Gates with no Q-table entry are treated as Q=0.0.
+
+    Parameters
+    ----------
+    tool_name:
+        The tool being dispatched (e.g. ``"Edit"``).
+    gate_names:
+        List of gate module ``__name__`` strings in their current order.
+
+    Returns
+    -------
+    list[str]
+        Reordered gate names (same elements, different order).
+    """
+    qtable = _load_qtable()
+
+    tier1_gates = [n for n in gate_names if n in TIER1]
+    non_tier1 = [n for n in gate_names if n not in TIER1]
+
+    # Sort non-Tier-1 gates by descending Q-value (higher = more likely to block = run first).
+    def _q_value(gate_name: str) -> float:
+        return qtable.get(gate_name, {}).get(tool_name, 0.0)
+
+    non_tier1_sorted = sorted(non_tier1, key=_q_value, reverse=True)
+    return tier1_gates + non_tier1_sorted
+
+
+def update_qtable(gate_name: str, tool_name: str, blocked: bool) -> None:
+    """Update the Q-table entry for (gate_name, tool_name) using a Q-learning step.
+
+    Update rule:  Q = Q + α * (reward − Q)
+    where reward is _Q_REWARD_BLOCK (1.0) if blocked, _Q_REWARD_PASS (-0.1) otherwise.
+
+    Parameters
+    ----------
+    gate_name:
+        Module ``__name__`` of the gate (e.g. ``"gates.gate_01_read_before_edit"``).
+    tool_name:
+        The tool that triggered the gate.
+    blocked:
+        True if the gate blocked the tool call, False if it passed.
+    """
+    qtable = _load_qtable()
+    if gate_name not in qtable:
+        qtable[gate_name] = {}
+
+    current_q = qtable[gate_name].get(tool_name, 0.0)
+    reward = _Q_REWARD_BLOCK if blocked else _Q_REWARD_PASS
+    qtable[gate_name][tool_name] = current_q + _Q_ALPHA * (reward - current_q)
+
+    _save_qtable(qtable)
