@@ -27,16 +27,12 @@ hooks/tracker_pkg/__pycache__/
 skills/**/scripts/__pycache__/
 
 # Databases (runtime, not portable)
-hooks/chroma.sqlite3
 hooks/agent_channel.db
 hooks/agent_channel.db.lock
 
 # Audit logs (large, rotated)
 hooks/audit/
 hooks/.disk_backup/
-
-# Python venv
-hooks/venv/
 
 # Transient directories
 paste-cache/
