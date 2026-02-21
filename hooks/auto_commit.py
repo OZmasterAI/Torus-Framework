@@ -18,6 +18,7 @@ import subprocess
 import sys
 
 CLAUDE_DIR = os.path.expanduser("~/.claude")
+STAGED_TRACKER = os.path.join(CLAUDE_DIR, "hooks", ".auto_commit_staged.txt")
 MAX_FILES_IN_MSG = 3
 
 
@@ -70,9 +71,44 @@ def stage():
 
     git("add", resolved)
 
+    # Track this file so commit() only commits our staged files
+    try:
+        with open(STAGED_TRACKER, "a") as f:
+            f.write(resolved + "\n")
+    except OSError:
+        pass
+
 
 def commit():
-    """Commit all staged changes with a descriptive message."""
+    """Commit only files that stage() explicitly tracked.
+
+    This prevents committing unrelated index changes from manual git
+    operations (git rm --cached, git add, etc.) which can create
+    revert commits that undo prior work.
+    """
+    # Read tracker — only commit files we explicitly staged
+    try:
+        with open(STAGED_TRACKER) as f:
+            tracked = {line.strip() for line in f if line.strip()}
+    except (FileNotFoundError, OSError):
+        tracked = set()
+
+    if not tracked:
+        return
+
+    # Clear tracker immediately (atomic: truncate before commit)
+    try:
+        open(STAGED_TRACKER, "w").close()
+    except OSError:
+        pass
+
+    # Unstage everything, then re-stage ONLY tracked files
+    # This prevents stale index entries from manual git operations
+    git("reset", "HEAD", "--quiet")
+
+    for fpath in tracked:
+        git("add", fpath)
+
     result = git("diff", "--cached", "--name-only")
     if result.returncode != 0 or not result.stdout.strip():
         return

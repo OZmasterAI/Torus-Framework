@@ -13,6 +13,7 @@ hooks/.auto_remember_queue.jsonl.ingesting
 hooks/.file_claims.json
 hooks/.statusline_snapshot.json
 hooks/.tg_mirror_cursor.json
+hooks/.auto_commit_staged.txt
 hooks/.audit_trail.jsonl
 hooks/.circuit_breaker_state.json
 hooks/.gate_effectiveness.json
