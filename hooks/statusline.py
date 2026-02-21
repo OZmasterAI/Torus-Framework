@@ -48,8 +48,8 @@ SETTINGS_FILE = os.path.join(CLAUDE_DIR, "settings.json")
 CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
-EXPECTED_GATES = 17
-EXPECTED_SKILLS = 37
+EXPECTED_GATES = 16
+EXPECTED_SKILLS = 22
 EXPECTED_HOOK_EVENTS = 11
 
 # Health bar characters
@@ -67,14 +67,11 @@ COLOR_DARK_ORANGE = "\033[38;5;166m"  # dark orange — Opus model bracket
 COLOR_RESET = "\033[0m"
 
 
-DORMANT_GATES = {"gate_08_temporal.py", "gate_12_plan_mode_save.py"}
-
 def count_gates():
-    """Count active gate_*.py files in the gates directory (excludes dormant/merged)."""
+    """Count gate_*.py files in the gates directory."""
     if not os.path.isdir(GATES_DIR):
         return 0
-    return len([f for f in os.listdir(GATES_DIR)
-                if f.startswith("gate_") and f.endswith(".py") and f not in DORMANT_GATES])
+    return len([f for f in os.listdir(GATES_DIR) if f.startswith("gate_") and f.endswith(".py")])
 
 
 def get_memory_count():

@@ -37,16 +37,12 @@ DANGEROUS_PATTERNS = [
     (r"(?:/[^\s]*/)?rm\s+.*--force\b.*--recursive\b", "rm --force --recursive"),
     (r"(?:/[^\s]*/)?rm\s+.*--recursive\b.*--force\b", "rm --recursive --force"),
     # SQL destructive operations (expanded)
-    # Allow optional C-style comments (/* ... */) between DROP and the object keyword,
-    # since SQL parsers ignore comments and they could bypass a naive whitespace-only regex.
-    (r"DROP\s+(?:/\*.*?\*/\s*)?(TABLE|DATABASE|SCHEMA|VIEW|INDEX|FUNCTION|PROCEDURE|TRIGGER)\b", "DROP database object"),
+    (r"DROP\s+(TABLE|DATABASE|SCHEMA|VIEW|INDEX|FUNCTION|PROCEDURE|TRIGGER)\b", "DROP database object"),
     (r"TRUNCATE\s+TABLE\b", "TRUNCATE TABLE"),
     # Git destructive operations
     (r"git\s+push\s+.*--force\b", "git push --force"),
     (r"git\s+push\s+.*-f\b", "git push -f (force)"),
-    # Allow flags between 'git' and 'reset' (e.g. git -C path reset ...)
-    # and between 'reset' and '--hard' (e.g. git reset -q --hard).
-    (r"git\b.*\breset\b.*--hard\b", "git reset --hard"),
+    (r"git\s+reset\s+--hard\b", "git reset --hard"),
     (r"git\s+clean\s+-[a-zA-Z]*f", "git clean -f"),
     (r"git\s+checkout\s+\.\s*(?:$|[;&|])", "git checkout . (discard all changes)"),
     (r"git\s+restore\s+\.\s*(?:$|[;&|])", "git restore . (discard all changes)"),
@@ -284,9 +280,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     if tool_name != "Bash":
         return GateResult(blocked=False, gate_name=GATE_NAME)
-
-    if not isinstance(tool_input, dict):
-        tool_input = {}
 
     command = tool_input.get("command", "")
 

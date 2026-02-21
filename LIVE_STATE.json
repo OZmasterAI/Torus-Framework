@@ -1,28 +1,30 @@
 {
-  "session_count": 168,
+  "session_count": 163,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
-  "feature": "self-evolve-sprint-2",
-  "feature_status": "in-progress",
-  "test_count": 1533,
+  "feature": "self-evolve-framework",
+  "feature_status": "complete",
+  "test_count": 1115,
   "test_failures": 0,
-  "what_was_done": "Session 168: Sprint 2 cleanup and hardening. Verified 46 test failures already fixed (1533 pass, 0 fail). Added isinstance(tool_input, dict) guard to 9 gates preventing None-input crashes. Optimized Gate 11 rate_limit by removing redundant save_state (3.64ms->0.005ms, 728x faster). Wired auto_format.py into PostToolUse hooks. Created 3 research-pattern hooks: stop_cleanup.py (Stop), failure_recovery.py (PostToolUseFailure), integrity_check.py (SessionStart). Deleted merged Gate 12 file. Fixed statusline.py and dashboard/server.py to show 16 active gates (excluding dormant/merged). Cleaned .rej/.orig artifacts. Generated comprehensive Sprint 2 changelog HTML. Memory 1058->1068.",
-  "service_status": "Memory MCP: RUNNING (1068 memories) | Tests: 1533 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50+ | Agents: 13 | Skills: 37 | Plugins: 9 enabled",
+  "what_was_done": "Housekeeping session: Created full backup (1.7GB) and framework-only backup to Desktop (9.4MB). Merged SelfSprint1 into self-evolve-test-branch. Committed accumulated uncommitted files (diagrams, PRP templates, plugin configs). Created new branch Self-Sprint-2 from self-evolve-test-branch. Discussed which files should be in .gitignore vs committed.",
+  "service_status": "Memory MCP: RUNNING (845 memories) | Tests: 1114 passed, 1 failed | Framework: v2.5.0 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Dashboard: localhost:7777 | Branch: Self-Sprint-2 | Agent teams: ENABLED | MCP tools: 6 active, 6 dormant",
   "next_steps": [
-    "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
-    "Fix auto_commit Co-Authored-By to detect current model (hardcoded Opus 4.6)",
-    "Resolve test_framework.py Pyright import errors for shared modules",
-    "Consider reactivating Gate 8 (temporal patterns) with improved implementation",
-    "Investigate UDS socket intermittent missing warnings in gather.py"
+    "Finish .gitignore cleanup (pycache, lock files, chroma.sqlite3, audit logs, runtime state files, LIVE_STATE.json, stats-cache.json)",
+    "Test wave plan verification step end-to-end with a PRP that has requirements",
+    "Enable budget_degradation + set session_token_budget",
+    "Test terminal chat end-to-end",
+    "Pop stash on Self-Sprint-2 (stashed working changes from SelfSprint1)"
   ],
   "known_issues": [
-    "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
-    "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
-    "auto_commit Co-Authored-By hardcoded Opus 4.6 - wrong when on Sonnet",
-    "UDS socket intermittently missing - gather.py warns but non-blocking",
-    "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Gate 8 dormant - temporal pattern detection disabled, code preserved for reactivation"
+    "Plan mode exit loop — platform limitation, mitigated by behavioral rule",
+    "ChromaDB concurrent access — tests skip when MCP running, correct behavior",
+    "Export test_framework.py uses _FRAMEWORK_ROOT — merge changes, don't copy",
+    "Observations at 5,635 (over 5K cap) — will auto-compact on next ingest",
+    "tmux routing shared session causes interference — use dedicated claude-bot",
+    "TaskCompleted hook disabled — was firing premature quality warnings",
+    "auto_commit Co-Authored-By hardcoded Opus 4.6 — wrong when on Sonnet",
+    "UDS socket intermittently missing — gather.py warns but non-blocking"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -33,16 +35,7 @@
   "budget_degradation": false,
   "session_token_budget": 0,
   "model_profile": "balanced",
-  "security_profile": "balanced",
   "chain_memory": true,
   "tg_session_notify": true,
-  "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 0m\n- **Tool Calls**: 2 (Bash: 1, mcp__memory__remember_this: 1)\n- **Files Modified**: 0 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 1 launched, 0 tokens",
-  "last_session_metrics": {
-    "reads": 0,
-    "edits": 0,
-    "errors": 0,
-    "verified": 0,
-    "pending": 0
-  }
+  "tg_mirror_messages": true
 }

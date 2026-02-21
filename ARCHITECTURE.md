@@ -1,8 +1,8 @@
 # Torus Framework — Architecture Document
 
-**Version:** v2.5.1
+**Version:** v2.4.5
 **Location:** `~/.claude/`
-**Last updated:** 2026-02-20 (Session 163)
+**Last updated:** 2026-02-19 (Session 143)
 
 ---
 
@@ -31,15 +31,12 @@ Torus is a **self-healing AI development environment** layered on top of Claude 
 
 The framework is not a separate application — it runs entirely through Claude Code's hook system. Hooks fire on events (PreToolUse, PostToolUse, SessionStart, etc.), enforce quality gates, track state, and feed a ChromaDB memory store. Claude Code itself never needs modification.
 
-**Key numbers (Session 163):**
-- 16 active gates (1 dormant — Gate 8 only)
-- 857 curated memories, 5,635+ observations
-- 1,113 tests passing, 3 failing (pre-existing)
-- 28+ slash-command skills
-- 8 custom agent types
-- 9 enabled plugins (3 LSP + 6 workflow)
-- Agent teams enabled
-- 163 sessions over the project lifetime
+**Key numbers (Session 144):**
+- 15 active gates (1 dormant — Gate 8 only)
+- 633 curated memories, 5,635 observations
+- 1,086 tests passing, 0 failing
+- 22+ slash-command skills
+- 134 committed sessions over the project lifetime
 
 ---
 
@@ -131,22 +128,18 @@ Audit logs, state files, and the capture queue are written to a systemd tmpfs (`
 │   ├── .chromadb.sock          # UDS for hook→ChromaDB IPC
 │   └── chroma.sqlite3          # ChromaDB persistent store
 │
-├── agents/                 # Agent persona configs (8 types)
-│   ├── builder.md          # Opus — full implementation + causal chain
+├── agents/                 # Agent persona configs
+│   ├── builder.md          # Opus — full implementation
 │   ├── auditor.md          # Sonnet — security review
-│   ├── researcher.md       # Haiku — read-only exploration (cost-effective)
-│   ├── stress-tester.md    # Sonnet — test suites
-│   ├── code-reviewer.md    # Sonnet — code quality review + confidence scoring
-│   ├── performance-analyzer.md  # Sonnet — bottleneck detection
-│   ├── explorer.md         # Haiku — fast codebase exploration
-│   └── test-writer.md      # Sonnet — test generation
+│   ├── researcher.md       # Sonnet — read-only exploration
+│   └── stress-tester.md    # Sonnet — test suites
 │
 ├── integrations/
 │   ├── telegram-bot/       # Telegram ↔ Claude Code bridge
 │   └── terminal-history/   # Session JSONL → SQLite FTS5 indexer
 │
-├── skills/                 # 28+ slash-command skills (SKILL.md + optional scripts/)
-├── plugins/                # 9 plugins (3 LSP + 6 workflow: feature-dev, pr-review-toolkit, code-review, hookify, skill-creator, code-simplifier)
+├── skills/                 # 22+ slash-command skills (SKILL.md + optional scripts/)
+├── plugins/                # LSP plugins (pyright, rust-analyzer, typescript)
 ├── rules/                  # Domain CLAUDE.md extensions
 │   ├── framework.md
 │   ├── hooks.md
@@ -508,14 +501,10 @@ tracker.py PostToolUse
 
 | Agent | Model | Tools | Use case |
 |-------|-------|-------|----------|
-| `builder` | opus | Read, Glob, Grep, Edit, Write, Bash, NotebookEdit + full memory tools incl. causal chain | Feature implementation, bug fixes, refactoring |
+| `builder` | opus | Read, Glob, Grep, Edit, Write, Bash, NotebookEdit + search_knowledge, get_memory, remember_this, record_attempt, record_outcome, query_fix_history (subset of memory tools — not deduplicate_sweep or maintenance) | Feature implementation, bug fixes, refactoring |
 | `auditor` | sonnet | Read, Glob, Grep, Bash + search/get/remember memory tools | Security review, OWASP audit, credential scanning |
-| `researcher` | haiku | Read, Glob, Grep, WebFetch, WebSearch + search/get memory tools | Codebase exploration, documentation lookup, research |
-| `stress-tester` | sonnet | Read, Glob, Grep, Bash + search/get/remember/causal chain memory tools | Test suite execution, edge case hunting, benchmarking |
-| `code-reviewer` | sonnet | Read, Glob, Grep, Bash + search/get/remember memory tools | Code quality review with confidence scoring (Bug/Quality/Convention/Security) |
-| `performance-analyzer` | sonnet | Read, Glob, Grep, Bash + search/get/remember memory tools | Bottleneck detection: N+1 queries, O(n^2), memory leaks |
-| `explorer` | haiku | Read, Glob, Grep + search/get memory tools | Fast codebase mapping, call chain tracing (no Bash, no Write) |
-| `test-writer` | sonnet | Read, Glob, Grep, Write, Bash + search/get/remember memory tools | Test generation matching project conventions |
+| `researcher` | sonnet | Read, Glob, Grep, WebFetch, WebSearch + search/get memory tools | Codebase exploration, documentation lookup, research |
+| `stress-tester` | sonnet | Read, Glob, Grep, Bash + search/get/remember/record_attempt/record_outcome memory tools | Test suite execution, edge case hunting, benchmarking |
 
 ### Delegation rules (from CLAUDE.md)
 
@@ -580,35 +569,29 @@ Indexes all Claude Code JSONL session files into a SQLite FTS5 database for full
 
 ## Skill System
 
-28+ slash-command skills defined as `SKILL.md` instruction files in `skills/`. Invoked via `/skill-name`. Composable via `/chain`.
+22+ slash-command skills defined as `SKILL.md` instruction files in `skills/`. Invoked via `/skill-name`. Composable via `/chain`.
 
 | Skill | Purpose |
 |-------|---------|
 | `/analyze-errors` | Historical error pattern analysis, prevention playbooks |
 | `/audit` | 3-agent security + quality audit team |
-| `/benchmark` | Framework performance metrics: tests, memory, gates, hook latencies |
 | `/build` | Full quality loop: memory → tests → implement → verify → commit |
 | `/chain` | Compose skills into sequential pipelines |
 | `/commit` | Quick git commit with auto-generated message |
 | `/deep-dive` | Broad memory context retrieval (top_k=50, multi-mode) |
 | `/deploy` | Deployment workflow with Gate 3 enforcement |
-| `/diagnose` | Gate effectiveness analysis: fire rates, timing, recommendations |
 | `/document` | Auto-generate docstrings, README, API docs, architecture, changelog |
-| `/evolve` | Autonomous 7-phase self-evolution: SCAN→EVALUATE→DIAGNOSE→PRIORITIZE→EXECUTE→UPGRADE→VALIDATE |
 | `/explore` | Interactive codebase deep-dive |
 | `/fix` | Auto-diagnose and fix: memory → context → causal chain → fix → verify |
-| `/learn` | Learn from external sources: GATHER→ANALYZE→CROSS-REFERENCE→SYNTHESIZE→INTEGRATE→REMEMBER→TEACH |
 | `/loop` | Torus Loop Orchestrator: runs PRP tasks via fresh Claude instances |
 | `/profile` | Performance profiling and bottleneck identification |
 | `/prp` | Generate/list/view Product Requirements Prompts |
 | `/ralph` | Autonomous loop: up to 10 build-verify cycles with circuit breakers |
 | `/refactor` | Safe incremental refactoring |
-| `/research` | Structured research with memory integration (quick/standard/deep/exhaustive tiers) |
+| `/research` | Structured research with memory integration |
 | `/review` | Code quality and convention check |
-| `/self-improve` | Meta-skill: 7-step framework self-improvement (INTROSPECT→ANALYZE→RESEARCH→IDENTIFY→IMPLEMENT→VERIFY→REPORT) |
 | `/status` | Live project status report (uses `gather.py`) |
 | `/test` | Run, write, and debug test suites |
-| `/wave` | Torus Wave Orchestrator: parallel PRP task execution with file-overlap guard |
 | `/web` | Web content management: index, search, list, delete |
 | `/wrap-up` | Session end protocol: metrics → memory → HANDOFF.md → LIVE_STATE.json |
 | `/browser` | Visual verification via agent-browser; screenshot-based UI testing |
@@ -754,22 +737,9 @@ Current: ~1,321 tokens. Hard limit: 2,000 tokens. Every line is injected into ev
 | `session_end.py` CAPTURE_QUEUE ramdisk path | Fixed (Session 144) | Now uses `_get_capture_queue()` — ramdisk-aware resolver |
 | `subagent_context.py` STATE_DIR hardcoded to disk path | Known | May miss state files when ramdisk is active |
 | `get_plan_mode_warns()` reads non-existent `gate12_warn_count` | Known | Always returns 0; plan mode warn count not displayed in statusline |
-| Statusline health formula uses EXPECTED_GATES=15, EXPECTED_SKILLS=22 | Known | Should be 16 gates, 28 skills — health score slightly off |
+| Statusline health formula uses EXPECTED_GATES=15, EXPECTED_SKILLS=22 | Known | Doc says 16 gates, 22 skills — health score slightly inflated |
 | auto_commit Co-Authored-By hardcoded to "Opus 4.6" | Known | Wrong when running on Sonnet |
 
 ---
 
-## Changelog
-
-### v2.5.1 — 2026-02-20 (Session 163, Self-Sprint-2)
-- **6 new agent types**: code-reviewer, performance-analyzer, explorer, test-writer (+ updated researcher to haiku)
-- **6 new skills**: /learn, /self-improve, /evolve, /benchmark, /diagnose, /wave (promoted from hidden)
-- **6 new plugins enabled**: feature-dev, pr-review-toolkit, code-review, hookify, skill-creator, code-simplifier
-- **Comprehensive .gitignore**: covers all runtime state, databases, audit logs, pycache, lock files
-- **Agent teams**: fully enabled via CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var
-- **Research integration**: patterns from Archon, Ralphy, ClawHub, Vercel, Claude docs, 10+ GitHub repos
-- **Test improvements**: 1110 → 1113 passing (fixed researcher model test)
-
----
-
-*Generated by Torus Framework — Session 163*
+*Generated by Torus Framework — Session 143 | Updated Session 144*

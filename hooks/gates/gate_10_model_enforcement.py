@@ -118,9 +118,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in AGENT_SPAWN_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if not isinstance(tool_input, dict):
-        tool_input = {}
-
     model = tool_input.get("model", "")
     description = tool_input.get("description", "sub-agent task")
     subagent_type = tool_input.get("subagent_type", "unknown")

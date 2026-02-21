@@ -54,9 +54,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in GATED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if not isinstance(tool_input, dict):
-        tool_input = {}
-
     # Read-only subagents don't edit files — skip memory freshness check
     if tool_name == "Task":
         subagent_type = tool_input.get("subagent_type", "")
