@@ -105,7 +105,6 @@ Audit logs, state files, and the capture queue are written to a systemd tmpfs (`
 │   │   ├── gate_09_strategy_ban.py
 │   │   ├── gate_10_model_enforcement.py
 │   │   ├── gate_11_rate_limit.py
-│   │   ├── gate_12_plan_mode_save.py
 │   │   ├── gate_13_workspace_isolation.py
 │   │   ├── gate_14_confidence_check.py
 │   │   ├── gate_15_causal_chain.py

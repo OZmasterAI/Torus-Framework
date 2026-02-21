@@ -68,7 +68,7 @@ _GATE_NAME_MAP: Dict[str, str] = {
     "gates.gate_09_strategy_ban":        "GATE 9: STRATEGY BAN",
     "gates.gate_10_model_enforcement":   "GATE 10: MODEL COST GUARD",
     "gates.gate_11_rate_limit":          "GATE 11: RATE LIMIT",
-    "gates.gate_12_plan_mode_save":      "GATE 12: PLAN MODE SAVE",
+    # gate_12 MERGED into gate_06 — removed
     "gates.gate_13_workspace_isolation": "GATE 13: WORKSPACE ISOLATION",
     "gates.gate_14_confidence_check":    "GATE 14: CONFIDENCE CHECK",
     "gates.gate_15_causal_chain":        "GATE 15: CAUSAL CHAIN ENFORCEMENT",
@@ -86,7 +86,7 @@ _GATE_NAME_MAP: Dict[str, str] = {
     "gate_09_strategy_ban":              "GATE 9: STRATEGY BAN",
     "gate_10_model_enforcement":         "GATE 10: MODEL COST GUARD",
     "gate_11_rate_limit":                "GATE 11: RATE LIMIT",
-    "gate_12_plan_mode_save":            "GATE 12: PLAN MODE SAVE",
+    # gate_12 MERGED into gate_06 — removed
     "gate_13_workspace_isolation":       "GATE 13: WORKSPACE ISOLATION",
     "gate_14_confidence_check":          "GATE 14: CONFIDENCE CHECK",
     "gate_15_causal_chain":              "GATE 15: CAUSAL CHAIN ENFORCEMENT",
