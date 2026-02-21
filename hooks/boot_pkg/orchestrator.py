@@ -238,7 +238,25 @@ def main():
     context_parts = [f"<session-start-context>"]
     context_parts.append(f"Session {session_num} | Project: {project_name}")
     if live_state:
-        context_parts.append(f"LIVE_STATE.json: {json.dumps(live_state, indent=2)}")
+        # Only inject fields Claude needs in conversation context.
+        # Config flags (booleans, profiles) are read from file by hooks — not needed in prompt.
+        CONTEXT_KEYS = {
+            "session_count", "status", "project", "feature", "feature_status",
+            "test_count", "test_failures", "what_was_done", "service_status",
+            "next_steps", "known_issues",
+        }
+        filtered = {k: v for k, v in live_state.items() if k in CONTEXT_KEYS}
+        # Truncate variable-length fields to cap token cost.
+        # Full versions stay in LIVE_STATE.json for dashboard/gather.py.
+        if "what_was_done" in filtered:
+            wd = filtered["what_was_done"]
+            if len(wd) > 200:
+                filtered["what_was_done"] = wd[:200] + "..."
+        if "next_steps" in filtered:
+            filtered["next_steps"] = filtered["next_steps"][:3]
+        if "known_issues" in filtered:
+            filtered["known_issues"] = filtered["known_issues"][:3]
+        context_parts.append(f"LIVE_STATE.json: {json.dumps(filtered, indent=2)}")
     if active_tasks:
         context_parts.append(f"Active tasks: {', '.join(active_tasks[:5])}")
     if injected:

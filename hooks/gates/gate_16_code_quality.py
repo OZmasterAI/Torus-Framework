@@ -122,6 +122,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in WATCHED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+
     file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
 
     if _is_exempt(file_path):

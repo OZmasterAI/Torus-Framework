@@ -221,6 +221,7 @@ def spawn_claude(prompt, model, task_timeout):
 
 
 MAX_RETRIES = 2  # Max auto-restarts per task
+CIRCUIT_BREAKER_THRESHOLD = 3  # Consecutive wave failures before stopping
 
 
 def run_wave(prp_name, wave_tasks, model, task_timeout, activity_log, wave_num):
@@ -390,6 +391,10 @@ def main():
     print()
 
     iteration = 0
+    consecutive_failures = 0  # Circuit breaker counter
+    total_passed = 0
+    total_failed = 0
+    wave_start_time = time.time()
 
     while iteration < max_iterations:
         iteration += 1
@@ -404,9 +409,11 @@ def main():
         # Get eligible tasks
         eligible = get_eligible_tasks(prp_name)
         if eligible is None:
+            elapsed = int(time.time() - wave_start_time)
             log(activity_log, "\n## COMPLETE\n")
             with open(activity_log, "a") as f:
                 f.write(f"**Finished**: {datetime.now().isoformat()}\n")
+                f.write(f"**Total**: {total_passed} passed, {total_failed} failed in {elapsed}s across {iteration - 1} waves\n")
             print("All tasks complete!")
             sys.exit(0)
 
@@ -431,17 +438,37 @@ def main():
         # Run the wave
         results = run_wave(prp_name, wave_tasks, model, task_timeout, activity_log, iteration)
 
-        # Summary
+        # Summary with metrics
         passed = sum(1 for r in results.values() if r["status"] == "PASSED")
         failed = sum(1 for r in results.values() if r["status"] == "FAILED")
-        log(activity_log, f"  Wave {iteration} complete: {passed} passed, {failed} failed\n")
+        wave_duration = sum(r["duration"] for r in results.values())
+        total_passed += passed
+        total_failed += failed
+
+        log(activity_log, f"  Wave {iteration} complete: {passed} passed, {failed} failed ({wave_duration}s)\n")
         print(f"  Wave {iteration} complete: {passed} passed, {failed} failed")
         print()
 
+        # Circuit breaker: stop after N consecutive all-fail waves
+        if passed == 0 and failed > 0:
+            consecutive_failures += 1
+            if consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD:
+                elapsed = int(time.time() - wave_start_time)
+                log(activity_log, f"\n## CIRCUIT BREAKER: {consecutive_failures} consecutive failed waves. Stopping.")
+                with open(activity_log, "a") as f:
+                    f.write(f"**Stopped**: {datetime.now().isoformat()} (circuit breaker)\n")
+                    f.write(f"**Total**: {total_passed} passed, {total_failed} failed in {elapsed}s\n")
+                print(f"Circuit breaker triggered: {consecutive_failures} consecutive failed waves.")
+                sys.exit(1)
+        else:
+            consecutive_failures = 0
+
     # Max iterations reached
+    elapsed = int(time.time() - wave_start_time)
     log(activity_log, "\n## MAX ITERATIONS REACHED")
     with open(activity_log, "a") as f:
         f.write(f"**Finished**: {datetime.now().isoformat()}\n")
+        f.write(f"**Total**: {total_passed} passed, {total_failed} failed in {elapsed}s across {iteration} waves\n")
     print(f"Max iterations ({max_iterations}) reached.")
     sys.exit(1)
 

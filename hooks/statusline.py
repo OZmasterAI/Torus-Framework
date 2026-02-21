@@ -49,8 +49,8 @@ CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
 EXPECTED_GATES = 16
-EXPECTED_SKILLS = 22
-EXPECTED_HOOK_EVENTS = 11
+EXPECTED_SKILLS = 24
+EXPECTED_HOOK_EVENTS = 12
 
 # Health bar characters
 BAR_FULL = "\u2588"   # █
@@ -67,11 +67,14 @@ COLOR_DARK_ORANGE = "\033[38;5;166m"  # dark orange — Opus model bracket
 COLOR_RESET = "\033[0m"
 
 
+DORMANT_GATES = {"gate_08_temporal.py", "gate_12_plan_mode_save.py"}
+
 def count_gates():
-    """Count gate_*.py files in the gates directory."""
+    """Count active gate_*.py files in the gates directory (excludes dormant/merged)."""
     if not os.path.isdir(GATES_DIR):
         return 0
-    return len([f for f in os.listdir(GATES_DIR) if f.startswith("gate_") and f.endswith(".py")])
+    return len([f for f in os.listdir(GATES_DIR)
+                if f.startswith("gate_") and f.endswith(".py") and f not in DORMANT_GATES])
 
 
 def get_memory_count():
@@ -862,6 +865,8 @@ def main():
             budget_tier_str = " \U0001f534CRIT"
         elif usage_pct >= 0.40:
             budget_tier_str = " \U0001f7e1LOW"
+    model_prof = ls.get("model_profile", "balanced")
+    sec_prof = ls.get("security_profile", "balanced")
     line3 = (
         f"{_tog('terminal_l2_always')}L2 "
         f"{_tog('context_enrichment')}Enrich "
@@ -873,7 +878,8 @@ def main():
         f"{_tog('tg_session_notify')}Notify "
         f"{_tog('tg_mirror_messages')}Mirror "
         f"{_tog('budget_degradation')}Budget "
-        f"B:{budget_val}{budget_tier_str}"
+        f"B:{budget_val}{budget_tier_str} "
+        f"Mod:{model_prof[:3]} Sec:{sec_prof[:3]}"
     )
     print(line3)
 

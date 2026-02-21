@@ -73,6 +73,11 @@ _GATE_NAME_MAP = {
     "gates.gate_11_rate_limit": "GATE 11: RATE LIMIT",
     "gates.gate_12_plan_mode_save": "GATE 12: PLAN MODE SAVE",
     "gates.gate_13_workspace_isolation": "GATE 13: WORKSPACE ISOLATION",
+    "gates.gate_14_confidence_check": "GATE 14: CONFIDENCE CHECK",
+    "gates.gate_15_causal_chain": "GATE 15: CAUSAL CHAIN",
+    "gates.gate_16_code_quality": "GATE 16: CODE QUALITY",
+    "gates.gate_17_injection_defense": "GATE 17: INJECTION DEFENSE",
+    "gates.gate_18_canary": "GATE 18: CANARY",
 }
 
 
@@ -127,8 +132,27 @@ def _rotate_file(filepath):
         pass  # Rotation failure must not break logging
 
 
-def log_gate_decision(gate_name, tool_name, decision, reason, session_id="", state_keys=None, severity="info"):
-    """Append a gate decision record to today's audit log.
+_HOOKS_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+AUDIT_TRAIL_PATH = os.path.join(_HOOKS_DIR, ".audit_trail.jsonl")
+
+
+def log_gate_decision(
+    gate_name,
+    tool_name,
+    decision,
+    reason,
+    session_id="",
+    state_keys=None,
+    severity="info",
+    file_path="",
+    agent_id="",
+    timestamp=None,
+):
+    """Append a gate decision record to today's audit log and the audit trail.
+
+    Writes to two destinations:
+    - Today's rotated daily JSONL file under audit/YYYY-MM-DD.jsonl
+    - Persistent append-only trail at hooks/.audit_trail.jsonl
 
     Args:
         gate_name: Name of the gate (e.g. "Gate 1: READ BEFORE EDIT").
@@ -138,11 +162,23 @@ def log_gate_decision(gate_name, tool_name, decision, reason, session_id="", sta
         session_id: Optional session identifier for correlation.
         state_keys: Optional list of state keys accessed during the gate check.
         severity: Severity level - "info", "warn", "error", or "critical".
+        file_path: Optional file path being operated on (for structured trail).
+        agent_id: Optional agent identifier (defaults to session_id if empty).
+        timestamp: Optional ISO-format timestamp string; defaults to UTC now.
     """
     try:
         os.makedirs(AUDIT_DIR, exist_ok=True)
 
-        now = datetime.now(timezone.utc)
+        if timestamp:
+            try:
+                now = datetime.fromisoformat(timestamp)
+                if now.tzinfo is None:
+                    now = now.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                now = datetime.now(timezone.utc)
+        else:
+            now = datetime.now(timezone.utc)
+
         filename = now.strftime("%Y-%m-%d") + ".jsonl"
         filepath = os.path.join(AUDIT_DIR, filename)
 
@@ -165,16 +201,77 @@ def log_gate_decision(gate_name, tool_name, decision, reason, session_id="", sta
             "session_id": session_id,
             "state_keys": state_keys or [],
             "severity": severity,
+            "file_path": file_path,
+            "agent_id": agent_id or session_id,
         }
 
         line = json.dumps(entry) + "\n"
+
+        # Write to daily rotated file
         if _HAS_RAMDISK and is_ramdisk_available():
             async_mirror_append(filepath, line)
         else:
             with open(filepath, "a") as f:
                 f.write(line)
+
+        # Write to persistent append-only audit trail
+        try:
+            with open(AUDIT_TRAIL_PATH, "a") as tf:
+                tf.write(line)
+        except Exception:
+            pass
+
     except Exception:
         pass
+
+
+def get_recent_decisions(gate_name=None, limit=50):
+    """Query recent gate decisions from the persistent audit trail.
+
+    Reads from hooks/.audit_trail.jsonl (most-recent-last). Returns entries
+    in reverse chronological order (newest first).
+
+    Args:
+        gate_name: Optional gate name to filter by. None returns all gates.
+        limit: Maximum number of records to return (default 50).
+
+    Returns:
+        list of dicts, each with keys: id, timestamp, gate, tool, decision,
+        reason, session_id, state_keys, severity, file_path, agent_id.
+        Returns empty list if trail file does not exist.
+    """
+    results = []
+    if not os.path.isfile(AUDIT_TRAIL_PATH):
+        return results
+
+    try:
+        with open(AUDIT_TRAIL_PATH, "r") as f:
+            lines = f.readlines()
+    except (IOError, OSError):
+        return results
+
+    # Walk lines in reverse (newest first)
+    for raw in reversed(lines):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            entry = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+
+        raw_gate = entry.get("gate", "")
+        gate = _GATE_NAME_MAP.get(raw_gate, raw_gate)
+        entry["gate"] = gate  # normalise in returned data
+
+        if gate_name is not None and gate != gate_name:
+            continue
+
+        results.append(entry)
+        if len(results) >= limit:
+            break
+
+    return results
 
 
 

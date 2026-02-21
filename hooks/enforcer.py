@@ -15,6 +15,7 @@ Usage (called by Claude Code hooks):
   echo '{"session_id":"abc","tool_name":"Edit","tool_input":{...}}' | python enforcer.py --event PreToolUse
 """
 
+import hashlib
 import importlib
 import json
 import os
@@ -23,9 +24,111 @@ import time
 
 # Add parent to path for shared imports
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.state import load_state, save_state, update_gate_effectiveness
+from shared.state import load_state, save_state, update_gate_effectiveness, get_live_toggle
 from shared.gate_result import GateResult
 from shared.audit_log import log_gate_decision
+from shared.circuit_breaker import should_skip_gate, record_gate_result
+from shared.gate_router import get_optimal_gate_order, update_qtable
+from shared.gate_timing import record_timing as _record_gate_timing
+from shared.security_profiles import should_skip_for_profile, get_gate_mode_for_profile
+
+
+# -- Gate Result Cache ----------------------------------------------------
+# Lightweight TTL-based cache for non-blocking gate results.
+# Avoids redundant gate evaluation when the same (gate, tool, input)
+# tuple is seen within the TTL window (e.g. retried tool calls).
+#
+# Only non-blocking, non-ask results are cached. Blocked results always
+# re-check so the agent can correct the condition and retry freely.
+#
+# Toggle: set GATE_CACHE_ENABLED = False to disable without code changes.
+# Stats:  call get_gate_cache_stats() for hit/miss observability.
+
+GATE_CACHE_ENABLED: bool = True
+_GATE_CACHE_TTL_S: float = 60.0  # seconds (gates re-evaluate after TTL)
+
+# key -> {"result": GateResult, "stored_at": float (monotonic)}
+_gate_result_cache: dict = {}
+
+# Per-process hit/miss counters for observability
+_cache_hits: int = 0
+_cache_misses: int = 0
+
+# Fields included in cache key per tool -- only fields that affect gate
+# decisions, to avoid spurious cache misses (e.g. new_string in Edit).
+_CACHE_KEY_FIELDS: dict = {
+    "Edit":         ("file_path", "old_string"),
+    "Write":        ("file_path",),
+    "NotebookEdit": ("notebook_path", "cell_number"),
+    "Bash":         ("command",),
+    "Task":         ("model", "subagent_type", "description"),
+    "WebFetch":     ("url",),
+    "WebSearch":    ("query",),
+}
+_CACHE_KEY_FIELDS_DEFAULT: tuple = ("file_path", "command", "url", "query")
+
+
+def _make_cache_key(gate_name: str, tool_name: str, tool_input: dict) -> str:
+    """Build a stable 16-char hex cache key (first 64 bits of SHA-256)."""
+    fields = _CACHE_KEY_FIELDS.get(tool_name, _CACHE_KEY_FIELDS_DEFAULT)
+    relevant = {k: tool_input.get(k, "") for k in fields}
+    raw = json.dumps((gate_name, tool_name, relevant), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _get_cached_gate_result(gate_name: str, tool_name: str, tool_input: dict):
+    """Return a cached GateResult within TTL, or None on miss/expiry."""
+    global _cache_hits, _cache_misses
+    if not GATE_CACHE_ENABLED:
+        _cache_misses += 1
+        return None
+    key = _make_cache_key(gate_name, tool_name, tool_input)
+    entry = _gate_result_cache.get(key)
+    if entry is None:
+        _cache_misses += 1
+        return None
+    if time.monotonic() - entry["stored_at"] > _GATE_CACHE_TTL_S:
+        del _gate_result_cache[key]
+        _cache_misses += 1
+        return None
+    _cache_hits += 1
+    return entry["result"]
+
+
+def _store_gate_result(gate_name: str, tool_name: str, tool_input: dict, result) -> None:
+    """Cache a non-blocking, non-ask GateResult for future lookups."""
+    if not GATE_CACHE_ENABLED:
+        return
+    if result.blocked or getattr(result, "is_ask", False):
+        return  # Never cache blocking/ask results
+    key = _make_cache_key(gate_name, tool_name, tool_input)
+    _gate_result_cache[key] = {"result": result, "stored_at": time.monotonic()}
+
+
+def _evict_expired_cache_entries() -> int:
+    """Evict all entries older than TTL. Returns count evicted."""
+    now = time.monotonic()
+    expired = [k for k, v in _gate_result_cache.items()
+               if now - v["stored_at"] > _GATE_CACHE_TTL_S]
+    for k in expired:
+        del _gate_result_cache[k]
+    return len(expired)
+
+
+def get_gate_cache_stats() -> dict:
+    """Return a snapshot of cache observability counters.
+
+    Keys: enabled, ttl_s, hits, misses, hit_rate, cached.
+    """
+    total = _cache_hits + _cache_misses
+    return {
+        "enabled": GATE_CACHE_ENABLED,
+        "ttl_s": _GATE_CACHE_TTL_S,
+        "hits": _cache_hits,
+        "misses": _cache_misses,
+        "hit_rate": (_cache_hits / total) if total > 0 else 0.0,
+        "cached": len(_gate_result_cache),
+    }
 
 
 # Gate modules to load (in order of priority)
@@ -47,6 +150,7 @@ GATE_MODULES = [
     "gates.gate_15_causal_chain",
     "gates.gate_16_code_quality",
     "gates.gate_17_injection_defense",
+    "gates.gate_18_canary",
 ]
 
 # Tier 1 safety gates that MUST fail-closed (exceptions = block, not pass)
@@ -152,6 +256,18 @@ GATE_DEPENDENCIES = {
         "reads": ["injection_attempts"],
         "writes": ["injection_attempts"],
     },
+    "gate_18_canary": {
+        "reads": [
+            "canary_tool_counts", "canary_seen_tools", "canary_total_calls",
+            "canary_size_count", "canary_size_mean", "canary_size_m2",
+            "canary_short_timestamps", "canary_long_timestamps", "canary_recent_seq",
+        ],
+        "writes": [
+            "canary_tool_counts", "canary_seen_tools", "canary_total_calls",
+            "canary_size_count", "canary_size_mean", "canary_size_m2",
+            "canary_short_timestamps", "canary_long_timestamps", "canary_recent_seq",
+        ],
+    },
 }
 
 
@@ -183,6 +299,7 @@ GATE_TOOL_MAP = {
     "gates.gate_15_causal_chain": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_16_code_quality": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_17_injection_defense": {"WebFetch", "WebSearch"},  # + MCP tools checked internally
+    "gates.gate_18_canary": None,  # Universal — observes all tool calls
 }
 
 
@@ -311,16 +428,41 @@ def handle_pre_tool_use(tool_name, tool_input, state):
         return
 
     gates = _gates_for_tool(tool_name)
+
+    # Q-learning: reorder gates (Tier 2 & 3 only) so high-block-probability
+    # gates run first, enabling earlier exits.  Tier 1 gates always stay first.
+    gate_names = [gate.__name__ for gate in gates]
+    ordered_names = get_optimal_gate_order(tool_name, gate_names)
+    # Rebuild the gates list in the Q-learning optimised order.
+    name_to_gate = {gate.__name__: gate for gate in gates}
+    gates = [name_to_gate[n] for n in ordered_names if n in name_to_gate]
+
+    passed_gates = []  # accumulate module names of gates that passed (for qtable update)
+
     for gate in gates:
+        gate_short = gate.__name__.split(".")[-1]
+        # Security profile: skip gates disabled by current profile
+        if should_skip_for_profile(gate_short, state):
+            continue
+        # Circuit breaker: skip gates that have crashed too many times
+        if should_skip_gate(gate_short):
+            continue
         try:
-            t0 = time.time()
-            result = gate.check(tool_name, tool_input, state, event_type="PreToolUse")
-            elapsed_ms = (time.time() - t0) * 1000
+            _cached = _get_cached_gate_result(gate_short, tool_name, tool_input)
+            if _cached is not None:
+                result = _cached
+                elapsed_ms = 0.0
+                record_gate_result(gate_short, success=True)
+            else:
+                t0 = time.time()
+                result = gate.check(tool_name, tool_input, state, event_type="PreToolUse")
+                elapsed_ms = (time.time() - t0) * 1000
+                record_gate_result(gate_short, success=True)
+                _store_gate_result(gate_short, tool_name, tool_input, result)
             gate_label = getattr(gate, "GATE_NAME", gate.__name__)
             session_id = state.get("_session_id", "")
 
-            # Look up state key dependencies for this gate
-            gate_short = gate.__name__.split(".")[-1]  # e.g., "gate_01_read_before_edit"
+            # Look up state key dependencies (gate_short set above circuit breaker check)
             deps = GATE_DEPENDENCIES.get(gate_short, {})
             state_keys_read = deps.get("reads", [])
 
@@ -336,7 +478,34 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 log_gate_decision(gate_label, tool_name, "slow",
                                   f"gate took {elapsed_ms:.0f}ms (>100ms threshold)", session_id, state_keys_read,
                                   severity="warn")
-            if result.blocked:
+            if result.is_ask:
+                # Graduated escalation: ask user for permission instead of blocking
+                log_gate_decision(gate_label, tool_name, "ask", result.message, session_id, state_keys_read,
+                                  severity=result.severity)
+                hook_decision = result.to_hook_decision()
+                # Q-learning: treat ask as a block (gate did something useful)
+                update_qtable(gate.__name__, tool_name, blocked=True)
+                try:
+                    _record_gate_timing(gate_short, tool_name, elapsed_ms, blocked=True)
+                except Exception:
+                    pass  # Timing analytics are non-fatal
+                print(json.dumps(hook_decision), file=sys.stdout)
+                save_state(state, session_id=state.get("_session_id", "main"))
+                sys.exit(0)
+            elif result.blocked:
+                # Security profile: downgrade block to warn if profile says "warn"
+                # Tier 1 safety gates are never downgraded regardless of profile
+                profile_mode = get_gate_mode_for_profile(gate_short, state)
+                if profile_mode == "warn" and gate.__name__ not in TIER1_SAFETY_GATES:
+                    log_gate_decision(gate_label, tool_name, "warn",
+                                      f"[profile:downgraded] {result.message}",
+                                      session_id, state_keys_read, severity="warn")
+                    passed_gates.append(gate.__name__)
+                    try:
+                        _record_gate_timing(gate_short, tool_name, elapsed_ms, blocked=False)
+                    except Exception:
+                        pass
+                    continue
                 log_gate_decision(gate_label, tool_name, "block", result.message, session_id, state_keys_read,
                                   severity=result.severity)
                 # Track gate block counts for diagnostics
@@ -350,35 +519,50 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 outcomes.append({"gate": gate_short, "tool": tool_name, "file": file_path, "timestamp": time.time(), "resolved_by": None})
                 if len(outcomes) > 100:
                     state["gate_block_outcomes"] = outcomes[-100:]
+                # Q-learning: update qtable — this gate blocked
+                update_qtable(gate.__name__, tool_name, blocked=True)
+                # Update timing analytics with blocked=True for this execution
+                try:
+                    _record_gate_timing(gate_short, tool_name, elapsed_ms, blocked=True)
+                except Exception:
+                    pass  # Timing analytics are non-fatal
                 print(result.message, file=sys.stderr)
                 save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(2)
             elif result.message:
                 log_gate_decision(gate_label, tool_name, "warn", result.message, session_id, state_keys_read,
                                   severity="warn")
+                passed_gates.append(gate.__name__)
+                try:
+                    _record_gate_timing(gate_short, tool_name, elapsed_ms, blocked=False)
+                except Exception:
+                    pass  # Timing analytics are non-fatal
             else:
                 log_gate_decision(gate_label, tool_name, "pass", "", session_id, state_keys_read,
                                   severity="info")
+                passed_gates.append(gate.__name__)
+                try:
+                    _record_gate_timing(gate_short, tool_name, elapsed_ms, blocked=False)
+                except Exception:
+                    pass  # Timing analytics are non-fatal
         except Exception as e:
+            record_gate_result(gate_short, success=False)
             gate_label = getattr(gate, "GATE_NAME", gate.__name__)
+            deps = GATE_DEPENDENCIES.get(gate_short, {})
+            state_keys_read = deps.get("reads", [])
             if gate.__name__ in TIER1_SAFETY_GATES:
-                # Tier 1 safety gates MUST fail-closed — if we can't verify safety, block
-                # Look up state keys for crashed gate too
-                gate_short = gate.__name__.split(".")[-1]
-                deps = GATE_DEPENDENCIES.get(gate_short, {})
-                state_keys_read = deps.get("reads", [])
                 log_gate_decision(gate_label, tool_name, "block", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
                                   severity="error")
                 print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate_label}' crashed: {e}", file=sys.stderr)
                 save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(2)
-            # Non-safety gate errors should not block work — log and continue
-            gate_short = gate.__name__.split(".")[-1]
-            deps = GATE_DEPENDENCIES.get(gate_short, {})
-            state_keys_read = deps.get("reads", [])
             log_gate_decision(gate_label, tool_name, "crash", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
                               severity="warn")
             print(f"[ENFORCER] Warning: Gate error in {gate_label}: {e}", file=sys.stderr)
+
+    # Q-learning: all gates passed — update qtable for each gate that ran and passed
+    for gate_name in passed_gates:
+        update_qtable(gate_name, tool_name, blocked=False)
 
     # Save timing stats after all gates complete (normal path)
     save_state(state, session_id=state.get("_session_id", "main"))
@@ -411,6 +595,11 @@ def main():
 
     state = load_state(session_id=session_id)
     state["_session_id"] = session_id
+
+    # Sync security_profile from LIVE_STATE.json (source of truth for profile toggle)
+    live_profile = get_live_toggle("security_profile")
+    if live_profile:
+        state["security_profile"] = live_profile
 
     handle_pre_tool_use(tool_name, tool_input, state)
 

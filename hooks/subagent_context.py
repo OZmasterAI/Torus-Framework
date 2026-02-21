@@ -213,6 +213,30 @@ def build_context(agent_type, live_state, session_state=None):
         parts.append(EDIT_AGENT_RULES)
         return " ".join(parts)
 
+    if agent_type == "builder":
+        parts = [
+            f"Project: {project}. Feature: {feature}.",
+            f"Status: {status}. Tests: {test_count}.",
+        ]
+        files_str = _format_file_list(session_state.get("files_read", []))
+        if files_str:
+            parts.append(f"Recently read: {files_str}.")
+        pending_str = _format_pending(session_state)
+        if pending_str:
+            parts.append(pending_str)
+        test_str = _format_test_status(session_state)
+        if test_str:
+            parts.append(test_str)
+        errors_str = _format_error_state(session_state)
+        if errors_str:
+            parts.append(errors_str)
+        bans_str = _format_bans(session_state)
+        if bans_str:
+            parts.append(bans_str)
+        parts.append("IMPORTANT: Query search_knowledge before editing. Use remember_this after fixes.")
+        parts.append(EDIT_AGENT_RULES)
+        return " ".join(parts)
+
     if agent_type == "Bash":
         parts = [
             f"Project: {project}.",

@@ -43,21 +43,25 @@ MODEL_GUIDANCE = (
 # Each profile maps agent ROLES (planning/execution/verification) to models.
 # Gate 10 infers the role from subagent_type, then enforces the profile's model.
 
-# Agent type → role mapping
+# Agent type → role mapping (active agents only — dormant agents removed)
+# Roles: planning (read-only), execution (read+write), verification (read+run)
 AGENT_ROLE_MAP = {
-    # Planning role: research, exploration, architecture
-    "Plan":             "planning",
-    "Explore":          "planning",
-    "researcher":       "planning",
-    "claude-code-guide": "planning",
-    # Execution role: building, implementing, writing code
-    "builder":          "execution",
-    "general-purpose":  "execution",
-    "Bash":             "execution",
-    "statusline-setup": "execution",
-    # Verification role: testing, auditing, reviewing
-    "stress-tester":    "verification",
-    "auditor":          "verification",
+    # Planning role: read-only research, exploration, architecture
+    "Plan":              "planning",     # Anthropic built-in: implementation planning, read-only
+    "Explore":           "planning",     # Anthropic built-in: codebase search, read-only
+    "researcher":        "planning",     # Read-only research (Glob/Grep/Read/WebSearch, memory)
+    "claude-code-guide": "planning",     # Anthropic built-in: Claude Code documentation lookup
+    "metrics-dashboard": "planning",     # Reads audit logs + LIVE_STATE, generates ASCII dashboards
+    # Execution role: builds, implements, writes code
+    "builder":           "execution",    # Full implementation (Edit/Write/Bash + memory + causal chain)
+    "general-purpose":   "execution",    # Anthropic built-in: multi-step tasks with all tools
+    "Bash":              "execution",    # Anthropic built-in: command execution
+    "statusline-setup":  "execution",    # Anthropic built-in: edits statusline config
+    "debugger":          "execution",    # Diagnoses + fixes gate/hook/state issues (Edit/Write/Bash + causal chain)
+    # Verification role: tests, audits, reviews (read + run, no code changes)
+    "stress-tester":     "verification", # Runs test suites, reports pass/fail (Bash for tests + memory)
+    "security":          "verification", # Security audit: OWASP, gate bypass, secrets (Bash for analysis only)
+    "perf-analyzer":     "verification", # Profiles bottlenecks: hooks, gates, ChromaDB (Bash for timing only)
 }
 
 # Profile → role → model
@@ -83,28 +87,34 @@ MODEL_PROFILES = {
 # Key: subagent_type → set of recommended models.
 # Any model not in the set triggers an advisory warning.
 RECOMMENDED_MODELS = {
-    "Explore":          {"haiku", "sonnet"},
-    "Plan":             {"haiku", "sonnet"},
-    "general-purpose":  {"sonnet", "opus"},
-    "Bash":             {"haiku", "sonnet"},
-    "builder":           {"sonnet", "opus"},      # needs Edit/Write, complex tasks
+    "Explore":           {"haiku", "sonnet"},
+    "Plan":              {"opus", "sonnet"},
+    "general-purpose":   {"sonnet", "opus"},
+    "Bash":              {"haiku", "sonnet"},
+    "builder":           {"sonnet", "opus"},       # needs Edit/Write, complex tasks
     "researcher":        {"haiku", "sonnet"},      # read-only research
-    "auditor":           {"haiku", "sonnet"},      # read-only security review
+    "security":          {"sonnet"},               # security auditing needs reasoning
     "stress-tester":     {"haiku", "sonnet"},      # runs tests, read-heavy
+    "perf-analyzer":     {"sonnet"},               # profiling needs reasoning
+    "debugger":          {"sonnet", "opus"},        # debugging can be complex
+    "metrics-dashboard": {"haiku"},                # read-only data formatting
     "claude-code-guide": {"haiku"},                # documentation lookup only
     "statusline-setup":  {"haiku"},                # simple config changes
 }
 
 # Human-readable suggestions per agent type (shown in warnings)
 MODEL_SUGGESTIONS = {
-    "Explore":          "haiku or sonnet (read-only exploration doesn't need opus)",
-    "Plan":             "haiku or sonnet (planning is read-only, save cost)",
-    "general-purpose":  "sonnet or opus (needs Edit/Write — haiku may lack capability)",
-    "Bash":             "haiku or sonnet (command execution doesn't need opus)",
+    "Explore":           "haiku or sonnet (read-only exploration doesn't need opus)",
+    "Plan":              "opus or sonnet (planning needs strong reasoning for architecture decisions)",
+    "general-purpose":   "sonnet or opus (needs Edit/Write — haiku may lack capability)",
+    "Bash":              "haiku or sonnet (command execution doesn't need opus)",
     "builder":           "sonnet or opus (full implementation agent needs Edit/Write)",
     "researcher":        "haiku or sonnet (read-only exploration and analysis)",
-    "auditor":           "haiku or sonnet (code review is read-only)",
+    "security":          "sonnet (security auditing needs reasoning, not opus-level)",
     "stress-tester":     "haiku or sonnet (test execution doesn't need opus)",
+    "perf-analyzer":     "sonnet (profiling needs reasoning, not opus-level)",
+    "debugger":          "sonnet or opus (debugging complex issues may need full power)",
+    "metrics-dashboard": "haiku (read-only data formatting, minimal capability needed)",
     "claude-code-guide": "haiku (documentation lookup only, minimal capability needed)",
     "statusline-setup":  "haiku (simple config file edits only)",
 }
@@ -117,6 +127,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     if tool_name not in AGENT_SPAWN_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
+
+    if not isinstance(tool_input, dict):
+        tool_input = {}
 
     model = tool_input.get("model", "")
     description = tool_input.get("description", "sub-agent task")

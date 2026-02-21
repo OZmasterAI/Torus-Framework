@@ -14,7 +14,6 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
-from shared.state import save_state
 
 GATE_NAME = "GATE 11: RATE LIMIT"
 
@@ -43,10 +42,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if len(recent) > MAX_WINDOW_ENTRIES:
         recent = recent[-MAX_WINDOW_ENTRIES:]
 
-    # Save filtered list back to state
+    # Save filtered list back to state (enforcer saves state after all gates run)
     state["rate_window_timestamps"] = recent
-    session_id = state.get("_session_id", "main")
-    save_state(state, session_id=session_id)
 
     # First call — allow through
     if len(recent) <= 1:

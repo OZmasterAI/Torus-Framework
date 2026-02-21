@@ -222,6 +222,38 @@ def main():
     with open(CAPTURE_QUEUE, "a") as f:
         f.write(json.dumps(observation) + "\n")
 
+    # Save to memory via UDS socket so post-compaction context is richer
+    try:
+        import socket as _socket
+        sock_path = os.path.join(os.path.dirname(__file__), ".chromadb_socket")
+        if os.path.exists(sock_path):
+            sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+            sock.settimeout(2)
+            sock.connect(sock_path)
+            msg = json.dumps({
+                "method": "add_observation",
+                "document": document,
+                "metadata": {
+                    "tool_name": "PreCompact",
+                    "session_id": session_id,
+                    "timestamp": timestamp,
+                    "snapshot_type": "pre_compact",
+                    "trajectory": trajectory,
+                },
+                "id": f"precompact_{obs_id}",
+            })
+            sock.sendall(msg.encode() + b"\n")
+            sock.close()
+    except Exception:
+        pass  # Fail-open
+
+    # Print active files to stderr so they survive compaction
+    files_edited = state.get("files_edited", [])
+    pending_verif = state.get("pending_verification", [])
+    if files_edited or pending_verif:
+        active_files = list(set(files_edited[-10:] + pending_verif[-5:]))
+        print(f"[PreCompact] Active files: {', '.join(os.path.basename(f) for f in active_files)}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     try:
