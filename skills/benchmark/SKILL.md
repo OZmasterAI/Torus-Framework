@@ -181,7 +181,7 @@ if latencies:
 
 **I/O benchmark** (if ramdisk is mounted):
 ```bash
-python3 /home/crab/.claude/hooks/benchmark_io.py 2>&1 | grep -E "(Mean|p50|p95|p99|Speedup|Total|SUMMARY)" | head -20
+python3 /home/crab/.claude/hooks/benchmarks/benchmark_io.py 2>&1 | grep -E "(Mean|p50|p95|p99|Speedup|Total|SUMMARY)" | head -20
 ```
 Extract: tmpfs mean latency, disk mean latency, speedup factor.
 

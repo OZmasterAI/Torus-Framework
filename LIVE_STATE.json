@@ -1,5 +1,5 @@
 {
-  "session_count": 170,
+  "session_count": 171,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -7,13 +7,13 @@
   "feature_status": "in-progress",
   "test_count": 1533,
   "test_failures": 0,
-  "what_was_done": "Session 169: Deep memory pipeline analysis and two fixes. (1) Fixed UDS socket intermittent warnings in gather.py \u2014 bumped retries 1\u21922, silenced cosmetic warning. (2) Added 3rd trim to search_knowledge() pipeline (line 1638) fixing L3/linked results bypassing top_k budget. (3) Full pipeline trace with 3 research agents: write path (14 steps), search path (19 steps), auto-capture (6 steps), causal chain, infrastructure. (4) Confirmed L2/L3 asymmetry is intentional (L3 backup-only, harder to trigger). (5) Created Memory-Architecture-Diagram.md on Desktop. HTML version pending.",
-  "service_status": "Memory MCP: RUNNING (1099 memories) | Tests: 1533 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
+  "what_was_done": "Gate 4 staleness loop fix (F1+F2e+F3+F4) — prevents subagents from getting stuck creating large files. Auto-commit timeout bumped 3s→5s. Codebase cleanup: fixed health check ChromaDB path, deleted dead venv + stale chroma.sqlite3, moved tests to hooks/tests/, benchmarks to hooks/benchmarks/, token_analysis.py to scripts/.",
+  "service_status": "Memory MCP: RUNNING (1102 memories) | Tests: 1533 total, 1 pre-existing failure | Framework: v2.5.3 (Torus) | Gates: 16 active (Gate 8 dormant) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
   "next_steps": [
     "Create Memory-Architecture-Diagram.html on Desktop (matching dark theme)",
     "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop",
-    "Resolve test_framework.py Pyright import errors for shared modules",
+    "Fix pre-existing test failures: test_edit_streak.py (gate 5 behavior change), test_state_migrator.py (int/float schema mismatch)",
     "Consider reactivating Gate 8 (temporal patterns) with improved implementation"
   ],
   "known_issues": [
@@ -21,7 +21,9 @@
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
     "Gate 8 dormant - temporal pattern detection disabled, code preserved for reactivation",
-    "Auto-commit test failure (pre-existing, commit message formatting)"
+    "Auto-commit test failure (pre-existing, commit message formatting)",
+    "test_edit_streak.py expects gate 5 block at streak=5 (behavior changed)",
+    "test_state_migrator.py int/float type mismatch in schema validator"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -36,12 +38,12 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 0m\n- **Tool Calls**: 0 (none tracked)\n- **Files Modified**: 0 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: none this session",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 52m\n- **Tool Calls**: 98 (Read: 40, Grep: 24, mcp__memory__search_knowledge: 9, mcp__memory__get_memory: 8, Bash: 7, Task: 5)\n- **Files Modified**: 1 (0 verified, 1 pending)\n- **Errors**: 2 (ToolFail:Read x2)\n- **Tests**: none this session\n- **Subagents**: 8 launched, 13,529 tokens\n\n**Files changed:**\n- `/home/crab/.claude/plans/noble-questing-map.md` (pending)",
   "last_session_metrics": {
-    "reads": 0,
-    "edits": 0,
-    "errors": 0,
+    "reads": 18,
+    "edits": 1,
+    "errors": 1,
     "verified": 0,
-    "pending": 0
+    "pending": 1
   }
 }
