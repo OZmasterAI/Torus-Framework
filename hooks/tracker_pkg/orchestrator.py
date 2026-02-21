@@ -65,6 +65,17 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     # Gate effectiveness: resolve pending block outcomes
     _resolve_gate_block_outcomes(tool_name, tool_input, state)
 
+    # Auto-expire fixing_error after 30 minutes of staleness
+    # Prevents permanent fixing_error=True when tests never pass
+    if state.get("fixing_error", False):
+        recent_failure = state.get("recent_test_failure")
+        if isinstance(recent_failure, dict):
+            failure_age = time.time() - recent_failure.get("timestamp", time.time())
+            if failure_age > 1800:  # 30 minutes
+                state["fixing_error"] = False
+                state["recent_test_failure"] = None
+                _log_debug("fixing_error auto-expired after 30 min staleness")
+
     # Track file reads (normalize paths to prevent bypass via ./foo vs foo)
     if tool_name == "Read":
         file_path = tool_input.get("file_path", "")
@@ -227,6 +238,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                 )
                 state["recent_test_failure"] = None
                 state["fixing_error"] = False
+                state["confidence_warned_signals"] = []  # Reset G14 signal suppression
 
         # Trigger B: Git commit (queued for boot)
         if "git commit" in command:

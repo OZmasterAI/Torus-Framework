@@ -843,15 +843,15 @@ print("\n--- Gate 7: Critical File Guard ---")
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 
-# Edit a critical file (auth_handler.py) with stale memory → BLOCKED by Gate 7
-# Set memory_last_queried to 4 minutes ago: within Gate 4's 5-min window but
-# outside Gate 7's 3-min window, isolating Gate 7's behavior.
+# Write a critical file (auth_handler.py) with stale memory → BLOCKED by Gate 7
+# Set memory_last_queried to 5.8 min ago: within Gate 4's Write window (10min)
+# but outside Gate 7's 5-min window, isolating Gate 7's behavior.
 run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/auth_handler.py"})
 state = load_state(session_id=MAIN_SESSION)
-state["memory_last_queried"] = time.time() - 240  # 4 minutes ago
+state["memory_last_queried"] = time.time() - 350  # 5.8 minutes ago
 save_state(state, session_id=MAIN_SESSION)
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/auth_handler.py"})
-test("Gate 7: edit auth_handler.py with stale memory → blocked", code != 0, f"code={code}")
+code, msg = run_enforcer("PreToolUse", "Write", {"file_path": "/tmp/auth_handler.py", "content": "test"})
+test("Gate 7: write auth_handler.py with stale memory → blocked", code != 0, f"code={code}")
 test("Gate 7: block message specifically mentions GATE 7", "GATE 7" in msg, msg)
 
 # Edit a non-critical file → ALLOWED (only need Gate 4 memory)
@@ -958,10 +958,10 @@ new_critical_files = [
 for file_path, desc in new_critical_files:
     cleanup_test_states()
     reset_state(session_id=MAIN_SESSION)
-    # Set memory to 4 minutes ago (within Gate 4 but outside Gate 7)
+    # Set memory to 7 minutes ago (outside Gate 7's 5-min window)
     run_enforcer("PostToolUse", "Read", {"file_path": file_path})
     state = load_state(session_id=MAIN_SESSION)
-    state["memory_last_queried"] = time.time() - 240
+    state["memory_last_queried"] = time.time() - 420
     save_state(state, session_id=MAIN_SESSION)
     code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": file_path})
     test(f"Gate 7: {desc} with stale memory → blocked", code != 0, f"code={code}")
@@ -7717,10 +7717,10 @@ test("v2.3.2: Gate 7 CRITICAL_PATTERNS are (regex, category) tuples",
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
 _g7_state = load_state(session_id=MAIN_SESSION)
-_g7_state["memory_last_queried"] = time.time() - 200  # Fresh for Gate 4 (<5m) but stale for Gate 7 (>3m)
+_g7_state["memory_last_queried"] = time.time() - 350  # Within G04 Write window (10m) but outside G07 (5m)
 _g7_state["files_read"] = ["/home/crab/.claude/hooks/enforcer.py"]  # Bypass Gate 1
 save_state(_g7_state, session_id=MAIN_SESSION)
-code_g7, msg_g7 = run_enforcer("PreToolUse", "Edit", {"file_path": "/home/crab/.claude/hooks/enforcer.py"})
+code_g7, msg_g7 = run_enforcer("PreToolUse", "Write", {"file_path": "/home/crab/.claude/hooks/enforcer.py", "content": "test"})
 test("v2.3.2: Gate 7 block message includes category",
      code_g7 != 0 and "Framework core" in msg_g7,
      f"Expected block with 'Framework core', got code={code_g7}, msg={msg_g7}")

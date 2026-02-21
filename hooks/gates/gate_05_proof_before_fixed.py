@@ -92,7 +92,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         print(
             f"[{GATE_NAME}] WARNING: {os.path.basename(file_path)} edited "
             f"{current_streak + 1} times without verification. "
-            f"Consider running a test to confirm changes work.",
+            f"Run any Bash command (test, lint, script) to verify and reset the counter.",
             file=sys.stderr,
         )
 
@@ -102,7 +102,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             blocked=True,
             message=f"[{GATE_NAME}] BLOCKED: {os.path.basename(file_path)} edited "
                     f"{current_streak + 1} times without verification. "
-                    f"Run a test or check before making more edits.",
+                    f"Run any Bash command (test, script, or check) to reset and continue.",
             gate_name=GATE_NAME,
         )
 
@@ -120,7 +120,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         file_list = ", ".join(os.path.basename(p) for p in pending_other[:3])
         return GateResult(
             blocked=True,
-            message=f"[{GATE_NAME}] BLOCKED: {len(pending_other)} files with unverified edits ({file_list}). Verify your changes (run tests, execute script, check output) before editing more files.",
+            message=f"[{GATE_NAME}] BLOCKED: {len(pending_other)} files with unverified edits ({file_list}). Run any Bash command (pytest, python script, etc.) to verify and clear pending files.",
             gate_name=GATE_NAME,
         )
 

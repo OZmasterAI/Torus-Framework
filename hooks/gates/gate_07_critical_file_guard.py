@@ -87,11 +87,12 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     last_query = get_memory_last_queried(state)
     elapsed = time.time() - last_query
 
-    # Require memory query within last 3 minutes for critical files
-    if elapsed > 180:
+    # Require memory query within last 5 minutes for critical files (aligned with Gate 4)
+    if elapsed > 300:
         return GateResult(
             blocked=True,
-            message=f"[{GATE_NAME}] BLOCKED: '{basename}' is a critical file ({matched_category}). Query memory about this file/component before editing. Use search_knowledge() first.",
+            message=f"[{GATE_NAME}] BLOCKED: '{basename}' is a critical file ({matched_category}). "
+                    f"Query memory about this file/component before editing. Use search_knowledge() first.",
             gate_name=GATE_NAME,
             severity="critical",
         )

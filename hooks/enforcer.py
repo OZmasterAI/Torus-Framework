@@ -143,7 +143,6 @@ GATE_MODULES = [
     # "gates.gate_08_temporal",  # DORMANT — re-enable by uncommenting
     "gates.gate_09_strategy_ban",
     "gates.gate_10_model_enforcement",
-    "gates.gate_11_rate_limit",
     # "gates.gate_12_plan_mode_save",  # MERGED into gate_06 (refactor1)
     "gates.gate_13_workspace_isolation",
     "gates.gate_14_confidence_check",
@@ -151,6 +150,7 @@ GATE_MODULES = [
     "gates.gate_16_code_quality",
     "gates.gate_17_injection_defense",
     "gates.gate_18_canary",
+    "gates.gate_11_rate_limit",  # Last: blocked calls from earlier gates don't inflate rate counter
 ]
 
 # Tier 1 safety gates that MUST fail-closed (exceptions = block, not pass)
@@ -184,6 +184,10 @@ def is_memory_tool(tool_name):
 
 def is_always_allowed(tool_name):
     return tool_name in ALWAYS_ALLOWED_TOOLS or is_memory_tool(tool_name)
+
+
+# Tools that bypass most gates but still run Gate 17 (injection defense)
+_G17_SCAN_TOOLS = {"WebFetch", "WebSearch"}
 
 
 # ── Gate Dependency Graph ────────────────────────────────────────
@@ -425,6 +429,19 @@ def load_gates():
 def handle_pre_tool_use(tool_name, tool_input, state):
     """Run all gates before a tool call. Block if any gate fails."""
     if is_always_allowed(tool_name):
+        # WebFetch/WebSearch bypass most gates but still need G17 injection scanning
+        if tool_name not in _G17_SCAN_TOOLS:
+            return
+        _ensure_gates_loaded()
+        g17_key = "gates.gate_17_injection_defense"
+        if g17_key in _loaded_gates:
+            try:
+                result = _loaded_gates[g17_key].check(tool_name, tool_input, state, event_type="PreToolUse")
+                if result and result.blocked:
+                    print(result.message, file=sys.stderr)
+                    sys.exit(2)
+            except Exception as e:
+                print(f"[ENFORCER] G17 scan error: {e}", file=sys.stderr)
         return
 
     gates = _gates_for_tool(tool_name)

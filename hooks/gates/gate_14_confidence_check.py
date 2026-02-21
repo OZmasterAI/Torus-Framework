@@ -71,8 +71,10 @@ def _check_signals(state):
     if not state.get("session_test_baseline", False):
         failures.append("no test run this session")
     # Signal 2: pending_verification
+    # Suppress during active error fixing — having unverified edits is expected
+    # when fixing a known test failure. Gate 5 still limits unverified file count.
     pending = state.get("pending_verification", [])
-    if len(pending) > 0:
+    if len(pending) > 0 and not state.get("fixing_error", False):
         failures.append(f"{len(pending)} file(s) with unverified edits")
     # Signal 3: memory freshness — DORMANT (redundant with Gate 4)
     # mem_ts = get_memory_last_queried(state)
@@ -122,7 +124,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if file_warnings > MAX_WARNINGS:
         msg = (
             f"[{GATE_NAME}] BLOCKED: Low confidence ({failure_str}). "
-            f"Run tests, verify pending edits, or query memory before creating new files. "
+            f"Run a Bash command (e.g. pytest) to set test baseline and clear pending verification. "
             f"({file_warnings} attempts on {os.path.basename(file_path)} — exceeded {MAX_WARNINGS} warning limit)"
         )
         return GateResult(blocked=True, gate_name=GATE_NAME, message=msg, severity="warn")

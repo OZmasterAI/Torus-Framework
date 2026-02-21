@@ -20,7 +20,7 @@ from shared.gate_result import GateResult
 
 GATE_NAME = "GATE 13: WORKSPACE ISOLATION"
 CLAIMS_FILE = os.path.join(os.path.dirname(__file__), "..", ".file_claims.json")
-STALE_THRESHOLD = 7200  # 2 hours
+STALE_THRESHOLD = 1800  # 30 minutes (reduced from 2h to prevent long stale claim blocks)
 
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 

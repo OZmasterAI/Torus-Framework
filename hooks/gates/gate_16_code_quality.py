@@ -160,7 +160,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         msg = (
             f"[{GATE_NAME}] BLOCKED: Code quality issues: {detail}. "
             f"({file_count} violations on {os.path.basename(file_path)} — "
-            f"exceeded {MAX_WARNINGS} warning limit). Fix issues before continuing."
+            f"exceeded {MAX_WARNINGS} warning limit). Re-edit without the violation to clear. "
+            f"If also blocked by Gate 6, call remember_this() first."
         )
         return GateResult(blocked=True, gate_name=GATE_NAME, message=msg, severity="warn")
 

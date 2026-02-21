@@ -179,6 +179,15 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
         escalation_threshold = state.get("gate_tune_overrides", {}).get("gate_06_save_fix", {}).get("escalation_threshold", ESCALATION_THRESHOLD)
         if warn_count >= escalation_threshold:
+            # Exempt Bash from escalation blocking — tests must still run
+            # to satisfy Gate 5/15, and blocking Bash creates a deadlock
+            if tool_name == "Bash":
+                print(
+                    f"[{GATE_NAME}] WARNING (escalated): {warn_count} unsaved fixes. "
+                    f"Bash allowed for test verification. Call remember_this() soon.",
+                    file=sys.stderr,
+                )
+                return GateResult(blocked=False, gate_name=GATE_NAME, severity="warn")
             return GateResult(
                 blocked=True,
                 message=f"[{GATE_NAME}] BLOCKED: {warn_count} verified fixes unsaved. "

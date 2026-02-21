@@ -157,8 +157,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             message=f"[{GATE_NAME}] BLOCKED + DEFERRED ({level_name}): Strategy '{current_strategy}' is BANNED "
                     f"({fail_count} failures, threshold={ban_threshold}). "
                     f"first: {first_ago}m ago, last: {last_ago}m ago. "
-                    f"Error deferred — move to next task. "
-                    f"Call query_fix_history() for alternatives or revisit at verify-phase.",
+                    f"Call record_attempt() with a NEW strategy_id, or record_outcome() to close the current chain. "
+                    f"Use query_fix_history() to see what's been tried.",
         )
 
     if fail_count >= 1:
