@@ -82,7 +82,7 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/auto_commit.py\" commit",
-            "timeout": 3
+            "timeout": 5
           }
         ]
       }
