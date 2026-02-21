@@ -1634,6 +1634,9 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         except Exception:
             pass  # Telegram fallback is optional
 
+    # Final trim: enforce top_k budget after all sources (L3, linked) have been appended
+    formatted = formatted[:top_k]
+
     # Session context enrichment: attach conversation context to ChromaDB hits
     enrichment_count = 0
     try:

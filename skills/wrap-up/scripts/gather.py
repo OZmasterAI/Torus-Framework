@@ -97,7 +97,7 @@ def gather_memory(warnings):
     """
     result = {"count": 0, "accessible": False, "count_reliable": True}
     try:
-        result["accessible"] = is_worker_available(retries=1, delay=0.1)
+        result["accessible"] = is_worker_available(retries=2, delay=0.1)
     except Exception as e:
         warnings.append(f"memory accessible: {e}")
     if not result["accessible"]:
@@ -105,7 +105,8 @@ def gather_memory(warnings):
         # gather.py runs as a subprocess outside the MCP context)
         if _is_mcp_process_running():
             result["accessible"] = True
-            warnings.append("memory: socket unreachable but MCP process running")
+            # Expected when gather.py runs as subprocess — socket is process-local
+            # but MCP is confirmed alive via pgrep. Not worth warning about.
     if result["accessible"]:
         try:
             result["count"] = socket_count("knowledge")
@@ -132,7 +133,7 @@ def gather_memory(warnings):
 def gather_backup(warnings):
     """Trigger ChromaDB backup and return status."""
     try:
-        if not is_worker_available(retries=1, delay=0.1):
+        if not is_worker_available(retries=2, delay=0.1):
             warnings.append("backup: worker unavailable")
             return {}
         result = socket_backup()
