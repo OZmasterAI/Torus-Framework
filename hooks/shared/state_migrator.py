@@ -118,16 +118,19 @@ def validate_state(state_dict):
 
         value = state_dict[field_name]
 
-        # Special case: None is allowed for recent_test_failure (optional error info)
-        if field_name == "recent_test_failure" and value is None:
+        # Special case: None is allowed for optional fields
+        if value is None and field_name in ("recent_test_failure", "last_test_exit_code"):
             continue
 
-        # Type check
+        # Type check (int is acceptable where float is expected — every int is a valid float)
         if expected_type is not None and not isinstance(value, expected_type):
-            errors.append(
-                f"Field {field_name}: expected {expected_type_str}, got {type(value).__name__}"
-            )
-            continue
+            if expected_type is float and isinstance(value, int):
+                pass  # int is a valid numeric value for float fields (e.g., timestamps)
+            else:
+                errors.append(
+                    f"Field {field_name}: expected {expected_type_str}, got {type(value).__name__}"
+                )
+                continue
 
         # Size check for lists with MAX_* caps
         max_size = field_meta.get("max_size")

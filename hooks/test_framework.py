@@ -8981,6 +8981,9 @@ def _mock_git_with_diff(*args, **kwargs):
 
 auto_commit.git = _mock_git_with_diff
 _ac_commit_calls.clear()
+# Populate the staged tracker so commit() processes files
+with open(auto_commit.STAGED_TRACKER, "w") as _ac_f:
+    _ac_f.write("/home/crab/.claude/hooks/auto_commit.py\n/home/crab/.claude/hooks/test_framework.py\n")
 auto_commit.commit()
 test("auto-commit: commit() commits when changes staged",
      any(a[0] == "commit" for a in _ac_commit_calls),
@@ -9021,6 +9024,9 @@ def _mock_git_capture_msg(*args, **kwargs):
 
 auto_commit.git = _mock_git_capture_msg
 _ac_msg_calls.clear()
+# Populate the staged tracker so commit() doesn't exit early
+with open(auto_commit.STAGED_TRACKER, "w") as _ac_f:
+    _ac_f.write("/home/crab/.claude/hooks/boot.py\n/home/crab/.claude/hooks/enforcer.py\n")
 auto_commit.commit()
 _ac_commit_args = [a for a in _ac_msg_calls if a[0] == "commit"]
 _ac_msg_ok = False

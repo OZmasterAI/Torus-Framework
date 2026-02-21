@@ -22,7 +22,7 @@ def test_edit_streak():
         "tool_call_count": 0
     }
 
-    test_file = "/tmp/test_file.py"
+    test_file = "/tmp/sample_module.py"  # NOT test_* — G05 exempts test files
 
     print("Test 1: First edit should not trigger warning")
     handle_post_tool_use("Edit", {"file_path": test_file}, state, "test-session")
