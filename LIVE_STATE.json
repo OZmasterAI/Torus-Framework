@@ -1,5 +1,5 @@
 {
-  "session_count": 180,
+  "session_count": 181,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -7,7 +7,7 @@
   "feature_status": "in-progress",
   "test_count": 1537,
   "test_failures": 0,
-  "what_was_done": "Session 180: (1) Implemented 'refactor' security profile — G4/G6/G10 to warn, G14 disabled, safety gates untouched. 5 new tests. (2) Fixed UDS accept loop resilience — rebinds on OSError instead of dying. (3) Discussed memory performance speedup options — saved as feature request.",
+  "what_was_done": "Session 180: (1) Implemented 'refactor' security profile \u2014 G4/G6/G10 to warn, G14 disabled, safety gates untouched. 5 new tests. (2) Fixed UDS accept loop resilience \u2014 rebinds on OSError instead of dying. (3) Discussed memory performance speedup options \u2014 saved as feature request.",
   "service_status": "Memory MCP: RUNNING (1136 memories) | Tests: 1537 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
   "next_steps": [
     "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
@@ -37,12 +37,12 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 47m\n- **Tool Calls**: 33 (Read: 14, Bash: 11, Write: 2, Glob: 2, EnterPlanMode: 1, Task: 1)\n- **Files Modified**: 2 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 9 launched, 159 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`\n- `/home/crab/.claude/plans/witty-juggling-pixel.md`",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 4m\n- **Tool Calls**: 14 (Bash: 6, mcp__memory__remember_this: 2, Edit: 2, mcp__memory__search_knowledge: 1, Grep: 1, Skill: 1)\n- **Files Modified**: 1 (1 verified, 0 pending)\n- **Errors**: 1 (No such file or directory x1)\n- **Tests**: exit code 0\n- **Subagents**: 4 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json` (verified)",
   "last_session_metrics": {
-    "reads": 12,
-    "edits": 2,
-    "errors": 0,
-    "verified": 0,
+    "reads": 1,
+    "edits": 1,
+    "errors": 1,
+    "verified": 1,
     "pending": 0
   }
 }
