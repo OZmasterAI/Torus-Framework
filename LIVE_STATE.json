@@ -1,5 +1,5 @@
 {
-  "session_count": 185,
+  "session_count": 186,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -8,7 +8,7 @@
   "test_count": 1308,
   "test_failures": 0,
   "what_was_done": "Both approved improvements implemented: (1) Auto tier classification — _classify_tier() Tier 1/2/3, metadata in remember_this, _apply_tier_boost in search, _backfill_tiers for existing memories, 12 tests. (2) Embedding upgrade — thenlper/gte-base (768-dim, 512 tokens) replacing default MiniLM (384-dim, 256 tokens), SentenceTransformerEmbeddingFunction on all 5 collections, _migrate_embeddings() for re-embedding, backup_embeddings.py script (52MB backup at ~/data/memory/). Alibaba-NLP/gte-multilingual-base broken with sentence-transformers v5.2.3, substituted thenlper/gte-base. 5 embedding tests. Tests: 1291 → 1308 (+17), 0 failures.",
-  "service_status": "Memory MCP: RUNNING (1187 memories) | Tests: 1308 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: thenlper/gte-base (768-dim, migration pending MCP restart)",
+  "service_status": "Memory MCP: RUNNING (1189 memories) | Tests: 1308 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: thenlper/gte-base (768-dim, migration pending MCP restart)",
   "next_steps": [
     "Restart MCP server to trigger embedding migration (auto-runs _migrate_embeddings)",
     "Verify search quality post-migration and tune dedup thresholds if needed",
