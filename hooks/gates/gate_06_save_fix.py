@@ -21,6 +21,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
+from shared.state import get_memory_last_queried
 
 GATE_NAME = "GATE 6: SAVE TO MEMORY"
 
@@ -153,7 +154,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     # Plan mode: warn if plan mode exited without saving to memory (former Gate 12)
     last_exit_plan_mode = state.get("last_exit_plan_mode", 0)
-    memory_last_queried = state.get("memory_last_queried", 0)
+    memory_last_queried = get_memory_last_queried(state)
     if last_exit_plan_mode > 0:
         plan_age = time.time() - last_exit_plan_mode
         if plan_age > PLAN_STALE_SECONDS:

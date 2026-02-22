@@ -25,6 +25,7 @@ from shared.state import (
     MAX_EDIT_STREAK,
     MAX_GATE_BLOCK_OUTCOMES,
 )
+from shared.security_profiles import VALID_PROFILES
 
 logger = logging.getLogger(__name__)
 
@@ -159,10 +160,9 @@ def validate_state(state_dict):
 
         if field_name == "security_profile" and isinstance(value, str):
             # Check that security_profile is one of the valid values
-            valid_profiles = {"strict", "balanced", "permissive"}
-            if value not in valid_profiles:
+            if value not in VALID_PROFILES:
                 warnings.append(
-                    f"security_profile: invalid value '{value}' (must be one of {valid_profiles})"
+                    f"security_profile: invalid value '{value}' (must be one of {VALID_PROFILES})"
                 )
 
     is_valid = len(errors) == 0
