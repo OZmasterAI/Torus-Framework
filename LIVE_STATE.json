@@ -7,22 +7,19 @@
   "feature_status": "in-progress",
   "test_count": 1537,
   "test_failures": 0,
-  "what_was_done": "Session 180: (1) Implemented 'refactor' security profile \u2014 G4/G6/G10 to warn, G14 disabled, safety gates untouched. 5 new tests. (2) Fixed UDS accept loop resilience \u2014 rebinds on OSError instead of dying. (3) Discussed memory performance speedup options \u2014 saved as feature request.",
-  "service_status": "Memory MCP: RUNNING (1136 memories) | Tests: 1537 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
+  "what_was_done": "Session 181: (1) Memory performance deep-dive \u2014 benchmarked all components (ChromaDB query ~555ms, dedup ~446ms, upsert ~584ms, FTS5 ~30ms, Terminal L2 ~74ms). ChromaDB embedding is 90%+ of cost. Best optimizations: extend FTS5-first routing, use force=True for structured saves. (2) Investigated statusline 'status error' \u2014 added traceback logging to /tmp/statusline_crash.log, could not reproduce. Not caused by session 180 UDS fix.",
+  "service_status": "Memory MCP: RUNNING (1139 memories) | Tests: 1537 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
   "next_steps": [
     "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
+    "Memory performance: extend FTS5-first routing for keyword-heavy queries (~15 lines, zero risk, saves ~500ms)",
     "Update GitHub repo with new documentation from ~/Desktop",
-    "Fix pre-existing test failures: test_edit_streak.py (gate 5 behavior change), test_state_migrator.py (int/float schema mismatch)",
-    "Memory performance: async saves + query caching (feature request from session 180)",
-    "Consider reactivating Gate 8 (temporal patterns) with improved implementation"
+    "Fix pre-existing test failures: test_edit_streak.py (gate 5 behavior change), test_state_migrator.py (int/float schema mismatch)"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Gate 8 dormant - temporal pattern detection disabled, code preserved in dormant/gates/",
-    "Auto-commit test failure (pre-existing, commit message formatting)",
-    "Test count is 1532 (not 1533) \u2014 Gate 8 night-hours test only runs 1-5 AM"
+    "Statusline intermittent 'status error' - traceback logging added to /tmp/statusline_crash.log"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
