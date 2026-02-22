@@ -1,14 +1,14 @@
 {
-  "session_count": 179,
+  "session_count": 180,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1532,
+  "test_count": 1537,
   "test_failures": 0,
-  "what_was_done": "Tier 2 test optimization: Converted ~118 run_enforcer() subprocess calls to direct function imports in test_framework.py. Runtime reduced from 84s (original) to 31s (Tier 1, session 177) to 14-16s (Tier 2). Added _post() adapter for PostToolUse calls and converted remaining PreToolUse calls to _direct(_gXX_check()). Fixed cleanup_test_states() to include session_id 'main' for state files written by _post(). Confirmed 1532 test count is correct (Gate 8 has time-conditional test 1-5 AM).",
-  "service_status": "Memory MCP: RUNNING (1131 memories) | Tests: 1532 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
+  "what_was_done": "Session 180: Implemented 'refactor' security profile — relaxes G4/G6/G10 to warn, disables G14, keeps all safety gates blocking. 5 new tests (1537 total). Committed b4349a4.",
+  "service_status": "Memory MCP: RUNNING (1134 memories) | Tests: 1537 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
   "next_steps": [
     "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop",
@@ -21,7 +21,7 @@
     "test_framework.py Pyright import errors for shared modules (path resolution)",
     "Gate 8 dormant - temporal pattern detection disabled, code preserved in dormant/gates/",
     "Auto-commit test failure (pre-existing, commit message formatting)",
-    "Test count is 1532 (not 1533) — Gate 8 night-hours test only runs 1-5 AM"
+    "Test count is 1532 (not 1533) \u2014 Gate 8 night-hours test only runs 1-5 AM"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -35,5 +35,13 @@
   "security_profile": "balanced",
   "chain_memory": true,
   "tg_session_notify": true,
-  "tg_mirror_messages": true
+  "tg_mirror_messages": true,
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 47m\n- **Tool Calls**: 33 (Read: 14, Bash: 11, Write: 2, Glob: 2, EnterPlanMode: 1, Task: 1)\n- **Files Modified**: 2 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 9 launched, 159 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`\n- `/home/crab/.claude/plans/witty-juggling-pixel.md`",
+  "last_session_metrics": {
+    "reads": 12,
+    "edits": 2,
+    "errors": 0,
+    "verified": 0,
+    "pending": 0
+  }
 }
