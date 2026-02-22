@@ -1,25 +1,23 @@
 {
-  "session_count": 182,
+  "session_count": 183,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1562,
+  "test_count": 1580,
   "test_failures": 0,
-  "what_was_done": "Session 182: Architecture audit sprint \u2014 completed 6/20 items. (1-3) Bug fixes: Gate 06 sideband, researcher.md tools, state_migrator.py profiles. (4-5) I/O cache: Q-table + gate timing in-process cache with flush-before-exit, eliminates ~47/51 file ops per hook call. (6) Tri-mode search routing: Default/Fast/Full Hybrid switchable mid-session via LIVE_STATE.json toggle. Statusline unified to \u25c9/\u25cb radio buttons. 4 commits, 1562 tests pass.",
-  "service_status": "Memory MCP: RUNNING (1148 memories) | Tests: 1562 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
+  "what_was_done": "Architecture audit sprint: completed items 7 (is_exempt unification), 8 (GATE_MODULES centralization), 13-14 (Terminal L2 direct import, 15x faster), 15 (pruned 4 superseded MCP tools), 19-20 (removed 6 superseded skills). Total: -1,559 lines removed, 3 drift bugs fixed, 43 new tests added. Analyzed item 16-18 (test framework monolith) — chose Option E (migrate behavioral tests, delete version scaffolding) for next session.",
+  "service_status": "Memory MCP: RUNNING (1157 memories) | Tests: 1580 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled",
   "next_steps": [
-    "Code health/dedup: Items 7-10 (extract is_exempt, centralize GATE_MODULES, remove dead code, merge state_migrator_fix)",
-    "Merge Self-Sprint-2 into main (all audit items complete, 0 test failures)",
-    "Update GitHub repo with new documentation from ~/Desktop",
-    "Fix pre-existing test failures: test_edit_streak.py (gate 5 behavior change), test_state_migrator.py (int/float schema mismatch)"
+    "Item 16-18: Option E — migrate 493 behavioral tests from 42 version sections into functional sections, delete string-checks + scaffolding (~4,763 lines)",
+    "Merge Self-Sprint-2 into main (all audit items nearing completion, 0 test failures)",
+    "Update GitHub repo with new documentation from ~/Desktop"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
-    "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Statusline intermittent 'status error' - traceback logging added to /tmp/statusline_crash.log"
+    "test_framework.py Pyright import errors for shared modules (path resolution)"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -34,13 +32,5 @@
   "search_routing": "default",
   "chain_memory": true,
   "tg_session_notify": true,
-  "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 18m\n- **Tool Calls**: 52 (Bash: 16, Read: 13, Grep: 10, Glob: 3, mcp__memory__remember_this: 3, Edit: 2)\n- **Files Modified**: 3 (1 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: none this session\n- **Subagents**: 4 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/hooks/benchmark_memory.py`\n- `/home/crab/.claude/hooks/statusline.py`\n- `/home/crab/.claude/LIVE_STATE.json` (verified)",
-  "last_session_metrics": {
-    "reads": 5,
-    "edits": 3,
-    "errors": 0,
-    "verified": 1,
-    "pending": 0
-  }
+  "tg_mirror_messages": true
 }
