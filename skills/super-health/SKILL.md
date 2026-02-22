@@ -27,11 +27,11 @@ If `--quick` flag is set, stop here.
 ### 2. DEEP DIAGNOSTICS
 Run the health check script:
 ```bash
-python3 ~/.claude/skills/health/scripts/check.py
+python3 ~/.claude/skills/super-health/scripts/check.py
 ```
 If `--repair` flag is given:
 ```bash
-python3 ~/.claude/skills/health/scripts/check.py --repair
+python3 ~/.claude/skills/super-health/scripts/check.py --repair
 ```
 
 This checks:

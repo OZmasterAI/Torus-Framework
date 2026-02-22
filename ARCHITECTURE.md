@@ -593,19 +593,19 @@ Indexes all Claude Code JSONL session files into a SQLite FTS5 database for full
 | `/deploy` | Deployment workflow with Gate 3 enforcement |
 | `/diagnose` | Gate effectiveness analysis: fire rates, timing, recommendations |
 | `/document` | Auto-generate docstrings, README, API docs, architecture, changelog |
-| `/evolve` | Autonomous 7-phase self-evolution: SCAN→EVALUATE→DIAGNOSE→PRIORITIZE→EXECUTE→UPGRADE→VALIDATE |
 | `/explore` | Interactive codebase deep-dive |
 | `/fix` | Auto-diagnose and fix: memory → context → causal chain → fix → verify |
 | `/learn` | Learn from external sources: GATHER→ANALYZE→CROSS-REFERENCE→SYNTHESIZE→INTEGRATE→REMEMBER→TEACH |
 | `/loop` | Torus Loop Orchestrator: runs PRP tasks via fresh Claude instances |
-| `/profile` | Performance profiling and bottleneck identification |
+| `/super-prof-optimize` | Performance profiling + optimization (merged from /profile + /optimize) |
 | `/prp` | Generate/list/view Product Requirements Prompts |
 | `/ralph` | Autonomous loop: up to 10 build-verify cycles with circuit breakers |
 | `/refactor` | Safe incremental refactoring |
 | `/research` | Structured research with memory integration (quick/standard/deep/exhaustive tiers) |
 | `/review` | Code quality and convention check |
-| `/self-improve` | Meta-skill: 7-step framework self-improvement (INTROSPECT→ANALYZE→RESEARCH→IDENTIFY→IMPLEMENT→VERIFY→REPORT) |
 | `/status` | Live project status report (uses `gather.py`) |
+| `/super-evolve` | Ultimate self-evolution: merged /evolve + /self-improve (scan, research, execute, validate) |
+| `/super-health` | Comprehensive diagnostics: merged /health + /health-report + /status (quick→deep→report) |
 | `/test` | Run, write, and debug test suites |
 | `/wave` | Torus Wave Orchestrator: parallel PRP task execution with file-overlap guard |
 | `/web` | Web content management: index, search, list, delete |
@@ -762,7 +762,7 @@ Current: ~1,321 tokens. Hard limit: 2,000 tokens. Every line is injected into ev
 
 ### v2.5.1 — 2026-02-20 (Session 163, Self-Sprint-2)
 - **6 new agent types**: code-reviewer, performance-analyzer, explorer, test-writer (+ updated researcher to haiku)
-- **6 new skills**: /learn, /self-improve, /evolve, /benchmark, /diagnose, /wave (promoted from hidden)
+- **6 new skills**: /learn, /self-improve, /evolve, /benchmark, /diagnose, /wave (promoted from hidden; /self-improve + /evolve later merged into /super-evolve)
 - **6 new plugins enabled**: feature-dev, pr-review-toolkit, code-review, hookify, skill-creator, code-simplifier
 - **Comprehensive .gitignore**: covers all runtime state, databases, audit logs, pycache, lock files
 - **Agent teams**: fully enabled via CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var

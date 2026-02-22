@@ -4163,7 +4163,7 @@ _g06_path = os.path.expanduser("~/.claude/hooks/gates/gate_06_save_fix.py")
 _g09_path = os.path.expanduser("~/.claude/hooks/gates/gate_09_strategy_ban.py")
 _tracker_path_206 = os.path.join(os.path.dirname(__file__), "tracker.py")
 _ms_path_206 = os.path.join(os.path.dirname(__file__), "memory_server.py")
-_profile_path = os.path.expanduser("~/.claude/skills/profile/SKILL.md")
+_profile_path = os.path.expanduser("~/.claude/skills/super-prof-optimize/SKILL.md")
 _analyze_path = os.path.expanduser("~/.claude/skills/analyze-errors/SKILL.md")
 
 # Read gate sources
@@ -4228,10 +4228,10 @@ if os.path.isfile(_ms_path_206):
 else:
     test("v2.0.6: Memory has tag inference", False, "memory_server.py not found")
 
-# 7. /profile skill exists
-test("v2.0.6: /profile skill exists",
+# 7. /super-prof-optimize skill exists (supersedes /profile, removed session 183)
+test("v2.0.6: /super-prof-optimize skill exists",
      os.path.isfile(_profile_path),
-     "skills/profile/SKILL.md not found")
+     "skills/super-prof-optimize/SKILL.md not found")
 
 # 8. /analyze-errors skill exists
 test("v2.0.6: /analyze-errors skill exists",
@@ -11393,37 +11393,19 @@ else:
     test('NewSkills: learn has search_knowledge integration', False, 'learn/SKILL.md not found')
     test('NewSkills: learn has remember_this step', False, 'learn/SKILL.md not found')
 
-# /self-improve skill
-_si_path = os.path.join(_new_skills_base, 'self-improve', 'SKILL.md')
-test('NewSkills: self-improve/SKILL.md exists', os.path.isfile(_si_path), 'file not found')
-if os.path.isfile(_si_path):
-    with open(_si_path) as _sf:
-        _si_src = _sf.read()
-    test('NewSkills: self-improve has When to use section', '## When to use' in _si_src, 'not found')
-    test('NewSkills: self-improve has Rules section', '## Rules' in _si_src, 'not found')
-    test('NewSkills: self-improve has INTROSPECT phase', 'INTROSPECT' in _si_src, 'not found')
-    test('NewSkills: self-improve has VERIFY phase', 'VERIFY' in _si_src, 'not found')
+# /self-improve + /evolve — removed session 183, superseded by /super-evolve
+_se_path = os.path.join(_new_skills_base, 'super-evolve', 'SKILL.md')
+test('NewSkills: super-evolve/SKILL.md exists', os.path.isfile(_se_path), 'file not found')
+if os.path.isfile(_se_path):
+    with open(_se_path) as _sef:
+        _se_src = _sef.read()
+    test('NewSkills: super-evolve has When to use section', '## When to use' in _se_src, 'not found')
+    test('NewSkills: super-evolve has Hard Limits section', '## Hard Limits' in _se_src, 'not found')
+    test('NewSkills: super-evolve mentions merged origins', 'evolve' in _se_src and 'self-improve' in _se_src, 'not found')
 else:
-    test('NewSkills: self-improve has When to use section', False, 'self-improve/SKILL.md not found')
-    test('NewSkills: self-improve has Rules section', False, 'self-improve/SKILL.md not found')
-    test('NewSkills: self-improve has INTROSPECT phase', False, 'self-improve/SKILL.md not found')
-    test('NewSkills: self-improve has VERIFY phase', False, 'self-improve/SKILL.md not found')
-
-# /evolve skill
-_evolve_path = os.path.join(_new_skills_base, 'evolve', 'SKILL.md')
-test('NewSkills: evolve/SKILL.md exists', os.path.isfile(_evolve_path), 'file not found')
-if os.path.isfile(_evolve_path):
-    with open(_evolve_path) as _ef:
-        _evolve_src = _ef.read()
-    test('NewSkills: evolve has When to use section', '## When to use' in _evolve_src, 'not found')
-    test('NewSkills: evolve has Rules section', '## Rules' in _evolve_src, 'not found')
-    for _phase in ['SCAN', 'EVALUATE', 'DIAGNOSE', 'PRIORITIZE', 'EXECUTE', 'UPGRADE', 'VALIDATE']:
-        test(f'NewSkills: evolve has phase {_phase}', _phase in _evolve_src, f'{_phase} not found')
-else:
-    test('NewSkills: evolve has When to use section', False, 'evolve/SKILL.md not found')
-    test('NewSkills: evolve has Rules section', False, 'evolve/SKILL.md not found')
-    for _phase in ['SCAN', 'EVALUATE', 'DIAGNOSE', 'PRIORITIZE', 'EXECUTE', 'UPGRADE', 'VALIDATE']:
-        test(f'NewSkills: evolve has phase {_phase}', False, 'evolve/SKILL.md not found')
+    test('NewSkills: super-evolve has When to use section', False, 'super-evolve/SKILL.md not found')
+    test('NewSkills: super-evolve has Hard Limits section', False, 'super-evolve/SKILL.md not found')
+    test('NewSkills: super-evolve mentions merged origins', False, 'super-evolve/SKILL.md not found')
 
 # /benchmark skill
 _benchmark_path = os.path.join(_new_skills_base, 'benchmark', 'SKILL.md')
@@ -11444,9 +11426,9 @@ else:
 # ─────────────────────────────────────────────────
 # Sprint 2: New Skills — optimize, report, sprint, teach
 # ─────────────────────────────────────────────────
-print("\n--- Sprint 2: New Skills (optimize, report, sprint, teach) ---")
+print("\n--- Sprint 2: New Skills (report, sprint, teach) ---")
 
-for _s2_skill in ["optimize", "report", "sprint", "teach"]:
+for _s2_skill in ["report", "sprint", "teach"]:  # optimize removed session 183, superseded by /super-prof-optimize
     _s2_path = os.path.expanduser(f"~/.claude/skills/{_s2_skill}/SKILL.md")
     test(f"Sprint2 Skills: {_s2_skill}/SKILL.md exists", os.path.isfile(_s2_path), "file not found")
     if os.path.isfile(_s2_path):
