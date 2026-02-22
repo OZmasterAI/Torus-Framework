@@ -7,12 +7,13 @@
   "feature_status": "in-progress",
   "test_count": 1537,
   "test_failures": 0,
-  "what_was_done": "Session 180: Implemented 'refactor' security profile — relaxes G4/G6/G10 to warn, disables G14, keeps all safety gates blocking. 5 new tests (1537 total). Committed b4349a4.",
-  "service_status": "Memory MCP: RUNNING (1134 memories) | Tests: 1537 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
+  "what_was_done": "Session 180: (1) Implemented 'refactor' security profile — G4/G6/G10 to warn, G14 disabled, safety gates untouched. 5 new tests. (2) Fixed UDS accept loop resilience — rebinds on OSError instead of dying. (3) Discussed memory performance speedup options — saved as feature request.",
+  "service_status": "Memory MCP: RUNNING (1136 memories) | Tests: 1537 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
   "next_steps": [
     "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop",
     "Fix pre-existing test failures: test_edit_streak.py (gate 5 behavior change), test_state_migrator.py (int/float schema mismatch)",
+    "Memory performance: async saves + query caching (feature request from session 180)",
     "Consider reactivating Gate 8 (temporal patterns) with improved implementation"
   ],
   "known_issues": [
