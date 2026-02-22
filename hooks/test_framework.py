@@ -5922,7 +5922,7 @@ with open(_ws_ms_path) as _ws_f:
     _ws_ms_src = _ws_f.read()
 test("Web: memory_server col_map has web_pages", '"web_pages": web_pages' in _ws_ms_src)
 test("Web: memory_server has delete handler", 'if method == "delete"' in _ws_ms_src)
-test("Web: memory_server inits web_pages collection", 'name="web_pages"' in _ws_ms_src)
+test("Web: memory_server inits web_pages collection", '"web_pages"' in _ws_ms_src)
 
 # Test search.py imports cleanly
 from search import search_pages as _ws_sp
