@@ -4049,14 +4049,13 @@ if os.path.isfile(_capture_path):
 else:
     test("v2.0.4: user_prompt_capture.py exists", False, "file not found")
 
-# 5. get_session_sentiment in memory_server.py
+# 5. get_session_sentiment — removed (superseded by CLAUDE.md frustration signals)
+#    Verified in session 183, Item 15 pruning.
+
+# Read memory_server.py source for later tests (v2.0.5 cluster_knowledge check)
 _ms_path_204 = os.path.join(os.path.dirname(__file__), "memory_server.py")
 with open(_ms_path_204) as _mf204:
     _ms_src_204 = _mf204.read()
-
-test("v2.0.4: memory_server.py has get_session_sentiment function",
-     "def get_session_sentiment" in _ms_src_204,
-     "get_session_sentiment not found in memory_server.py")
 
 # 6. Knowledge transfer in wrap-up skill
 _wrapup_skill_path = os.path.expanduser("~/.claude/skills/wrap-up/SKILL.md")

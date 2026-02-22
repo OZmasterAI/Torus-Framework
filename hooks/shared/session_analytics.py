@@ -190,7 +190,6 @@ def _state_session_metrics(session_id: str, state: Dict) -> Dict[str, Any]:
     # Memory tool names used in state tracking
     _MEM_SEARCH_TOOLS = {
         "mcp__memory__search_knowledge", "search_knowledge",
-        "mcp__memory__search_observations", "search_observations",
     }
     _MEM_SAVE_TOOLS = {
         "mcp__memory__remember_this", "remember_this",

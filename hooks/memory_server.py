@@ -1450,32 +1450,31 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     )
     if _run_terminal_l2:
         try:
-            _term_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
-                                        "terminal-history", "search.py")
-            if os.path.isfile(_term_search):
-                _term_result = subprocess.run(
-                    [_sys.executable, _term_search, query, "--json", "--limit", "5"],
-                    capture_output=True, text=True, timeout=8, stdin=subprocess.DEVNULL,
-                )
-                if _term_result.returncode == 0 and _term_result.stdout.strip():
-                    _term_data = json.loads(_term_result.stdout)
-                    for tr in _term_data.get("results", []):
-                        # Normalize BM25: FTS5 rank is negative, more negative = better
-                        _bm25 = abs(float(tr.get("bm25", 0)))
-                        _relevance = min(1.0, _bm25 / 20.0)
-                        _entry = {
-                            "id": f"term_{tr.get('session_id', '?')[:12]}",
-                            "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
-                            "relevance": round(_relevance, 4),
-                            "source": "terminal_l2",
-                            "timestamp": tr.get("timestamp", ""),
-                        }
-                        if tr.get("tags"):
-                            _entry["tags"] = tr["tags"]
-                        if tr.get("linked_memory_ids"):
-                            _entry["linked_memory_ids"] = tr["linked_memory_ids"]
-                        formatted.append(_entry)
-                        terminal_l2_count += 1
+            _term_db_path_l2 = os.path.join(os.path.expanduser("~"), ".claude",
+                                            "integrations", "terminal-history",
+                                            "terminal_history.db")
+            if os.path.isfile(_term_db_path_l2):
+                _term_dir_l2 = os.path.join(os.path.expanduser("~"), ".claude",
+                                            "integrations", "terminal-history")
+                if _term_dir_l2 not in _sys.path:
+                    _sys.path.insert(0, _term_dir_l2)
+                from db import search_fts as _search_fts
+                for tr in _search_fts(_term_db_path_l2, query, limit=5):
+                    _bm25 = abs(float(tr.get("bm25", 0)))
+                    _relevance = min(1.0, _bm25 / 20.0)
+                    _entry = {
+                        "id": f"term_{tr.get('session_id', '?')[:12]}",
+                        "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
+                        "relevance": round(_relevance, 4),
+                        "source": "terminal_l2",
+                        "timestamp": tr.get("timestamp", ""),
+                    }
+                    if tr.get("tags"):
+                        _entry["tags"] = tr["tags"]
+                    if tr.get("linked_memory_ids"):
+                        _entry["linked_memory_ids"] = tr["linked_memory_ids"]
+                    formatted.append(_entry)
+                    terminal_l2_count += 1
         except Exception:
             pass  # Terminal history search is optional
 
@@ -2122,54 +2121,6 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
     }
 
 
-# DORMANT (Session 86) — covered by handoff files + search_knowledge(recency_weight=1.0)
-# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
-def get_recent_activity(hours: int = 48) -> dict:
-    """Get recent memory saves chronologically. Good for session startup.
-
-    Args:
-        hours: How far back to look (default 48 hours)
-    """
-    hours = _validate_hours(hours, default=48, min_val=1, max_val=720)
-    count = collection.count()
-    if count == 0:
-        return {"results": [], "total_memories": 0, "message": "Memory is empty."}
-
-    cutoff = time.time() - (hours * 3600)
-    cutoff_iso = (datetime.now() - timedelta(hours=hours)).isoformat()
-
-    # Get all recent entries (ChromaDB where filter on metadata)
-    try:
-        results = collection.get(
-            where={"session_time": {"$gte": cutoff}},
-            limit=100,
-        )
-    except Exception:
-        # Fallback: get most recent by querying with broad term
-        results = collection.query(
-            query_texts=["recent activity work session"],
-            n_results=min(50, count),
-            include=["metadatas", "distances"],
-        )
-        return {
-            "results": format_summaries(results),
-            "total_memories": count,
-            "hours": hours,
-            "note": "Used fallback query (metadata filter unavailable)",
-        }
-
-    # Format get() results using summary format (get() returns flat lists)
-    formatted = format_summaries(results)
-
-    # Sort by timestamp (newest first)
-    formatted.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-
-    return {
-        "results": formatted,
-        "total_memories": count,
-        "hours": hours,
-        "since": cutoff_iso,
-    }
 
 
 @mcp.tool()
@@ -2262,188 +2213,6 @@ def delete_memory(id: str) -> dict:
         return {"error": f"Failed to delete memory: {str(e)}"}
 
 
-# DORMANT (Session 86) — consolidated into search_knowledge(mode="observations"|"all") + auto-fallback
-# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
-def search_observations(query: str, top_k: int = 20, hours: int = 0, sentiment: str = "") -> dict:
-    """Search auto-captured observations (tool calls, errors, prompts).
-
-    Unlike curated memories, observations are passively captured from every
-    Bash, Edit, Write, and NotebookEdit tool call. Use this to find past
-    commands, errors, or patterns.
-
-    Args:
-        query: What to search for (semantic search)
-        top_k: Number of results to return (default 20)
-        hours: If > 0, only return observations from the last N hours
-        sentiment: Filter by sentiment value (frustration, confidence, uncertainty, neutral). Empty = no filter.
-    """
-    top_k = _validate_top_k(top_k, default=20, min_val=1, max_val=100)
-
-    # Flush queue to ensure latest data
-    _flush_capture_queue()
-
-    count = observations.count()
-    if count == 0:
-        return {"results": [], "total_observations": 0, "message": "No observations yet."}
-
-    actual_k = min(top_k, count)
-
-    # Build where clause from optional filters
-    where_clauses = []
-    if hours > 0:
-        cutoff = time.time() - (hours * 3600)
-        where_clauses.append({"session_time": {"$gte": cutoff}})
-    if sentiment and sentiment in ("frustration", "confidence", "uncertainty", "neutral"):
-        where_clauses.append({"sentiment": sentiment})
-
-    where = None
-    if len(where_clauses) == 1:
-        where = where_clauses[0]
-    elif len(where_clauses) > 1:
-        where = {"$and": where_clauses}
-
-    try:
-        if where:
-            results = observations.query(
-                query_texts=[query],
-                n_results=actual_k,
-                where=where,
-            )
-        else:
-            results = observations.query(query_texts=[query], n_results=actual_k)
-    except Exception:
-        # Fallback: query without filters if ChromaDB rejects the where clause
-        results = observations.query(query_texts=[query], n_results=actual_k)
-
-    formatted = format_summaries(results)
-
-    _touch_memory_timestamp()
-
-    return {
-        "results": formatted,
-        "total_observations": count,
-        "query": query,
-    }
-
-
-# DORMANT (Session 86) — covered by CLAUDE.md frustration signals + search_observations(sentiment="frustration")
-# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
-def get_session_sentiment(hours: int = 24) -> dict:
-    """Get sentiment distribution for recent user interactions.
-
-    Analyzes captured UserPrompt observations to show how the user has been
-    feeling during the session. Useful for detecting frustration patterns
-    and adjusting approach.
-
-    Args:
-        hours: Time window in hours (default 24). Set to 1-2 for current session.
-    """
-    hours = max(1, min(hours, 168))  # Cap at 1 week
-
-    # Flush queue to ensure latest data
-    _flush_capture_queue()
-
-    count = observations.count()
-    if count == 0:
-        return {
-            "distribution": {"frustration": 0, "confidence": 0, "uncertainty": 0, "neutral": 0},
-            "dominant": "neutral",
-            "total": 0,
-            "insight": "No observations captured yet.",
-        }
-
-    cutoff = time.time() - (hours * 3600)
-
-    try:
-        # Get UserPrompt observations within time window
-        results = observations.get(
-            where={"$and": [
-                {"tool_name": "UserPrompt"},
-                {"session_time": {"$gte": cutoff}},
-            ]},
-            limit=min(count, 500),
-            include=["metadatas"],
-        )
-    except Exception:
-        try:
-            # Fallback: just get UserPrompt observations without time filter
-            results = observations.get(
-                where={"tool_name": "UserPrompt"},
-                limit=min(count, 500),
-                include=["metadatas"],
-            )
-        except Exception:
-            return {
-                "distribution": {"frustration": 0, "confidence": 0, "uncertainty": 0, "neutral": 0},
-                "dominant": "neutral",
-                "total": 0,
-                "insight": "Could not query observations.",
-            }
-
-    dist = {"frustration": 0, "confidence": 0, "uncertainty": 0, "neutral": 0}
-    metas = results.get("metadatas") or []
-
-    for meta in metas:
-        if not meta:
-            continue
-        sentiment = meta.get("sentiment", "neutral")
-        if sentiment in dist:
-            dist[sentiment] += 1
-        else:
-            dist["neutral"] += 1
-
-    total = sum(dist.values())
-    dominant = max(dist, key=dist.get) if total > 0 else "neutral"
-
-    # Generate brief insight
-    if total == 0:
-        insight = "No user prompts captured in the last {} hours.".format(hours)
-    elif dist["frustration"] > total * 0.4:
-        insight = "High frustration detected ({}/{} prompts). Consider verifying approach and checking memory for repeated issues.".format(dist["frustration"], total)
-    elif dist["confidence"] > total * 0.4:
-        insight = "User appears satisfied ({}/{} positive prompts). Current approach is working well.".format(dist["confidence"], total)
-    elif dist["uncertainty"] > total * 0.4:
-        insight = "User seems uncertain ({}/{} prompts). Consider providing more explanation or asking clarifying questions.".format(dist["uncertainty"], total)
-    else:
-        insight = "Mixed sentiment across {} prompts. Dominant: {}.".format(total, dominant)
-
-    _touch_memory_timestamp()
-
-    return {
-        "distribution": dist,
-        "dominant": dominant,
-        "total": total,
-        "insight": insight,
-    }
-
-
-# DORMANT (Session 86) — use get_memory() for knowledge, search_knowledge(mode="observations") for observations
-# Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
-def get_observation(id: str) -> dict:
-    """Retrieve full content for a specific observation by ID.
-
-    Use after search_observations to get complete details.
-
-    Args:
-        id: The observation ID (from search results)
-    """
-    try:
-        result = observations.get(ids=[id])
-        if not result or not result.get("documents") or len(result["documents"]) == 0:
-            return {"error": f"No observation found with id: {id}"}
-
-        entry = {
-            "id": id,
-            "document": result["documents"][0],
-        }
-        if result.get("metadatas") and result["metadatas"][0]:
-            entry["metadata"] = result["metadatas"][0]
-
-        _touch_memory_timestamp()
-        return entry
-
-    except Exception as e:
-        return {"error": f"Failed to retrieve observation: {str(e)}"}
 
 
 # DORMANT (Session 86) — zero usage across 86 sessions, observation data accessible via search_knowledge(mode="all")
