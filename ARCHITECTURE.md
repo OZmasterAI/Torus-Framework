@@ -374,7 +374,7 @@ Beyond the mode-routing described above, every `search_knowledge` call runs:
 6. **Linked memory fetch** — `resolves:`/`resolved_by:` tags and terminal L2 `linked_memory_ids` are batch-fetched from ChromaDB and appended (bypasses top_k cap)
 7. **Observation compaction** — triggered inside observations flush: TTL digests (30-day) → knowledge collection; promotion of standalone errors/file churn/repeated commands; hard cap at 5000 (oldest deleted, no digest)
 
-**Dormant MCP tools** (decorator removed, code present): `get_recent_activity`, `search_observations` (with sentiment filter), `get_session_sentiment`, `get_observation`, `timeline`, `get_teammate_context`.
+**Dormant MCP tools** (decorator removed, code present): `timeline`, `get_teammate_context`. Removed in session 183: `get_recent_activity`, `search_observations`, `get_session_sentiment`, `get_observation` (all strictly superseded by `search_knowledge` modes).
 
 **Undocumented maintenance action:** `batch_rename` — bulk replaces "megaman"→"torus" across all memory content and tags; force-rebuilds FTS5 index.
 
