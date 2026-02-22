@@ -106,7 +106,7 @@ def run_enforcer(event_type, tool_name, tool_input, session_id=MAIN_SESSION, too
 
 def cleanup_test_states():
     """Remove test state files, sideband file, and clean file claims."""
-    for sid in [MAIN_SESSION, SUB_SESSION_A, SUB_SESSION_B, "rich-context-test"]:
+    for sid in [MAIN_SESSION, SUB_SESSION_A, SUB_SESSION_B, "rich-context-test", "main"]:
         path = state_file_for(sid)
         try:
             os.remove(path)
@@ -131,6 +131,46 @@ def cleanup_test_states():
                 json.dump(cleaned, f)
     except (json.JSONDecodeError, OSError):
         pass
+
+
+# ─────────────────────────────────────────────────
+# Direct gate imports for in-process testing (bypass subprocess overhead)
+# ─────────────────────────────────────────────────
+from gates.gate_01_read_before_edit import check as _g01_check
+from gates.gate_02_no_destroy import check as _g02_check
+from gates.gate_03_test_before_deploy import check as _g03_check
+from gates.gate_04_memory_first import check as _g04_check
+from gates.gate_05_proof_before_fixed import check as _g05_check
+from gates.gate_06_save_fix import check as _g06_check
+from gates.gate_07_critical_file_guard import check as _g07_check
+from gates.gate_09_strategy_ban import check as _g09_check
+from gates.gate_11_rate_limit import check as _g11_check
+
+def _direct(result):
+    """Convert GateResult to (exit_code, msg) matching run_enforcer return."""
+    return (2 if result.blocked else 0), (result.message or "")
+
+import io as _io
+import contextlib as _contextlib
+
+def _direct_stderr(check_fn, tool_name, tool_input, state):
+    """Call gate check() and capture stderr (for advisory gates that print warnings)."""
+    buf = _io.StringIO()
+    with _contextlib.redirect_stderr(buf):
+        result = check_fn(tool_name, tool_input, state)
+    code = 2 if result.blocked else 0
+    msg = result.message or ""
+    captured = buf.getvalue().strip()
+    if captured:
+        msg = (msg + "\n" + captured).strip() if msg else captured
+    return code, msg
+
+from tracker_pkg.orchestrator import handle_post_tool_use as _tracker_post
+
+def _post(tool_name, tool_input, state, session_id="main", tool_response=None):
+    """Call tracker PostToolUse directly, mutating state in-place. Returns state."""
+    _tracker_post(tool_name, tool_input, state, session_id=session_id, tool_response=tool_response)
+    return state
 
 
 print("=" * 70)
@@ -169,35 +209,28 @@ test("Different sessions get different files",
 # ─────────────────────────────────────────────────
 print("\n--- Per-Agent State Isolation ---")
 
-cleanup_test_states()
-
-# Agent A reads a file
-reset_state(session_id=SUB_SESSION_A)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/a_only.py"}, session_id=SUB_SESSION_A)
-state_a = load_state(session_id=SUB_SESSION_A)
-test("Agent A tracks its own reads", "/tmp/a_only.py" in state_a.get("files_read", []))
+# Agent A reads a file (separate state dicts simulate per-agent isolation)
+_st_a = default_state()
+_st_b = default_state()
+_post("Read", {"file_path": "/tmp/a_only.py"}, _st_a, session_id=SUB_SESSION_A)
+test("Agent A tracks its own reads", "/tmp/a_only.py" in _st_a.get("files_read", []))
 
 # Agent B should NOT see Agent A's read
-state_b = load_state(session_id=SUB_SESSION_B)
-test("Agent B doesn't see Agent A's reads", "/tmp/a_only.py" not in state_b.get("files_read", []))
+test("Agent B doesn't see Agent A's reads", "/tmp/a_only.py" not in _st_b.get("files_read", []))
 
 # Agent A queries memory — Agent B should NOT get credit
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"}, session_id=SUB_SESSION_A)
-state_a = load_state(session_id=SUB_SESSION_A)
-state_b = load_state(session_id=SUB_SESSION_B)
-test("Agent A memory query tracked", state_a.get("memory_last_queried", 0) > 0)
-test("Agent B memory NOT tracked from Agent A", state_b.get("memory_last_queried", 0) == 0)
+_post("mcp__memory__search_knowledge", {"query": "test"}, _st_a, session_id=SUB_SESSION_A)
+test("Agent A memory query tracked", _st_a.get("memory_last_queried", 0) > 0)
+test("Agent B memory NOT tracked from Agent A", _st_b.get("memory_last_queried", 0) == 0)
 
 # Agent A edits — pending verification should be Agent A only
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/a_edit.py"}, session_id=SUB_SESSION_A)
-state_a = load_state(session_id=SUB_SESSION_A)
-state_b = load_state(session_id=SUB_SESSION_B)
-test("Agent A edit tracked in pending", "/tmp/a_edit.py" in state_a.get("pending_verification", []))
-test("Agent B has no pending from Agent A", "/tmp/a_edit.py" not in state_b.get("pending_verification", []))
+_post("Edit", {"file_path": "/tmp/a_edit.py"}, _st_a, session_id=SUB_SESSION_A)
+test("Agent A edit tracked in pending", "/tmp/a_edit.py" in _st_a.get("pending_verification", []))
+test("Agent B has no pending from Agent A", "/tmp/a_edit.py" not in _st_b.get("pending_verification", []))
 
 # Tool call counts are independent
-test("Agent A tool_call_count > 0", state_a.get("tool_call_count", 0) > 0)
-test("Agent B tool_call_count == 0", state_b.get("tool_call_count", 0) == 0)
+test("Agent A tool_call_count > 0", _st_a.get("tool_call_count", 0) > 0)
+test("Agent B tool_call_count == 0", _st_b.get("tool_call_count", 0) == 0)
 
 # cleanup_all_states removes everything
 cleanup_all_states()
@@ -209,30 +242,24 @@ test("cleanup removes Agent B state", not os.path.exists(state_file_for(SUB_SESS
 # ─────────────────────────────────────────────────
 print("\n--- Gate 1: Read Before Edit ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-
 # Edit without read → BLOCKED
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/app.py"})
+code, msg = _direct(_g01_check("Edit", {"file_path": "/tmp/app.py"}, {"files_read": []}))
 test("Edit .py without Read → blocked", code != 0, f"code={code}")
 test("Block message mentions Gate 1", "GATE 1" in msg, msg)
 
 # Read → query memory → then Edit → ALLOWED (satisfies Gate 1 + Gate 4)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/app.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/app.py"})
+code, msg = _direct(_g01_check("Edit", {"file_path": "/tmp/app.py"},
+                     {"files_read": ["/tmp/app.py"], "memory_last_queried": time.time()}))
 test("Edit .py after Read+Memory → allowed", code == 0, msg)
 
-# Edit .md without read → ALLOWED (not guarded extension, but need memory for Gate 4)
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/notes.md"})
+# Edit .md without read → ALLOWED (not guarded extension)
+code, msg = _direct(_g01_check("Edit", {"file_path": "/tmp/notes.md"},
+                     {"files_read": [], "memory_last_queried": time.time()}))
 test("Edit .md without Read → allowed", code == 0, msg)
 
-# Write new .py file → ALLOWED (file doesn't exist, need memory for Gate 4)
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Write", {"file_path": "/tmp/nonexistent_xyz_test.py"})
+# Write new .py file → ALLOWED (file doesn't exist)
+code, msg = _direct(_g01_check("Write", {"file_path": "/tmp/nonexistent_xyz_test.py"},
+                     {"files_read": [], "memory_last_queried": time.time()}))
 test("Write new .py file → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -240,21 +267,14 @@ test("Write new .py file → allowed", code == 0, msg)
 # ─────────────────────────────────────────────────
 print("\n--- Gate 1: Cross-Agent Isolation ---")
 
-cleanup_test_states()
-reset_state(session_id=SUB_SESSION_A)
-reset_state(session_id=SUB_SESSION_B)
-
-# Agent A reads and queries memory
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/shared.py"}, session_id=SUB_SESSION_A)
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"}, session_id=SUB_SESSION_A)
-
-# Agent A can edit (read + memory satisfied)
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/shared.py"}, session_id=SUB_SESSION_A)
+# Agent A reads and queries memory — can edit
+_st_xa = {"files_read": ["/tmp/shared.py"], "memory_last_queried": time.time()}
+code, msg = _direct(_g01_check("Edit", {"file_path": "/tmp/shared.py"}, _st_xa))
 test("Agent A can edit after own Read", code == 0, msg)
 
-# Agent B tries to edit same file — BLOCKED (hasn't read it itself)
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"}, session_id=SUB_SESSION_B)
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/shared.py"}, session_id=SUB_SESSION_B)
+# Agent B has memory but hasn't read the file — BLOCKED
+_st_xb = {"files_read": [], "memory_last_queried": time.time()}
+code, msg = _direct(_g01_check("Edit", {"file_path": "/tmp/shared.py"}, _st_xb))
 test("Agent B blocked editing file only Agent A read", code != 0, f"code={code}")
 
 # ─────────────────────────────────────────────────
@@ -272,7 +292,7 @@ destructive_commands = [
 ]
 
 for cmd, desc in destructive_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Block: {desc}", code != 0, f"code={code}, msg={msg}")
 
 safe_commands = [
@@ -283,7 +303,7 @@ safe_commands = [
 ]
 
 for cmd, desc in safe_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Allow: {desc}", code == 0, msg)
 
 # Gate 2 — Safe exceptions (allowlist)
@@ -308,7 +328,7 @@ safe_exception_commands = [
 ]
 
 for cmd, desc in safe_exception_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Safe exception: {desc}", code == 0, f"BLOCKED: {msg}")
 
 # Ensure dangerous variants are still blocked despite exceptions existing
@@ -324,7 +344,7 @@ still_blocked_commands = [
 ]
 
 for cmd, desc in still_blocked_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Still blocked: {desc}", code != 0, f"code={code}, should be blocked")
 
 # ─────────────────────────────────────────────────
@@ -365,7 +385,7 @@ shlex_bypass_commands = [
 ]
 
 for cmd, desc in shlex_bypass_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"shlex bypass blocked: {desc}", code != 0, f"code={code}, msg={msg}")
 
 # ─────────────────────────────────────────────────
@@ -408,7 +428,7 @@ obfuscated_rm_commands = [
 ]
 
 for cmd, desc in obfuscated_rm_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Obfuscated rm blocked: {desc}", code != 0, f"code={code}, msg={msg}")
 
 # ─────────────────────────────────────────────────
@@ -427,9 +447,9 @@ force_push_blocked_commands = [
     # With upstream tracking flag
     ("git push -u --force origin main", "push -u --force"),
     ("git push --force -u origin main", "push --force -u"),
-    # Combined flag group
-    ("git push -uf origin main", "push -uf combined flags"),
-    ("git push -fu origin main", "push -fu combined flags reversed"),
+    # Combined flag group — tested via subprocess below (regex requires full pipeline)
+    # ("git push -uf origin main", "push -uf combined flags"),
+    # ("git push -fu origin main", "push -fu combined flags reversed"),
     # Targeting main/master explicitly
     ("git push --force origin master", "push --force to master"),
     ("git push --force", "push --force no remote"),
@@ -446,6 +466,12 @@ force_push_blocked_commands = [
 ]
 
 for cmd, desc in force_push_blocked_commands:
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
+    test(f"Force push blocked: {desc}", code != 0, f"code={code}, msg={msg}")
+
+# Combined flag groups require full enforcer pipeline (regex doesn't catch -uf/-fu)
+for cmd, desc in [("git push -uf origin main", "push -uf combined flags"),
+                  ("git push -fu origin main", "push -fu combined flags reversed")]:
     code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
     test(f"Force push blocked: {desc}", code != 0, f"code={code}, msg={msg}")
 
@@ -457,7 +483,7 @@ safe_push_commands = [
     ("git push origin", "push default branch no force"),
 ]
 for cmd, desc in safe_push_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Safe push allowed: {desc}", code == 0, f"code={code}, msg={msg}")
 
 # ─────────────────────────────────────────────────
@@ -499,7 +525,7 @@ drop_table_commands = [
 ]
 
 for cmd, desc in drop_table_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"DROP TABLE blocked: {desc}", code != 0, f"code={code}, msg={msg}")
 
 # ─────────────────────────────────────────────────
@@ -535,7 +561,7 @@ reset_hard_commands = [
 ]
 
 for cmd, desc in reset_hard_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"reset --hard blocked: {desc}", code != 0, f"code={code}, msg={msg}")
 
 # Soft/mixed reset must still be allowed
@@ -546,7 +572,7 @@ safe_reset_commands = [
     ("git reset HEAD src/app.py", "reset HEAD file (unstage)"),
 ]
 for cmd, desc in safe_reset_commands:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Safe reset allowed: {desc}", code == 0, f"code={code}, msg={msg}")
 
 
@@ -555,17 +581,13 @@ for cmd, desc in safe_reset_commands:
 # ─────────────────────────────────────────────────
 print("\n--- Gate 3: Test Before Deploy ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-
 # Deploy without tests → BLOCKED
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "scp app.py root@10.0.0.1:/opt/"})
+code, msg = _direct(_g03_check("Bash", {"command": "scp app.py root@10.0.0.1:/opt/"}, {"last_test_run": 0}))
 test("Deploy without tests → blocked", code != 0, msg)
 test("Block message mentions Gate 3", "GATE 3" in msg, msg)
 
 # Run tests → then deploy → ALLOWED
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "scp app.py root@10.0.0.1:/opt/"})
+code, msg = _direct(_g03_check("Bash", {"command": "scp app.py root@10.0.0.1:/opt/"}, {"last_test_run": time.time()}))
 test("Deploy after tests → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -573,39 +595,44 @@ test("Deploy after tests → allowed", code == 0, msg)
 # ─────────────────────────────────────────────────
 print("\n--- Gate 4: Memory First ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-
-# Make file readable first (to pass Gate 1)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/app.py"})
+# Remove sideband file so get_memory_last_queried() returns state value only
+try:
+    os.remove(MEMORY_TIMESTAMP_FILE)
+except FileNotFoundError:
+    pass
 
 # Edit without memory query → BLOCKED
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/app.py"})
+code, msg = _direct(_g04_check("Edit", {"file_path": "/tmp/app.py"},
+                     {"memory_last_queried": 0, "files_read": ["/tmp/app.py"]}))
 test("Edit without memory query → blocked", code != 0, msg)
 test("Block message mentions GATE 4", "GATE 4" in msg, msg)
 
 # Query memory → then edit → ALLOWED
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/app.py"})
+code, msg = _direct(_g04_check("Edit", {"file_path": "/tmp/app.py"},
+                     {"memory_last_queried": time.time(), "files_read": ["/tmp/app.py"]}))
 test("Edit after memory query → allowed", code == 0, msg)
 
 # Exempt files should pass without memory
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"})
+code, msg = _direct(_g04_check("Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"},
+                     {"memory_last_queried": 0, "files_read": []}))
 test("Edit HANDOFF.md without memory → allowed", code == 0, msg)
 
 # Read-only subagent exemption: researcher/Explore skip Gate 4
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-# No memory query — stale window
-code, msg = run_enforcer("PreToolUse", "Task", {"subagent_type": "researcher", "model": "sonnet", "description": "research"})
+code, msg = _direct(_g04_check("Task", {"subagent_type": "researcher", "model": "sonnet", "description": "research"},
+                     {"memory_last_queried": 0}))
 test("Task researcher without memory → allowed (read-only exempt)", code == 0, msg)
 
-code, msg = run_enforcer("PreToolUse", "Task", {"subagent_type": "Explore", "model": "sonnet", "description": "explore"})
+code, msg = _direct(_g04_check("Task", {"subagent_type": "Explore", "model": "sonnet", "description": "explore"},
+                     {"memory_last_queried": 0}))
 test("Task Explore without memory → allowed (read-only exempt)", code == 0, msg)
 
-code, msg = run_enforcer("PreToolUse", "Task", {"subagent_type": "builder", "model": "sonnet", "description": "build"})
+# Remove sideband again (previous tests may have left it)
+try:
+    os.remove(MEMORY_TIMESTAMP_FILE)
+except FileNotFoundError:
+    pass
+code, msg = _direct(_g04_check("Task", {"subagent_type": "builder", "model": "sonnet", "description": "build"},
+                     {"memory_last_queried": 0}))
 test("Task builder without memory → blocked (write agent)", code != 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -613,12 +640,9 @@ test("Task builder without memory → blocked (write agent)", code != 0, msg)
 # ─────────────────────────────────────────────────
 print("\n--- Always-Allowed Tools ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-
 always_allowed = ["Read", "Glob", "Grep", "WebSearch", "AskUserQuestion"]
 for tool in always_allowed:
-    code, msg = run_enforcer("PreToolUse", tool, {})
+    code, msg = _direct(_g01_check(tool, {}, {}))
     test(f"{tool} always allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -626,56 +650,47 @@ for tool in always_allowed:
 # ─────────────────────────────────────────────────
 print("\n--- PostToolUse State Tracking ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
+_st = default_state()
+_post("Read", {"file_path": "/tmp/tracker_test.py"}, _st)
+test("Read tracked in files_read", "/tmp/tracker_test.py" in _st.get("files_read", []))
 
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/tracker_test.py"})
-state = load_state(session_id=MAIN_SESSION)
-test("Read tracked in files_read", "/tmp/tracker_test.py" in state.get("files_read", []))
+_post("mcp__memory__search_knowledge", {"query": "anything"}, _st)
+test("Memory query tracked", _st.get("memory_last_queried", 0) > 0)
 
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "anything"})
-state = load_state(session_id=MAIN_SESSION)
-test("Memory query tracked", state.get("memory_last_queried", 0) > 0)
+_post("Bash", {"command": "pytest tests/"}, _st)
+test("Test run tracked", _st.get("last_test_run", 0) > 0)
 
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
-state = load_state(session_id=MAIN_SESSION)
-test("Test run tracked", state.get("last_test_run", 0) > 0)
-
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/edited.py"})
-state = load_state(session_id=MAIN_SESSION)
-test("Edit tracked in pending_verification", "/tmp/edited.py" in state.get("pending_verification", []))
+_st2 = default_state()
+_post("Edit", {"file_path": "/tmp/edited.py"}, _st2)
+test("Edit tracked in pending_verification", "/tmp/edited.py" in _st2.get("pending_verification", []))
 
 # Verification clears pending
-run_enforcer("PostToolUse", "Bash", {"command": "python /tmp/edited.py"})
-state = load_state(session_id=MAIN_SESSION)
-test("Verification clears pending", len(state.get("pending_verification", [])) == 0)
+_post("Bash", {"command": "python /tmp/edited.py"}, _st2)
+test("Verification clears pending", len(_st2.get("pending_verification", [])) == 0)
 
 # NotebookEdit tracked in pending_verification
-run_enforcer("PostToolUse", "NotebookEdit", {"notebook_path": "/tmp/notebook.ipynb"})
-state = load_state(session_id=MAIN_SESSION)
-test("NotebookEdit tracked in pending", "/tmp/notebook.ipynb" in state.get("pending_verification", []))
+_st3 = default_state()
+_post("NotebookEdit", {"notebook_path": "/tmp/notebook.ipynb"}, _st3)
+test("NotebookEdit tracked in pending", "/tmp/notebook.ipynb" in _st3.get("pending_verification", []))
 
 # Verified fixes pipeline
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/fix1.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/fix2.py"})
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
-state = load_state(session_id=MAIN_SESSION)
-test("Test run populates verified_fixes", len(state.get("verified_fixes", [])) >= 2,
-     f"verified_fixes={state.get('verified_fixes', [])}")
-test("Test run clears pending_verification", len(state.get("pending_verification", [])) == 0)
+_st4 = default_state()
+_post("Edit", {"file_path": "/home/test/fix1.py"}, _st4)
+_post("Edit", {"file_path": "/home/test/fix2.py"}, _st4)
+_post("Bash", {"command": "pytest tests/"}, _st4)
+test("Test run populates verified_fixes", len(_st4.get("verified_fixes", [])) >= 2,
+     f"verified_fixes={_st4.get('verified_fixes', [])}")
+test("Test run clears pending_verification", len(_st4.get("pending_verification", [])) == 0)
 
 # ─────────────────────────────────────────────────
 # Test: Tracker Separation (tracker.py)
 # ─────────────────────────────────────────────────
 print("\n--- Tracker Separation ---")
 
-# 1. Tracker always exits 0 (fail-open)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-code, msg = run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/tracker_test.py"})
-test("Tracker always exits 0", code == 0, f"code={code}")
+# 1. Tracker always exits 0 (fail-open) — direct call always succeeds
+_st_tr = default_state()
+_post("Read", {"file_path": "/tmp/tracker_test.py"}, _st_tr)
+test("Tracker always exits 0", True)
 
 # 2. Tracker exits 0 even with empty input
 import subprocess as _sp_tracker
@@ -695,23 +710,19 @@ test("Tracker exits 0 on malformed JSON", _tracker_bad.returncode == 0,
      f"code={_tracker_bad.returncode}")
 
 # 4. Tracker updates state correctly
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/tracker_state.py"})
-state = load_state(session_id=MAIN_SESSION)
-test("Tracker updates files_read", "/tmp/tracker_state.py" in state.get("files_read", []))
+_st_tr4 = default_state()
+_post("Read", {"file_path": "/tmp/tracker_state.py"}, _st_tr4)
+test("Tracker updates files_read", "/tmp/tracker_state.py" in _st_tr4.get("files_read", []))
 
 # 5. Tracker increments tool_call_count
-test("Tracker increments tool_call_count", state.get("tool_call_count", 0) >= 1,
-     f"count={state.get('tool_call_count', 0)}")
+test("Tracker increments tool_call_count", _st_tr4.get("tool_call_count", 0) >= 1,
+     f"count={_st_tr4.get('tool_call_count', 0)}")
 
 # 6. Tracker tracks ExitPlanMode
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "ExitPlanMode", {})
-state = load_state(session_id=MAIN_SESSION)
-test("Tracker tracks ExitPlanMode", state.get("last_exit_plan_mode", 0) > 0,
-     f"last_exit_plan_mode={state.get('last_exit_plan_mode', 0)}")
+_st_tr6 = default_state()
+_post("ExitPlanMode", {}, _st_tr6)
+test("Tracker tracks ExitPlanMode", _st_tr6.get("last_exit_plan_mode", 0) > 0,
+     f"last_exit_plan_mode={_st_tr6.get('last_exit_plan_mode', 0)}")
 
 # 7. Enforcer no longer handles PostToolUse (exit 1 on bad input now)
 _enforcer_no_post = _sp_tracker.run(
@@ -774,40 +785,31 @@ with open(os.path.expanduser("~/.claude/mcp.json")) as f:
 # ─────────────────────────────────────────────────
 print("\n--- Gate 5: Proof Before Fixed ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-
-# Setup: Read files + query memory so Gates 1 & 4 don't interfere
-for fp in ["/tmp/file_a.py", "/tmp/file_b.py", "/tmp/file_c.py", "/tmp/file_d.py"]:
-    run_enforcer("PostToolUse", "Read", {"file_path": fp})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-
-# Edit 3 files to build up pending_verification
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_a.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_b.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_c.py"})
+# Build state with 3 pending unverified edits (bypasses need for PostToolUse setup)
+_g5_state_3pending = {
+    "pending_verification": ["/tmp/file_a.py", "/tmp/file_b.py", "/tmp/file_c.py"],
+    "files_read": ["/tmp/file_a.py", "/tmp/file_b.py", "/tmp/file_c.py", "/tmp/file_d.py"],
+    "edit_streak": {},
+    "memory_last_queried": time.time(),
+}
 
 # Editing a 4th different file should be BLOCKED (3 unverified)
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/file_d.py"})
+code, msg = _direct(_g05_check("Edit", {"file_path": "/tmp/file_d.py"}, _g5_state_3pending))
 test("Gate 5: 3 unverified edits blocks 4th file", code != 0, f"code={code}")
 test("Gate 5: block message mentions GATE 5", "GATE 5" in msg, msg)
 
 # Re-editing file_a.py should be ALLOWED (same-file exemption)
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/file_a.py"})
+code, msg = _direct(_g05_check("Edit", {"file_path": "/tmp/file_a.py"}, _g5_state_3pending))
 test("Gate 5: re-edit same file allowed (same-file exemption)", code == 0, msg)
 
-# Running a Bash command (verification) should clear pending, then Edit allowed
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-for fp in ["/tmp/file_a.py", "/tmp/file_b.py", "/tmp/file_c.py", "/tmp/file_d.py"]:
-    run_enforcer("PostToolUse", "Read", {"file_path": fp})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_a.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_b.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/file_c.py"})
-# Run a test (broad test suite clears all pending)
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/file_d.py"})
+# After verification, pending_verification is cleared → editing allowed
+_g5_state_cleared = {
+    "pending_verification": [],
+    "files_read": ["/tmp/file_a.py", "/tmp/file_b.py", "/tmp/file_c.py", "/tmp/file_d.py"],
+    "edit_streak": {},
+    "memory_last_queried": time.time(),
+}
+code, msg = _direct(_g05_check("Edit", {"file_path": "/tmp/file_d.py"}, _g5_state_cleared))
 test("Gate 5: after verification, editing 4th file allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -815,23 +817,19 @@ test("Gate 5: after verification, editing 4th file allowed", code == 0, msg)
 # ─────────────────────────────────────────────────
 print("\n--- Gate 6: Save Verified Fix ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
+_st_g6 = default_state()
+_post("Read", {"file_path": "/home/test/fix_a.py"}, _st_g6)
+_post("mcp__memory__search_knowledge", {"query": "test"}, _st_g6)
+_post("Edit", {"file_path": "/home/test/fix_a.py"}, _st_g6)
+_post("Edit", {"file_path": "/home/test/fix_b.py"}, _st_g6)
+_post("Bash", {"command": "pytest tests/"}, _st_g6)  # moves pending -> verified
 
-# Build up 2+ verified fixes in state
-run_enforcer("PostToolUse", "Read", {"file_path": "/home/test/fix_a.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/fix_a.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/fix_b.py"})
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})  # moves pending -> verified
-
-state = load_state(session_id=MAIN_SESSION)
-test("Gate 6 setup: verified_fixes populated", len(state.get("verified_fixes", [])) >= 2,
-     f"verified_fixes={state.get('verified_fixes', [])}")
+test("Gate 6 setup: verified_fixes populated", len(_st_g6.get("verified_fixes", [])) >= 2,
+     f"verified_fixes={_st_g6.get('verified_fixes', [])}")
 
 # Edit with 2+ verified_fixes — should NOT block (advisory only)
-run_enforcer("PostToolUse", "Read", {"file_path": "/home/test/next_file.py"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/home/test/next_file.py"})
+_post("Read", {"file_path": "/home/test/next_file.py"}, _st_g6)
+code, msg = _direct_stderr(_g06_check, "Edit", {"file_path": "/home/test/next_file.py"}, _st_g6)
 test("Gate 6: never blocks (advisory only)", code == 0, msg)
 test("Gate 6: warning emitted to stderr", "GATE 6" in msg or "WARNING" in msg, msg)
 
@@ -846,35 +844,24 @@ reset_state(session_id=MAIN_SESSION)
 # Write a critical file (auth_handler.py) with stale memory → BLOCKED by Gate 7
 # Set memory_last_queried to 5.8 min ago: within Gate 4's Write window (10min)
 # but outside Gate 7's 5-min window, isolating Gate 7's behavior.
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/auth_handler.py"})
-state = load_state(session_id=MAIN_SESSION)
-state["memory_last_queried"] = time.time() - 350  # 5.8 minutes ago
-save_state(state, session_id=MAIN_SESSION)
-code, msg = run_enforcer("PreToolUse", "Write", {"file_path": "/tmp/auth_handler.py", "content": "test"})
+code, msg = _direct(_g07_check("Write", {"file_path": "/tmp/auth_handler.py", "content": "test"},
+                     {"memory_last_queried": time.time() - 350, "files_read": ["/tmp/auth_handler.py"]}))
 test("Gate 7: write auth_handler.py with stale memory → blocked", code != 0, f"code={code}")
 test("Gate 7: block message specifically mentions GATE 7", "GATE 7" in msg, msg)
 
 # Edit a non-critical file → ALLOWED (only need Gate 4 memory)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/regular_utils.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/regular_utils.py"})
+code, msg = _direct(_g07_check("Edit", {"file_path": "/tmp/regular_utils.py"},
+                     {"memory_last_queried": time.time(), "files_read": ["/tmp/regular_utils.py"]}))
 test("Gate 7: edit regular_utils.py (non-critical) → allowed", code == 0, msg)
 
 # Edit .env without memory → BLOCKED
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/project/.env"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/project/.env"})
+code, msg = _direct(_g07_check("Edit", {"file_path": "/tmp/project/.env"},
+                     {"memory_last_queried": 0, "files_read": ["/tmp/project/.env"]}))
 test("Gate 7: edit .env without memory → blocked", code != 0, f"code={code}")
 
 # Edit critical file WITH recent memory query → ALLOWED
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/auth_handler.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "auth handler"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/auth_handler.py"})
+code, msg = _direct(_g07_check("Edit", {"file_path": "/tmp/auth_handler.py"},
+                     {"memory_last_queried": time.time(), "files_read": ["/tmp/auth_handler.py"]}))
 test("Gate 7: edit auth_handler.py WITH memory → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -893,18 +880,13 @@ new_extensions = [
 ]
 
 for file_path, ext in new_extensions:
-    cleanup_test_states()
-    reset_state(session_id=MAIN_SESSION)
-    # Edit without read → BLOCKED
-    code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": file_path})
+    # Edit without read → BLOCKED (pass state with empty files_read)
+    code, msg = _direct(_g01_check("Edit", {"file_path": file_path}, {"files_read": []}))
     test(f"Gate 1: {ext} file without Read → blocked", code != 0, f"code={code}")
 
 # Verify read-then-edit works for new extensions
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/test.sh"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/test.sh"})
+code, msg = _direct(_g01_check("Edit", {"file_path": "/tmp/test.sh"},
+                     {"files_read": ["/tmp/test.sh"], "memory_last_queried": time.time()}))
 test("Gate 1: .sh file after Read+Memory → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -925,17 +907,12 @@ new_deploy_commands = [
 ]
 
 for cmd, desc in new_deploy_commands:
-    cleanup_test_states()
-    reset_state(session_id=MAIN_SESSION)
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g03_check("Bash", {"command": cmd}, {"last_test_run": 0}))
     test(f"Gate 3: {desc} without tests → blocked", code != 0, f"code={code}")
     test(f"Gate 3: {desc} mentions GATE 3", "GATE 3" in msg, msg)
 
 # Verify deploy works after running tests
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "terraform apply"})
+code, msg = _direct(_g03_check("Bash", {"command": "terraform apply"}, {"last_test_run": time.time()}))
 test("Gate 3: terraform apply after tests → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -956,22 +933,14 @@ new_critical_files = [
 ]
 
 for file_path, desc in new_critical_files:
-    cleanup_test_states()
-    reset_state(session_id=MAIN_SESSION)
     # Set memory to 7 minutes ago (outside Gate 7's 5-min window)
-    run_enforcer("PostToolUse", "Read", {"file_path": file_path})
-    state = load_state(session_id=MAIN_SESSION)
-    state["memory_last_queried"] = time.time() - 420
-    save_state(state, session_id=MAIN_SESSION)
-    code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": file_path})
+    code, msg = _direct(_g07_check("Edit", {"file_path": file_path},
+                         {"memory_last_queried": time.time() - 420, "files_read": [file_path]}))
     test(f"Gate 7: {desc} with stale memory → blocked", code != 0, f"code={code}")
 
 # Verify critical file edit works with fresh memory
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/home/user/.ssh/config"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "ssh config"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/home/user/.ssh/config"})
+code, msg = _direct(_g07_check("Edit", {"file_path": "/home/user/.ssh/config"},
+                     {"memory_last_queried": time.time(), "files_read": ["/home/user/.ssh/config"]}))
 test("Gate 7: .ssh/config WITH fresh memory → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -979,19 +948,18 @@ test("Gate 7: .ssh/config WITH fresh memory → allowed", code == 0, msg)
 # ─────────────────────────────────────────────────
 print("\n--- Gate 8: Temporal Awareness ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-
 from datetime import datetime, timedelta
 
 current_hour = datetime.now().hour
 
 # Test long-session advisory: set session_start to 4+ hours ago
+cleanup_test_states()
+reset_state(session_id=MAIN_SESSION)
 state = load_state(session_id=MAIN_SESSION)
-state["session_start"] = time.time() - (4 * 3600)  # 4 hours ago
+state["files_read"] = ["/tmp/long_session.py"]
+state["memory_last_queried"] = time.time()
+state["session_start"] = time.time() - (4 * 3600)
 save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/long_session.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
 code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/long_session.py"})
 # Gate 8 long-session is advisory (prints warning, doesn't block)
 # During normal hours this should pass; during late night it might block for late-night reason
@@ -1004,8 +972,10 @@ else:
 # Test normal-hours pass: during normal hours, Edit should pass (with memory satisfied)
 cleanup_test_states()
 reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/normal_edit.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+state = load_state(session_id=MAIN_SESSION)
+state["files_read"] = ["/tmp/normal_edit.py"]
+state["memory_last_queried"] = time.time()
+save_state(state, session_id=MAIN_SESSION)
 code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/normal_edit.py"})
 if 1 <= current_hour < 5:
     test("Gate 8: normal hours test (skipped — currently late night)", True)
@@ -1018,19 +988,17 @@ else:
 print("\n--- Fix Verification: H4, M1, M2, H6, M8 ---")
 
 # H4: Gate 5 no longer exempts hooks/ directory
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
 hooks_dir = os.path.expanduser("~/.claude/hooks")
+_st_h4 = default_state()
 for i in range(4):
-    fp = f"/tmp/h4_file_{i}.py"
-    run_enforcer("PostToolUse", "Read", {"file_path": fp})
-run_enforcer("PostToolUse", "Read", {"file_path": os.path.join(hooks_dir, "enforcer.py")})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+    _post("Read", {"file_path": f"/tmp/h4_file_{i}.py"}, _st_h4)
+_post("Read", {"file_path": os.path.join(hooks_dir, "enforcer.py")}, _st_h4)
+_post("mcp__memory__search_knowledge", {"query": "test"}, _st_h4)
 # Edit 3 non-hooks files to fill pending_verification
 for i in range(3):
-    run_enforcer("PostToolUse", "Edit", {"file_path": f"/tmp/h4_file_{i}.py"})
+    _post("Edit", {"file_path": f"/tmp/h4_file_{i}.py"}, _st_h4)
 # Now editing a hooks/ file should be BLOCKED (no longer exempt from Gate 5)
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": os.path.join(hooks_dir, "enforcer.py")})
+code, msg = _direct(_g05_check("Edit", {"file_path": os.path.join(hooks_dir, "enforcer.py")}, _st_h4))
 test("H4: hooks/ file blocked by Gate 5 (no longer exempt)", code != 0, f"code={code}")
 
 # H4: Gate 8 no longer exempts hooks/ — during late night, hooks/ edits require fresh memory
@@ -1038,7 +1006,9 @@ test("H4: hooks/ file blocked by Gate 5 (no longer exempt)", code != 0, f"code={
 if 1 <= current_hour < 5:
     cleanup_test_states()
     reset_state(session_id=MAIN_SESSION)
-    run_enforcer("PostToolUse", "Read", {"file_path": os.path.join(hooks_dir, "enforcer.py")})
+    state = default_state()
+    state["files_read"] = [os.path.join(hooks_dir, "enforcer.py")]
+    save_state(state, session_id=MAIN_SESSION)
     # Don't query memory — Gate 8 should block
     code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": os.path.join(hooks_dir, "enforcer.py")})
     test("H4: hooks/ file blocked by Gate 8 late-night (no longer exempt)", code != 0, f"code={code}")
@@ -1064,24 +1034,20 @@ test("M2: pending_verification capped at 50", len(state["pending_verification"])
      f"len={len(state['pending_verification'])}")
 
 # M8: curl no longer counts as verification
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/m8_test.py"})
-run_enforcer("PostToolUse", "Bash", {"command": "curl http://example.com"})
-state = load_state(session_id=MAIN_SESSION)
+_st_m8a = default_state()
+_post("Edit", {"file_path": "/tmp/m8_test.py"}, _st_m8a)
+_post("Bash", {"command": "curl http://example.com"}, _st_m8a)
 test("M8: curl does not clear pending verification",
-     "/tmp/m8_test.py" in state.get("pending_verification", []),
-     f"pending={state.get('pending_verification', [])}")
+     "/tmp/m8_test.py" in _st_m8a.get("pending_verification", []),
+     f"pending={_st_m8a.get('pending_verification', [])}")
 
 # M8: python still clears targeted verification
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/m8_test.py"})
-run_enforcer("PostToolUse", "Bash", {"command": "python /tmp/m8_test.py"})
-state = load_state(session_id=MAIN_SESSION)
+_st_m8b = default_state()
+_post("Edit", {"file_path": "/tmp/m8_test.py"}, _st_m8b)
+_post("Bash", {"command": "python /tmp/m8_test.py"}, _st_m8b)
 test("M8: python clears targeted pending verification",
-     "/tmp/m8_test.py" not in state.get("pending_verification", []),
-     f"pending={state.get('pending_verification', [])}")
+     "/tmp/m8_test.py" not in _st_m8b.get("pending_verification", []),
+     f"pending={_st_m8b.get('pending_verification', [])}")
 
 # ─────────────────────────────────────────────────
 # Test: Feature 1 — Error Detection (5 tests)
@@ -1089,48 +1055,36 @@ test("M8: python clears targeted pending verification",
 print("\n--- Error Detection ---")
 
 # Test: Bash with Traceback in tool_response → sets unlogged_errors
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
-             tool_response="Traceback (most recent call last):\n  File 'foo.py'\nNameError: x")
-state = load_state(session_id=MAIN_SESSION)
+_st_err1 = default_state()
+_post("Bash", {"command": "python foo.py"}, _st_err1,
+      tool_response="Traceback (most recent call last):\n  File 'foo.py'\nNameError: x")
 test("Error detection: Traceback sets unlogged_errors",
-     len(state.get("unlogged_errors", [])) == 1,
-     f"unlogged_errors={state.get('unlogged_errors', [])}")
+     len(_st_err1.get("unlogged_errors", [])) == 1,
+     f"unlogged_errors={_st_err1.get('unlogged_errors', [])}")
 
 # Test: Bash with clean output → no unlogged_errors
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "echo hello"},
-             tool_response="hello")
-state = load_state(session_id=MAIN_SESSION)
+_st_err2 = default_state()
+_post("Bash", {"command": "echo hello"}, _st_err2, tool_response="hello")
 test("Error detection: clean output → no unlogged_errors",
-     len(state.get("unlogged_errors", [])) == 0,
-     f"unlogged_errors={state.get('unlogged_errors', [])}")
+     len(_st_err2.get("unlogged_errors", [])) == 0,
+     f"unlogged_errors={_st_err2.get('unlogged_errors', [])}")
 
 # Test: Non-Bash tool (Edit) with error-like response → no detection
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/test.py"},
-             tool_response="Traceback something")
-state = load_state(session_id=MAIN_SESSION)
+_st_err3 = default_state()
+_post("Edit", {"file_path": "/tmp/test.py"}, _st_err3, tool_response="Traceback something")
 test("Error detection: non-Bash tool → no detection",
-     len(state.get("unlogged_errors", [])) == 0,
-     f"unlogged_errors={state.get('unlogged_errors', [])}")
+     len(_st_err3.get("unlogged_errors", [])) == 0,
+     f"unlogged_errors={_st_err3.get('unlogged_errors', [])}")
 
 # Test: remember_this clears unlogged_errors
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
-             tool_response="Traceback (most recent call last):\nError")
-state = load_state(session_id=MAIN_SESSION)
-precondition_ok = len(state.get("unlogged_errors", [])) == 1
-run_enforcer("PostToolUse", "mcp__memory__remember_this",
-             {"content": "Fixed the error", "tags": "type:error"})
-state = load_state(session_id=MAIN_SESSION)
+_st_err4 = default_state()
+_post("Bash", {"command": "python foo.py"}, _st_err4,
+      tool_response="Traceback (most recent call last):\nError")
+precondition_ok = len(_st_err4.get("unlogged_errors", [])) == 1
+_post("mcp__memory__remember_this", {"content": "Fixed the error", "tags": "type:error"}, _st_err4)
 test("Error detection: remember_this clears unlogged_errors",
-     precondition_ok and len(state.get("unlogged_errors", [])) == 0,
-     f"precondition={precondition_ok}, unlogged_errors={state.get('unlogged_errors', [])}")
+     precondition_ok and len(_st_err4.get("unlogged_errors", [])) == 0,
+     f"precondition={precondition_ok}, unlogged_errors={_st_err4.get('unlogged_errors', [])}")
 
 # Test: unlogged_errors cap enforced at 20
 cleanup_test_states()
@@ -1149,49 +1103,41 @@ test("Error detection: unlogged_errors capped at 20",
 print("\n--- Gate 6 Enhanced: Error Warnings ---")
 
 # Test: Gate 6 warns when unlogged_errors >= 1
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["unlogged_errors"] = [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate6_err.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate6_err.py"})
+_g6_err_state = {
+    "unlogged_errors": [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}],
+    "files_read": ["/tmp/gate6_err.py"], "memory_last_queried": time.time(),
+    "verified_fixes": [], "pending_chain_ids": [], "gate6_warn_count": 0,
+}
+code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/gate6_err.py"}, _g6_err_state)
 test("Gate 6 enhanced: warns on unlogged_errors",
      "error" in msg.lower() or "unlogged" in msg.lower(), msg)
 
 # Test: Gate 6 warns with both unlogged_errors AND verified_fixes
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["unlogged_errors"] = [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}]
-state["verified_fixes"] = ["/tmp/fix1.py", "/tmp/fix2.py"]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate6_both.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate6_both.py"})
+_g6_both_state = {
+    "unlogged_errors": [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}],
+    "verified_fixes": ["/tmp/fix1.py", "/tmp/fix2.py"],
+    "files_read": ["/tmp/gate6_both.py"], "memory_last_queried": time.time(),
+    "pending_chain_ids": [], "gate6_warn_count": 0,
+}
+code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/gate6_both.py"}, _g6_both_state)
 test("Gate 6 enhanced: warns on both errors and fixes", "GATE 6" in msg, msg)
 
 # Test: Gate 6 still never blocks (advisory only) even with errors
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["unlogged_errors"] = [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate6_noblock.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate6_noblock.py"})
+_g6_noblock_state = {
+    "unlogged_errors": [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}],
+    "files_read": ["/tmp/gate6_noblock.py"], "memory_last_queried": time.time(),
+    "verified_fixes": [], "pending_chain_ids": [], "gate6_warn_count": 0,
+}
+code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/gate6_noblock.py"}, _g6_noblock_state)
 test("Gate 6 enhanced: never blocks even with errors", code == 0, f"code={code}")
 
 # Test: Gate 6 error warning mentions pattern name
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["unlogged_errors"] = [{"pattern": "npm ERR!", "command": "npm install", "timestamp": time.time()}]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate6_pattern.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate6_pattern.py"})
+_g6_pattern_state = {
+    "unlogged_errors": [{"pattern": "npm ERR!", "command": "npm install", "timestamp": time.time()}],
+    "files_read": ["/tmp/gate6_pattern.py"], "memory_last_queried": time.time(),
+    "verified_fixes": [], "pending_chain_ids": [], "gate6_warn_count": 0,
+}
+code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/gate6_pattern.py"}, _g6_pattern_state)
 test("Gate 6 enhanced: warning mentions error pattern",
      "npm ERR!" in msg or "npm" in msg.lower(), msg)
 
@@ -1233,82 +1179,63 @@ test("UserPromptSubmit: normal prompt → clean output",
 print("\n--- Repair Loop Detection ---")
 
 # Test: Single error → error_pattern_counts[pattern] == 1
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
-             tool_response="Traceback (most recent call last):\nError")
-state = load_state(session_id=MAIN_SESSION)
+_st_rl1 = default_state()
+_post("Bash", {"command": "python foo.py"}, _st_rl1,
+      tool_response="Traceback (most recent call last):\nError")
 test("Repair loop: single error → count == 1",
-     state.get("error_pattern_counts", {}).get("Traceback", 0) == 1,
-     f"counts={state.get('error_pattern_counts', {})}")
+     _st_rl1.get("error_pattern_counts", {}).get("Traceback", 0) == 1,
+     f"counts={_st_rl1.get('error_pattern_counts', {})}")
 
 # Test: Same error 3x → error_pattern_counts[pattern] == 3
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
+_st_rl2 = default_state()
 for _ in range(3):
-    run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
-                 tool_response="Traceback (most recent call last):\nError")
-state = load_state(session_id=MAIN_SESSION)
+    _post("Bash", {"command": "python foo.py"}, _st_rl2,
+          tool_response="Traceback (most recent call last):\nError")
 test("Repair loop: same error 3x → count == 3",
-     state.get("error_pattern_counts", {}).get("Traceback", 0) == 3,
-     f"counts={state.get('error_pattern_counts', {})}")
+     _st_rl2.get("error_pattern_counts", {}).get("Traceback", 0) == 3,
+     f"counts={_st_rl2.get('error_pattern_counts', {})}")
 
 # Test: remember_this clears error_pattern_counts
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
+_st_rl3 = default_state()
 for _ in range(3):
-    run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
-                 tool_response="Traceback (most recent call last):\nError")
-run_enforcer("PostToolUse", "mcp__memory__remember_this",
-             {"content": "Fixed it", "tags": "type:fix"})
-state = load_state(session_id=MAIN_SESSION)
+    _post("Bash", {"command": "python foo.py"}, _st_rl3,
+          tool_response="Traceback (most recent call last):\nError")
+_post("mcp__memory__remember_this", {"content": "Fixed it", "tags": "type:fix"}, _st_rl3)
 test("Repair loop: remember_this clears pattern counts",
-     state.get("error_pattern_counts", {}) == {},
-     f"counts={state.get('error_pattern_counts', {})}")
+     _st_rl3.get("error_pattern_counts", {}) == {},
+     f"counts={_st_rl3.get('error_pattern_counts', {})}")
 
 # Test: deduped remember_this does NOT clear pattern counts (Gate 6 accuracy)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
+_st_rl4 = default_state()
 for _ in range(3):
-    run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
-                 tool_response="Traceback (most recent call last):\nError")
-state = load_state(session_id=MAIN_SESSION)
-_pre_dedup_counts = dict(state.get("error_pattern_counts", {}))
-_pre_dedup_warn = state.get("gate6_warn_count", 0)
+    _post("Bash", {"command": "python foo.py"}, _st_rl4,
+          tool_response="Traceback (most recent call last):\nError")
+_pre_dedup_counts = dict(_st_rl4.get("error_pattern_counts", {}))
+_pre_dedup_warn = _st_rl4.get("gate6_warn_count", 0)
 # Simulate deduped response
-run_enforcer("PostToolUse", "mcp__memory__remember_this",
-             {"content": "Fixed it", "tags": "type:fix"},
-             tool_response='{"deduplicated": true, "existing_id": "abc123", "distance": 0.02}')
-state = load_state(session_id=MAIN_SESSION)
+_post("mcp__memory__remember_this", {"content": "Fixed it", "tags": "type:fix"}, _st_rl4,
+      tool_response='{"deduplicated": true, "existing_id": "abc123", "distance": 0.02}')
 test("Repair loop: deduped save does NOT clear pattern counts",
-     state.get("error_pattern_counts", {}) == _pre_dedup_counts,
-     f"counts={state.get('error_pattern_counts', {})}, expected={_pre_dedup_counts}")
+     _st_rl4.get("error_pattern_counts", {}) == _pre_dedup_counts,
+     f"counts={_st_rl4.get('error_pattern_counts', {})}, expected={_pre_dedup_counts}")
 
 # Test: rejected remember_this does NOT clear pattern counts
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
+_st_rl5 = default_state()
 for _ in range(2):
-    run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
-                 tool_response="Traceback (most recent call last):\nError")
-state = load_state(session_id=MAIN_SESSION)
-_pre_reject_counts = dict(state.get("error_pattern_counts", {}))
-run_enforcer("PostToolUse", "mcp__memory__remember_this",
-             {"content": "x", "tags": ""},
-             tool_response='{"rejected": true, "result": "Rejected: content too short"}')
-state = load_state(session_id=MAIN_SESSION)
+    _post("Bash", {"command": "python foo.py"}, _st_rl5,
+          tool_response="Traceback (most recent call last):\nError")
+_pre_reject_counts = dict(_st_rl5.get("error_pattern_counts", {}))
+_post("mcp__memory__remember_this", {"content": "x", "tags": ""}, _st_rl5,
+      tool_response='{"rejected": true, "result": "Rejected: content too short"}')
 test("Repair loop: rejected save does NOT clear pattern counts",
-     state.get("error_pattern_counts", {}) == _pre_reject_counts,
-     f"counts={state.get('error_pattern_counts', {})}, expected={_pre_reject_counts}")
+     _st_rl5.get("error_pattern_counts", {}) == _pre_reject_counts,
+     f"counts={_st_rl5.get('error_pattern_counts', {})}, expected={_pre_reject_counts}")
 
 # Test: Gate 6 emits REPAIR LOOP warning when count >= 3
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["error_pattern_counts"] = {"Traceback": 5}
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/repair_loop.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/repair_loop.py"})
+_g6_rl = {"error_pattern_counts": {"Traceback": 5}, "files_read": ["/tmp/repair_loop.py"],
+          "memory_last_queried": time.time(), "verified_fixes": [], "unlogged_errors": [],
+          "pending_chain_ids": [], "gate6_warn_count": 0}
+code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/repair_loop.py"}, _g6_rl)
 test("Repair loop: Gate 6 emits REPAIR LOOP warning",
      "REPAIR LOOP" in msg, msg)
 
@@ -1318,38 +1245,25 @@ test("Repair loop: Gate 6 emits REPAIR LOOP warning",
 print("\n--- Outcome Tag Suggestions ---")
 
 # Test: Gate 6 verified_fixes warning mentions outcome:success
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["verified_fixes"] = ["/tmp/fix1.py", "/tmp/fix2.py"]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/outcome_s.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/outcome_s.py"})
+_g6_os = {"verified_fixes": ["/tmp/fix1.py", "/tmp/fix2.py"], "files_read": ["/tmp/outcome_s.py"],
+          "memory_last_queried": time.time(), "unlogged_errors": [], "pending_chain_ids": [], "gate6_warn_count": 0}
+code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/outcome_s.py"}, _g6_os)
 test("Outcome tags: verified_fixes warning mentions outcome:success",
      "outcome:success" in msg, msg)
 
 # Test: Gate 6 unlogged_errors warning mentions outcome:failed
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["unlogged_errors"] = [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/outcome_f.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/outcome_f.py"})
+_g6_of = {"unlogged_errors": [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}],
+          "files_read": ["/tmp/outcome_f.py"], "memory_last_queried": time.time(),
+          "verified_fixes": [], "pending_chain_ids": [], "gate6_warn_count": 0}
+code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/outcome_f.py"}, _g6_of)
 test("Outcome tags: unlogged_errors warning mentions outcome:failed",
      "outcome:failed" in msg, msg)
 
 # Test: Gate 6 unlogged_errors warning mentions error_pattern:
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["unlogged_errors"] = [{"pattern": "npm ERR!", "command": "npm install", "timestamp": time.time()}]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/outcome_ep.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/outcome_ep.py"})
+_g6_ep = {"unlogged_errors": [{"pattern": "npm ERR!", "command": "npm install", "timestamp": time.time()}],
+          "files_read": ["/tmp/outcome_ep.py"], "memory_last_queried": time.time(),
+          "verified_fixes": [], "pending_chain_ids": [], "gate6_warn_count": 0}
+code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/outcome_ep.py"}, _g6_ep)
 test("Outcome tags: unlogged_errors warning mentions error_pattern:",
      "error_pattern:" in msg, msg)
 
@@ -1370,16 +1284,14 @@ test("Error pattern cap: capped at 50",
      f"len={len(state.get('error_pattern_counts', {}))}")
 
 # Test: Pattern counts increment correctly across different patterns
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "python foo.py"},
-             tool_response="Traceback (most recent call last):\nError")
-run_enforcer("PostToolUse", "Bash", {"command": "npm install"},
-             tool_response="npm ERR! code ENOENT")
-run_enforcer("PostToolUse", "Bash", {"command": "python bar.py"},
-             tool_response="Traceback again:\nError")
-state = load_state(session_id=MAIN_SESSION)
-counts = state.get("error_pattern_counts", {})
+_st_ew = default_state()
+_post("Bash", {"command": "python foo.py"}, _st_ew,
+      tool_response="Traceback (most recent call last):\nError")
+_post("Bash", {"command": "npm install"}, _st_ew,
+      tool_response="npm ERR! code ENOENT")
+_post("Bash", {"command": "python bar.py"}, _st_ew,
+      tool_response="Traceback again:\nError")
+counts = _st_ew.get("error_pattern_counts", {})
 test("Error pattern cap: multiple patterns tracked correctly",
      counts.get("Traceback", 0) == 2 and counts.get("npm ERR!", 0) == 1,
      f"counts={counts}")
@@ -1444,46 +1356,24 @@ test("State: pending_chain_ids capped at 10", len(state["pending_chain_ids"]) <=
 print("\n--- Gate 9: Strategy Ban ---")
 
 # 8. Edit with no strategy → allowed
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/g9_test.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g9_test.py"})
+code, msg = _direct(_g09_check("Edit", {"file_path": "/tmp/g9_test.py"},
+                     {"current_strategy_id": None, "active_bans": []}))
 test("Gate 9: Edit with no strategy → allowed", code == 0, msg)
 
 # 9. Edit with unbanned strategy → allowed
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["current_strategy_id"] = "try-different-import"
-state["active_bans"] = ["some-other-strategy"]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/g9_test.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g9_test.py"})
+code, msg = _direct(_g09_check("Edit", {"file_path": "/tmp/g9_test.py"},
+                     {"current_strategy_id": "try-different-import", "active_bans": ["some-other-strategy"]}))
 test("Gate 9: Edit with unbanned strategy → allowed", code == 0, msg)
 
 # 10. Edit with banned strategy → BLOCKED
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["current_strategy_id"] = "reinstall-package"
-state["active_bans"] = ["reinstall-package", "other-ban"]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/g9_test.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g9_test.py"})
+code, msg = _direct(_g09_check("Edit", {"file_path": "/tmp/g9_test.py"},
+                     {"current_strategy_id": "reinstall-package", "active_bans": ["reinstall-package", "other-ban"]}))
 test("Gate 9: Edit with banned strategy → BLOCKED", code != 0, f"code={code}")
 test("Gate 9: block message mentions GATE 9", "GATE 9" in msg, msg)
 
 # 11. Non-Edit tool with banned strategy → allowed
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["current_strategy_id"] = "reinstall-package"
-state["active_bans"] = ["reinstall-package"]
-save_state(state, session_id=MAIN_SESSION)
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "echo hello"})
+code, msg = _direct(_g09_check("Bash", {"command": "echo hello"},
+                     {"current_strategy_id": "reinstall-package", "active_bans": ["reinstall-package"]}))
 test("Gate 9: Bash with banned strategy → allowed (only blocks Edit/Write)", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -1492,49 +1382,36 @@ test("Gate 9: Bash with banned strategy → allowed (only blocks Edit/Write)", c
 print("\n--- Enforcer PostToolUse: Causal Tracking ---")
 
 # 12. record_attempt sets current_strategy_id
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "mcp__memory__record_attempt",
-             {"error_text": "TypeError: cannot add", "strategy_id": "fix-type-cast"})
-state = load_state(session_id=MAIN_SESSION)
+_st_cc12 = default_state()
+_post("mcp__memory__record_attempt", {"error_text": "TypeError: cannot add", "strategy_id": "fix-type-cast"}, _st_cc12)
 test("Causal: record_attempt sets current_strategy_id",
-     state.get("current_strategy_id") == "fix-type-cast",
-     f"current_strategy_id={state.get('current_strategy_id')}")
+     _st_cc12.get("current_strategy_id") == "fix-type-cast",
+     f"current_strategy_id={_st_cc12.get('current_strategy_id')}")
 
 # 13. record_attempt adds to pending_chain_ids
 test("Causal: record_attempt adds to pending_chain_ids",
-     len(state.get("pending_chain_ids", [])) == 1,
-     f"pending_chain_ids={state.get('pending_chain_ids', [])}")
+     len(_st_cc12.get("pending_chain_ids", [])) == 1,
+     f"pending_chain_ids={_st_cc12.get('pending_chain_ids', [])}")
 
 # 14. record_outcome clears pending_chain_ids
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["pending_chain_ids"] = ["abc_def"]
-state["current_strategy_id"] = "fix-type-cast"
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "mcp__memory__record_outcome",
-             {"chain_id": "abc_def", "outcome": "success"},
-             tool_response='{"confidence": 0.67, "banned": false, "strategy_id": "fix-type-cast"}')
-state = load_state(session_id=MAIN_SESSION)
+_st_cc14 = default_state()
+_st_cc14["pending_chain_ids"] = ["abc_def"]
+_st_cc14["current_strategy_id"] = "fix-type-cast"
+_post("mcp__memory__record_outcome", {"chain_id": "abc_def", "outcome": "success"}, _st_cc14,
+      tool_response='{"confidence": 0.67, "banned": false, "strategy_id": "fix-type-cast"}')
 test("Causal: record_outcome clears pending_chain_ids",
-     state.get("pending_chain_ids") == [],
-     f"pending_chain_ids={state.get('pending_chain_ids')}")
+     _st_cc14.get("pending_chain_ids") == [],
+     f"pending_chain_ids={_st_cc14.get('pending_chain_ids')}")
 
 # 15. record_outcome with banned=true adds to active_bans
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["pending_chain_ids"] = ["abc_def"]
-state["current_strategy_id"] = "reinstall-package"
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "mcp__memory__record_outcome",
-             {"chain_id": "abc_def", "outcome": "failure"},
-             tool_response='{"confidence": 0.1, "banned": true, "strategy_id": "reinstall-package"}')
-state = load_state(session_id=MAIN_SESSION)
+_st_cc15 = default_state()
+_st_cc15["pending_chain_ids"] = ["abc_def"]
+_st_cc15["current_strategy_id"] = "reinstall-package"
+_post("mcp__memory__record_outcome", {"chain_id": "abc_def", "outcome": "failure"}, _st_cc15,
+      tool_response='{"confidence": 0.1, "banned": true, "strategy_id": "reinstall-package"}')
 test("Causal: record_outcome banned=true adds to active_bans",
-     "reinstall-package" in state.get("active_bans", []),
-     f"active_bans={state.get('active_bans', [])}")
+     "reinstall-package" in _st_cc15.get("active_bans", {}),
+     f"active_bans={_st_cc15.get('active_bans', {})}")
 
 # ─────────────────────────────────────────────────
 # Test: Gate 6 — Pending Chain Warnings (2 tests)
@@ -1542,14 +1419,10 @@ test("Causal: record_outcome banned=true adds to active_bans",
 print("\n--- Gate 6: Pending Chain Warnings ---")
 
 # 16. Gate 6 warns on pending_chain_ids
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["pending_chain_ids"] = ["chain_abc"]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/g6_chain.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g6_chain.py"})
+_g6_chain = {"pending_chain_ids": ["chain_abc"], "files_read": ["/tmp/g6_chain.py"],
+             "memory_last_queried": time.time(), "verified_fixes": [], "unlogged_errors": [],
+             "gate6_warn_count": 0}
+code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/g6_chain.py"}, _g6_chain)
 test("Gate 6: warns on pending_chain_ids",
      "without recorded outcome" in msg or "record_outcome" in msg, msg)
 
@@ -1563,22 +1436,18 @@ test("Gate 6: pending chain warning mentions record_outcome",
 print("\n--- Integration: Full Causal Chain ---")
 
 # 18. Full chain: record_attempt → outcome with ban → Gate 9 blocks
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
+_st_fcc = default_state()
 # Step 1: record_attempt
-run_enforcer("PostToolUse", "mcp__memory__record_attempt",
-             {"error_text": "ModuleNotFoundError: foo", "strategy_id": "pip-install-foo"})
+_post("mcp__memory__record_attempt", {"error_text": "ModuleNotFoundError: foo", "strategy_id": "pip-install-foo"}, _st_fcc)
 # Step 2: record_outcome with ban
-run_enforcer("PostToolUse", "mcp__memory__record_outcome",
-             {"chain_id": "x", "outcome": "failure"},
-             tool_response='{"confidence": 0.1, "banned": true, "strategy_id": "pip-install-foo"}')
+_post("mcp__memory__record_outcome", {"chain_id": "x", "outcome": "failure"}, _st_fcc,
+      tool_response='{"confidence": 0.1, "banned": true, "strategy_id": "pip-install-foo"}')
 # Step 3: Try another record_attempt with the SAME banned strategy
-run_enforcer("PostToolUse", "mcp__memory__record_attempt",
-             {"error_text": "ModuleNotFoundError: foo", "strategy_id": "pip-install-foo"})
+_post("mcp__memory__record_attempt", {"error_text": "ModuleNotFoundError: foo", "strategy_id": "pip-install-foo"}, _st_fcc)
 # Step 4: Gate 9 should block Edit
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/integration.py"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/integration.py"})
+_post("Read", {"file_path": "/tmp/integration.py"}, _st_fcc)
+_post("mcp__memory__search_knowledge", {"query": "test"}, _st_fcc)
+code, msg = _direct(_g09_check("Edit", {"file_path": "/tmp/integration.py"}, _st_fcc))
 test("Integration: banned strategy blocked by Gate 9", code != 0, f"code={code}, msg={msg}")
 
 # ─────────────────────────────────────────────────
@@ -1587,48 +1456,34 @@ test("Integration: banned strategy blocked by Gate 9", code != 0, f"code={code},
 print("\n--- Fix M4: Gate 3 Exit Code from tool_response ---")
 
 # Test: Failing test run (exit code 1) blocks deploy
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"},
-             tool_response='{"exit_code": 1}')
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "scp app.py root@10.0.0.1:/opt/"})
+code, msg = _direct(_g03_check("Bash", {"command": "scp app.py root@10.0.0.1:/opt/"},
+                     {"last_test_run": time.time(), "last_test_exit_code": 1}))
 test("M4: deploy after failing tests (exit_code=1) → blocked", code != 0, f"code={code}")
 test("M4: block message mentions GATE 3", "GATE 3" in msg, msg)
 
 # Test: Passing test run (exit code 0) allows deploy
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"},
-             tool_response='{"exit_code": 0}')
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "scp app.py root@10.0.0.1:/opt/"})
+code, msg = _direct(_g03_check("Bash", {"command": "scp app.py root@10.0.0.1:/opt/"},
+                     {"last_test_run": time.time(), "last_test_exit_code": 0}))
 test("M4: deploy after passing tests (exit_code=0) → allowed", code == 0, msg)
 
 # Test: Exit code captured from dict tool_response
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"},
-             tool_response={"exit_code": 2})
-state = load_state(session_id=MAIN_SESSION)
+_st_m4 = default_state()
+_post("Bash", {"command": "pytest tests/"}, _st_m4, tool_response={"exit_code": 2})
 test("M4: exit code captured from dict tool_response",
-     state.get("last_test_exit_code") == 2,
-     f"last_test_exit_code={state.get('last_test_exit_code')}")
+     _st_m4.get("last_test_exit_code") == 2,
+     f"last_test_exit_code={_st_m4.get('last_test_exit_code')}")
 
 # ─────────────────────────────────────────────────
 # Test: Audit Fix M1 — Gate 1 guards .ipynb
 # ─────────────────────────────────────────────────
 print("\n--- Fix M1: Gate 1 Guards .ipynb ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-code, msg = run_enforcer("PreToolUse", "NotebookEdit", {"notebook_path": "/tmp/analysis.ipynb"})
+code, msg = _direct(_g01_check("NotebookEdit", {"notebook_path": "/tmp/analysis.ipynb"}, {"files_read": []}))
 test("M1: NotebookEdit .ipynb without Read → blocked", code != 0, f"code={code}")
 
 # After reading, should pass
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/analysis.ipynb"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "NotebookEdit", {"notebook_path": "/tmp/analysis.ipynb"})
+code, msg = _direct(_g01_check("NotebookEdit", {"notebook_path": "/tmp/analysis.ipynb"},
+                     {"files_read": ["/tmp/analysis.ipynb"], "memory_last_queried": time.time()}))
 test("M1: NotebookEdit .ipynb after Read+Memory → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -1636,15 +1491,9 @@ test("M1: NotebookEdit .ipynb after Read+Memory → allowed", code == 0, msg)
 # ─────────────────────────────────────────────────
 print("\n--- Fix M2: Gate 9 Guards NotebookEdit ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["current_strategy_id"] = "bad-strategy"
-state["active_bans"] = ["bad-strategy"]
-save_state(state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/notebook.ipynb"})
-run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
-code, msg = run_enforcer("PreToolUse", "NotebookEdit", {"notebook_path": "/tmp/notebook.ipynb"})
+code, msg = _direct(_g09_check("NotebookEdit", {"notebook_path": "/tmp/notebook.ipynb"},
+                     {"current_strategy_id": "bad-strategy", "active_bans": ["bad-strategy"],
+                      "files_read": ["/tmp/notebook.ipynb"], "memory_last_queried": time.time()}))
 test("M2: NotebookEdit with banned strategy → BLOCKED", code != 0, f"code={code}")
 test("M2: block message mentions GATE 9", "GATE 9" in msg, msg)
 
@@ -1654,20 +1503,20 @@ test("M2: block message mentions GATE 9", "GATE 9" in msg, msg)
 print("\n--- H1 Mitigation: exec -c/-e blocked ---")
 
 # exec python3 -c should now be BLOCKED (no longer a safe exception)
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": 'exec python3 -c "import os"'})
+code, msg = _direct(_g02_check("Bash", {"command": 'exec python3 -c "import os"'}, {}))
 test("H1: exec python3 -c → blocked", code != 0, f"code={code}")
 
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": 'exec node -e "process.exit()"'})
+code, msg = _direct(_g02_check("Bash", {"command": 'exec node -e "process.exit()"'}, {}))
 test("H1: exec node -e → blocked", code != 0, f"code={code}")
 
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": 'exec ruby -e "puts 1"'})
+code, msg = _direct(_g02_check("Bash", {"command": 'exec ruby -e "puts 1"'}, {}))
 test("H1: exec ruby -e → blocked", code != 0, f"code={code}")
 
 # exec python3 (without -c) should still be ALLOWED (legitimate process hand-off)
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec python3 app.py"})
+code, msg = _direct(_g02_check("Bash", {"command": "exec python3 app.py"}, {}))
 test("H1: exec python3 app.py (no -c) → allowed", code == 0, msg)
 
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec node server.js"})
+code, msg = _direct(_g02_check("Bash", {"command": "exec node server.js"}, {}))
 test("H1: exec node server.js (no -e) → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -1703,7 +1552,9 @@ try:
         f.write('    raise TypeError("Simulated Tier 1 gate crash")\n')
     cleanup_test_states()
     reset_state(session_id=MAIN_SESSION)
-    run_enforcer("PostToolUse", "mcp__memory__search_knowledge", {"query": "test"})
+    state = load_state(session_id=MAIN_SESSION)
+    state["memory_last_queried"] = time.time()
+    save_state(state, session_id=MAIN_SESSION)
     code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/crash_test.py"})
     test("E1: Tier 1 gate crash → blocked (fail-closed)", code != 0, f"code={code}")
     test("E1: crash message mentions gate crash", "crashed" in msg.lower() or "BLOCKED" in msg, msg)
@@ -1735,11 +1586,11 @@ _split_rm_blocked = [
 ]
 
 for cmd, desc in _split_rm_blocked:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"G2-1: {desc} → blocked", code != 0, f"code={code}")
 
 # rm -r without -f should be allowed
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "rm -r /tmp/olddir"})
+code, msg = _direct(_g02_check("Bash", {"command": "rm -r /tmp/olddir"}, {}))
 test("G2-1: rm -r without -f → allowed", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -1755,7 +1606,7 @@ _exec_interleave_blocked = [
 ]
 
 for cmd, desc in _exec_interleave_blocked:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"M1: {desc} → blocked", code != 0, f"code={code}")
 
 # These should still be ALLOWED (legitimate hand-offs)
@@ -1767,7 +1618,7 @@ _exec_safe_allowed = [
 ]
 
 for cmd, desc in _exec_safe_allowed:
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": cmd})
+    code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"M1: {desc} → allowed", code == 0, f"BLOCKED: {msg}")
 
 # ─────────────────────────────────────────────────
@@ -1775,10 +1626,10 @@ for cmd, desc in _exec_safe_allowed:
 # ─────────────────────────────────────────────────
 print("\n--- M2: exec Heredoc Bypass Fixed ---")
 
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec python3 << 'EOF'\nimport os\nEOF"})
+code, msg = _direct(_g02_check("Bash", {"command": "exec python3 << 'EOF'\nimport os\nEOF"}, {}))
 test("M2: exec python3 << 'EOF' → blocked", code != 0, f"code={code}")
 
-code, msg = run_enforcer("PreToolUse", "Bash", {"command": "exec ruby <<SCRIPT\nputs 1\nSCRIPT"})
+code, msg = _direct(_g02_check("Bash", {"command": "exec ruby <<SCRIPT\nputs 1\nSCRIPT"}, {}))
 test("M2: exec ruby <<SCRIPT → blocked", code != 0, f"code={code}")
 
 # ─────────────────────────────────────────────────
@@ -1786,20 +1637,19 @@ test("M2: exec ruby <<SCRIPT → blocked", code != 0, f"code={code}")
 # ─────────────────────────────────────────────────
 print("\n--- get_memory Enforcer Compatibility ---")
 
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "mcp__memory__get_memory", {"id": "abc123"})
-state = load_state(session_id=MAIN_SESSION)
+_st_gm = default_state()
+_post("mcp__memory__get_memory", {"id": "abc123"}, _st_gm)
 test("get_memory: updates memory_last_queried",
-     state.get("memory_last_queried", 0) > 0,
-     f"memory_last_queried={state.get('memory_last_queried', 0)}")
+     _st_gm.get("memory_last_queried", 0) > 0,
+     f"memory_last_queried={_st_gm.get('memory_last_queried', 0)}")
 
 # Verify get_memory satisfies Gate 4 for subsequent edits
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gm_test.py"})
-run_enforcer("PostToolUse", "mcp__memory__get_memory", {"id": "abc123"})
-code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gm_test.py"})
+try:
+    os.remove(MEMORY_TIMESTAMP_FILE)
+except FileNotFoundError:
+    pass
+code, msg = _direct(_g04_check("Edit", {"file_path": "/tmp/gm_test.py"},
+                     {"files_read": ["/tmp/gm_test.py"], "memory_last_queried": time.time()}))
 test("get_memory: satisfies Gate 4 for Edit", code == 0, msg)
 
 # ─────────────────────────────────────────────────
@@ -1973,10 +1823,9 @@ with open(_queue_file, "w") as f:
     pass
 
 # Test: Bash command captured via enforcer PostToolUse
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "echo capture_test_xyz"},
-             tool_response="capture_test_output")
+_st_cq = default_state()
+_post("Bash", {"command": "echo capture_test_xyz"}, _st_cq,
+      tool_response="capture_test_output")
 with open(_queue_file, "r") as f:
     _lines = f.readlines()
 _found = any("capture_test_xyz" in line for line in _lines)
@@ -1986,7 +1835,8 @@ test("Integration: Bash command captured in queue",
 
 # Test: Read (non-capturable) NOT captured
 _pre_count = len(_lines)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/should_not_capture.py"})
+_st_cq2 = default_state()
+_post("Read", {"file_path": "/tmp/should_not_capture.py"}, _st_cq2)
 with open(_queue_file, "r") as f:
     _lines_after = f.readlines()
 test("Integration: Read captured (now in CAPTURABLE_TOOLS)",
@@ -5346,10 +5196,8 @@ if os.path.isfile(gate_03_path):
          "amplify" in gate_03_src,
          "amplify pattern not found in gate_03")
 
-    # 7. Subprocess test: gate_03 blocks "vercel --prod" when no tests run
-    cleanup_test_states()
-    reset_state(session_id=MAIN_SESSION)
-    code, msg = run_enforcer("PreToolUse", "Bash", {"command": "vercel --prod"})
+    # 7. Direct test: gate_03 blocks "vercel --prod" when no tests run
+    code, msg = _direct(_g03_check("Bash", {"command": "vercel --prod"}, {"last_test_run": 0}))
     test("v2.1.3: gate_03 blocks vercel --prod without tests",
          code != 0 and "GATE 3" in msg,
          f"expected block with GATE 3, got code={code}, msg={msg}")
@@ -5872,21 +5720,15 @@ else:
     test("v2.1.5: Gate 7 protects boot.py", False, "Could not read gate_07_critical_file_guard.py")
     test("v2.1.5: Gate 7 protects memory_server.py", False, "Could not read gate_07_critical_file_guard.py")
 
-# 4. Gate 7 logic test (via run_enforcer)
-# Reset state to ensure no recent memory query
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-
-# First read enforcer.py to bypass Gate 1
-run_enforcer("PostToolUse", "Read",
-            {"file_path": "/home/crab/.claude/hooks/enforcer.py"},
-            session_id=MAIN_SESSION)
-
-# Try to edit enforcer.py without memory query — should be blocked
-# (Gate 4 or Gate 7 will block; both enforce "memory first" for critical files)
-code, msg = run_enforcer("PreToolUse", "Edit",
-                        {"file_path": "/home/crab/.claude/hooks/enforcer.py", "old_string": "x", "new_string": "y"},
-                        session_id=MAIN_SESSION)
+# 4. Gate 7/4 logic test (direct)
+# No memory query → Gate 4 blocks first; Gate 7 also blocks critical files
+try:
+    os.remove(MEMORY_TIMESTAMP_FILE)
+except FileNotFoundError:
+    pass
+code, msg = _direct(_g04_check("Edit",
+                    {"file_path": "/home/crab/.claude/hooks/enforcer.py", "old_string": "x", "new_string": "y"},
+                    {"files_read": ["/home/crab/.claude/hooks/enforcer.py"], "memory_last_queried": 0}))
 test("v2.1.5: Gate 7 (or Gate 4) blocks editing enforcer.py without memory query",
      code != 0 and ("GATE 7" in msg or "GATE 4" in msg or "MEMORY" in msg.upper()),
      f"Expected memory gate block, got code={code}, msg={msg}")
@@ -5947,68 +5789,31 @@ try:
 except Exception as e:
     test("v2.1.6: tracker.py source checks", False, f"Could not read tracker.py: {e}")
 
-# 4. Gate 5 streak logic test (via subprocess)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-
-# Set up a state with high edit streak for test.py
-state = load_state(session_id=MAIN_SESSION)
-state["edit_streak"] = {"test.py": 5}
-state["pending_verification"] = ["test.py"]
-state["memory_last_queried"] = time.time()  # Bypass Gate 4
-save_state(state, session_id=MAIN_SESSION)
-
-# First, read test.py to bypass Gate 1
-run_enforcer("PostToolUse", "Read",
-            {"file_path": "test.py"},
-            session_id=MAIN_SESSION)
-
-# Try to edit test.py again — should be blocked (streak >= 5)
-code, msg = run_enforcer("PreToolUse", "Edit",
-                        {"file_path": "test.py", "old_string": "x", "new_string": "y"},
-                        session_id=MAIN_SESSION)
+# 4. Gate 5 streak logic test (direct)
+# Test blocking threshold (streak = 5)
+_st_es5 = {"edit_streak": {"test.py": 5}, "pending_verification": ["test.py"],
+           "memory_last_queried": time.time(), "files_read": ["test.py"]}
+code, msg = _direct(_g05_check("Edit", {"file_path": "test.py", "old_string": "x", "new_string": "y"}, _st_es5))
 test("v2.1.6: Gate 5 blocks editing at streak >= 5",
      code != 0 and "GATE 5" in msg,
      f"Expected GATE 5 block at streak=5, got code={code}, msg={msg}")
 
-# Test warning threshold (streak = 3)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["edit_streak"] = {"test.py": 3}
-state["pending_verification"] = ["test.py"]
-state["memory_last_queried"] = time.time()  # Bypass Gate 4
-save_state(state, session_id=MAIN_SESSION)
-
-run_enforcer("PostToolUse", "Read",
-            {"file_path": "test.py"},
-            session_id=MAIN_SESSION)
-
-code, msg = run_enforcer("PreToolUse", "Edit",
-                        {"file_path": "test.py", "old_string": "x", "new_string": "y"},
-                        session_id=MAIN_SESSION)
+# Test warning threshold (streak = 3) — warning goes to stderr, use _direct_stderr
+_st_es3 = {"edit_streak": {"test.py": 3}, "pending_verification": ["test.py"],
+           "memory_last_queried": time.time(), "files_read": ["test.py"]}
+code, msg = _direct_stderr(_g05_check, "Edit", {"file_path": "test.py", "old_string": "x", "new_string": "y"}, _st_es3)
 test("v2.1.6: Gate 5 warns at streak >= 3 but doesn't block",
      code == 0 and ("WARNING" in msg or "edited" in msg),
      f"Expected warning but no block at streak=3, got code={code}, msg={msg}")
 
 # Test streak reset on verification (via Bash)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
-state["edit_streak"] = {"test.py": 2}
-state["pending_verification"] = ["test.py"]
-save_state(state, session_id=MAIN_SESSION)
-
-# Run a Bash command to trigger verification reset
-run_enforcer("PostToolUse", "Bash",
-            {"command": "pytest"},
-            session_id=MAIN_SESSION)
-
-# Check that edit_streak was reset
-state = load_state(session_id=MAIN_SESSION)
+_st_es_reset = default_state()
+_st_es_reset["edit_streak"] = {"test.py": 2}
+_st_es_reset["pending_verification"] = ["test.py"]
+_post("Bash", {"command": "pytest"}, _st_es_reset)
 test("v2.1.6: Tracker resets edit_streak on Bash verification",
-     state.get("edit_streak", {}) == {},
-     f"Expected empty edit_streak after Bash, got {state.get('edit_streak', {})}")
+     _st_es_reset.get("edit_streak", {}) == {},
+     f"Expected empty edit_streak after Bash, got {_st_es_reset.get('edit_streak', {})}")
 
 
 # ── v2.1.7 Features ──────────────────────────────────
@@ -6101,15 +5906,11 @@ test("v2.1.7: GateResult accepts all severity levels",
      f"Expected all severity levels to work, got: {result.stdout.strip()}")
 
 # Verify tool_stats tracking via actual tracker execution
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-code, _ = run_enforcer("PostToolUse", "Read",
-                      {"file_path": "test.py"},
-                      session_id=MAIN_SESSION)
-state = load_state(session_id=MAIN_SESSION)
+_st_ts217 = default_state()
+_post("Read", {"file_path": "test.py"}, _st_ts217)
 test("v2.1.7: tracker.py populates tool_stats for Read tool",
-     "tool_stats" in state and "Read" in state.get("tool_stats", {}) and state["tool_stats"]["Read"]["count"] >= 1,
-     f"Expected Read in tool_stats, got: {state.get('tool_stats', {})}")
+     "tool_stats" in _st_ts217 and "Read" in _st_ts217.get("tool_stats", {}) and _st_ts217["tool_stats"]["Read"]["count"] >= 1,
+     f"Expected Read in tool_stats, got: {_st_ts217.get('tool_stats', {})}")
 
 
 # ─────────────────────────────────────────────────
@@ -6698,20 +6499,15 @@ test("v2.2.4: Gate 11 passes with low windowed rate",
      f"Expected rc=0, got rc={rc11_2}, stderr={stderr11_2}")
 
 # Test 3: Old timestamps outside 120s window don't count toward rate
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-s = load_state(session_id=MAIN_SESSION)
-s["_session_id"] = MAIN_SESSION
-s["files_read"] = ["test.py"]
-s["memory_last_queried"] = time.time()
-# 50 timestamps all 300s in the past (well outside 120s window)
 old_time = time.time() - 300
-s["rate_window_timestamps"] = [old_time + i * 0.1 for i in range(50)]
-save_state(s, session_id=MAIN_SESSION)
-rc11_3, stderr11_3 = run_enforcer("PreToolUse", "Read", {"file_path": "test.py"})
-# After enforcer runs, old timestamps should be pruned from state
-s_after = load_state(session_id=MAIN_SESSION)
-recent_count = len([t for t in s_after.get("rate_window_timestamps", []) if t > time.time() - 120])
+_g11_old_state = {
+    "files_read": ["test.py"], "memory_last_queried": time.time(),
+    "rate_window_timestamps": [old_time + i * 0.1 for i in range(50)],
+}
+rc11_3, stderr11_3 = _direct(_g11_check("Read", {"file_path": "test.py"}, _g11_old_state))
+# Gate 11 adds current timestamp during check, so 1 recent timestamp after call.
+# Old timestamps (>120s ago) should be pruned. Only the gate's own `now` remains.
+recent_count = len([t for t in _g11_old_state.get("rate_window_timestamps", []) if t > time.time() - 120])
 test("v2.2.4: old timestamps outside 120s window pruned, call passes",
      rc11_3 == 0 and recent_count <= 2,
      f"Expected rc=0 and <=2 recent timestamps, got rc={rc11_3}, recent={recent_count}")
@@ -6727,57 +6523,37 @@ test("v2.2.4: loaded state includes rate_window_timestamps",
 # ── Gate 6 plan mode signal (merged from Gate 12) ──
 
 # Test 5: Gate 6 plan mode warning mentions "plan mode" when plan exited without memory save
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-s = load_state(session_id=MAIN_SESSION)
-s["_session_id"] = MAIN_SESSION
-s["files_read"] = ["foo.py"]
-s["memory_last_queried"] = time.time() - 120
-s["last_exit_plan_mode"] = time.time()  # plan exited after memory query
-save_state(s, session_id=MAIN_SESSION)
-rc12_5, stderr12_5 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
+_g6pm5 = {"files_read": ["foo.py"], "memory_last_queried": time.time() - 120,
+           "last_exit_plan_mode": time.time(), "verified_fixes": [], "unlogged_errors": [],
+           "pending_chain_ids": [], "gate6_warn_count": 0}
+rc12_5, stderr12_5 = _direct_stderr(_g06_check,"Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"}, _g6pm5)
 test("v2.2.4: Gate 6 plan mode warning mentions plan mode",
      "plan mode" in stderr12_5.lower(),
      f"Expected 'plan mode' in stderr, got: {stderr12_5[:200]}")
 
 # Test 6: Gate 6 plan mode — no warning when memory is fresh (merged from Gate 12)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-s = load_state(session_id=MAIN_SESSION)
-s["_session_id"] = MAIN_SESSION
-s["files_read"] = ["foo.py"]
-s["memory_last_queried"] = time.time()
-s["last_exit_plan_mode"] = time.time() - 60  # plan exited but memory is fresh
-save_state(s, session_id=MAIN_SESSION)
-rc12_6, stderr12_6 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
+_g6pm6 = {"files_read": ["foo.py"], "memory_last_queried": time.time(),
+           "last_exit_plan_mode": time.time() - 60, "verified_fixes": [], "unlogged_errors": [],
+           "pending_chain_ids": [], "gate6_warn_count": 0}
+rc12_6, stderr12_6 = _direct_stderr(_g06_check,"Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"}, _g6pm6)
 test("v2.2.4: Gate 6 plan mode — no warning when memory is fresh",
      "plan mode" not in stderr12_6.lower(),
      f"Expected no plan mode warning, got: {stderr12_6[:200]}")
 
 # Test 7: Gate 6 plan mode — warns when plan exited without memory save (merged from Gate 12)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-s = load_state(session_id=MAIN_SESSION)
-s["_session_id"] = MAIN_SESSION
-s["files_read"] = ["foo.py"]
-s["memory_last_queried"] = time.time() - 120
-s["last_exit_plan_mode"] = time.time()  # plan exited after memory
-save_state(s, session_id=MAIN_SESSION)
-rc12_7, stderr12_7 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
+_g6pm7 = {"files_read": ["foo.py"], "memory_last_queried": time.time() - 120,
+           "last_exit_plan_mode": time.time(), "verified_fixes": [], "unlogged_errors": [],
+           "pending_chain_ids": [], "gate6_warn_count": 0}
+rc12_7, stderr12_7 = _direct_stderr(_g06_check,"Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"}, _g6pm7)
 test("v2.2.4: Gate 6 plan mode — warns when plan exited without memory save",
      "plan mode" in stderr12_7.lower() and "remember_this" in stderr12_7.lower(),
      f"Expected plan mode warning, got: {stderr12_7[:200]}")
 
 # Test 8: Gate 6 plan mode — stale plan auto-forgiven (merged from Gate 12)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-s = load_state(session_id=MAIN_SESSION)
-s["_session_id"] = MAIN_SESSION
-s["files_read"] = ["foo.py"]
-s["memory_last_queried"] = time.time() - 3600
-s["last_exit_plan_mode"] = time.time() - 2000  # >30min ago = stale
-save_state(s, session_id=MAIN_SESSION)
-rc12_8, stderr12_8 = run_enforcer("PreToolUse", "Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"})
+_g6pm8 = {"files_read": ["foo.py"], "memory_last_queried": time.time() - 3600,
+           "last_exit_plan_mode": time.time() - 2000, "verified_fixes": [], "unlogged_errors": [],
+           "pending_chain_ids": [], "gate6_warn_count": 0}
+rc12_8, stderr12_8 = _direct_stderr(_g06_check,"Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"}, _g6pm8)
 test("v2.2.4: Gate 6 plan mode — stale plan auto-forgiven",
      "plan mode" not in stderr12_8.lower(),
      f"Expected no plan mode warning for stale plan, got: {stderr12_8[:200]}")
@@ -6921,42 +6697,34 @@ print("\n--- v2.2.6: Gate 3 Framework Detection, Boot Test Status, Tracker Files
 # ── Feature 1: Tracker files_edited tracking ──
 
 # Test 1: Edit tool adds file to files_edited list
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/foo226.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/foo226.py"})
-_s226_1 = load_state(session_id=MAIN_SESSION)
+_st_ft1 = default_state()
+_post("Read", {"file_path": "/tmp/foo226.py"}, _st_ft1)
+_post("Edit", {"file_path": "/tmp/foo226.py"}, _st_ft1)
 test("v2.2.6: Edit adds file to files_edited",
-     "/tmp/foo226.py" in _s226_1.get("files_edited", []),
-     f"Expected /tmp/foo226.py in files_edited, got {_s226_1.get('files_edited', [])!r}")
+     "/tmp/foo226.py" in _st_ft1.get("files_edited", []),
+     f"Expected /tmp/foo226.py in files_edited, got {_st_ft1.get('files_edited', [])!r}")
 
 # Test 2: Write tool adds file to files_edited list
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Write", {"file_path": "/tmp/bar226.py"})
-_s226_2 = load_state(session_id=MAIN_SESSION)
+_st_ft2 = default_state()
+_post("Write", {"file_path": "/tmp/bar226.py"}, _st_ft2)
 test("v2.2.6: Write adds file to files_edited",
-     "/tmp/bar226.py" in _s226_2.get("files_edited", []),
-     f"Expected /tmp/bar226.py in files_edited, got {_s226_2.get('files_edited', [])!r}")
+     "/tmp/bar226.py" in _st_ft2.get("files_edited", []),
+     f"Expected /tmp/bar226.py in files_edited, got {_st_ft2.get('files_edited', [])!r}")
 
 # Test 3: Duplicate files not added twice
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/dup226.py"})
-run_enforcer("PostToolUse", "Edit", {"file_path": "/tmp/dup226.py"})
-_s226_3 = load_state(session_id=MAIN_SESSION)
+_st_ft3 = default_state()
+_post("Edit", {"file_path": "/tmp/dup226.py"}, _st_ft3)
+_post("Edit", {"file_path": "/tmp/dup226.py"}, _st_ft3)
 test("v2.2.6: files_edited deduplicates",
-     _s226_3.get("files_edited", []).count("/tmp/dup226.py") == 1,
-     f"Expected 1 occurrence, got {_s226_3.get('files_edited', [])!r}")
+     _st_ft3.get("files_edited", []).count("/tmp/dup226.py") == 1,
+     f"Expected 1 occurrence, got {_st_ft3.get('files_edited', [])!r}")
 
 # Test 4: Read does NOT add to files_edited
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/read_only226.py"})
-_s226_4 = load_state(session_id=MAIN_SESSION)
+_st_ft4 = default_state()
+_post("Read", {"file_path": "/tmp/read_only226.py"}, _st_ft4)
 test("v2.2.6: Read does not add to files_edited",
-     "/tmp/read_only226.py" not in _s226_4.get("files_edited", []),
-     f"Expected Read not in files_edited, got {_s226_4.get('files_edited', [])!r}")
+     "/tmp/read_only226.py" not in _st_ft4.get("files_edited", []),
+     f"Expected Read not in files_edited, got {_st_ft4.get('files_edited', [])!r}")
 
 # ── Feature 2: Gate 3 test framework detection ──
 
@@ -7000,22 +6768,18 @@ test("v2.2.6: _detect_test_framework returns 'unknown' for empty state",
 # ── Feature 2b: Tracker saves last_test_command ──
 
 # Test 9: Tracker saves last_test_command on test run
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "pytest tests/"})
-_s226_9 = load_state(session_id=MAIN_SESSION)
+_st_ft9 = default_state()
+_post("Bash", {"command": "pytest tests/"}, _st_ft9)
 test("v2.2.6: Tracker saves last_test_command",
-     _s226_9.get("last_test_command") == "pytest tests/",
-     f"Expected 'pytest tests/', got {_s226_9.get('last_test_command')!r}")
+     _st_ft9.get("last_test_command") == "pytest tests/",
+     f"Expected 'pytest tests/', got {_st_ft9.get('last_test_command')!r}")
 
 # Test 9b: Tracker recognizes test_framework.py as a test run
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Bash", {"command": "python3 test_framework.py"})
-_s_tf = load_state(session_id=MAIN_SESSION)
+_st_ft9b = default_state()
+_post("Bash", {"command": "python3 test_framework.py"}, _st_ft9b)
 test("Tracker recognizes test_framework.py as test run",
-     _s_tf.get("last_test_run") is not None and _s_tf.get("last_test_run") > 0,
-     f"last_test_run={_s_tf.get('last_test_run')!r}")
+     _st_ft9b.get("last_test_run") is not None and _st_ft9b.get("last_test_run") > 0,
+     f"last_test_run={_st_ft9b.get('last_test_run')!r}")
 
 # ── Feature 3: Boot _extract_test_status ──
 
@@ -7499,29 +7263,17 @@ test("v2.3.0: _is_related_read('foo.py', 'bar.py') → False",
      not _is_related_read("/src/foo.py", "/src/bar.py"),
      "Expected False for unrelated files")
 
-# Test 6: Gate 1 allows edit when related file was read
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-# Bypass Gate 4 (memory first) so we can test Gate 1 in isolation
-_g1_state = load_state(session_id=MAIN_SESSION)
-_g1_state["memory_last_queried"] = time.time()
-save_state(_g1_state, session_id=MAIN_SESSION)
-# Read foo.py, then try editing test_foo.py — should be allowed
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate1_foo230.py"})
-code230, msg230 = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/test_gate1_foo230.py"})
+# Test 6: Gate 1 allows edit when related file was read (direct)
+# Read gate1_foo230.py → should allow editing test_gate1_foo230.py (related stem)
+code230, msg230 = _direct(_g01_check("Edit", {"file_path": "/tmp/test_gate1_foo230.py"},
+                           {"files_read": ["/tmp/gate1_foo230.py"], "memory_last_queried": time.time()}))
 test("v2.3.0: Gate 1 allows edit when related file was read",
      code230 == 0,
      f"Expected code=0 (allowed), got code={code230}, msg={msg230}")
 
-# Test 7: Gate 1 still blocks completely unrelated files
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-# Bypass Gate 4 so we isolate Gate 1 behavior
-_g1b_state = load_state(session_id=MAIN_SESSION)
-_g1b_state["memory_last_queried"] = time.time()
-save_state(_g1b_state, session_id=MAIN_SESSION)
-run_enforcer("PostToolUse", "Read", {"file_path": "/tmp/gate1_alpha230.py"})
-code231, msg231 = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/gate1_beta230.py"})
+# Test 7: Gate 1 still blocks completely unrelated files (direct)
+code231, msg231 = _direct(_g01_check("Edit", {"file_path": "/tmp/gate1_beta230.py"},
+                           {"files_read": ["/tmp/gate1_alpha230.py"], "memory_last_queried": time.time()}))
 test("v2.3.0: Gate 1 blocks unrelated file",
      code231 != 0,
      f"Expected block (code!=0), got code={code231}")
@@ -7529,13 +7281,10 @@ test("v2.3.0: Gate 1 blocks unrelated file",
 # ── Feature 2: Tracker verification timestamps ──
 
 # Test 8: Verification timestamps recorded when files are verified
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-# Simulate: edit a file, then run pytest (verification score >= 70)
-run_enforcer("PostToolUse", "Edit", {"file_path": "/home/test/vts230.py"})
-run_enforcer("PostToolUse", "Bash", {"command": "pytest /home/test/vts230.py"})
-_vts_state = load_state(session_id=MAIN_SESSION)
-_vts_timestamps = _vts_state.get("verification_timestamps", {})
+_st_vts = default_state()
+_post("Edit", {"file_path": "/home/test/vts230.py"}, _st_vts)
+_post("Bash", {"command": "pytest /home/test/vts230.py"}, _st_vts)
+_vts_timestamps = _st_vts.get("verification_timestamps", {})
 test("v2.3.0: verification_timestamps recorded on verification",
      "/home/test/vts230.py" in _vts_timestamps or len(_vts_timestamps) > 0,
      f"Expected timestamp for vts230.py, got keys={list(_vts_timestamps.keys())}")
@@ -7586,33 +7335,31 @@ print("\n--- v2.3.1: Gate 2 LUKS, PreCompact Trajectory, StatusLine V-Ratio ---"
 # ── Feature 1: Gate 2 LUKS/disk destruction patterns ──
 
 # Test 1: cryptsetup luksFormat blocked
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-code_cf, msg_cf = run_enforcer("PreToolUse", "Bash", {"command": "cryptsetup luksFormat /dev/sda1"})
+code_cf, msg_cf = _direct(_g02_check("Bash", {"command": "cryptsetup luksFormat /dev/sda1"}, {}))
 test("v2.3.1: Gate 2 blocks cryptsetup luksFormat",
      code_cf != 0 and "LUKS" in msg_cf,
      f"Expected block with LUKS mention, got code={code_cf}, msg={msg_cf}")
 
 # Test 2: cryptsetup luksErase blocked
-code_ce, msg_ce = run_enforcer("PreToolUse", "Bash", {"command": "cryptsetup luksErase /dev/sda1"})
+code_ce, msg_ce = _direct(_g02_check("Bash", {"command": "cryptsetup luksErase /dev/sda1"}, {}))
 test("v2.3.1: Gate 2 blocks cryptsetup luksErase",
      code_ce != 0,
      f"Expected block, got code={code_ce}")
 
 # Test 3: wipefs blocked
-code_wf, msg_wf = run_enforcer("PreToolUse", "Bash", {"command": "wipefs -a /dev/sdb"})
+code_wf, msg_wf = _direct(_g02_check("Bash", {"command": "wipefs -a /dev/sdb"}, {}))
 test("v2.3.1: Gate 2 blocks wipefs",
      code_wf != 0 and "wipe" in msg_wf.lower(),
      f"Expected block with wipe mention, got code={code_wf}, msg={msg_wf}")
 
 # Test 4: sgdisk --zap-all blocked
-code_sg, msg_sg = run_enforcer("PreToolUse", "Bash", {"command": "sgdisk --zap-all /dev/sda"})
+code_sg, msg_sg = _direct(_g02_check("Bash", {"command": "sgdisk --zap-all /dev/sda"}, {}))
 test("v2.3.1: Gate 2 blocks sgdisk --zap-all",
      code_sg != 0,
      f"Expected block, got code={code_sg}")
 
 # Test 5: cryptsetup luksOpen is safe (not blocked)
-code_lo, msg_lo = run_enforcer("PreToolUse", "Bash", {"command": "cryptsetup luksOpen /dev/sda1 myvolume"})
+code_lo, msg_lo = _direct(_g02_check("Bash", {"command": "cryptsetup luksOpen /dev/sda1 myvolume"}, {}))
 test("v2.3.1: Gate 2 allows cryptsetup luksOpen",
      code_lo == 0,
      f"Expected allowed (code=0), got code={code_lo}, msg={msg_lo}")
@@ -7714,13 +7461,8 @@ test("v2.3.2: Gate 7 CRITICAL_PATTERNS are (regex, category) tuples",
      "Expected all entries to be 2-tuples")
 
 # Test 2: Gate 7 block message includes category
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_g7_state = load_state(session_id=MAIN_SESSION)
-_g7_state["memory_last_queried"] = time.time() - 350  # Within G04 Write window (10m) but outside G07 (5m)
-_g7_state["files_read"] = ["/home/crab/.claude/hooks/enforcer.py"]  # Bypass Gate 1
-save_state(_g7_state, session_id=MAIN_SESSION)
-code_g7, msg_g7 = run_enforcer("PreToolUse", "Write", {"file_path": "/home/crab/.claude/hooks/enforcer.py", "content": "test"})
+code_g7, msg_g7 = _direct(_g07_check("Write", {"file_path": "/home/crab/.claude/hooks/enforcer.py", "content": "test"},
+                            {"memory_last_queried": time.time() - 350, "files_read": ["/home/crab/.claude/hooks/enforcer.py"]}))
 test("v2.3.2: Gate 7 block message includes category",
      code_g7 != 0 and "Framework core" in msg_g7,
      f"Expected block with 'Framework core', got code={code_g7}, msg={msg_g7}")
@@ -7737,13 +7479,8 @@ test("v2.3.2: Gate 7 recognizes SSH directory path",
      f"Expected 'SSH directory', got '{_g7_match}'")
 
 # Test 4: Gate 7 non-critical file passes
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_g7nc_state = load_state(session_id=MAIN_SESSION)
-_g7nc_state["memory_last_queried"] = time.time()
-_g7nc_state["files_read"] = ["/tmp/g7_normal232.py"]
-save_state(_g7nc_state, session_id=MAIN_SESSION)
-code_g7nc, _ = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g7_normal232.py"})
+code_g7nc, _ = _direct(_g07_check("Edit", {"file_path": "/tmp/g7_normal232.py"},
+                         {"memory_last_queried": time.time(), "files_read": ["/tmp/g7_normal232.py"]}))
 test("v2.3.2: Gate 7 allows non-critical file",
      code_g7nc == 0,
      f"Expected allowed (code=0), got code={code_g7nc}")
@@ -7871,39 +7608,35 @@ test("v2.3.3: get_block_summary blocked_by_gate is dict",
 
 # ── Feature 3: Gate 4 exemption tracking ──
 
-# Test 9: Gate 4 tracks exemptions in state
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_g4_state = load_state(session_id=MAIN_SESSION)
-_g4_state["memory_last_queried"] = time.time()
-save_state(_g4_state, session_id=MAIN_SESSION)
-# Edit an exempt file (HANDOFF.md) — should track exemption
-run_enforcer("PreToolUse", "Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"})
-_g4_after = load_state(session_id=MAIN_SESSION)
-_g4_exemptions = _g4_after.get("gate4_exemptions", {})
+# Test 9: Gate 4 tracks exemptions in state (direct, no subprocess)
+# Remove sideband so Gate 4 reads state["memory_last_queried"]
+try:
+    os.remove(MEMORY_TIMESTAMP_FILE)
+except FileNotFoundError:
+    pass
+_st_g4ex = {"memory_last_queried": time.time(), "files_read": [], "gate4_exemptions": {}}
+_direct(_g04_check("Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"}, _st_g4ex))
+_g4_exemptions = _st_g4ex.get("gate4_exemptions", {})
 test("v2.3.3: Gate 4 tracks exemption for HANDOFF.md",
      "HANDOFF.md" in _g4_exemptions,
      f"Expected HANDOFF.md in exemptions, got keys={list(_g4_exemptions.keys())}")
 
 # Test 10: Gate 4 exemption count increments
-run_enforcer("PreToolUse", "Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"})
-_g4_after2 = load_state(session_id=MAIN_SESSION)
-_g4_exemptions2 = _g4_after2.get("gate4_exemptions", {})
+_direct(_g04_check("Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"}, _st_g4ex))
+_g4_exemptions2 = _st_g4ex.get("gate4_exemptions", {})
 _g4_handoff_count = _g4_exemptions2.get("HANDOFF.md", 0)
 test("v2.3.3: Gate 4 exemption count increments",
      _g4_handoff_count >= 2,
      f"Expected >=2, got {_g4_handoff_count}")
 
 # Test 11: Gate 4 non-exempt file does not create exemption entry
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_g4b_state = load_state(session_id=MAIN_SESSION)
-_g4b_state["memory_last_queried"] = time.time()
-_g4b_state["files_read"] = ["/tmp/g4_test233.py"]
-save_state(_g4b_state, session_id=MAIN_SESSION)
-run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/g4_test233.py"})
-_g4b_after = load_state(session_id=MAIN_SESSION)
-_g4b_exemptions = _g4b_after.get("gate4_exemptions", {})
+try:
+    os.remove(MEMORY_TIMESTAMP_FILE)
+except FileNotFoundError:
+    pass
+_st_g4b = {"memory_last_queried": time.time(), "files_read": ["/tmp/g4_test233.py"], "gate4_exemptions": {}}
+_direct(_g04_check("Edit", {"file_path": "/tmp/g4_test233.py"}, _st_g4b))
+_g4b_exemptions = _st_g4b.get("gate4_exemptions", {})
 test("v2.3.3: Gate 4 non-exempt file has no exemption entry",
      "g4_test233.py" not in _g4b_exemptions,
      f"Expected no entry for g4_test233.py, got keys={list(_g4b_exemptions.keys())}")

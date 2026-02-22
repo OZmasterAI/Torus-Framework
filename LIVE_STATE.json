@@ -1,14 +1,14 @@
 {
-  "session_count": 176,
+  "session_count": 179,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1533,
+  "test_count": 1532,
   "test_failures": 0,
-  "what_was_done": "Session 176: Comprehensive gate deadlock elimination. (1) Implemented 3 gate overlap fixes from session 175 analysis: G17 PreToolUse activation for WebFetch/WebSearch injection scanning, G06 Bash exemption from escalation blocking, G07 message clarity. (2) Full deadlock audit via Sonnet researcher — identified 12 scenarios (DL-00 through DL-12). (3) Implemented ALL fixes: G05/G14 message clarity, G07 window 180s→300s aligned with G04, G14 fixing_error suppression, G16/G09 recovery messages, G11 moved to last in pipeline, G14 warned_signals reset on test pass, G13 stale threshold 2h→30min, fixing_error 30min auto-expiry. (4) Updated test_framework.py for G07 window change. Zero known deadlocks remaining. 1532/1533 tests pass.",
-  "service_status": "Memory MCP: RUNNING (1113 memories) | Tests: 1533 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
+  "what_was_done": "Tier 2 test optimization: Converted ~118 run_enforcer() subprocess calls to direct function imports in test_framework.py. Runtime reduced from 84s (original) to 31s (Tier 1, session 177) to 14-16s (Tier 2). Added _post() adapter for PostToolUse calls and converted remaining PreToolUse calls to _direct(_gXX_check()). Fixed cleanup_test_states() to include session_id 'main' for state files written by _post(). Confirmed 1532 test count is correct (Gate 8 has time-conditional test 1-5 AM).",
+  "service_status": "Memory MCP: RUNNING (1131 memories) | Tests: 1532 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 48 | Agents: 7 defs | Skills: 39 | Plugins: 9 enabled",
   "next_steps": [
     "Merge Self-Sprint-2 into main (all items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop",
@@ -20,7 +20,8 @@
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
     "Gate 8 dormant - temporal pattern detection disabled, code preserved in dormant/gates/",
-    "Auto-commit test failure (pre-existing, commit message formatting)"
+    "Auto-commit test failure (pre-existing, commit message formatting)",
+    "Test count is 1532 (not 1533) — Gate 8 night-hours test only runs 1-5 AM"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
