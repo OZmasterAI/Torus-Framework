@@ -38,31 +38,9 @@ from typing import Dict, List, Optional, Set
 from shared.gate_result import GateResult
 
 # ---------------------------------------------------------------------------
-# Constants mirrored from enforcer.py (single source of truth kept there;
-# gate_router reads them at import time so there is no duplication at runtime).
+# Canonical gate list (single source of truth in shared/gate_registry.py)
 # ---------------------------------------------------------------------------
-
-# Full ordered list of active gate modules (dormant / merged gates omitted).
-GATE_MODULES: List[str] = [
-    "gates.gate_01_read_before_edit",
-    "gates.gate_02_no_destroy",
-    "gates.gate_03_test_before_deploy",
-    "gates.gate_04_memory_first",
-    "gates.gate_05_proof_before_fixed",
-    "gates.gate_06_save_fix",
-    "gates.gate_07_critical_file_guard",
-    # gate_08 DORMANT
-    "gates.gate_09_strategy_ban",
-    "gates.gate_10_model_enforcement",
-    "gates.gate_11_rate_limit",
-    # gate_12 MERGED into gate_06
-    "gates.gate_13_workspace_isolation",
-    "gates.gate_14_confidence_check",
-    "gates.gate_15_causal_chain",
-    "gates.gate_16_code_quality",
-    "gates.gate_17_injection_defense",
-    "gates.gate_18_canary",
-]
+from shared.gate_registry import GATE_MODULES
 
 # Tier membership sets (module names).  gate_router only uses Tier 1 for
 # short-circuit logic; Tier 2 / Tier 3 are used for labelling and stats.

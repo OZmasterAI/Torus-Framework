@@ -53,24 +53,8 @@ from shared.state import default_state
 
 CAPTURE_QUEUE_PATH = os.path.join(_HOOKS_DIR, ".capture_queue.jsonl")
 
-# Gate module list mirrored from enforcer.py (dormant gates excluded)
-_GATE_MODULES = [
-    "gates.gate_01_read_before_edit",
-    "gates.gate_02_no_destroy",
-    "gates.gate_03_test_before_deploy",
-    "gates.gate_04_memory_first",
-    "gates.gate_05_proof_before_fixed",
-    "gates.gate_06_save_fix",
-    "gates.gate_07_critical_file_guard",
-    "gates.gate_09_strategy_ban",
-    "gates.gate_10_model_enforcement",
-    "gates.gate_11_rate_limit",
-    "gates.gate_13_workspace_isolation",
-    "gates.gate_14_confidence_check",
-    "gates.gate_15_causal_chain",
-    "gates.gate_16_code_quality",
-    "gates.gate_17_injection_defense",
-]
+# Canonical gate list (from shared/gate_registry.py)
+from shared.gate_registry import GATE_MODULES as _GATE_MODULES
 
 # Tools that the enforcer never gates (mirrors enforcer.ALWAYS_ALLOWED_TOOLS)
 _ALWAYS_ALLOWED_TOOLS = {

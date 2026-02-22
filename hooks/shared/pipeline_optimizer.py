@@ -52,24 +52,8 @@ _TIMINGS_PATH = os.path.join(_HOOKS_DIR, ".gate_timings.json")
 # Gate metadata (mirrored from enforcer.py — single source of truth there)
 # ---------------------------------------------------------------------------
 
-# Ordered list of active gate modules (same order as enforcer.GATE_MODULES)
-_GATE_MODULES: List[str] = [
-    "gates.gate_01_read_before_edit",
-    "gates.gate_02_no_destroy",
-    "gates.gate_03_test_before_deploy",
-    "gates.gate_04_memory_first",
-    "gates.gate_05_proof_before_fixed",
-    "gates.gate_06_save_fix",
-    "gates.gate_07_critical_file_guard",
-    "gates.gate_09_strategy_ban",
-    "gates.gate_10_model_enforcement",
-    "gates.gate_11_rate_limit",
-    "gates.gate_13_workspace_isolation",
-    "gates.gate_14_confidence_check",
-    "gates.gate_15_causal_chain",
-    "gates.gate_16_code_quality",
-    "gates.gate_17_injection_defense",
-]
+# Canonical gate list (from shared/gate_registry.py)
+from shared.gate_registry import GATE_MODULES as _GATE_MODULES
 
 # Short name -> full module name
 _SHORT_TO_MODULE: Dict[str, str] = {m.split(".")[-1]: m for m in _GATE_MODULES}

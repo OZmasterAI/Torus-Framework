@@ -28,27 +28,8 @@ if _HOOKS_DIR not in sys.path:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-#: All gate module names (relative to hooks/) in canonical order.
-GATE_MODULES = [
-    "gates.gate_01_read_before_edit",
-    "gates.gate_02_no_destroy",
-    "gates.gate_03_test_before_deploy",
-    "gates.gate_04_memory_first",
-    "gates.gate_05_proof_before_fixed",
-    "gates.gate_06_save_fix",
-    "gates.gate_07_critical_file_guard",
-    # "gates.gate_08_temporal",  # DORMANT
-    "gates.gate_09_strategy_ban",
-    "gates.gate_10_model_enforcement",
-    "gates.gate_11_rate_limit",
-    # "gates.gate_12_plan_mode_save",  # MERGED into gate_06
-    "gates.gate_13_workspace_isolation",
-    "gates.gate_14_confidence_check",
-    "gates.gate_15_causal_chain",
-    "gates.gate_16_code_quality",
-    "gates.gate_17_injection_defense",
-    "gates.gate_18_canary",
-]
+#: All gate module names — canonical list from shared/gate_registry.py.
+from shared.gate_registry import GATE_MODULES
 
 #: Component names for degraded-mode detection.
 COMPONENT_GATES = "gates"

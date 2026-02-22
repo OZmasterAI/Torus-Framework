@@ -13194,11 +13194,11 @@ try:
         f"got {_cv_err8!r}",
     )
 
-    # Test 9: error when enforcer.py not found
+    # Test 9: error when gate files not found at nonexistent path
     _cv_err9 = validate_gates("/nonexistent/path/enforcer.py")
     test(
-        "ConfigValidator: validate_gates error when enforcer.py missing",
-        len(_cv_err9) == 1 and "not found" in _cv_err9[0].lower(),
+        "ConfigValidator: validate_gates errors for missing gate files at bad path",
+        len(_cv_err9) > 0 and "missing file" in _cv_err9[0].lower(),
         f"got {_cv_err9!r}",
     )
 
@@ -13638,6 +13638,66 @@ test("Exempt full: custom extensions param",
 test("Exempt full: custom extensions excludes default",
      is_exempt_full("readme.md", exempt_extensions={".xyz"}) is False,
      "Custom extensions should replace defaults, not extend them")
+
+# ─────────────────────────────────────────────────
+# Shared Gate Registry (shared/gate_registry.py)
+# ─────────────────────────────────────────────────
+print("\n--- Shared Gate Registry ---")
+
+from shared.gate_registry import GATE_MODULES as _registry_modules
+
+# ── Single source of truth ──
+test("Registry: GATE_MODULES is a list", isinstance(_registry_modules, list))
+test("Registry: has 16 active gates", len(_registry_modules) == 16,
+     f"got {len(_registry_modules)}")
+test("Registry: gate_11 is last (rate limit ordering)",
+     _registry_modules[-1] == "gates.gate_11_rate_limit",
+     f"last={_registry_modules[-1]}")
+test("Registry: gate_18_canary present",
+     "gates.gate_18_canary" in _registry_modules)
+test("Registry: gate_08 dormant (not in list)",
+     "gates.gate_08_temporal" not in _registry_modules)
+test("Registry: gate_12 merged (not in list)",
+     "gates.gate_12_plan_mode_save" not in _registry_modules)
+
+# ── All consumers reference the same object ──
+from enforcer import GATE_MODULES as _enf_reg
+test("Registry: enforcer.GATE_MODULES is same object",
+     _enf_reg is _registry_modules)
+
+from shared.gate_router import GATE_MODULES as _router_reg
+test("Registry: gate_router.GATE_MODULES is same object",
+     _router_reg is _registry_modules)
+
+from shared.health_monitor import GATE_MODULES as _hm_reg
+test("Registry: health_monitor.GATE_MODULES is same object",
+     _hm_reg is _registry_modules)
+
+from shared.pipeline_optimizer import _GATE_MODULES as _po_reg
+test("Registry: pipeline_optimizer._GATE_MODULES is same object",
+     _po_reg is _registry_modules)
+
+from shared.event_replay import _GATE_MODULES as _er_reg
+test("Registry: event_replay._GATE_MODULES is same object",
+     _er_reg is _registry_modules)
+
+# ── Gate files exist on disk ──
+_hooks_dir = os.path.dirname(os.path.abspath(__file__))
+_missing_gates = []
+for _gmod in _registry_modules:
+    _parts = _gmod.split(".")
+    _gpath = os.path.join(_hooks_dir, _parts[0], _parts[1] + ".py")
+    if not os.path.exists(_gpath):
+        _missing_gates.append(_gmod)
+test("Registry: all gate modules have .py files on disk",
+     len(_missing_gates) == 0,
+     f"missing={_missing_gates}")
+
+# ── config_validator uses registry (no more source parsing) ──
+from shared.config_validator import validate_gates as _cv_validate
+_cv_errors = _cv_validate()
+test("Registry: config_validator.validate_gates() passes",
+     len(_cv_errors) == 0, f"errors={_cv_errors}")
 
 cleanup_test_states()
 

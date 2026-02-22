@@ -32,25 +32,9 @@ from shared.gate_result import GateResult
 from shared.state import default_state
 
 # ---------------------------------------------------------------------------
-# Gate registry — mirrors enforcer.py GATE_MODULES (active gates only)
+# Canonical gate list (from shared/gate_registry.py)
 # ---------------------------------------------------------------------------
-GATE_MODULES = [
-    "gates.gate_01_read_before_edit",
-    "gates.gate_02_no_destroy",
-    "gates.gate_03_test_before_deploy",
-    "gates.gate_04_memory_first",
-    "gates.gate_05_proof_before_fixed",
-    "gates.gate_06_save_fix",
-    "gates.gate_07_critical_file_guard",
-    "gates.gate_09_strategy_ban",
-    "gates.gate_10_model_enforcement",
-    "gates.gate_11_rate_limit",
-    "gates.gate_13_workspace_isolation",
-    "gates.gate_14_confidence_check",
-    "gates.gate_15_causal_chain",
-    "gates.gate_16_code_quality",
-    "gates.gate_17_injection_defense",
-]
+from shared.gate_registry import GATE_MODULES
 
 # ---------------------------------------------------------------------------
 # Tool name corpus

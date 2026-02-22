@@ -222,57 +222,30 @@ def validate_live_state(path=None):
 # ── validate_gates ───────────────────────────────────────────────────────────
 
 def validate_gates(enforcer_path=None):
-    """Validate that all gate modules referenced in enforcer.py exist as files.
+    """Validate that all gate modules in the canonical registry exist as files.
 
-    Parses enforcer.py for the GATE_MODULES list and checks that each
-    module (e.g. "gates.gate_01_read_before_edit") has a corresponding
-    .py file in the hooks/gates/ directory.
+    Imports GATE_MODULES from shared.gate_registry (single source of truth)
+    and checks that each module (e.g. "gates.gate_01_read_before_edit") has
+    a corresponding .py file in the hooks/gates/ directory.
 
     Returns a list of error strings. Empty list means valid.
     """
+    from shared.gate_registry import GATE_MODULES
+
     errors = []
-    epath = enforcer_path or _DEFAULT_ENFORCER_PATH
+    hooks_dir = os.path.dirname(enforcer_path or _DEFAULT_ENFORCER_PATH)
 
-    if not os.path.exists(epath):
-        return [f"enforcer.py not found: {epath}"]
-
-    try:
-        with open(epath) as f:
-            src = f.read()
-    except OSError as e:
-        return [f"enforcer.py could not be read: {e}"]
-
-    hooks_dir = os.path.dirname(epath)
-
-    # Extract module names from GATE_MODULES list.
-    # Match both active entries and commented-out ones separately.
-    # Active: "gates.gate_XX_name",
-    # We only check active (non-commented) entries.
-    active_modules = re.findall(
-        r'^\s*"(gates\.[a-z0-9_]+)"',
-        src,
-        re.MULTILINE,
-    )
-
-    if not active_modules:
-        errors.append(
-            "enforcer.py: could not find any active gate module entries "
-            "in GATE_MODULES list"
-        )
-        return errors
-
-    for module in active_modules:
-        # "gates.gate_01_read_before_edit" -> hooks/gates/gate_01_read_before_edit.py
+    for module in GATE_MODULES:
         parts = module.split(".")
         if len(parts) != 2:
-            errors.append(f"enforcer.py: unexpected module format '{module}'")
+            errors.append(f"gate_registry: unexpected module format '{module}'")
             continue
 
         subdir, modname = parts
         expected_path = os.path.join(hooks_dir, subdir, modname + ".py")
         if not os.path.exists(expected_path):
             errors.append(
-                f"enforcer.py: gate module '{module}' references missing file: "
+                f"gate_registry: gate module '{module}' references missing file: "
                 f"{expected_path}"
             )
 
