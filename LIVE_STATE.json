@@ -7,9 +7,11 @@
   "feature_status": "in-progress",
   "test_count": 1291,
   "test_failures": 0,
-  "what_was_done": "Item 16-18 complete: Migrated 281 behavioral tests from 42 version sections into functional sections, deleted ~289 SIS/file-exists tests, removed all version scaffolding. test_framework.py: 13,707 → 11,063 lines (-2,644, 19% reduction). Test count: 1,580 → 1,291 (0 failures). Fixed pre-existing WARN_THRESHOLD bug and removed incorrectly-migrated _g11_source SIS test.",
-  "service_status": "Memory MCP: RUNNING (1159 memories) | Tests: 1291 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled",
+  "what_was_done": "Deep framework comparison: evaluated 11 frameworks against Torus, 3-way memory system comparison (Torus vs AKIRA vs Agent Zero), triaged 10 potential improvements down to 2 approved items. Decisions: (1) Auto tier classification for memories (~20 lines in memory_server.py), (2) Embedding upgrade from all-MiniLM-L6-v2 to gte-multilingual-base with JSON backup (Option 3). Rejected 8 other proposals with documented rationale. Self-corrected FNV1a/dedup confusion and search_knowledge mode claims. 5 decisions saved to memory (1184 total).",
+  "service_status": "Memory MCP: RUNNING (1184 memories) | Tests: 1291 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled",
   "next_steps": [
+    "Plan + implement auto tier classification in memory_server.py",
+    "Plan + implement embedding upgrade: gte-multilingual-base everywhere + Option 3 JSON backup",
     "Merge Self-Sprint-2 into main (all audit items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop"
   ],
