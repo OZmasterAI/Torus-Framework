@@ -1,17 +1,16 @@
 {
-  "session_count": 183,
+  "session_count": 184,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1580,
+  "test_count": 1291,
   "test_failures": 0,
-  "what_was_done": "Architecture audit sprint: completed items 7 (is_exempt unification), 8 (GATE_MODULES centralization), 13-14 (Terminal L2 direct import, 15x faster), 15 (pruned 4 superseded MCP tools), 19-20 (removed 6 superseded skills). Total: -1,559 lines removed, 3 drift bugs fixed, 43 new tests added. Analyzed item 16-18 (test framework monolith) — chose Option E (migrate behavioral tests, delete version scaffolding) for next session.",
-  "service_status": "Memory MCP: RUNNING (1157 memories) | Tests: 1580 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled",
+  "what_was_done": "Item 16-18 complete: Migrated 281 behavioral tests from 42 version sections into functional sections, deleted ~289 SIS/file-exists tests, removed all version scaffolding. test_framework.py: 13,707 → 11,063 lines (-2,644, 19% reduction). Test count: 1,580 → 1,291 (0 failures). Fixed pre-existing WARN_THRESHOLD bug and removed incorrectly-migrated _g11_source SIS test.",
+  "service_status": "Memory MCP: RUNNING (1159 memories) | Tests: 1291 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled",
   "next_steps": [
-    "Item 16-18: Option E — migrate 493 behavioral tests from 42 version sections into functional sections, delete string-checks + scaffolding (~4,763 lines)",
-    "Merge Self-Sprint-2 into main (all audit items nearing completion, 0 test failures)",
+    "Merge Self-Sprint-2 into main (all audit items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop"
   ],
   "known_issues": [
