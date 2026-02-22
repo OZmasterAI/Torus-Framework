@@ -7641,8 +7641,8 @@ test("v2.3.3: Gate 4 non-exempt file has no exemption entry",
      "g4_test233.py" not in _g4b_exemptions,
      f"Expected no entry for g4_test233.py, got keys={list(_g4b_exemptions.keys())}")
 
-# Test 12: Gate 4 EXEMPT_BASENAMES includes expected files
-from gates.gate_04_memory_first import EXEMPT_BASENAMES as G4_EXEMPT
+# Test 12: Gate 4 exempt basenames includes expected files (via shared.exemptions)
+from shared.exemptions import BASE_EXEMPT_BASENAMES as G4_EXEMPT
 test("v2.3.3: Gate 4 EXEMPT_BASENAMES includes HANDOFF.md and CLAUDE.md",
      "HANDOFF.md" in G4_EXEMPT and "CLAUDE.md" in G4_EXEMPT,
      f"Expected HANDOFF.md and CLAUDE.md in exemptions, got {G4_EXEMPT}")
@@ -13573,6 +13573,71 @@ except Exception as _gc_e:
     RESULTS.append(f"  FAIL: GateCache stats: {_gc_e}")
     print(f"  FAIL: GateCache stats: {_gc_e}")
 
+
+# ─────────────────────────────────────────────────
+# Shared Exemption Tiers (shared/exemptions.py)
+# ─────────────────────────────────────────────────
+print("\n--- Shared Exemption Tiers ---")
+
+from shared.exemptions import (
+    is_exempt_base, is_exempt_standard, is_exempt_full,
+    BASE_EXEMPT_BASENAMES, BASE_EXEMPT_DIRS,
+    STANDARD_EXEMPT_PATTERNS, FULL_EXEMPT_EXTENSIONS,
+)
+
+_skills_dir = os.path.join(os.path.expanduser("~"), ".claude", "skills")
+
+# ── Base tier ──
+test("Exempt base: None returns True", is_exempt_base(None) is True)
+test("Exempt base: empty string returns True", is_exempt_base("") is True)
+test("Exempt base: state.json exempt", is_exempt_base("state.json") is True)
+test("Exempt base: HANDOFF.md exempt", is_exempt_base("HANDOFF.md") is True)
+test("Exempt base: LIVE_STATE.json exempt", is_exempt_base("LIVE_STATE.json") is True)
+test("Exempt base: CLAUDE.md exempt", is_exempt_base("CLAUDE.md") is True)
+test("Exempt base: __init__.py exempt", is_exempt_base("__init__.py") is True)
+test("Exempt base: skills prefix match",
+     is_exempt_base(os.path.join(_skills_dir, "foo.py")) is True)
+test("Exempt base: skills subdir match",
+     is_exempt_base(os.path.join(_skills_dir, "sub", "bar.py")) is True)
+test("Exempt base: non-exempt file", is_exempt_base("/tmp/app.py") is False)
+test("Exempt base: non-skills path with /skills/",
+     is_exempt_base("/tmp/skills/hack.py") is False,
+     "Only ~/.claude/skills/ should match, not any /skills/ substring")
+
+# ── Standard tier ──
+test("Exempt standard: inherits base (None)", is_exempt_standard(None) is True)
+test("Exempt standard: inherits base (state.json)", is_exempt_standard("state.json") is True)
+test("Exempt standard: test_ prefix", is_exempt_standard("test_foo.py") is True)
+test("Exempt standard: _test. pattern", is_exempt_standard("foo_test.py") is True)
+test("Exempt standard: .test. pattern", is_exempt_standard("foo.test.js") is True)
+test("Exempt standard: spec_ prefix", is_exempt_standard("spec_bar.py") is True)
+test("Exempt standard: _spec. pattern", is_exempt_standard("bar_spec.rb") is True)
+test("Exempt standard: .spec. pattern", is_exempt_standard("bar.spec.ts") is True)
+test("Exempt standard: case-insensitive patterns",
+     is_exempt_standard("Test_Foo.py") is True)
+test("Exempt standard: regular file not exempt",
+     is_exempt_standard("regular.py") is False)
+
+# ── Full tier ──
+test("Exempt full: inherits standard (None)", is_exempt_full(None) is True)
+test("Exempt full: inherits standard (test_)", is_exempt_full("test_foo.py") is True)
+test("Exempt full: .md exempt", is_exempt_full("readme.md") is True)
+test("Exempt full: .json exempt", is_exempt_full("config.json") is True)
+test("Exempt full: .yaml exempt", is_exempt_full("deploy.yaml") is True)
+test("Exempt full: .yml exempt", is_exempt_full("ci.yml") is True)
+test("Exempt full: .toml exempt", is_exempt_full("pyproject.toml") is True)
+test("Exempt full: .sh exempt", is_exempt_full("run.sh") is True)
+test("Exempt full: .bash exempt", is_exempt_full("setup.bash") is True)
+test("Exempt full: .css exempt", is_exempt_full("style.css") is True)
+test("Exempt full: .html exempt", is_exempt_full("index.html") is True)
+test("Exempt full: .lock exempt", is_exempt_full("package-lock.lock") is True)
+test("Exempt full: .py NOT exempt", is_exempt_full("app.py") is False)
+test("Exempt full: .js NOT exempt", is_exempt_full("app.js") is False)
+test("Exempt full: custom extensions param",
+     is_exempt_full("data.xyz", exempt_extensions={".xyz"}) is True)
+test("Exempt full: custom extensions excludes default",
+     is_exempt_full("readme.md", exempt_extensions={".xyz"}) is False,
+     "Custom extensions should replace defaults, not extend them")
 
 cleanup_test_states()
 

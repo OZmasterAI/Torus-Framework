@@ -28,24 +28,7 @@ GATED_TOOLS = {"Edit", "Write", "NotebookEdit", "Task"}
 # Read-only subagent types — no Edit/Write/Bash, can't modify files
 READ_ONLY_AGENTS = {"researcher", "Explore"}
 
-# Files exempt by basename
-EXEMPT_BASENAMES = {"state.json", "HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md"}
-
-# Directories exempt by normalized path prefix
-EXEMPT_DIRS = [
-    os.path.join(os.path.expanduser("~"), ".claude", "skills"),
-]
-
-
-def is_exempt(file_path):
-    if os.path.basename(file_path) in EXEMPT_BASENAMES:
-        return True
-    norm = os.path.normpath(file_path)
-    for d in EXEMPT_DIRS:
-        nd = os.path.normpath(d)
-        if norm.startswith(nd + os.sep) or norm == nd:
-            return True
-    return False
+from shared.exemptions import is_exempt_base as is_exempt
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
@@ -64,9 +47,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         if subagent_type in READ_ONLY_AGENTS:
             return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # Check file exemptions
+    # Check file exemptions (only when a file_path is present — Task calls have none)
     file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
-    if is_exempt(file_path):
+    if file_path and is_exempt(file_path):
         # Track exemption for observability
         exempt_stats = state.setdefault("gate4_exemptions", {})
         basename = os.path.basename(file_path)

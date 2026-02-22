@@ -25,34 +25,7 @@ GATE_NAME = "GATE 14: CONFIDENCE CHECK"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 MAX_WARNINGS = 2  # Block on per-file attempt MAX_WARNINGS + 1
 
-# Files/patterns exempt from confidence checks
-EXEMPT_BASENAMES = {"HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md", "__init__.py"}
-EXEMPT_PATTERNS = ("test_", "_test.", ".test.", "spec_", "_spec.", ".spec.")
-# Non-code file extensions exempt from confidence checks
-EXEMPT_EXTENSIONS = {".md", ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".txt", ".sh", ".bash", ".css", ".html", ".xml", ".csv", ".lock"}
-
-
-def _is_exempt(file_path):
-    """Check if file is exempt from confidence checks."""
-    if not file_path:
-        return True
-    basename = os.path.basename(file_path)
-    # Exempt specific config files
-    if basename in EXEMPT_BASENAMES:
-        return True
-    # Exempt test/spec files
-    lower = basename.lower()
-    if any(pat in lower for pat in EXEMPT_PATTERNS):
-        return True
-    # Exempt skills/ directory
-    norm = os.path.normpath(file_path)
-    if "/skills/" in norm or "\\skills\\" in norm:
-        return True
-    # Exempt non-code files
-    _, ext = os.path.splitext(basename)
-    if ext.lower() in EXEMPT_EXTENSIONS:
-        return True
-    return False
+from shared.exemptions import is_exempt_full as _is_exempt
 
 
 def _is_re_edit(file_path, state):

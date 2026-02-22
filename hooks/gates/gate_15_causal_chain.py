@@ -32,26 +32,7 @@ GATE_NAME = "GATE 15: CAUSAL CHAIN ENFORCEMENT"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 FIX_HISTORY_FRESHNESS = 300  # 5 minutes
 
-# Files exempt from causal chain enforcement
-EXEMPT_BASENAMES = {"HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md", "__init__.py"}
-EXEMPT_PATTERNS = ("test_", "_test.", ".test.", "spec_", "_spec.", ".spec.")
-
-
-def _is_exempt(file_path):
-    """Check if file is exempt from causal chain enforcement."""
-    if not file_path:
-        return True
-    basename = os.path.basename(file_path)
-    if basename in EXEMPT_BASENAMES:
-        return True
-    lower = basename.lower()
-    if any(pat in lower for pat in EXEMPT_PATTERNS):
-        return True
-    # Exempt skills/ directory
-    norm = os.path.normpath(file_path)
-    if "/skills/" in norm or "\\skills\\" in norm:
-        return True
-    return False
+from shared.exemptions import is_exempt_standard as _is_exempt
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):

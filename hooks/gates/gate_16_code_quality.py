@@ -23,13 +23,7 @@ CODE_EXTENSIONS = {
     ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".rb", ".sh",
 }
 
-# Files/patterns exempt from code quality checks
-EXEMPT_BASENAMES = {"HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md", "__init__.py"}
-EXEMPT_PATTERNS = ("test_", "_test.", ".test.", "spec_", "_spec.", ".spec.")
-EXEMPT_EXTENSIONS = {
-    ".md", ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".txt",
-    ".csv", ".html", ".css", ".xml", ".lock",
-}
+from shared.exemptions import is_exempt_full
 
 # Pattern definitions: (name, compiled_regex, description, severity, escalates)
 # escalates=False means the pattern warns but never increments the counter
@@ -70,25 +64,11 @@ PATTERNS = [
 
 
 def _is_exempt(file_path):
-    """Check if file is exempt from code quality checks."""
-    if not file_path:
+    """Check if file is exempt from code quality checks (shared + code-ext filter)."""
+    if is_exempt_full(file_path):
         return True
-    basename = os.path.basename(file_path)
-    if basename in EXEMPT_BASENAMES:
-        return True
-    lower = basename.lower()
-    if any(pat in lower for pat in EXEMPT_PATTERNS):
-        return True
-    norm = os.path.normpath(file_path)
-    if "/skills/" in norm or "\\skills\\" in norm:
-        return True
-    _, ext = os.path.splitext(basename)
-    if ext.lower() in EXEMPT_EXTENSIONS:
-        return True
-    # Only scan code files
-    if ext.lower() not in CODE_EXTENSIONS:
-        return True
-    return False
+    _, ext = os.path.splitext(os.path.basename(file_path))
+    return ext.lower() not in CODE_EXTENSIONS
 
 
 def _get_content(tool_name, tool_input):

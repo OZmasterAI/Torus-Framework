@@ -22,24 +22,7 @@ GATE_NAME = "GATE 5: PROOF BEFORE FIXED"
 # Max pending verifications before blocking
 MAX_UNVERIFIED = 3
 
-# Files exempt by basename
-EXEMPT_BASENAMES = {"state.json", "HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md", "__init__.py"}
-
-# Directories exempt by normalized path prefix
-EXEMPT_DIRS = [
-    os.path.join(os.path.expanduser("~"), ".claude", "skills"),
-]
-
-
-def is_exempt(file_path):
-    if os.path.basename(file_path) in EXEMPT_BASENAMES:
-        return True
-    norm = os.path.normpath(file_path)
-    for d in EXEMPT_DIRS:
-        nd = os.path.normpath(d)
-        if norm.startswith(nd + os.sep) or norm == nd:
-            return True
-    return False
+from shared.exemptions import is_exempt_base as is_exempt
 
 
 def _is_test_file(file_path):
