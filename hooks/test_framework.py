@@ -8403,7 +8403,7 @@ except Exception as _e:
 
 
 # ─────────────────────────────────────────────────
-# Embedding Upgrade (thenlper/gte-base)
+# Embedding Upgrade (Alibaba-NLP/gte-multilingual-base)
 # ─────────────────────────────────────────────────
 print('\n--- Embedding Upgrade ---')
 
@@ -8411,7 +8411,7 @@ with open(os.path.join(os.path.dirname(__file__), "memory_server.py")) as _emb_f
     _emb_src = _emb_f.read()
 
 test("Embedding: _EMBEDDING_MODEL constant exists",
-     '_EMBEDDING_MODEL = "thenlper/gte-base"' in _emb_src,
+     '_EMBEDDING_MODEL = "Alibaba-NLP/gte-multilingual-base"' in _emb_src,
      "_EMBEDDING_MODEL not found or wrong value")
 
 test("Embedding: SentenceTransformerEmbeddingFunction imported in init",

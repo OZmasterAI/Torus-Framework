@@ -7,10 +7,10 @@
   "feature_status": "in-progress",
   "test_count": 1308,
   "test_failures": 0,
-  "what_was_done": "Both approved improvements implemented: (1) Auto tier classification — _classify_tier() Tier 1/2/3, metadata in remember_this, _apply_tier_boost in search, _backfill_tiers for existing memories, 12 tests. (2) Embedding upgrade — thenlper/gte-base (768-dim, 512 tokens) replacing default MiniLM (384-dim, 256 tokens), SentenceTransformerEmbeddingFunction on all 5 collections, _migrate_embeddings() for re-embedding, backup_embeddings.py script (52MB backup at ~/data/memory/). Alibaba-NLP/gte-multilingual-base broken with sentence-transformers v5.2.3, substituted thenlper/gte-base. 5 embedding tests. Tests: 1291 → 1308 (+17), 0 failures.",
-  "service_status": "Memory MCP: RUNNING (1189 memories) | Tests: 1308 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: thenlper/gte-base (768-dim, migration pending MCP restart)",
+  "what_was_done": "Diagnosed and fixed Alibaba-NLP/gte-multilingual-base model crash. Root cause: torch 2.10 meta-device init corrupts 4 non-persistent buffers (position_ids, inv_freq, cos_cached, sin_cached). Applied full buffer patch in _init_chromadb() — re-registers all 4 after model load. Switched _EMBEDDING_MODEL from thenlper/gte-base (512 tokens) to Alibaba-NLP/gte-multilingual-base (8192 tokens, ~68% MTEB). Updated tests. 1308 passed, 0 failed. Migration runs on next MCP restart.",
+  "service_status": "Memory MCP: RUNNING (1191 memories) | Tests: 1308 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: Alibaba-NLP/gte-multilingual-base (768-dim, 8192 tokens, buffer-patched, migration pending MCP restart)",
   "next_steps": [
-    "Restart MCP server to trigger embedding migration (auto-runs _migrate_embeddings)",
+    "Restart MCP server to trigger embedding migration (auto-runs _migrate_embeddings + _backfill_tiers)",
     "Verify search quality post-migration and tune dedup thresholds if needed",
     "Merge Self-Sprint-2 into main (all audit items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop"
@@ -19,7 +19,7 @@
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Alibaba-NLP/gte-multilingual-base IndexError with sentence-transformers v5.2.3 — using thenlper/gte-base instead",
+    "Alibaba-NLP/gte-multilingual-base buffer patch — monkey-patches ef._model[0].auto_model internals, could break if chromadb/sentence-transformers change internal structure",
     "Embedding migration pending MCP restart — dedup thresholds may need tuning for 768-dim distances"
   ],
   "terminal_l2_always": false,
