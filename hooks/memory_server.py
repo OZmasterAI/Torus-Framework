@@ -143,34 +143,26 @@ def _init_chromadb():
 
         client = chromadb.PersistentClient(path=MEMORY_DIR)
         _ef_kwargs = {"embedding_function": _embedding_fn} if _embedding_fn else {}
-        collection = client.get_or_create_collection(
-            name="knowledge",
-            metadata={"hnsw:space": "cosine"},
-            **_ef_kwargs,
-        )
-        fix_outcomes = client.get_or_create_collection(
-            name="fix_outcomes",
-            metadata={"hnsw:space": "cosine"},
-            **_ef_kwargs,
-        )
-        # Auto-capture: observations collection (separate from curated knowledge)
-        observations = client.get_or_create_collection(
-            name="observations",
-            metadata={"hnsw:space": "cosine"},
-            **_ef_kwargs,
-        )
-        # Web page indexing collection (used by /web skill)
-        web_pages = client.get_or_create_collection(
-            name="web_pages",
-            metadata={"hnsw:space": "cosine"},
-            **_ef_kwargs,
-        )
-        # Quarantine: holds deduplicated memories (recoverable, not deleted)
-        quarantine = client.get_or_create_collection(
-            name="quarantine",
-            metadata={"hnsw:space": "cosine"},
-            **_ef_kwargs,
-        )
+
+        def _get_col(name: str):
+            """Open collection, falling back to persisted embedding on conflict."""
+            try:
+                return client.get_or_create_collection(
+                    name=name, metadata={"hnsw:space": "cosine"}, **_ef_kwargs,
+                )
+            except ValueError as ve:
+                if "embedding function" in str(ve).lower() or "Embedding function conflict" in str(ve):
+                    print(f"[MCP] Embedding conflict on '{name}' — using persisted embedding", file=_sys.stderr)
+                    return client.get_or_create_collection(
+                        name=name, metadata={"hnsw:space": "cosine"},
+                    )
+                raise
+
+        collection = _get_col("knowledge")
+        fix_outcomes = _get_col("fix_outcomes")
+        observations = _get_col("observations")
+        web_pages = _get_col("web_pages")
+        quarantine = _get_col("quarantine")
     except Exception as e:
         import traceback
         print(f"[MCP] ChromaDB init failed: {e}\n{traceback.format_exc()}", file=_sys.stderr)
@@ -1096,6 +1088,10 @@ def _ensure_initialized():
     if _initialized:
         return
     _init_chromadb()
+    if collection is None:
+        print("[MCP] ChromaDB unavailable — starting in degraded mode.", file=_sys.stderr)
+        _initialized = True
+        return
     _migrate_embeddings()
     _preview_migrated = _migrate_previews()
     _backfill_tiers()
