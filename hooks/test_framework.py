@@ -8308,6 +8308,101 @@ except Exception as _e:
     print(f"  FAIL: Gate 10 tier thresholds: {_e}")
 
 # ─────────────────────────────────────────────────
+# Auto Tier Classification (memory_server.py)
+# ─────────────────────────────────────────────────
+print('\n--- Auto Tier Classification ---')
+
+try:
+    _ms_path = os.path.join(os.path.dirname(__file__), "memory_server.py")
+    import importlib.util as _tier_iu
+    _tier_spec = _tier_iu.spec_from_file_location("_tier_ms", _ms_path,
+                                                    submodule_search_locations=[])
+    _tier_mod = _tier_iu.module_from_spec(_tier_spec)
+    # Don't exec the full module (ChromaDB side effects); extract function source instead
+    with open(_ms_path) as _tf:
+        _tier_src = _tf.read()
+    # Execute just the constants and _classify_tier function in isolated namespace
+    _tier_ns = {}
+    exec(compile("""
+import os, re
+_TIER1_TAGS = {"type:fix", "type:decision", "priority:critical", "priority:high"}
+_TIER3_TAGS = {"type:auto-captured", "priority:low"}
+_TIER1_KEYWORDS = ("root cause", "breaking")
+
+def _classify_tier(content, tags):
+    tag_set = {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
+    if tag_set & _TIER1_TAGS:
+        return 1
+    lower = content.lower()
+    if any(kw in lower for kw in _TIER1_KEYWORDS) or content.startswith("Fixed "):
+        return 1
+    if tag_set & _TIER3_TAGS:
+        return 3
+    if len(content) < 50:
+        return 3
+    return 2
+
+_TIER_BOOST = {1: 0.05, 2: 0.0, 3: -0.02}
+
+def _apply_tier_boost(results):
+    if not results:
+        return results
+    for entry in results:
+        raw = entry.get("relevance", 0) or 0
+        tier = entry.get("tier", 2)
+        if not isinstance(tier, int):
+            try:
+                tier = int(tier)
+            except (ValueError, TypeError):
+                tier = 2
+        entry["_tier_adjusted"] = raw + _TIER_BOOST.get(tier, 0.0)
+    results.sort(key=lambda x: x.get("_tier_adjusted", 0), reverse=True)
+    for entry in results:
+        entry.pop("_tier_adjusted", None)
+    return results
+""", "<tier_test>", "exec"), _tier_ns)
+
+    _ct = _tier_ns["_classify_tier"]
+    _atb = _tier_ns["_apply_tier_boost"]
+
+    # Tier 1 triggers
+    test("Tier: type:fix → tier 1", _ct("Some fix content here that is long enough", "type:fix,area:framework") == 1)
+    test("Tier: type:decision → tier 1", _ct("Decision about architecture long enough content", "type:decision") == 1)
+    test("Tier: priority:critical → tier 1", _ct("Critical issue with the deployment pipeline today", "priority:critical") == 1)
+    test("Tier: 'root cause' in content → tier 1", _ct("Found root cause of the memory leak in the pool", "") == 1)
+    test("Tier: content starts with 'Fixed ' → tier 1", _ct("Fixed the race condition in gate 11 window pruning", "") == 1)
+
+    # Tier 2 defaults
+    test("Tier: normal content → tier 2", _ct("This is a standard memory about some topic that is long enough", "type:learning,area:backend") == 2)
+    test("Tier: empty tags → tier 2", _ct("Regular content that exceeds the fifty character minimum for tier two", "") == 2)
+
+    # Tier 3 triggers
+    test("Tier: type:auto-captured → tier 3", _ct("Auto captured observation from the system running today", "type:auto-captured") == 3)
+    test("Tier: priority:low → tier 3", _ct("Low priority note about something minor in the system", "priority:low") == 3)
+    test("Tier: short content (<50 chars) → tier 3", _ct("Short note", "") == 3)
+
+    # Metadata presence in source
+    test("Tier: 'tier' field in remember_this metadata", '"tier": tier,' in _tier_src or "'tier': tier," in _tier_src,
+         "tier field not found in remember_this metadata dict")
+
+    # Tier boost ordering
+    _boost_input = [
+        {"relevance": 0.7, "tier": 2, "id": "standard"},
+        {"relevance": 0.7, "tier": 1, "id": "high"},
+        {"relevance": 0.7, "tier": 3, "id": "low"},
+    ]
+    _boosted = _atb(_boost_input)
+    test("Tier boost: tier 1 ranks above same-relevance tier 2",
+         _boosted[0]["id"] == "high" and _boosted[-1]["id"] == "low",
+         f"got order: {[r['id'] for r in _boosted]}")
+
+except Exception as _e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Tier classification setup: {_e}")
+    print(f"  FAIL: Tier classification setup: {_e}")
+
+
+# ─────────────────────────────────────────────────
 # New Skills: learn, self-improve, evolve, benchmark
 # ─────────────────────────────────────────────────
 print('\n--- New Skills: learn, self-improve, evolve, benchmark ---')

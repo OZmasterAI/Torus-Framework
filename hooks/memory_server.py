@@ -209,6 +209,35 @@ def generate_id(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
+# ── Auto Tier Classification ─────────────────────────────────────────────────
+# Tier 1 = high-value (fixes, decisions, critical)
+# Tier 2 = standard (default)
+# Tier 3 = low-value (auto-captured, short, low-priority)
+
+_TIER1_TAGS = {"type:fix", "type:decision", "priority:critical", "priority:high"}
+_TIER3_TAGS = {"type:auto-captured", "priority:low"}
+_TIER1_KEYWORDS = ("root cause", "breaking")
+
+
+def _classify_tier(content: str, tags: str) -> int:
+    """Classify a memory into tier 1 (high), 2 (standard), or 3 (low).
+
+    Pure function — no side effects.  Called during remember_this() to
+    assign a tier before upsert.
+    """
+    tag_set = {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
+    if tag_set & _TIER1_TAGS:
+        return 1
+    lower = content.lower()
+    if any(kw in lower for kw in _TIER1_KEYWORDS) or content.startswith("Fixed "):
+        return 1
+    if tag_set & _TIER3_TAGS:
+        return 3
+    if len(content) < 50:
+        return 3
+    return 2
+
+
 def _migrate_previews():
     """One-time backfill: add preview field to all existing entries missing it.
 
@@ -259,6 +288,68 @@ def _migrate_previews():
         if batch_ids:
             collection.update(ids=batch_ids, metadatas=batch_metas)
             migrated += len(batch_ids)
+
+    return migrated
+
+
+_TIER_BACKFILL_MARKER = os.path.join(os.path.dirname(__file__), ".tier_backfill_done")
+
+
+def _backfill_tiers():
+    """One-time backfill: add tier field to all existing entries missing it.
+
+    Uses _classify_tier() on each entry's content and tags.  Gated by a
+    marker file so it runs exactly once.  Called from _init_chromadb().
+    """
+    if os.path.exists(_TIER_BACKFILL_MARKER):
+        return 0
+    count = collection.count()
+    if count == 0:
+        try:
+            with open(_TIER_BACKFILL_MARKER, "w") as f:
+                f.write(datetime.now().isoformat())
+        except OSError:
+            pass
+        return 0
+
+    all_data = collection.get(limit=count, include=["documents", "metadatas"])
+    if not all_data or not all_data.get("ids"):
+        return 0
+
+    ids = all_data["ids"]
+    docs = all_data.get("documents", [])
+    metas = all_data.get("metadatas", [])
+
+    migrated = 0
+    batch_size = 100
+    for start in range(0, len(ids), batch_size):
+        end = min(start + batch_size, len(ids))
+        batch_ids = []
+        batch_metas = []
+
+        for i in range(start, end):
+            meta = metas[i] if i < len(metas) else {}
+            if meta and meta.get("tier") is not None:
+                continue  # Already has tier
+
+            doc = docs[i] if i < len(docs) else ""
+            tags = meta.get("tags", "") if meta else ""
+            tier = _classify_tier(doc, tags)
+
+            updated_meta = dict(meta) if meta else {}
+            updated_meta["tier"] = tier
+            batch_ids.append(ids[i])
+            batch_metas.append(updated_meta)
+
+        if batch_ids:
+            collection.update(ids=batch_ids, metadatas=batch_metas)
+            migrated += len(batch_ids)
+
+    try:
+        with open(_TIER_BACKFILL_MARKER, "w") as f:
+            f.write(f"{datetime.now().isoformat()} migrated={migrated}")
+    except OSError:
+        pass
 
     return migrated
 
@@ -759,6 +850,32 @@ def _apply_recency_boost(results, recency_weight=0.15):
     return results
 
 
+_TIER_BOOST = {1: 0.05, 2: 0.0, 3: -0.02}
+
+
+def _apply_tier_boost(results):
+    """Boost high-value (tier 1) memories and penalise low-value (tier 3).
+
+    Reads tier from each entry's metadata.  Entries without a tier field
+    default to tier 2 (no change).  Re-sorts by adjusted relevance.
+    """
+    if not results:
+        return results
+    for entry in results:
+        raw = entry.get("relevance", 0) or 0
+        tier = entry.get("tier", 2)
+        if not isinstance(tier, int):
+            try:
+                tier = int(tier)
+            except (ValueError, TypeError):
+                tier = 2
+        entry["_tier_adjusted"] = raw + _TIER_BOOST.get(tier, 0.0)
+    results.sort(key=lambda x: x.get("_tier_adjusted", 0), reverse=True)
+    for entry in results:
+        entry.pop("_tier_adjusted", None)
+    return results
+
+
 _STOPWORDS = {"the", "a", "an", "is", "it", "to", "in", "of", "and", "for"}
 
 
@@ -846,6 +963,7 @@ def _ensure_initialized():
         return
     _init_chromadb()
     _preview_migrated = _migrate_previews()
+    _backfill_tiers()
 
     # Check if persisted FTS5 is already synced with ChromaDB
     chroma_count = collection.count()
@@ -1025,6 +1143,7 @@ def format_summaries(results) -> list[dict]:
         if meta:
             entry["tags"] = meta.get("tags", "")
             entry["timestamp"] = meta.get("timestamp", "")
+            entry["tier"] = meta.get("tier", 2)
             if meta.get("primary_source"):
                 entry["url"] = meta["primary_source"]
         formatted.append(entry)
@@ -1535,6 +1654,12 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     if recency_weight > 0:
         formatted = _apply_recency_boost(formatted, recency_weight)
 
+    # Apply tier boost: tier 1 (+0.05), tier 3 (-0.02)
+    try:
+        formatted = _apply_tier_boost(formatted)
+    except Exception:
+        pass  # Tier boost failure must not break search
+
     # Trim to requested top_k after expansion
     formatted = formatted[:top_k]
 
@@ -1910,6 +2035,9 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     if _soft_dupe_tag:
         tags = f"{tags},{_soft_dupe_tag}" if tags else _soft_dupe_tag
 
+    # Auto tier classification
+    tier = _classify_tier(content, tags)
+
     collection.upsert(
         documents=[content],
         metadatas=[{
@@ -1921,6 +2049,7 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
             "primary_source": primary_source,
             "related_urls": related_urls,
             "source_method": source_method,
+            "tier": tier,
         }],
         ids=[doc_id],
     )
