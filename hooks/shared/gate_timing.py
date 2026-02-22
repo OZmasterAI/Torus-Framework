@@ -33,8 +33,34 @@ def _save_timings(data):
         pass  # Non-fatal: timing loss is acceptable
 
 
+# ---------------------------------------------------------------------------
+# In-process timing cache.  Each enforcer invocation is a fresh process,
+# so this cache lives for exactly one hook call.  Eliminates N load/save
+# cycles (one per gate) down to 1 load + 1 save per invocation.
+# ---------------------------------------------------------------------------
+_timing_cache = None
+_timing_dirty = False
+
+
+def _reset_cache():
+    """Invalidate the in-process cache.  Used by tests after changing TIMING_FILE."""
+    global _timing_cache, _timing_dirty
+    _timing_cache = None
+    _timing_dirty = False
+
+
+def _ensure_timings():
+    """Return the cached timing data, loading from disk on first access."""
+    global _timing_cache
+    if _timing_cache is None:
+        _timing_cache = _load_timings()
+    return _timing_cache
+
+
 def record_timing(gate_name, tool_name, elapsed_ms, blocked=False):
     """Record a gate execution timing.
+
+    Mutates the in-process cache only.  Call flush_timings() to persist.
 
     Args:
         gate_name:  Short gate identifier, e.g. "gate_01_read_before_edit"
@@ -42,7 +68,8 @@ def record_timing(gate_name, tool_name, elapsed_ms, blocked=False):
         elapsed_ms: Execution time in milliseconds (float)
         blocked:    Whether this execution resulted in a block
     """
-    data = _load_timings()
+    global _timing_dirty
+    data = _ensure_timings()
 
     entry = data.setdefault(gate_name, {
         "count": 0,
@@ -78,7 +105,19 @@ def record_timing(gate_name, tool_name, elapsed_ms, blocked=False):
     tool_entry["count"] += 1
     tool_entry["total_ms"] += elapsed_ms
 
-    _save_timings(data)
+    _timing_dirty = True
+
+
+def flush_timings():
+    """Persist the cached timing data to disk if any records were added.
+
+    Called once at the end of the enforcer gate loop (or before early exit).
+    No-op if no record_timing() calls were made this invocation.
+    """
+    global _timing_dirty
+    if _timing_dirty and _timing_cache is not None:
+        _save_timings(_timing_cache)
+        _timing_dirty = False
 
 
 def _percentile(sorted_values, pct):
@@ -106,7 +145,7 @@ def get_gate_stats(gate_name=None):
             {avg_ms, p95_ms, max_ms, min_ms, count, slow_count, block_count, by_tool}
         For a single gate, returns that gate's stats dict directly (or None if not found).
     """
-    data = _load_timings()
+    data = _ensure_timings()
 
     def _compute(gate_key, entry):
         count = entry.get("count", 0)

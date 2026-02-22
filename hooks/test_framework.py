@@ -12103,6 +12103,7 @@ _gt_tmp_path = _gt_tmp.name
 import shared.gate_timing as _gt_mod
 _gt_orig_file = _gt_mod.TIMING_FILE
 _gt_mod.TIMING_FILE = _gt_tmp_path
+_gt_mod._reset_cache()
 
 try:
     # Test 1: record_timing creates a file and records count=1
@@ -12209,6 +12210,7 @@ try:
 finally:
     # Restore original timing file path and clean up temp file
     _gt_mod.TIMING_FILE = _gt_orig_file
+    _gt_mod._reset_cache()
     try:
         import os as _os_gt_cleanup
         _os_gt_cleanup.unlink(_gt_tmp_path)

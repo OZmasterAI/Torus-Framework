@@ -28,8 +28,8 @@ from shared.state import load_state, save_state, update_gate_effectiveness, get_
 from shared.gate_result import GateResult
 from shared.audit_log import log_gate_decision
 from shared.circuit_breaker import should_skip_gate, record_gate_result
-from shared.gate_router import get_optimal_gate_order, update_qtable
-from shared.gate_timing import record_timing as _record_gate_timing
+from shared.gate_router import get_optimal_gate_order, update_qtable, flush_qtable
+from shared.gate_timing import record_timing as _record_gate_timing, flush_timings as _flush_timings
 from shared.security_profiles import should_skip_for_profile, get_gate_mode_for_profile
 
 
@@ -507,6 +507,8 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 except Exception:
                     pass  # Timing analytics are non-fatal
                 print(json.dumps(hook_decision), file=sys.stdout)
+                flush_qtable()
+                _flush_timings()
                 save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(0)
             elif result.blocked:
@@ -544,6 +546,8 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 except Exception:
                     pass  # Timing analytics are non-fatal
                 print(result.message, file=sys.stderr)
+                flush_qtable()
+                _flush_timings()
                 save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(2)
             elif result.message:
@@ -571,6 +575,8 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 log_gate_decision(gate_label, tool_name, "block", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
                                   severity="error")
                 print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate_label}' crashed: {e}", file=sys.stderr)
+                flush_qtable()
+                _flush_timings()
                 save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(2)
             log_gate_decision(gate_label, tool_name, "crash", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
@@ -580,6 +586,10 @@ def handle_pre_tool_use(tool_name, tool_input, state):
     # Q-learning: all gates passed — update qtable for each gate that ran and passed
     for gate_name in passed_gates:
         update_qtable(gate_name, tool_name, blocked=False)
+
+    # Persist caches (single write each for all updates this invocation)
+    flush_qtable()
+    _flush_timings()
 
     # Save timing stats after all gates complete (normal path)
     save_state(state, session_id=state.get("_session_id", "main"))

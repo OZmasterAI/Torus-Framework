@@ -385,6 +385,23 @@ def _save_qtable(qtable: Dict[str, Dict[str, float]]) -> None:
         pass
 
 
+# ---------------------------------------------------------------------------
+# In-process Q-table cache.  Each enforcer invocation is a fresh process,
+# so this cache lives for exactly one hook call.  The cache eliminates N
+# load/save cycles (one per gate) down to 1 load + 1 save per invocation.
+# ---------------------------------------------------------------------------
+_qtable_cache: Optional[Dict[str, Dict[str, float]]] = None
+_qtable_dirty: bool = False
+
+
+def _ensure_qtable() -> Dict[str, Dict[str, float]]:
+    """Return the cached Q-table, loading from disk on first access."""
+    global _qtable_cache
+    if _qtable_cache is None:
+        _qtable_cache = _load_qtable()
+    return _qtable_cache
+
+
 def get_optimal_gate_order(tool_name: str, gate_names: List[str]) -> List[str]:
     """Return gate_names reordered for optimal early-exit performance.
 
@@ -407,7 +424,7 @@ def get_optimal_gate_order(tool_name: str, gate_names: List[str]) -> List[str]:
     list[str]
         Reordered gate names (same elements, different order).
     """
-    qtable = _load_qtable()
+    qtable = _ensure_qtable()
 
     tier1_gates = [n for n in gate_names if n in TIER1]
     non_tier1 = [n for n in gate_names if n not in TIER1]
@@ -423,6 +440,8 @@ def get_optimal_gate_order(tool_name: str, gate_names: List[str]) -> List[str]:
 def update_qtable(gate_name: str, tool_name: str, blocked: bool) -> None:
     """Update the Q-table entry for (gate_name, tool_name) using a Q-learning step.
 
+    Mutates the in-process cache only.  Call flush_qtable() to persist.
+
     Update rule:  Q = Q + α * (reward − Q)
     where reward is _Q_REWARD_BLOCK (1.0) if blocked, _Q_REWARD_PASS (-0.1) otherwise.
 
@@ -435,12 +454,24 @@ def update_qtable(gate_name: str, tool_name: str, blocked: bool) -> None:
     blocked:
         True if the gate blocked the tool call, False if it passed.
     """
-    qtable = _load_qtable()
+    global _qtable_dirty
+    qtable = _ensure_qtable()
     if gate_name not in qtable:
         qtable[gate_name] = {}
 
     current_q = qtable[gate_name].get(tool_name, 0.0)
     reward = _Q_REWARD_BLOCK if blocked else _Q_REWARD_PASS
     qtable[gate_name][tool_name] = current_q + _Q_ALPHA * (reward - current_q)
+    _qtable_dirty = True
 
-    _save_qtable(qtable)
+
+def flush_qtable() -> None:
+    """Persist the cached Q-table to disk if any updates were made.
+
+    Called once at the end of the enforcer gate loop (or before early exit).
+    No-op if no update_qtable() calls were made this invocation.
+    """
+    global _qtable_dirty
+    if _qtable_dirty and _qtable_cache is not None:
+        _save_qtable(_qtable_cache)
+        _qtable_dirty = False
