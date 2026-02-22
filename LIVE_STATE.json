@@ -1,5 +1,5 @@
 {
-  "session_count": 181,
+  "session_count": 182,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -34,11 +34,11 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 4m\n- **Tool Calls**: 14 (Bash: 6, mcp__memory__remember_this: 2, Edit: 2, mcp__memory__search_knowledge: 1, Grep: 1, Skill: 1)\n- **Files Modified**: 1 (1 verified, 0 pending)\n- **Errors**: 1 (No such file or directory x1)\n- **Tests**: exit code 0\n- **Subagents**: 4 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json` (verified)",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 18m\n- **Tool Calls**: 52 (Bash: 16, Read: 13, Grep: 10, Glob: 3, mcp__memory__remember_this: 3, Edit: 2)\n- **Files Modified**: 3 (1 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: none this session\n- **Subagents**: 4 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/hooks/benchmark_memory.py`\n- `/home/crab/.claude/hooks/statusline.py`\n- `/home/crab/.claude/LIVE_STATE.json` (verified)",
   "last_session_metrics": {
-    "reads": 1,
-    "edits": 1,
-    "errors": 1,
+    "reads": 5,
+    "edits": 3,
+    "errors": 0,
     "verified": 1,
     "pending": 0
   }
