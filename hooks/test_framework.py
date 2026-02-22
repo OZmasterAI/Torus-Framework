@@ -11888,9 +11888,9 @@ from shared.security_profiles import (
     get_gate_mode_for_profile,
 )
 
-# Test 1: PROFILES dict has all three required keys
-test("SecProf: PROFILES has strict/balanced/permissive",
-     set(PROFILES.keys()) == {"strict", "balanced", "permissive"},
+# Test 1: PROFILES dict has all required keys
+test("SecProf: PROFILES has strict/balanced/permissive/refactor",
+     set(PROFILES.keys()) == {"strict", "balanced", "permissive", "refactor"},
      f"Got profiles: {sorted(PROFILES.keys())}")
 
 # Test 2: get_profile returns "balanced" when security_profile field is missing
@@ -11960,6 +11960,33 @@ test("SecProf: default_state has security_profile='balanced'",
 test("SecProf: get_gate_mode returns 'disabled' for gate_14 under permissive",
      get_gate_mode_for_profile("gate_14", _sp_state_perm) == "disabled",
      f"Got: {get_gate_mode_for_profile('gate_14', _sp_state_perm)}")
+
+# Test 13: refactor profile is valid and loadable
+_sp_state_refactor = default_state()
+_sp_state_refactor["security_profile"] = "refactor"
+test("SecProf: refactor profile is valid and loadable",
+     get_profile(_sp_state_refactor) == "refactor",
+     f"Got: {get_profile(_sp_state_refactor)}")
+
+# Test 14: refactor profile downgrades gate_04 to warn
+test("SecProf: refactor downgrades gate_04 to warn",
+     get_gate_mode_for_profile("gate_04_memory_first", _sp_state_refactor) == "warn",
+     f"Got: {get_gate_mode_for_profile('gate_04_memory_first', _sp_state_refactor)}")
+
+# Test 15: refactor profile downgrades gate_06 to warn
+test("SecProf: refactor downgrades gate_06 to warn",
+     get_gate_mode_for_profile("gate_06_save_fix", _sp_state_refactor) == "warn",
+     f"Got: {get_gate_mode_for_profile('gate_06_save_fix', _sp_state_refactor)}")
+
+# Test 16: refactor profile disables gate_14
+test("SecProf: refactor disables gate_14",
+     should_skip_for_profile("gate_14_confidence_check", _sp_state_refactor) is True,
+     "Expected should_skip=True for gate_14 under refactor")
+
+# Test 17: refactor profile keeps gate_05 (proof) as block
+test("SecProf: refactor keeps gate_05 as block",
+     get_gate_mode_for_profile("gate_05_proof_before_fixed", _sp_state_refactor) == "block",
+     f"Got: {get_gate_mode_for_profile('gate_05_proof_before_fixed', _sp_state_refactor)}")
 
 
 # -------------------------------------------------

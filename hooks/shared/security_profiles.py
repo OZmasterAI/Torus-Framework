@@ -55,6 +55,17 @@ PROFILES: Dict[str, Dict[str, Any]] = {
             "gate_14_confidence_check",
         ],
     },
+    "refactor": {
+        "description": "Reduced friction for mechanical bulk refactoring. Relaxes memory/save gates, keeps safety and quality gates active.",
+        "gate_modes": {
+            "gate_04_memory_first": "warn",
+            "gate_06_save_fix": "warn",
+            "gate_10_model_enforcement": "warn",
+        },
+        "disabled_gates": [
+            "gate_14_confidence_check",
+        ],
+    },
 }
 
 # Valid profile names
