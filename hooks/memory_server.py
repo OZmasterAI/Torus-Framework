@@ -93,6 +93,11 @@ def crash_proof(fn):
 # Persistent ChromaDB storage
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 os.makedirs(MEMORY_DIR, exist_ok=True)
+
+# Embedding model: thenlper/gte-base (768-dim, 512 tokens, ~66% MTEB)
+# Upgrade from ChromaDB default all-MiniLM-L6-v2 (384-dim, 256 tokens, ~63% MTEB)
+_EMBEDDING_MODEL = "thenlper/gte-base"
+_embedding_fn = None  # Lazy init in _init_chromadb()
 FTS5_DB_PATH = os.path.join(MEMORY_DIR, "fts5_index.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
@@ -118,34 +123,49 @@ def _init_chromadb():
 
     Called from _ensure_initialized() on first MCP tool use.
     Safe to call multiple times — idempotent after first run.
+    Uses thenlper/gte-base embedding model (768-dim, 512 tokens).
     """
-    global client, collection, fix_outcomes, observations, web_pages, quarantine, _chromadb_degraded
+    global client, collection, fix_outcomes, observations, web_pages, quarantine, _chromadb_degraded, _embedding_fn
     if client is not None:
         return
     try:
+        # Initialize embedding function (gte-base, 768-dim)
+        try:
+            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+            _embedding_fn = SentenceTransformerEmbeddingFunction(model_name=_EMBEDDING_MODEL)
+        except Exception as ef_err:
+            print(f"[MCP] Embedding model load failed, using default: {ef_err}", file=_sys.stderr)
+            _embedding_fn = None  # Falls back to ChromaDB default (all-MiniLM-L6-v2)
+
         client = chromadb.PersistentClient(path=MEMORY_DIR)
+        _ef_kwargs = {"embedding_function": _embedding_fn} if _embedding_fn else {}
         collection = client.get_or_create_collection(
             name="knowledge",
             metadata={"hnsw:space": "cosine"},
+            **_ef_kwargs,
         )
         fix_outcomes = client.get_or_create_collection(
             name="fix_outcomes",
             metadata={"hnsw:space": "cosine"},
+            **_ef_kwargs,
         )
         # Auto-capture: observations collection (separate from curated knowledge)
         observations = client.get_or_create_collection(
             name="observations",
             metadata={"hnsw:space": "cosine"},
+            **_ef_kwargs,
         )
         # Web page indexing collection (used by /web skill)
         web_pages = client.get_or_create_collection(
             name="web_pages",
             metadata={"hnsw:space": "cosine"},
+            **_ef_kwargs,
         )
         # Quarantine: holds deduplicated memories (recoverable, not deleted)
         quarantine = client.get_or_create_collection(
             name="quarantine",
             metadata={"hnsw:space": "cosine"},
+            **_ef_kwargs,
         )
     except Exception as e:
         import traceback
@@ -352,6 +372,116 @@ def _backfill_tiers():
         pass
 
     return migrated
+
+
+_EMBEDDING_MIGRATION_MARKER = os.path.join(os.path.dirname(__file__), ".embedding_migration_done")
+_COLLECTION_NAMES = ["knowledge", "fix_outcomes", "observations", "web_pages", "quarantine"]
+
+
+def _migrate_embeddings():
+    """One-time re-embedding: delete+recreate collections with new embedding model.
+
+    Old 384-dim vectors (all-MiniLM-L6-v2) are incompatible with new 768-dim
+    (thenlper/gte-base).  Must export data, delete collection, recreate with
+    new embedding function, and re-add documents (ChromaDB auto-embeds).
+
+    Gated by marker file.  Called from _ensure_initialized() after _init_chromadb().
+    """
+    global collection, fix_outcomes, observations, web_pages, quarantine
+
+    if os.path.exists(_EMBEDDING_MIGRATION_MARKER):
+        return 0
+    if _embedding_fn is None:
+        return 0  # No custom embedding loaded, skip migration
+    if client is None:
+        return 0
+
+    total_migrated = 0
+    col_map = {
+        "knowledge": collection,
+        "fix_outcomes": fix_outcomes,
+        "observations": observations,
+        "web_pages": web_pages,
+        "quarantine": quarantine,
+    }
+    _ef_kwargs = {"embedding_function": _embedding_fn}
+
+    for name, col_ref in col_map.items():
+        if col_ref is None:
+            continue
+        try:
+            count = col_ref.count()
+            if count == 0:
+                continue
+
+            # Export all data (docs + metas + ids, no embeddings)
+            all_ids, all_docs, all_metas = [], [], []
+            batch_size = 50
+            for offset in range(0, count, batch_size):
+                try:
+                    chunk = col_ref.get(
+                        limit=batch_size, offset=offset,
+                        include=["documents", "metadatas"],
+                    )
+                    all_ids.extend(chunk.get("ids", []))
+                    all_docs.extend(chunk.get("documents") or [])
+                    all_metas.extend(chunk.get("metadatas") or [])
+                except Exception:
+                    pass
+
+            if not all_ids:
+                continue
+
+            # Delete and recreate collection with new embedding function
+            client.delete_collection(name)
+            new_col = client.get_or_create_collection(
+                name=name,
+                metadata={"hnsw:space": "cosine"},
+                **_ef_kwargs,
+            )
+
+            # Re-add in batches (ChromaDB auto-embeds with new model)
+            for start in range(0, len(all_ids), batch_size):
+                end = min(start + batch_size, len(all_ids))
+                batch_ids = all_ids[start:end]
+                batch_docs = all_docs[start:end] if all_docs else None
+                batch_metas = all_metas[start:end] if all_metas else None
+                try:
+                    kwargs = {"ids": batch_ids}
+                    if batch_docs:
+                        kwargs["documents"] = batch_docs
+                    if batch_metas:
+                        kwargs["metadatas"] = batch_metas
+                    new_col.upsert(**kwargs)
+                except Exception as batch_err:
+                    print(f"[MCP] Migration batch error in {name}: {batch_err}", file=_sys.stderr)
+
+            total_migrated += len(all_ids)
+
+            # Update global reference
+            if name == "knowledge":
+                collection = new_col
+            elif name == "fix_outcomes":
+                fix_outcomes = new_col
+            elif name == "observations":
+                observations = new_col
+            elif name == "web_pages":
+                web_pages = new_col
+            elif name == "quarantine":
+                quarantine = new_col
+
+            print(f"[MCP] Migrated {name}: {len(all_ids)} entries re-embedded", file=_sys.stderr)
+        except Exception as e:
+            print(f"[MCP] Migration failed for {name}: {e}", file=_sys.stderr)
+
+    # Write marker
+    try:
+        with open(_EMBEDDING_MIGRATION_MARKER, "w") as f:
+            f.write(f"{datetime.now().isoformat()} migrated={total_migrated} model={_EMBEDDING_MODEL}")
+    except OSError:
+        pass
+
+    return total_migrated
 
 
 # ──────────────────────────────────────────────────
@@ -962,6 +1092,7 @@ def _ensure_initialized():
     if _initialized:
         return
     _init_chromadb()
+    _migrate_embeddings()
     _preview_migrated = _migrate_previews()
     _backfill_tiers()
 

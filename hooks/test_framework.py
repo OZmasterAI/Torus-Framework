@@ -8403,6 +8403,35 @@ except Exception as _e:
 
 
 # ─────────────────────────────────────────────────
+# Embedding Upgrade (thenlper/gte-base)
+# ─────────────────────────────────────────────────
+print('\n--- Embedding Upgrade ---')
+
+with open(os.path.join(os.path.dirname(__file__), "memory_server.py")) as _emb_f:
+    _emb_src = _emb_f.read()
+
+test("Embedding: _EMBEDDING_MODEL constant exists",
+     '_EMBEDDING_MODEL = "thenlper/gte-base"' in _emb_src,
+     "_EMBEDDING_MODEL not found or wrong value")
+
+test("Embedding: SentenceTransformerEmbeddingFunction imported in init",
+     "SentenceTransformerEmbeddingFunction" in _emb_src,
+     "import not found")
+
+test("Embedding: embedding_function passed to collections",
+     "**_ef_kwargs" in _emb_src or "embedding_function=_embedding_fn" in _emb_src,
+     "embedding_function not passed to get_or_create_collection")
+
+test("Embedding: migration function exists",
+     "def _migrate_embeddings()" in _emb_src,
+     "_migrate_embeddings function not found")
+
+test("Embedding: migration marker file defined",
+     "_EMBEDDING_MIGRATION_MARKER" in _emb_src,
+     "marker file constant not found")
+
+
+# ─────────────────────────────────────────────────
 # New Skills: learn, self-improve, evolve, benchmark
 # ─────────────────────────────────────────────────
 print('\n--- New Skills: learn, self-improve, evolve, benchmark ---')
