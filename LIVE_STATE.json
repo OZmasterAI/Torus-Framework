@@ -5,20 +5,22 @@
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1291,
+  "test_count": 1308,
   "test_failures": 0,
-  "what_was_done": "Deep framework comparison: evaluated 11 frameworks against Torus, 3-way memory system comparison (Torus vs AKIRA vs Agent Zero), triaged 10 potential improvements down to 2 approved items. Decisions: (1) Auto tier classification for memories (~20 lines in memory_server.py), (2) Embedding upgrade from all-MiniLM-L6-v2 to gte-multilingual-base with JSON backup (Option 3). Rejected 8 other proposals with documented rationale. Self-corrected FNV1a/dedup confusion and search_knowledge mode claims. 5 decisions saved to memory (1184 total).",
-  "service_status": "Memory MCP: RUNNING (1184 memories) | Tests: 1291 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled",
+  "what_was_done": "Both approved improvements implemented: (1) Auto tier classification — _classify_tier() Tier 1/2/3, metadata in remember_this, _apply_tier_boost in search, _backfill_tiers for existing memories, 12 tests. (2) Embedding upgrade — thenlper/gte-base (768-dim, 512 tokens) replacing default MiniLM (384-dim, 256 tokens), SentenceTransformerEmbeddingFunction on all 5 collections, _migrate_embeddings() for re-embedding, backup_embeddings.py script (52MB backup at ~/data/memory/). Alibaba-NLP/gte-multilingual-base broken with sentence-transformers v5.2.3, substituted thenlper/gte-base. 5 embedding tests. Tests: 1291 → 1308 (+17), 0 failures.",
+  "service_status": "Memory MCP: RUNNING (1187 memories) | Tests: 1308 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: thenlper/gte-base (768-dim, migration pending MCP restart)",
   "next_steps": [
-    "Plan + implement auto tier classification in memory_server.py",
-    "Plan + implement embedding upgrade: gte-multilingual-base everywhere + Option 3 JSON backup",
+    "Restart MCP server to trigger embedding migration (auto-runs _migrate_embeddings)",
+    "Verify search quality post-migration and tune dedup thresholds if needed",
     "Merge Self-Sprint-2 into main (all audit items complete, 0 test failures)",
     "Update GitHub repo with new documentation from ~/Desktop"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
-    "test_framework.py Pyright import errors for shared modules (path resolution)"
+    "test_framework.py Pyright import errors for shared modules (path resolution)",
+    "Alibaba-NLP/gte-multilingual-base IndexError with sentence-transformers v5.2.3 — using thenlper/gte-base instead",
+    "Embedding migration pending MCP restart — dedup thresholds may need tuning for 768-dim distances"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
