@@ -105,16 +105,6 @@ def _store_gate_result(gate_name: str, tool_name: str, tool_input: dict, result)
     _gate_result_cache[key] = {"result": result, "stored_at": time.monotonic()}
 
 
-def _evict_expired_cache_entries() -> int:
-    """Evict all entries older than TTL. Returns count evicted."""
-    now = time.monotonic()
-    expired = [k for k, v in _gate_result_cache.items()
-               if now - v["stored_at"] > _GATE_CACHE_TTL_S]
-    for k in expired:
-        del _gate_result_cache[k]
-    return len(expired)
-
-
 def get_gate_cache_stats() -> dict:
     """Return a snapshot of cache observability counters.
 
@@ -418,12 +408,6 @@ def _gates_for_tool(tool_name):
         if watched is None or tool_name in watched:
             result.append(mod)
     return result
-
-
-def load_gates():
-    """Legacy wrapper — returns all loaded gates. Kept for backward compatibility."""
-    _ensure_gates_loaded()
-    return [_loaded_gates[m] for m in GATE_MODULES if m in _loaded_gates]
 
 
 def handle_pre_tool_use(tool_name, tool_input, state):

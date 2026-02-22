@@ -13463,7 +13463,7 @@ try:
     from enforcer import (
         GATE_CACHE_ENABLED, _GATE_CACHE_TTL_S, _gate_result_cache,
         _make_cache_key, _get_cached_gate_result, _store_gate_result,
-        _evict_expired_cache_entries, get_gate_cache_stats,
+        get_gate_cache_stats,
     )
     import enforcer as _enf_mod
     test("GateCache: GATE_CACHE_ENABLED is True",
@@ -13553,22 +13553,6 @@ except Exception as _gc_e:
     FAIL += 1
     RESULTS.append(f"  FAIL: GateCache TTL: {_gc_e}")
     print(f"  FAIL: GateCache TTL: {_gc_e}")
-
-# Test: _evict_expired_cache_entries
-try:
-    _enf_mod._gate_result_cache.clear()
-    _gc_r3 = _GR(blocked=False, gate_name="gate_test")
-    _store_gate_result("gate_evict", "Edit", {"file_path": "/tmp/gc_test.py"}, _gc_r3)
-    _evict_key = list(_enf_mod._gate_result_cache.keys())[0]
-    _enf_mod._gate_result_cache[_evict_key]["stored_at"] -= 61
-    _evicted = _evict_expired_cache_entries()
-    test("GateCache: _evict_expired_cache_entries returns count", _evicted == 1, f"evicted={_evicted}")
-    test("GateCache: cache empty after eviction", len(_enf_mod._gate_result_cache) == 0,
-         f"size={len(_enf_mod._gate_result_cache)}")
-except Exception as _gc_e:
-    FAIL += 1
-    RESULTS.append(f"  FAIL: GateCache evict: {_gc_e}")
-    print(f"  FAIL: GateCache evict: {_gc_e}")
 
 # Test: get_gate_cache_stats() structure
 try:
