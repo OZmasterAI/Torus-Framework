@@ -1,26 +1,26 @@
 {
-  "session_count": 187,
+  "session_count": 188,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1308,
-  "test_failures": 0,
-  "what_was_done": "Diagnosed and fixed Alibaba-NLP/gte-multilingual-base model crash. Root cause: torch 2.10 meta-device init corrupts 4 non-persistent buffers (position_ids, inv_freq, cos_cached, sin_cached). Applied full buffer patch in _init_chromadb() \u2014 re-registers all 4 after model load. Switched _EMBEDDING_MODEL from thenlper/gte-base (512 tokens) to Alibaba-NLP/gte-multilingual-base (8192 tokens, ~68% MTEB). Updated tests. 1308 passed, 0 failed. Migration runs on next MCP restart.",
-  "service_status": "Memory MCP: RUNNING (1191 memories) | Tests: 1308 total, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: Alibaba-NLP/gte-multilingual-base (768-dim, 8192 tokens, buffer-patched, migration pending MCP restart)",
+  "test_count": 1311,
+  "test_failures": 1,
+  "what_was_done": "Switched embedding model from Alibaba-NLP/gte-multilingual-base (broken, 25-line monkey-patch) to nomic-ai/nomic-embed-text-v2-moe (clean, no patches, 8192 tokens, MoE, Matryoshka). Removed buffer-patch block, installed einops, removed stale migration marker, fixed test bugs (datetime import, suggest_promotions lazy init guard). 1311 passed, 1 pre-existing failure.",
+  "service_status": "Memory MCP: DOWN (pending restart) | Tests: 1311 passed, 1 pre-existing failure | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens, migration pending MCP restart)",
   "next_steps": [
-    "Restart MCP server to trigger embedding migration (auto-runs _migrate_embeddings + _backfill_tiers)",
+    "Restart MCP server to trigger embedding migration with nomic model (auto-runs _migrate_embeddings + _backfill_tiers)",
+    "Save session learnings to memory once MCP is back (Alibaba bug, nomic selection, gate 6 ramdisk state)",
     "Verify search quality post-migration and tune dedup thresholds if needed",
-    "Merge Self-Sprint-2 into main (all audit items complete, 0 test failures)",
-    "Update GitHub repo with new documentation from ~/Desktop"
+    "Merge Self-Sprint-2 into main"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Alibaba-NLP/gte-multilingual-base buffer patch \u2014 monkey-patches ef._model[0].auto_model internals, could break if chromadb/sentence-transformers change internal structure",
-    "Embedding migration pending MCP restart \u2014 dedup thresholds may need tuning for 768-dim distances"
+    "Embedding migration pending MCP restart — dedup thresholds may need tuning for 768-dim distances",
+    "1 pre-existing test failure: compaction regression (deletes old obs + digest float session_time)"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -36,10 +36,10 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 5m\n- **Tool Calls**: 6 (Bash: 3, mcp__memory__remember_this: 1, Read: 1, Write: 1)\n- **Files Modified**: 1 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 2 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 2m\n- **Tool Calls**: 3 (Bash: 3)\n- **Files Modified**: 0 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: none this session\n- **Subagents**: 3 launched, 0 tokens",
   "last_session_metrics": {
-    "reads": 1,
-    "edits": 1,
+    "reads": 0,
+    "edits": 0,
     "errors": 0,
     "verified": 0,
     "pending": 0

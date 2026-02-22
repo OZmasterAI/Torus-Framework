@@ -94,9 +94,10 @@ def crash_proof(fn):
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 os.makedirs(MEMORY_DIR, exist_ok=True)
 
-# Embedding model: Alibaba-NLP/gte-multilingual-base (768-dim, 8192 tokens, ~68% MTEB)
+# Embedding model: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens, ~67% MTEB)
+# MoE architecture (305M active params), Matryoshka (truncatable to 256-dim)
 # Upgrade from ChromaDB default all-MiniLM-L6-v2 (384-dim, 256 tokens, ~63% MTEB)
-_EMBEDDING_MODEL = "Alibaba-NLP/gte-multilingual-base"
+_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v2-moe"
 _embedding_fn = None  # Lazy init in _init_chromadb()
 FTS5_DB_PATH = os.path.join(MEMORY_DIR, "fts5_index.db")
 
@@ -123,39 +124,19 @@ def _init_chromadb():
 
     Called from _ensure_initialized() on first MCP tool use.
     Safe to call multiple times — idempotent after first run.
-    Uses Alibaba-NLP/gte-multilingual-base embedding model (768-dim, 8192 tokens).
+    Uses nomic-ai/nomic-embed-text-v2-moe embedding model (768-dim, 8192 tokens).
     """
     global client, collection, fix_outcomes, observations, web_pages, quarantine, _chromadb_degraded, _embedding_fn
     if client is not None:
         return
     try:
-        # Initialize embedding function (gte-multilingual-base, 768-dim, 8192 tokens)
+        # Initialize embedding function (nomic-embed-text-v2-moe, 768-dim, 8192 tokens)
         try:
-            import torch as _torch
             from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
             _embedding_fn = SentenceTransformerEmbeddingFunction(
                 model_name=_EMBEDDING_MODEL, trust_remote_code=True,
             )
-            # Fix: Alibaba-NLP models have corrupted non-persistent buffers due to
-            # torch 2.10 + transformers 5.2 meta-device initialization.
-            # position_ids, inv_freq, cos_cached, sin_cached are uninitialized memory.
-            # Re-register them with correct values after model load.
-            try:
-                _transformer = _embedding_fn._model[0].auto_model
-                _emb_layer = _transformer.embeddings
-                _rope = _emb_layer.rotary_emb
-                # Fix position_ids: should be arange(max_position_embeddings)
-                _max_pos = _emb_layer.position_ids.shape[0]
-                _emb_layer.register_buffer("position_ids", _torch.arange(_max_pos), persistent=False)
-                # Fix rotary: recompute inv_freq from config params
-                _inv_freq = 1.0 / (_rope.base ** (_torch.arange(0, _rope.dim, 2).float() / _rope.dim))
-                _rope.register_buffer("inv_freq", _inv_freq, persistent=False)
-                # Recompute cos/sin cache from fixed inv_freq
-                _scaled_max = int(_rope.max_position_embeddings * _rope.scaling_factor)
-                _rope._set_cos_sin_cache(_scaled_max, _inv_freq.device, _torch.get_default_dtype())
-                print(f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} (768-dim, buffer fix applied)", file=_sys.stderr)
-            except Exception as patch_err:
-                print(f"[MCP] Buffer patch failed (may not be needed): {patch_err}", file=_sys.stderr)
+            print(f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} (768-dim)", file=_sys.stderr)
         except Exception as ef_err:
             print(f"[MCP] Embedding model load failed, using default: {ef_err}", file=_sys.stderr)
             _embedding_fn = None  # Falls back to ChromaDB default (all-MiniLM-L6-v2)
@@ -405,7 +386,7 @@ def _migrate_embeddings():
     """One-time re-embedding: delete+recreate collections with new embedding model.
 
     Old 384-dim vectors (all-MiniLM-L6-v2) are incompatible with new 768-dim
-    (Alibaba-NLP/gte-multilingual-base).  Must export data, delete collection, recreate with
+    (nomic-ai/nomic-embed-text-v2-moe).  Must export data, delete collection, recreate with
     new embedding function, and re-add documents (ChromaDB auto-embeds).
 
     Gated by marker file.  Called from _ensure_initialized() after _init_chromadb().

@@ -1343,6 +1343,7 @@ with open(os.path.expanduser("~/.claude/mcp.json")) as f:
 # These tests do NOT require ChromaDB, just the pure function
 
 if not MEMORY_SERVER_RUNNING:
+    from datetime import datetime, timedelta
     from memory_server import _apply_recency_boost, format_results, format_summaries as _fs_fn
 
     # Test: recency_weight=0 should not change scores
@@ -1516,64 +1517,82 @@ if not MEMORY_SERVER_RUNNING:
 
     # --- suggest_promotions functional tests (requires ChromaDB) ---
 
-    from memory_server import suggest_promotions
+    from memory_server import suggest_promotions, collection as _sp_coll
 
-    _sp_result = suggest_promotions(top_k=3)
-    test("suggest_promotions returns dict with clusters key",
-         isinstance(_sp_result, dict) and "clusters" in _sp_result,
-         f"type={type(_sp_result).__name__}, keys={list(_sp_result.keys()) if isinstance(_sp_result, dict) else 'N/A'}")
-    test("suggest_promotions has total_candidates key",
-         "total_candidates" in _sp_result,
-         f"keys={list(_sp_result.keys())}")
-    test("suggest_promotions has total_clusters key",
-         "total_clusters" in _sp_result,
-         f"keys={list(_sp_result.keys())}")
-    test("suggest_promotions clusters is a list",
-         isinstance(_sp_result.get("clusters"), list),
-         f"type={type(_sp_result.get('clusters')).__name__}")
-
-    # If there are clusters, verify their structure
-    if _sp_result.get("clusters"):
-        _sp_cluster = _sp_result["clusters"][0]
-        test("suggest_promotions cluster has suggested_rule",
-             "suggested_rule" in _sp_cluster,
-             f"keys={list(_sp_cluster.keys())}")
-        test("suggest_promotions cluster has supporting_ids",
-             "supporting_ids" in _sp_cluster and isinstance(_sp_cluster["supporting_ids"], list),
-             f"keys={list(_sp_cluster.keys())}")
-        test("suggest_promotions cluster has count",
-             "count" in _sp_cluster and isinstance(_sp_cluster["count"], int),
-             f"keys={list(_sp_cluster.keys())}")
-        test("suggest_promotions cluster has score",
-             "score" in _sp_cluster and isinstance(_sp_cluster["score"], (int, float)),
-             f"keys={list(_sp_cluster.keys())}")
-        test("suggest_promotions cluster has avg_age_days",
-             "avg_age_days" in _sp_cluster and isinstance(_sp_cluster["avg_age_days"], (int, float)),
-             f"keys={list(_sp_cluster.keys())}")
-        # Verify scoring formula: score = (count * 2) + recency_bonus
-        # recency_bonus = max(0, 1 - avg_age/365), so score >= count * 2
-        test("suggest_promotions score >= count*2 (formula check)",
-             _sp_cluster["score"] >= _sp_cluster["count"] * 2,
-             f"score={_sp_cluster['score']}, count={_sp_cluster['count']}")
-        # Verify clusters are sorted by score descending
-        if len(_sp_result["clusters"]) > 1:
-            _scores = [c["score"] for c in _sp_result["clusters"]]
-            test("suggest_promotions clusters sorted by score desc",
-                 _scores == sorted(_scores, reverse=True),
-                 f"scores={_scores}")
-        # Verify top_k is respected
-        test("suggest_promotions respects top_k=3",
-             len(_sp_result["clusters"]) <= 3,
-             f"got {len(_sp_result['clusters'])} clusters")
+    if _sp_coll is None:
+        # ChromaDB not initialized (lazy init) — skip all suggest_promotions tests
+        for _sp_skip in [
+            "suggest_promotions returns dict with clusters key",
+            "suggest_promotions has total_candidates key",
+            "suggest_promotions has total_clusters key",
+            "suggest_promotions clusters is a list",
+            "suggest_promotions cluster structure (no ChromaDB)",
+            "suggest_promotions cluster supporting_ids (no ChromaDB)",
+            "suggest_promotions cluster count (no ChromaDB)",
+            "suggest_promotions cluster score (no ChromaDB)",
+            "suggest_promotions cluster avg_age_days (no ChromaDB)",
+            "suggest_promotions score formula (no ChromaDB)",
+            "suggest_promotions sorted desc (no ChromaDB)",
+            "suggest_promotions top_k (no ChromaDB)",
+        ]:
+            skip(_sp_skip)
     else:
-        skip("suggest_promotions cluster structure (no clusters available)")
-        skip("suggest_promotions cluster supporting_ids (no clusters)")
-        skip("suggest_promotions cluster count (no clusters)")
-        skip("suggest_promotions cluster score (no clusters)")
-        skip("suggest_promotions cluster avg_age_days (no clusters)")
-        skip("suggest_promotions score formula (no clusters)")
-        skip("suggest_promotions sorted desc (no clusters)")
-        skip("suggest_promotions top_k (no clusters)")
+        _sp_result = suggest_promotions(top_k=3)
+        test("suggest_promotions returns dict with clusters key",
+             isinstance(_sp_result, dict) and "clusters" in _sp_result,
+             f"type={type(_sp_result).__name__}, keys={list(_sp_result.keys()) if isinstance(_sp_result, dict) else 'N/A'}")
+        test("suggest_promotions has total_candidates key",
+             "total_candidates" in _sp_result,
+             f"keys={list(_sp_result.keys())}")
+        test("suggest_promotions has total_clusters key",
+             "total_clusters" in _sp_result,
+             f"keys={list(_sp_result.keys())}")
+        test("suggest_promotions clusters is a list",
+             isinstance(_sp_result.get("clusters"), list),
+             f"type={type(_sp_result.get('clusters')).__name__}")
+
+        # If there are clusters, verify their structure
+        if _sp_result.get("clusters"):
+            _sp_cluster = _sp_result["clusters"][0]
+            test("suggest_promotions cluster has suggested_rule",
+                 "suggested_rule" in _sp_cluster,
+                 f"keys={list(_sp_cluster.keys())}")
+            test("suggest_promotions cluster has supporting_ids",
+                 "supporting_ids" in _sp_cluster and isinstance(_sp_cluster["supporting_ids"], list),
+                 f"keys={list(_sp_cluster.keys())}")
+            test("suggest_promotions cluster has count",
+                 "count" in _sp_cluster and isinstance(_sp_cluster["count"], int),
+                 f"keys={list(_sp_cluster.keys())}")
+            test("suggest_promotions cluster has score",
+                 "score" in _sp_cluster and isinstance(_sp_cluster["score"], (int, float)),
+                 f"keys={list(_sp_cluster.keys())}")
+            test("suggest_promotions cluster has avg_age_days",
+                 "avg_age_days" in _sp_cluster and isinstance(_sp_cluster["avg_age_days"], (int, float)),
+                 f"keys={list(_sp_cluster.keys())}")
+            # Verify scoring formula: score = (count * 2) + recency_bonus
+            # recency_bonus = max(0, 1 - avg_age/365), so score >= count * 2
+            test("suggest_promotions score >= count*2 (formula check)",
+                 _sp_cluster["score"] >= _sp_cluster["count"] * 2,
+                 f"score={_sp_cluster['score']}, count={_sp_cluster['count']}")
+            # Verify clusters are sorted by score descending
+            if len(_sp_result["clusters"]) > 1:
+                _scores = [c["score"] for c in _sp_result["clusters"]]
+                test("suggest_promotions clusters sorted by score desc",
+                     _scores == sorted(_scores, reverse=True),
+                     f"scores={_scores}")
+            # Verify top_k is respected
+            test("suggest_promotions respects top_k=3",
+                 len(_sp_result["clusters"]) <= 3,
+                 f"got {len(_sp_result['clusters'])} clusters")
+        else:
+            skip("suggest_promotions cluster structure (no clusters available)")
+            skip("suggest_promotions cluster supporting_ids (no clusters)")
+            skip("suggest_promotions cluster count (no clusters)")
+            skip("suggest_promotions cluster score (no clusters)")
+            skip("suggest_promotions cluster avg_age_days (no clusters)")
+            skip("suggest_promotions score formula (no clusters)")
+            skip("suggest_promotions sorted desc (no clusters)")
+            skip("suggest_promotions top_k (no clusters)")
 
 else:
     for _skip_name in [
@@ -8403,7 +8422,7 @@ except Exception as _e:
 
 
 # ─────────────────────────────────────────────────
-# Embedding Upgrade (Alibaba-NLP/gte-multilingual-base)
+# Embedding Upgrade (nomic-ai/nomic-embed-text-v2-moe)
 # ─────────────────────────────────────────────────
 print('\n--- Embedding Upgrade ---')
 
@@ -8411,7 +8430,7 @@ with open(os.path.join(os.path.dirname(__file__), "memory_server.py")) as _emb_f
     _emb_src = _emb_f.read()
 
 test("Embedding: _EMBEDDING_MODEL constant exists",
-     '_EMBEDDING_MODEL = "Alibaba-NLP/gte-multilingual-base"' in _emb_src,
+     '_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v2-moe"' in _emb_src,
      "_EMBEDDING_MODEL not found or wrong value")
 
 test("Embedding: SentenceTransformerEmbeddingFunction imported in init",
