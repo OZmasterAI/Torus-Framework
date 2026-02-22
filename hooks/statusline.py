@@ -920,4 +920,10 @@ if __name__ == "__main__":
         main()
     except Exception:
         # Fail-open: output minimal line on crash
+        import traceback
+        try:
+            with open("/tmp/statusline_crash.log", "w") as _ef:
+                traceback.print_exc(file=_ef)
+        except Exception:
+            pass
         print("claude | status error")
