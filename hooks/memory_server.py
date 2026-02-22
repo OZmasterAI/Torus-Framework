@@ -670,17 +670,27 @@ class FTS5Index:
         return sanitized
 
 
-def _detect_query_mode(query):
+def _detect_query_mode(query, routing="default"):
     """Route queries to the appropriate search engine.
+
+    Args:
+        query:   The search query string.
+        routing: Routing strategy — "default" (current heuristics),
+                 "fast" (expanded FTS5 keyword routing),
+                 "full_hybrid" (both engines for all queries).
 
     Returns one of: 'tags', 'keyword', 'semantic', 'hybrid'.
     """
     q = query.strip()
     ql = q.lower()
 
-    # Tag queries: explicit tag: or tags: prefix
+    # Tag queries: always FTS5 regardless of routing
     if ql.startswith("tag:") or ql.startswith("tags:"):
         return "tags"
+
+    # Full Hybrid: everything else goes through both engines
+    if routing == "full_hybrid":
+        return "hybrid"
 
     # Keyword: quoted phrases or boolean operators
     if '"' in q or " AND " in q or " OR " in q:
@@ -691,6 +701,15 @@ def _detect_query_mode(query):
     # Keyword: 1-2 word queries (likely identifiers or exact terms)
     if len(words) <= 2:
         return "keyword"
+
+    # Fast mode: catch technical 3-4 word queries for FTS5
+    if routing == "fast" and len(words) <= 4:
+        # Underscores or dots → identifiers (gate_timing, memory_server.py)
+        if any("_" in w or "." in w for w in words):
+            return "keyword"
+        # CamelCase → class/module names (ChromaDB, FTS5Index)
+        if any(c.isupper() for w in words for c in w[1:]):
+            return "keyword"
 
     # Semantic: questions or long natural language
     if ql.endswith("?") or ql.startswith(("how ", "why ", "what ", "when ", "where ", "which ")):
@@ -1356,11 +1375,22 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty. Start building knowledge with remember_this()."}
 
+    # Read LIVE_STATE toggles once for the pipeline (needed by routing + enrichment)
+    _live_state_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
+    _ls_toggles = {}
+    try:
+        if os.path.isfile(_live_state_path):
+            with open(_live_state_path, "r") as _lsf:
+                _ls_toggles = json.load(_lsf)
+    except Exception:
+        pass
+
     VALID_MODES = {"keyword", "semantic", "hybrid", "tags", "observations", "all"}
     if mode and mode not in VALID_MODES:
         mode = ""  # Invalid mode falls back to auto-detect
     if not mode:
-        mode = _detect_query_mode(query)
+        _routing = _ls_toggles.get("search_routing", "default")
+        mode = _detect_query_mode(query, routing=_routing)
 
     # Query alias expansion: historical name mappings
     QUERY_ALIASES = {
@@ -1408,15 +1438,6 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         )
         formatted = format_summaries(results)
 
-    # Read LIVE_STATE toggles once for the pipeline
-    _live_state_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
-    _ls_toggles = {}
-    try:
-        if os.path.isfile(_live_state_path):
-            with open(_live_state_path, "r") as _lsf:
-                _ls_toggles = json.load(_lsf)
-    except Exception:
-        pass
     _terminal_l2_always = _ls_toggles.get("terminal_l2_always", True)
     _tg_l3_always = _ls_toggles.get("tg_l3_always", False)
     _enrichment_enabled = _ls_toggles.get("context_enrichment", False)

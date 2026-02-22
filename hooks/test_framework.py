@@ -2160,7 +2160,7 @@ if not MEMORY_SERVER_RUNNING:
              len(_fts_kw) == 1 and _fts_kw[0]["id"] == "test1",
              f"got {len(_fts_kw)} results")
 
-        # Test: _detect_query_mode routing
+        # Test: _detect_query_mode routing (basic — full suite in always-run section)
         test("detect_mode: 'tag:type:fix' → tags",
              _detect_query_mode("tag:type:fix") == "tags")
         test("detect_mode: 'ChromaDB' → keyword",
@@ -8409,6 +8409,44 @@ if os.path.isfile(_ms_gw_path):
 else:
     test("gateway: memory_server.py exists", False, "memory_server.py not found")
 
+
+# ─────────────────────────────────────────────────
+# Search Routing Tests (no ChromaDB needed — safe to run always)
+# ─────────────────────────────────────────────────
+print("\n--- Search Routing ---")
+from memory_server import _detect_query_mode as _dqm
+
+# Default routing (backward compat — identical to original behavior)
+test("routing default: tag → tags", _dqm("tag:type:fix") == "tags")
+test("routing default: 1 word → keyword", _dqm("ChromaDB") == "keyword")
+test("routing default: 2 words → keyword", _dqm("gate timing") == "keyword")
+test("routing default: question → semantic", _dqm("how do I fix auth") == "semantic")
+test("routing default: 5+ words → semantic", _dqm("agent permission escalation tool abuse") == "semantic")
+test("routing default: 3 words plain → hybrid", _dqm("framework gate fix") == "hybrid")
+test("routing default: explicit routing=default same", _dqm("framework gate fix", routing="default") == "hybrid")
+
+# Fast routing (expanded keyword heuristics for technical queries)
+test("routing fast: tag → tags", _dqm("tag:type:fix", routing="fast") == "tags")
+test("routing fast: 1 word → keyword", _dqm("ChromaDB", routing="fast") == "keyword")
+test("routing fast: underscore 3w → keyword", _dqm("gate_timing cache performance", routing="fast") == "keyword")
+test("routing fast: dot 3w → keyword", _dqm("memory_server.py error handling", routing="fast") == "keyword")
+test("routing fast: CamelCase 3w → keyword", _dqm("ChromaDB query latency", routing="fast") == "keyword")
+test("routing fast: plain 3w → hybrid", _dqm("framework gate fix", routing="fast") == "hybrid")
+test("routing fast: question → semantic", _dqm("how do I fix auth?", routing="fast") == "semantic")
+test("routing fast: 5+ words → semantic", _dqm("agent permission escalation tool abuse", routing="fast") == "semantic")
+test("routing fast: 5w with underscore → semantic", _dqm("gate_timing cache performance is slow", routing="fast") == "semantic")
+
+# Full Hybrid routing (both engines for all non-tag queries)
+test("routing full_hybrid: tag → tags", _dqm("tag:type:fix", routing="full_hybrid") == "tags")
+test("routing full_hybrid: 1 word → hybrid", _dqm("ChromaDB", routing="full_hybrid") == "hybrid")
+test("routing full_hybrid: 2 words → hybrid", _dqm("gate timing", routing="full_hybrid") == "hybrid")
+test("routing full_hybrid: 3 words → hybrid", _dqm("framework gate fix", routing="full_hybrid") == "hybrid")
+test("routing full_hybrid: question → hybrid", _dqm("how do I fix auth", routing="full_hybrid") == "hybrid")
+test("routing full_hybrid: 5+ words → hybrid", _dqm("agent permission escalation tool abuse", routing="full_hybrid") == "hybrid")
+test("routing full_hybrid: quoted → hybrid", _dqm('"exact phrase" match', routing="full_hybrid") == "hybrid")
+
+# Edge: unknown routing value falls through to default behavior
+test("routing unknown: falls to default", _dqm("framework gate fix", routing="bogus") == "hybrid")
 
 # ─────────────────────────────────────────────────
 # FTS5 Persistence Tests (no ChromaDB needed — safe to run always)

@@ -883,6 +883,17 @@ def main():
     )
     print(line3)
 
+    # ── LINE 4: Search routing mode ──
+    _routing = ls.get("search_routing", "default")
+
+    def _mode_label(key, label):
+        if _routing == key:
+            return f"{COLOR_GREEN}\u25c9 {label}{COLOR_RESET}"
+        return f"\u25cb {label}"
+
+    line4 = f"Memory: {_mode_label('default', 'Default')} {_mode_label('fast', 'Fast')} {_mode_label('full_hybrid', 'Full Hybrid')}"
+    print(line4)
+
     # ── SNAPSHOT: write bridge file for TUI ──
     # Check UDS socket health
     uds_ok = False
