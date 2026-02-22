@@ -3987,6 +3987,7 @@ def _start_socket_server():
         return
 
     def _accept_loop():
+        nonlocal srv
         while True:
             try:
                 conn, _ = srv.accept()
@@ -3994,8 +3995,26 @@ def _start_socket_server():
                 t.start()
             except socket.timeout:
                 continue
-            except OSError:
-                break  # Server socket closed
+            except OSError as e:
+                # Rebind instead of dying — transient errors shouldn't kill UDS
+                import sys
+                print(f"[UDS] Accept error, rebinding: {e}", file=sys.stderr)
+                try:
+                    srv.close()
+                except Exception:
+                    pass
+                time.sleep(1)
+                try:
+                    if os.path.exists(SOCKET_PATH):
+                        os.unlink(SOCKET_PATH)
+                    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    srv.bind(SOCKET_PATH)
+                    srv.listen(8)
+                    srv.settimeout(1.0)
+                    _socket_server = srv
+                except OSError as rebind_err:
+                    print(f"[UDS] Rebind failed, retrying in 5s: {rebind_err}", file=sys.stderr)
+                    time.sleep(5)
 
     t = threading.Thread(target=_accept_loop, daemon=True, name="uds-gateway")
     t.start()
