@@ -851,8 +851,10 @@ def main():
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         ls = {}
 
-    def _tog(key, default=False):
-        return "\u2705" if ls.get(key, default) else "\U0001f518"
+    def _tog(key, label, default=False):
+        if ls.get(key, default):
+            return f"{COLOR_GREEN}\u25c9 {label}{COLOR_RESET}"
+        return f"\u25cb {label}"
 
     budget_val = ls.get("session_token_budget", 0) or 0
     # Compute budget tier for display
@@ -868,16 +870,16 @@ def main():
     model_prof = ls.get("model_profile", "balanced")
     sec_prof = ls.get("security_profile", "balanced")
     line3 = (
-        f"{_tog('terminal_l2_always')}L2 "
-        f"{_tog('context_enrichment')}Enrich "
-        f"{_tog('tg_l3_always')}TG "
-        f"{_tog('tg_enrichment')}TGe "
-        f"{_tog('tg_bot_tmux')}Bot "
-        f"{_tog('gate_auto_tune')}Tune "
-        f"{_tog('chain_memory')}Chain "
-        f"{_tog('tg_session_notify')}Notify "
-        f"{_tog('tg_mirror_messages')}Mirror "
-        f"{_tog('budget_degradation')}Budget "
+        f"{_tog('terminal_l2_always', 'L2')} "
+        f"{_tog('context_enrichment', 'Enrich')} "
+        f"{_tog('tg_l3_always', 'TG')} "
+        f"{_tog('tg_enrichment', 'TGe')} "
+        f"{_tog('tg_bot_tmux', 'Bot')} "
+        f"{_tog('gate_auto_tune', 'Tune')} "
+        f"{_tog('chain_memory', 'Chain')} "
+        f"{_tog('tg_session_notify', 'Notify')} "
+        f"{_tog('tg_mirror_messages', 'Mirror')} "
+        f"{_tog('budget_degradation', 'Budget')} "
         f"B:{budget_val}{budget_tier_str} "
         f"Mod:{model_prof[:3]} Sec:{sec_prof[:3]}"
     )
