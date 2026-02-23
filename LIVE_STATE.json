@@ -1,16 +1,16 @@
 {
-  "session_count": 189,
+  "session_count": 190,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1307,
+  "test_count": 1392,
   "test_failures": 0,
-  "what_was_done": "Fixed MCP server crash from ChromaDB embedding conflict (added _get_col() fallback + null guard). Deferred _ensure_initialized() to lazy first-tool-call so MCP handshake completes in 2s vs 25s. Added _ensure_initialized() to all 6 @mcp.tool() functions. Completed full embedding migration: 5924 docs re-embedded from all-MiniLM-L6-v2 (384-dim) to nomic-embed-text-v2-moe (768-dim, 8192 tokens). Tests: 1307/1307 passing.",
-  "service_status": "Memory MCP: UP | Tests: 1307 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens, migration COMPLETE)",
+  "what_was_done": "Built Mentor System A+B+D+E with LIVE_STATE toggles. Created 4 modules: tracker_pkg/mentor.py (Tracker Mentor — Signal/MentorVerdict, 4 evaluators, weighted verdict), tracker_pkg/outcome_chains.py (Outcome Chains — churn/stuck/healthy pattern detection), tracker_pkg/mentor_memory.py (Memory Mentor — standalone UDS query, fail-open), gates/gate_19_hindsight.py (Hindsight Gate — PreToolUse, blocks on sustained escalation). Modified orchestrator.py with toggle-gated calls + 2.5s timing guard. 3-point gate registration. 85 new tests. All toggles start FALSE = current behavior unchanged. Tests: 1392/1392 passing.",
+  "service_status": "Memory MCP: UP | Tests: 1392 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 17 active (G8 dormant, G12 fully purged, G19 Hindsight NEW) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens) | Mentor: 4 modules (all toggled OFF)",
   "next_steps": [
-    "Verify search quality post-migration and tune dedup thresholds for 768-dim distances",
+    "Enable mentor toggles one-at-a-time and verify in live session",
     "Merge Self-Sprint-2 into main",
     "Consider HF_TOKEN for faster model loading (avoid unauthenticated rate limits)",
     "Investigate flaky Lever4 TriggerC test (capture queue state dependency)"
@@ -19,7 +19,6 @@
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Dedup thresholds may need tuning for 768-dim cosine distances (previously calibrated for 384-dim)",
     "Flaky test: Lever4 TriggerC (capture queue state-dependent, passes on re-run)"
   ],
   "terminal_l2_always": false,
@@ -36,12 +35,16 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 3m\n- **Tool Calls**: 12 (Bash: 4, Read: 4, Edit: 2, Task: 1, Grep: 1)\n- **Files Modified**: 1 (1 verified, 0 pending)\n- **Errors**: 1 (No such file or directory x1)\n- **Tests**: exit code 0\n- **Subagents**: 1 launched, 1,363 tokens\n\n**Files changed:**\n- `/home/crab/.claude/hooks/memory_server.py` (verified)",
+  "mentor_tracker": false,
+  "mentor_hindsight_gate": false,
+  "mentor_outcome_chains": false,
+  "mentor_memory": false,
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 35m\n- **Tool Calls**: 27 (Bash: 12, WebSearch: 7, WebFetch: 4, Skill: 1, mcp__memory__remember_this: 1, Read: 1)\n- **Files Modified**: 1 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 5 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`",
   "last_session_metrics": {
     "reads": 1,
     "edits": 1,
-    "errors": 1,
-    "verified": 1,
+    "errors": 0,
+    "verified": 0,
     "pending": 0
   }
 }
