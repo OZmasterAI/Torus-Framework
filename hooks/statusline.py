@@ -920,11 +920,17 @@ def main():
     print(" | ".join(line2_parts))
 
     # ── LINE 3: Toggle switches ──
+    # Read toggles from config.json (canonical), fall back to LIVE_STATE.json
+    config_file = os.path.join(CLAUDE_DIR, "config.json")
     try:
-        with open(LIVE_STATE_FILE) as f:
+        with open(config_file) as f:
             ls = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
-        ls = {}
+        try:
+            with open(LIVE_STATE_FILE) as f:
+                ls = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            ls = {}
 
     def _tog(key, label, default=False):
         if ls.get(key, default):

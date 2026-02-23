@@ -1,5 +1,5 @@
 {
-  "session_count": 202,
+  "session_count": 203,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -19,32 +19,5 @@
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
     "Flaky test: Lever4 TriggerC (capture queue state-dependent, passes on re-run)"
-  ],
-  "terminal_l2_always": false,
-  "context_enrichment": true,
-  "tg_l3_always": false,
-  "tg_enrichment": false,
-  "tg_bot_tmux": false,
-  "gate_auto_tune": true,
-  "budget_degradation": false,
-  "session_token_budget": 0,
-  "model_profile": "efficient",
-  "security_profile": "balanced",
-  "search_routing": "default",
-  "chain_memory": true,
-  "tg_session_notify": true,
-  "tg_mirror_messages": true,
-  "mentor_all": true,
-  "mentor_tracker": false,
-  "mentor_hindsight_gate": false,
-  "mentor_outcome_chains": false,
-  "mentor_memory": false,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 53m\n- **Tool Calls**: 100 (Bash: 59, Read: 32, mcp__memory__remember_this: 2, Task: 2, mcp__memory__search_knowledge: 2, EnterPlanMode: 1)\n- **Files Modified**: 1 (0 verified, 1 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 5 launched, 8,635 tokens\n\n**Files changed:**\n- `/home/crab/.claude/plans/ancient-purring-emerson.md` (pending)",
-  "last_session_metrics": {
-    "reads": 6,
-    "edits": 1,
-    "errors": 0,
-    "verified": 0,
-    "pending": 1
-  }
+  ]
 }

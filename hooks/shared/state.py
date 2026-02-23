@@ -586,19 +586,40 @@ def get_memory_last_queried(state):
 
 
 _live_state_cache = None  # Per-process cache (each hook invocation is a fresh process)
+_config_cache = None      # Per-process cache for config.json toggles
+
+_CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
+_CONFIG_PATH = os.path.join(_CLAUDE_DIR, "config.json")
+_LIVE_STATE_PATH = os.path.join(_CLAUDE_DIR, "LIVE_STATE.json")
+
+
+def load_config():
+    """Load config.json (toggles). Returns full dict. Cached per-process."""
+    global _config_cache
+    if _config_cache is None:
+        try:
+            with open(_CONFIG_PATH) as f:
+                _config_cache = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            _config_cache = {}
+    return _config_cache
 
 
 def get_live_toggle(key, default=None):
-    """Read a toggle value from LIVE_STATE.json.
+    """Read a toggle value from config.json, falling back to LIVE_STATE.json.
 
     Used by gates and boot.py to check self-evolving feature flags.
-    File is read once per process and cached — multiple calls cost zero I/O.
+    Files are read once per process and cached — multiple calls cost zero I/O.
     """
     global _live_state_cache
+    # Check config.json first (new canonical location for toggles)
+    cfg = load_config()
+    if key in cfg:
+        return cfg[key]
+    # Fall back to LIVE_STATE.json for backward compat
     if _live_state_cache is None:
-        live_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
         try:
-            with open(live_path) as f:
+            with open(_LIVE_STATE_PATH) as f:
                 _live_state_cache = json.load(f)
         except (OSError, json.JSONDecodeError):
             _live_state_cache = {}

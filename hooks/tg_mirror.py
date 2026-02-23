@@ -18,6 +18,7 @@ import urllib.request
 import urllib.error
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
+CONFIG_FILE = os.path.join(CLAUDE_DIR, "config.json")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 TG_CONFIG_FILE = os.path.join(CLAUDE_DIR, "integrations", "telegram-bot", "config.json")
 
@@ -88,9 +89,11 @@ def main():
         except (json.JSONDecodeError, ValueError):
             data = {}
 
-        # Check toggle
-        live = _load_json(LIVE_STATE_FILE, {})
-        if not live.get("tg_mirror_messages", False):
+        # Check toggle (config.json first, LIVE_STATE.json fallback)
+        cfg = _load_json(CONFIG_FILE, {})
+        if "tg_mirror_messages" not in cfg:
+            cfg = _load_json(LIVE_STATE_FILE, {})
+        if not cfg.get("tg_mirror_messages", False):
             sys.exit(0)
 
         # Get last assistant message (added in Claude Code 2.1.47)

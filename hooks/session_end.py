@@ -284,14 +284,32 @@ def _haiku_summarize(transcript_excerpt, metrics_text, session_num):
     return ""
 
 
+def _update_config(key, value):
+    """Atomically update a single key in config.json."""
+    config_path = os.path.join(CLAUDE_DIR, "config.json")
+    cfg = {}
+    try:
+        if os.path.isfile(config_path):
+            with open(config_path) as f:
+                cfg = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        pass
+    cfg[key] = value
+    tmp = config_path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, config_path)
+
+
 def generate_handoff(state, transcript_path=""):
-    """Update LIVE_STATE.json with session metrics and optional auto-summary.
+    """Update LIVE_STATE.json with auto-summary and config.json with session metrics.
 
     If /wrap-up ran recently (LIVE_STATE.json has a non-empty what_was_done
     and was modified within the last 30 minutes), just update session_metrics.
-    Otherwise, run Haiku auto-summary and write what_was_done + session_metrics
-    to LIVE_STATE.json.
+    Otherwise, run Haiku auto-summary and write what_was_done + session_metrics.
 
+    session_metrics are written to config.json (persist across task resets).
     HANDOFF.md is no longer written by this function.
     """
     try:
@@ -311,9 +329,9 @@ def generate_handoff(state, transcript_path=""):
         metrics_section = _build_metrics_section(state)
 
         if wrapup_ran:
-            # /wrap-up already wrote narrative — just update session_metrics
-            live_state["session_metrics"] = metrics_section
-            print("[SESSION_END] Wrap-up detected — updated session_metrics in LIVE_STATE.json", file=sys.stderr)
+            # /wrap-up already wrote narrative — just update session_metrics in config.json
+            _update_config("session_metrics", metrics_section)
+            print("[SESSION_END] Wrap-up detected — updated session_metrics in config.json", file=sys.stderr)
         else:
             # /wrap-up didn't run — try Haiku auto-summary
             excerpt = _extract_transcript_excerpt(transcript_path)
@@ -328,9 +346,9 @@ def generate_handoff(state, transcript_path=""):
                     "Metrics below show session activity."
                 )
 
-            live_state["session_metrics"] = metrics_section
+            _update_config("session_metrics", metrics_section)
 
-        # Atomic write back to LIVE_STATE.json
+        # Atomic write back to LIVE_STATE.json (session state only, no toggles/metrics)
         tmp = LIVE_STATE_FILE + ".tmp"
         with open(tmp, "w") as f:
             json.dump(live_state, f, indent=2)
@@ -437,9 +455,9 @@ def increment_session_count(metrics=None):
             state = {}
     state["session_count"] = state.get("session_count", 0) + 1
 
-    # Store session metrics if provided
+    # Store session metrics in config.json (persists across task resets)
     if metrics:
-        state["last_session_metrics"] = metrics
+        _update_config("last_session_metrics", metrics)
 
     tmp = LIVE_STATE_FILE + ".tmp"
     with open(tmp, "w") as f:

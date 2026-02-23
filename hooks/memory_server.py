@@ -2061,15 +2061,22 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     if count == 0:
         return {"results": [], "total_memories": 0, "message": "Memory is empty. Start building knowledge with remember_this()."}
 
-    # Read LIVE_STATE toggles once for the pipeline (needed by routing + enrichment)
-    _live_state_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
+    # Read config toggles once for the pipeline (needed by routing + enrichment)
+    _config_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
     _ls_toggles = {}
     try:
-        if os.path.isfile(_live_state_path):
-            with open(_live_state_path, "r") as _lsf:
+        if os.path.isfile(_config_path):
+            with open(_config_path, "r") as _lsf:
                 _ls_toggles = json.load(_lsf)
     except Exception:
-        pass
+        # Fall back to LIVE_STATE.json for backward compat
+        _live_state_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
+        try:
+            if os.path.isfile(_live_state_path):
+                with open(_live_state_path, "r") as _lsf:
+                    _ls_toggles = json.load(_lsf)
+        except Exception:
+            pass
 
     VALID_MODES = {"keyword", "semantic", "hybrid", "tags", "observations", "all", "code"}
     if mode and mode not in VALID_MODES:

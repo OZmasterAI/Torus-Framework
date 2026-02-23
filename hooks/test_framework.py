@@ -7425,26 +7425,53 @@ except Exception as _se_e:
     RESULTS.append(f"  FAIL: ChainStepWrapper: {_se_e}")
     print(f"  FAIL: ChainStepWrapper: {_se_e}")
 
-# Test: LIVE_STATE.json has all 4 new toggles (gate_auto_apply removed — folded into gate_auto_tune)
+# Test: config.json has all toggle keys (moved from LIVE_STATE.json)
 try:
     import json as _se_json
-    with open(os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")) as _se_f:
-        _se_live = _se_json.load(_se_f)
+    _se_config_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
+    with open(_se_config_path) as _se_f:
+        _se_cfg = _se_json.load(_se_f)
     for _se_key in ("gate_auto_tune", "budget_degradation", "session_token_budget", "chain_memory"):
-        assert _se_key in _se_live, f"Missing toggle: {_se_key}"
-    assert "gate_auto_apply" not in _se_live, "gate_auto_apply should be removed"
-    # Values may change over time — just verify types are correct
-    assert isinstance(_se_live["gate_auto_tune"], bool), "gate_auto_tune must be bool"
-    assert isinstance(_se_live["budget_degradation"], bool), "budget_degradation must be bool"
-    assert isinstance(_se_live["session_token_budget"], (int, float)), "session_token_budget must be numeric"
-    assert isinstance(_se_live["chain_memory"], bool), "chain_memory must be bool"
+        assert _se_key in _se_cfg, f"Missing toggle in config.json: {_se_key}"
+    assert isinstance(_se_cfg["gate_auto_tune"], bool), "gate_auto_tune must be bool"
+    assert isinstance(_se_cfg["budget_degradation"], bool), "budget_degradation must be bool"
+    assert isinstance(_se_cfg["session_token_budget"], (int, float)), "session_token_budget must be numeric"
+    assert isinstance(_se_cfg["chain_memory"], bool), "chain_memory must be bool"
+    # Verify toggles are NOT in LIVE_STATE.json anymore
+    with open(os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")) as _se_f2:
+        _se_live = _se_json.load(_se_f2)
+    for _se_key in ("gate_auto_tune", "budget_degradation", "session_token_budget", "chain_memory"):
+        assert _se_key not in _se_live, f"Toggle {_se_key} should not be in LIVE_STATE.json"
     PASS += 1
-    RESULTS.append("  PASS: LIVE_STATE.json has all 4 new toggles")
-    print("  PASS: LIVE_STATE.json has all 4 new toggles")
+    RESULTS.append("  PASS: config.json has toggles, LIVE_STATE.json does not")
+    print("  PASS: config.json has toggles, LIVE_STATE.json does not")
 except Exception as _se_e:
     FAIL += 1
-    RESULTS.append(f"  FAIL: LIVE_STATE.json toggles: {_se_e}")
-    print(f"  FAIL: LIVE_STATE.json toggles: {_se_e}")
+    RESULTS.append(f"  FAIL: config.json toggles: {_se_e}")
+    print(f"  FAIL: config.json toggles: {_se_e}")
+
+# Test: get_live_toggle reads from config.json
+try:
+    # Reset caches to ensure fresh read
+    import shared.state as _se_state_mod
+    _se_state_mod._config_cache = None
+    _se_state_mod._live_state_cache = None
+    _se_cfg_val = _se_state_mod.get_live_toggle("gate_auto_tune", False)
+    assert _se_cfg_val is True or _se_cfg_val is False, f"Unexpected type: {type(_se_cfg_val)}"
+    # Test fallback for missing key
+    _se_missing = _se_state_mod.get_live_toggle("nonexistent_toggle_xyz", "fallback")
+    assert _se_missing == "fallback", f"Expected 'fallback', got {_se_missing}"
+    # Test load_config returns dict
+    _se_cfg_dict = _se_state_mod.load_config()
+    assert isinstance(_se_cfg_dict, dict), "load_config must return dict"
+    assert "gate_auto_tune" in _se_cfg_dict, "load_config must include gate_auto_tune"
+    PASS += 1
+    RESULTS.append("  PASS: get_live_toggle reads config.json + load_config()")
+    print("  PASS: get_live_toggle reads config.json + load_config()")
+except Exception as _se_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: get_live_toggle config.json: {_se_e}")
+    print(f"  FAIL: get_live_toggle config.json: {_se_e}")
 
 # Test: _resolve_gate_block_outcomes (override path)
 try:
