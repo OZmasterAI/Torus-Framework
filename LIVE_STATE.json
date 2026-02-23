@@ -1,11 +1,12 @@
 {
-  "session_count": 206,
+  "session_count": 207,
   "project": "torus-framework",
   "feature": "self-evolve-sprint-2",
   "framework_version": "v2.5.3",
-  "what_was_done": "Fixed code indexer: boot trigger now re-checks socket availability (retries=3, 0.5s), wrap-up SKILL.md now calls reindex_code('wrapup') via UDS instead of broken search_knowledge call. Added per-snapshot status files (.code_index_boot_status, .code_index_wrapup_status) and statusline indicators — yellow while indexing, green when done (boot on line 1, wrapup on line 2). Removed dead dashboard/ and tui/ dirs (11k lines). 1449 tests pass.",
+  "what_was_done": "Built Telegram voice-to-text integration: voice messages transcribed via faster-whisper (turbo model, CPU) and injected into Claude Code tmux pane via send-keys. Implemented incremental wrapup code indexing (diffs boot commit hash vs HEAD, only re-indexes changed files). Cleaned up dead dashboard auto-start code from boot_pkg after dashboard/tui deletion.",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
+    "Optimize whisper transcription speed (GPU/quantization or smaller model)",
     "Pick next evolution target",
     "Verify config.json toggles survive task reset"
   ],
@@ -13,6 +14,6 @@
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Flaky test: Lever4 TriggerC (capture queue state-dependent, passes on re-run)"
+    "Whisper turbo on CPU: ~35s for 2-7s audio (acceptable but slow)"
   ]
 }
