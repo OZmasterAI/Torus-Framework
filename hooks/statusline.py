@@ -616,6 +616,72 @@ def format_context_pct(pct):
     return f"{color}{int(pct)}%{COLOR_RESET}"
 
 
+# Compaction threshold — Claude Code compacts around 90-95% context usage
+COMPACTION_THRESHOLD = 93
+COLOR_DIM = "\033[90m"
+COLOR_DARK_GRAY = "\033[38;5;238m"
+
+# Smooth gradient using 256-color ANSI — matches Anthropic console style
+# Each entry is (threshold_pct, ansi_256_color_code)
+_CTX_GRADIENT = [
+    (0,  82),   # bright green
+    (15, 76),   # green
+    (25, 112),  # yellow-green
+    (35, 148),  # light yellow-green
+    (45, 184),  # yellow
+    (55, 220),  # golden yellow
+    (65, 214),  # light orange
+    (75, 208),  # orange
+    (85, 202),  # dark orange
+    (92, 196),  # red
+]
+
+
+def _gradient_color(segment_pct):
+    """Return ANSI 256-color escape for a position in the gradient."""
+    code = _CTX_GRADIENT[0][1]
+    for threshold, c in _CTX_GRADIENT:
+        if segment_pct >= threshold:
+            code = c
+    return f"\033[38;5;{code}m"
+
+
+def format_context_bar(pct, cmp_count=0):
+    """Format context usage as a smooth gradient bar matching Anthropic's console.
+
+    Smooth gradient: green -> yellow-green -> yellow -> orange -> red.
+    Unfilled segments use dark gray blocks. Compaction threshold at ~93%.
+    Returns: 'Context window: ▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐  77.0%'
+    """
+    width = 10
+    filled = round(pct / 100 * width)
+    filled = max(0, min(width, filled))
+    comp_pos = round(COMPACTION_THRESHOLD / 100 * width)
+
+    bar = ""
+    for i in range(width):
+        segment_pct = (i / width) * 100
+
+        if i == comp_pos:
+            # Compaction threshold — thin marker
+            if i < filled:
+                bar += f"\033[38;5;255m\u2502{COLOR_RESET}"
+            else:
+                bar += f"\033[38;5;242m\u2502{COLOR_RESET}"
+        elif i < filled:
+            color = _gradient_color(segment_pct)
+            bar += f"{color}\u258c{COLOR_RESET}"
+        else:
+            bar += f"{COLOR_DARK_GRAY}\u258c{COLOR_RESET}"
+
+    # Percentage with matching gradient color
+    pct_color = _gradient_color(pct)
+    pct_str = f"{pct_color}{pct:.1f}%{COLOR_RESET}"
+    cmp_str = f" CMP:{cmp_count}" if cmp_count > 0 else ""
+
+    return f"CTX:{bar} {pct_str}{cmp_str}"
+
+
 MEMORY_TS_FILE = os.path.join(HOOKS_DIR, ".memory_last_queried")
 CTX_CACHE_FILE = "/tmp/statusline-ctx-cache"
 
@@ -795,16 +861,12 @@ def main():
             rd_str += f"|lag:{fmt_bytes(rd_lag)}"
         line1_parts.append(rd_str)
 
-    # ── LINE 2: Health bar + context percentage + session metrics ──
+    # ── LINE 2: Health bar + context bar + session metrics ──
     ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
-    ctx_display = format_context_pct(ctx_pct_val)
-
-    # Compression detection — combined with context %: 📦62% CMP:N
     cmp_count = get_compression_count(ctx_pct_val)
-    if cmp_count > 0:
-        ctx_display = f"\U0001f4e6{ctx_display} CMP:{cmp_count}"
+    ctx_bar = format_context_bar(ctx_pct_val, cmp_count)
 
-    line2_parts = [health_bar, ctx_display]
+    line2_parts = [health_bar, ctx_bar]
 
     # Error pressure (conditional — only when recent errors active)
     recent_errors, total_errors = get_error_velocity()
