@@ -1,9 +1,9 @@
 {
-  "session_count": 205,
+  "session_count": 206,
   "project": "torus-framework",
   "feature": "self-evolve-sprint-2",
   "framework_version": "v2.5.3",
-  "what_was_done": "Fixed code indexer not running. Boot trigger failed because socket_available(retries=1, delay=0.1) was too aggressive — MCP not ready in 100ms. Added re-check with retries=3, delay=0.5 before reindex trigger. Wrap-up trigger was broken too — SKILL.md called search_knowledge('reindex', mode='code') which just searched, didn't trigger reindex. Replaced with UDS reindex_code('wrapup') bash call. Both code_index and code_wrapup collections now populating correctly.",
+  "what_was_done": "Fixed code indexer: boot trigger now re-checks socket availability (retries=3, 0.5s), wrap-up SKILL.md now calls reindex_code('wrapup') via UDS instead of broken search_knowledge call. Added per-snapshot status files (.code_index_boot_status, .code_index_wrapup_status) and statusline indicators — yellow while indexing, green when done (boot on line 1, wrapup on line 2). Removed dead dashboard/ and tui/ dirs (11k lines). 1449 tests pass.",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
     "Pick next evolution target",
