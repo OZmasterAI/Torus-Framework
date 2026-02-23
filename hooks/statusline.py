@@ -815,6 +815,10 @@ def main():
         model_short = model_name.split()[-1] if model_name else "Claude"
         model_color = COLOR_CYAN
 
+    # Added directories (--add-dir)
+    workspace_data = data.get("workspace", {}) or {}
+    added_dirs = workspace_data.get("added_dirs", []) or []
+
     # Git branch
     git_branch = get_git_branch()
 
@@ -839,6 +843,9 @@ def main():
     line1_parts.append(f"\U0001f4c1 {project}")
     if git_branch:
         line1_parts.append(f"\U0001f33f {git_branch}")
+    if added_dirs:
+        dir_names = [os.path.basename(d.rstrip("/")) for d in added_dirs]
+        line1_parts.append(f"\U0001f4ce +{','.join(dir_names)}")
     line1_parts.append(f"#{session_num}")
     line1_parts.append(f"\U0001f6e1\ufe0f G:{gate_count} S:{skill_count}")
     # Memory count + freshness

@@ -192,6 +192,18 @@
           }
         ]
       }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "user_settings|project_settings",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/config_change.py\"",
+            "timeout": 3
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
