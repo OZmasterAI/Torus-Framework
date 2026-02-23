@@ -340,7 +340,15 @@ def main():
     _write_sideband_timestamp()
 
     # Trigger code index reindex (background thread on MCP server)
-    if _worker_available:
+    # Re-check socket availability here — MCP server may not have been ready
+    # during the early check (retries=1, 0.1s) but is likely up by now.
+    _reindex_worker = _worker_available
+    if not _reindex_worker:
+        try:
+            _reindex_worker = socket_available(retries=3, delay=0.5)
+        except Exception:
+            pass
+    if _reindex_worker:
         try:
             socket_reindex("boot")
             print("  [BOOT] Code index: reindex triggered", file=sys.stderr)
