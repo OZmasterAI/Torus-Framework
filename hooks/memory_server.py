@@ -1617,6 +1617,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
         match_all: For tag mode only — if true, all tags must be present (default false).
     """
+    _ensure_initialized()
     if _chromadb_degraded:
         return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     recency_weight = max(0.0, min(1.0, recency_weight))
@@ -2107,6 +2108,7 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
         tags: Comma-separated tags for categorization (e.g., "bug,fix,auth")
         force: Skip dedup check entirely (escape hatch if threshold is wrong)
     """
+    _ensure_initialized()
     if _chromadb_degraded:
         return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     # Cap metadata strings to 500 chars
@@ -2393,6 +2395,7 @@ def get_memory(id: str) -> dict:
     Args:
         id: The memory ID (from search results)
     """
+    _ensure_initialized()
     if _chromadb_degraded:
         return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     try:
@@ -2583,6 +2586,7 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
         error_text: The error message being fixed
         strategy_id: A short name for the fix strategy (e.g., "fix-type-cast")
     """
+    _ensure_initialized()
     if _chromadb_degraded:
         return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     normalized, error_hash = error_signature(error_text)
@@ -2638,6 +2642,7 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
         chain_id: The chain_id returned by record_attempt
         outcome: "success" or "failure"
     """
+    _ensure_initialized()
     if _chromadb_degraded:
         return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     if outcome not in ("success", "failure"):
@@ -2695,6 +2700,7 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
         error_text: The error message to look up
         top_k: Maximum number of results (default 10)
     """
+    _ensure_initialized()
     if _chromadb_degraded:
         return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
     top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
@@ -4090,7 +4096,8 @@ atexit.register(_cleanup_socket)
 
 
 if __name__ == "__main__":
-    _ensure_initialized()
+    # Defer _ensure_initialized() to first tool call — mcp.run() must start
+    # immediately so Claude Code's MCP handshake doesn't timeout (~25s model load).
     _start_socket_server()
     try:
         mcp.run()
