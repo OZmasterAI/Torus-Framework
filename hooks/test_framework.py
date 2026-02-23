@@ -4225,7 +4225,7 @@ if not MEMORY_SERVER_RUNNING:
         # Private helper tests removed — build_context integration tests below validate these
 
         # build_context: Explore agent receives recent files
-        _rc_live = {"project": "test-proj", "feature": "test-feat", "test_count": 100, "status": "active"}
+        _rc_live = {"project": "test-proj", "feature": "test-feat"}
         _rc_sess = {
             "files_read": ["/a/one.py", "/b/two.py", "/c/three.py"],
             "error_pattern_counts": {"ImportError": 3},
@@ -10531,9 +10531,7 @@ try:
     _cv_valid_state = {
         "session_count": 42,
         "project": "Torus",
-        "project_path": "/home/user/.claude",
         "feature": "test",
-        "feature_status": "in_progress",
         "framework_version": "v2.5.3",
         "what_was_done": "testing",
         "next_steps": ["step1"],

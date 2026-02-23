@@ -1,11 +1,7 @@
 {
   "session_count": 203,
   "project": "torus-framework",
-  "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
-  "feature_status": "in-progress",
-  "test_count": 1448,
-  "test_failures": 0,
   "framework_version": "v2.5.3",
   "what_was_done": "Implemented framework code indexing (mode=\"code\"). Extended search_knowledge with mode=\"code\" for semantic search over framework source. Added chunking functions, background indexer, boot/wrapup snapshots, dispatch handler, 25 new tests (1448 total, 0 failures). 6 files modified.",
   "next_steps": [

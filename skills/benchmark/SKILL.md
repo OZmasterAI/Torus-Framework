@@ -43,8 +43,6 @@ with open('/home/crab/.claude/LIVE_STATE.json') as f:
     s = json.load(f)
 print(json.dumps({
     'session_count': s.get('session_count'),
-    'test_count': s.get('test_count'),
-    'test_failures': s.get('test_failures'),
     'framework_version': s.get('framework_version'),
     'feature': s.get('feature'),
 }, indent=2))

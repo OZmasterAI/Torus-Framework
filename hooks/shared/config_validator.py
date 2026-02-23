@@ -62,9 +62,7 @@ _VALID_EVENT_TYPES = {
 _LIVE_STATE_REQUIRED = {
     "session_count": int,
     "project": str,
-    "project_path": str,
     "feature": str,
-    "feature_status": str,
     "framework_version": str,
     "what_was_done": str,
     "next_steps": list,

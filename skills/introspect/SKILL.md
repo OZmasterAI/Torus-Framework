@@ -230,7 +230,7 @@ python3 -c "
 import json
 with open('/home/crab/.claude/LIVE_STATE.json') as f:
     s = json.load(f)
-print(json.dumps({k: s.get(k) for k in ['session_count','test_count','test_failures','framework_version','feature']}, indent=2))
+print(json.dumps({k: s.get(k) for k in ['session_count','framework_version','feature']}, indent=2))
 "
 ```
 
