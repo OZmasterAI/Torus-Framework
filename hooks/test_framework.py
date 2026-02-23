@@ -11699,6 +11699,65 @@ except Exception as _asd_e:
     RESULTS.append(f"  FAIL: Analytics MCP session auto-detection tests: {_asd_e}")
     print(f"  FAIL: Analytics MCP session auto-detection tests: {_asd_e}")
 
+# ─────────────────────────────────────────────────
+# Analytics MCP: Search Tools (telegram, terminal, web)
+# ─────────────────────────────────────────────────
+print("\n--- Analytics MCP: Search Tools ---")
+
+try:
+    from analytics_server import telegram_search, terminal_history_search, web_search
+
+    # Telegram search: empty query → empty results
+    _tg_empty = telegram_search("")
+    test("telegram_search('') returns empty results",
+         isinstance(_tg_empty, dict) and _tg_empty.get("count") == 0
+         and _tg_empty.get("results") == [] and _tg_empty.get("source") == "telegram_fts")
+
+    # Telegram search: real query → dict with expected keys
+    _tg_result = telegram_search("test")
+    test("telegram_search('test') returns dict with count/results keys",
+         isinstance(_tg_result, dict) and "count" in _tg_result
+         and "results" in _tg_result and "source" in _tg_result)
+
+    # Telegram search: limit clamping → no crash
+    _tg_clamp = telegram_search("test", limit=100)
+    test("telegram_search limit=100 clamped, no crash",
+         isinstance(_tg_clamp, dict) and "count" in _tg_clamp)
+
+    # Terminal history search: empty query → empty results
+    _th_empty = terminal_history_search("")
+    test("terminal_history_search('') returns empty results",
+         isinstance(_th_empty, dict) and _th_empty.get("count") == 0
+         and _th_empty.get("results") == [] and _th_empty.get("source") == "terminal_fts")
+
+    # Terminal history search: real query → dict with expected keys
+    _th_result = terminal_history_search("python")
+    test("terminal_history_search('python') returns dict with count/results keys",
+         isinstance(_th_result, dict) and "count" in _th_result
+         and "results" in _th_result and "source" in _th_result)
+
+    # Terminal history search: negative limit clamped to 1
+    _th_clamp = terminal_history_search("x", limit=-1)
+    test("terminal_history_search limit=-1 clamped to 1, no crash",
+         isinstance(_th_clamp, dict) and "count" in _th_clamp)
+
+    # Web search: empty query → empty results
+    _ws_empty = web_search("")
+    test("web_search('') returns empty results",
+         isinstance(_ws_empty, dict) and _ws_empty.get("count") == 0
+         and _ws_empty.get("results") == [] and _ws_empty.get("source") == "web_chromadb")
+
+    # Web search: real query → dict with count/results or error key (WorkerUnavailable OK)
+    _ws_result = web_search("claude")
+    test("web_search('claude') returns dict with count/results or error",
+         isinstance(_ws_result, dict) and ("count" in _ws_result or "error" in _ws_result)
+         and _ws_result.get("source") == "web_chromadb")
+
+except Exception as _ast_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Analytics MCP search tools tests: {_ast_e}")
+    print(f"  FAIL: Analytics MCP search tools tests: {_ast_e}")
+
 # Restore sideband file after tests
 if _SIDEBAND_BACKUP is not None:
     with open(MEMORY_TIMESTAMP_FILE, "w") as _sbf:

@@ -119,6 +119,18 @@ def _resolve_session_id(session_id: str) -> str:
     return _detect_session_id()
 
 
+def _import_search_fts(integration_name: str):
+    """Import search_fts from an integration's db.py without module name collision."""
+    import importlib.util
+    db_path = os.path.join(
+        os.path.expanduser("~"), ".claude", "integrations", integration_name, "db.py"
+    )
+    spec = importlib.util.spec_from_file_location(f"db_{integration_name}", db_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.search_fts
+
+
 # ── Tools ────────────────────────────────────────────────────────────────────
 
 @mcp.tool()
@@ -257,6 +269,108 @@ def all_metrics() -> dict:
         "rollup_1m": rollup_1m,
         "rollup_5m": rollup_5m,
     }
+
+
+# ── Search Tools ──────────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def telegram_search(query: str, limit: int = 10) -> dict:
+    """Search Telegram message history via FTS5 full-text search.
+
+    Args:
+        query: Search query (FTS5 MATCH syntax). Empty returns no results.
+        limit: Max results to return (1-50, default 10).
+    """
+    if not query or not query.strip():
+        return {"results": [], "count": 0, "source": "telegram_fts"}
+
+    limit = max(1, min(50, limit))
+    search_fts = _import_search_fts("telegram-bot")
+    db_path = os.path.join(
+        os.path.expanduser("~"), ".claude", "integrations", "telegram-bot", "msg_log.db"
+    )
+    results = search_fts(db_path, query, limit=limit)
+    return {"results": results, "count": len(results), "source": "telegram_fts"}
+
+
+@mcp.tool()
+@crash_proof
+def terminal_history_search(query: str, limit: int = 10) -> dict:
+    """Search terminal/conversation history via FTS5 full-text search.
+
+    Args:
+        query: Search query (FTS5 MATCH syntax). Empty returns no results.
+        limit: Max results to return (1-50, default 10).
+    """
+    if not query or not query.strip():
+        return {"results": [], "count": 0, "source": "terminal_fts"}
+
+    limit = max(1, min(50, limit))
+    search_fts = _import_search_fts("terminal-history")
+    db_path = os.path.join(
+        os.path.expanduser("~"), ".claude", "integrations", "terminal-history", "terminal_history.db"
+    )
+    results = search_fts(db_path, query, limit=limit)
+    return {"results": results, "count": len(results), "source": "terminal_fts"}
+
+
+@mcp.tool()
+@crash_proof
+def web_search(query: str, n_results: int = 5) -> dict:
+    """Search locally indexed web pages via ChromaDB semantic search.
+
+    Args:
+        query: Search query for semantic matching. Empty returns no results.
+        n_results: Max results to return (1-20, default 5).
+    """
+    if not query or not query.strip():
+        return {"results": [], "count": 0, "source": "web_chromadb"}
+
+    n_results = max(1, min(20, n_results))
+
+    from shared import chromadb_socket
+
+    try:
+        result = chromadb_socket.query(
+            "web_pages",
+            query_texts=[query],
+            n_results=n_results,
+            include=["metadatas", "documents", "distances"],
+        )
+    except chromadb_socket.WorkerUnavailable as e:
+        return {"error": f"ChromaDB worker unavailable: {e}", "source": "web_chromadb"}
+    except RuntimeError as e:
+        if "Unknown collection" in str(e):
+            return {"results": [], "count": 0, "source": "web_chromadb"}
+        raise
+
+    if not result or not result.get("ids") or not result["ids"][0]:
+        return {"results": [], "count": 0, "source": "web_chromadb"}
+
+    hits = []
+    ids = result["ids"][0]
+    docs = result.get("documents", [[]])[0]
+    metas = result.get("metadatas", [[]])[0]
+    dists = result.get("distances", [[]])[0]
+
+    for i, doc_id in enumerate(ids):
+        meta = metas[i] if i < len(metas) else {}
+        doc = docs[i] if i < len(docs) else ""
+        dist = dists[i] if i < len(dists) else 1.0
+        similarity = round(1.0 - dist, 3)
+
+        hits.append({
+            "id": doc_id,
+            "url": meta.get("url", "unknown"),
+            "title": meta.get("title", "Untitled"),
+            "chunk_index": meta.get("chunk_index", 0),
+            "total_chunks": meta.get("total_chunks", 1),
+            "similarity": similarity,
+            "preview": doc[:200] + "..." if len(doc) > 200 else doc,
+        })
+
+    return {"results": hits, "count": len(hits), "source": "web_chromadb"}
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────

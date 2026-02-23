@@ -8,7 +8,8 @@
     "analytics": {
       "command": "/usr/bin/python3",
       "args": ["/home/crab/.claude/hooks/analytics_server.py"],
-      "cwd": "/home/crab"
+      "cwd": "/home/crab",
+      "defer_loading": true
     }
   }
 }
