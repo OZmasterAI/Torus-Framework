@@ -95,6 +95,11 @@ pgrep -f memory_server.py > /dev/null && echo "RUNNING" || echo "DOWN"
 mountpoint -q /run/user/1000/claude-hooks && echo "MOUNTED" || echo "NOT MOUNTED"
 ```
 
+**Framework metrics (via Analytics MCP):**
+Call `mcp__analytics__all_metrics()` to get current counters, gauges, and histograms from gates, hooks, memory, and sessions.
+Call `mcp__analytics__gate_dashboard()` to get gate effectiveness rankings, block rates, and coverage.
+Include the gate rankings and top blocked gates in the step 5 report under GATE ACTIVITY.
+
 Record all collected values in a structured dict for step 4 comparison.
 
 ---
@@ -178,6 +183,10 @@ if latencies:
     print(f'  p50:  {statistics.median(latencies):.1f} ms')
 "
 ```
+
+**Gate timing (via Analytics MCP):**
+Call `mcp__analytics__gate_timing()` to get per-gate latency stats (p50, p95, p99) and identify slow gates.
+Use this alongside (not instead of) the enforcer subprocess timing above — MCP data covers real session history while subprocess timing measures cold-start overhead.
 
 **I/O benchmark** (if ramdisk is mounted):
 ```bash
