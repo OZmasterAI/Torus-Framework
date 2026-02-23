@@ -689,6 +689,28 @@ MEMORY_TS_FILE = os.path.join(HOOKS_DIR, ".memory_last_queried")
 CTX_CACHE_FILE = "/tmp/statusline-ctx-cache"
 
 
+def get_idx_status(snapshot_type):
+    """Read code indexer status for a snapshot type. Returns formatted string or ''."""
+    path = os.path.join(HOOKS_DIR, f".code_index_{snapshot_type}_status")
+    label = snapshot_type[:4]
+    try:
+        if not os.path.exists(path):
+            return ""
+        with open(path) as f:
+            d = json.load(f)
+        st = d.get("status", "")
+        if st == "indexing":
+            return f"{COLOR_YELLOW}IDX:{label}\u2026{COLOR_RESET}"
+        elif st == "done":
+            chunks = d.get("chunks", "?")
+            return f"{COLOR_GREEN}IDX:{label}\u2714{chunks}{COLOR_RESET}"
+        elif st == "error":
+            return f"{COLOR_RED}IDX:{label}\u2718{COLOR_RESET}"
+    except (json.JSONDecodeError, OSError):
+        pass
+    return ""
+
+
 def get_memory_freshness():
     """Return minutes since last memory query, or None if unknown."""
     try:
@@ -856,24 +878,6 @@ def main():
         line1_parts.append(f"\U0001f9e0 M:{mem_count}")
     line1_parts.append(f"\u26a1TC:{total_calls}")
 
-    # Code indexer status (yellow while indexing, green when done)
-    _idx_status_file = os.path.join(HOOKS_DIR, ".code_index_status")
-    try:
-        if os.path.exists(_idx_status_file):
-            with open(_idx_status_file) as f:
-                _idx = json.load(f)
-            _idx_st = _idx.get("status", "")
-            _snap = _idx.get("snapshot_type", "?")[:4]
-            if _idx_st == "indexing":
-                line1_parts.append(f"{COLOR_YELLOW}IDX:{_snap}\u2026{COLOR_RESET}")
-            elif _idx_st == "done":
-                _chunks = _idx.get("chunks", "?")
-                line1_parts.append(f"{COLOR_GREEN}IDX:{_snap}\u2714{_chunks}{COLOR_RESET}")
-            elif _idx_st == "error":
-                line1_parts.append(f"{COLOR_RED}IDX:{_snap}\u2718{COLOR_RESET}")
-    except (json.JSONDecodeError, OSError):
-        pass
-
     # Subagent visibility (conditional, line 1)
     sa_active, sa_completed_tok = get_subagent_status(sess_state)
     if sa_active:
@@ -933,6 +937,14 @@ def main():
     pm_warns = get_plan_mode_warns(sess_state)
     if pm_warns >= 1:
         line2_parts.append(f"PM:W{pm_warns}")
+
+    # Code indexer: boot status at end of line 1, wrapup at end of line 2
+    _idx_boot = get_idx_status("boot")
+    if _idx_boot:
+        line1_parts.append(_idx_boot)
+    _idx_wrap = get_idx_status("wrapup")
+    if _idx_wrap:
+        line2_parts.append(_idx_wrap)
 
     print(" | ".join(line1_parts))
     print(" | ".join(line2_parts))
