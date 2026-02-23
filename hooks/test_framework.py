@@ -4509,9 +4509,9 @@ if not MEMORY_SERVER_RUNNING:
 
         # 5. Dedup thresholds configured correctly
         from memory_server import DEDUP_THRESHOLD, DEDUP_SOFT_THRESHOLD, FIX_DEDUP_THRESHOLD, _FIX_DEDUP_EXEMPT
-        test("Dedup: threshold configured (0.10)", DEDUP_THRESHOLD == 0.10, f"got={DEDUP_THRESHOLD}")
-        test("Dedup: soft threshold configured (0.15)", DEDUP_SOFT_THRESHOLD == 0.15, f"got={DEDUP_SOFT_THRESHOLD}")
-        test("Dedup: fix threshold configured (0.03)", FIX_DEDUP_THRESHOLD == 0.03, f"got={FIX_DEDUP_THRESHOLD}")
+        test("Dedup: threshold configured (0.12)", DEDUP_THRESHOLD == 0.12, f"got={DEDUP_THRESHOLD}")
+        test("Dedup: soft threshold configured (0.20)", DEDUP_SOFT_THRESHOLD == 0.20, f"got={DEDUP_SOFT_THRESHOLD}")
+        test("Dedup: fix threshold configured (0.05)", FIX_DEDUP_THRESHOLD == 0.05, f"got={FIX_DEDUP_THRESHOLD}")
         test("Dedup: fix exempt dormant", _FIX_DEDUP_EXEMPT is False, f"got={_FIX_DEDUP_EXEMPT}")
 
         # 6. Dedup returns 'deduplicated' key

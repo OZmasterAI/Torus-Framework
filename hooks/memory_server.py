@@ -193,10 +193,10 @@ NOISE_PATTERNS = [
 import re as _re
 NOISE_REGEXES = [_re.compile(p, _re.IGNORECASE) for p in NOISE_PATTERNS]
 
-# Near-dedup: cosine distance thresholds
-DEDUP_THRESHOLD = 0.10        # distance < 0.10 = hard skip (was 0.05)
-DEDUP_SOFT_THRESHOLD = 0.15   # 0.10-0.15 = save but tag as possible-dupe
-FIX_DEDUP_THRESHOLD = 0.03    # Stricter threshold for type:fix memories
+# Near-dedup: cosine distance thresholds (tuned for nomic-embed-text-v2-moe 768-dim)
+DEDUP_THRESHOLD = 0.12        # distance < 0.12 = hard skip (was 0.10 for 384-dim)
+DEDUP_SOFT_THRESHOLD = 0.20   # 0.12-0.20 = save but tag as possible-dupe (was 0.15)
+FIX_DEDUP_THRESHOLD = 0.05    # Stricter threshold for type:fix memories (was 0.03)
 _FIX_DEDUP_EXEMPT = False      # DORMANT — flip True to skip dedup for all type:fix
 
 # Citation URL extraction
