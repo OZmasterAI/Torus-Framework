@@ -45,7 +45,7 @@ print(json.dumps({
     'session_count': s.get('session_count'),
     'test_count': s.get('test_count'),
     'test_failures': s.get('test_failures'),
-    'service_status': s.get('service_status'),
+    'framework_version': s.get('framework_version'),
     'feature': s.get('feature'),
 }, indent=2))
 "
@@ -271,7 +271,7 @@ Present the report in this format:
 
   FRAMEWORK STATE
   ---------------
-  Version:       {version from service_status}
+  Version:       {framework_version}
   Gates active:  {gate_count}
   Feature:       {feature}
   Branch:        {branch from git}

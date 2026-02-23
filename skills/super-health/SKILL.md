@@ -51,7 +51,7 @@ Gather deep metrics for the full report:
 - Check circuit_breaker state summary (ok/degraded/tripped + trip counts)
 - Count and verify all gates are present and importable
 - Query memory MCP for knowledge count
-- Read `LIVE_STATE.json` for known_issues, test counts, service_status
+- Read `LIVE_STATE.json` for known_issues, test counts, framework_version
 - Read `stats-cache.json` for test results
 - Check git branch + recent commits:
   ```bash

@@ -10530,13 +10530,12 @@ try:
     # Test 6: valid live state returns no errors
     _cv_valid_state = {
         "session_count": 42,
-        "status": "active",
         "project": "Torus",
         "project_path": "/home/user/.claude",
         "feature": "test",
         "feature_status": "in_progress",
+        "framework_version": "v2.5.3",
         "what_was_done": "testing",
-        "service_status": "ok",
         "next_steps": ["step1"],
         "known_issues": [],
     }

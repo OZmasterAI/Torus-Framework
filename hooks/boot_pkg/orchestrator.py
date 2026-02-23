@@ -242,7 +242,7 @@ def main():
         # Config flags (booleans, profiles) are read from file by hooks — not needed in prompt.
         CONTEXT_KEYS = {
             "session_count", "project", "feature", "feature_status",
-            "test_count", "test_failures", "what_was_done", "service_status",
+            "test_count", "test_failures", "framework_version", "what_was_done",
             "next_steps", "known_issues",
         }
         filtered = {k: v for k, v in live_state.items() if k in CONTEXT_KEYS}

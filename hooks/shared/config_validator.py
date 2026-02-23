@@ -65,8 +65,8 @@ _LIVE_STATE_REQUIRED = {
     "project_path": str,
     "feature": str,
     "feature_status": str,
+    "framework_version": str,
     "what_was_done": str,
-    "service_status": str,
     "next_steps": list,
     "known_issues": list,
 }

@@ -18,7 +18,7 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
 3. **UPDATE LIVE STATE** — Write ~/.claude/LIVE_STATE.json with:
    - Updated session count
    - `what_was_done` — narrative of what was done this session (from conversation context, NOT the script)
-   - `service_status` — current service status block
+   - `framework_version` — current version string (e.g. "v2.5.3")
    - known_issues (carry forward + any new ones)
    - next_steps (reprioritized by Claude)
    - Do NOT write improvements_shipped, files_modified, or dormant_agent_teams — those are historical and belong in memory/git only
