@@ -126,7 +126,7 @@ def _init_chromadb():
     Safe to call multiple times — idempotent after first run.
     Uses nomic-ai/nomic-embed-text-v2-moe embedding model (768-dim, 8192 tokens).
     """
-    global client, collection, fix_outcomes, observations, web_pages, quarantine, _chromadb_degraded, _embedding_fn
+    global client, collection, fix_outcomes, observations, web_pages, quarantine, code_index, code_wrapup, _chromadb_degraded, _embedding_fn
     if client is not None:
         return
     try:
@@ -163,6 +163,8 @@ def _init_chromadb():
         observations = _get_col("observations")
         web_pages = _get_col("web_pages")
         quarantine = _get_col("quarantine")
+        code_index = _get_col("code_index")
+        code_wrapup = _get_col("code_wrapup")
     except Exception as e:
         import traceback
         print(f"[MCP] ChromaDB init failed: {e}\n{traceback.format_exc()}", file=_sys.stderr)
@@ -232,6 +234,161 @@ def generate_id(content: str) -> str:
     duplicate entries and unbounded database growth.
     """
     return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+# ── Code Indexing ────────────────────────────────────────────────────────────
+# Framework source code indexing for search_knowledge(mode="code").
+# Indexes .py and .md files under ~/.claude into ChromaDB collections
+# (code_index for boot snapshot, code_wrapup for wrap-up snapshot).
+
+CODE_INDEX_EXCLUDE_PATTERNS = frozenset({
+    "test_framework.py", "__pycache__", ".pyc", "chroma_db/", "chroma_db",
+    "backups/", "backups", "PRPs/", "PRPs", ".git", ".git/",
+    ".chromadb.sock", ".capture_queue.jsonl", ".auto_remember_queue.jsonl",
+    ".memory_last_queried", ".prompt_last_hash",
+})
+
+_CLAUDE_DIR = os.path.expanduser("~/.claude")
+
+
+def _collect_indexable_files(base=None):
+    """Walk base dir, return list of .py and .md file paths.
+
+    Excludes patterns in CODE_INDEX_EXCLUDE_PATTERNS.
+    """
+    if base is None:
+        base = _CLAUDE_DIR
+    result = []
+    for root, dirs, files in os.walk(base):
+        # Compute relative path from base for exclusion checks
+        rel_root = os.path.relpath(root, base)
+
+        # Prune excluded directories in-place
+        dirs[:] = [
+            d for d in dirs
+            if d not in CODE_INDEX_EXCLUDE_PATTERNS
+            and not d.endswith(".pyc")
+            and not any(d == exc.rstrip("/") for exc in CODE_INDEX_EXCLUDE_PATTERNS)
+        ]
+
+        for fname in files:
+            if fname in CODE_INDEX_EXCLUDE_PATTERNS:
+                continue
+            if fname.endswith(".pyc"):
+                continue
+            if not (fname.endswith(".py") or fname.endswith(".md")):
+                continue
+            result.append(os.path.join(root, fname))
+    return sorted(result)
+
+
+def _chunk_python_file(path, chunk_lines=90, overlap=15):
+    """Split a Python file into fixed-size overlapping chunks.
+
+    Returns list of dicts: {"text", "start_line", "end_line", "chunk_index"}
+    Lines are 1-based (matching editor display).
+    """
+    try:
+        with open(path, "r", errors="replace") as f:
+            lines = f.readlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+
+    if not lines:
+        return []
+
+    step = chunk_lines - overlap  # 75
+    if step < 1:
+        step = 1
+    chunks = []
+    idx = 0
+    pos = 0
+    while pos < len(lines):
+        end = min(pos + chunk_lines, len(lines))
+        text = "".join(lines[pos:end])
+        chunks.append({
+            "text": text,
+            "start_line": pos + 1,  # 1-based
+            "end_line": end,
+            "chunk_index": idx,
+        })
+        idx += 1
+        pos += step
+        if pos >= len(lines) and end < len(lines):
+            # Edge: ensure last lines are covered
+            break
+    return chunks
+
+
+def _chunk_markdown_file(path, max_words=500):
+    """Split a Markdown file on heading boundaries (## ).
+
+    Returns list of dicts: {"text", "start_line", "end_line", "chunk_index"}
+    """
+    try:
+        with open(path, "r", errors="replace") as f:
+            lines = f.readlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+
+    if not lines:
+        return []
+
+    chunks = []
+    current_lines = []
+    current_start = 1
+    idx = 0
+
+    for i, line in enumerate(lines):
+        # Split on heading boundaries (## or #)
+        if line.startswith("## ") and current_lines:
+            text = "".join(current_lines)
+            word_count = len(text.split())
+            if word_count > 0:
+                chunks.append({
+                    "text": text,
+                    "start_line": current_start,
+                    "end_line": i,  # line before this heading
+                    "chunk_index": idx,
+                })
+                idx += 1
+            current_lines = [line]
+            current_start = i + 1
+        else:
+            current_lines.append(line)
+            # Split on word limit within a section
+            text_so_far = "".join(current_lines)
+            if len(text_so_far.split()) >= max_words:
+                chunks.append({
+                    "text": text_so_far,
+                    "start_line": current_start,
+                    "end_line": i + 1,
+                    "chunk_index": idx,
+                })
+                idx += 1
+                current_lines = []
+                current_start = i + 2
+
+    # Flush remaining
+    if current_lines:
+        text = "".join(current_lines)
+        if text.strip():
+            chunks.append({
+                "text": text,
+                "start_line": current_start,
+                "end_line": len(lines),
+                "chunk_index": idx,
+            })
+
+    return chunks
+
+
+# Code index globals (lazy-initialized in _init_chromadb)
+code_index = None
+code_wrapup = None
+_code_index_building = False
+_code_index_lock = threading.Lock()
+_code_wrapup_lock = threading.Lock()
 
 
 # ── Auto Tier Classification ─────────────────────────────────────────────────
@@ -424,7 +581,7 @@ def _backfill_tiers():
 
 
 _EMBEDDING_MIGRATION_MARKER = os.path.join(os.path.dirname(__file__), ".embedding_migration_done")
-_COLLECTION_NAMES = ["knowledge", "fix_outcomes", "observations", "web_pages", "quarantine"]
+_COLLECTION_NAMES = ["knowledge", "fix_outcomes", "observations", "web_pages", "quarantine", "code_index", "code_wrapup"]
 
 
 def _migrate_embeddings():
@@ -436,7 +593,7 @@ def _migrate_embeddings():
 
     Gated by marker file.  Called from _ensure_initialized() after _init_chromadb().
     """
-    global collection, fix_outcomes, observations, web_pages, quarantine
+    global collection, fix_outcomes, observations, web_pages, quarantine, code_index, code_wrapup
 
     if os.path.exists(_EMBEDDING_MIGRATION_MARKER):
         return 0
@@ -452,6 +609,8 @@ def _migrate_embeddings():
         "observations": observations,
         "web_pages": web_pages,
         "quarantine": quarantine,
+        "code_index": code_index,
+        "code_wrapup": code_wrapup,
     }
     _ef_kwargs = {"embedding_function": _embedding_fn}
 
@@ -1129,6 +1288,229 @@ _fts_count = 0
 _initialized = False
 
 
+def _run_code_indexer(snapshot_type="boot"):
+    """Background indexer: chunk and upsert framework source into code_index/code_wrapup.
+
+    Incremental: uses git diff to find changed files. Falls back to full reindex on failure.
+    Thread-safe: uses per-snapshot locks (trylock semantics — skips if already running).
+    """
+    global _code_index_building
+
+    if snapshot_type not in ("boot", "wrapup"):
+        print(f"[CodeIndex] Invalid snapshot_type: {snapshot_type}", file=_sys.stderr)
+        return
+
+    lock = _code_index_lock if snapshot_type == "boot" else _code_wrapup_lock
+    if not lock.acquire(blocking=False):
+        print(f"[CodeIndex] {snapshot_type} already running, skipping", file=_sys.stderr)
+        return
+
+    try:
+        _code_index_building = True
+        target_col = code_index if snapshot_type == "boot" else code_wrapup
+        if target_col is None:
+            print(f"[CodeIndex] Collection not initialized, skipping", file=_sys.stderr)
+            return
+
+        # Load session number
+        session_number = 0
+        try:
+            ls_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
+            if os.path.isfile(ls_path):
+                with open(ls_path, "r") as f:
+                    session_number = json.load(f).get("session_count", 0)
+        except Exception:
+            pass
+
+        # Collect files
+        all_files = _collect_indexable_files()
+        if not all_files:
+            print(f"[CodeIndex] No indexable files found", file=_sys.stderr)
+            return
+
+        # Incremental: check git for changed files
+        changed_set = None
+        try:
+            git_result = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
+                capture_output=True, text=True, timeout=10,
+                cwd=os.path.expanduser("~/.claude"),
+            )
+            if git_result.returncode == 0 and git_result.stdout.strip():
+                base = os.path.expanduser("~/.claude")
+                changed_set = set()
+                for rel in git_result.stdout.strip().splitlines():
+                    changed_set.add(os.path.join(base, rel.strip()))
+        except Exception:
+            changed_set = None  # Full reindex fallback
+
+        # If incremental, filter to changed files only (+ any new files not in collection)
+        if changed_set is not None:
+            files_to_index = [f for f in all_files if f in changed_set]
+            # Also index files that aren't in the collection yet
+            try:
+                existing_count = target_col.count()
+                if existing_count == 0:
+                    files_to_index = all_files  # First run, index everything
+            except Exception:
+                files_to_index = all_files
+        else:
+            files_to_index = all_files
+
+        if not files_to_index:
+            print(f"[CodeIndex] {snapshot_type} snapshot: no files to index (all up-to-date)", file=_sys.stderr)
+            return
+
+        total_chunks = 0
+        batch_docs, batch_metas, batch_ids = [], [], []
+        indexed_at = datetime.now().isoformat()
+
+        for fpath in files_to_index:
+            try:
+                file_hash = hashlib.sha256(open(fpath, "rb").read()).hexdigest()[:12]
+            except OSError:
+                continue
+
+            rel_path = os.path.relpath(fpath, os.path.expanduser("~/.claude"))
+            language = "python" if fpath.endswith(".py") else "markdown"
+
+            # Delete old chunks for this file
+            try:
+                old = target_col.get(
+                    where={"file_rel_path": rel_path},
+                    include=[],
+                )
+                if old and old.get("ids"):
+                    target_col.delete(ids=old["ids"])
+            except Exception:
+                pass
+
+            # Chunk the file
+            if language == "python":
+                chunks = _chunk_python_file(fpath)
+            else:
+                chunks = _chunk_markdown_file(fpath)
+
+            try:
+                file_mtime = os.path.getmtime(fpath)
+            except OSError:
+                file_mtime = 0.0
+
+            for chunk in chunks:
+                chunk_id = f"code_{file_hash}_{chunk['chunk_index']}"
+                meta = {
+                    "file_path": fpath,
+                    "file_rel_path": rel_path,
+                    "start_line": chunk["start_line"],
+                    "end_line": chunk["end_line"],
+                    "chunk_index": chunk["chunk_index"],
+                    "total_chunks": len(chunks),
+                    "snapshot_type": snapshot_type,
+                    "session_number": session_number,
+                    "file_mtime": file_mtime,
+                    "file_hash": file_hash,
+                    "language": language,
+                    "indexed_at": indexed_at,
+                }
+                batch_docs.append(chunk["text"])
+                batch_metas.append(meta)
+                batch_ids.append(chunk_id)
+                total_chunks += 1
+
+                # Batch upsert every 50 chunks
+                if len(batch_docs) >= 50:
+                    try:
+                        target_col.upsert(
+                            documents=batch_docs, metadatas=batch_metas, ids=batch_ids,
+                        )
+                    except Exception as e:
+                        print(f"[CodeIndex] Batch upsert error: {e}", file=_sys.stderr)
+                    batch_docs, batch_metas, batch_ids = [], [], []
+
+        # Flush remaining batch
+        if batch_docs:
+            try:
+                target_col.upsert(
+                    documents=batch_docs, metadatas=batch_metas, ids=batch_ids,
+                )
+            except Exception as e:
+                print(f"[CodeIndex] Final batch upsert error: {e}", file=_sys.stderr)
+
+        print(f"[CodeIndex] {snapshot_type} snapshot: {total_chunks} chunks from {len(files_to_index)} files", file=_sys.stderr)
+
+    except Exception as e:
+        print(f"[CodeIndex] {snapshot_type} indexer error: {e}", file=_sys.stderr)
+    finally:
+        _code_index_building = False
+        lock.release()
+
+
+def _search_code_internal(query, top_k=10):
+    """Search the code_index collection. Returns dict with results list."""
+    if code_index is None:
+        return {"results": [], "message": "Code index not initialized"}
+
+    count = code_index.count()
+
+    # If index is being built and empty, tell caller
+    if _code_index_building and count == 0:
+        return {"results": [], "indexing": True, "message": "Code index is being built, try again in ~30s"}
+
+    if count == 0:
+        return {"results": [], "message": "Code index is empty. Run reindex_code('boot') to populate."}
+
+    actual_k = min(top_k, count)
+    try:
+        results = code_index.query(
+            query_texts=[query], n_results=actual_k,
+            include=["metadatas", "distances", "documents"],
+        )
+    except Exception as e:
+        return {"results": [], "error": f"Code search failed: {e}"}
+
+    ids = results.get("ids", [[]])[0]
+    docs = results.get("documents", [[]])[0]
+    metas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
+
+    formatted = []
+    for i, mid in enumerate(ids):
+        meta = metas[i] if i < len(metas) else {}
+        distance = distances[i] if i < len(distances) else 1.0
+        doc = docs[i] if i < len(docs) else ""
+
+        # Preview: first 3 lines of the chunk
+        preview_lines = doc.split("\n")[:3] if doc else []
+        preview = "\n".join(preview_lines)
+        if len(doc.split("\n")) > 3:
+            preview += "\n..."
+
+        entry = {
+            "id": mid,
+            "file_path": meta.get("file_path", ""),
+            "file_rel_path": meta.get("file_rel_path", ""),
+            "start_line": meta.get("start_line", 0),
+            "end_line": meta.get("end_line", 0),
+            "language": meta.get("language", ""),
+            "relevance": round(1 - distance, 3),
+            "preview": preview,
+            "snapshot_type": meta.get("snapshot_type", ""),
+            "session_number": meta.get("session_number", 0),
+        }
+        formatted.append(entry)
+
+    result = {
+        "results": formatted,
+        "total_chunks": count,
+        "query": query,
+        "mode": "code",
+    }
+    if _code_index_building:
+        result["stale"] = True
+        result["message"] = "Index is being rebuilt — results may be stale"
+    return result
+
+
 def _ensure_initialized():
     """Run one-time initialization (ChromaDB client + preview migration + FTS5 build).
 
@@ -1666,7 +2048,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     Args:
         query: What to search for (semantic search)
         top_k: Number of results to return (default 15)
-        mode: Force search mode ("keyword", "semantic", "hybrid", "tags", "observations", "all"). Empty = auto-detect.
+        mode: Force search mode ("keyword", "semantic", "hybrid", "tags", "observations", "all", "code"). Empty = auto-detect.
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
         match_all: For tag mode only — if true, all tags must be present (default false).
     """
@@ -1689,12 +2071,18 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     except Exception:
         pass
 
-    VALID_MODES = {"keyword", "semantic", "hybrid", "tags", "observations", "all"}
+    VALID_MODES = {"keyword", "semantic", "hybrid", "tags", "observations", "all", "code"}
     if mode and mode not in VALID_MODES:
         mode = ""  # Invalid mode falls back to auto-detect
     if not mode:
         _routing = _ls_toggles.get("search_routing", "default")
         mode = _detect_query_mode(query, routing=_routing)
+
+    # Handle code search mode (early return — separate collection)
+    if mode == "code":
+        result = _search_code_internal(query, top_k)
+        _touch_memory_timestamp()
+        return result
 
     # Query alias expansion: historical name mappings
     QUERY_ALIASES = {
@@ -3971,6 +4359,18 @@ def _dispatch_request(req):
             result = _backup_database()
             return {"ok": True, "result": result}
 
+        if method == "reindex_code":
+            snapshot_type = params.get("snapshot_type", "boot")
+            if snapshot_type not in ("boot", "wrapup"):
+                return {"ok": False, "error": f"Invalid snapshot_type: {snapshot_type}"}
+            _ensure_initialized()
+            t = threading.Thread(
+                target=_run_code_indexer, args=(snapshot_type,),
+                daemon=True, name=f"code-indexer-{snapshot_type}",
+            )
+            t.start()
+            return {"ok": True, "result": {"started": True, "snapshot_type": snapshot_type}}
+
         if method == "auto_remember":
             content = params.get("content", "")
             context = params.get("context", "")
@@ -4014,6 +4414,8 @@ def _dispatch_request(req):
             "observations": observations,
             "fix_outcomes": fix_outcomes,
             "web_pages": web_pages,
+            "code_index": code_index,
+            "code_wrapup": code_wrapup,
         }
         col = col_map.get(col_name)
         if col is None:

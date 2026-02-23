@@ -5221,154 +5221,6 @@ test("handle_subagent_stop no longer calls _audit_log directly",
      "_audit_log" not in _h_source,
      "Expected _audit_log removed from handler (unified in main)")
 
-# ─────────────────────────────────────────────────
-# Dashboard: Web UI (Feature 11)
-# ─────────────────────────────────────────────────
-print("\n--- Dashboard: Web UI ---")
-
-_dash_dir = os.path.join(os.path.expanduser("~"), ".claude", "dashboard")
-_dash_static = os.path.join(_dash_dir, "static")
-
-# Dashboard file existence tests removed — compile check is sufficient
-try:
-    _dash_server_path = os.path.join(_dash_dir, "server.py")
-    with open(_dash_server_path) as _dsf:
-        compile(_dsf.read(), _dash_server_path, "exec")
-    _dash_imported = True
-    _dash_mod = None
-except Exception as _dash_e:
-    _dash_imported = False
-    _dash_mod = None
-
-test("Dashboard: server.py compiles without errors",
-     _dash_imported,
-     str(_dash_e) if not _dash_imported else "")
-
-if _dash_imported and _dash_mod is not None:
-    # 4. Health calculation matches statusline
-    _dash_gate_count = _dash_mod.count_gates()
-    _dash_mem_count = _dash_mod.get_memory_count()
-    _dash_health, _dash_dims = _dash_mod.calculate_health(_dash_gate_count, _dash_mem_count)
-    test("Dashboard: calculate_health returns int 0-100",
-         isinstance(_dash_health, int) and 0 <= _dash_health <= 100,
-         f"got {_dash_health}")
-
-    test("Dashboard: health dimensions has 6 entries",
-         len(_dash_dims) == 6,
-         f"got {len(_dash_dims)}: {list(_dash_dims.keys())}")
-
-    # 5. Audit parsing — Type B (gate decisions, consolidated)
-    _dash_line_b = '{"timestamp":"2026-02-13T01:00:00+00:00","gate":"GATE 1: TEST","tool":"Bash","decision":"pass","reason":"","session_id":"test"}'
-    _dash_parsed_b = _dash_mod.parse_audit_line(_dash_line_b)
-    test("Dashboard: parse Type B audit line with correct fields",
-         _dash_parsed_b is not None and _dash_parsed_b["type"] == "gate"
-         and _dash_parsed_b.get("gate") == "GATE 1: TEST"
-         and _dash_parsed_b.get("decision") == "pass",
-         f"got {_dash_parsed_b}")
-
-    # 6. Audit parsing — Type A (events, consolidated)
-    _dash_line_a = '{"ts":1770944392.5,"event":"SubagentStop","data":{"agent_type":"Explore","status":"completed"}}'
-    _dash_parsed_a = _dash_mod.parse_audit_line(_dash_line_a)
-    test("Dashboard: parse Type A audit line with correct fields",
-         _dash_parsed_a is not None and _dash_parsed_a["type"] == "event"
-         and _dash_parsed_a.get("event") == "SubagentStop",
-         f"got {_dash_parsed_a}")
-
-    # 7. Gate aggregation
-    _dash_stats = _dash_mod.aggregate_gate_stats()
-    test("Dashboard: gate aggregation returns dict",
-         isinstance(_dash_stats, dict))
-
-    # 8. Audit dates
-    _dash_dates = _dash_mod.get_audit_dates()
-    test("Dashboard: audit dates returns list",
-         isinstance(_dash_dates, list))
-
-    # 9. Health color names
-    test("Dashboard: health_color_name(100) = cyan",
-         _dash_mod.health_color_name(100) == "cyan")
-    test("Dashboard: health_color_name(95) = green",
-         _dash_mod.health_color_name(95) == "green")
-    test("Dashboard: health_color_name(80) = orange",
-         _dash_mod.health_color_name(80) == "orange")
-    test("Dashboard: health_color_name(60) = yellow",
-         _dash_mod.health_color_name(60) == "yellow")
-    test("Dashboard: health_color_name(30) = red",
-         _dash_mod.health_color_name(30) == "red")
-
-    # 10. Malformed audit line returns None
-    _dash_bad = _dash_mod.parse_audit_line("not valid json {{{")
-    test("Dashboard: malformed audit line → None",
-         _dash_bad is None)
-
-    # 11. Route count matches plan (24 API + 1 static mount = 25)
-    test("Dashboard: 25 routes configured",
-         len(_dash_mod.routes) == 25,
-         f"got {len(_dash_mod.routes)}")
-
-    # 12. HTML has all 7 panels
-    with open(os.path.join(_dash_static, "index.html")) as _hf:
-        _html = _hf.read()
-    for _panel in ["panel-health", "panel-gates", "panel-timeline",
-                   "panel-memory", "panel-errors", "panel-components", "panel-history"]:
-        test(f"Dashboard: HTML has {_panel}",
-             _panel in _html, f"missing {_panel}")
-
-    # 13. CSS has dark theme variables
-    with open(os.path.join(_dash_static, "style.css")) as _cf:
-        _css = _cf.read()
-    test("Dashboard: CSS has dark theme bg",
-         "#1a1a2e" in _css)
-    test("Dashboard: CSS has accent color",
-         "#e94560" in _css)
-
-    # 14. JS has all panel renderers
-    with open(os.path.join(_dash_static, "app.js")) as _jf:
-        _js = _jf.read()
-    for _fn in ["renderHealth", "renderGates", "renderTimeline",
-                "renderMemory", "renderErrors", "renderComponents", "renderHistory"]:
-        test(f"Dashboard: JS has {_fn}",
-             f"function {_fn}" in _js or f"async function {_fn}" in _js,
-             f"missing {_fn}")
-
-    # 15. JS has SSE connection
-    test("Dashboard: JS has SSE connectSSE()",
-         "connectSSE" in _js and "EventSource" in _js)
-
-# Replicate the health score computation logic from server.py api_health_score:
-#   gates_score = min(100, int(gate_count / expected_gates * 100))
-#   errors_score = max(0, 100 - total_errors * 20)
-
-# Test 1: gates_score with 12 gates (full) → 100
-gates_score_1 = min(100, int(12 / 12 * 100))
-test("gates_score with 12 gates → 100",
-     gates_score_1 == 100,
-     f"Expected 100, got {gates_score_1}")
-
-# Test 2: gates_score with 6 gates → 50
-gates_score_2 = min(100, int(6 / 12 * 100))
-test("gates_score with 6 gates → 50",
-     gates_score_2 == 50,
-     f"Expected 50, got {gates_score_2}")
-
-# Test 3: errors_score with 0 errors → 100
-errors_score_3 = max(0, 100 - 0 * 20)
-test("errors_score with 0 errors → 100",
-     errors_score_3 == 100,
-     f"Expected 100, got {errors_score_3}")
-
-# Test 4: errors_score with 3 error patterns → max(0, 100 - 60) = 40
-errors_score_4 = max(0, 100 - 3 * 20)
-test("errors_score with 3 error patterns → 40",
-     errors_score_4 == 40,
-     f"Expected 40, got {errors_score_4}")
-
-# Test 10: Route is registered
-
-# Test 11: Endpoint uses get_gate_dependencies from enforcer
-
-# Test 12: Endpoint returns write_conflicts and hot_keys
-
 cleanup_test_states()
 
 
@@ -12001,6 +11853,197 @@ except Exception as _ast_e:
     FAIL += 1
     RESULTS.append(f"  FAIL: Analytics MCP search tools tests: {_ast_e}")
     print(f"  FAIL: Analytics MCP search tools tests: {_ast_e}")
+
+# ─────────────────────────────────────────────────
+print("\n--- Code Indexing: Chunking & File Collection ---")
+
+try:
+    if MEMORY_SERVER_RUNNING:
+        # Import directly from memory_server (safe for pure functions — no ChromaDB access)
+        from memory_server import (
+            _collect_indexable_files, _chunk_python_file, _chunk_markdown_file,
+            CODE_INDEX_EXCLUDE_PATTERNS, _search_code_internal, _run_code_indexer,
+        )
+    else:
+        from memory_server import (
+            _collect_indexable_files, _chunk_python_file, _chunk_markdown_file,
+            CODE_INDEX_EXCLUDE_PATTERNS, _search_code_internal, _run_code_indexer,
+        )
+
+    import tempfile as _ci_tempfile
+
+    # === File collection tests ===
+
+    # _collect_indexable_files returns a list
+    _ci_files = _collect_indexable_files(os.path.join(os.path.dirname(__file__), "shared"))
+    test("_collect_indexable_files returns list",
+         isinstance(_ci_files, list) and len(_ci_files) > 0)
+
+    # Excludes __pycache__ directories
+    _ci_has_pycache = any("__pycache__" in f for f in _ci_files)
+    test("_collect_indexable_files excludes __pycache__",
+         not _ci_has_pycache)
+
+    # Excludes .pyc files
+    _ci_has_pyc = any(f.endswith(".pyc") for f in _ci_files)
+    test("_collect_indexable_files excludes .pyc files",
+         not _ci_has_pyc)
+
+    # Only .py and .md files
+    _ci_all_valid = all(f.endswith(".py") or f.endswith(".md") for f in _ci_files)
+    test("_collect_indexable_files only returns .py and .md",
+         _ci_all_valid)
+
+    # Full scan excludes test_framework.py
+    _ci_full = _collect_indexable_files(os.path.dirname(__file__))
+    _ci_has_tf = any(os.path.basename(f) == "test_framework.py" for f in _ci_full)
+    test("_collect_indexable_files excludes test_framework.py",
+         not _ci_has_tf)
+
+    # Includes actual .py files
+    _ci_has_py = any(f.endswith(".py") for f in _ci_files)
+    test("_collect_indexable_files includes .py files",
+         _ci_has_py)
+
+    # === Python chunking tests ===
+
+    # Create a temp Python file for chunking tests
+    _ci_py_content = "\n".join([f"line_{i} = {i}" for i in range(200)])
+    _ci_py_tmp = _ci_tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
+    _ci_py_tmp.write(_ci_py_content)
+    _ci_py_tmp.close()
+
+    _ci_py_chunks = _chunk_python_file(_ci_py_tmp.name, chunk_lines=90, overlap=15)
+    test("_chunk_python_file returns list of chunks",
+         isinstance(_ci_py_chunks, list) and len(_ci_py_chunks) > 0)
+
+    # Fixed-size chunks with overlap
+    test("_chunk_python_file 200-line file produces 3 chunks (90/15 overlap)",
+         len(_ci_py_chunks) == 3, f"got {len(_ci_py_chunks)}")
+
+    # Each chunk has required keys
+    _ci_chunk_keys = {"text", "start_line", "end_line", "chunk_index"}
+    _ci_has_keys = all(_ci_chunk_keys <= set(c.keys()) for c in _ci_py_chunks)
+    test("_chunk_python_file chunks have text/start_line/end_line/chunk_index",
+         _ci_has_keys)
+
+    # First chunk starts at line 1
+    test("_chunk_python_file first chunk starts at line 1",
+         _ci_py_chunks[0]["start_line"] == 1)
+
+    # Overlap: second chunk starts before first ends
+    if len(_ci_py_chunks) >= 2:
+        test("_chunk_python_file overlap: chunk 2 starts before chunk 1 ends",
+             _ci_py_chunks[1]["start_line"] < _ci_py_chunks[0]["end_line"])
+
+    # Short file: produces exactly 1 chunk
+    _ci_short_tmp = _ci_tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
+    _ci_short_tmp.write("x = 1\ny = 2\n")
+    _ci_short_tmp.close()
+    _ci_short_chunks = _chunk_python_file(_ci_short_tmp.name)
+    test("_chunk_python_file short file produces 1 chunk",
+         len(_ci_short_chunks) == 1)
+    os.unlink(_ci_short_tmp.name)
+
+    # Empty file: produces no chunks
+    _ci_empty_tmp = _ci_tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
+    _ci_empty_tmp.close()
+    _ci_empty_chunks = _chunk_python_file(_ci_empty_tmp.name)
+    test("_chunk_python_file empty file produces 0 chunks",
+         len(_ci_empty_chunks) == 0)
+    os.unlink(_ci_empty_tmp.name)
+
+    os.unlink(_ci_py_tmp.name)
+
+    # === Markdown chunking tests ===
+
+    _ci_md_content = "# Title\nSome intro text.\n\n## Section One\nContent for section one.\nMore content.\n\n## Section Two\nContent for section two.\n"
+    _ci_md_tmp = _ci_tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False)
+    _ci_md_tmp.write(_ci_md_content)
+    _ci_md_tmp.close()
+
+    _ci_md_chunks = _chunk_markdown_file(_ci_md_tmp.name)
+    test("_chunk_markdown_file returns list of chunks",
+         isinstance(_ci_md_chunks, list) and len(_ci_md_chunks) > 0)
+
+    # Splits on heading boundaries
+    test("_chunk_markdown_file splits on ## headings (3 sections)",
+         len(_ci_md_chunks) == 3, f"got {len(_ci_md_chunks)}")
+
+    # Chunks have required keys
+    _ci_md_has_keys = all(_ci_chunk_keys <= set(c.keys()) for c in _ci_md_chunks)
+    test("_chunk_markdown_file chunks have text/start_line/end_line/chunk_index",
+         _ci_md_has_keys)
+
+    # Empty markdown: no chunks
+    _ci_md_empty = _ci_tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False)
+    _ci_md_empty.close()
+    _ci_md_empty_chunks = _chunk_markdown_file(_ci_md_empty.name)
+    test("_chunk_markdown_file empty file produces 0 chunks",
+         len(_ci_md_empty_chunks) == 0)
+    os.unlink(_ci_md_empty.name)
+
+    os.unlink(_ci_md_tmp.name)
+
+    # === Constants tests ===
+
+    test("CODE_INDEX_EXCLUDE_PATTERNS is frozenset",
+         isinstance(CODE_INDEX_EXCLUDE_PATTERNS, frozenset))
+
+    test("CODE_INDEX_EXCLUDE_PATTERNS contains test_framework.py",
+         "test_framework.py" in CODE_INDEX_EXCLUDE_PATTERNS)
+
+    test("CODE_INDEX_EXCLUDE_PATTERNS contains __pycache__",
+         "__pycache__" in CODE_INDEX_EXCLUDE_PATTERNS)
+
+    # === Search function tests (without ChromaDB) ===
+
+    # _search_code_internal with None collection returns empty
+    import memory_server as _ci_ms
+    _ci_orig = _ci_ms.code_index
+    _ci_ms.code_index = None
+    _ci_search_none = _search_code_internal("test", top_k=5)
+    test("_search_code_internal with None collection returns empty results",
+         isinstance(_ci_search_none, dict) and _ci_search_none.get("results") == [])
+    _ci_ms.code_index = _ci_orig
+
+    # _search_code_internal with indexing flag returns indexing message
+    _ci_ms._code_index_building = True
+    _ci_ms.code_index = None
+    _ci_search_building = _search_code_internal("test", top_k=5)
+    test("_search_code_internal during indexing with None col returns empty results",
+         isinstance(_ci_search_building, dict) and _ci_search_building.get("results") == [])
+    _ci_ms._code_index_building = False
+    _ci_ms.code_index = _ci_orig
+
+    # === _run_code_indexer validation tests ===
+
+    # Invalid snapshot_type is rejected (prints to stderr, returns None)
+    import io as _ci_io
+    _ci_stderr = _ci_io.StringIO()
+    _ci_old_stderr = _ci_ms._sys.stderr
+    _ci_ms._sys.stderr = _ci_stderr
+    _run_code_indexer("invalid_type")
+    _ci_ms._sys.stderr = _ci_old_stderr
+    test("_run_code_indexer rejects invalid snapshot_type",
+         "Invalid snapshot_type" in _ci_stderr.getvalue())
+
+    # === Socket wrapper test ===
+
+    from shared.chromadb_socket import reindex_code as _ci_reindex_code
+    test("reindex_code function exists in chromadb_socket",
+         callable(_ci_reindex_code))
+
+    # === Boot integration test ===
+
+    from boot_pkg.memory import socket_reindex as _ci_socket_reindex
+    test("socket_reindex is importable from boot_pkg.memory",
+         callable(_ci_socket_reindex))
+
+except Exception as _ci_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Code indexing tests: {_ci_e}")
+    print(f"  FAIL: Code indexing tests: {_ci_e}")
 
 # Restore sideband file after tests
 if _SIDEBAND_BACKUP is not None:

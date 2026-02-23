@@ -149,3 +149,12 @@ def flush_queue():
 def backup():
     """Trigger a consistent backup of chroma.sqlite3 on the server."""
     return request("backup")
+
+
+def reindex_code(snapshot_type="boot"):
+    """Trigger code indexing on the server (background thread).
+
+    snapshot_type: "boot" or "wrapup" — determines which collection to populate.
+    Returns {"started": True, "snapshot_type": ...} on success.
+    """
+    return request("reindex_code", params={"snapshot_type": snapshot_type})

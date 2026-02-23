@@ -26,8 +26,9 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
    - `git add` relevant files
    - `git commit` with descriptive message
    - Do NOT push unless explicitly asked
-5. **VERIFY** — Check risk_level from gathered data:
+5. **CODE REINDEX** — Trigger wrapup snapshot: `search_knowledge("reindex", mode="code")` (captures post-session code state for session diffing)
+6. **VERIFY** — Check risk_level from gathered data:
    - GREEN: Proceed to summary
    - YELLOW: Warn user about stale state or uncommitted changes
    - RED: Warn user about memory gaps — suggest corrective actions
-6. **DISPLAY SUMMARY** — Show what was saved and what's queued for next session
+7. **DISPLAY SUMMARY** — Show what was saved and what's queued for next session

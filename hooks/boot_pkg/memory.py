@@ -9,6 +9,7 @@ from shared.chromadb_socket import (
     count as _default_count,
     flush_queue as socket_flush,
     remember as socket_remember,
+    reindex_code as socket_reindex,
     WorkerUnavailable,
 )
 

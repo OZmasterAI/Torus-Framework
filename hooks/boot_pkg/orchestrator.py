@@ -9,7 +9,7 @@ from datetime import datetime
 from boot_pkg.util import CLAUDE_DIR, read_file, load_live_state
 from boot_pkg.memory import (
     inject_memories_via_socket, _write_sideband_timestamp,
-    socket_available, socket_flush, socket_remember,
+    socket_available, socket_flush, socket_remember, socket_reindex,
 )
 from boot_pkg.context import (
     _extract_recent_errors, _extract_test_status, _extract_verification_quality,
@@ -17,7 +17,7 @@ from boot_pkg.context import (
     _extract_gate_effectiveness_suggestions, _extract_gate_blocks,
 )
 from boot_pkg.maintenance import (
-    reset_enforcement_state, _auto_start_dashboard, _rotate_audit_logs,
+    reset_enforcement_state, _rotate_audit_logs,
 )
 
 try:
@@ -273,9 +273,6 @@ def main():
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))
 
-    # Auto-start dashboard server
-    _auto_start_dashboard()
-
     # Reset state
     reset_enforcement_state()
 
@@ -341,3 +338,11 @@ def main():
 
     # Write sideband timestamp (auto-injection satisfies Gate 4)
     _write_sideband_timestamp()
+
+    # Trigger code index reindex (background thread on MCP server)
+    if _worker_available:
+        try:
+            socket_reindex("boot")
+            print("  [BOOT] Code index: reindex triggered", file=sys.stderr)
+        except Exception:
+            pass  # Code indexing failure is non-fatal
