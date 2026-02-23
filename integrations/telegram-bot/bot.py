@@ -7,6 +7,10 @@ Message flow:
       → claude -p --resume <session_id> → extract result
         → log response → send reply
 
+  Voice messages:
+    OZ sends voice → bot downloads .ogg → faster-whisper transcribes
+      → same pipeline as text messages
+
 Usage:
     python3 bot.py
 """
@@ -14,6 +18,7 @@ Usage:
 import logging
 import os
 import sys
+import tempfile
 
 _PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _PLUGIN_DIR)
@@ -149,6 +154,130 @@ async def handle_message(update: Update, context):
             await msg.reply_text(result[i:i + 4096])
 
 
+# ── Voice-to-text (faster-whisper) ─────────────────────────────────────────
+_whisper_model = None
+_WHISPER_MODEL_SIZE = os.environ.get("WHISPER_MODEL", "small")
+
+
+def _get_whisper_model():
+    """Lazy-load the faster-whisper model (stays in memory after first call)."""
+    global _whisper_model
+    if _whisper_model is None:
+        from faster_whisper import WhisperModel
+        logger.info("Loading whisper model '%s' (first voice message)...", _WHISPER_MODEL_SIZE)
+        _whisper_model = WhisperModel(_WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
+        logger.info("Whisper model loaded.")
+    return _whisper_model
+
+
+def _transcribe_ogg(ogg_path: str) -> str:
+    """Transcribe an .ogg voice file to text using faster-whisper."""
+    model = _get_whisper_model()
+    segments, info = model.transcribe(ogg_path, beam_size=5)
+    text = " ".join(seg.text for seg in segments).strip()
+    logger.info("Transcribed %.1fs audio (%s) → %d chars", info.duration, info.language, len(text))
+    return text
+
+
+async def handle_voice(update: Update, context):
+    """Handle incoming voice messages — transcribe and process as text."""
+    msg = update.effective_message
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if not msg or not user or not chat:
+        return
+
+    if not _is_authorized(user.id, chat.id):
+        await msg.reply_text("Unauthorized.")
+        return
+
+    # Download voice file
+    voice = msg.voice or msg.audio
+    if not voice:
+        return
+
+    await chat.send_action(ChatAction.TYPING)
+
+    try:
+        tg_file = await voice.get_file()
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+            tmp_path = tmp.name
+        await tg_file.download_to_drive(tmp_path)
+    except Exception as e:
+        logger.error("Voice download failed: %s", e)
+        await msg.reply_text(f"Failed to download voice: {e}")
+        return
+
+    # Transcribe
+    try:
+        text = _transcribe_ogg(tmp_path)
+    except Exception as e:
+        logger.error("Transcription failed: %s", e)
+        await msg.reply_text(f"Transcription error: {e}")
+        return
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    if not text:
+        await msg.reply_text("(empty transcription)")
+        return
+
+    # Show what was heard
+    await msg.reply_text(f"🎤 _{text}_", parse_mode=ParseMode.MARKDOWN)
+
+    # Log and process through the same pipeline as text messages
+    log_message(DB_PATH, chat.id, user.first_name or "user", f"[voice] {text}", _now_iso())
+    await chat.send_action(ChatAction.TYPING)
+
+    # Route: tmux mode or subprocess mode (same as handle_message)
+    use_tmux = _is_tmux_mode()
+    result = None
+    new_session_id = None
+
+    if use_tmux:
+        tmux_target = CFG.get("tmux_target", "claude-bot")
+        try:
+            if await is_tmux_session_alive(tmux_target):
+                result, _ = await run_claude_tmux(
+                    text,
+                    tmux_target=tmux_target,
+                    timeout=CFG.get("claude_timeout", 120),
+                )
+            else:
+                use_tmux = False
+        except TmuxError:
+            use_tmux = False
+
+    if not use_tmux or result is None:
+        session_id = get_session_id(SESSIONS_PATH, chat.id)
+        try:
+            result, new_session_id = await run_claude(
+                text,
+                session_id=session_id,
+                cwd=CFG.get("claude_cwd"),
+                timeout=CFG.get("claude_timeout", 120),
+            )
+        except ClaudeError as e:
+            logger.error("Claude error: %s", e)
+            await msg.reply_text(f"Error: {e}")
+            return
+
+    if new_session_id:
+        save_session(SESSIONS_PATH, chat.id, new_session_id)
+
+    log_message(DB_PATH, chat.id, "Claude", result, _now_iso())
+
+    if len(result) <= 4096:
+        await msg.reply_text(result)
+    else:
+        for i in range(0, len(result), 4096):
+            await msg.reply_text(result[i:i + 4096])
+
+
 async def cmd_status(update: Update, context):
     """Handle /status command."""
     msg = update.effective_message
@@ -264,6 +393,11 @@ def main():
     private_filter = filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND
     group_filter = filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND
     app.add_handler(MessageHandler(private_filter | group_filter, handle_message))
+
+    # Voice messages — transcribe via faster-whisper, then process as text
+    voice_filter = filters.ChatType.PRIVATE & (filters.VOICE | filters.AUDIO)
+    group_voice_filter = filters.ChatType.GROUPS & (filters.VOICE | filters.AUDIO)
+    app.add_handler(MessageHandler(voice_filter | group_voice_filter, handle_voice))
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
