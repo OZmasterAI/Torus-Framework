@@ -431,9 +431,22 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         except Exception as e:
             _log_debug(f"Gate 17 scan failed (non-blocking): {e}")
 
+    # Analytics tool usage tracking (for Upgrades C+F)
+    if tool_name.startswith("mcp__analytics__"):
+        state["analytics_last_queried"] = time.time()
+        state["analytics_warn_count"] = 0  # Reset F-track counter
+        # Per-tool timestamp for C cooldowns
+        alu = state.get("analytics_last_used", {})
+        if not isinstance(alu, dict):
+            alu = {}
+        # Extract short tool name: mcp__analytics__gate_dashboard → gate_dashboard
+        short_name = tool_name.replace("mcp__analytics__", "")
+        alu[short_name] = time.time()
+        state["analytics_last_used"] = alu
+
     _capture_observation(tool_name, tool_input, tool_response, session_id, state)
 
-    # ── Mentor System (A+D+E) — all toggle-gated, all fail-open ──
+    # ── Mentor System (A+D+E+F) — all toggle-gated, all fail-open ──
     state["mentor_warned_this_cycle"] = False  # Reset at start of mentor block
     _mentor_t0 = time.time()
     _mentor_all = get_live_toggle("mentor_all")
@@ -467,6 +480,17 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                     print(f"[MENTOR:MEMORY] {verdict_e['context']}", file=sys.stderr)
             except Exception as e:
                 _log_debug(f"Mentor memory failed (non-blocking): {e}")
+
+    if _mentor_all or get_live_toggle("mentor_analytics"):
+        if time.time() - _mentor_t0 < 2.5:
+            try:
+                from tracker_pkg.mentor_analytics import evaluate as analytics_evaluate
+                nudges_f = analytics_evaluate(tool_name, tool_input, tool_response, state)
+                if nudges_f and not state.get("mentor_warned_this_cycle"):
+                    # Max 1 nudge per cycle
+                    print(f"[MENTOR:ANALYTICS] {nudges_f[0]}", file=sys.stderr)
+            except Exception as e:
+                _log_debug(f"Mentor analytics failed (non-blocking): {e}")
 
     # Session duration nudge — once per milestone (1h, 2h, 3h)
     session_hours = (time.time() - state.get("session_start", time.time())) / 3600

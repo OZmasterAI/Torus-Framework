@@ -136,6 +136,10 @@ def default_state():
         "mentor_escalation_count": 0,            # Consecutive escalations (resets on proceed/advise)
         "mentor_signals": [],                    # Recent Signal list from last evaluation
         "mentor_warned_this_cycle": False,       # Prevents duplicate warnings in same PostToolUse
+        # v3.4 fields (analytics awareness — Upgrades C+F)
+        "analytics_last_used": {},              # {tool_name: timestamp} per analytics MCP tool
+        "analytics_last_queried": 0,            # Timestamp of last any mcp__analytics__ call
+        "analytics_warn_count": 0,              # Gate 6 F-track: separate counter, threshold 15
         "mentor_chain_pattern": "",              # Detected chain pattern: "churn"|"stuck"|"healthy"|""
         "mentor_chain_score": 1.0,               # Outcome chain score 0.0-1.0
         "mentor_memory_match": None,             # Historical match from memory mentor (dict or None)
@@ -220,6 +224,10 @@ def get_state_schema():
         "mentor_chain_score": {"type": "float", "description": "Outcome chain score 0.0-1.0", "category": "mentor"},
         "mentor_memory_match": {"type": "dict", "description": "Historical match from memory mentor (dict or None)", "category": "mentor"},
         "mentor_historical_context": {"type": "str", "description": "Human-readable historical context from memory mentor", "category": "mentor"},
+        # v3.4 fields (analytics awareness — Upgrades C+F)
+        "analytics_last_used": {"type": "dict", "description": "Per-analytics-tool last-used timestamps: {tool_name: timestamp}", "category": "analytics"},
+        "analytics_last_queried": {"type": "float", "description": "Timestamp of last any mcp__analytics__ call", "category": "analytics"},
+        "analytics_warn_count": {"type": "int", "description": "Gate 6 analytics F-track: separate counter, threshold 15", "category": "analytics"},
     }
 
 

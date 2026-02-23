@@ -11724,6 +11724,144 @@ except Exception as _mint_e:
 cleanup_test_states()
 
 # ─────────────────────────────────────────────────
+# Upgrade C: Mentor Analytics Nudges
+# ─────────────────────────────────────────────────
+print('\n--- Upgrade C: Mentor Analytics Nudges ---')
+
+try:
+    from tracker_pkg.mentor_analytics import evaluate as _ma_eval, _TRIGGERS as _ma_triggers
+
+    # 1. Gate file edit triggers gate_dashboard nudge
+    _ma_state1 = {"total_tool_calls": 10, "analytics_last_used": {}}
+    _ma_msgs1 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, {}, _ma_state1)
+    test("UpgradeC: gate edit triggers gate_dashboard nudge",
+         any("gate_dashboard" in m for m in _ma_msgs1),
+         f"msgs={_ma_msgs1}")
+
+    # 2. Skill file edit triggers skill_health nudge
+    _ma_msgs2 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/skills/benchmark/SKILL.md"}, {}, _ma_state1)
+    test("UpgradeC: skill edit triggers skill_health nudge",
+         any("skill_health" in m for m in _ma_msgs2),
+         f"msgs={_ma_msgs2}")
+
+    # 3. Enforcer edit triggers gate_timing nudge
+    _ma_msgs3 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/hooks/enforcer.py"}, {}, _ma_state1)
+    test("UpgradeC: enforcer edit triggers gate_timing nudge",
+         any("gate_timing" in m for m in _ma_msgs3),
+         f"msgs={_ma_msgs3}")
+
+    # 4. Non-framework file → no nudge (except periodic)
+    _ma_state4 = {"total_tool_calls": 10, "analytics_last_used": {}}
+    _ma_msgs4 = _ma_eval("Edit", {"file_path": "/home/crab/Desktop/app.py"}, {}, _ma_state4)
+    test("UpgradeC: non-framework edit → no path-based nudge",
+         not any("gate_dashboard" in m or "skill_health" in m or "gate_timing" in m for m in _ma_msgs4),
+         f"msgs={_ma_msgs4}")
+
+    # 5. Cooldown: recent analytics call suppresses nudge
+    import time as _ma_time
+    _ma_state5 = {"total_tool_calls": 10, "analytics_last_used": {"gate_dashboard": _ma_time.time()}}
+    _ma_msgs5 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, {}, _ma_state5)
+    test("UpgradeC: cooldown suppresses nudge after recent analytics call",
+         not any("gate_dashboard" in m for m in _ma_msgs5),
+         f"msgs={_ma_msgs5}")
+
+    # 6. Periodic checkpoint at 50th tool call
+    _ma_state6 = {"total_tool_calls": 50, "analytics_last_used": {}}
+    _ma_msgs6 = _ma_eval("Read", {"file_path": "/tmp/test.py"}, {}, _ma_state6)
+    test("UpgradeC: periodic checkpoint at 50th tool call",
+         any("session_summary" in m for m in _ma_msgs6),
+         f"msgs={_ma_msgs6}")
+
+    # 7. Read tool → no path-based nudge (only Edit/Write trigger)
+    _ma_state7 = {"total_tool_calls": 10, "analytics_last_used": {}}
+    _ma_msgs7 = _ma_eval("Read", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, {}, _ma_state7)
+    test("UpgradeC: Read tool → no nudge",
+         not any("gate_dashboard" in m for m in _ma_msgs7),
+         f"msgs={_ma_msgs7}")
+
+except Exception as _ma_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Upgrade C tests: {_ma_e}")
+    print(f"  FAIL: Upgrade C tests: {_ma_e}")
+
+# ─────────────────────────────────────────────────
+# Upgrade F: Gate 6 Analytics Advisory
+# ─────────────────────────────────────────────────
+print('\n--- Upgrade F: Gate 6 Analytics Advisory ---')
+
+try:
+    from gates.gate_06_save_fix import check as _g6f_check, ANALYTICS_ESCALATION_THRESHOLD as _g6f_thresh
+
+    # 1. Framework file edit without analytics → warning + counter increment
+    _g6f_state1 = {"gate6_warn_count": 0, "analytics_last_queried": 0, "analytics_warn_count": 0,
+                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
+                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
+                    "error_windows": [], "gate_tune_overrides": {}}
+    _g6f_r1 = _g6f_check("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, _g6f_state1)
+    test("UpgradeF: framework edit → analytics_warn_count increments",
+         _g6f_state1.get("analytics_warn_count") == 1 and not _g6f_r1.blocked,
+         f"count={_g6f_state1.get('analytics_warn_count')}, blocked={_g6f_r1.blocked}")
+
+    # 2. Non-framework file → no analytics warning
+    _g6f_state2 = {"gate6_warn_count": 0, "analytics_last_queried": 0, "analytics_warn_count": 0,
+                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
+                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
+                    "error_windows": [], "gate_tune_overrides": {}}
+    _g6f_r2 = _g6f_check("Edit", {"file_path": "/home/crab/Desktop/app.py"}, _g6f_state2)
+    test("UpgradeF: non-framework edit → no analytics warning",
+         _g6f_state2.get("analytics_warn_count", 0) == 0,
+         f"count={_g6f_state2.get('analytics_warn_count')}")
+
+    # 3. Recent analytics call → no warning
+    _g6f_state3 = {"gate6_warn_count": 0, "analytics_last_queried": _ma_time.time(), "analytics_warn_count": 0,
+                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
+                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
+                    "error_windows": [], "gate_tune_overrides": {}}
+    _g6f_r3 = _g6f_check("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, _g6f_state3)
+    test("UpgradeF: recent analytics → no warning",
+         _g6f_state3.get("analytics_warn_count", 0) == 0,
+         f"count={_g6f_state3.get('analytics_warn_count')}")
+
+    # 4. Separate counter — analytics_warn_count doesn't affect gate6_warn_count
+    _g6f_state4 = {"gate6_warn_count": 0, "analytics_last_queried": 0, "analytics_warn_count": 5,
+                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
+                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
+                    "error_windows": [], "gate_tune_overrides": {}}
+    _g6f_r4 = _g6f_check("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, _g6f_state4)
+    test("UpgradeF: analytics counter separate from gate6_warn_count",
+         _g6f_state4.get("gate6_warn_count") == 0 and _g6f_state4.get("analytics_warn_count") == 6,
+         f"g6={_g6f_state4.get('gate6_warn_count')}, analytics={_g6f_state4.get('analytics_warn_count')}")
+
+    # 5. Threshold 15 → blocks at 15
+    _g6f_state5 = {"gate6_warn_count": 0, "analytics_last_queried": 0, "analytics_warn_count": 14,
+                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
+                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
+                    "error_windows": [], "gate_tune_overrides": {}}
+    _g6f_r5 = _g6f_check("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, _g6f_state5)
+    test("UpgradeF: blocks at threshold 15",
+         _g6f_r5.blocked and _g6f_state5.get("analytics_warn_count") == 15,
+         f"blocked={_g6f_r5.blocked}, count={_g6f_state5.get('analytics_warn_count')}")
+
+    # 6. State defaults present
+    _g6f_ds = _mentor_default_state()
+    test("UpgradeF: analytics_last_used in default_state",
+         "analytics_last_used" in _g6f_ds and _g6f_ds["analytics_last_used"] == {},
+         f"got {_g6f_ds.get('analytics_last_used')}")
+    test("UpgradeF: analytics_last_queried in default_state",
+         "analytics_last_queried" in _g6f_ds and _g6f_ds["analytics_last_queried"] == 0,
+         f"got {_g6f_ds.get('analytics_last_queried')}")
+    test("UpgradeF: analytics_warn_count in default_state",
+         "analytics_warn_count" in _g6f_ds and _g6f_ds["analytics_warn_count"] == 0,
+         f"got {_g6f_ds.get('analytics_warn_count')}")
+
+except Exception as _g6f_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Upgrade F tests: {_g6f_e}")
+    print(f"  FAIL: Upgrade F tests: {_g6f_e}")
+
+cleanup_test_states()
+
+# ─────────────────────────────────────────────────
 # Analytics MCP: Enforcer Exemption
 # ─────────────────────────────────────────────────
 print("\n--- Analytics MCP: Enforcer Exemption ---")

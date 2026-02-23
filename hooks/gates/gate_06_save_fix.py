@@ -33,6 +33,13 @@ WARN_THRESHOLD = 2
 # and avoid premature deadlocks where blocking prevents clearing
 ESCALATION_THRESHOLD = 5
 
+# Analytics awareness (Upgrade F): SEPARATE counter, loose threshold.
+# Only fires for framework file edits without recent analytics query.
+# Never cross-contaminates with gate6_warn_count.
+ANALYTICS_ESCALATION_THRESHOLD = 15
+ANALYTICS_STALE_SECONDS = 1800  # 30 min since last analytics call
+FRAMEWORK_PATHS = ("/gates/", "/shared/", "enforcer", "tracker", "/skills/")
+
 # Verified fixes older than this are considered stale (expired)
 STALE_FIX_SECONDS = 1200  # 20 minutes
 
@@ -170,6 +177,35 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             )
             issued_warning = True
 
+    # ── Analytics awareness (Upgrade F) — separate counter, loose threshold ──
+    # Only checks Edit/Write on framework paths. Never increments gate6_warn_count.
+    analytics_warned = False
+    if tool_name in ("Edit", "Write"):
+        file_path = tool_input.get("file_path", "") if isinstance(tool_input, dict) else ""
+        if any(p in file_path for p in FRAMEWORK_PATHS):
+            last_analytics = state.get("analytics_last_queried", 0)
+            elapsed = time.time() - last_analytics if last_analytics else float("inf")
+            if elapsed > ANALYTICS_STALE_SECONDS:
+                analytics_count = state.get("analytics_warn_count", 0) + 1
+                state["analytics_warn_count"] = analytics_count
+                print(
+                    f"[{GATE_NAME}] ANALYTICS: Editing framework file without recent analytics check "
+                    f"({analytics_count}/{ANALYTICS_ESCALATION_THRESHOLD}). "
+                    f"Consider: gate_dashboard(), gate_timing(), or skill_health()",
+                    file=sys.stderr,
+                )
+                analytics_warned = True
+                if analytics_count >= ANALYTICS_ESCALATION_THRESHOLD:
+                    if tool_name == "Bash":
+                        return GateResult(blocked=False, gate_name=GATE_NAME, severity="warn")
+                    return GateResult(
+                        blocked=True,
+                        message=f"[{GATE_NAME}] BLOCKED: {analytics_count} framework edits without analytics check. "
+                                f"Call any mcp__analytics__*() tool to continue.",
+                        gate_name=GATE_NAME,
+                        severity="error",
+                    )
+
     # Escalation: track warning count and block after threshold
     if issued_warning:
         warn_count += 1
@@ -198,5 +234,5 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             )
 
     # If warnings were issued but not blocking, mark as advisory
-    severity = "warn" if issued_warning else "info"
+    severity = "warn" if (issued_warning or analytics_warned) else "info"
     return GateResult(blocked=False, gate_name=GATE_NAME, severity=severity)
