@@ -30,7 +30,7 @@
   "gate_auto_tune": true,
   "budget_degradation": false,
   "session_token_budget": 0,
-  "model_profile": "balanced",
+  "model_profile": "efficient",
   "security_profile": "balanced",
   "search_routing": "default",
   "chain_memory": true,
