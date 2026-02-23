@@ -8,7 +8,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "",
+        "matcher": "Edit|Write|NotebookEdit|Bash|Task|Skill|WebFetch|WebSearch|LSP|EnterWorktree",
         "hooks": [
           {
             "type": "command",
