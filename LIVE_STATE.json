@@ -1,18 +1,18 @@
 {
-  "session_count": 200,
+  "session_count": 202,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1428,
+  "test_count": 1448,
   "test_failures": 0,
-  "what_was_done": "Implemented 5 of 6 framework upgrades from AKIRA comparison analysis. A: Fixed noise filter false-positive bug (anchored regex + 85-char length exemption + force bypass). B: Added tag normalization (_normalize_tags auto-corrects bare tags to dimensioned format). C: New mentor_analytics.py with per-trigger cooldowns (15-20min) and periodic checkpoint every 50 tool calls. E: Added analytics MCP calls to /benchmark skill. F: Extended Gate 6 with analytics advisory (separate counter, threshold 15, resets on any mcp__analytics__ call). D (boot integration) intentionally skipped. Tests: 1413 -> 1428 (+15 new). 3 commits on Self-Sprint-2.",
-  "service_status": "Memory MCP: UP | Analytics MCP: UP (10 tools, defer_loading) | Tests: 1428 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 17 active (G8 dormant, G12 purged, G19 Hindsight) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 6 defs | Skills: 34 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens) | Mentor: 5 modules (ALL ON) | Model profiles: 5 | Security profiles: 4",
+  "what_was_done": "Implemented framework code indexing (mode=\"code\"). Extended search_knowledge with mode=\"code\" for semantic search over framework source. Added chunking functions, background indexer, boot/wrapup snapshots, dispatch handler, 25 new tests (1448 total, 0 failures). 6 files modified.",
+  "service_status": "Memory MCP: UP | Analytics MCP: UP (10 tools, defer_loading) | Tests: 1448 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 17 active (G8 dormant, G12 purged, G19 Hindsight) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 6 defs | Skills: 34 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens) | Mentor: 5 modules (ALL ON) | Model profiles: 5 | Security profiles: 4 | Code Index: mode=code",
   "next_steps": [
-    "All 6 AKIRA upgrades complete (A-F, D skipped intentionally). Analytics MCP verified.",
     "Merge Self-Sprint-2 into main",
-    "Pick next evolution target"
+    "Pick next evolution target",
+    "Verify code index works end-to-end after MCP restart"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
@@ -39,12 +39,12 @@
   "mentor_hindsight_gate": false,
   "mentor_outcome_chains": false,
   "mentor_memory": false,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 3m\n- **Tool Calls**: 13 (Bash: 7, TaskUpdate: 1, mcp__memory__remember_this: 1, Read: 1, Write: 1, mcp__analytics__framework_health: 1)\n- **Files Modified**: 1 (0 verified, 0 pending)\n- **Errors**: 1 (No such file or directory x1)\n- **Tests**: exit code 0\n- **Subagents**: 4 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 53m\n- **Tool Calls**: 100 (Bash: 59, Read: 32, mcp__memory__remember_this: 2, Task: 2, mcp__memory__search_knowledge: 2, EnterPlanMode: 1)\n- **Files Modified**: 1 (0 verified, 1 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 5 launched, 8,635 tokens\n\n**Files changed:**\n- `/home/crab/.claude/plans/ancient-purring-emerson.md` (pending)",
   "last_session_metrics": {
-    "reads": 1,
+    "reads": 6,
     "edits": 1,
-    "errors": 1,
+    "errors": 0,
     "verified": 0,
-    "pending": 0
+    "pending": 1
   }
 }
