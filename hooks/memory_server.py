@@ -1305,7 +1305,7 @@ def _run_code_indexer(snapshot_type="boot"):
         print(f"[CodeIndex] {snapshot_type} already running, skipping", file=_sys.stderr)
         return
 
-    _idx_status_path = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".code_index_status")
+    _idx_status_path = os.path.join(os.path.expanduser("~"), ".claude", "hooks", f".code_index_{snapshot_type}_status")
 
     def _write_idx_status(status, **extra):
         try:
