@@ -1305,11 +1305,25 @@ def _run_code_indexer(snapshot_type="boot"):
         print(f"[CodeIndex] {snapshot_type} already running, skipping", file=_sys.stderr)
         return
 
+    _idx_status_path = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".code_index_status")
+
+    def _write_idx_status(status, **extra):
+        try:
+            d = {"status": status, "snapshot_type": snapshot_type, "ts": time.time(), **extra}
+            tmp = _idx_status_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(d, f)
+            os.replace(tmp, _idx_status_path)
+        except OSError:
+            pass
+
     try:
         _code_index_building = True
+        _write_idx_status("indexing")
         target_col = code_index if snapshot_type == "boot" else code_wrapup
         if target_col is None:
             print(f"[CodeIndex] Collection not initialized, skipping", file=_sys.stderr)
+            _write_idx_status("error", error="collection_not_initialized")
             return
 
         # Load session number
@@ -1437,9 +1451,11 @@ def _run_code_indexer(snapshot_type="boot"):
                 print(f"[CodeIndex] Final batch upsert error: {e}", file=_sys.stderr)
 
         print(f"[CodeIndex] {snapshot_type} snapshot: {total_chunks} chunks from {len(files_to_index)} files", file=_sys.stderr)
+        _write_idx_status("done", chunks=total_chunks, files=len(files_to_index))
 
     except Exception as e:
         print(f"[CodeIndex] {snapshot_type} indexer error: {e}", file=_sys.stderr)
+        _write_idx_status("error", error=str(e)[:200])
     finally:
         _code_index_building = False
         lock.release()
