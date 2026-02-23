@@ -161,7 +161,6 @@ def build_context(agent_type, live_state, session_state=None):
     project = live_state.get("project", "unknown")
     feature = live_state.get("feature", "none")
     test_count = live_state.get("test_count", "?")
-    status = live_state.get("status", "unknown")
 
     if not live_state:
         return FALLBACK_CONTEXT
@@ -188,7 +187,7 @@ def build_context(agent_type, live_state, session_state=None):
     if agent_type == "general-purpose":
         parts = [
             f"Project: {project}. Feature: {feature}.",
-            f"Status: {status}. Tests: {test_count}.",
+            f"Tests: {test_count}.",
         ]
         # Rich operational context
         files_str = _format_file_list(session_state.get("files_read", []))
@@ -216,7 +215,7 @@ def build_context(agent_type, live_state, session_state=None):
     if agent_type == "builder":
         parts = [
             f"Project: {project}. Feature: {feature}.",
-            f"Status: {status}. Tests: {test_count}.",
+            f"Tests: {test_count}.",
         ]
         files_str = _format_file_list(session_state.get("files_read", []))
         if files_str:

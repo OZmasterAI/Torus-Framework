@@ -241,7 +241,7 @@ def main():
         # Only inject fields Claude needs in conversation context.
         # Config flags (booleans, profiles) are read from file by hooks — not needed in prompt.
         CONTEXT_KEYS = {
-            "session_count", "status", "project", "feature", "feature_status",
+            "session_count", "project", "feature", "feature_status",
             "test_count", "test_failures", "what_was_done", "service_status",
             "next_steps", "known_issues",
         }

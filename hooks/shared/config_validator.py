@@ -61,7 +61,6 @@ _VALID_EVENT_TYPES = {
 # Required fields in LIVE_STATE.json and their expected Python types
 _LIVE_STATE_REQUIRED = {
     "session_count": int,
-    "status": str,
     "project": str,
     "project_path": str,
     "feature": str,
