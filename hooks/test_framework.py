@@ -4463,12 +4463,118 @@ if not MEMORY_SERVER_RUNNING:
         test("Ingestion: whitespace-only rejected",
              _if_empty.get("rejected") is True, f"result={_if_empty}")
 
-        # Cleanup test memory
+        # 7. False-positive test: content ABOUT noise patterns should NOT be rejected
+        _if_meta = _rt_filter(
+            "Fixed npm install noise filter false-positive bug by anchoring regex patterns with ^ to match start of content only",
+            "false-positive regression test", "test:filter"
+        )
+        test("Ingestion: meta-discussion about patterns NOT rejected",
+             _if_meta.get("rejected") is not True and "id" in _if_meta,
+             f"result keys={list(_if_meta.keys())}")
+
+        # 8. New pattern: empty ack rejected
+        _if_ack = _rt_filter("OK", "test", "test")
+        test("Ingestion: empty ack 'OK' rejected (too short)",
+             _if_ack.get("rejected") is True, f"result={_if_ack}")
+
+        # 9. New pattern: filler phrase rejected (short filler only)
+        _if_filler = _rt_filter("Let me check the file for you now", "test", "test")
+        test("Ingestion: filler phrase rejected",
+             _if_filler.get("rejected") is True, f"result={_if_filler}")
+
+        # 10. False-negative guard: long filler + real content NOT rejected
+        _if_filler_long = _rt_filter(
+            "Let me check what we discovered: the token refresh was breaking because of a race condition in the handler",
+            "false-negative guard", "test:filter"
+        )
+        test("Ingestion: filler + real content NOT rejected",
+             _if_filler_long.get("rejected") is not True and "id" in _if_filler_long,
+             f"result keys={list(_if_filler_long.keys())}")
+
+        # 11. False-negative guard: 'Reading file metadata' NOT rejected (valid content)
+        _if_reading = _rt_filter(
+            "Reading file metadata requires the Pillow library for EXIF parsing and thumbnail extraction",
+            "false-negative guard", "test:filter"
+        )
+        test("Ingestion: 'Reading file metadata...' NOT rejected",
+             _if_reading.get("rejected") is not True and "id" in _if_reading,
+             f"result keys={list(_if_reading.keys())}")
+
+        # 12. Tool echo with absolute path IS rejected
+        _if_toolecho = _rt_filter("Reading file /home/crab/.claude/hooks/test.py and checking output", "test", "test")
+        test("Ingestion: tool echo with /path rejected",
+             _if_toolecho.get("rejected") is True, f"result={_if_toolecho}")
+
+        # 13. False-positive guard: long content starting with noise word NOT rejected (>85 char exemption)
+        _if_fp_long = _rt_filter(
+            "npm install fails behind corporate proxies — fix by setting HTTP_PROXY and HTTPS_PROXY env vars",
+            "false-positive guard", "test:filter"
+        )
+        test("Ingestion: long noise-prefixed content NOT rejected (>85 chars)",
+             _if_fp_long.get("rejected") is not True and "id" in _if_fp_long,
+             f"result keys={list(_if_fp_long.keys())}")
+
+        # 14. But short noise IS still rejected even with same prefix
+        _if_fp_short = _rt_filter("npm install completed with 42 packages", "test", "test")
+        test("Ingestion: short noise-prefixed content still rejected",
+             _if_fp_short.get("rejected") is True, f"result={_if_fp_short}")
+
+        # 15. force=True bypasses noise filter entirely
+        _if_force = _rt_filter("npm install something forced", "test", "test", force=True)
+        test("Ingestion: force=True bypasses noise filter",
+             _if_force.get("rejected") is not True and "id" in _if_force,
+             f"result keys={list(_if_force.keys())}")
+
+        # Cleanup test memories
         try:
-            if "id" in _if_valid:
-                collection.delete(ids=[_if_valid["id"]])
+            _cleanup_ids = [r["id"] for r in [_if_valid, _if_meta, _if_filler_long, _if_reading, _if_fp_long, _if_force] if "id" in r]
+            if _cleanup_ids:
+                collection.delete(ids=_cleanup_ids)
         except Exception:
             pass
+
+        # ─────────────────────────────────────────────────
+        # Tag Normalization (Upgrade B)
+        # ─────────────────────────────────────────────────
+        print("\n--- Tag Normalization (Upgrade B) ---")
+
+        from memory_server import _normalize_tags
+
+        # 1. Bare type tags normalized
+        test("Tags: bare 'fix' -> 'type:fix'",
+             _normalize_tags("fix") == "type:fix")
+
+        # 2. Bare priority tags normalized
+        test("Tags: bare 'high' -> 'priority:high'",
+             _normalize_tags("high") == "priority:high")
+
+        # 3. Bare outcome tags normalized
+        test("Tags: bare 'success' -> 'outcome:success'",
+             _normalize_tags("success") == "outcome:success")
+
+        # 4. Already-dimensioned tags pass through unchanged
+        test("Tags: 'type:fix' unchanged",
+             _normalize_tags("type:fix") == "type:fix")
+
+        # 5. Unknown tags pass through unchanged
+        test("Tags: unknown 'framework' unchanged",
+             _normalize_tags("framework") == "framework")
+
+        # 6. Mixed bare + dimensioned + unknown
+        _mixed = _normalize_tags("fix,priority:critical,framework,high")
+        test("Tags: mixed normalization",
+             _mixed == "type:fix,priority:critical,framework,priority:high",
+             f"got={_mixed}")
+
+        # 7. Empty string returns empty
+        test("Tags: empty string unchanged",
+             _normalize_tags("") == "")
+
+        # 8. Whitespace handling
+        _ws = _normalize_tags("  fix , high , framework  ")
+        test("Tags: whitespace stripped",
+             _ws == "type:fix,priority:high,framework",
+             f"got={_ws}")
 
         # ─────────────────────────────────────────────────
         # Sprint 3: Feature 8, Layer 3 — Near-Dedup

@@ -182,13 +182,22 @@ except ImportError:
 DIGEST_TAGS = "type:digest,auto-generated,area:framework"
 
 # Ingestion filter: reject noise patterns
+# Patterns are ^-anchored to match content that IS noise, not content ABOUT noise.
+# This prevents false positives where memories discussing "npm install" get rejected.
 MIN_CONTENT_LENGTH = 20
 NOISE_PATTERNS = [
-    "npm install", "pip install", "Successfully installed",
-    "already satisfied", "up to date", "added .* packages",
-    "removing .* packages", "npm WARN", "DEPRECATION",
-    "Collecting ", "Downloading ", "Installing collected",
-    "running setup.py", "Building wheel", "Using cached",
+    # Package manager output (anchored to start of content)
+    r"^npm install\b", r"^pip install\b", r"^Successfully installed\b",
+    r"^already satisfied\b", r"^up to date\b", r"^added .* packages?\b",
+    r"^removing .* packages?\b", r"^npm WARN\b", r"^DEPRECATION\b",
+    r"^Collecting \b", r"^Downloading \b", r"^Installing collected\b",
+    r"^running setup\.py\b", r"^Building wheel\b", r"^Using cached\b",
+    # Non-package noise (anchored full-line or start-of-content)
+    r"^(?:OK|Done|Got it|Sure|Understood)[.!]?\s*$",   # empty acks
+    r"^Session \d+ started\s*$",                         # session boilerplate
+    r"^(?:Reading|Writing|Editing) (?:file )?/\S",        # tool echo: requires absolute path
+    r"^Traceback \(most recent call last\):\s*$",        # raw traceback header only
+    r"^(?:Let me|I'll|I will) (?:check|look|read|search)\b.{0,30}$",  # filler: only short content
 ]
 import re as _re
 NOISE_REGEXES = [_re.compile(p, _re.IGNORECASE) for p in NOISE_PATTERNS]
@@ -252,6 +261,50 @@ def _classify_tier(content: str, tags: str) -> int:
     if len(content) < 50:
         return 3
     return 2
+
+
+# ── Tag Normalization ─────────────────────────────────────────────────────────
+# Auto-corrects bare dimension values to canonical "dimension:value" format.
+# Non-destructive: unknown tags pass through unchanged.
+
+_BARE_TO_DIMENSION = {
+    # type dimension
+    "fix": "type:fix", "error": "type:error", "learning": "type:learning",
+    "feature": "type:feature", "feature-request": "type:feature-request",
+    "correction": "type:correction", "decision": "type:decision",
+    "auto-captured": "type:auto-captured", "preference": "type:preference",
+    "audit": "type:audit",
+    # priority dimension
+    "critical": "priority:critical", "high": "priority:high",
+    "medium": "priority:medium", "low": "priority:low",
+    # outcome dimension
+    "success": "outcome:success", "failed": "outcome:failed",
+}
+
+
+def _normalize_tags(tags: str) -> str:
+    """Normalize tags to canonical dimension:value format.
+
+    Non-destructive — unknown tags pass through unchanged.
+    Examples:
+        "fix,high,framework" -> "type:fix,priority:high,framework"
+        "type:fix,critical"  -> "type:fix,priority:critical"
+        ""                   -> ""
+    """
+    if not tags:
+        return tags
+    parts = [t.strip() for t in tags.split(",") if t.strip()]
+    normalized = []
+    for tag in parts:
+        lower = tag.lower()
+        # Already dimensioned (contains ":") — pass through as-is
+        if ":" in tag:
+            normalized.append(tag)
+        elif lower in _BARE_TO_DIMENSION:
+            normalized.append(_BARE_TO_DIMENSION[lower])
+        else:
+            normalized.append(tag)
+    return ",".join(normalized)
 
 
 def _migrate_previews():
@@ -2116,7 +2169,10 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
         context = context[:497] + "..."
     if len(tags) > 500:
         tags = tags[:497] + "..."
+    # --- Tag normalization: bare tags → dimensioned tags ---
+    tags = _normalize_tags(tags)
     # --- Ingestion filter: reject noise ---
+    # force=True skips both noise filter AND dedup (escape hatch for false positives)
     if len(content.strip()) < MIN_CONTENT_LENGTH:
         return {
             "result": "Rejected: content too short (minimum 20 characters)",
@@ -2124,13 +2180,20 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
             "total_memories": collection.count(),
         }
 
-    for noise_re in NOISE_REGEXES:
-        if noise_re.search(content):
-            return {
-                "result": f"Rejected: matches noise pattern ('{noise_re.pattern}')",
-                "rejected": True,
-                "total_memories": collection.count(),
-            }
+    if not force:
+        _content_len = len(content.strip())
+        for noise_re in NOISE_REGEXES:
+            if noise_re.search(content):
+                # Length exemption: substantive content (>85 chars) starting with
+                # noise words is likely a real finding, not package manager output.
+                # Noise output maxes ~81 chars; valid knowledge starts at ~90+.
+                if _content_len > 85:
+                    break
+                return {
+                    "result": f"Rejected: matches noise pattern ('{noise_re.pattern}')",
+                    "rejected": True,
+                    "total_memories": collection.count(),
+                }
 
     # --- Near-dedup: tiered threshold with soft-dupe tagging ---
     _soft_dupe_tag = None  # set if in soft zone (0.10-0.15)
