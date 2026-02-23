@@ -867,8 +867,6 @@ def main():
             budget_tier_str = " \U0001f534CRIT"
         elif usage_pct >= 0.40:
             budget_tier_str = " \U0001f7e1LOW"
-    model_prof = ls.get("model_profile", "balanced")
-    sec_prof = ls.get("security_profile", "balanced")
     line3 = (
         f"{_tog('terminal_l2_always', 'L2')} "
         f"{_tog('context_enrichment', 'Enrich')} "
@@ -880,8 +878,7 @@ def main():
         f"{_tog('tg_session_notify', 'Notify')} "
         f"{_tog('tg_mirror_messages', 'Mirror')} "
         f"{_tog('budget_degradation', 'Budget')} "
-        f"B:{budget_val}{budget_tier_str} "
-        f"Mod:{model_prof[:3]} Sec:{sec_prof[:3]}"
+        f"B:{budget_val}{budget_tier_str}"
     )
     print(line3)
 
@@ -896,7 +893,36 @@ def main():
     line4 = f"Memory: {_mode_label('default', 'Default')} {_mode_label('fast', 'Fast')} {_mode_label('full_hybrid', 'Full Hybrid')}"
     print(line4)
 
-    # ── LINE 5: Mentor system toggles ──
+    # ── LINE 5: Model profile (radio select) ──
+    _model_prof = ls.get("model_profile", "balanced")
+
+    def _prof_label(key, label, active):
+        if active == key:
+            return f"{COLOR_GREEN}\u25c9 {label}{COLOR_RESET}"
+        return f"\u25cb {label}"
+
+    line5 = (
+        f"Model: "
+        f"{_prof_label('quality', 'Quality', _model_prof)} "
+        f"{_prof_label('balanced', 'Balanced', _model_prof)} "
+        f"{_prof_label('efficient', 'Efficient', _model_prof)} "
+        f"{_prof_label('lean', 'Lean', _model_prof)} "
+        f"{_prof_label('budget', 'Budget', _model_prof)}"
+    )
+    print(line5)
+
+    # ── LINE 6: Security profile (radio select) ──
+    _sec_prof = ls.get("security_profile", "balanced")
+    line6 = (
+        f"Security: "
+        f"{_prof_label('strict', 'Strict', _sec_prof)} "
+        f"{_prof_label('balanced', 'Balanced', _sec_prof)} "
+        f"{_prof_label('permissive', 'Permissive', _sec_prof)} "
+        f"{_prof_label('refactor', 'Refactor', _sec_prof)}"
+    )
+    print(line6)
+
+    # ── LINE 7: Mentor system toggles ──
     line5 = (
         f"Mentor: "
         f"{_tog('mentor_all', 'All')} "

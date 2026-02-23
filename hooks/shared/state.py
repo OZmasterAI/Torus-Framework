@@ -130,6 +130,16 @@ def default_state():
         "deferred_items": [],               # [{strategy, error_signature, fail_count, file, deferred_at}] capped at 50
         # v3.3 fields (security profiles)
         "security_profile": "balanced",     # Active risk profile: "strict" | "balanced" | "permissive"
+        # v3.4 fields (mentor system — A+B+D+E)
+        "mentor_last_verdict": "proceed",        # Last mentor verdict: "proceed"|"advise"|"warn"|"escalate"
+        "mentor_last_score": 1.0,                # Weighted signal score 0.0-1.0 (1.0 = healthy)
+        "mentor_escalation_count": 0,            # Consecutive escalations (resets on proceed/advise)
+        "mentor_signals": [],                    # Recent Signal list from last evaluation
+        "mentor_warned_this_cycle": False,       # Prevents duplicate warnings in same PostToolUse
+        "mentor_chain_pattern": "",              # Detected chain pattern: "churn"|"stuck"|"healthy"|""
+        "mentor_chain_score": 1.0,               # Outcome chain score 0.0-1.0
+        "mentor_memory_match": None,             # Historical match from memory mentor (dict or None)
+        "mentor_historical_context": "",         # Human-readable historical context string
     }
 
 
@@ -200,6 +210,16 @@ def get_state_schema():
         "deferred_items": {"type": "list", "description": "Deferred error recovery items: [{strategy, error_signature, fail_count, file, deferred_at}]", "category": "causal", "max_size": 50},
         # v3.3 fields (security profiles)
         "security_profile": {"type": "str", "description": "Active security risk profile: strict | balanced | permissive", "category": "security"},
+        # v3.4 fields (mentor system)
+        "mentor_last_verdict": {"type": "str", "description": "Last mentor verdict: proceed|advise|warn|escalate", "category": "mentor"},
+        "mentor_last_score": {"type": "float", "description": "Weighted mentor signal score 0.0-1.0", "category": "mentor"},
+        "mentor_escalation_count": {"type": "int", "description": "Consecutive escalation count (resets on proceed/advise)", "category": "mentor"},
+        "mentor_signals": {"type": "list", "description": "Recent signals from last mentor evaluation", "category": "mentor"},
+        "mentor_warned_this_cycle": {"type": "bool", "description": "Whether mentor warned in current PostToolUse cycle", "category": "mentor"},
+        "mentor_chain_pattern": {"type": "str", "description": "Detected chain pattern: churn|stuck|healthy|empty", "category": "mentor"},
+        "mentor_chain_score": {"type": "float", "description": "Outcome chain score 0.0-1.0", "category": "mentor"},
+        "mentor_memory_match": {"type": "dict", "description": "Historical match from memory mentor (dict or None)", "category": "mentor"},
+        "mentor_historical_context": {"type": "str", "description": "Human-readable historical context from memory mentor", "category": "mentor"},
     }
 
 

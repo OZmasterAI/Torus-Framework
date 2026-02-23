@@ -4621,20 +4621,23 @@ test("Gate 10 increments usage counter",
      _g10_usage.get("builder:sonnet", 0) == 1,
      f"Expected builder:sonnet=1, got {_g10_usage}")
 
-# Test 7: Gate 10 warns for mismatched model with usage count
+# Test 7: Gate 10 profile enforcement downgrades Explore from opus to sonnet (research role)
 _g10_state2 = {}
-_g10_warn = _g10_check("Task", {"model": "opus", "subagent_type": "Explore", "description": "test"}, _g10_state2)
-test("Gate 10 warns for opus+Explore mismatch with usage count",
-     not _g10_warn.blocked and "1x" in (_g10_warn.message or ""),
-     f"Expected warning with '1x', got msg={(_g10_warn.message or '')[:100]}")
+_g10_input7 = {"model": "opus", "subagent_type": "Explore", "description": "test"}
+_g10_warn = _g10_check("Task", _g10_input7, _g10_state2)
+test("Gate 10 profile downgrades Explore opus→sonnet (research role)",
+     not _g10_warn.blocked and _g10_input7["model"] == "sonnet",
+     f"Expected model changed to sonnet, got model={_g10_input7['model']}")
 
 # Test 8: Gate 10 suppresses warning after 3+ uses of same combo
-_g10_state3 = {"model_agent_usage": {"Explore:opus": 2}}
-# This call will increment to 3 — should suppress
-_g10_suppressed = _g10_check("Task", {"model": "opus", "subagent_type": "Explore", "description": "test"}, _g10_state3)
-test("Gate 10 suppresses warning after 3+ uses",
+_g10_state3 = {"model_agent_usage": {"builder:haiku": 2}}
+# This call will increment to 3 — should suppress (builder recommended: sonnet/opus)
+# Note: profile enforcement changes haiku→sonnet first, so no mismatch warning fires
+_g10_input8 = {"model": "haiku", "subagent_type": "builder", "description": "test"}
+_g10_suppressed = _g10_check("Task", _g10_input8, _g10_state3)
+test("Gate 10 profile enforcement prevents mismatch warning",
      not _g10_suppressed.blocked and _g10_suppressed.message == "",
-     f"Expected no warning (suppressed), got msg='{_g10_suppressed.message}'")
+     f"Expected no warning (profile enforced), got msg='{_g10_suppressed.message}'")
 
 # ─────────────────────────────────────────────────
 # Sprint 4: Feature 4 — Named Agents
@@ -11128,7 +11131,7 @@ from shared.gate_registry import GATE_MODULES as _registry_modules
 
 # ── Single source of truth ──
 test("Registry: GATE_MODULES is a list", isinstance(_registry_modules, list))
-test("Registry: has 16 active gates", len(_registry_modules) == 16,
+test("Registry: has 17 active gates", len(_registry_modules) == 17,
      f"got {len(_registry_modules)}")
 test("Registry: gate_11 is last (rate limit ordering)",
      _registry_modules[-1] == "gates.gate_11_rate_limit",
@@ -11178,6 +11181,468 @@ from shared.config_validator import validate_gates as _cv_validate
 _cv_errors = _cv_validate()
 test("Registry: config_validator.validate_gates() passes",
      len(_cv_errors) == 0, f"errors={_cv_errors}")
+
+# -----------------------------------------------------------------
+# Mentor System Tests (A+B+D+E)
+# -----------------------------------------------------------------
+print('\n--- Mentor System: Tracker Mentor (A) ---')
+
+try:
+    from tracker_pkg.mentor import Signal, MentorVerdict, evaluate as mentor_evaluate
+    from tracker_pkg.mentor import _eval_bash, _eval_edit, _eval_search, _eval_progress
+    from tracker_pkg.mentor import _compute_verdict
+
+    # Signal dataclass construction
+    _ms1 = Signal("test_pass", 1.0, 2.0, "Tests passed")
+    test("Mentor: Signal construction",
+         _ms1.name == "test_pass" and _ms1.value == 1.0 and _ms1.weight == 2.0,
+         f"got name={_ms1.name} value={_ms1.value}")
+
+    # MentorVerdict construction
+    _mv1 = MentorVerdict("proceed", 0.85, [_ms1], "All good")
+    test("Mentor: MentorVerdict construction",
+         _mv1.action == "proceed" and _mv1.score == 0.85,
+         f"got action={_mv1.action} score={_mv1.score}")
+
+    # _eval_bash: test pass
+    _bash_signals = _eval_bash("Bash", {"command": "pytest tests/"}, {"exit_code": 0},
+                               {"error_pattern_counts": {}, "edit_streak": {}})
+    test("Mentor: _eval_bash test pass signal",
+         any(s.name == "test_pass" and s.value == 1.0 for s in _bash_signals),
+         f"signals={[(s.name, s.value) for s in _bash_signals]}")
+
+    # _eval_bash: test fail
+    _bash_fail = _eval_bash("Bash", {"command": "pytest tests/"}, {"exit_code": 1},
+                            {"error_pattern_counts": {}, "edit_streak": {}})
+    test("Mentor: _eval_bash test fail signal",
+         any(s.name == "test_fail" and s.value == 0.0 for s in _bash_fail),
+         f"signals={[(s.name, s.value) for s in _bash_fail]}")
+
+    # _eval_bash: error loop detection
+    _bash_errloop = _eval_bash("Bash", {"command": "ls"}, {},
+                               {"error_pattern_counts": {"ImportError": 4}, "edit_streak": {}})
+    test("Mentor: _eval_bash error loop detection",
+         any(s.name == "error_loop" for s in _bash_errloop),
+         f"signals={[(s.name, s.value) for s in _bash_errloop]}")
+
+    # _eval_bash: verification quality weak
+    _bash_weak = _eval_bash("Bash", {"command": "ls -la"}, {},
+                            {"error_pattern_counts": {}, "edit_streak": {}})
+    test("Mentor: _eval_bash weak verification",
+         any(s.name == "verification_quality" and s.value == 0.1 for s in _bash_weak),
+         f"signals={[(s.name, s.value) for s in _bash_weak]}")
+
+    # _eval_bash: verification quality strong
+    _bash_strong = _eval_bash("Bash", {"command": "python3 test_framework.py"}, {},
+                              {"error_pattern_counts": {}, "edit_streak": {}})
+    test("Mentor: _eval_bash strong verification",
+         any(s.name == "verification_quality" and s.value == 1.0 for s in _bash_strong),
+         f"signals={[(s.name, s.value) for s in _bash_strong]}")
+
+    # _eval_bash: non-Bash returns empty
+    _bash_skip = _eval_bash("Edit", {}, {}, {})
+    test("Mentor: _eval_bash skips non-Bash", len(_bash_skip) == 0, f"got {len(_bash_skip)}")
+
+    # _eval_edit: churn detection
+    _edit_churn = _eval_edit("Edit", {"file_path": "/tmp/foo.py", "old_string": "a", "new_string": "b"}, {},
+                             {"edit_streak": {"/tmp/foo.py": 6}})
+    test("Mentor: _eval_edit churn detection",
+         any(s.name == "edit_churn" for s in _edit_churn),
+         f"signals={[(s.name, s.value) for s in _edit_churn]}")
+
+    # _eval_edit: no churn below threshold
+    _edit_nochurn = _eval_edit("Edit", {"file_path": "/tmp/foo.py"}, {},
+                               {"edit_streak": {"/tmp/foo.py": 2}})
+    test("Mentor: _eval_edit no churn below threshold",
+         not any(s.name == "edit_churn" for s in _edit_nochurn),
+         f"signals={[(s.name, s.value) for s in _edit_nochurn]}")
+
+    # _eval_edit: revert detection
+    _edit_revert = _eval_edit("Edit", {"file_path": "/tmp/foo.py", "old_string": "x" * 100, "new_string": "y"},
+                              {}, {"edit_streak": {}})
+    test("Mentor: _eval_edit revert detection",
+         any(s.name == "possible_revert" for s in _edit_revert),
+         f"signals={[(s.name, s.value) for s in _edit_revert]}")
+
+    # _eval_edit: large edit
+    _edit_large = _eval_edit("Edit", {"file_path": "/tmp/foo.py", "old_string": "x" * 600, "new_string": "y" * 600},
+                             {}, {"edit_streak": {}})
+    test("Mentor: _eval_edit large edit advisory",
+         any(s.name == "large_edit" for s in _edit_large),
+         f"signals={[(s.name, s.value) for s in _edit_large]}")
+
+    # _eval_edit: non-edit returns empty
+    _edit_skip = _eval_edit("Bash", {}, {}, {})
+    test("Mentor: _eval_edit skips non-edit", len(_edit_skip) == 0, f"got {len(_edit_skip)}")
+
+    # _eval_search: empty results
+    _search_empty = _eval_search("Grep", {}, "", {"mentor_signals": []})
+    test("Mentor: _eval_search empty results",
+         any(s.name == "empty_search" for s in _search_empty),
+         f"signals={[(s.name, s.value) for s in _search_empty]}")
+
+    # _eval_search: non-empty results
+    _search_ok = _eval_search("Grep", {}, "found: 5 matches", {"mentor_signals": []})
+    test("Mentor: _eval_search non-empty results",
+         not any(s.name == "empty_search" for s in _search_ok),
+         f"signals={[(s.name, s.value) for s in _search_ok]}")
+
+    # _eval_search: stuck detection (3+ empties in a row)
+    _search_stuck = _eval_search("Grep", {}, "", {
+        "mentor_signals": [
+            {"name": "empty_search", "value": 0.4},
+            {"name": "empty_search", "value": 0.4},
+        ]
+    })
+    test("Mentor: _eval_search stuck detection",
+         any(s.name == "search_stuck" for s in _search_stuck),
+         f"signals={[(s.name, s.value) for s in _search_stuck]}")
+
+    # _eval_search: non-search returns empty
+    _search_skip = _eval_search("Bash", {}, {}, {})
+    test("Mentor: _eval_search skips non-search", len(_search_skip) == 0, f"got {len(_search_skip)}")
+
+    # _eval_progress: fires every 10th call
+    _prog_skip = _eval_progress("Bash", {}, {}, {"tool_call_count": 7})
+    test("Mentor: _eval_progress skips non-10th call", len(_prog_skip) == 0, f"got {len(_prog_skip)}")
+
+    # _compute_verdict: proceed threshold
+    _v_proceed = _compute_verdict([Signal("test_pass", 1.0, 2.0, "ok")])
+    test("Mentor: verdict proceed (score >= 0.7)",
+         _v_proceed.action == "proceed" and _v_proceed.score >= 0.7,
+         f"action={_v_proceed.action} score={_v_proceed.score}")
+
+    # _compute_verdict: warn threshold
+    _v_warn = _compute_verdict([Signal("churn", 0.3, 2.0, "bad"), Signal("ok", 0.5, 1.0, "meh")])
+    test("Mentor: verdict warn (0.3 <= score < 0.5)",
+         _v_warn.action == "warn",
+         f"action={_v_warn.action} score={_v_warn.score:.2f}")
+
+    # _compute_verdict: escalate threshold
+    _v_escalate = _compute_verdict([Signal("fail", 0.0, 3.0, "total fail"), Signal("loop", 0.1, 2.0, "stuck")])
+    test("Mentor: verdict escalate (score < 0.3)",
+         _v_escalate.action == "escalate" and _v_escalate.score < 0.3,
+         f"action={_v_escalate.action} score={_v_escalate.score:.2f}")
+
+    # _compute_verdict: empty signals = proceed
+    _v_empty = _compute_verdict([])
+    test("Mentor: empty signals = proceed",
+         _v_empty.action == "proceed" and _v_empty.score == 1.0,
+         f"action={_v_empty.action}")
+
+    # evaluate: state updates
+    _eval_state = {"tool_call_count": 1, "error_pattern_counts": {}, "edit_streak": {},
+                   "mentor_signals": [], "mentor_escalation_count": 0}
+    _eval_v = mentor_evaluate("Bash", {"command": "pytest"}, {"exit_code": 0}, _eval_state)
+    test("Mentor: evaluate updates state mentor_last_verdict",
+         _eval_state.get("mentor_last_verdict") == "proceed",
+         f"got {_eval_state.get('mentor_last_verdict')}")
+    test("Mentor: evaluate updates state mentor_last_score",
+         _eval_state.get("mentor_last_score", 0) >= 0.7,
+         f"got {_eval_state.get('mentor_last_score')}")
+
+    # evaluate: escalation counter increments
+    _esc_state = {"tool_call_count": 1, "error_pattern_counts": {"err": 5}, "edit_streak": {},
+                  "mentor_signals": [], "mentor_escalation_count": 0}
+    _esc_v = mentor_evaluate("Bash", {"command": "pytest"}, {"exit_code": 1}, _esc_state)
+    test("Mentor: escalation counter increments on escalate",
+         _esc_state.get("mentor_escalation_count", 0) >= 1 if _esc_v and _esc_v.action == "escalate" else True,
+         f"count={_esc_state.get('mentor_escalation_count')} action={_esc_v.action if _esc_v else 'None'}")
+
+    # evaluate: escalation counter resets on proceed
+    _reset_state = {"tool_call_count": 1, "error_pattern_counts": {}, "edit_streak": {},
+                    "mentor_signals": [], "mentor_escalation_count": 5}
+    _reset_v = mentor_evaluate("Bash", {"command": "pytest"}, {"exit_code": 0}, _reset_state)
+    test("Mentor: escalation counter resets on proceed",
+         _reset_state.get("mentor_escalation_count") == 0,
+         f"count={_reset_state.get('mentor_escalation_count')}")
+
+    # evaluate: fail-open (bad state — None state is handled gracefully, no crash)
+    _fo_result = mentor_evaluate("Bash", None, None, None)
+    test("Mentor: evaluate fail-open on bad input",
+         _fo_result is None or isinstance(_fo_result, MentorVerdict),
+         f"got {_fo_result}")
+
+except Exception as _mentor_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Mentor Tracker (A) tests: {_mentor_e}")
+    print(f"  FAIL: Mentor Tracker (A) tests: {_mentor_e}")
+
+
+print('\n--- Mentor System: Hindsight Gate (B) ---')
+
+try:
+    from gates.gate_19_hindsight import check as g19_check, GATE_NAME as G19_NAME, WATCHED_TOOLS as G19_TOOLS
+    from shared.gate_registry import GATE_MODULES as _g19_reg
+    from shared.gate_router import GATE_TOOL_MAP as _g19_router
+    from enforcer import GATE_TOOL_MAP as _g19_enforcer, GATE_DEPENDENCIES as _g19_deps
+
+    # 3-point registration
+    test("Gate 19: registered in gate_registry",
+         "gates.gate_19_hindsight" in _g19_reg,
+         f"modules={_g19_reg}")
+    test("Gate 19: registered in gate_router",
+         "gates.gate_19_hindsight" in _g19_router,
+         f"keys={list(_g19_router.keys())}")
+    test("Gate 19: registered in enforcer GATE_TOOL_MAP",
+         "gates.gate_19_hindsight" in _g19_enforcer,
+         f"keys={list(_g19_enforcer.keys())}")
+    test("Gate 19: registered in enforcer GATE_DEPENDENCIES",
+         "gate_19_hindsight" in _g19_deps,
+         f"keys={list(_g19_deps.keys())}")
+
+    # Watches correct tools
+    test("Gate 19: watches Edit/Write/NotebookEdit",
+         G19_TOOLS == {"Edit", "Write", "NotebookEdit"},
+         f"got {G19_TOOLS}")
+
+    # Skips non-PreToolUse
+    _g19r1 = g19_check("Edit", {"file_path": "/tmp/foo.py"}, {}, event_type="PostToolUse")
+    test("Gate 19: skips non-PreToolUse", not _g19r1.blocked, f"blocked={_g19r1.blocked}")
+
+    # Skips non-watched tools
+    _g19r2 = g19_check("Bash", {"command": "ls"}, {}, event_type="PreToolUse")
+    test("Gate 19: skips non-watched tools", not _g19r2.blocked, f"blocked={_g19r2.blocked}")
+
+    # Skips when toggle is off (default)
+    _g19r3 = g19_check("Edit", {"file_path": "/tmp/foo.py"}, {
+        "mentor_last_score": 0.1, "mentor_escalation_count": 5
+    }, event_type="PreToolUse")
+    test("Gate 19: skips when toggle off", not _g19r3.blocked, f"blocked={_g19r3.blocked}")
+
+    # Skips when fixing_error == True (Gate 15 territory)
+    _g19r4 = g19_check("Edit", {"file_path": "/tmp/foo.py"}, {
+        "fixing_error": True, "mentor_last_score": 0.1, "mentor_escalation_count": 5
+    }, event_type="PreToolUse")
+    test("Gate 19: skips when fixing_error=True", not _g19r4.blocked, f"blocked={_g19r4.blocked}")
+
+    # Skips exempt files (test files)
+    _g19r5 = g19_check("Edit", {"file_path": "/tmp/test_foo.py"}, {
+        "mentor_last_score": 0.1, "mentor_escalation_count": 5
+    }, event_type="PreToolUse")
+    test("Gate 19: skips exempt test files", not _g19r5.blocked, f"blocked={_g19r5.blocked}")
+
+    # Does not read Gate 5 fields (pending_verification, edit_streak)
+    _g19_dep_reads = _g19_deps.get("gate_19_hindsight", {}).get("reads", [])
+    test("Gate 19: never reads pending_verification",
+         "pending_verification" not in _g19_dep_reads,
+         f"reads={_g19_dep_reads}")
+    test("Gate 19: never reads edit_streak",
+         "edit_streak" not in _g19_dep_reads,
+         f"reads={_g19_dep_reads}")
+
+    # Does not read Gate 15 fields for decisions (only reads fixing_error to SKIP)
+    test("Gate 19: reads fixing_error only to skip",
+         "fixing_error" in _g19_dep_reads,
+         f"reads={_g19_dep_reads}")
+    test("Gate 19: never reads fix_history_queried",
+         "fix_history_queried" not in _g19_dep_reads,
+         f"reads={_g19_dep_reads}")
+    test("Gate 19: never reads recent_test_failure",
+         "recent_test_failure" not in _g19_dep_reads,
+         f"reads={_g19_dep_reads}")
+
+    # Gate 19 writes nothing
+    _g19_dep_writes = _g19_deps.get("gate_19_hindsight", {}).get("writes", [])
+    test("Gate 19: writes no state fields",
+         len(_g19_dep_writes) == 0,
+         f"writes={_g19_dep_writes}")
+
+    # Gate 19 before Gate 11 (rate limit always last)
+    _g19_idx = _g19_reg.index("gates.gate_19_hindsight")
+    _g11_idx = _g19_reg.index("gates.gate_11_rate_limit")
+    test("Gate 19: before Gate 11 in registry",
+         _g19_idx < _g11_idx,
+         f"g19_idx={_g19_idx} g11_idx={_g11_idx}")
+
+except Exception as _g19_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Hindsight Gate (B) tests: {_g19_e}")
+    print(f"  FAIL: Hindsight Gate (B) tests: {_g19_e}")
+
+
+print('\n--- Mentor System: Outcome Chains (D) ---')
+
+try:
+    from tracker_pkg.outcome_chains import evaluate as chains_evaluate
+
+    # Fires only every 10th call
+    _oc_skip = chains_evaluate("Bash", {}, {}, {"tool_call_count": 7, "tool_call_counts": {}, "total_tool_calls": 20})
+    test("Chains: skips non-10th call", _oc_skip is None, f"got {_oc_skip}")
+
+    # Fires on 10th call
+    _oc_state10 = {"tool_call_count": 10, "tool_call_counts": {"Read": 5, "Edit": 3, "Bash": 2}, "total_tool_calls": 10}
+    _oc_fire = chains_evaluate("Bash", {}, {}, _oc_state10)
+    test("Chains: fires on 10th call", _oc_fire is not None, f"got {_oc_fire}")
+
+    # Stuck loop detection
+    _oc_stuck_state = {"tool_call_count": 20, "tool_call_counts": {"Edit": 18, "Read": 2}, "total_tool_calls": 20}
+    _oc_stuck = chains_evaluate("Edit", {}, {}, _oc_stuck_state)
+    test("Chains: stuck loop detection",
+         _oc_stuck is not None and _oc_stuck.get("pattern") == "stuck",
+         f"got {_oc_stuck}")
+    test("Chains: stuck loop score <= 0.3",
+         _oc_stuck is not None and _oc_stuck.get("score", 1.0) <= 0.3,
+         f"score={_oc_stuck.get('score') if _oc_stuck else 'None'}")
+
+    # Churn detection (Edit=10/20=50%, Write=3 -> combined edit_ratio=65% > 60%, Bash=2 < 13*0.3=3.9 -> churn)
+    _oc_churn_state = {"tool_call_count": 20, "tool_call_counts": {"Edit": 10, "Write": 3, "Bash": 2, "Read": 5}, "total_tool_calls": 20}
+    _oc_churn = chains_evaluate("Edit", {}, {}, _oc_churn_state)
+    test("Chains: churn detection",
+         _oc_churn is not None and _oc_churn.get("pattern") == "churn",
+         f"got {_oc_churn}")
+
+    # Healthy pattern
+    _oc_healthy_state = {"tool_call_count": 30, "tool_call_counts": {"Read": 10, "Edit": 8, "Bash": 7, "Grep": 5}, "total_tool_calls": 30}
+    _oc_healthy = chains_evaluate("Bash", {}, {}, _oc_healthy_state)
+    test("Chains: healthy pattern detection",
+         _oc_healthy is not None and _oc_healthy.get("pattern") == "healthy",
+         f"got {_oc_healthy}")
+    test("Chains: healthy score >= 0.8",
+         _oc_healthy is not None and _oc_healthy.get("score", 0) >= 0.8,
+         f"score={_oc_healthy.get('score') if _oc_healthy else 'None'}")
+
+    # State updates
+    _oc_update_state = {"tool_call_count": 10, "tool_call_counts": {"Read": 5, "Edit": 3, "Bash": 2}, "total_tool_calls": 10}
+    chains_evaluate("Bash", {}, {}, _oc_update_state)
+    test("Chains: updates mentor_chain_pattern in state",
+         "mentor_chain_pattern" in _oc_update_state,
+         f"keys={list(_oc_update_state.keys())}")
+    test("Chains: updates mentor_chain_score in state",
+         "mentor_chain_score" in _oc_update_state,
+         f"keys={list(_oc_update_state.keys())}")
+
+    # Skips when too few calls
+    _oc_low = chains_evaluate("Bash", {}, {}, {"tool_call_count": 10, "tool_call_counts": {"Read": 3}, "total_tool_calls": 5})
+    test("Chains: skips when total < 10", _oc_low is None, f"got {_oc_low}")
+
+except Exception as _oc_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Outcome Chains (D) tests: {_oc_e}")
+    print(f"  FAIL: Outcome Chains (D) tests: {_oc_e}")
+
+
+print('\n--- Mentor System: Memory Mentor (E) ---')
+
+try:
+    from tracker_pkg.mentor_memory import evaluate as mem_evaluate, _extract_query_context, _query_uds
+
+    # Standalone: no dependency on Module A
+    _mm_result = mem_evaluate("Bash", {"command": "pytest"}, {}, {"recent_test_failure": None, "current_strategy_id": ""})
+    test("MemMentor: standalone operation (no Module A dependency)",
+         _mm_result is None,  # No UDS socket in test = None
+         f"got {_mm_result}")
+
+    # Fail-open: handles missing UDS socket gracefully
+    _mm_uds = _query_uds("test query", n_results=1)
+    test("MemMentor: fail-open when UDS socket missing",
+         _mm_uds is None,
+         f"got {_mm_uds}")
+
+    # Context extraction: error pattern
+    _mm_ctx1 = _extract_query_context("Bash", {}, {}, {"recent_test_failure": {"pattern": "ImportError"}, "current_strategy_id": ""})
+    test("MemMentor: extracts error pattern context",
+         "ImportError" in _mm_ctx1,
+         f"got '{_mm_ctx1}'")
+
+    # Context extraction: file path
+    _mm_ctx2 = _extract_query_context("Edit", {"file_path": "/home/test/foo.py"}, {}, {"recent_test_failure": None, "current_strategy_id": ""})
+    test("MemMentor: extracts file path context",
+         "foo.py" in _mm_ctx2,
+         f"got '{_mm_ctx2}'")
+
+    # Context extraction: command
+    _mm_ctx3 = _extract_query_context("Bash", {"command": "pytest tests/test_auth.py"}, {}, {"recent_test_failure": None, "current_strategy_id": ""})
+    test("MemMentor: extracts command context",
+         "pytest" in _mm_ctx3,
+         f"got '{_mm_ctx3}'")
+
+    # Context extraction: strategy
+    _mm_ctx4 = _extract_query_context("Edit", {}, {}, {"recent_test_failure": None, "current_strategy_id": "fix-type-cast"})
+    test("MemMentor: extracts strategy context",
+         "fix-type-cast" in _mm_ctx4,
+         f"got '{_mm_ctx4}'")
+
+    # Context extraction: empty = empty string
+    _mm_ctx5 = _extract_query_context("Read", {}, {}, {"recent_test_failure": None, "current_strategy_id": ""})
+    test("MemMentor: empty context returns empty string",
+         _mm_ctx5 == "",
+         f"got '{_mm_ctx5}'")
+
+    # Fail-open with bad state
+    _mm_bad = mem_evaluate("Bash", None, None, None)
+    test("MemMentor: fail-open on bad state", _mm_bad is None, f"got {_mm_bad}")
+
+except Exception as _mm_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Memory Mentor (E) tests: {_mm_e}")
+    print(f"  FAIL: Memory Mentor (E) tests: {_mm_e}")
+
+
+print('\n--- Mentor System: Integration ---')
+
+try:
+    from shared.state import default_state as _mentor_default_state, get_state_schema as _mentor_schema
+
+    _mds = _mentor_default_state()
+
+    # State defaults present
+    test("Mentor integration: mentor_last_verdict in default_state",
+         "mentor_last_verdict" in _mds and _mds["mentor_last_verdict"] == "proceed",
+         f"got {_mds.get('mentor_last_verdict')}")
+    test("Mentor integration: mentor_last_score in default_state",
+         "mentor_last_score" in _mds and _mds["mentor_last_score"] == 1.0,
+         f"got {_mds.get('mentor_last_score')}")
+    test("Mentor integration: mentor_escalation_count in default_state",
+         "mentor_escalation_count" in _mds and _mds["mentor_escalation_count"] == 0,
+         f"got {_mds.get('mentor_escalation_count')}")
+    test("Mentor integration: mentor_signals in default_state",
+         "mentor_signals" in _mds and _mds["mentor_signals"] == [],
+         f"got {_mds.get('mentor_signals')}")
+    test("Mentor integration: mentor_warned_this_cycle in default_state",
+         "mentor_warned_this_cycle" in _mds and _mds["mentor_warned_this_cycle"] == False,
+         f"got {_mds.get('mentor_warned_this_cycle')}")
+    test("Mentor integration: mentor_chain_pattern in default_state",
+         "mentor_chain_pattern" in _mds and _mds["mentor_chain_pattern"] == "",
+         f"got {_mds.get('mentor_chain_pattern')}")
+    test("Mentor integration: mentor_chain_score in default_state",
+         "mentor_chain_score" in _mds and _mds["mentor_chain_score"] == 1.0,
+         f"got {_mds.get('mentor_chain_score')}")
+    test("Mentor integration: mentor_memory_match in default_state",
+         "mentor_memory_match" in _mds and _mds["mentor_memory_match"] is None,
+         f"got {_mds.get('mentor_memory_match')}")
+    test("Mentor integration: mentor_historical_context in default_state",
+         "mentor_historical_context" in _mds and _mds["mentor_historical_context"] == "",
+         f"got {_mds.get('mentor_historical_context')}")
+
+    # Schema entries present
+    _mschema = _mentor_schema()
+    for _mf in ["mentor_last_verdict", "mentor_last_score", "mentor_escalation_count",
+                 "mentor_signals", "mentor_warned_this_cycle", "mentor_chain_pattern",
+                 "mentor_chain_score", "mentor_memory_match", "mentor_historical_context"]:
+        test(f"Mentor integration: {_mf} in state schema",
+             _mf in _mschema and _mschema[_mf].get("category") == "mentor",
+             f"present={_mf in _mschema}")
+
+    # All toggles off = no mentor output (verify orchestrator toggle checks)
+    from shared.state import get_live_toggle as _glt_mentor
+    test("Mentor integration: mentor_tracker toggle exists and is False",
+         _glt_mentor("mentor_tracker") == False,
+         f"got {_glt_mentor('mentor_tracker')}")
+    test("Mentor integration: mentor_hindsight_gate toggle exists and is False",
+         _glt_mentor("mentor_hindsight_gate") == False,
+         f"got {_glt_mentor('mentor_hindsight_gate')}")
+    test("Mentor integration: mentor_outcome_chains toggle exists and is False",
+         _glt_mentor("mentor_outcome_chains") == False,
+         f"got {_glt_mentor('mentor_outcome_chains')}")
+    test("Mentor integration: mentor_memory toggle exists and is False",
+         _glt_mentor("mentor_memory") == False,
+         f"got {_glt_mentor('mentor_memory')}")
+
+except Exception as _mint_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Mentor Integration tests: {_mint_e}")
+    print(f"  FAIL: Mentor Integration tests: {_mint_e}")
 
 cleanup_test_states()
 

@@ -44,14 +44,15 @@ MODEL_GUIDANCE = (
 # Gate 10 infers the role from subagent_type, then enforces the profile's model.
 
 # Agent type → role mapping (active agents only — dormant agents removed)
-# Roles: planning (read-only), execution (read+write), verification (read+run)
+# Roles: planning (architecture), research (read-only lookup), execution (read+write), verification (read+run)
 AGENT_ROLE_MAP = {
-    # Planning role: read-only research, exploration, architecture
+    # Planning role: architecture decisions, implementation design
     "Plan":              "planning",     # Anthropic built-in: implementation planning, read-only
-    "Explore":           "planning",     # Anthropic built-in: codebase search, read-only
-    "researcher":        "planning",     # Read-only research (Glob/Grep/Read/WebSearch, memory)
-    "claude-code-guide": "planning",     # Anthropic built-in: Claude Code documentation lookup
-    "metrics-dashboard": "planning",     # Reads audit logs + LIVE_STATE, generates ASCII dashboards
+    # Research role: read-only lookup, search, exploration (doesn't need opus)
+    "Explore":           "research",     # Anthropic built-in: codebase search, read-only
+    "researcher":        "research",     # Read-only research (Glob/Grep/Read/WebSearch, memory)
+    "claude-code-guide": "research",     # Anthropic built-in: Claude Code documentation lookup
+    "metrics-dashboard": "research",     # Reads audit logs + LIVE_STATE, generates ASCII dashboards
     # Execution role: builds, implements, writes code
     "builder":           "execution",    # Full implementation (Edit/Write/Bash + memory + causal chain)
     "general-purpose":   "execution",    # Anthropic built-in: multi-step tasks with all tools
@@ -67,18 +68,28 @@ AGENT_ROLE_MAP = {
 # Profile → role → model
 MODEL_PROFILES = {
     "quality": {
-        "description": "Maximum quality — opus for planning+execution, sonnet for verification",
-        "role_models": {"planning": "opus", "execution": "opus", "verification": "sonnet"},
+        "description": "Maximum quality — opus for planning+execution, sonnet for research+verification",
+        "role_models": {"planning": "opus", "research": "sonnet", "execution": "opus", "verification": "sonnet"},
         "warn_on_opus": False,
     },
     "balanced": {
-        "description": "Default — opus for planning, sonnet for execution+verification",
-        "role_models": {"planning": "opus", "execution": "sonnet", "verification": "sonnet"},
+        "description": "Default — opus for planning, sonnet for research+execution+verification",
+        "role_models": {"planning": "opus", "research": "sonnet", "execution": "sonnet", "verification": "sonnet"},
+        "warn_on_opus": True,
+    },
+    "efficient": {
+        "description": "Opus planning, sonnet work, haiku verification — best cost/quality ratio",
+        "role_models": {"planning": "opus", "research": "sonnet", "execution": "sonnet", "verification": "haiku"},
+        "warn_on_opus": True,
+    },
+    "lean": {
+        "description": "Opus planning only, haiku for all read-only — minimal spend with smart planning",
+        "role_models": {"planning": "opus", "research": "haiku", "execution": "sonnet", "verification": "haiku"},
         "warn_on_opus": True,
     },
     "budget": {
-        "description": "Cost-minimizing — sonnet for planning+execution, haiku for verification",
-        "role_models": {"planning": "sonnet", "execution": "sonnet", "verification": "haiku"},
+        "description": "Cost-minimizing — sonnet for planning+execution, haiku for research+verification",
+        "role_models": {"planning": "sonnet", "research": "haiku", "execution": "sonnet", "verification": "haiku"},
         "warn_on_opus": True,
     },
 }

@@ -78,6 +78,7 @@ GATE_TOOL_MAP: Dict[str, Optional[Set[str]]] = {
     "gates.gate_16_code_quality":        {"Edit", "Write", "NotebookEdit"},
     "gates.gate_17_injection_defense":   {"WebFetch", "WebSearch"},
     "gates.gate_18_canary":              None,  # Universal — observes all tool calls
+    "gates.gate_19_hindsight":           {"Edit", "Write", "NotebookEdit"},
 }
 
 

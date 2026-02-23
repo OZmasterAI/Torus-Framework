@@ -243,6 +243,14 @@ GATE_DEPENDENCIES = {
             "canary_short_timestamps", "canary_long_timestamps", "canary_recent_seq",
         ],
     },
+    "gate_19_hindsight": {
+        "reads": [
+            "mentor_last_verdict", "mentor_last_score", "mentor_escalation_count",
+            "mentor_chain_score", "mentor_memory_match", "mentor_warned_this_cycle",
+            "fixing_error",
+        ],
+        "writes": [],
+    },
 }
 
 
@@ -275,6 +283,7 @@ GATE_TOOL_MAP = {
     "gates.gate_16_code_quality": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_17_injection_defense": {"WebFetch", "WebSearch"},  # + MCP tools checked internally
     "gates.gate_18_canary": None,  # Universal — observes all tool calls
+    "gates.gate_19_hindsight": {"Edit", "Write", "NotebookEdit"},
 }
 
 

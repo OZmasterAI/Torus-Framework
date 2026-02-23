@@ -23,5 +23,6 @@ GATE_MODULES = [
     "gates.gate_16_code_quality",
     "gates.gate_17_injection_defense",
     "gates.gate_18_canary",
+    "gates.gate_19_hindsight",
     "gates.gate_11_rate_limit",  # Last: earlier blocks don't inflate rate counter
 ]
