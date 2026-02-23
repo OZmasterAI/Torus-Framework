@@ -856,15 +856,21 @@ def main():
         line1_parts.append(f"\U0001f9e0 M:{mem_count}")
     line1_parts.append(f"\u26a1TC:{total_calls}")
 
-    # Code indexer status (conditional — only shown while indexing)
+    # Code indexer status (yellow while indexing, green when done)
     _idx_status_file = os.path.join(HOOKS_DIR, ".code_index_status")
     try:
         if os.path.exists(_idx_status_file):
             with open(_idx_status_file) as f:
                 _idx = json.load(f)
-            if _idx.get("status") == "indexing":
-                _snap = _idx.get("snapshot_type", "?")[:4]
+            _idx_st = _idx.get("status", "")
+            _snap = _idx.get("snapshot_type", "?")[:4]
+            if _idx_st == "indexing":
                 line1_parts.append(f"{COLOR_YELLOW}IDX:{_snap}\u2026{COLOR_RESET}")
+            elif _idx_st == "done":
+                _chunks = _idx.get("chunks", "?")
+                line1_parts.append(f"{COLOR_GREEN}IDX:{_snap}\u2714{_chunks}{COLOR_RESET}")
+            elif _idx_st == "error":
+                line1_parts.append(f"{COLOR_RED}IDX:{_snap}\u2718{COLOR_RESET}")
     except (json.JSONDecodeError, OSError):
         pass
 
