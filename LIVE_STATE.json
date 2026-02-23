@@ -3,11 +3,11 @@
   "project": "torus-framework",
   "feature": "self-evolve-sprint-2",
   "framework_version": "v2.5.3",
-  "what_was_done": "Implemented framework code indexing (mode=\"code\"). Extended search_knowledge with mode=\"code\" for semantic search over framework source. Added chunking functions, background indexer, boot/wrapup snapshots, dispatch handler, 25 new tests (1448 total, 0 failures). 6 files modified.",
+  "what_was_done": "LIVE_STATE.json cleanup sprint. Extracted 19 config toggles into new config.json (persist across task resets). Removed 5 dead/stale fields (status, service_status, feature_status, test_count/failures, project_path). LIVE_STATE reduced from 22 to 7 keys, saving ~200 tokens per prompt injection. 15 files modified, 1449 tests pass.",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
     "Pick next evolution target",
-    "Verify code index works end-to-end after MCP restart"
+    "Verify config.json toggles survive task reset"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
