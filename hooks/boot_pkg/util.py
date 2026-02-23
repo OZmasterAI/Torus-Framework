@@ -1,7 +1,6 @@
 """Shared utilities for boot sequence."""
 import json
 import os
-import socket
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
@@ -29,14 +28,3 @@ def load_live_state():
         except json.JSONDecodeError:
             return {}
     return {}
-
-
-def _is_port_in_use(port):
-    """Check if a TCP port is in use by attempting a socket connect."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(1)
-            s.connect(("127.0.0.1", port))
-            return True
-    except (ConnectionRefusedError, OSError):
-        return False

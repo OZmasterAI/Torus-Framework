@@ -1,12 +1,10 @@
-"""Maintenance operations for boot sequence — audit rotation, dashboard, cleanup."""
+"""Maintenance operations for boot sequence — audit rotation and cleanup."""
 import gzip
 import os
 import shutil
-import subprocess
 import sys
 from datetime import datetime
 
-from boot_pkg.util import CLAUDE_DIR, _is_port_in_use
 from shared.state import cleanup_all_states
 
 # Audit log rotation settings
@@ -18,37 +16,6 @@ _AUDIT_DELETE_ENABLED = False    # Flip to True to enable deletion of old .gz fi
 def reset_enforcement_state():
     """Reset all gate enforcement state files for a new session."""
     cleanup_all_states()
-
-
-def _auto_start_dashboard():
-    """Start the dashboard server if not already running on port 7777."""
-    try:
-        if _is_port_in_use(7777):
-            print("  [BOOT] Dashboard already running at http://localhost:7777", file=sys.stderr)
-            return
-
-        server_path = os.path.join(CLAUDE_DIR, "dashboard", "server.py")
-        if not os.path.isfile(server_path):
-            return
-
-        proc = subprocess.Popen(
-            [sys.executable, server_path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-
-        # Store PID for later cleanup
-        pidfile = os.path.join(CLAUDE_DIR, "dashboard", ".dashboard.pid")
-        try:
-            with open(pidfile, "w") as f:
-                f.write(str(proc.pid))
-        except OSError:
-            pass
-
-        print(f"  [BOOT] Dashboard auto-started at http://localhost:7777 (pid {proc.pid})", file=sys.stderr)
-    except Exception:
-        pass  # Boot must never crash
 
 
 def _rotate_audit_logs():

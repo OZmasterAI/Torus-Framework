@@ -1541,7 +1541,8 @@ def _run_code_indexer(snapshot_type="boot"):
                 print(f"[CodeIndex] Final batch upsert error: {e}", file=_sys.stderr)
 
         print(f"[CodeIndex] {snapshot_type} snapshot: {total_chunks} chunks from {len(files_to_index)} files", file=_sys.stderr)
-        _write_idx_status("done", chunks=total_chunks, files=len(files_to_index))
+        _write_idx_status("done", chunks=total_chunks, files=len(files_to_index),
+                          commit_hash=_head_hash or "")
 
     except Exception as e:
         print(f"[CodeIndex] {snapshot_type} indexer error: {e}", file=_sys.stderr)

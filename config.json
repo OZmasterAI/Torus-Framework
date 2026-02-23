@@ -18,6 +18,12 @@
   "mentor_hindsight_gate": false,
   "mentor_outcome_chains": false,
   "mentor_memory": false,
-  "session_metrics": "",
-  "last_session_metrics": {}
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 5m\n- **Tool Calls**: 10 (Bash: 5, Skill: 1, mcp__memory__remember_this: 1, Read: 1, Write: 1, mcp__memory__search_knowledge: 1)\n- **Files Modified**: 1 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 5 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`",
+  "last_session_metrics": {
+    "reads": 1,
+    "edits": 1,
+    "errors": 0,
+    "verified": 0,
+    "pending": 0
+  }
 }
