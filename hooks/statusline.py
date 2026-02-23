@@ -899,6 +899,7 @@ def main():
     # ── LINE 5: Mentor system toggles ──
     line5 = (
         f"Mentor: "
+        f"{_tog('mentor_all', 'All')} "
         f"{_tog('mentor_tracker', 'Tracker')} "
         f"{_tog('mentor_hindsight_gate', 'Hindsight')} "
         f"{_tog('mentor_outcome_chains', 'Chains')} "
