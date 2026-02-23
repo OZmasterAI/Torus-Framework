@@ -48,7 +48,7 @@ SETTINGS_FILE = os.path.join(CLAUDE_DIR, "settings.json")
 CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
-EXPECTED_GATES = 16
+EXPECTED_GATES = 17
 EXPECTED_SKILLS = 39
 EXPECTED_HOOK_EVENTS = 12
 
@@ -895,6 +895,16 @@ def main():
 
     line4 = f"Memory: {_mode_label('default', 'Default')} {_mode_label('fast', 'Fast')} {_mode_label('full_hybrid', 'Full Hybrid')}"
     print(line4)
+
+    # ── LINE 5: Mentor system toggles ──
+    line5 = (
+        f"Mentor: "
+        f"{_tog('mentor_tracker', 'Tracker')} "
+        f"{_tog('mentor_hindsight_gate', 'Hindsight')} "
+        f"{_tog('mentor_outcome_chains', 'Chains')} "
+        f"{_tog('mentor_memory', 'Memory')}"
+    )
+    print(line5)
 
     # ── SNAPSHOT: write bridge file for TUI ──
     # Check UDS socket health
