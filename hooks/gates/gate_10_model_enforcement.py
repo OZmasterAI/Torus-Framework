@@ -52,7 +52,6 @@ AGENT_ROLE_MAP = {
     "Explore":           "research",     # Anthropic built-in: codebase search, read-only
     "researcher":        "research",     # Read-only research (Glob/Grep/Read/WebSearch, memory)
     "claude-code-guide": "research",     # Anthropic built-in: Claude Code documentation lookup
-    "metrics-dashboard": "research",     # Reads audit logs + LIVE_STATE, generates ASCII dashboards
     # Execution role: builds, implements, writes code
     "builder":           "execution",    # Full implementation (Edit/Write/Bash + memory + causal chain)
     "general-purpose":   "execution",    # Anthropic built-in: multi-step tasks with all tools
@@ -108,7 +107,6 @@ RECOMMENDED_MODELS = {
     "stress-tester":     {"haiku", "sonnet"},      # runs tests, read-heavy
     "perf-analyzer":     {"sonnet"},               # profiling needs reasoning
     "debugger":          {"sonnet", "opus"},        # debugging can be complex
-    "metrics-dashboard": {"haiku"},                # read-only data formatting
     "claude-code-guide": {"haiku"},                # documentation lookup only
     "statusline-setup":  {"haiku"},                # simple config changes
 }
@@ -125,7 +123,6 @@ MODEL_SUGGESTIONS = {
     "stress-tester":     "haiku or sonnet (test execution doesn't need opus)",
     "perf-analyzer":     "sonnet (profiling needs reasoning, not opus-level)",
     "debugger":          "sonnet or opus (debugging complex issues may need full power)",
-    "metrics-dashboard": "haiku (read-only data formatting, minimal capability needed)",
     "claude-code-guide": "haiku (documentation lookup only, minimal capability needed)",
     "statusline-setup":  "haiku (simple config file edits only)",
 }

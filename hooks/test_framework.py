@@ -4696,7 +4696,7 @@ test("Agents: builder uses sonnet", "sonnet" in _b_content.split("---")[1])
 print("\n--- New Agent Definitions ---")
 
 _new_agents = ["researcher.md", "stress-tester.md", "builder.md",
-               "security.md", "perf-analyzer.md", "debugger.md", "metrics-dashboard.md"]
+               "security.md", "perf-analyzer.md", "debugger.md"]
 
 # 1. All new agent files exist
 test("New Agents: all 6 files exist",
@@ -4728,8 +4728,8 @@ for _nafile in _new_agents:
         break
 test("New Agents: YAML frontmatter has required keys", _new_yaml_ok, _new_yaml_detail)
 
-# 3. Model assignments: haiku for researcher and metrics-dashboard
-for _haiku_agent in ["researcher.md", "metrics-dashboard.md"]:
+# 3. Model assignments: haiku for researcher
+for _haiku_agent in ["researcher.md"]:
     with open(os.path.join(_agents_dir, _haiku_agent)) as _hf:
         _hcontent = _hf.read()
     _hfm = _hcontent.split("---")[1] if "---" in _hcontent else ""
@@ -4755,8 +4755,8 @@ for _nafile in _new_agents:
         break
 test("New Agents: tool lists are non-empty", _tools_nonempty, _tools_detail)
 
-# 6. No Edit or Write tool in read-only agents (researcher, security, perf-analyzer, metrics-dashboard)
-_readonly_agents = ["researcher.md", "security.md", "perf-analyzer.md", "metrics-dashboard.md"]
+# 6. No Edit or Write tool in read-only agents (researcher, security, perf-analyzer)
+_readonly_agents = ["researcher.md", "security.md", "perf-analyzer.md"]
 _no_edit_write_ok = True
 _no_edit_write_detail = ""
 for _rofile in _readonly_agents:
@@ -4979,102 +4979,69 @@ test("session age exactly 2h → '2h'",
 
 from statusline import get_pending_count
 
-# Test 5: get_pending_count returns 0 with no state files
-cleanup_test_states()
-pv5 = get_pending_count()
+# Test 5: get_pending_count returns 0 with empty state
+pv5 = get_pending_count({})
 test("get_pending_count returns 0 with no state",
      pv5 == 0,
      f"Expected 0, got {pv5!r}")
 
-# Test 6: get_pending_count reads from session state file
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_pv_state = load_state(session_id=MAIN_SESSION)
-_pv_state["pending_verification"] = ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py"]
-save_state(_pv_state, session_id=MAIN_SESSION)
-pv6 = get_pending_count()
+# Test 6: get_pending_count reads from state dict
+_pv_state = {"pending_verification": ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py"]}
+pv6 = get_pending_count(_pv_state)
 test("get_pending_count reads pending_verification from state",
      pv6 == 3,
      f"Expected 3, got {pv6!r}")
 
 # Test 7: get_pending_count returns 0 when pending_verification is empty
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-pv7 = get_pending_count()
+pv7 = get_pending_count({"pending_verification": []})
 test("get_pending_count returns 0 for empty pending",
      pv7 == 0,
      f"Expected 0, got {pv7!r}")
 
-# Test 8: StatusLine includes PV when count > 0 (integration via state file)
-# Already tested via get_pending_count — verify it reads the right file
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_pv_state8 = load_state(session_id=MAIN_SESSION)
-_pv_state8["pending_verification"] = ["/tmp/x.py"]
-save_state(_pv_state8, session_id=MAIN_SESSION)
-pv8 = get_pending_count()
+# Test 8: get_pending_count reads single pending file
+_pv_state8 = {"pending_verification": ["/tmp/x.py"]}
+pv8 = get_pending_count(_pv_state8)
 test("get_pending_count reads single pending file",
      pv8 == 1,
      f"Expected 1, got {pv8!r}")
 
 from statusline import get_plan_mode_warns
 
-# Test 5: get_plan_mode_warns returns 0 with no state files
-cleanup_test_states()
-pm5 = get_plan_mode_warns()
+# Test 5: get_plan_mode_warns returns 0 with empty state
+pm5 = get_plan_mode_warns({})
 test("get_plan_mode_warns returns 0 with no state",
      pm5 == 0,
      f"Expected 0, got {pm5!r}")
 
 # Test 6: get_plan_mode_warns reads gate6_warn_count (merged from gate12)
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_pm6_state = load_state(session_id=MAIN_SESSION)
-_pm6_state["gate6_warn_count"] = 2
-save_state(_pm6_state, session_id=MAIN_SESSION)
-pm6 = get_plan_mode_warns()
+pm6 = get_plan_mode_warns({"gate6_warn_count": 2})
 test("get_plan_mode_warns reads gate6_warn_count",
      pm6 == 2,
      f"Expected 2, got {pm6!r}")
 
 # Test 7: get_plan_mode_warns returns 0 when gate6_warn_count not set
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-pm7 = get_plan_mode_warns()
+pm7 = get_plan_mode_warns({"some_other_key": True})
 test("get_plan_mode_warns returns 0 for default state",
      pm7 == 0,
      f"Expected 0, got {pm7!r}")
 
 # Test 8: get_plan_mode_warns reads high value
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_pm8_state = load_state(session_id=MAIN_SESSION)
-_pm8_state["gate6_warn_count"] = 5
-save_state(_pm8_state, session_id=MAIN_SESSION)
-pm8 = get_plan_mode_warns()
+pm8 = get_plan_mode_warns({"gate6_warn_count": 5})
 test("get_plan_mode_warns reads high value",
      pm8 == 5,
      f"Expected 5, got {pm8!r}")
-cleanup_test_states()
 
 
 # Test 10: get_verification_ratio returns correct counts
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_vr_state = load_state(session_id=MAIN_SESSION)
-_vr_state["verified_fixes"] = ["/a.py", "/b.py", "/c.py"]
-_vr_state["pending_verification"] = ["/d.py", "/e.py"]
-save_state(_vr_state, session_id=MAIN_SESSION)
 from statusline import get_verification_ratio
-_vr_v, _vr_t = get_verification_ratio()
+_vr_state = {"verified_fixes": ["/a.py", "/b.py", "/c.py"], "pending_verification": ["/d.py", "/e.py"]}
+_vr_v, _vr_t = get_verification_ratio(_vr_state)
 test("get_verification_ratio returns (3, 5)",
      _vr_v == 3 and _vr_t == 5,
      f"Expected (3, 5), got ({_vr_v}, {_vr_t})")
 
 # Test 11: get_verification_ratio returns (0, 0) for empty state
-cleanup_test_states()
-reset_state(session_id=MAIN_SESSION)
-_vr_v2, _vr_t2 = get_verification_ratio()
+_vr_v2, _vr_t2 = get_verification_ratio({})
 test("get_verification_ratio returns (0, 0) for empty",
      _vr_v2 == 0 and _vr_t2 == 0,
      f"Expected (0, 0), got ({_vr_v2}, {_vr_t2})")
@@ -5095,11 +5062,11 @@ test("get_total_tool_calls function exists",
      callable(_gttc),
      "Expected callable get_total_tool_calls")
 
-# Test 6: get_total_tool_calls returns int
-_ttc_result = _gttc()
+# Test 6: get_total_tool_calls returns int from state dict
+_ttc_result = _gttc({"total_tool_calls": 42})
 test("get_total_tool_calls returns int",
-     isinstance(_ttc_result, int),
-     f"Expected int, got {type(_ttc_result)}")
+     isinstance(_ttc_result, int) and _ttc_result == 42,
+     f"Expected 42, got {_ttc_result!r}")
 
 # ─────────────────────────────────────────────────
 # Event Logger + New Hook Events
@@ -11404,10 +11371,14 @@ try:
     _g19r2 = g19_check("Bash", {"command": "ls"}, {}, event_type="PreToolUse")
     test("Gate 19: skips non-watched tools", not _g19r2.blocked, f"blocked={_g19r2.blocked}")
 
-    # Skips when toggle is off (default)
+    # Skips when toggle is off (patch get_live_toggle to return False for all mentor toggles)
+    import gates.gate_19_hindsight as _g19_mod
+    _g19_orig_toggle = _g19_mod.get_live_toggle
+    _g19_mod.get_live_toggle = lambda key, *a, **kw: False
     _g19r3 = g19_check("Edit", {"file_path": "/tmp/foo.py"}, {
         "mentor_last_score": 0.1, "mentor_escalation_count": 5
     }, event_type="PreToolUse")
+    _g19_mod.get_live_toggle = _g19_orig_toggle
     test("Gate 19: skips when toggle off", not _g19r3.blocked, f"blocked={_g19r3.blocked}")
 
     # Skips when fixing_error == True (Gate 15 territory)

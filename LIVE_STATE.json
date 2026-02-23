@@ -5,15 +5,13 @@
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1392,
+  "test_count": 1391,
   "test_failures": 0,
-  "what_was_done": "Gate 10 model profile research role split: separated 'planning' into 'planning' + 'research' roles so Explore/researcher/guide agents get sonnet instead of opus under balanced. Added 2 new profiles (efficient, lean) for 5 total. Statusline expanded to 7 lines with dedicated radio-select lines for model profiles (5), security profiles (4), and mentor toggles. Enabled mentor_all master toggle. Committed all mentor system + profile changes (9c426d9). Tests: 1392/1392.",
-  "service_status": "Memory MCP: UP | Tests: 1392 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 17 active (G8 dormant, G12 purged, G19 Hindsight) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens) | Mentor: 4 modules (ALL ON) | Model profiles: 5 (quality/balanced/efficient/lean/budget) | Security profiles: 4",
+  "what_was_done": "Session 191: Statusline perf 354x speedup (is_worker_available fix + 8 state reads consolidated). HP bar upgraded to positional gradient (red→green). Deleted metrics-dashboard agent (dead code). Telegram mirror rewritten to use last_assistant_message (207→125 lines). Analyzed defer_loading (not adopted). Tests: 1391/1391.",
+  "service_status": "Memory MCP: UP | Tests: 1391 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 17 active (G8 dormant, G12 purged, G19 Hindsight) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 6 defs | Skills: 33 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens) | Mentor: 4 modules (ALL ON) | Model profiles: 5 (quality/balanced/efficient/lean/budget) | Security profiles: 4",
   "next_steps": [
-    "Verify mentor system behavior in live session (all toggles ON via mentor_all)",
+    "Explore spinnerTipsOverride adoption (benefits/negatives)",
     "Merge Self-Sprint-2 into main",
-    "Consider switching model_profile to 'efficient' for daily use",
-    "Consider HF_TOKEN for faster model loading (avoid unauthenticated rate limits)",
     "Investigate flaky Lever4 TriggerC test (capture queue state dependency)"
   ],
   "known_issues": [

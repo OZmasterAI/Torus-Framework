@@ -52,10 +52,8 @@ EXPECTED_GATES = 17
 EXPECTED_SKILLS = 39
 EXPECTED_HOOK_EVENTS = 12
 
-# Health bar characters
-BAR_FULL = "\u2588"   # █
-BAR_EMPTY = "\u2591"  # ░
-BAR_WIDTH = 5
+# Health bar characters (legacy — kept for reference)
+BAR_WIDTH = 10
 
 # ANSI color codes for health bar
 COLOR_CYAN = "\033[96m"     # 100%        — perfect health
@@ -178,99 +176,69 @@ def count_hook_events():
         return 0
 
 
-def get_error_pressure():
-    """Read error_pattern_counts from the most recent session state file.
-    Returns total error count (0 = healthy)."""
+def _load_session_state():
+    """Load the most recent session state file once. All state readers use this."""
     import glob as globmod
     pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
-        return 0
+        return {}
     files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
     try:
         with open(files[0]) as f:
-            state = json.load(f)
-        counts = state.get("error_pattern_counts", {})
-        return sum(counts.values()) if counts else 0
+            return json.load(f)
     except (json.JSONDecodeError, OSError):
-        return 0
+        return {}
 
 
-def get_error_velocity():
-    """Calculate error velocity by reading error_windows from session state.
+def get_error_pressure(state):
+    """Read error_pattern_counts from session state. Returns total error count (0 = healthy)."""
+    counts = state.get("error_pattern_counts", {})
+    return sum(counts.values()) if counts else 0
+
+
+def get_error_velocity(state):
+    """Calculate error velocity from session state.
 
     Returns (recent_count, total_count) tuple where:
       - recent_count: errors in last 300 seconds (5 minutes)
       - total_count: all errors in error_windows
-
-    This distinguishes active error loops from historical errors.
     """
-    import glob as globmod
-    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
-    files = globmod.glob(pattern)
-    if not files:
-        return (0, 0)
-    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-    try:
-        with open(files[0]) as f:
-            state = json.load(f)
-        error_windows = state.get("error_windows", [])
-        if not error_windows:
-            return (0, 0)
-
-        now = time.time()
-        recent_threshold = 300  # 5 minutes
-        recent_count = 0
-        total_count = 0
-
-        for entry in error_windows:
-            if isinstance(entry, dict):
-                last_seen = entry.get("last_seen", 0)
-                count = entry.get("count", 1)
-                total_count += count
-                if now - last_seen < recent_threshold:
-                    recent_count += count
-
-        return (recent_count, total_count)
-    except (json.JSONDecodeError, OSError, ValueError, KeyError):
-        # Fail-open: return healthy state on any error
+    error_windows = state.get("error_windows", [])
+    if not error_windows:
         return (0, 0)
 
+    now = time.time()
+    recent_threshold = 300  # 5 minutes
+    recent_count = 0
+    total_count = 0
 
-def get_most_used_tool():
-    """Read tool_stats from most recent session state, return (name, count) or None."""
-    import glob as globmod
-    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
-    files = globmod.glob(pattern)
-    if not files:
+    for entry in error_windows:
+        if isinstance(entry, dict):
+            last_seen = entry.get("last_seen", 0)
+            count = entry.get("count", 1)
+            total_count += count
+            if now - last_seen < recent_threshold:
+                recent_count += count
+
+    return (recent_count, total_count)
+
+
+def get_most_used_tool(state):
+    """Read tool_stats from session state, return (name, count) or None."""
+    tool_stats = state.get("tool_stats", {})
+    if not tool_stats:
         return None
-    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
     try:
-        with open(files[0]) as f:
-            state = json.load(f)
-        tool_stats = state.get("tool_stats", {})
-        if not tool_stats:
-            return None
         top = max(tool_stats.items(), key=lambda x: x[1].get("count", 0))
         return (top[0], top[1]["count"])
-    except (json.JSONDecodeError, OSError, ValueError, KeyError):
+    except (ValueError, KeyError):
         return None
 
 
-def get_total_tool_calls():
-    """Read total_tool_calls from most recent session state."""
-    import glob as globmod
-    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
-    files = globmod.glob(pattern)
-    if not files:
-        return 0
-    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-    try:
-        with open(files[0]) as f:
-            state = json.load(f)
-        return state.get("total_tool_calls", 0)
-    except (json.JSONDecodeError, OSError):
-        return 0
+def get_total_tool_calls(state):
+    """Read total_tool_calls from session state."""
+    return state.get("total_tool_calls", 0)
 
 
 def get_session_age(state):
@@ -290,23 +258,12 @@ def get_session_age(state):
     return f"{hours}h{minutes}m"
 
 
-def get_pending_count():
+def get_pending_count(state):
     """Return count of files awaiting verification from session state."""
-    import glob as globmod
-    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
-    files = globmod.glob(pattern)
-    if not files:
-        return 0
-    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-    try:
-        with open(files[0]) as f:
-            state = json.load(f)
-        return len(state.get("pending_verification", []))
-    except (json.JSONDecodeError, OSError):
-        return 0
+    return len(state.get("pending_verification", []))
 
 
-def get_subagent_status():
+def get_subagent_status(state):
     """Read active subagents from session state and sum their live token usage.
 
     For each active subagent, reads its transcript JSONL and sums
@@ -316,18 +273,6 @@ def get_subagent_status():
     [(agent_type, live_tokens), ...] and total_completed_tokens is the
     cumulative tokens from all finished subagents.
     """
-    import glob as globmod
-    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
-    files = globmod.glob(pattern)
-    if not files:
-        return ([], 0)
-    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-    try:
-        with open(files[0]) as f:
-            state = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return ([], 0)
-
     completed_tokens = state.get("subagent_total_tokens", 0)
     active = state.get("active_subagents", [])
     if not active:
@@ -372,41 +317,19 @@ def get_active_mode():
         return None
 
 
-def get_plan_mode_warns():
+def get_plan_mode_warns(state):
     """Return Gate 6 save-to-memory escalation warn count from session state.
 
     Gate 12 was merged into Gate 6 in refactor1 — now uses gate6_warn_count.
     """
-    import glob as globmod
-    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
-    files = globmod.glob(pattern)
-    if not files:
-        return 0
-    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-    try:
-        with open(files[0]) as f:
-            state = json.load(f)
-        return state.get("gate6_warn_count", 0)
-    except (json.JSONDecodeError, OSError):
-        return 0
+    return state.get("gate6_warn_count", 0)
 
 
-def get_verification_ratio():
+def get_verification_ratio(state):
     """Return (verified, total) from session state for V:x/y display."""
-    import glob as globmod
-    pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
-    files = globmod.glob(pattern)
-    if not files:
-        return (0, 0)
-    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
-    try:
-        with open(files[0]) as f:
-            state = json.load(f)
-        verified = len(state.get("verified_fixes", []))
-        pending = len(state.get("pending_verification", []))
-        return (verified, verified + pending)
-    except (json.JSONDecodeError, OSError):
-        return (0, 0)
+    verified = len(state.get("verified_fixes", []))
+    pending = len(state.get("pending_verification", []))
+    return (verified, verified + pending)
 
 
 def get_ramdisk_health():
@@ -465,7 +388,7 @@ def fmt_bytes(n):
     return f"{n / (1024 * 1024):.1f}M"
 
 
-def calculate_health(gate_count, mem_count):
+def calculate_health(gate_count, mem_count, session_state=None):
     """Calculate framework health as a weighted percentage (0-100).
 
     Dimensions (all lightweight filesystem checks):
@@ -476,6 +399,8 @@ def calculate_health(gate_count, mem_count):
       Core files exist  (15%) — CLAUDE.md, LIVE_STATE.json, enforcer.py
       Error pressure    (10%) — low errors in session state
     """
+    if session_state is None:
+        session_state = {}
     scores = {}
 
     # 1. Gates (25%) — ratio of actual to expected
@@ -508,7 +433,7 @@ def calculate_health(gate_count, mem_count):
 
     # 6. Error pressure (10%) — velocity-aware: recent errors heavily penalized
     try:
-        recent_errors, total_errors = get_error_velocity()
+        recent_errors, total_errors = get_error_velocity(session_state)
         if recent_errors > 0:
             # Active error loop — use recent count with harsh penalties
             if recent_errors <= 2:
@@ -584,17 +509,39 @@ def get_git_branch():
 
 
 def format_health_bar(pct):
-    """Format health as a 10-char color-coded progress bar.
+    """Format health as a gradient bar using fg/bg half-block trick.
 
-    Uses health_color() thresholds: cyan=100%, green=90%+, orange=75%+, yellow=50%+, red=<50%.
-    Returns: '{color}████████░░{reset} 85%'
+    Same visual technique as format_context_bar(): each character shows
+    2 gradient segments (left=fg, right=bg) via U+258C. 10 chars = 20 segments.
+    Positional gradient reversed from CTX: red(0%) → green(100%).
     """
-    width = 10
-    filled = round(pct / 100 * width)
-    filled = max(0, min(width, filled))
-    bar = BAR_FULL * filled + BAR_EMPTY * (width - filled)
-    color = health_color(pct)
-    return f"{color}HP:{bar} {pct}%{COLOR_RESET}"
+    chars = 10       # physical character width
+    segments = 20    # logical segments (2 per char via fg/bg)
+    filled = round(pct / 100 * segments)
+    filled = max(0, min(segments, filled))
+
+    bar = ""
+    for i in range(chars):
+        left = 2 * i
+        right = 2 * i + 1
+        left_pct = (left / segments) * 100
+        right_pct = (right / segments) * 100
+        left_filled = left < filled
+        right_filled = right < filled
+
+        if left_filled and right_filled:
+            fg = _hp_gradient_color(left_pct)
+            bg = _hp_gradient_bg(right_pct)
+            bar += f"{fg}{bg}\u258c{COLOR_RESET}"
+        elif left_filled and not right_filled:
+            fg = _hp_gradient_color(left_pct)
+            bar += f"{fg}{_BG_DARK}\u258c{COLOR_RESET}"
+        else:
+            bar += f"{COLOR_DARK_GRAY}{_BG_DARK}\u258c{COLOR_RESET}"
+
+    pct_color = _hp_gradient_color(pct)
+    pct_str = f"{pct_color}{pct}%{COLOR_RESET}"
+    return f"HP:{bar} {pct_str}"
 
 
 def format_context_pct(pct):
@@ -646,35 +593,91 @@ def _gradient_color(segment_pct):
     return f"\033[38;5;{code}m"
 
 
+def _gradient_bg(segment_pct):
+    """Return ANSI 256-color background escape for a position in the gradient."""
+    code = _CTX_GRADIENT[0][1]
+    for threshold, c in _CTX_GRADIENT:
+        if segment_pct >= threshold:
+            code = c
+    return f"\033[48;5;{code}m"
+
+
+_BG_DARK = "\033[48;5;236m"
+
+# HP gradient: reversed — red(0%) → green(100%), so full health = green end
+_HP_GRADIENT = [
+    (0,  196),  # red
+    (8,  202),  # dark orange
+    (15, 208),  # orange
+    (25, 214),  # light orange
+    (35, 220),  # golden yellow
+    (45, 184),  # yellow
+    (55, 148),  # light yellow-green
+    (65, 112),  # yellow-green
+    (75, 76),   # green
+    (85, 82),   # bright green
+]
+
+
+def _hp_gradient_color(segment_pct):
+    """Return ANSI 256-color foreground for HP bar position (red→green)."""
+    code = _HP_GRADIENT[0][1]
+    for threshold, c in _HP_GRADIENT:
+        if segment_pct >= threshold:
+            code = c
+    return f"\033[38;5;{code}m"
+
+
+def _hp_gradient_bg(segment_pct):
+    """Return ANSI 256-color background for HP bar position (red→green)."""
+    code = _HP_GRADIENT[0][1]
+    for threshold, c in _HP_GRADIENT:
+        if segment_pct >= threshold:
+            code = c
+    return f"\033[48;5;{code}m"
+
+
 def format_context_bar(pct, cmp_count=0):
     """Format context usage as a smooth gradient bar matching Anthropic's console.
 
-    Smooth gradient: green -> yellow-green -> yellow -> orange -> red.
-    Unfilled segments use dark gray blocks. Compaction threshold at ~93%.
-    Returns: 'Context window: ▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐  77.0%'
+    Uses fg/bg half-block trick: each character shows 2 gradient segments
+    (left half = foreground, right half = background). 10 chars = 20 segments.
+    Compaction threshold marked at ~93%.
     """
-    width = 10
-    filled = round(pct / 100 * width)
-    filled = max(0, min(width, filled))
-    comp_pos = round(COMPACTION_THRESHOLD / 100 * width)
+    chars = 10       # physical character width (matches HP bar)
+    segments = 20    # logical segments (2 per char via fg/bg)
+    filled = round(pct / 100 * segments)
+    filled = max(0, min(segments, filled))
+    comp_seg = round(COMPACTION_THRESHOLD / 100 * segments)  # ~18
 
     bar = ""
-    for i in range(width):
-        segment_pct = (i / width) * 100
+    for i in range(chars):
+        left = 2 * i        # left sub-segment index
+        right = 2 * i + 1   # right sub-segment index
+        left_pct = (left / segments) * 100
+        right_pct = (right / segments) * 100
+        left_filled = left < filled
+        right_filled = right < filled
 
-        if i == comp_pos:
-            # Compaction threshold — thin marker
-            if i < filled:
-                bar += f"\033[38;5;255m\u2502{COLOR_RESET}"
+        # Compaction marker: if either sub-segment is the threshold
+        if left == comp_seg or right == comp_seg:
+            if left_filled:
+                bar += f"\033[38;5;255m\033[48;5;236m\u2502{COLOR_RESET}"
             else:
-                bar += f"\033[38;5;242m\u2502{COLOR_RESET}"
-        elif i < filled:
-            color = _gradient_color(segment_pct)
-            bar += f"{color}\u258c{COLOR_RESET}"
+                bar += f"\033[38;5;242m{_BG_DARK}\u2502{COLOR_RESET}"
+        elif left_filled and right_filled:
+            # Both halves filled — fg=left color, bg=right color
+            fg = _gradient_color(left_pct)
+            bg = _gradient_bg(right_pct)
+            bar += f"{fg}{bg}\u258c{COLOR_RESET}"
+        elif left_filled and not right_filled:
+            # Left filled, right empty — fg=gradient, bg=dark
+            fg = _gradient_color(left_pct)
+            bar += f"{fg}{_BG_DARK}\u258c{COLOR_RESET}"
         else:
-            bar += f"{COLOR_DARK_GRAY}\u258c{COLOR_RESET}"
+            # Both empty — dark
+            bar += f"{COLOR_DARK_GRAY}{_BG_DARK}\u258c{COLOR_RESET}"
 
-    # Percentage with matching gradient color
     pct_color = _gradient_color(pct)
     pct_str = f"{pct_color}{pct:.1f}%{COLOR_RESET}"
     cmp_str = f" CMP:{cmp_count}" if cmp_count > 0 else ""
@@ -758,6 +761,9 @@ def main():
     last_in_tok = cur_usage.get("input_tokens", 0) or 0
     last_out_tok = cur_usage.get("output_tokens", 0) or 0
 
+    # Load session state once (used by all state-reading functions)
+    sess_state = _load_session_state()
+
     # Calculate display values
     project = get_project_name()
     gate_count = count_gates()
@@ -789,7 +795,7 @@ def main():
         lines_str = ""
 
     # Calculate framework health
-    health_pct = calculate_health(gate_count, mem_count)
+    health_pct = calculate_health(gate_count, mem_count, sess_state)
 
     # Model name from session data
     model_data = data.get("model", {}) or {}
@@ -816,7 +822,7 @@ def main():
     skill_count = count_skills()
 
     # Total tool calls
-    total_calls = get_total_tool_calls()
+    total_calls = get_total_tool_calls(sess_state)
 
     # Health bar (10-char, same style as old context bar)
     health_bar = format_health_bar(health_pct)
@@ -844,7 +850,7 @@ def main():
     line1_parts.append(f"\u26a1TC:{total_calls}")
 
     # Subagent visibility (conditional, line 1)
-    sa_active, sa_completed_tok = get_subagent_status()
+    sa_active, sa_completed_tok = get_subagent_status(sess_state)
     if sa_active:
         sa_parts = []
         for agent_type, tok in sa_active:
@@ -869,7 +875,7 @@ def main():
     line2_parts = [health_bar, ctx_bar]
 
     # Error pressure (conditional — only when recent errors active)
-    recent_errors, total_errors = get_error_velocity()
+    recent_errors, total_errors = get_error_velocity(sess_state)
     if recent_errors > 0:
         line2_parts.append(f"{COLOR_RED}E:{recent_errors}\U0001f525{COLOR_RESET}")
     elif total_errors > 0:
@@ -891,7 +897,7 @@ def main():
         line2_parts.append(lines_str)
 
     # Verification ratio (verified/total — pending is implicit: total - verified)
-    vr_verified, vr_total = get_verification_ratio()
+    vr_verified, vr_total = get_verification_ratio(sess_state)
     if vr_total > 0:
         line2_parts.append(f"\u2705V:{vr_verified}/{vr_total}")
 
@@ -899,7 +905,7 @@ def main():
     line2_parts.append(f"\U0001f4b0{cost_str}")
 
     # Plan mode escalation warnings (conditional, line 2 end)
-    pm_warns = get_plan_mode_warns()
+    pm_warns = get_plan_mode_warns(sess_state)
     if pm_warns >= 1:
         line2_parts.append(f"PM:W{pm_warns}")
 
@@ -999,7 +1005,7 @@ def main():
     # Check UDS socket health
     uds_ok = False
     try:
-        uds_ok = is_worker_available()
+        uds_ok = is_worker_available(retries=1, delay=0)
     except Exception:
         pass
 

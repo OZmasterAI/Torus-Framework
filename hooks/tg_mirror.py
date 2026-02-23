@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Telegram Mirror — Stop Hook
 
-Fires after every Claude response. Reads the last assistant turn from
-the transcript and sends it to Telegram via Bot API.
+Fires after every Claude response. Reads last_assistant_message from
+the Stop hook stdin JSON and sends it to Telegram via Bot API.
 
 Gated by tg_mirror_messages toggle in LIVE_STATE.json.
 Always exits 0 (fail-open, never blocks Claude).
 
 Input (stdin JSON):
-  {"session_id": "...", "transcript_path": "...", "cwd": "...", "hook_event_name": "Stop"}
+  {"session_id": "...", "last_assistant_message": "...", "hook_event_name": "Stop"}
 """
 
 import json
@@ -21,9 +21,6 @@ CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 TG_CONFIG_FILE = os.path.join(CLAUDE_DIR, "integrations", "telegram-bot", "config.json")
 
-# Track last sent position to avoid re-sending on each Stop
-_CURSOR_FILE = os.path.join(CLAUDE_DIR, "hooks", ".tg_mirror_cursor.json")
-
 
 def _load_json(path, default=None):
     try:
@@ -31,74 +28,6 @@ def _load_json(path, default=None):
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return default or {}
-
-
-def _save_cursor(session_id, line_num):
-    """Save the last-sent line number for this session."""
-    try:
-        cursor = _load_json(_CURSOR_FILE, {})
-        cursor[session_id] = line_num
-        # Keep only last 5 sessions
-        if len(cursor) > 5:
-            keys = sorted(cursor.keys())
-            for k in keys[:-5]:
-                del cursor[k]
-        tmp = _CURSOR_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(cursor, f)
-        os.replace(tmp, _CURSOR_FILE)
-    except OSError:
-        pass
-
-
-def _extract_new_assistant_turns(transcript_path, session_id):
-    """Read new assistant turns since last cursor position."""
-    cursor = _load_json(_CURSOR_FILE, {})
-    last_line = cursor.get(session_id, -1)  # -1 = no cursor yet
-
-    # First run for this session: skip to end (don't replay history)
-    if last_line == -1:
-        try:
-            with open(transcript_path) as f:
-                last_line = sum(1 for _ in f)
-        except (FileNotFoundError, OSError):
-            last_line = 0
-        _save_cursor(session_id, last_line)
-        return [], last_line
-
-    turns = []
-    current_line = 0
-    try:
-        with open(transcript_path) as f:
-            for raw_line in f:
-                current_line += 1
-                if current_line <= last_line:
-                    continue
-                raw_line = raw_line.strip()
-                if not raw_line:
-                    continue
-                try:
-                    entry = json.loads(raw_line)
-                except json.JSONDecodeError:
-                    continue
-                entry_type = entry.get("type", "")
-                if entry_type != "assistant":
-                    continue
-                msg = entry.get("message", {})
-                content = msg.get("content", "")
-                if isinstance(content, list):
-                    text_parts = []
-                    for block in content:
-                        if isinstance(block, dict) and block.get("type") == "text":
-                            text_parts.append(block.get("text", ""))
-                    content = "\n".join(text_parts)
-                content = content.strip()
-                if content:
-                    turns.append(content)
-    except (FileNotFoundError, OSError):
-        return [], last_line
-
-    return turns, current_line
 
 
 def _send_telegram(bot_token, chat_id, text):
@@ -164,10 +93,9 @@ def main():
         if not live.get("tg_mirror_messages", False):
             sys.exit(0)
 
-        # Get transcript path
-        transcript_path = data.get("transcript_path", "")
-        session_id = data.get("session_id", "unknown")
-        if not transcript_path or not os.path.isfile(transcript_path):
+        # Get last assistant message (added in Claude Code 2.1.47)
+        message = (data.get("last_assistant_message") or "").strip()
+        if not message:
             sys.exit(0)
 
         # Load Telegram config
@@ -178,23 +106,13 @@ def main():
             print("[TG_MIRROR] No bot_token or allowed_users configured", file=sys.stderr)
             sys.exit(0)
 
-        # Extract new assistant turns
-        turns, new_cursor = _extract_new_assistant_turns(transcript_path, session_id)
-        if not turns:
-            _save_cursor(session_id, new_cursor)
-            sys.exit(0)
-
         # Format and send
-        for turn in turns:
-            # Escape HTML and send
-            escaped = _escape_html(turn)
-            # Prefix with session indicator
-            msg = f"<b>[Claude]</b>\n{escaped}"
-            for uid in allowed_users:
-                _send_telegram(bot_token, uid, msg)
+        escaped = _escape_html(message)
+        msg = f"<b>[Claude]</b>\n{escaped}"
+        for uid in allowed_users:
+            _send_telegram(bot_token, uid, msg)
 
-        _save_cursor(session_id, new_cursor)
-        print(f"[TG_MIRROR] Sent {len(turns)} turn(s)", file=sys.stderr)
+        print("[TG_MIRROR] Sent 1 turn", file=sys.stderr)
 
     except Exception as e:
         print(f"[TG_MIRROR] Error (non-fatal): {e}", file=sys.stderr)
