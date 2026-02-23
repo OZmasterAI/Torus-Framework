@@ -5,22 +5,22 @@
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1311,
-  "test_failures": 1,
-  "what_was_done": "Switched embedding model from Alibaba-NLP/gte-multilingual-base (broken, 25-line monkey-patch) to nomic-ai/nomic-embed-text-v2-moe (clean, no patches, 8192 tokens, MoE, Matryoshka). Removed buffer-patch block, installed einops, removed stale migration marker, fixed test bugs (datetime import, suggest_promotions lazy init guard). 1311 passed, 1 pre-existing failure.",
-  "service_status": "Memory MCP: DOWN (pending restart) | Tests: 1311 passed, 1 pre-existing failure | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens, migration pending MCP restart)",
+  "test_count": 1307,
+  "test_failures": 0,
+  "what_was_done": "Fixed MCP server crash from ChromaDB embedding conflict (added _get_col() fallback + null guard). Deferred _ensure_initialized() to lazy first-tool-call so MCP handshake completes in 2s vs 25s. Added _ensure_initialized() to all 6 @mcp.tool() functions. Completed full embedding migration: 5924 docs re-embedded from all-MiniLM-L6-v2 (384-dim) to nomic-embed-text-v2-moe (768-dim, 8192 tokens). Tests: 1307/1307 passing.",
+  "service_status": "Memory MCP: UP | Tests: 1307 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 16 active (G8 dormant, G12 fully purged) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 7 defs | Skills: 33 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens, migration COMPLETE)",
   "next_steps": [
-    "Restart MCP server to trigger embedding migration with nomic model (auto-runs _migrate_embeddings + _backfill_tiers)",
-    "Save session learnings to memory once MCP is back (Alibaba bug, nomic selection, gate 6 ramdisk state)",
-    "Verify search quality post-migration and tune dedup thresholds if needed",
-    "Merge Self-Sprint-2 into main"
+    "Verify search quality post-migration and tune dedup thresholds for 768-dim distances",
+    "Merge Self-Sprint-2 into main",
+    "Consider HF_TOKEN for faster model loading (avoid unauthenticated rate limits)",
+    "Investigate flaky Lever4 TriggerC test (capture queue state dependency)"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Embedding migration pending MCP restart \u2014 dedup thresholds may need tuning for 768-dim distances",
-    "1 pre-existing test failure: compaction regression (deletes old obs + digest float session_time)"
+    "Dedup thresholds may need tuning for 768-dim cosine distances (previously calibrated for 384-dim)",
+    "Flaky test: Lever4 TriggerC (capture queue state-dependent, passes on re-run)"
   ],
   "terminal_l2_always": false,
   "context_enrichment": true,
@@ -36,12 +36,12 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 4m\n- **Tool Calls**: 9 (Bash: 4, Read: 2, Edit: 2, Write: 1)\n- **Files Modified**: 2 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 2 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/HANDOFF.md`\n- `/home/crab/.claude/LIVE_STATE.json`",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 3m\n- **Tool Calls**: 12 (Bash: 4, Read: 4, Edit: 2, Task: 1, Grep: 1)\n- **Files Modified**: 1 (1 verified, 0 pending)\n- **Errors**: 1 (No such file or directory x1)\n- **Tests**: exit code 0\n- **Subagents**: 1 launched, 1,363 tokens\n\n**Files changed:**\n- `/home/crab/.claude/hooks/memory_server.py` (verified)",
   "last_session_metrics": {
-    "reads": 2,
-    "edits": 2,
-    "errors": 0,
-    "verified": 0,
+    "reads": 1,
+    "edits": 1,
+    "errors": 1,
+    "verified": 1,
     "pending": 0
   }
 }
