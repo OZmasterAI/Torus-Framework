@@ -11617,6 +11617,88 @@ except Exception as _mint_e:
 
 cleanup_test_states()
 
+# ─────────────────────────────────────────────────
+# Analytics MCP: Enforcer Exemption
+# ─────────────────────────────────────────────────
+print("\n--- Analytics MCP: Enforcer Exemption ---")
+
+try:
+    from enforcer import is_analytics_tool, is_always_allowed, ANALYTICS_TOOL_PREFIX
+
+    test("is_analytics_tool: recognises analytics tool",
+         is_analytics_tool("mcp__analytics__framework_health") == True)
+    test("is_analytics_tool: rejects memory tool",
+         is_analytics_tool("mcp__memory__search") == False)
+    test("is_analytics_tool: rejects plain tool",
+         is_analytics_tool("Edit") == False)
+    test("is_analytics_tool: rejects empty string",
+         is_analytics_tool("") == False)
+    test("is_always_allowed: analytics tool is always allowed",
+         is_always_allowed("mcp__analytics__session_summary") == True)
+    test("is_always_allowed: analytics all_metrics is allowed",
+         is_always_allowed("mcp__analytics__all_metrics") == True)
+    test("ANALYTICS_TOOL_PREFIX is correct",
+         ANALYTICS_TOOL_PREFIX == "mcp__analytics__")
+
+except Exception as _amcp_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Analytics MCP enforcer exemption tests: {_amcp_e}")
+    print(f"  FAIL: Analytics MCP enforcer exemption tests: {_amcp_e}")
+
+# ─────────────────────────────────────────────────
+# Analytics MCP: Gate 11 Exemption
+# ─────────────────────────────────────────────────
+print("\n--- Analytics MCP: Gate 11 Exemption ---")
+
+try:
+    from gates.gate_11_rate_limit import check as _g11_analytics_check
+
+    # Analytics tool should not be blocked and should not add to rate window
+    _g11a_state = {"rate_window_timestamps": [], "session_start": time.time() - 60}
+    _g11a_result = _g11_analytics_check("mcp__analytics__framework_health", {}, _g11a_state)
+    test("Gate 11: analytics tool → not blocked", not _g11a_result.blocked)
+    test("Gate 11: analytics tool → no timestamp appended",
+         len(_g11a_state.get("rate_window_timestamps", [])) == 0,
+         f"got {len(_g11a_state.get('rate_window_timestamps', []))} timestamps")
+
+    # Non-analytics tool should still append timestamp
+    _g11b_state = {"rate_window_timestamps": [], "session_start": time.time() - 60}
+    _g11b_result = _g11_analytics_check("Edit", {"file_path": "/tmp/test.py"}, _g11b_state)
+    test("Gate 11: normal tool still appends timestamp",
+         len(_g11b_state.get("rate_window_timestamps", [])) == 1)
+
+except Exception as _g11a_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Analytics MCP Gate 11 exemption tests: {_g11a_e}")
+    print(f"  FAIL: Analytics MCP Gate 11 exemption tests: {_g11a_e}")
+
+# ─────────────────────────────────────────────────
+# Analytics MCP: Session Auto-Detection
+# ─────────────────────────────────────────────────
+print("\n--- Analytics MCP: Session Auto-Detection ---")
+
+try:
+    from analytics_server import _detect_session_id, _resolve_session_id
+
+    # _detect_session_id should return a string (may be "default" if no state files)
+    _detected_sid = _detect_session_id()
+    test("_detect_session_id returns string", isinstance(_detected_sid, str))
+    test("_detect_session_id returns non-empty", len(_detected_sid) > 0)
+
+    # _resolve_session_id with empty string should auto-detect
+    _resolved = _resolve_session_id("")
+    test("_resolve_session_id('') auto-detects", _resolved == _detected_sid)
+
+    # _resolve_session_id with explicit ID should pass through
+    _explicit = _resolve_session_id("my-explicit-session")
+    test("_resolve_session_id passes explicit ID through",
+         _explicit == "my-explicit-session")
+
+except Exception as _asd_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: Analytics MCP session auto-detection tests: {_asd_e}")
+    print(f"  FAIL: Analytics MCP session auto-detection tests: {_asd_e}")
+
 # Restore sideband file after tests
 if _SIDEBAND_BACKUP is not None:
     with open(MEMORY_TIMESTAMP_FILE, "w") as _sbf:

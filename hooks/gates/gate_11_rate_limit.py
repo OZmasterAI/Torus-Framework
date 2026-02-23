@@ -23,9 +23,16 @@ WINDOW_SECONDS = 120   # rolling window size
 MAX_WINDOW_ENTRIES = 200  # cap stored timestamps
 
 
+ANALYTICS_TOOL_PREFIX = "mcp__analytics__"
+
+
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     """Block or warn when tool call rate is too high (rolling window)."""
     if event_type != "PreToolUse":
+        return GateResult(blocked=False, gate_name=GATE_NAME)
+
+    # Analytics tools are read-only — don't count toward rate limit
+    if tool_name.startswith(ANALYTICS_TOOL_PREFIX):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     now = time.time()

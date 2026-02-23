@@ -145,6 +145,9 @@ MEMORY_TOOL_PREFIXES = [
     "mcp_memory_",
 ]
 
+# MCP analytics tools are always allowed (read-only)
+ANALYTICS_TOOL_PREFIX = "mcp__analytics__"
+
 
 def is_memory_tool(tool_name):
     for prefix in MEMORY_TOOL_PREFIXES:
@@ -153,8 +156,12 @@ def is_memory_tool(tool_name):
     return False
 
 
+def is_analytics_tool(tool_name):
+    return tool_name.startswith(ANALYTICS_TOOL_PREFIX)
+
+
 def is_always_allowed(tool_name):
-    return tool_name in ALWAYS_ALLOWED_TOOLS or is_memory_tool(tool_name)
+    return tool_name in ALWAYS_ALLOWED_TOOLS or is_memory_tool(tool_name) or is_analytics_tool(tool_name)
 
 
 # Tools that bypass most gates but still run Gate 17 (injection defense)
