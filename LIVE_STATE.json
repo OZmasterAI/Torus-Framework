@@ -1,5 +1,5 @@
 {
-  "session_count": 191,
+  "session_count": 192,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
@@ -7,7 +7,7 @@
   "feature_status": "in-progress",
   "test_count": 1405,
   "test_failures": 0,
-  "what_was_done": "Session 191: Implemented Analytics MCP Server — second lightweight MCP server (hooks/analytics_server.py) exposing 7 read-only tools (framework_health, session_summary, gate_dashboard, gate_timing, detect_anomalies, skill_health, all_metrics). Added enforcer exemption (is_analytics_tool + is_always_allowed), Gate 11 rate-limit exemption. 14 new tests, 1405 total passing. Registered in mcp.json. Requires restart to activate.",
+  "what_was_done": "Session 191: Implemented Analytics MCP Server \u2014 second lightweight MCP server (hooks/analytics_server.py) exposing 7 read-only tools (framework_health, session_summary, gate_dashboard, gate_timing, detect_anomalies, skill_health, all_metrics). Added enforcer exemption (is_analytics_tool + is_always_allowed), Gate 11 rate-limit exemption. 14 new tests, 1405 total passing. Registered in mcp.json. Requires restart to activate.",
   "service_status": "Memory MCP: UP | Analytics MCP: PENDING RESTART | Tests: 1405 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 17 active (G8 dormant, G12 purged, G19 Hindsight) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 6 defs | Skills: 34 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens) | Mentor: 4 modules (ALL ON) | Model profiles: 5 (quality/balanced/efficient/lean/budget) | Security profiles: 4",
   "next_steps": [
     "Restart Claude Code to activate Analytics MCP server, verify with /mcp",
@@ -40,12 +40,12 @@
   "mentor_hindsight_gate": false,
   "mentor_outcome_chains": false,
   "mentor_memory": false,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 18m\n- **Tool Calls**: 117 (Read: 60, Bash: 20, Grep: 19, mcp__memory__search_knowledge: 5, Glob: 4, Task: 3)\n- **Files Modified**: 1 (0 verified, 1 pending)\n- **Errors**: 3 (ToolFail:Bash x1, ToolFail:Read x2)\n- **Tests**: exit code 0\n- **Subagents**: 8 launched, 26,025 tokens\n\n**Files changed:**\n- `/home/crab/.claude/plans/adaptive-kindling-horizon.md` (pending)",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 3m\n- **Tool Calls**: 23 (Bash: 12, TaskUpdate: 3, Read: 3, Edit: 3, mcp__memory__remember_this: 2)\n- **Files Modified**: 3 (1 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 2 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/mcp.json`\n- `/home/crab/.claude/hooks/analytics_server.py`\n- `/home/crab/.claude/LIVE_STATE.json` (verified)",
   "last_session_metrics": {
-    "reads": 1,
-    "edits": 1,
+    "reads": 3,
+    "edits": 3,
     "errors": 0,
-    "verified": 0,
+    "verified": 1,
     "pending": 0
   }
 }
