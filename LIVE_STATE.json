@@ -35,7 +35,7 @@
   "chain_memory": true,
   "tg_session_notify": true,
   "tg_mirror_messages": true,
-  "mentor_all": false,
+  "mentor_all": true,
   "mentor_tracker": false,
   "mentor_hindsight_gate": false,
   "mentor_outcome_chains": false,
