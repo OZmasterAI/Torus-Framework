@@ -1,9 +1,9 @@
 {
-  "session_count": 204,
+  "session_count": 205,
   "project": "torus-framework",
   "feature": "self-evolve-sprint-2",
   "framework_version": "v2.5.3",
-  "what_was_done": "LIVE_STATE.json cleanup sprint. Extracted 19 config toggles into new config.json (persist across task resets). Removed 5 dead/stale fields (status, service_status, feature_status, test_count/failures, project_path). LIVE_STATE reduced from 22 to 7 keys, saving ~200 tokens per prompt injection. 15 files modified, 1449 tests pass.",
+  "what_was_done": "Fixed code indexer not running. Boot trigger failed because socket_available(retries=1, delay=0.1) was too aggressive — MCP not ready in 100ms. Added re-check with retries=3, delay=0.5 before reindex trigger. Wrap-up trigger was broken too — SKILL.md called search_knowledge('reindex', mode='code') which just searched, didn't trigger reindex. Replaced with UDS reindex_code('wrapup') bash call. Both code_index and code_wrapup collections now populating correctly.",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
     "Pick next evolution target",
