@@ -1,19 +1,20 @@
 {
-  "session_count": 198,
+  "session_count": 199,
   "status": "active",
   "project": "torus-framework",
   "project_path": "/home/crab/.claude",
   "feature": "self-evolve-sprint-2",
   "feature_status": "in-progress",
-  "test_count": 1413,
+  "test_count": 1428,
   "test_failures": 0,
-  "what_was_done": "Added 3 search tools to Analytics MCP server (telegram_search, terminal_history_search, web_search) bringing total to 10 tools. Used importlib.util to resolve db.py module name collision between integrations. Added defer_loading: true to mcp.json for analytics server. All 1413 tests pass (+8 new).",
-  "service_status": "Memory MCP: UP | Analytics MCP: PENDING RESTART (now 10 tools, deferred) | Tests: 1413 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 17 active (G8 dormant, G12 purged, G19 Hindsight) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 6 defs | Skills: 34 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens) | Mentor: 4 modules (ALL ON) | Model profiles: 5 (quality/balanced/efficient/lean/budget) | Security profiles: 4",
+  "what_was_done": "Implemented 5 of 6 framework upgrades from AKIRA comparison analysis. A: Fixed noise filter false-positive bug (anchored regex + 85-char length exemption + force bypass). B: Added tag normalization (_normalize_tags auto-corrects bare tags to dimensioned format). C: New mentor_analytics.py with per-trigger cooldowns (15-20min) and periodic checkpoint every 50 tool calls. E: Added analytics MCP calls to /benchmark skill. F: Extended Gate 6 with analytics advisory (separate counter, threshold 15, resets on any mcp__analytics__ call). D (boot integration) intentionally skipped. Tests: 1413 -> 1428 (+15 new). 3 commits on Self-Sprint-2.",
+  "service_status": "Memory MCP: UP | Analytics MCP: PENDING RESTART (10 tools, deferred) | Tests: 1428 passed, 0 failures | Framework: v2.5.3 (Torus) | Gates: 17 active (G8 dormant, G12 purged, G19 Hindsight) | Ramdisk: active | Branch: Self-Sprint-2 | Shared modules: 50 | Agents: 6 defs | Skills: 34 | Plugins: 9 enabled | Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens) | Mentor: 5 modules (ALL ON) | Model profiles: 5 | Security profiles: 4",
   "next_steps": [
     "Restart Claude Code to activate Analytics MCP (10 tools + defer_loading), verify with /mcp",
-    "Smoke test: mcp__analytics__telegram_search, terminal_history_search, web_search",
-    "Explore spinnerTipsOverride adoption (benefits/negatives)",
-    "Merge Self-Sprint-2 into main"
+    "Smoke test new analytics tools: telegram_search, terminal_history_search, web_search",
+    "Smoke test Upgrade C: edit a gate file, verify mentor analytics nudge appears in stderr",
+    "Smoke test Upgrade F: edit a framework file without recent analytics call, verify Gate 6 advisory",
+    "Merge Self-Sprint-2 into main when all smoke tests pass"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
@@ -39,13 +40,5 @@
   "mentor_tracker": false,
   "mentor_hindsight_gate": false,
   "mentor_outcome_chains": false,
-  "mentor_memory": false,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 31m\n- **Tool Calls**: 97 (Read: 39, Glob: 17, Bash: 17, Grep: 9, Task: 5, mcp__memory__search_knowledge: 4)\n- **Files Modified**: 1 (0 verified, 1 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 14 launched, 13,477 tokens\n\n**Files changed:**\n- `/home/crab/.claude/plans/greedy-cuddling-cherny.md` (pending)",
-  "last_session_metrics": {
-    "reads": 2,
-    "edits": 0,
-    "errors": 0,
-    "verified": 0,
-    "pending": 0
-  }
+  "mentor_memory": false
 }
