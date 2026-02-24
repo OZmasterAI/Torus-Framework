@@ -1645,10 +1645,11 @@ _g5_state_3pending = {
     "memory_last_queried": time.time(),
 }
 
-# Editing a 4th different file should be BLOCKED (3 unverified)
-code, msg = _direct(_g05_check("Edit", {"file_path": "/tmp/file_d.py"}, _g5_state_3pending))
-test("Gate 5: 3 unverified edits blocks 4th file", code != 0, f"code={code}")
-test("Gate 5: block message mentions GATE 5", "GATE 5" in msg, msg)
+# Editing a 4th different file should WARN (3 unverified — graduated escalation)
+_g5_result_3 = _g05_check("Edit", {"file_path": "/tmp/file_d.py"}, _g5_state_3pending)
+code, msg = _direct(_g5_result_3)
+test("Gate 5: 3 unverified edits warns (not blocks) 4th file", code == 0 and _g5_result_3.escalation == "warn", f"code={code} escalation={_g5_result_3.escalation}")
+test("Gate 5: warn message mentions GATE 5", "GATE 5" in _g5_result_3.message, _g5_result_3.message)
 
 # Re-editing file_a.py should be ALLOWED (same-file exemption)
 code, msg = _direct(_g05_check("Edit", {"file_path": "/tmp/file_a.py"}, _g5_state_3pending))
@@ -1692,6 +1693,39 @@ _g5_result = _g5_check("Edit", {"file_path": "/tmp/test_server.py"}, _g5_state)
 test("Gate 5 allows test file edit with pending verifications",
      not _g5_result.blocked,
      f"Expected not blocked for test file, got blocked={_g5_result.blocked}")
+
+# Test 5: Gate 5 graduated escalation — warns at 3 unverified, does not block
+_g5_warn_state = {
+    "pending_verification": ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py"],
+    "verification_scores": {},
+    "edit_streak": {},
+}
+_g5_warn_result = _g5_check("Edit", {"file_path": "/tmp/new.py"}, _g5_warn_state)
+test("Gate 5 warns (not blocks) at 3 unverified files",
+     not _g5_warn_result.blocked and _g5_warn_result.escalation == "warn",
+     f"Expected warn escalation, got blocked={_g5_warn_result.blocked} escalation={_g5_warn_result.escalation}")
+
+# Test 6: Gate 5 graduated escalation — blocks at 5 unverified
+_g5_block_state = {
+    "pending_verification": ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py", "/tmp/d.py", "/tmp/e.py"],
+    "verification_scores": {},
+    "edit_streak": {},
+}
+_g5_block_result = _g5_check("Edit", {"file_path": "/tmp/new.py"}, _g5_block_state)
+test("Gate 5 blocks at 5 unverified files",
+     _g5_block_result.blocked,
+     f"Expected blocked=True, got blocked={_g5_block_result.blocked}")
+
+# Test 7: Gate 5 graduated escalation — 4 unverified warns (between thresholds)
+_g5_mid_state = {
+    "pending_verification": ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py", "/tmp/d.py"],
+    "verification_scores": {},
+    "edit_streak": {},
+}
+_g5_mid_result = _g5_check("Edit", {"file_path": "/tmp/new.py"}, _g5_mid_state)
+test("Gate 5 warns at 4 unverified files (between thresholds)",
+     not _g5_mid_result.blocked and _g5_mid_result.escalation == "warn",
+     f"Expected warn, got blocked={_g5_mid_result.blocked} escalation={_g5_mid_result.escalation}")
 
 # ─────────────────────────────────────────────────
 # Test: Gate 6 — Save Verified Fix (advisory only)
@@ -2149,12 +2183,12 @@ print("\n--- Fix Verification: H4, M1, M2, H6, M8 ---")
 # H4: Gate 5 no longer exempts hooks/ directory
 hooks_dir = os.path.expanduser("~/.claude/hooks")
 _st_h4 = default_state()
-for i in range(4):
+for i in range(6):
     _post("Read", {"file_path": f"/tmp/h4_file_{i}.py"}, _st_h4)
 _post("Read", {"file_path": os.path.join(hooks_dir, "enforcer.py")}, _st_h4)
 _post("mcp__memory__search_knowledge", {"query": "test"}, _st_h4)
-# Edit 3 non-hooks files to fill pending_verification
-for i in range(3):
+# Edit 5 non-hooks files to fill pending_verification past block threshold
+for i in range(5):
     _post("Edit", {"file_path": f"/tmp/h4_file_{i}.py"}, _st_h4)
 # Now editing a hooks/ file should be BLOCKED (no longer exempt from Gate 5)
 code, msg = _direct(_g05_check("Edit", {"file_path": os.path.join(hooks_dir, "enforcer.py")}, _st_h4))

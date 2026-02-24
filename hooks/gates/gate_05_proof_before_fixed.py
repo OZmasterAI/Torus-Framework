@@ -6,6 +6,10 @@ previous edit has been verified (by running a command, test, or check).
 This prevents the pattern where Claude says "fixed" and moves on
 without ever verifying the fix actually works.
 
+Graduated escalation:
+- WARN_THRESHOLD (3) unverified files → warning, edit proceeds
+- BLOCK_THRESHOLD (5) unverified files → hard block
+
 The pending_verification list is cleared when:
 - A Bash command is run (tests, running scripts, curl, etc.)
 - Only the specific verified files are cleared
@@ -19,8 +23,9 @@ from shared.gate_result import GateResult
 
 GATE_NAME = "GATE 5: PROOF BEFORE FIXED"
 
-# Max pending verifications before blocking
-MAX_UNVERIFIED = 3
+# Graduated thresholds for unverified files
+WARN_THRESHOLD = 3
+BLOCK_THRESHOLD = 5
 
 from shared.exemptions import is_exempt_base as is_exempt
 
@@ -98,13 +103,26 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         else:
             effective_unverified += 1.0
 
-    max_unverified = state.get("gate_tune_overrides", {}).get("gate_05_proof_before_fixed", {}).get("max_unverified", MAX_UNVERIFIED)
-    if effective_unverified >= max_unverified:
-        file_list = ", ".join(os.path.basename(p) for p in pending_other[:3])
+    tune = state.get("gate_tune_overrides", {}).get("gate_05_proof_before_fixed", {})
+    warn_at = tune.get("warn_threshold", WARN_THRESHOLD)
+    block_at = tune.get("block_threshold", BLOCK_THRESHOLD)
+
+    if effective_unverified >= block_at:
+        file_list = ", ".join(os.path.basename(p) for p in pending_other[:5])
         return GateResult(
             blocked=True,
             message=f"[{GATE_NAME}] BLOCKED: {len(pending_other)} files with unverified edits ({file_list}). Run any Bash command (pytest, python script, etc.) to verify and clear pending files.",
             gate_name=GATE_NAME,
+        )
+
+    if effective_unverified >= warn_at:
+        file_list = ", ".join(os.path.basename(p) for p in pending_other[:3])
+        return GateResult(
+            blocked=False,
+            message=f"[{GATE_NAME}] WARNING: {len(pending_other)} unverified files ({file_list}). Verify soon — blocks at {block_at}.",
+            gate_name=GATE_NAME,
+            severity="warn",
+            escalation="warn",
         )
 
     return GateResult(blocked=False, gate_name=GATE_NAME)
