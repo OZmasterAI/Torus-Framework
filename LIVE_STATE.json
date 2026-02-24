@@ -3,17 +3,16 @@
   "project": "torus-framework",
   "feature": "self-evolve-sprint-2",
   "framework_version": "v2.5.3",
-  "what_was_done": "Implemented enforcer daemon UDS socket resilience (Option C). Extracted _bind_socket() helper, added proactive watchdog to detect deleted socket file every ~1s, replaced bare OSError break with reactive rebind pattern. Added _shutting_down flag for clean SIGTERM. Commit 278570e, 1448 tests pass, manual verification confirmed.",
+  "what_was_done": "Ported UDS socket resilience to MCP memory server (Option A full port): extracted _bind_uds_socket() helper, added proactive watchdog in accept loop, shutdown-aware OSError handling, _uds_shutting_down flag. Fixed boot/wrapup indexer stuck-at-indexing bug (missing status write on empty-files early return). Commit ddc2729, 1448 tests pass.",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
-    "Fix MCP UDS socket resilience (periodic file existence check in accept loop)",
+    "Verify MCP UDS watchdog works after restart (manual socket deletion test)",
     "Optimize whisper transcription speed (GPU/quantization or smaller model)",
     "Pick next evolution target"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
-    "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "MCP UDS socket can disappear mid-session if accept loop rebind fails (MCP stdio tools unaffected)"
+    "test_framework.py Pyright import errors for shared modules (path resolution)"
   ]
 }

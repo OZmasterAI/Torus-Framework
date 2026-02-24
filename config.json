@@ -19,10 +19,10 @@
   "mentor_outcome_chains": false,
   "mentor_memory": false,
   "enforcer_daemon": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 40m\n- **Tool Calls**: 97 (Grep: 48, Read: 27, Glob: 10, mcp__memory__get_memory: 3, mcp__memory__search_knowledge: 2, Task: 2)\n- **Files Modified**: 1 (0 verified, 1 pending)\n- **Errors**: 0\n- **Tests**: none this session\n- **Subagents**: 8 launched, 16,754 tokens\n\n**Files changed:**\n- `/home/crab/.claude/plans/tidy-prancing-quokka.md` (pending)",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 2m\n- **Tool Calls**: 16 (Bash: 11, mcp__memory__remember_this: 2, TaskUpdate: 1, Read: 1, Write: 1)\n- **Files Modified**: 1 (1 verified, 0 pending)\n- **Errors**: 1 (ToolFail:Bash x1)\n- **Tests**: exit code 0\n- **Subagents**: 3 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json` (verified)",
   "last_session_metrics": {
-    "reads": 5,
-    "edits": 2,
+    "reads": 1,
+    "edits": 1,
     "errors": 1,
     "verified": 1,
     "pending": 0
