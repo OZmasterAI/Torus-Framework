@@ -38,7 +38,8 @@
     transition: all 0.15s;
   }
   .view-btn:hover, .view-btn.active { background: rgba(77,166,255,0.12); color: var(--blue); border-color: var(--blue); }
-  .zoom-controls { margin-left: auto; display: flex; gap: 0.5rem; }
+  .zoom-controls { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
+  .zoom-label { font-size: 0.75rem; color: var(--muted); min-width: 40px; text-align: center; }
 
   /* Canvas */
   #canvas {
@@ -46,14 +47,16 @@
     overflow: auto; position: relative;
   }
   #diagram {
-    position: relative; min-width: 1800px; min-height: 2400px;
+    position: relative; width: 1650px; height: 2300px;
     transform-origin: 0 0; transition: transform 0.2s;
+    padding: 20px;
   }
 
   /* Nodes */
   .node {
     position: absolute; border-radius: 10px; cursor: pointer;
-    transition: all 0.2s; box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    transition: opacity 0.3s, transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
   }
   .node:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(0,0,0,0.5); z-index: 10; }
   .node-header {
@@ -94,12 +97,13 @@
   .node-ext { background: var(--surface); border: 2px solid var(--muted); }
   .node-ext .node-header { background: rgba(107,125,148,0.12); color: var(--muted); }
 
-  /* Connections (SVG) */
-  svg.connections {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  /* SVG connections */
+  #connSvg {
+    position: absolute; top: 0; left: 0;
     pointer-events: none; z-index: 0;
+    overflow: visible;
   }
-  .conn { fill: none; stroke-width: 1.5; opacity: 0.4; }
+  .conn { fill: none; stroke-width: 1.8; opacity: 0.5; }
   .conn-blue { stroke: var(--blue); }
   .conn-green { stroke: var(--green); }
   .conn-red { stroke: var(--red); }
@@ -130,14 +134,11 @@
   .tooltip h4 { font-size: 0.9rem; margin-bottom: 0.3rem; }
   .tooltip p { color: var(--muted); line-height: 1.5; }
 
-  /* Labels */
+  /* Section labels */
   .section-label {
     position: absolute; font-size: 0.65rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); opacity: 0.5;
   }
-
-  /* Arrow markers */
-  marker path { fill: var(--muted); }
 </style>
 </head>
 <body>
@@ -150,67 +151,34 @@
   <button class="view-btn" onclick="setView('pipeline')">Pipeline</button>
   <button class="view-btn" onclick="setView('memory')">Memory</button>
   <div class="zoom-controls">
-    <button class="view-btn" onclick="zoom(0.1)">+</button>
-    <button class="view-btn" onclick="zoom(-0.1)">-</button>
-    <button class="view-btn" onclick="resetZoom()">Reset</button>
+    <button class="view-btn" onclick="zoomBy(-0.1)">&#x2212;</button>
+    <span class="zoom-label" id="zoomLabel">75%</span>
+    <button class="view-btn" onclick="zoomBy(0.1)">+</button>
+    <button class="view-btn" onclick="resetZoom()">Fit</button>
   </div>
 </div>
 
 <div id="canvas">
 <div id="diagram">
 
-<!-- SVG CONNECTIONS -->
-<svg class="connections" viewBox="0 0 1800 2400" preserveAspectRatio="none">
+<!-- Dynamic SVG — populated by JS -->
+<svg id="connSvg" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L8,3 L0,6" fill="none" stroke="var(--muted)" stroke-width="1"/>
-    </marker>
+    <marker id="ah-blue" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#4da6ff" stroke-width="1.2"/></marker>
+    <marker id="ah-red" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#f05050" stroke-width="1.2"/></marker>
+    <marker id="ah-green" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#3dd68c" stroke-width="1.2"/></marker>
+    <marker id="ah-yellow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#e6b450" stroke-width="1.2"/></marker>
+    <marker id="ah-purple" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#c594ff" stroke-width="1.2"/></marker>
+    <marker id="ah-cyan" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#56d4dd" stroke-width="1.2"/></marker>
+    <marker id="ah-orange" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#e89050" stroke-width="1.2"/></marker>
+    <marker id="ah-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#6b7d94" stroke-width="1.2"/></marker>
   </defs>
-
-  <!-- Session → Boot -->
-  <path class="conn conn-blue" d="M 400,110 L 400,180" marker-end="url(#arrow)"/>
-  <!-- Session → Enforcer -->
-  <path class="conn conn-red" d="M 700,110 L 700,180" marker-end="url(#arrow)"/>
-  <!-- Session → Tracker -->
-  <path class="conn conn-green" d="M 1050,110 L 1050,180" marker-end="url(#arrow)"/>
-
-  <!-- Boot → Memory MCP -->
-  <path class="conn conn-cyan" d="M 400,380 C 400,440 300,440 300,510" marker-end="url(#arrow)"/>
-  <!-- Boot → State -->
-  <path class="conn conn-orange" d="M 500,380 C 500,440 600,440 600,510" marker-end="url(#arrow)"/>
-
-  <!-- Enforcer → Gates T1 -->
-  <path class="conn conn-red" d="M 620,380 L 500,430" marker-end="url(#arrow)"/>
-  <!-- Enforcer → Gates T2 -->
-  <path class="conn conn-yellow" d="M 700,380 L 700,430" marker-end="url(#arrow)"/>
-  <!-- Enforcer → Gates T3 -->
-  <path class="conn conn-purple" d="M 780,380 L 900,430" marker-end="url(#arrow)"/>
-
-  <!-- Tracker → Mentor -->
-  <path class="conn conn-green" d="M 1050,380 L 1050,510" marker-end="url(#arrow)"/>
-  <!-- Tracker → Observations -->
-  <path class="conn conn-green" d="M 1150,380 C 1150,440 1300,440 1300,510" marker-end="url(#arrow)"/>
-
-  <!-- Memory MCP → ChromaDB -->
-  <path class="conn conn-cyan" d="M 300,700 L 300,800" marker-end="url(#arrow)"/>
-  <!-- Analytics → Shared -->
-  <path class="conn conn-cyan" d="M 500,700 L 500,800" marker-end="url(#arrow)"/>
-
-  <!-- Shared modules connections -->
-  <path class="conn conn-orange" d="M 200,1050 L 200,1130" marker-end="url(#arrow)"/>
-  <path class="conn conn-orange" d="M 500,1050 L 500,1130" marker-end="url(#arrow)"/>
-  <path class="conn conn-orange" d="M 800,1050 L 800,1130" marker-end="url(#arrow)"/>
-  <path class="conn conn-orange" d="M 1100,1050 L 1100,1130" marker-end="url(#arrow)"/>
-
-  <!-- Orchestrators → Session -->
-  <path class="conn conn-muted" d="M 1500,300 C 1400,200 900,120 700,110"/>
-  <path class="conn conn-muted" d="M 1500,420 C 1400,300 900,120 700,110"/>
 </svg>
 
 <!-- ============ ROW 1: SESSION ============ -->
-<div class="section-label" style="left:30px; top:70px;">EVENT SOURCE</div>
+<div class="section-label" style="left:30px; top:30px;">EVENT SOURCE</div>
 
-<div class="node node-session" style="left:300px; top:60px; width:260px;">
+<div id="n-session" class="node node-session" style="left:80px; top:20px; width:260px;">
   <div class="node-header">Claude Code Session</div>
   <div class="node-body">
     <div class="item">Fires hook events on every tool call</div>
@@ -218,7 +186,7 @@
   </div>
 </div>
 
-<div class="node node-session" style="left:600px; top:60px; width:240px;">
+<div id="n-prompt" class="node node-session" style="left:380px; top:20px; width:240px;">
   <div class="node-header">User Prompt</div>
   <div class="node-body">
     <div class="item"><span class="label">Capture:</span> user_prompt_capture.py</div>
@@ -227,7 +195,7 @@
   </div>
 </div>
 
-<div class="node node-session" style="left:880px; top:60px; width:240px;">
+<div id="n-subagents" class="node node-session" style="left:660px; top:20px; width:240px;">
   <div class="node-header">Sub-Agents</div>
   <div class="node-body">
     <div class="item"><span class="label">Context:</span> subagent_context.py</div>
@@ -237,9 +205,9 @@
 </div>
 
 <!-- ============ ROW 2: HOOKS ============ -->
-<div class="section-label" style="left:30px; top:200px;">HOOK HANDLERS</div>
+<div class="section-label" style="left:30px; top:165px;">HOOK HANDLERS</div>
 
-<div class="node node-hook" style="left:250px; top:190px; width:300px;" data-tip="20-step boot pipeline. Initializes ramdisk, rotates audit logs, injects memories from ChromaDB, extracts context from previous session, resets enforcement state. 6 files, 848 lines total.">
+<div id="n-boot" class="node node-hook" style="left:30px; top:155px; width:300px;" data-tip="20-step boot pipeline. Initializes ramdisk, rotates audit logs, injects memories from ChromaDB, extracts context from previous session, resets enforcement state. 6 files, 848 lines total.">
   <div class="node-header">SessionStart &mdash; boot.py</div>
   <div class="node-body">
     <div class="item"><span class="label">Orchestrator:</span> boot_pkg/ (378 lines)</div>
@@ -249,7 +217,7 @@
   </div>
 </div>
 
-<div class="node node-gate" style="left:590px; top:190px; width:280px;" data-tip="Central gate dispatcher. Runs 17 quality gates before every tool call. Can mechanically block via sys.exit(2). Features Q-learning optimization, result caching, circuit breaker.">
+<div id="n-enforcer" class="node node-gate" style="left:370px; top:155px; width:280px;" data-tip="Central gate dispatcher. Runs 17 quality gates before every tool call. Can mechanically block via sys.exit(2). Features Q-learning optimization, result caching, circuit breaker.">
   <div class="node-header">PreToolUse &mdash; enforcer</div>
   <div class="node-body">
     <div class="item"><span class="label">Shim:</span> enforcer_shim.py (~5ms UDS)</div>
@@ -259,7 +227,7 @@
   </div>
 </div>
 
-<div class="node node-hook" style="left:910px; top:190px; width:300px;" data-tip="17-step PostToolUse pipeline. Tracks state after every tool call: errors, observations, verification, mentor verdicts. 10 files, 1,537 lines total.">
+<div id="n-tracker" class="node node-hook" style="left:690px; top:155px; width:300px;" data-tip="17-step PostToolUse pipeline. Tracks state after every tool call: errors, observations, verification, mentor verdicts. 10 files, 1,537 lines total.">
   <div class="node-header">PostToolUse &mdash; tracker</div>
   <div class="node-body">
     <div class="item"><span class="label">Orchestrator:</span> tracker_pkg/ (537 lines)</div>
@@ -269,7 +237,7 @@
   </div>
 </div>
 
-<div class="node node-hook" style="left:1250px; top:190px; width:240px;">
+<div id="n-session-end" class="node node-hook" style="left:1030px; top:155px; width:240px;">
   <div class="node-header">SessionEnd</div>
   <div class="node-body">
     <div class="item"><span class="label">Handler:</span> session_end.py (554 lines)</div>
@@ -279,10 +247,20 @@
   </div>
 </div>
 
-<!-- ============ ROW 3: GATES ============ -->
-<div class="section-label" style="left:30px; top:450px;">GATE SYSTEM</div>
+<div id="n-orchestration" class="node node-ext" style="left:1310px; top:155px; width:260px;">
+  <div class="node-header">External Orchestration</div>
+  <div class="node-body">
+    <div class="item"><span class="label">torus-loop.sh</span> (261) &mdash; sequential tasks</div>
+    <div class="item"><span class="label">torus-wave.py</span> (477) &mdash; parallel waves</div>
+    <div class="item"><span class="label">PRP System</span> &mdash; task decomposition</div>
+    <div class="item">Memory MCP bridges instances</div>
+  </div>
+</div>
 
-<div class="node node-gate" style="left:80px; top:440px; width:320px;">
+<!-- ============ ROW 3: GATES ============ -->
+<div class="section-label" style="left:30px; top:410px;">GATE SYSTEM</div>
+
+<div id="n-gates-t1" class="node node-gate" style="left:30px; top:400px; width:320px;">
   <div class="node-header">Tier 1 &mdash; Safety (Fail-Closed)</div>
   <div class="node-body">
     <div class="item"><span class="label">G01</span> READ BEFORE EDIT <span class="count">118 lines</span></div>
@@ -292,7 +270,7 @@
   </div>
 </div>
 
-<div class="node node-gate-t2" style="left:440px; top:440px; width:420px;">
+<div id="n-gates-t2" class="node node-gate-t2" style="left:390px; top:400px; width:420px;">
   <div class="node-header">Tier 2 &mdash; Quality (Fail-Open)</div>
   <div class="node-body">
     <div class="item"><span class="label">G04</span> MEMORY FIRST <span class="count">82 lines</span></div>
@@ -309,7 +287,7 @@
   </div>
 </div>
 
-<div class="node node-gate-t3" style="left:900px; top:440px; width:310px;">
+<div id="n-gates-t3" class="node node-gate-t3" style="left:850px; top:400px; width:310px;">
   <div class="node-header">Tier 3 &mdash; Advanced</div>
   <div class="node-body">
     <div class="item"><span class="label">G17</span> INJECTION DEFENSE <span class="count">771 lines</span></div>
@@ -320,9 +298,9 @@
 </div>
 
 <!-- ============ ROW 4: MENTOR + MCP ============ -->
-<div class="section-label" style="left:30px; top:780px;">INTELLIGENCE LAYER</div>
+<div class="section-label" style="left:30px; top:745px;">INTELLIGENCE LAYER</div>
 
-<div class="node node-mcp" style="left:80px; top:770px; width:340px;">
+<div id="n-memory-mcp" class="node node-mcp" style="left:30px; top:735px; width:340px;">
   <div class="node-header">Memory MCP Server (4,188 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">Embedding:</span> nomic-embed-text-v2-moe (768-dim)</div>
@@ -337,7 +315,7 @@
   </div>
 </div>
 
-<div class="node node-mcp" style="left:460px; top:770px; width:340px;">
+<div id="n-analytics-mcp" class="node node-mcp" style="left:410px; top:735px; width:340px;">
   <div class="node-header">Analytics MCP Server (379 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">Mode:</span> Read-only, lazy-loaded, no ChromaDB</div>
@@ -354,7 +332,7 @@
   </div>
 </div>
 
-<div class="node node-hook" style="left:840px; top:770px; width:280px;">
+<div id="n-mentor" class="node node-hook" style="left:790px; top:735px; width:280px;">
   <div class="node-header">Mentor System (Module A)</div>
   <div class="node-body">
     <div class="item"><span class="label">mentor.py</span> (278 lines) &mdash; deterministic signal analysis</div>
@@ -365,7 +343,7 @@
   </div>
 </div>
 
-<div class="node node-hook" style="left:1160px; top:770px; width:260px;">
+<div id="n-observation" class="node node-hook" style="left:1110px; top:735px; width:260px;">
   <div class="node-header">Observation Capture</div>
   <div class="node-body">
     <div class="item"><span class="label">observation.py</span> &mdash; compress tool calls</div>
@@ -377,9 +355,9 @@
 </div>
 
 <!-- ============ ROW 5: SHARED MODULES ============ -->
-<div class="section-label" style="left:30px; top:1080px;">SHARED INFRASTRUCTURE</div>
+<div class="section-label" style="left:30px; top:1070px;">SHARED INFRASTRUCTURE</div>
 
-<div class="node node-infra" style="left:40px; top:1070px; width:280px;">
+<div id="n-state" class="node node-infra" style="left:30px; top:1060px; width:280px;">
   <div class="node-header">State &amp; Persistence (1,277 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">state.py</span> (700) &mdash; atomic JSON, fcntl.flock</div>
@@ -389,7 +367,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:360px; top:1070px; width:280px;">
+<div id="n-resilience" class="node node-infra" style="left:350px; top:1060px; width:280px;">
   <div class="node-header">Resilience (1,734 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">circuit_breaker.py</span> (679) &mdash; CLOSED/OPEN/HALF_OPEN</div>
@@ -398,7 +376,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:680px; top:1070px; width:280px;">
+<div id="n-analysis" class="node node-infra" style="left:670px; top:1060px; width:280px;">
   <div class="node-header">Analysis (2,614 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">gate_correlator.py</span> (822) &mdash; co-occurrence</div>
@@ -407,7 +385,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:1000px; top:1070px; width:280px;">
+<div id="n-monitoring" class="node node-infra" style="left:990px; top:1060px; width:280px;">
   <div class="node-header">Monitoring (1,508 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">metrics_collector.py</span> (643) &mdash; counters/gauges</div>
@@ -417,7 +395,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:1320px; top:1070px; width:250px;">
+<div id="n-security" class="node node-infra" style="left:1310px; top:1060px; width:250px;">
   <div class="node-header">Security (1,015 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">exemptions.py</span> (53) &mdash; tiered exemptions</div>
@@ -429,7 +407,7 @@
 
 <!-- ============ ROW 6: MORE SHARED ============ -->
 
-<div class="node node-infra" style="left:40px; top:1320px; width:280px;">
+<div id="n-errors" class="node node-infra" style="left:30px; top:1290px; width:280px;">
   <div class="node-header">Error Handling (546 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">error_normalizer.py</span> (52) &mdash; FNV-1a fingerprint</div>
@@ -437,7 +415,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:360px; top:1320px; width:280px;">
+<div id="n-anomaly" class="node node-infra" style="left:350px; top:1290px; width:280px;">
   <div class="node-header">Anomaly Detection (566 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">anomaly_detector.py</span> (496) &mdash; drift detection</div>
@@ -445,7 +423,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:680px; top:1320px; width:280px;">
+<div id="n-interagent" class="node node-infra" style="left:670px; top:1290px; width:280px;">
   <div class="node-header">Inter-Agent (1,312 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">agent_channel.py</span> (125) &mdash; SQLite WAL</div>
@@ -454,7 +432,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:1000px; top:1320px; width:280px;">
+<div id="n-registry" class="node node-infra" style="left:990px; top:1290px; width:280px;">
   <div class="node-header">Registry (2,047 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">plugin_registry.py</span> (656) &mdash; scan plugins</div>
@@ -464,7 +442,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:1320px; top:1320px; width:250px;">
+<div id="n-visualization" class="node node-infra" style="left:1310px; top:1290px; width:250px;">
   <div class="node-header">Visualization (1,448 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">gate_dashboard.py</span> (439)</div>
@@ -473,10 +451,10 @@
   </div>
 </div>
 
-<!-- ============ ROW 7: SKILLS + AGENTS + ORCHESTRATION ============ -->
-<div class="section-label" style="left:30px; top:1560px;">SKILLS, AGENTS &amp; ORCHESTRATION</div>
+<!-- ============ ROW 7: SKILLS + AGENTS ============ -->
+<div class="section-label" style="left:30px; top:1505px;">SKILLS &amp; AGENTS</div>
 
-<div class="node node-skill" style="left:40px; top:1550px; width:500px;">
+<div id="n-skills" class="node node-skill" style="left:30px; top:1495px; width:500px;">
   <div class="node-header">33 Skills</div>
   <div class="node-body">
     <div class="item"><span class="label">Dev Workflow (6):</span> fix, commit, test, review, refactor, document</div>
@@ -485,11 +463,11 @@
     <div class="item"><span class="label">Quality (2):</span> security-scan, benchmark</div>
     <div class="item"><span class="label">Build/Deploy (3):</span> build, deploy, report</div>
     <div class="item"><span class="label">Orchestration (5):</span> prp, wave, loop, chain, sprint</div>
-    <div class="item"><span class="label">Advanced (4):</span> web, browser, ralph, super-evolve, super-prof-optimize</div>
+    <div class="item"><span class="label">Advanced (4):</span> web, browser, ralph, super-evolve</div>
   </div>
 </div>
 
-<div class="node node-session" style="left:580px; top:1550px; width:340px;">
+<div id="n-agents" class="node node-session" style="left:570px; top:1495px; width:340px;">
   <div class="node-header">6 Agent Definitions</div>
   <div class="node-body">
     <div class="item"><span class="label">researcher</span> (haiku) &mdash; read-only exploration</div>
@@ -501,7 +479,7 @@
   </div>
 </div>
 
-<div class="node node-session" style="left:960px; top:1550px; width:300px;">
+<div id="n-teams" class="node node-session" style="left:950px; top:1495px; width:300px;">
   <div class="node-header">4 Teams</div>
   <div class="node-body">
     <div class="item"><span class="label">default</span> &mdash; inactive</div>
@@ -511,20 +489,10 @@
   </div>
 </div>
 
-<div class="node node-ext" style="left:1300px; top:1550px; width:260px;">
-  <div class="node-header">External Orchestration</div>
-  <div class="node-body">
-    <div class="item"><span class="label">torus-loop.sh</span> (261) &mdash; sequential tasks</div>
-    <div class="item"><span class="label">torus-wave.py</span> (477) &mdash; parallel waves</div>
-    <div class="item"><span class="label">PRP System</span> &mdash; task decomposition</div>
-    <div class="item">Memory MCP bridges instances</div>
-  </div>
-</div>
-
 <!-- ============ ROW 8: INTEGRATIONS + DATA ============ -->
-<div class="section-label" style="left:30px; top:1830px;">INTEGRATIONS &amp; DATA</div>
+<div class="section-label" style="left:30px; top:1780px;">INTEGRATIONS &amp; DATA</div>
 
-<div class="node node-ext" style="left:40px; top:1820px; width:300px;">
+<div id="n-telegram" class="node node-ext" style="left:30px; top:1770px; width:280px;">
   <div class="node-header">Telegram Bot</div>
   <div class="node-body">
     <div class="item"><span class="label">Location:</span> integrations/telegram-bot/</div>
@@ -534,7 +502,7 @@
   </div>
 </div>
 
-<div class="node node-ext" style="left:380px; top:1820px; width:300px;">
+<div id="n-terminal" class="node node-ext" style="left:350px; top:1770px; width:280px;">
   <div class="node-header">Terminal History</div>
   <div class="node-body">
     <div class="item"><span class="label">Location:</span> integrations/terminal-history/</div>
@@ -544,7 +512,7 @@
   </div>
 </div>
 
-<div class="node node-ext" style="left:720px; top:1820px; width:280px;">
+<div id="n-chromadb" class="node node-ext" style="left:670px; top:1770px; width:280px;">
   <div class="node-header">ChromaDB Storage</div>
   <div class="node-body">
     <div class="item"><span class="label">Path:</span> ~/data/memory/</div>
@@ -554,7 +522,7 @@
   </div>
 </div>
 
-<div class="node node-ext" style="left:1040px; top:1820px; width:280px;">
+<div id="n-ramdisk" class="node node-ext" style="left:990px; top:1770px; width:280px;">
   <div class="node-header">Ramdisk</div>
   <div class="node-body">
     <div class="item"><span class="label">Path:</span> /run/user/{uid}/claude-hooks/</div>
@@ -564,7 +532,7 @@
   </div>
 </div>
 
-<div class="node node-ext" style="left:1360px; top:1820px; width:230px;">
+<div id="n-plugins" class="node node-ext" style="left:1310px; top:1770px; width:250px;">
   <div class="node-header">9 Plugins</div>
   <div class="node-body">
     <div class="item"><span class="label">LSP (3):</span> pyright, rust-analyzer, typescript</div>
@@ -574,9 +542,9 @@
 </div>
 
 <!-- ============ ROW 9: TESTING ============ -->
-<div class="section-label" style="left:30px; top:2060px;">TESTING &amp; QUALITY</div>
+<div class="section-label" style="left:30px; top:2010px;">TESTING &amp; QUALITY</div>
 
-<div class="node node-infra" style="left:40px; top:2050px; width:320px;">
+<div id="n-tests" class="node node-infra" style="left:30px; top:2000px; width:320px;">
   <div class="node-header">Test Suite</div>
   <div class="node-body">
     <div class="item"><span class="label">test_framework.py</span> &mdash; 11,904 lines</div>
@@ -585,7 +553,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:400px; top:2050px; width:280px;">
+<div id="n-fuzzer" class="node node-infra" style="left:390px; top:2000px; width:280px;">
   <div class="node-header">Gate Fuzzer</div>
   <div class="node-body">
     <div class="item"><span class="label">fuzz_gates.py</span> &mdash; 562 lines</div>
@@ -594,7 +562,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:720px; top:2050px; width:280px;">
+<div id="n-benchmarks" class="node node-infra" style="left:710px; top:2000px; width:280px;">
   <div class="node-header">Benchmarks</div>
   <div class="node-body">
     <div class="item"><span class="label">benchmark_gates.py</span> (458) &mdash; latency percentiles</div>
@@ -602,7 +570,7 @@
   </div>
 </div>
 
-<div class="node node-infra" style="left:1040px; top:2050px; width:280px;">
+<div id="n-quality-tools" class="node node-infra" style="left:1030px; top:2000px; width:280px;">
   <div class="node-header">Quality Tools</div>
   <div class="node-body">
     <div class="item"><span class="label">test_generator.py</span> (533) &mdash; auto test stubs</div>
@@ -630,68 +598,233 @@
 <div class="tooltip" id="tooltip"></div>
 
 <script>
+// ---- Zoom ----
 let currentZoom = 0.75;
 const diagram = document.getElementById('diagram');
-diagram.style.transform = `scale(${currentZoom})`;
+const zoomLabel = document.getElementById('zoomLabel');
 
-function zoom(delta) {
-  currentZoom = Math.max(0.3, Math.min(1.5, currentZoom + delta));
-  diagram.style.transform = `scale(${currentZoom})`;
+function applyZoom() {
+  diagram.style.transform = 'scale(' + currentZoom + ')';
+  zoomLabel.textContent = Math.round(currentZoom * 100) + '%';
 }
+
+function zoomBy(delta) {
+  currentZoom = Math.max(0.3, Math.min(1.5, currentZoom + delta));
+  applyZoom();
+}
+
 function resetZoom() {
   currentZoom = 0.75;
-  diagram.style.transform = `scale(${currentZoom})`;
+  applyZoom();
 }
 
-// View filtering
-function setView(view) {
-  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
+applyZoom();
 
-  const nodes = document.querySelectorAll('.node');
-  const conns = document.querySelectorAll('.conn');
+// ---- Connection definitions: [sourceId, targetId, colorName] ----
+var connections = [
+  // Row 1 -> Row 2
+  ['n-session',    'n-boot',        'blue'],
+  ['n-prompt',     'n-enforcer',    'red'],
+  ['n-subagents',  'n-tracker',     'green'],
 
-  nodes.forEach(n => n.style.opacity = '1');
-  conns.forEach(c => c.style.opacity = '0.4');
+  // Row 2 -> Row 3 (enforcer dispatches to gates)
+  ['n-enforcer',   'n-gates-t1',    'red'],
+  ['n-enforcer',   'n-gates-t2',    'yellow'],
+  ['n-enforcer',   'n-gates-t3',    'purple'],
 
-  if (view === 'gates') {
-    nodes.forEach(n => {
-      if (!n.classList.contains('node-gate') && !n.classList.contains('node-gate-t2') && !n.classList.contains('node-gate-t3')) {
-        n.style.opacity = '0.15';
-      }
-    });
-    conns.forEach(c => { if (!c.classList.contains('conn-red') && !c.classList.contains('conn-yellow') && !c.classList.contains('conn-purple')) c.style.opacity = '0.05'; });
-  } else if (view === 'pipeline') {
-    nodes.forEach(n => {
-      if (!n.classList.contains('node-hook') && !n.classList.contains('node-session')) {
-        n.style.opacity = '0.15';
-      }
-    });
-  } else if (view === 'memory') {
-    nodes.forEach(n => {
-      if (!n.classList.contains('node-mcp') && !n.classList.contains('node-ext')) {
-        n.style.opacity = '0.15';
-      }
-    });
-    conns.forEach(c => { if (!c.classList.contains('conn-cyan')) c.style.opacity = '0.05'; });
+  // Row 2 -> Row 4
+  ['n-boot',       'n-memory-mcp',  'cyan'],
+  ['n-boot',       'n-state',       'orange'],
+  ['n-tracker',    'n-mentor',      'green'],
+  ['n-tracker',    'n-observation', 'green'],
+  ['n-session-end','n-chromadb',    'cyan'],
+
+  // Row 4 -> Row 8 (MCP to storage)
+  ['n-memory-mcp', 'n-chromadb',    'cyan'],
+  ['n-analytics-mcp','n-monitoring','orange'],
+
+  // Orchestration -> Session (feedback loop)
+  ['n-orchestration','n-session',   'muted'],
+
+  // Row 5 -> Row 6 vertical links
+  ['n-state',      'n-errors',      'orange'],
+  ['n-resilience', 'n-anomaly',     'orange'],
+  ['n-analysis',   'n-interagent',  'orange'],
+  ['n-monitoring', 'n-registry',    'orange'],
+  ['n-security',   'n-visualization','orange'],
+
+  // Skills use shared infra
+  ['n-registry',   'n-skills',      'purple'],
+  ['n-registry',   'n-agents',      'blue']
+];
+
+// ---- Draw connections dynamically using actual element positions ----
+function getAnchor(el, side) {
+  var x = el.offsetLeft;
+  var y = el.offsetTop;
+  var w = el.offsetWidth;
+  var h = el.offsetHeight;
+  switch (side) {
+    case 'top':    return { x: x + w/2, y: y };
+    case 'bottom': return { x: x + w/2, y: y + h };
+    case 'left':   return { x: x,       y: y + h/2 };
+    case 'right':  return { x: x + w,   y: y + h/2 };
+    default:       return { x: x + w/2, y: y + h/2 };
   }
 }
 
-// Tooltips
-const tooltip = document.getElementById('tooltip');
-document.querySelectorAll('.node[data-tip]').forEach(node => {
-  node.addEventListener('mouseenter', e => {
-    const tip = node.getAttribute('data-tip');
-    const title = node.querySelector('.node-header').textContent;
-    tooltip.innerHTML = `<h4>${title}</h4><p>${tip}</p>`;
+function drawConnections() {
+  var svg = document.getElementById('connSvg');
+  var dw = diagram.scrollWidth;
+  var dh = diagram.scrollHeight;
+  svg.setAttribute('width', dw);
+  svg.setAttribute('height', dh);
+  svg.setAttribute('viewBox', '0 0 ' + dw + ' ' + dh);
+
+  // Clear old paths (keep defs)
+  var oldPaths = svg.querySelectorAll('path.conn');
+  for (var i = 0; i < oldPaths.length; i++) oldPaths[i].remove();
+
+  for (var ci = 0; ci < connections.length; ci++) {
+    var srcId = connections[ci][0];
+    var tgtId = connections[ci][1];
+    var color = connections[ci][2];
+
+    var srcEl = document.getElementById(srcId);
+    var tgtEl = document.getElementById(tgtId);
+    if (!srcEl || !tgtEl) continue;
+
+    var srcY = srcEl.offsetTop;
+    var srcH = srcEl.offsetHeight;
+    var tgtY = tgtEl.offsetTop;
+    var tgtX = tgtEl.offsetLeft + tgtEl.offsetWidth / 2;
+    var srcX = srcEl.offsetLeft + srcEl.offsetWidth / 2;
+
+    var s, t, d;
+
+    if (tgtY >= srcY + srcH - 10) {
+      // Target is below source: bottom -> top
+      s = getAnchor(srcEl, 'bottom');
+      t = getAnchor(tgtEl, 'top');
+      var gap = Math.abs(t.y - s.y);
+      var ctrlDist = Math.max(gap * 0.35, 30);
+      d = 'M ' + s.x + ',' + s.y +
+          ' C ' + s.x + ',' + (s.y + ctrlDist) +
+          ' ' + t.x + ',' + (t.y - ctrlDist) +
+          ' ' + t.x + ',' + t.y;
+    } else if (tgtY + tgtEl.offsetHeight < srcY + 10) {
+      // Target is above source: feedback / upward
+      s = getAnchor(srcEl, 'left');
+      t = getAnchor(tgtEl, 'right');
+      var midX = Math.min(s.x, t.x) - 50;
+      d = 'M ' + s.x + ',' + s.y +
+          ' C ' + midX + ',' + s.y +
+          ' ' + midX + ',' + t.y +
+          ' ' + t.x + ',' + t.y;
+    } else {
+      // Same row: side connection
+      if (tgtEl.offsetLeft > srcEl.offsetLeft + srcEl.offsetWidth) {
+        s = getAnchor(srcEl, 'right');
+        t = getAnchor(tgtEl, 'left');
+      } else {
+        s = getAnchor(srcEl, 'left');
+        t = getAnchor(tgtEl, 'right');
+      }
+      d = 'M ' + s.x + ',' + s.y + ' L ' + t.x + ',' + t.y;
+    }
+
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('class', 'conn conn-' + color);
+    path.setAttribute('d', d);
+    path.setAttribute('marker-end', 'url(#ah-' + color + ')');
+    path.setAttribute('data-src', srcId);
+    path.setAttribute('data-tgt', tgtId);
+    svg.appendChild(path);
+  }
+}
+
+// Draw on load
+drawConnections();
+window.addEventListener('resize', drawConnections);
+
+// ---- View filtering ----
+function setView(view) {
+  document.querySelectorAll('.view-btn').forEach(function(b) { b.classList.remove('active'); });
+  event.target.classList.add('active');
+
+  var nodes = document.querySelectorAll('.node');
+  var conns = document.querySelectorAll('.conn');
+
+  nodes.forEach(function(n) { n.style.opacity = '1'; });
+  conns.forEach(function(c) { c.style.opacity = '0.5'; });
+
+  if (view === 'gates') {
+    nodes.forEach(function(n) {
+      if (!n.classList.contains('node-gate') && !n.classList.contains('node-gate-t2') && !n.classList.contains('node-gate-t3')) {
+        n.style.opacity = '0.12';
+      }
+    });
+    conns.forEach(function(c) {
+      if (!c.classList.contains('conn-red') && !c.classList.contains('conn-yellow') && !c.classList.contains('conn-purple')) c.style.opacity = '0.05';
+    });
+  } else if (view === 'pipeline') {
+    nodes.forEach(function(n) {
+      if (!n.classList.contains('node-hook') && !n.classList.contains('node-session') && !n.classList.contains('node-gate')) {
+        n.style.opacity = '0.12';
+      }
+    });
+    conns.forEach(function(c) {
+      if (!c.classList.contains('conn-blue') && !c.classList.contains('conn-green') && !c.classList.contains('conn-red')) c.style.opacity = '0.05';
+    });
+  } else if (view === 'memory') {
+    nodes.forEach(function(n) {
+      if (!n.classList.contains('node-mcp') && !n.classList.contains('node-ext')) {
+        n.style.opacity = '0.12';
+      }
+    });
+    conns.forEach(function(c) {
+      if (!c.classList.contains('conn-cyan')) c.style.opacity = '0.05';
+    });
+  }
+}
+
+// ---- Tooltips ----
+var tooltip = document.getElementById('tooltip');
+document.querySelectorAll('.node[data-tip]').forEach(function(node) {
+  node.addEventListener('mouseenter', function() {
+    var tip = node.getAttribute('data-tip');
+    var title = node.querySelector('.node-header').textContent;
+    tooltip.innerHTML = '<h4>' + title + '</h4><p>' + tip + '</p>';
     tooltip.classList.add('show');
   });
-  node.addEventListener('mousemove', e => {
+  node.addEventListener('mousemove', function(e) {
     tooltip.style.left = (e.clientX + 15) + 'px';
     tooltip.style.top = (e.clientY + 15) + 'px';
   });
-  node.addEventListener('mouseleave', () => {
+  node.addEventListener('mouseleave', function() {
     tooltip.classList.remove('show');
+  });
+});
+
+// ---- Highlight connections on node hover ----
+document.querySelectorAll('.node').forEach(function(node) {
+  node.addEventListener('mouseenter', function() {
+    var id = node.id;
+    if (!id) return;
+    document.querySelectorAll('.conn').forEach(function(c) {
+      if (c.getAttribute('data-src') === id || c.getAttribute('data-tgt') === id) {
+        c.style.opacity = '1';
+        c.style.strokeWidth = '2.5';
+      } else {
+        c.style.opacity = '0.08';
+      }
+    });
+  });
+  node.addEventListener('mouseleave', function() {
+    document.querySelectorAll('.conn').forEach(function(c) {
+      c.style.opacity = '';
+      c.style.strokeWidth = '';
+    });
   });
 });
 </script>
