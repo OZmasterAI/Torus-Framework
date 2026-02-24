@@ -3,7 +3,12 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
   },
   "permissions": {
-    "defaultMode": "default"
+    "defaultMode": "default",
+    "allow": [
+      "mcp__memory__get_memory",
+      "mcp__memory__search_knowledge",
+      "mcp__memory__remember_this"
+    ]
   },
   "hooks": {
     "PreToolUse": [
