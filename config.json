@@ -19,12 +19,12 @@
   "mentor_outcome_chains": false,
   "mentor_memory": false,
   "enforcer_daemon": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 0m\n- **Tool Calls**: 2 (Read: 1, Edit: 1)\n- **Files Modified**: 1 (0 verified, 1 pending)\n- **Errors**: 0\n- **Tests**: none this session\n\n**Files changed:**\n- `/home/crab/.claude/plans/shimmering-meandering-harbor.md` (pending)",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 40m\n- **Tool Calls**: 97 (Grep: 48, Read: 27, Glob: 10, mcp__memory__get_memory: 3, mcp__memory__search_knowledge: 2, Task: 2)\n- **Files Modified**: 1 (0 verified, 1 pending)\n- **Errors**: 0\n- **Tests**: none this session\n- **Subagents**: 8 launched, 16,754 tokens\n\n**Files changed:**\n- `/home/crab/.claude/plans/tidy-prancing-quokka.md` (pending)",
   "last_session_metrics": {
-    "reads": 1,
-    "edits": 1,
-    "errors": 0,
-    "verified": 0,
-    "pending": 1
+    "reads": 5,
+    "edits": 2,
+    "errors": 1,
+    "verified": 1,
+    "pending": 0
   }
 }
