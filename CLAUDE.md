@@ -23,26 +23,6 @@ When fixing errors, follow ALL 5 steps:
 3. **Protect main context** — Delegate heavy operations to sub-agents
 4. **Plan mode discipline** — Never write code in plan mode. enter plan → explore + write plan → ExitPlanMode → approval → implement. If rejected, ask what's wrong. Max 1 ExitPlanMode per turn.
 
-## QUALITY GATES (Enforced by hooks)
-Gates checked by enforcer.py. Blocking = exit 2. Advisory = warn only.
-**Blocking gates:**
-- Gate 1: READ BEFORE EDIT — Must read .py files before editing
-- Gate 2: NO DESTROY — Blocks rm -rf, DROP TABLE, force push, reset --hard
-- Gate 3: TEST BEFORE DEPLOY — Must run tests before deploying
-- Gate 4: MEMORY FIRST — Must query memory before editing
-- Gate 5: PROOF BEFORE FIXED — Verify changes before making more
-- Gate 7: CRITICAL FILE GUARD — Extra checks for high-risk files
-- Gate 9: STRATEGY BAN — Blocks proven-ineffective fix strategies
-- Gate 10: MODEL COST GUARD — Blocks expensive model usage without justification
-- Gate 11: RATE LIMIT — Blocks runaway tool call loops (rolling window)
-- Gate 13: WORKSPACE ISOLATION — Prevents concurrent file edits across agents
-- Gate 14: CONFIDENCE CHECK — Progressive readiness enforcement (3-strike escalation)
-- Gate 15: CAUSAL CHAIN — Blocks edits after test failure until query_fix_history called
-- Gate 16: CODE QUALITY — Blocks repeated bad patterns (debug prints, hardcoded secrets, broad excepts) after 3 warnings per file
-
-**Advisory gate** (warn only, escalates to block after 5 warnings):
-- Gate 6: SAVE TO MEMORY — Warns when verified fixes or plan insights not saved to memory
-
 ## SESSION START (Non-Negotiable)
 1. Read HANDOFF.md & LIVE_STATE.json
 2. If previous state exists, present summary and ask: "Continue" or "New task"
