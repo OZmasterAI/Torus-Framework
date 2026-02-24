@@ -1,9 +1,9 @@
 {
-  "session_count": 224,
+  "session_count": 225,
   "project": "torus-framework",
   "feature": "domain-mastery-system",
   "framework_version": "v2.5.3",
-  "what_was_done": "Implemented Domain Mastery System — per-domain knowledge overlays with behavior.md, knowledge.md, profile.json. Created domain_registry.py core module, /domain skill (list/activate/deactivate/create/graduate/refresh/status), boot orchestrator integration, enforcer domain-aware gate modes, statusline DOM display, subagent domain context injection. Bootstrapped framework domain. Domains default inactive — user explicitly activates.",
+  "what_was_done": "Implemented Domain Mastery System \u2014 per-domain knowledge overlays with behavior.md, knowledge.md, profile.json. Created domain_registry.py core module, /domain skill (list/activate/deactivate/create/graduate/refresh/status), boot orchestrator integration, enforcer domain-aware gate modes, statusline DOM display, subagent domain context injection. Bootstrapped framework domain. Domains default inactive \u2014 user explicitly activates.",
   "next_steps": [
     "Remove CLAUDE.md domain section (unnecessary token cost)",
     "Run /domain graduate framework to synthesize knowledge.md",
