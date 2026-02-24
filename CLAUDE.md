@@ -30,11 +30,6 @@ When fixing errors, follow ALL 5 steps:
 4. "Continue" → Use handoff as context, pick up from "What's Next"
 5. User's current instructions ALWAYS override handoff state
 
-## SESSION HANDOFF
-- HANDOFF.md — What was done, what's next, service status
-- LIVE_STATE.json — Machine-readable project state
-- Update both at session end (use /wrap-up)
-
 ## AGENT DELEGATION
 - Memory MCP gives sub-agents shared context; causal chain shares fix history automatically
 - 2-5 steps, independent → Sub-agents (parallel)
