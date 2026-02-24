@@ -1,9 +1,9 @@
 {
-  "session_count": 215,
+  "session_count": 216,
   "project": "torus-framework",
   "feature": "wrapup-indexer-fix",
   "framework_version": "v2.5.3",
-  "what_was_done": "Verified wrapup indexer fix from session 214 and found SECOND performance bug. When wrapup status file had no commit_hash (from stuck/failed run), the HEAD~1 incremental fallback only applied to boot, not wrapup — causing wrapup to full-reindex all ~3000 chunks every time (5+ min). Fixed by changing `elif snapshot_type == 'boot':` to `else:` in memory_server.py line 1404. Also confirmed boot indexer showing 0 chunks is correct incremental behavior.",
+  "what_was_done": "Verified wrapup indexer fix from session 214 and found SECOND performance bug. When wrapup status file had no commit_hash (from stuck/failed run), the HEAD~1 incremental fallback only applied to boot, not wrapup \u2014 causing wrapup to full-reindex all ~3000 chunks every time (5+ min). Fixed by changing `elif snapshot_type == 'boot':` to `else:` in memory_server.py line 1404. Also confirmed boot indexer showing 0 chunks is correct incremental behavior.",
   "next_steps": [
     "Verify wrapup indexer runs fast after fix (restart MCP server to pick up new code)",
     "Build Claude API adapter for agent-bench (real API scoring)",
