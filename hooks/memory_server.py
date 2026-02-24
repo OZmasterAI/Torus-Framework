@@ -106,6 +106,7 @@ SOCKET_PATH = os.path.join(
     os.path.expanduser("~"), ".claude", "hooks", ".chromadb.sock"
 )
 _socket_server = None  # threading server reference for cleanup
+_uds_shutting_down = False  # prevents rebind during intentional shutdown
 
 # Lazy ChromaDB initialization — prevents segfault when module is imported
 # by test code while MCP server already holds a PersistentClient on the same path.
@@ -1463,6 +1464,7 @@ def _run_code_indexer(snapshot_type="boot"):
 
         if not files_to_index:
             print(f"[CodeIndex] {snapshot_type} snapshot: no files to index (all up-to-date)", file=_sys.stderr)
+            _write_idx_status("done", chunks=0, files=0, commit_hash=_head_hash or "")
             return
 
         total_chunks = 0
@@ -4598,27 +4600,27 @@ def _serialize_chromadb_result(result):
     return out
 
 
+def _bind_uds_socket():
+    """Create, bind, and return a new UDS server socket."""
+    if os.path.exists(SOCKET_PATH):
+        os.unlink(SOCKET_PATH)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(SOCKET_PATH)
+    srv.listen(8)
+    srv.settimeout(1.0)
+    return srv
+
+
 def _start_socket_server():
     """Bind a Unix Domain Socket and accept connections in a daemon thread."""
     global _socket_server
 
-    # Remove stale socket file (prevents 'Address already in use')
     try:
-        if os.path.exists(SOCKET_PATH):
-            os.unlink(SOCKET_PATH)
-    except OSError:
-        pass
-
-    try:
-        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        srv.bind(SOCKET_PATH)
-        srv.listen(8)
-        srv.settimeout(1.0)  # Allow periodic shutdown checks
+        srv = _bind_uds_socket()
         _socket_server = srv
     except OSError as e:
         # Non-fatal: MCP tools still work, just no external gateway
-        import sys
-        print(f"[UDS] Failed to start socket server: {e}", file=sys.stderr)
+        print(f"[UDS] Failed to start socket server: {e}", file=_sys.stderr)
         return
 
     def _accept_loop():
@@ -4629,26 +4631,34 @@ def _start_socket_server():
                 t = threading.Thread(target=_handle_socket_client, args=(conn,), daemon=True)
                 t.start()
             except socket.timeout:
+                # Proactive watchdog: detect deleted socket file
+                if not os.path.exists(SOCKET_PATH):
+                    print("[UDS] Socket file missing, rebinding", file=_sys.stderr)
+                    try:
+                        srv.close()
+                    except Exception:
+                        pass
+                    try:
+                        srv = _bind_uds_socket()
+                        _socket_server = srv
+                    except OSError as e:
+                        print(f"[UDS] Watchdog rebind failed: {e}", file=_sys.stderr)
                 continue
             except OSError as e:
-                # Rebind instead of dying — transient errors shouldn't kill UDS
-                import sys
-                print(f"[UDS] Accept error, rebinding: {e}", file=sys.stderr)
+                if _uds_shutting_down:
+                    break
+                # Reactive rebind on accept() failure
+                print(f"[UDS] Accept error, rebinding: {e}", file=_sys.stderr)
                 try:
                     srv.close()
                 except Exception:
                     pass
                 time.sleep(1)
                 try:
-                    if os.path.exists(SOCKET_PATH):
-                        os.unlink(SOCKET_PATH)
-                    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    srv.bind(SOCKET_PATH)
-                    srv.listen(8)
-                    srv.settimeout(1.0)
+                    srv = _bind_uds_socket()
                     _socket_server = srv
                 except OSError as rebind_err:
-                    print(f"[UDS] Rebind failed, retrying in 5s: {rebind_err}", file=sys.stderr)
+                    print(f"[UDS] Rebind failed, retrying in 5s: {rebind_err}", file=_sys.stderr)
                     time.sleep(5)
 
     t = threading.Thread(target=_accept_loop, daemon=True, name="uds-gateway")
@@ -4657,7 +4667,8 @@ def _start_socket_server():
 
 def _cleanup_socket():
     """Close server socket and remove socket file on exit."""
-    global _socket_server
+    global _socket_server, _uds_shutting_down
+    _uds_shutting_down = True
     if _socket_server is not None:
         try:
             _socket_server.close()
