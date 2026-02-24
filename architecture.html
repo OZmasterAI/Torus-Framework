@@ -664,9 +664,9 @@ Cross-session            → Sub-agents + memory</pre>
   <table>
     <thead><tr><th>System</th><th>Location</th><th>Protocol</th></tr></thead>
     <tbody>
-      <tr><td>Telegram Bot</td><td>integrations/telegram-bot/</td><td>Bot API, SQLite msg_log.db (532KB)</td></tr>
-      <tr><td>Terminal History</td><td>integrations/terminal-history/</td><td>FTS5, SQLite terminal_history.db (19.8MB)</td></tr>
-      <tr><td>ChromaDB</td><td>~/data/memory/</td><td>UDS socket (.chromadb.sock)</td></tr>
+      <tr><td>ChromaDB (L1)</td><td>~/data/memory/</td><td>UDS socket (.chromadb.sock), semantic search</td></tr>
+      <tr><td>Terminal History (L2)</td><td>integrations/terminal-history/</td><td>FTS5, SQLite terminal_history.db (19.8MB)</td></tr>
+      <tr><td>Telegram Bot (L3)</td><td>integrations/telegram-bot/</td><td>Bot API, SQLite msg_log.db (532KB)</td></tr>
       <tr><td>Enforcer Daemon</td><td>hooks/.enforcer.sock</td><td>UDS (JSON-over-newline)</td></tr>
       <tr><td>Ramdisk</td><td>/run/user/{uid}/claude-hooks/</td><td>tmpfs + async disk mirror</td></tr>
       <tr><td>Git Auto-Commit</td><td>hooks/auto_commit.py</td><td>Two-phase: stage &rarr; commit</td></tr>
