@@ -31,8 +31,9 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
               ┌────────────────▼─────────┐     ┌─────▼──────┐  ┌───▼──────────┐
               │  Context Injection        │     │  Gate      │  │  Mentor      │
               │  - LIVE_STATE.json        │     │  System    │  │  System      │
-              │  - Memory (ChromaDB)      │     │  (T1/T2/T3)│  │  (Module A)  │
-              │  - Telegram L3            │     └─────┬──────┘  └───┬──────────┘
+              │  - Memory L1 (ChromaDB)   │     │  (T1/T2/T3)│  │  (Module A)  │
+              │  - Terminal History L2    │     └─────┬──────┘  └───┬──────────┘
+              │  - Telegram L3            │           │             │
               │  - Gate auto-tune         │           │             │
               └──────────────────────────┘     ┌─────▼──────┐  ┌───▼──────────┐
                                                │  Shared/   │  │  Observation │
