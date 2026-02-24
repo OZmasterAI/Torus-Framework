@@ -1,9 +1,9 @@
 {
-  "session_count": 216,
+  "session_count": 217,
   "project": "torus-framework",
   "feature": "indexer-cleanup",
   "framework_version": "v2.5.3",
-  "what_was_done": "Verified both boot and wrapup indexers work fast (~1s) after session 214-215 fixes. Then removed the wrapup code indexer entirely — it was dead code (never triggered, 0 chunks, never queried). Kept boot indexer only. Simplified memory_server.py, chromadb_socket.py, statusline.py, and tests.",
+  "what_was_done": "Verified both boot and wrapup indexers work fast (~1s) after session 214-215 fixes. Then removed the wrapup code indexer entirely \u2014 it was dead code (never triggered, 0 chunks, never queried). Kept boot indexer only. Simplified memory_server.py, chromadb_socket.py, statusline.py, and tests.",
   "next_steps": [
     "Update wrap-up skill to remove wrapup indexer reindex step",
     "Build Claude API adapter for agent-bench (real API scoring)",
