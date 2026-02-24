@@ -3,11 +3,11 @@
   "project": "torus-framework",
   "feature": "wrapup-indexer-fix",
   "framework_version": "v2.5.3",
-  "what_was_done": "Fixed wrapup code indexer performance bug \u2014 removed unconditional bulk copy of all boot collection chunks into wrapup (3093 chunks re-embedded every session, causing 5+ min delay). Made boot and wrapup collections fully independent with their own incremental git diffing.",
+  "what_was_done": "Verified wrapup indexer fix from session 214 and found SECOND performance bug. When wrapup status file had no commit_hash (from stuck/failed run), the HEAD~1 incremental fallback only applied to boot, not wrapup — causing wrapup to full-reindex all ~3000 chunks every time (5+ min). Fixed by changing `elif snapshot_type == 'boot':` to `else:` in memory_server.py line 1404. Also confirmed boot indexer showing 0 chunks is correct incremental behavior.",
   "next_steps": [
+    "Verify wrapup indexer runs fast after fix (restart MCP server to pick up new code)",
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Merge Self-Sprint-2 into main",
-    "Verify wrapup indexer runs fast after fix (restart MCP server first)",
     "Optimize whisper transcription speed",
     "Pick next evolution target"
   ],
