@@ -10,11 +10,11 @@
     "live_state_feature": ["*framework*", "*gate*", "*enforcer*", "*hook*"]
   },
   "graduation": {
-    "graduated": false,
-    "graduated_at": null,
-    "memory_count_at_graduation": 0,
-    "last_refreshed": null,
-    "l2_scanned_until": null
+    "graduated": true,
+    "graduated_at": "2026-02-24T18:15:00Z",
+    "memory_count_at_graduation": 105,
+    "last_refreshed": "2026-02-24T18:15:00Z",
+    "l2_scanned_until": "2026-02-24T18:15:00Z"
   },
   "token_budget": 800
 }
