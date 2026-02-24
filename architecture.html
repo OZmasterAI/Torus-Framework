@@ -172,7 +172,7 @@
 <header>
   <div class="container">
     <h1><span>Torus</span> Framework</h1>
-    <p style="color:var(--text-muted); font-size:1rem;">Architecture Map &mdash; v2.6</p>
+    <p style="color:var(--text-muted); font-size:1rem;">Architecture Map &mdash; v2.5.3</p>
     <div class="badge-row">
       <span class="badge"><strong>113</strong> Python files</span>
       <span class="badge"><strong>~48,552</strong> lines</span>
@@ -180,7 +180,7 @@
       <span class="badge"><strong>50</strong> shared modules</span>
       <span class="badge"><strong>33</strong> skills</span>
       <span class="badge"><strong>16</strong> MCP tools</span>
-      <span class="badge"><strong>~1,339</strong> memories</span>
+      <span class="badge"><strong>~1,345</strong> memories</span>
     </div>
   </div>
 </header>
@@ -259,7 +259,7 @@
     <div class="stat-card"><div class="value">2</div><div class="label">MCP Servers</div></div>
     <div class="stat-card"><div class="value">16</div><div class="label">MCP Tools</div></div>
     <div class="stat-card"><div class="value">2</div><div class="label">Orchestrators</div></div>
-    <div class="stat-card"><div class="value">1,339</div><div class="label">Memories</div></div>
+    <div class="stat-card"><div class="value">1,345</div><div class="label">Memories</div></div>
   </div>
 </section>
 
@@ -284,6 +284,7 @@
       <tr><td>4</td><td>MEMORY FIRST</td><td>82</td><td>Edit, Write, NotebookEdit, Task</td><td>Blocks if memory not queried in last 5 min. Sideband: .memory_last_queried</td></tr>
       <tr><td>5</td><td>PROOF BEFORE FIXED</td><td>110</td><td>Edit, Write, NotebookEdit</td><td>Blocks edits to OTHER files when 3+ unverified. Same-file: warn at 4th, block at 6th</td></tr>
       <tr><td>6</td><td>SAVE TO MEMORY</td><td>238</td><td>Edit, Write, Task, Bash</td><td>Advisory &rarr; blocking. Warns unsaved fixes. Escalates after 5 warnings. 20-min stale decay</td></tr>
+      <tr><td>7</td><td>CRITICAL FILE GUARD</td><td>100</td><td>Edit, Write, NotebookEdit</td><td>Extra checks for high-risk files (auth, config, enforcer, memory_server). Requires explicit justification</td></tr>
       <tr><td>9</td><td>STRATEGY BAN</td><td>175</td><td>Edit, Write, NotebookEdit</td><td>Blocks strategies that failed 3+ times. Auto-defers to PRP</td></tr>
       <tr><td>10</td><td>MODEL COST GUARD</td><td>267</td><td>Task</td><td>Enforces explicit model param. 4-tier budget degradation. Role-based profiles</td></tr>
       <tr><td>11</td><td>RATE LIMIT</td><td>82</td><td>All (except analytics)</td><td>Blocks &gt;60 calls/min, warns &gt;40/min. 120s rolling window</td></tr>
@@ -372,7 +373,7 @@
   </details>
 
   <details class="module-group">
-    <summary>Performance &amp; Monitoring <span class="count">4 modules, ~1,508 lines</span></summary>
+    <summary>Performance &amp; Monitoring <span class="count">4 modules, ~1,808 lines</span></summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>metrics_collector.py</td><td>643</td><td>Counters/gauges/histograms with ramdisk persistence</td></tr>
@@ -499,7 +500,7 @@
 
   <div class="pipeline-step" style="border-color: var(--accent2);">
     <div class="event">SessionStart</div>
-    <div class="handler"><code>boot.py</code> &rarr; <code>boot_pkg/orchestrator.py</code> (378 lines) &mdash; 20-step pipeline: ramdisk init, audit rotation, memory injection, context extraction, state reset</div>
+    <div class="handler"><code>boot.py</code> &rarr; <code>boot_pkg/orchestrator.py</code> (378 lines) &mdash; 22-step pipeline: ramdisk init, audit rotation, memory injection, context extraction, state reset</div>
   </div>
   <div class="pipeline-step" style="border-color: var(--accent3);">
     <div class="event">UserPromptSubmit</div>
@@ -507,15 +508,35 @@
   </div>
   <div class="pipeline-step" style="border-color: var(--tier1);">
     <div class="event">PreToolUse</div>
-    <div class="handler"><code>enforcer_shim.py</code> &rarr; <code>enforcer_daemon.py</code> (~5ms UDS) &mdash; 17 active gates, priority-ordered, Q-learning optimized</div>
+    <div class="handler"><code>enforcer_shim.py</code> &rarr; <code>enforcer_daemon.py</code> (~43ms fast path UDS) &mdash; 17 active gates, priority-ordered, Q-learning optimized</div>
   </div>
   <div class="pipeline-step" style="border-color: var(--accent);">
     <div class="event">PostToolUse</div>
-    <div class="handler"><code>tracker.py</code> &rarr; <code>tracker_pkg/orchestrator.py</code> (537 lines) &mdash; 17-step pipeline: errors, observations, verification, mentor verdicts<br>+ <code>auto_commit.py stage</code> + <code>auto_format.py</code> + <code>event_logger.py</code></div>
+    <div class="handler"><code>tracker.py</code> &rarr; <code>tracker_pkg/orchestrator.py</code> (537 lines) &mdash; 17-step pipeline: errors, observations, verification, mentor verdicts<br>+ <code>auto_commit.py stage</code> + <code>auto_format.py</code></div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--text-muted);">
+    <div class="event">PostToolUseFailure</div>
+    <div class="handler"><code>event_logger.py</code> + <code>failure_recovery.py</code></div>
   </div>
   <div class="pipeline-step" style="border-color: var(--text-muted);">
     <div class="event">SubagentStart</div>
     <div class="handler"><code>subagent_context.py</code> &mdash; inject LIVE_STATE + session state into sub-agents</div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--text-muted);">
+    <div class="event">SubagentStop</div>
+    <div class="handler"><code>event_logger.py</code></div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--text-muted);">
+    <div class="event">PermissionRequest</div>
+    <div class="handler"><code>auto_approve.py</code></div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--text-muted);">
+    <div class="event">Notification</div>
+    <div class="handler"><code>event_logger.py</code></div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--text-muted);">
+    <div class="event">ConfigChange</div>
+    <div class="handler"><code>config_change.py</code></div>
   </div>
   <div class="pipeline-step" style="border-color: var(--text-muted);">
     <div class="event">PreCompact</div>
@@ -526,8 +547,8 @@
     <div class="handler"><code>session_end.py</code> (554 lines) &mdash; flush queues, update LIVE_STATE, increment session_count</div>
   </div>
   <div class="pipeline-step" style="border-color: var(--text-muted);">
-    <div class="event">SessionStop</div>
-    <div class="handler"><code>stop_cleanup.py</code> &mdash; flush I/O, close handles, shutdown daemons</div>
+    <div class="event">Stop</div>
+    <div class="handler"><code>tg_mirror.py</code> + <code>stop_cleanup.py</code> &mdash; flush I/O, close handles, shutdown daemons</div>
   </div>
 </section>
 
@@ -537,6 +558,7 @@
 
   <h3>Memory Server &mdash; <code>memory_server.py</code> (4,188 lines)</h3>
   <p>Embedding: <strong>nomic-ai/nomic-embed-text-v2-moe</strong> (768-dim). Storage: <strong>~/data/memory/</strong> (ChromaDB SQLite). UDS gateway: <code>.chromadb.sock</code></p>
+  <p>3-tier memory classification: <strong>Tier 1</strong> high-value memories boosted in ranking, <strong>Tier 2</strong> standard memories at neutral weight, <strong>Tier 3</strong> low-value memories penalized in ranking.</p>
   <table>
     <thead><tr><th>Tool</th><th>Parameters</th><th>Purpose</th></tr></thead>
     <tbody>
@@ -575,15 +597,15 @@
   <div class="skill-chips"><span class="chip">fix</span><span class="chip">commit</span><span class="chip">test</span><span class="chip">review</span><span class="chip">refactor</span><span class="chip">document</span></div>
   <h3>Research (6)</h3>
   <div class="skill-chips"><span class="chip">research</span><span class="chip">explore</span><span class="chip">deep-dive</span><span class="chip">analyze-errors</span><span class="chip">learn</span><span class="chip">teach</span></div>
-  <h3>Framework Ops (7)</h3>
-  <div class="skill-chips"><span class="chip">diagnose</span><span class="chip">health-report</span><span class="chip">super-health</span><span class="chip">introspect</span><span class="chip">status</span><span class="chip">wrap-up</span><span class="chip">audit</span></div>
+  <h3>Framework Ops (6)</h3>
+  <div class="skill-chips"><span class="chip">diagnose</span><span class="chip">super-health</span><span class="chip">introspect</span><span class="chip">status</span><span class="chip">wrap-up</span><span class="chip">audit</span></div>
   <h3>Quality/Security (2)</h3>
   <div class="skill-chips"><span class="chip">security-scan</span><span class="chip">benchmark</span></div>
   <h3>Build/Deploy (3)</h3>
   <div class="skill-chips"><span class="chip">build</span><span class="chip">deploy</span><span class="chip">report</span></div>
   <h3>Orchestration (5)</h3>
   <div class="skill-chips"><span class="chip">prp</span><span class="chip">wave</span><span class="chip">loop</span><span class="chip">chain</span><span class="chip">sprint</span></div>
-  <h3>Advanced (4)</h3>
+  <h3>Advanced (5)</h3>
   <div class="skill-chips"><span class="chip">web</span><span class="chip">browser</span><span class="chip">ralph</span><span class="chip">super-evolve</span><span class="chip">super-prof-optimize</span></div>
 </section>
 
@@ -660,7 +682,7 @@ Cross-session            → Sub-agents + memory</pre>
     <tbody>
       <tr><td>context_enrichment</td><td>true</td><td>Inject context from memory/integrations at boot</td></tr>
       <tr><td>gate_auto_tune</td><td>true</td><td>Self-evolving gate effectiveness thresholds</td></tr>
-      <tr><td>enforcer_daemon</td><td>true</td><td>Use persistent UDS server (~5ms vs ~134ms)</td></tr>
+      <tr><td>enforcer_daemon</td><td>true</td><td>Use persistent UDS server (~43ms vs ~134ms)</td></tr>
       <tr><td>budget_degradation</td><td>false</td><td>4-tier model downgrade based on budget</td></tr>
       <tr><td>model_profile</td><td>"efficient"</td><td>Role-based model selection</td></tr>
       <tr><td>security_profile</td><td>"balanced"</td><td>Gate strictness posture</td></tr>
@@ -673,6 +695,11 @@ Cross-session            → Sub-agents + memory</pre>
       <tr><td>terminal_l2_always</td><td>false</td><td>Always include terminal L2 in search</td></tr>
       <tr><td>tg_enrichment</td><td>false</td><td>Telegram context enrichment</td></tr>
       <tr><td>search_routing</td><td>"default"</td><td>Search mode routing strategy</td></tr>
+      <tr><td>tg_l3_always</td><td>false</td><td>Always include Telegram L3 in context enrichment</td></tr>
+      <tr><td>tg_bot_tmux</td><td>false</td><td>Route Telegram bot through tmux session</td></tr>
+      <tr><td>session_token_budget</td><td>&mdash;</td><td>Per-session token budget cap</td></tr>
+      <tr><td>mentor_outcome_chains</td><td>false</td><td>Enable mentor system outcome chain tracking</td></tr>
+      <tr><td>mentor_memory</td><td>false</td><td>Enable mentor memory persistence</td></tr>
     </tbody>
   </table>
 </section>
@@ -739,7 +766,7 @@ Cross-session            → Sub-agents + memory</pre>
 </div>
 
 <footer>
-  <p>Torus Framework &mdash; Architecture Map v2.6 &mdash; Session 221 (2026-02-24)</p>
+  <p>Torus Framework &mdash; Architecture Map v2.5.3 &mdash; Session 223 (2026-02-24)</p>
 </footer>
 
 </body>

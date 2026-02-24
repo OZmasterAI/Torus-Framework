@@ -1,6 +1,6 @@
 # Torus Framework — Architecture Map
 
-> **Version:** v2.6 | **Updated:** 2026-02-24 (Session 221)
+> **Version:** v2.5.3 | **Updated:** 2026-02-24 (Session 223)
 > **Stats:** 113 Python files | ~48,552 lines | 17 active gates | 50 shared modules | 33 skills
 
 ## Overview
@@ -32,7 +32,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
               │  Context Injection        │     │  Gate      │  │  Mentor      │
               │  - LIVE_STATE.json        │     │  System    │  │  System      │
               │  - Memory (ChromaDB)      │     │  (T1/T2/T3)│  │  (Module A)  │
-              │  - Telegram L2            │     └─────┬──────┘  └───┬──────────┘
+              │  - Telegram L3            │     └─────┬──────┘  └───┬──────────┘
               │  - Gate auto-tune         │           │             │
               └──────────────────────────┘     ┌─────▼──────┐  ┌───▼──────────┐
                                                │  Shared/   │  │  Observation │
@@ -60,7 +60,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 │
 ├── hooks/                           # Core framework (83 MB total)
 │   ├── enforcer.py                  #   PreToolUse gate dispatcher (632 lines)
-│   ├── enforcer_shim.py             #   Fast UDS proxy ~5ms (83 lines)
+│   ├── enforcer_shim.py             #   Fast UDS proxy ~43ms (83 lines)
 │   ├── enforcer_daemon.py           #   Persistent gate server (232 lines)
 │   ├── boot.py                      #   SessionStart shim (42 lines)
 │   ├── tracker.py                   #   PostToolUse shim (47 lines)
@@ -81,7 +81,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 │   ├── integrity_check.py           #   SHA256 file verification (97 lines)
 │   ├── failure_recovery.py          #   Tool failure triage (59 lines)
 │   ├── tg_mirror.py                 #   Telegram mirror (127 lines)
-│   ├── stop_cleanup.py              #   SessionStop cleanup (46 lines)
+│   ├── stop_cleanup.py              #   Stop event cleanup (46 lines)
 │   ├── setup_ramdisk.sh             #   One-time tmpfs setup (116 lines)
 │   │
 │   ├── gates/                       # Quality gates (17 active, 348 KB)
@@ -144,6 +144,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | 4 | MEMORY FIRST | 82 | Edit, Write, NotebookEdit, Task | Blocks if memory not queried in last 5 min. Sideband: .memory_last_queried. Read-only subagents exempt |
 | 5 | PROOF BEFORE FIXED | 110 | Edit, Write, NotebookEdit | Blocks edits to OTHER files when 3+ files unverified. Warns at 4th same-file edit, blocks at 6th |
 | 6 | SAVE TO MEMORY | 238 | Edit, Write, Task, Bash | Advisory → blocking. Warns unsaved fixes (threshold: 2). Escalates after 5 warnings. Merged old Gate 12. 20-min stale decay |
+| 7 | CRITICAL FILE GUARD | 100 | Edit, Write, NotebookEdit | Extra checks for high-risk files (settings.json, CLAUDE.md, enforcer.py, etc.). Requires explicit confirmation for critical modifications |
 | 9 | STRATEGY BAN | 175 | Edit, Write, NotebookEdit | Blocks strategies that failed 3+ times (4 if prior success). Auto-defers to PRP |
 | 10 | MODEL COST GUARD | 267 | Task | Enforces explicit model param. 4-tier budget degradation (NORMAL/LOW_COMPUTE/CRITICAL/DEAD). Role-based profiles |
 | 11 | RATE LIMIT | 82 | All (except analytics) | Blocks >60 calls/min, warns >40/min. 120s rolling window. MAX_WINDOW_ENTRIES=200 |
@@ -212,7 +213,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | error_normalizer.py | 52 | Strip paths/UUIDs/timestamps → stable FNV-1a fingerprint |
 | error_pattern_analyzer.py | 494 | Recurring error analysis, correlations, prevention suggestions |
 
-### Performance & Monitoring (4 modules, ~1,508 lines)
+### Performance & Monitoring (4 modules, ~1,808 lines)
 
 | Module | Lines | Purpose |
 |--------|-------|---------|
@@ -314,7 +315,7 @@ UserPromptSubmit ─→ user_prompt_capture.py (capture to queues)
                  ─→ user_prompt_check.sh (pre-flight)
                  ─→ auto_commit.py commit (batch staged changes)
 
-PreToolUse ─→ enforcer_shim.py ─→ enforcer_daemon.py (~5ms UDS)
+PreToolUse ─→ enforcer_shim.py ─→ enforcer_daemon.py (~43ms fast path, ~5ms socket)
               (fallback: inline enforcer.py ~134ms)
               └── gates/ (17 active, priority-ordered, Q-learning optimized)
 
@@ -329,19 +330,29 @@ PostToolUse ─→ tracker.py ─→ tracker_pkg/orchestrator.py (537 lines)
                               └── mentor_analytics.py: effectiveness metrics
             ─→ auto_commit.py stage (git add edited files)
             ─→ auto_format.py (ruff/black, 3s timeout)
-            ─→ event_logger.py (supplementary events)
-
 SubagentStart ─→ subagent_context.py (inject LIVE_STATE + session state)
+
+SubagentStop ─→ event_logger.py (log subagent completion)
+
+PermissionRequest ─→ auto_approve.py (auto-approve benign tools)
 
 PreCompact ─→ pre_compact.py (snapshot gate state before context compression)
 
 SessionEnd ─→ session_end.py (flush queues, update LIVE_STATE, increment session_count)
 
-SessionStop ─→ stop_cleanup.py (flush I/O, close handles, shutdown daemons)
+Stop ─→ tg_mirror.py (mirror final response to Telegram)
+     ─→ stop_cleanup.py (flush I/O, close handles, shutdown daemons)
+
+PostToolUseFailure ─→ event_logger.py (log failure)
+                   ─→ failure_recovery.py (triage and recover)
+
+Notification ─→ event_logger.py (log notification)
+
+ConfigChange ─→ config_change.py (hot-reload config.json)
 ```
 
-### Boot Flow (20 steps)
-1. Bot session check → 2. Ramdisk init → 3. Audit rotation → 4. Load LIVE_STATE → 5. Memory injection (ChromaDB socket) → 6. Telegram L2 → 7. Gate auto-tuning → 8. Error extraction → 9. Tool activity → 10. Test status → 11. Verification quality → 12. Session duration → 13. Gate block stats → 14. Dashboard (stderr) → 15. Context injection (stdout) → 16. State reset → 17. Auto-tune overrides → 18. Workspace claims cleanup → 19. Capture queue flush → 20. Auto-remember ingestion + sideband write
+### Boot Flow (22 steps)
+1. Bot session check → 2. Ramdisk init → 3. Audit rotation → 4. Load LIVE_STATE → 5. Time warnings → 6. Gate count → 7. UDS check/daemon start → 8. ChromaDB watchdog → 9. Memory injection (ChromaDB socket) → 10. Telegram L3 search → 11. Gate auto-tuning → 12. Error extraction → 13. Tool activity → 14. Test status → 15. Verification quality → 16. Session duration → 17. Gate block stats → 18. Dashboard (stderr) → 19. Context injection (stdout) → 20. State reset → 21. Capture queue flush → 22. Auto-remember ingestion + sideband write
 
 ### PostToolUse Flow (17 steps)
 1. Increment tool_call_count → 2. Token estimation → 3. Resolve gate blocks → 4. Auto-expire fixing_error → 5. Track reads → 6. Track edits → 7. Write file claims → 8. Track memory queries → 9. Error detection → 10. Observation capture → 11. Verification scoring → 12. Auto-remember → 13. Outcome chains → 14. Mentor evaluation → 15. Generate verdict → 16. Gate effectiveness → 17. Save state
@@ -355,6 +366,7 @@ SessionStop ─→ stop_cleanup.py (flush I/O, close handles, shutdown daemons)
 - **Embedding:** nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens)
 - **Storage:** ~/data/memory/ (ChromaDB SQLite)
 - **Collections:** "knowledge" (curated) + "observations" (auto-captured)
+- **3-tier memory classification:** Tier 1 (high-value, boosted in search), Tier 2 (standard), Tier 3 (low-priority, penalized)
 - **UDS gateway:** .chromadb.sock (serializes all hook-side access)
 
 | Tool | Parameters | Purpose |
@@ -393,13 +405,13 @@ Lightweight, read-only, lazy-loaded. No ChromaDB dependency.
 |----------|--------|
 | Dev Workflow (6) | fix, commit, test, review, refactor, document |
 | Research (6) | research, explore, deep-dive, analyze-errors, learn, teach |
-| Framework Ops (7) | diagnose, health-report, super-health, introspect, status, wrap-up, audit |
+| Framework Ops (6) | diagnose, super-health, introspect, status, wrap-up, audit |
 | Quality/Security (2) | security-scan, benchmark |
 | Build/Deploy (3) | build, deploy, report |
 | Orchestration (5) | prp, wave, loop, chain, sprint |
-| Advanced (4) | web, browser, ralph, super-evolve, super-prof-optimize |
+| Advanced (5) | web, browser, ralph, super-evolve, super-prof-optimize |
 
-Skills with scripts/: health-report, security-scan, status, super-health, web, wrap-up
+Skills with scripts/: security-scan, status, super-health, web, wrap-up
 User-invocable: benchmark, learn, introspect, security-scan, super-evolve, keybindings-help
 
 ---
@@ -479,7 +491,7 @@ Cross-session            → Sub-agents + memory
 |--------|-------|---------|
 | context_enrichment | true | Inject context from memory/integrations at boot |
 | gate_auto_tune | true | Self-evolving gate effectiveness thresholds |
-| enforcer_daemon | true | Use persistent UDS server (~5ms vs ~134ms) |
+| enforcer_daemon | true | Use persistent UDS server (~43ms vs ~134ms) |
 | budget_degradation | false | 4-tier model downgrade based on budget |
 | model_profile | "efficient" | Role-based model selection |
 | security_profile | "balanced" | Gate strictness posture |
@@ -491,6 +503,11 @@ Cross-session            → Sub-agents + memory
 | tg_mirror_messages | true | Mirror Claude responses to Telegram |
 | terminal_l2_always | false | Always include terminal L2 in search |
 | tg_enrichment | false | Telegram context enrichment |
+| tg_l3_always | false | Always include Telegram L3 in search |
+| tg_bot_tmux | false | Run Telegram bot in tmux session |
+| session_token_budget | — | Token budget per session |
+| mentor_outcome_chains | true | Track mentor outcome chains |
+| mentor_memory | true | Mentor pattern/frequency learning |
 | search_routing | "default" | Search mode routing strategy |
 
 ---
@@ -532,9 +549,9 @@ Cross-session            → Sub-agents + memory
 | External orchestrators | 2 |
 | Integrations | 2 |
 | Session state files | 43 |
-| Total memories | ~1,339 |
+| Total memories | ~1,345 |
 | Largest file | test_framework.py (11,904 lines) |
 
 ---
 
-*Generated by Torus Framework — Session 221 (2026-02-24)*
+*Generated by Torus Framework — Session 223 (2026-02-24)*

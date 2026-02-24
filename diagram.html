@@ -182,7 +182,7 @@
   <div class="node-header">Claude Code Session</div>
   <div class="node-body">
     <div class="item">Fires hook events on every tool call</div>
-    <div class="item"><span class="label">Events:</span> SessionStart, PreToolUse, PostToolUse, UserPromptSubmit, SubagentStart, SessionEnd</div>
+    <div class="item"><span class="label">Events (13):</span> SessionStart, PreToolUse, PostToolUse, UserPromptSubmit, SubagentStart, SessionEnd, PermissionRequest, PreCompact, Stop, SubagentStop, PostToolUseFailure, Notification, ConfigChange</div>
   </div>
 </div>
 
@@ -220,7 +220,7 @@
 <div id="n-enforcer" class="node node-gate" style="left:370px; top:155px; width:280px;" data-tip="Central gate dispatcher. Runs 17 quality gates before every tool call. Can mechanically block via sys.exit(2). Features Q-learning optimization, result caching, circuit breaker.">
   <div class="node-header">PreToolUse &mdash; enforcer</div>
   <div class="node-body">
-    <div class="item"><span class="label">Shim:</span> enforcer_shim.py (~5ms UDS)</div>
+    <div class="item"><span class="label">Shim:</span> enforcer_shim.py (~43ms fast path)</div>
     <div class="item"><span class="label">Daemon:</span> enforcer_daemon.py (persistent)</div>
     <div class="item"><span class="label">Inline:</span> enforcer.py (632 lines, ~134ms)</div>
     <div class="item"><span class="label">Dispatch:</span> Q-learning optimized priority order</div>
@@ -276,6 +276,7 @@
     <div class="item"><span class="label">G04</span> MEMORY FIRST <span class="count">82 lines</span></div>
     <div class="item"><span class="label">G05</span> PROOF BEFORE FIXED <span class="count">110 lines</span></div>
     <div class="item"><span class="label">G06</span> SAVE TO MEMORY <span class="count">238 lines</span></div>
+    <div class="item"><span class="label">G07</span> CRITICAL FILE GUARD <span class="count">100 lines</span></div>
     <div class="item"><span class="label">G09</span> STRATEGY BAN <span class="count">175 lines</span></div>
     <div class="item"><span class="label">G10</span> MODEL COST GUARD <span class="count">267 lines</span></div>
     <div class="item"><span class="label">G11</span> RATE LIMIT <span class="count">82 lines</span></div>
@@ -386,7 +387,7 @@
 </div>
 
 <div id="n-monitoring" class="node node-infra" style="left:990px; top:1060px; width:280px;">
-  <div class="node-header">Monitoring (1,508 lines)</div>
+  <div class="node-header">Monitoring (1,808 lines)</div>
   <div class="node-body">
     <div class="item"><span class="label">metrics_collector.py</span> (643) &mdash; counters/gauges</div>
     <div class="item"><span class="label">health_monitor.py</span> (542) &mdash; 0-100 health</div>
@@ -459,7 +460,7 @@
   <div class="node-body">
     <div class="item"><span class="label">Dev Workflow (6):</span> fix, commit, test, review, refactor, document</div>
     <div class="item"><span class="label">Research (6):</span> research, explore, deep-dive, analyze-errors, learn, teach</div>
-    <div class="item"><span class="label">Framework Ops (7):</span> diagnose, health-report, super-health, introspect, status, wrap-up, audit</div>
+    <div class="item"><span class="label">Framework Ops (7):</span> diagnose, super-prof-optimize, super-health, introspect, status, wrap-up, audit</div>
     <div class="item"><span class="label">Quality (2):</span> security-scan, benchmark</div>
     <div class="item"><span class="label">Build/Deploy (3):</span> build, deploy, report</div>
     <div class="item"><span class="label">Orchestration (5):</span> prp, wave, loop, chain, sprint</div>
@@ -518,7 +519,7 @@
     <div class="item"><span class="label">Path:</span> ~/data/memory/</div>
     <div class="item"><span class="label">Collections:</span> knowledge + observations</div>
     <div class="item"><span class="label">Socket:</span> .chromadb.sock (UDS)</div>
-    <div class="item"><span class="label">Memories:</span> ~1,339 curated</div>
+    <div class="item"><span class="label">Memories:</span> ~1,345 curated</div>
   </div>
 </div>
 
