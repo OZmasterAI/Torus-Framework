@@ -1,9 +1,9 @@
 {
-  "session_count": 225,
+  "session_count": 227,
   "project": "torus-framework",
-  "feature": "domain-mastery-system",
+  "feature": "branch-comparison",
   "framework_version": "v2.5.3",
-  "what_was_done": "Graduated framework domain (105+ L1 memories + L2 terminal history → mastery.md, ~700 tokens). Renamed knowledge.md → mastery.md across 6 files to avoid ChromaDB naming collision. Optimized CLAUDE.md from ~996 to ~625 tokens/prompt (37% reduction) by removing redundant gates listing, session handoff, and domain mastery sections. Created backupclaude.md safety copy.",
+  "what_was_done": "Comprehensive 3-branch comparison (main vs self-evolve-test vs Self-Sprint-2) across 12 dimensions. Killed stale suspended session. Deactivated framework domain. Recalled sessions 222-225.",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
