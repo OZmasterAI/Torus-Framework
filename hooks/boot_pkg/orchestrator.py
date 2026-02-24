@@ -57,6 +57,20 @@ def main():
     session_num = live_state.get("session_count", "?")
     summary = (live_state.get("what_was_done", "") or "No prior session data")[:100]
 
+    # Domain mastery: load active domain (only if explicitly activated by user)
+    _domain_name = None
+    _domain_knowledge = ""
+    _domain_behavior = ""
+    try:
+        from shared.domain_registry import (
+            get_active_domain, get_domain_context_for_injection,
+        )
+        _domain_name = get_active_domain()
+        if _domain_name:
+            _domain_knowledge, _domain_behavior = get_domain_context_for_injection(_domain_name)
+    except Exception:
+        pass  # Domain system is non-fatal
+
     # Time-based warnings
     time_warning = ""
     if 1 <= hour <= 5:
@@ -263,6 +277,15 @@ def main():
             dashboard += f"\n|    {gs_display:<64}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
+    if _domain_name:
+        dom_label = f"DOMAIN: {_domain_name}"
+        if _domain_knowledge:
+            dom_label += f" (knowledge loaded, {len(_domain_knowledge)} chars)"
+        else:
+            dom_label += " (no knowledge yet)"
+        dashboard += f"\n|  {dom_label:<66}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
+
     dashboard += """
 |  TIP: Query memory about your task before starting work.           |
 +====================================================================+
@@ -301,6 +324,12 @@ def main():
     if tg_memories:
         tg_summaries = [f"[{tm.get('date', '?')}] {tm.get('text', '')[:100]}" for tm in tg_memories]
         context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
+    if _domain_name:
+        context_parts.append(f"Active domain: {_domain_name}")
+        if _domain_knowledge:
+            context_parts.append(f"<domain-knowledge domain=\"{_domain_name}\">\n{_domain_knowledge}\n</domain-knowledge>")
+        if _domain_behavior:
+            context_parts.append(f"<domain-behavior domain=\"{_domain_name}\">\n{_domain_behavior}\n</domain-behavior>")
     context_parts.append(
         "PROTOCOL: Present session number, brief summary, completed list (what was done last session), "
         "and remaining list (what's next) in ONE message. "
