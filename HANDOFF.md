@@ -1,20 +1,16 @@
-# Session 218 — Boot Code Indexer Removal
+# Session 219 — ChromaDB Collection Cleanup
 
 ## What Was Done
-- Removed the boot code indexer — the last piece of the code indexing system (wrapup indexer removed in session 216)
-- Deleted ~700 lines across 7 files:
-  - `memory_server.py`: removed `_run_code_indexer()`, `_search_code_internal()`, `CODE_INDEX_EXCLUDE_PATTERNS`, chunking functions, `code_index` collection, UDS handler for `reindex_code`, `mode="code"` from search
-  - `chromadb_socket.py`: removed `reindex_code()` wrapper
-  - `boot_pkg/orchestrator.py`: removed boot trigger + import
-  - `boot_pkg/memory.py`: removed `reindex_code` import
-  - `statusline.py`: removed `get_idx_status()` + call
-  - `test_framework.py`: removed all indexer tests (~186 lines)
-  - Deleted `.code_index_boot_status` file
-- Tests: 1422 passed, 2 failed (pre-existing UDS socket issues)
+- Deleted orphaned ChromaDB collections: `code_index` (3,093 items) and `code_wrapup` (2,852 items)
+- Removed stale `hooks/chroma_db/` directory
+- VACUUM reclaimed 41 MB (93 MB → 52 MB)
+- Full codebase scan confirmed zero remaining indexer references
+- Updated HANDOFF.md and LIVE_STATE.json to remove completed cleanup items
+- Indexer removal feature is now 100% complete (code: sessions 216-218, data: session 219)
 
 ## Service Status
-- Memory MCP: UP (1315 memories)
-- Tests: 1422 passed, 2 pre-existing failures
+- Memory MCP: UP (1316 memories)
+- ChromaDB: 52 MB, 6 collections (knowledge, observations, fix_outcomes, quarantine, memories, web_pages)
 - Framework: v2.5.3 (Torus)
 - Gates: 16 active
 - Branch: Self-Sprint-2
@@ -26,4 +22,4 @@
 4. Pick next evolution target
 
 ## Risk: GREEN
-Pure deletion of dead code. All tests passing (pre-existing failures unchanged).
+Data cleanup only. No code changes. All active collections intact.
