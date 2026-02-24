@@ -5,7 +5,6 @@
   "framework_version": "v2.5.3",
   "what_was_done": "Removed the boot code indexer \u2014 the last remaining piece of the code indexing system. Deleted ~700 lines across 7 files: _run_code_indexer(), _search_code_internal(), CODE_INDEX_EXCLUDE_PATTERNS, chunking functions, reindex_code UDS handler/socket wrapper, boot trigger, statusline display, and all indexer tests. search_knowledge(mode='code') now gracefully falls back to auto-detect. Tests: 1422 pass, 2 fail (pre-existing UDS issues).",
   "next_steps": [
-    "Clean up orphaned code_index + code_wrapup ChromaDB collections after MCP restart",
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Merge Self-Sprint-2 into main",
     "Optimize whisper transcription speed",
@@ -14,7 +13,6 @@
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
-    "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "code_index + code_wrapup ChromaDB collections orphaned - clean up after MCP restart"
+    "test_framework.py Pyright import errors for shared modules (path resolution)"
   ]
 }

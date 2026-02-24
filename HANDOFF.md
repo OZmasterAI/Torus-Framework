@@ -20,11 +20,10 @@
 - Branch: Self-Sprint-2
 
 ## What's Next
-1. Clean up orphaned `code_index` + `code_wrapup` ChromaDB collections after MCP restart
-2. Build Claude API adapter for agent-bench (real API scoring)
-3. Merge Self-Sprint-2 into main
-4. Optimize whisper transcription speed
-5. Pick next evolution target
+1. Build Claude API adapter for agent-bench (real API scoring)
+2. Merge Self-Sprint-2 into main
+3. Optimize whisper transcription speed
+4. Pick next evolution target
 
 ## Risk: GREEN
 Pure deletion of dead code. All tests passing (pre-existing failures unchanged).
