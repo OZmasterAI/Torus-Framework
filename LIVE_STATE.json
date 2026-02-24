@@ -1,14 +1,15 @@
 {
-  "session_count": 222,
+  "session_count": 224,
   "project": "torus-framework",
-  "feature": "framework-indexing-and-visualization",
+  "feature": "domain-mastery-system",
   "framework_version": "v2.5.3",
-  "what_was_done": "Continued framework indexing from session 221. Fixed diagram.html SVG arrow misalignment (replaced hardcoded paths with dynamic JS). Ran live demos of 3 visualization modules (gate_dashboard, gate_graph, pipeline_optimizer). Explored team configs with user (eclipse-rebase, framework-v2-4-1, sprint-team). Discussed MCP wiring trade-offs — decided CLI is sufficient for infrequent-use tools.",
+  "what_was_done": "Implemented Domain Mastery System — per-domain knowledge overlays with behavior.md, knowledge.md, profile.json. Created domain_registry.py core module, /domain skill (list/activate/deactivate/create/graduate/refresh/status), boot orchestrator integration, enforcer domain-aware gate modes, statusline DOM display, subagent domain context injection. Bootstrapped framework domain. Domains default inactive — user explicitly activates.",
   "next_steps": [
+    "Remove CLAUDE.md domain section (unnecessary token cost)",
+    "Run /domain graduate framework to synthesize knowledge.md",
     "Merge Self-Sprint-2 into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
-    "Optimize whisper transcription speed",
-    "Pick next evolution target"
+    "Optimize whisper transcription speed"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",

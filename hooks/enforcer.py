@@ -31,6 +31,7 @@ from shared.circuit_breaker import should_skip_gate, record_gate_result
 from shared.gate_router import get_optimal_gate_order, update_qtable, flush_qtable
 from shared.gate_timing import record_timing as _record_gate_timing, flush_timings as _flush_timings
 from shared.security_profiles import should_skip_for_profile, get_gate_mode_for_profile
+from shared.domain_registry import get_effective_gate_mode as _domain_gate_mode
 
 
 # -- Gate Result Cache ----------------------------------------------------
@@ -439,8 +440,12 @@ def handle_pre_tool_use(tool_name, tool_input, state):
 
     for gate in gates:
         gate_short = gate.__name__.split(".")[-1]
-        # Security profile: skip gates disabled by current profile
-        if should_skip_for_profile(gate_short, state):
+        # Domain + security profile: skip gates disabled by active domain or profile
+        try:
+            _effective_mode = _domain_gate_mode(gate_short, state)
+        except Exception:
+            _effective_mode = get_gate_mode_for_profile(gate_short, state)
+        if _effective_mode == "disabled":
             continue
         # Circuit breaker: skip gates that have crashed too many times
         if should_skip_gate(gate_short):
@@ -493,10 +498,9 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 save_state(state, session_id=state.get("_session_id", "main"))
                 sys.exit(0)
             elif result.blocked:
-                # Security profile: downgrade block to warn if profile says "warn"
-                # Tier 1 safety gates are never downgraded regardless of profile
-                profile_mode = get_gate_mode_for_profile(gate_short, state)
-                if profile_mode == "warn" and gate.__name__ not in TIER1_SAFETY_GATES:
+                # Domain + security profile: downgrade block to warn if mode says "warn"
+                # Tier 1 safety gates are never downgraded regardless of profile/domain
+                if _effective_mode == "warn" and gate.__name__ not in TIER1_SAFETY_GATES:
                     log_gate_decision(gate_label, tool_name, "warn",
                                       f"[profile:downgraded] {result.message}",
                                       session_id, state_keys_read, severity="warn")

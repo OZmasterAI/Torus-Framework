@@ -317,6 +317,23 @@ def get_active_mode():
         return None
 
 
+DOMAINS_DIR = os.path.join(CLAUDE_DIR, "domains")
+
+
+def _get_active_domain():
+    """Read active domain from ~/.claude/domains/.active.
+    Returns short domain name (max 8 chars) or None."""
+    active_file = os.path.join(DOMAINS_DIR, ".active")
+    try:
+        with open(active_file) as f:
+            name = f.read().strip()
+        if name:
+            return name[:8]
+        return None
+    except (FileNotFoundError, OSError):
+        return None
+
+
 def get_plan_mode_warns(state):
     """Return Gate 6 save-to-memory escalation warn count from session state.
 
@@ -840,6 +857,11 @@ def main():
     active_mode = get_active_mode()
     if active_mode:
         line1_parts[0] += f" MODE:{active_mode}"
+
+    # Active domain (knowledge overlay)
+    active_domain = _get_active_domain()
+    if active_domain:
+        line1_parts[0] += f" DOM:{active_domain}"
 
     line1_parts.append(f"\U0001f4c1 {project}")
     if git_branch:

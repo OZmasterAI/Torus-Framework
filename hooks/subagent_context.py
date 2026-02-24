@@ -145,6 +145,31 @@ def _format_skill_usage(session_state):
     return "Recent skills: " + ", ".join(unique) + "."
 
 
+# ─── Domain knowledge for sub-agents ─────────────────────────────────
+
+def _get_domain_snippet(max_chars=500):
+    """Load a compact domain knowledge snippet for sub-agent injection.
+
+    Returns a short string with domain context, or empty string if no domain active.
+    Truncates to max_chars to keep sub-agent context lean.
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+        from shared.domain_registry import get_active_domain, load_domain_knowledge
+        domain = get_active_domain()
+        if not domain:
+            return ""
+        knowledge = load_domain_knowledge(domain)
+        if not knowledge:
+            return f"Active domain: {domain}."
+        # Truncate for sub-agent budget
+        if len(knowledge) > max_chars:
+            knowledge = knowledge[:max_chars] + "..."
+        return f"Domain expertise ({domain}): {knowledge}"
+    except Exception:
+        return ""
+
+
 # ─── Context builder ────────────────────────────────────────────────
 
 def build_context(agent_type, live_state, session_state=None):
@@ -181,6 +206,9 @@ def build_context(agent_type, live_state, session_state=None):
         if skills_str:
             parts.append(skills_str)
         parts.append("Explore and report findings only.")
+        domain_snippet = _get_domain_snippet()
+        if domain_snippet:
+            parts.append(domain_snippet)
         return " ".join(parts)
 
     if agent_type == "general-purpose":
@@ -208,6 +236,9 @@ def build_context(agent_type, live_state, session_state=None):
             parts.append(skills_str)
         parts.append("IMPORTANT: Query search_knowledge before editing any files.")
         parts.append(EDIT_AGENT_RULES)
+        domain_snippet = _get_domain_snippet()
+        if domain_snippet:
+            parts.append(domain_snippet)
         return " ".join(parts)
 
     if agent_type == "builder":
@@ -231,6 +262,9 @@ def build_context(agent_type, live_state, session_state=None):
             parts.append(bans_str)
         parts.append("IMPORTANT: Query search_knowledge before editing. Use remember_this after fixes.")
         parts.append(EDIT_AGENT_RULES)
+        domain_snippet = _get_domain_snippet()
+        if domain_snippet:
+            parts.append(domain_snippet)
         return " ".join(parts)
 
     if agent_type == "Bash":
@@ -241,6 +275,9 @@ def build_context(agent_type, live_state, session_state=None):
         if errors_str:
             parts.append(errors_str)
         parts.append(BASH_AGENT_RULES)
+        domain_snippet = _get_domain_snippet()
+        if domain_snippet:
+            parts.append(domain_snippet)
         return " ".join(parts)
 
     # Default / unknown agent type
@@ -249,6 +286,12 @@ def build_context(agent_type, live_state, session_state=None):
     if files_str:
         parts.append(f"Recently read: {files_str}.")
     parts.append(EDIT_AGENT_RULES)
+
+    # Inject domain knowledge snippet for all agent types
+    domain_snippet = _get_domain_snippet()
+    if domain_snippet:
+        parts.append(domain_snippet)
+
     return " ".join(parts)
 
 

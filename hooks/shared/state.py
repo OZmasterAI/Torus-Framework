@@ -144,6 +144,8 @@ def default_state():
         "mentor_chain_score": 1.0,               # Outcome chain score 0.0-1.0
         "mentor_memory_match": None,             # Historical match from memory mentor (dict or None)
         "mentor_historical_context": "",         # Human-readable historical context string
+        # v3.5 fields (domain mastery)
+        "active_domain": "",                       # Currently active domain name (or empty)
     }
 
 
@@ -228,6 +230,8 @@ def get_state_schema():
         "analytics_last_used": {"type": "dict", "description": "Per-analytics-tool last-used timestamps: {tool_name: timestamp}", "category": "analytics"},
         "analytics_last_queried": {"type": "float", "description": "Timestamp of last any mcp__analytics__ call", "category": "analytics"},
         "analytics_warn_count": {"type": "int", "description": "Gate 6 analytics F-track: separate counter, threshold 15", "category": "analytics"},
+        # v3.5 fields (domain mastery)
+        "active_domain": {"type": "str", "description": "Currently active domain name (or empty)", "category": "domain"},
     }
 
 
