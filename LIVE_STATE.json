@@ -1,19 +1,19 @@
 {
-  "session_count": 207,
+  "session_count": 209,
   "project": "torus-framework",
   "feature": "self-evolve-sprint-2",
   "framework_version": "v2.5.3",
-  "what_was_done": "Built Telegram voice-to-text integration: voice messages transcribed via faster-whisper (turbo model, CPU) and injected into Claude Code tmux pane via send-keys. Implemented incremental wrapup code indexing (diffs boot commit hash vs HEAD, only re-indexes changed files). Cleaned up dead dashboard auto-start code from boot_pkg after dashboard/tui deletion.",
+  "what_was_done": "Implemented Optional Enforcer Daemon Mode: created enforcer_daemon.py (persistent UDS server) and enforcer_shim.py (fast-path socket + fallback inline). Updated settings.json, orchestrator.py, session_end.py, config.json. Benchmark: 141ms -> 75ms per gated tool call (47% savings). Tests: 1448/1448 pass. Diagnosed MCP UDS socket disappearance (.chromadb.sock deleted during accept loop rebind failure). Enabled enforcer_daemon=true.",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
+    "Fix MCP UDS socket resilience (periodic file existence check in accept loop)",
     "Optimize whisper transcription speed (GPU/quantization or smaller model)",
-    "Pick next evolution target",
-    "Verify config.json toggles survive task reset"
+    "Pick next evolution target"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "Whisper turbo on CPU: ~35s for 2-7s audio (acceptable but slow)"
+    "MCP UDS socket can disappear mid-session if accept loop rebind fails (MCP stdio tools unaffected)"
   ]
 }

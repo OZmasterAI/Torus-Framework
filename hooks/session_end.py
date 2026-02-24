@@ -522,6 +522,28 @@ def main():
         except Exception:
             pass  # Terminal history integration is optional, never block session end
 
+        # Stop enforcer daemon if running
+        _pid_path = os.path.join(HOOKS_DIR, ".enforcer.pid")
+        if os.path.exists(_pid_path):
+            try:
+                import signal
+                _pid = int(open(_pid_path).read().strip())
+                os.kill(_pid, signal.SIGTERM)
+                print(f"[SESSION_END] Enforcer daemon stopped (PID {_pid})", file=sys.stderr)
+            except (ValueError, OSError, ProcessLookupError):
+                pass
+            try:
+                os.unlink(_pid_path)
+            except OSError:
+                pass
+            # Clean up stale socket too
+            _sock_path = os.path.join(HOOKS_DIR, ".enforcer.sock")
+            try:
+                if os.path.exists(_sock_path):
+                    os.unlink(_sock_path)
+            except OSError:
+                pass
+
         increment_session_count(metrics)
     except Exception as e:
         print(f"[SESSION_END] Error (non-fatal): {e}", file=sys.stderr)

@@ -12,7 +12,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/enforcer.py\" --event PreToolUse",
+            "command": "python3 \"$HOME/.claude/hooks/enforcer_shim.py\"",
             "timeout": 5
           }
         ]

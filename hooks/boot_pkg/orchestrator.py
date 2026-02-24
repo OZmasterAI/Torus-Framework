@@ -81,6 +81,43 @@ def main():
     except Exception:
         pass
 
+    # Optionally start enforcer daemon for fast gate checking
+    try:
+        _cfg_path = os.path.join(CLAUDE_DIR, "config.json")
+        _cfg = {}
+        if os.path.isfile(_cfg_path):
+            with open(_cfg_path) as _f:
+                _cfg = json.load(_f)
+        if _cfg.get("enforcer_daemon", False):
+            _hooks_dir = os.path.join(CLAUDE_DIR, "hooks")
+            _daemon_path = os.path.join(_hooks_dir, "enforcer_daemon.py")
+            _sock_path = os.path.join(_hooks_dir, ".enforcer.sock")
+            _daemon_running = False
+            if os.path.exists(_sock_path):
+                try:
+                    import socket as _sock
+                    _s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
+                    _s.settimeout(1)
+                    _s.connect(_sock_path)
+                    _s.sendall(b'{"method":"ping"}\n')
+                    _resp = _s.recv(1024)
+                    _s.close()
+                    _daemon_running = b"pong" in _resp
+                except Exception:
+                    pass
+            if not _daemon_running and os.path.isfile(_daemon_path):
+                subprocess.Popen(
+                    [sys.executable, _daemon_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                print("  [BOOT] Enforcer daemon started", file=sys.stderr)
+            elif _daemon_running:
+                print("  [BOOT] Enforcer daemon already running", file=sys.stderr)
+    except Exception:
+        pass  # Daemon startup is optional, never block boot
+
     # Watchdog: detect ChromaDB truncation/shrinkage early
     db_size_warning = None
     _mem_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
