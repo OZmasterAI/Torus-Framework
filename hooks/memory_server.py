@@ -1355,88 +1355,54 @@ def _run_code_indexer(snapshot_type="boot"):
         except Exception:
             pass
 
-        # Incremental: find changed files since reference point
+        # Incremental: find changed files since this collection's last indexed commit
+        # Each collection (boot/wrapup) is independent — no cross-collection copying
         base = os.path.expanduser("~/.claude")
         changed_set = None
 
-        if snapshot_type == "wrapup":
-            # Wrapup: diff against boot's commit hash + uncommitted changes
-            _boot_status_path = os.path.join(base, "hooks", ".code_index_boot_status")
-            _boot_hash = None
-            try:
-                if os.path.isfile(_boot_status_path):
-                    with open(_boot_status_path) as _bf:
-                        _boot_hash = json.load(_bf).get("commit_hash")
-            except Exception:
-                pass
+        # Read this collection's own last commit hash from its status file
+        _last_hash = None
+        try:
+            if os.path.isfile(_idx_status_path):
+                with open(_idx_status_path) as _sf:
+                    _last_hash = json.load(_sf).get("commit_hash")
+        except Exception:
+            pass
 
-            if _boot_hash:
-                changed_set = set()
-                # Committed changes since boot
+        if _last_hash:
+            changed_set = set()
+            # Committed changes since last indexed commit
+            try:
+                _gr = subprocess.run(
+                    ["git", "diff", "--name-only", _last_hash, "HEAD"],
+                    capture_output=True, text=True, timeout=10, cwd=base,
+                )
+                if _gr.returncode == 0 and _gr.stdout.strip():
+                    for rel in _gr.stdout.strip().splitlines():
+                        changed_set.add(os.path.join(base, rel.strip()))
+            except Exception:
+                changed_set = None
+            # Uncommitted changes (working tree + staged)
+            if changed_set is not None:
                 try:
-                    _gr = subprocess.run(
-                        ["git", "diff", "--name-only", _boot_hash, "HEAD"],
+                    _gr2 = subprocess.run(
+                        ["git", "diff", "--name-only"],
                         capture_output=True, text=True, timeout=10, cwd=base,
                     )
-                    if _gr.returncode == 0 and _gr.stdout.strip():
-                        for rel in _gr.stdout.strip().splitlines():
+                    if _gr2.returncode == 0 and _gr2.stdout.strip():
+                        for rel in _gr2.stdout.strip().splitlines():
+                            changed_set.add(os.path.join(base, rel.strip()))
+                    _gr3 = subprocess.run(
+                        ["git", "diff", "--name-only", "--cached"],
+                        capture_output=True, text=True, timeout=10, cwd=base,
+                    )
+                    if _gr3.returncode == 0 and _gr3.stdout.strip():
+                        for rel in _gr3.stdout.strip().splitlines():
                             changed_set.add(os.path.join(base, rel.strip()))
                 except Exception:
-                    changed_set = None
-                # Uncommitted changes (working tree + staged)
-                if changed_set is not None:
-                    try:
-                        _gr2 = subprocess.run(
-                            ["git", "diff", "--name-only"],
-                            capture_output=True, text=True, timeout=10, cwd=base,
-                        )
-                        if _gr2.returncode == 0 and _gr2.stdout.strip():
-                            for rel in _gr2.stdout.strip().splitlines():
-                                changed_set.add(os.path.join(base, rel.strip()))
-                        _gr3 = subprocess.run(
-                            ["git", "diff", "--name-only", "--cached"],
-                            capture_output=True, text=True, timeout=10, cwd=base,
-                        )
-                        if _gr3.returncode == 0 and _gr3.stdout.strip():
-                            for rel in _gr3.stdout.strip().splitlines():
-                                changed_set.add(os.path.join(base, rel.strip()))
-                    except Exception:
-                        pass  # Keep whatever we have
-
-            # Copy boot index into wrapup first, then overlay changes
-            if changed_set is not None and code_index is not None:
-                try:
-                    boot_count = code_index.count()
-                    if boot_count > 0:
-                        # Bulk copy in batches
-                        _copy_offset = 0
-                        _copy_batch = 500
-                        _copied = 0
-                        while _copy_offset < boot_count:
-                            chunk = code_index.get(
-                                limit=_copy_batch, offset=_copy_offset,
-                                include=["documents", "metadatas"],
-                            )
-                            if not chunk or not chunk.get("ids"):
-                                break
-                            # Update snapshot_type in metadata
-                            metas = chunk.get("metadatas", [])
-                            for m in metas:
-                                if m:
-                                    m["snapshot_type"] = "wrapup"
-                            target_col.upsert(
-                                ids=chunk["ids"],
-                                documents=chunk["documents"],
-                                metadatas=metas,
-                            )
-                            _copied += len(chunk["ids"])
-                            _copy_offset += _copy_batch
-                        print(f"[CodeIndex] wrapup: copied {_copied} boot chunks", file=_sys.stderr)
-                except Exception as e:
-                    print(f"[CodeIndex] wrapup: boot copy failed ({e}), falling back to full", file=_sys.stderr)
-                    changed_set = None  # Full reindex fallback
-        else:
-            # Boot: diff against last commit only
+                    pass  # Keep whatever we have
+        elif snapshot_type == "boot":
+            # Boot with no prior status: diff against last commit only
             try:
                 git_result = subprocess.run(
                     ["git", "diff", "--name-only", "HEAD~1", "HEAD"],

@@ -1,13 +1,13 @@
 {
-  "session_count": 213,
+  "session_count": 214,
   "project": "torus-framework",
-  "feature": "agent-bench",
+  "feature": "wrapup-indexer-fix",
   "framework_version": "v2.5.3",
-  "what_was_done": "Built agent-bench v0.1.0 at ~/Desktop/agent-bench — standalone AI agent framework benchmark suite. 9 category scorers, DummyAdapter, Click CLI (run/compare/list-adapters/list-categories), Rich+JSON+HTML reporters, 174 tests passing. Used 6 parallel sub-agents for implementation.",
+  "what_was_done": "Fixed wrapup code indexer performance bug — removed unconditional bulk copy of all boot collection chunks into wrapup (3093 chunks re-embedded every session, causing 5+ min delay). Made boot and wrapup collections fully independent with their own incremental git diffing.",
   "next_steps": [
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Merge Self-Sprint-2 into main",
-    "Verify MCP UDS watchdog works after restart",
+    "Verify wrapup indexer runs fast after fix (restart MCP server first)",
     "Optimize whisper transcription speed",
     "Pick next evolution target"
   ],
