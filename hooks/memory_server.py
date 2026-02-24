@@ -1401,8 +1401,8 @@ def _run_code_indexer(snapshot_type="boot"):
                             changed_set.add(os.path.join(base, rel.strip()))
                 except Exception:
                     pass  # Keep whatever we have
-        elif snapshot_type == "boot":
-            # Boot with no prior status: diff against last commit only
+        else:
+            # No prior commit hash: diff against last commit only (boot or wrapup)
             try:
                 git_result = subprocess.run(
                     ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
