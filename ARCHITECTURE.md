@@ -366,7 +366,7 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 
 - **Embedding:** nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens)
 - **Storage:** ~/data/memory/ (ChromaDB SQLite)
-- **Collections:** "knowledge" (curated) + "observations" (auto-captured)
+- **Collections:** "knowledge" (curated, from remember_this) + "observations" (auto-captured) + "fix_outcomes" (causal chains) + "web_pages" (indexed URLs) + "quarantine" (dedup victims)
 - **3-tier memory classification:** Tier 1 (high-value, boosted in search), Tier 2 (standard), Tier 3 (low-priority, penalized)
 - **UDS gateway:** .chromadb.sock (serializes all hook-side access)
 
