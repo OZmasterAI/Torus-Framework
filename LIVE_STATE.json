@@ -1,9 +1,9 @@
 {
-  "session_count": 214,
+  "session_count": 215,
   "project": "torus-framework",
   "feature": "wrapup-indexer-fix",
   "framework_version": "v2.5.3",
-  "what_was_done": "Fixed wrapup code indexer performance bug — removed unconditional bulk copy of all boot collection chunks into wrapup (3093 chunks re-embedded every session, causing 5+ min delay). Made boot and wrapup collections fully independent with their own incremental git diffing.",
+  "what_was_done": "Fixed wrapup code indexer performance bug \u2014 removed unconditional bulk copy of all boot collection chunks into wrapup (3093 chunks re-embedded every session, causing 5+ min delay). Made boot and wrapup collections fully independent with their own incremental git diffing.",
   "next_steps": [
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Merge Self-Sprint-2 into main",
