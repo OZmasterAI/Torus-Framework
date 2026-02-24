@@ -3,10 +3,8 @@
   "project": "torus-framework",
   "feature": "domain-mastery-system",
   "framework_version": "v2.5.3",
-  "what_was_done": "Implemented Domain Mastery System \u2014 per-domain knowledge overlays with behavior.md, knowledge.md, profile.json. Created domain_registry.py core module, /domain skill (list/activate/deactivate/create/graduate/refresh/status), boot orchestrator integration, enforcer domain-aware gate modes, statusline DOM display, subagent domain context injection. Bootstrapped framework domain. Domains default inactive \u2014 user explicitly activates.",
+  "what_was_done": "Graduated framework domain (105+ L1 memories + L2 terminal history → mastery.md, ~700 tokens). Renamed knowledge.md → mastery.md across 6 files to avoid ChromaDB naming collision. Optimized CLAUDE.md from ~996 to ~625 tokens/prompt (37% reduction) by removing redundant gates listing, session handoff, and domain mastery sections. Created backupclaude.md safety copy.",
   "next_steps": [
-    "Remove CLAUDE.md domain section (unnecessary token cost)",
-    "Run /domain graduate framework to synthesize knowledge.md",
     "Merge Self-Sprint-2 into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Optimize whisper transcription speed"
