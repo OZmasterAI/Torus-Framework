@@ -1,12 +1,12 @@
 {
-  "session_count": 221,
+  "session_count": 222,
   "project": "torus-framework",
-  "feature": "research-clude-comparison",
+  "feature": "framework-indexing-and-visualization",
   "framework_version": "v2.5.3",
-  "what_was_done": "Deep research comparison of Clude (blockchain-based AI memory) vs Torus framework. 6 rounds of iterative scoring with 5 user corrections. Final: Torus 83.7 vs Clude 54.4. Zero ideas worth adopting. Confirmed Gate 10 model profiles (5 profiles x 4 roles) don't conflict with budget toggle. All corrections saved to memory. No code changes.",
+  "what_was_done": "Continued framework indexing from session 221. Fixed diagram.html SVG arrow misalignment (replaced hardcoded paths with dynamic JS). Ran live demos of 3 visualization modules (gate_dashboard, gate_graph, pipeline_optimizer). Explored team configs with user (eclipse-rebase, framework-v2-4-1, sprint-team). Discussed MCP wiring trade-offs — decided CLI is sufficient for infrequent-use tools.",
   "next_steps": [
-    "Build Claude API adapter for agent-bench (real API scoring)",
     "Merge Self-Sprint-2 into main",
+    "Build Claude API adapter for agent-bench (real API scoring)",
     "Optimize whisper transcription speed",
     "Pick next evolution target"
   ],

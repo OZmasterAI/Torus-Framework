@@ -19,12 +19,12 @@
   "mentor_outcome_chains": false,
   "mentor_memory": false,
   "enforcer_daemon": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 2m\n- **Tool Calls**: 16 (Bash: 11, mcp__memory__remember_this: 2, TaskUpdate: 1, Read: 1, Write: 1)\n- **Files Modified**: 1 (1 verified, 0 pending)\n- **Errors**: 1 (ToolFail:Bash x1)\n- **Tests**: exit code 0\n- **Subagents**: 3 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json` (verified)",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 3h 0m\n- **Tool Calls**: 244 (Read: 123, mcp__memory__search_knowledge: 43, mcp__memory__get_memory: 38, Bash: 15, mcp__memory__remember_this: 10, WebFetch: 4)\n- **Files Modified**: 3 (0 verified, 1 pending)\n- **Errors**: 3 (ToolFail:Read x2, ToolFail:Glob x1)\n- **Tests**: none this session\n- **Subagents**: 20 launched, 6,621 tokens\n\n**Files changed:**\n- `/home/crab/.claude/HANDOFF.md`\n- `/home/crab/.claude/LIVE_STATE.json`\n- `/home/crab/.claude/plans/eventual-popping-starlight.md` (pending)",
   "last_session_metrics": {
-    "reads": 1,
-    "edits": 1,
+    "reads": 4,
+    "edits": 2,
     "errors": 1,
-    "verified": 1,
+    "verified": 0,
     "pending": 0
   }
 }
