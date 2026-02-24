@@ -1,9 +1,9 @@
 {
-  "session_count": 220,
+  "session_count": 221,
   "project": "torus-framework",
-  "feature": "indexer-cleanup",
+  "feature": "research-clude-comparison",
   "framework_version": "v2.5.3",
-  "what_was_done": "Completed indexer cleanup: deleted orphaned code_index (3,093 items) and code_wrapup (2,852 items) ChromaDB collections, removed stale hooks/chroma_db/ directory, VACUUM reclaimed 41 MB (93 MB to 52 MB). Verified zero code references remain. Updated HANDOFF.md and LIVE_STATE.json to remove completed items. Indexer removal is now 100% complete.",
+  "what_was_done": "Deep research comparison of Clude (blockchain-based AI memory) vs Torus framework. 6 rounds of iterative scoring with 5 user corrections. Final: Torus 83.7 vs Clude 54.4. Zero ideas worth adopting. Confirmed Gate 10 model profiles (5 profiles x 4 roles) don't conflict with budget toggle. All corrections saved to memory. No code changes.",
   "next_steps": [
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Merge Self-Sprint-2 into main",

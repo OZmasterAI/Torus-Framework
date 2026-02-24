@@ -1,12 +1,19 @@
-# Session 219 — ChromaDB Collection Cleanup
+# Session 220 — Clude vs Torus Deep Comparison (Research Only)
 
 ## What Was Done
-- Deleted orphaned ChromaDB collections: `code_index` (3,093 items) and `code_wrapup` (2,852 items)
-- Removed stale `hooks/chroma_db/` directory
-- VACUUM reclaimed 41 MB (93 MB → 52 MB)
-- Full codebase scan confirmed zero remaining indexer references
-- Updated HANDOFF.md and LIVE_STATE.json to remove completed cleanup items
-- Indexer removal feature is now 100% complete (code: sessions 216-218, data: session 219)
+- Researched X article "Clude: Blockchain as a Brain" by @sebbsssss
+- Performed 6-round iterative comparison: Torus vs Clude memory architectures
+- 5 user corrections caught underselling of Torus capabilities:
+  1. Memory bonds, decay/pruning, content hashing — all already exist
+  2. 6 bond types (not "single-type") distributed across subsystems
+  3. Observation compaction is promotion pipeline, not binary alive/dead
+  4. recency_weight (0.15) already provides continuous decay on retrieval
+  5. Terminal L2 (3,516 records, always-on) already covers "full picture" retrieval
+- Final definitive score: Torus 83.7 vs Clude 54.4 (+29.3 gap)
+- Zero actionable ideas from Clude worth adopting
+- Analyzed Gate 10 model profiles (5 profiles × 4 roles) — no conflict with budget toggle
+- All corrections and comparisons saved to memory (7+ entries)
+- No code changes this session — pure research
 
 ## Service Status
 - Memory MCP: UP (1316 memories)
@@ -22,4 +29,4 @@
 4. Pick next evolution target
 
 ## Risk: GREEN
-Data cleanup only. No code changes. All active collections intact.
+Research-only session. No files modified. All systems nominal.
