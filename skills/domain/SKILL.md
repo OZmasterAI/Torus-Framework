@@ -14,7 +14,7 @@ When the user wants to manage domain-specific knowledge overlays: list domains, 
 - `/domain activate framework` — switch active domain
 - `/domain deactivate` — clear active domain
 - `/domain create solana` — scaffold a new domain (interactive)
-- `/domain graduate framework` — full graduation: distill L1 memories + L2 gap-fill into knowledge.md
+- `/domain graduate framework` — full graduation: distill L1 memories + L2 gap-fill into mastery.md
 - `/domain refresh framework` — incremental update (new memories since last graduation/refresh)
 - `/domain status` or `/domain status framework` — detailed domain info
 
@@ -48,11 +48,11 @@ Interactive domain scaffolding:
    - Auto-detect feature patterns (optional, comma-separated)
 3. Create `profile.json` from template with user's answers
 4. Create empty `behavior.md` with a header comment
-5. Create empty `knowledge.md`
+5. Create empty `mastery.md`
 6. Print confirmation with next steps: "Run `/domain graduate <name>` when you have 20+ relevant memories."
 
 ### graduate <name>
-Full graduation process — synthesize L1 memories + L2 terminal history into knowledge.md:
+Full graduation process — synthesize L1 memories + L2 terminal history into mastery.md:
 
 1. Load domain profile to get `memory_tags` and `l2_keywords`
 2. **L1 scan**: Query ChromaDB via `search_knowledge` for each memory tag (top_k=50 per tag). Deduplicate results by ID. Also query `search_knowledge` in "tags" mode for the domain's tags.
@@ -71,10 +71,10 @@ Full graduation process — synthesize L1 memories + L2 terminal history into kn
    - Proven anti-pattern (failed repeatedly)
    - Key tool/API knowledge that keeps coming up
    REJECT if: one-off error, routine workflow, conversation noise, already in L1, stale/outdated
-7. **Merge**: Add qualifying L2 findings to appropriate knowledge.md sections
-8. **Write knowledge.md** respecting `token_budget` (~4 chars per token)
+7. **Merge**: Add qualifying L2 findings to appropriate mastery.md sections
+8. **Write mastery.md** respecting `token_budget` (~4 chars per token)
 9. **Update profile.json**: `graduated=true, graduated_at=<ISO timestamp>, memory_count_at_graduation=<count>, l2_scanned_until=<ISO timestamp>`
-10. Print summary: "Graduated **<name>**: <N> L1 memories + <M> L2 entries → knowledge.md (<size> chars, ~<tokens> tokens)"
+10. Print summary: "Graduated **<name>**: <N> L1 memories + <M> L2 entries → mastery.md (<size> chars, ~<tokens> tokens)"
 
 ### refresh <name>
 Incremental update — only scan new content since last graduation/refresh:
@@ -82,7 +82,7 @@ Incremental update — only scan new content since last graduation/refresh:
 1. Load profile, get `last_refreshed` and `l2_scanned_until` timestamps
 2. Query L1 memories with tags WHERE newer than `last_refreshed` (use timestamp filtering in search)
 3. Query L2 terminal history WHERE newer than `l2_scanned_until`
-4. Compare new findings against existing knowledge.md
+4. Compare new findings against existing mastery.md
 5. Add only genuinely new and important content
 6. Update profile.json: `last_refreshed=<now>, l2_scanned_until=<now>`
 7. Print summary of what was added
@@ -105,10 +105,10 @@ Display:
 If memory count >= 20 and not graduated, print advisory: "This domain has <N> memories. Consider running `/domain graduate <name>` to synthesize into expertise."
 
 ## Rules
-- NEVER delete or modify raw memories (L1) — knowledge.md is a derivative artifact
-- ALWAYS respect token_budget when writing knowledge.md
+- NEVER delete or modify raw memories (L1) — mastery.md is a derivative artifact
+- ALWAYS respect token_budget when writing mastery.md
 - If graduation finds < 5 relevant memories, warn user: "Not enough memories for meaningful graduation. Continue working in this domain to accumulate more."
 - Tag all memory operations with the domain name for traceability
 - During graduation, show progress: "Scanning L1...", "Scanning L2...", "Synthesizing..."
-- The `graduate` command overwrites knowledge.md entirely; `refresh` appends/updates
+- The `graduate` command overwrites mastery.md entirely; `refresh` appends/updates
 - Graduation uses sub-agents for heavy scanning when memory count > 100

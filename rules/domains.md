@@ -10,7 +10,7 @@ globs: .claude/domains/**, .claude/hooks/shared/domain_registry.py
   .active                     # Plain text: active domain name
   <domain-name>/
     behavior.md               # Behavioral overlay (injected when active)
-    knowledge.md              # Synthesized expertise (injected at boot)
+    mastery.md              # Synthesized expertise (injected at boot)
     profile.json              # Gate tuning, memory tags, graduation state
 ```
 
@@ -21,7 +21,7 @@ globs: .claude/domains/**, .claude/hooks/shared/domain_registry.py
 
 ## Key Principles
 - Raw memories (L1) in ChromaDB are never modified by graduation
-- knowledge.md is a derivative artifact — a "textbook" written from "research notes"
+- mastery.md is a derivative artifact — a "textbook" written from "research notes"
 - Token budget (~800 tokens default) prevents context bloat
 - Tier 1 gates (01/02/03) are immune to domain downgrades
 

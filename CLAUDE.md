@@ -66,7 +66,7 @@ Gates checked by enforcer.py. Blocking = exit 2. Advisory = warn only.
 ## DOMAIN MASTERY
 - Domains = knowledge-area overlays (WHAT you know): `~/.claude/domains/<name>/`
 - Orthogonal to modes (HOW you work) — both can be active simultaneously
-- Boot auto-detects domain from LIVE_STATE, injects knowledge.md + behavior.md
+- Boot auto-detects domain from LIVE_STATE, injects mastery.md + behavior.md
 - `/domain list|activate|graduate|refresh|status` — manage domains
 - Graduation distills L1 memories + L2 terminal history into synthesized expertise
 

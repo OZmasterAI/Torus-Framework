@@ -2,7 +2,7 @@
 
 Domains are knowledge-area overlays (framework, web-dev, solana) that carry:
   - behavior.md: behavioral rules injected into every prompt when active
-  - knowledge.md: synthesized expertise injected at boot
+  - mastery.md: synthesized expertise injected at boot
   - profile.json: gate tuning, memory tags, L2 keywords, graduation state
 
 Domains are orthogonal to modes (coding, debug, review). Both can be active simultaneously.
@@ -13,7 +13,7 @@ Directory layout:
     .active                     # plain text: active domain name
     framework/
       behavior.md
-      knowledge.md
+      mastery.md
       profile.json
 """
 
@@ -52,7 +52,7 @@ DEFAULT_PROFILE = {
 def list_domains() -> List[Dict[str, Any]]:
     """List all domains with their status.
 
-    Returns list of dicts: [{name, description, active, graduated, has_knowledge}]
+    Returns list of dicts: [{name, description, active, graduated, has_mastery}]
     """
     if not os.path.isdir(DOMAINS_DIR):
         return []
@@ -64,14 +64,14 @@ def list_domains() -> List[Dict[str, Any]]:
         if not os.path.isdir(domain_dir) or entry.startswith("."):
             continue
         profile = load_domain_profile(entry)
-        knowledge_path = os.path.join(domain_dir, "knowledge.md")
-        has_knowledge = os.path.isfile(knowledge_path) and os.path.getsize(knowledge_path) > 0
+        mastery_path = os.path.join(domain_dir, "mastery.md")
+        has_mastery = os.path.isfile(mastery_path) and os.path.getsize(mastery_path) > 0
         domains.append({
             "name": entry,
             "description": profile.get("description", ""),
             "active": entry == active,
             "graduated": profile.get("graduation", {}).get("graduated", False),
-            "has_knowledge": has_knowledge,
+            "has_mastery": has_mastery,
         })
     return domains
 
@@ -151,11 +151,11 @@ def save_domain_profile(name: str, profile: Dict[str, Any]) -> None:
     os.replace(tmp, profile_path)
 
 
-def load_domain_knowledge(name: str) -> str:
-    """Load a domain's knowledge.md content. Returns empty string if missing."""
-    knowledge_path = os.path.join(DOMAINS_DIR, name, "knowledge.md")
+def load_domain_mastery(name: str) -> str:
+    """Load a domain's mastery.md content. Returns empty string if missing."""
+    mastery_path = os.path.join(DOMAINS_DIR, name, "mastery.md")
     try:
-        with open(knowledge_path) as f:
+        with open(mastery_path) as f:
             return f.read()
     except (FileNotFoundError, OSError):
         return ""
@@ -261,30 +261,30 @@ def get_domain_token_budget(name: str) -> int:
 
 
 def get_domain_context_for_injection(name: Optional[str] = None) -> Tuple[str, str]:
-    """Get domain knowledge and behavior for context injection.
+    """Get domain mastery and behavior for context injection.
 
     Args:
         name: Domain name, or None to use active domain.
 
     Returns:
-        (knowledge_text, behavior_text) tuple. Either may be empty string.
-        knowledge_text is truncated to the domain's token_budget (~4 chars/token).
+        (mastery_text, behavior_text) tuple. Either may be empty string.
+        mastery_text is truncated to the domain's token_budget (~4 chars/token).
     """
     if name is None:
         name = get_active_domain()
     if not name:
         return ("", "")
 
-    knowledge = load_domain_knowledge(name)
+    mastery = load_domain_mastery(name)
     behavior = load_domain_behavior(name)
 
-    # Truncate knowledge to token budget
+    # Truncate mastery to token budget
     budget = get_domain_token_budget(name)
     char_limit = budget * 4  # ~4 chars per token
-    if len(knowledge) > char_limit:
-        knowledge = knowledge[:char_limit] + "\n[...truncated to token budget...]"
+    if len(mastery) > char_limit:
+        mastery = mastery[:char_limit] + "\n[...truncated to token budget...]"
 
-    return (knowledge, behavior)
+    return (mastery, behavior)
 
 
 # ── Internal helpers ─────────────────────────────────────────────────

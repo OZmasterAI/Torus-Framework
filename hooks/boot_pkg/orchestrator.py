@@ -59,7 +59,7 @@ def main():
 
     # Domain mastery: load active domain (only if explicitly activated by user)
     _domain_name = None
-    _domain_knowledge = ""
+    _domain_mastery = ""
     _domain_behavior = ""
     try:
         from shared.domain_registry import (
@@ -67,7 +67,7 @@ def main():
         )
         _domain_name = get_active_domain()
         if _domain_name:
-            _domain_knowledge, _domain_behavior = get_domain_context_for_injection(_domain_name)
+            _domain_mastery, _domain_behavior = get_domain_context_for_injection(_domain_name)
     except Exception:
         pass  # Domain system is non-fatal
 
@@ -279,10 +279,10 @@ def main():
 
     if _domain_name:
         dom_label = f"DOMAIN: {_domain_name}"
-        if _domain_knowledge:
-            dom_label += f" (knowledge loaded, {len(_domain_knowledge)} chars)"
+        if _domain_mastery:
+            dom_label += f" (mastery loaded, {len(_domain_mastery)} chars)"
         else:
-            dom_label += " (no knowledge yet)"
+            dom_label += " (no mastery yet)"
         dashboard += f"\n|  {dom_label:<66}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
@@ -326,8 +326,8 @@ def main():
         context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
     if _domain_name:
         context_parts.append(f"Active domain: {_domain_name}")
-        if _domain_knowledge:
-            context_parts.append(f"<domain-knowledge domain=\"{_domain_name}\">\n{_domain_knowledge}\n</domain-knowledge>")
+        if _domain_mastery:
+            context_parts.append(f"<domain-mastery domain=\"{_domain_name}\">\n{_domain_mastery}\n</domain-mastery>")
         if _domain_behavior:
             context_parts.append(f"<domain-behavior domain=\"{_domain_name}\">\n{_domain_behavior}\n</domain-behavior>")
     context_parts.append(
