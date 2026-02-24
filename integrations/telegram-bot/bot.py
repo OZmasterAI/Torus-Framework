@@ -157,6 +157,8 @@ async def handle_message(update: Update, context):
 # ── Voice-to-text (faster-whisper) ─────────────────────────────────────────
 _whisper_model = None
 _WHISPER_MODEL_SIZE = os.environ.get("WHISPER_MODEL", "small")
+_GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+_whisper_backend = "local"  # "local" or "groq"
 
 
 def _get_whisper_model():
@@ -170,13 +172,44 @@ def _get_whisper_model():
     return _whisper_model
 
 
-def _transcribe_ogg(ogg_path: str) -> str:
-    """Transcribe an .ogg voice file to text using faster-whisper."""
+def _transcribe_local(ogg_path: str) -> str:
+    """Transcribe an .ogg voice file using faster-whisper with optimized params."""
     model = _get_whisper_model()
-    segments, info = model.transcribe(ogg_path, beam_size=5)
+    segments, info = model.transcribe(
+        ogg_path,
+        beam_size=1,
+        temperature=0,
+        vad_filter=True,
+        without_timestamps=True,
+    )
     text = " ".join(seg.text for seg in segments).strip()
-    logger.info("Transcribed %.1fs audio (%s) → %d chars", info.duration, info.language, len(text))
+    logger.info("Transcribed %.1fs audio (%s) → %d chars [local]", info.duration, info.language, len(text))
     return text
+
+
+def _transcribe_groq(ogg_path: str) -> str:
+    """Transcribe an .ogg voice file using Groq's Whisper API."""
+    from groq import Groq
+    client = Groq(api_key=_GROQ_API_KEY)
+    with open(ogg_path, "rb") as f:
+        transcription = client.audio.transcriptions.create(
+            file=(os.path.basename(ogg_path), f),
+            model="whisper-large-v3-turbo",
+            response_format="text",
+        )
+    text = transcription.strip() if isinstance(transcription, str) else str(transcription).strip()
+    logger.info("Transcribed audio → %d chars [groq]", len(text))
+    return text
+
+
+def _transcribe_ogg(ogg_path: str) -> str:
+    """Route transcription to the active backend with auto-fallback."""
+    if _whisper_backend == "groq" and _GROQ_API_KEY:
+        try:
+            return _transcribe_groq(ogg_path)
+        except Exception as e:
+            logger.warning("Groq transcription failed (%s), falling back to local", e)
+    return _transcribe_local(ogg_path)
 
 
 async def handle_voice(update: Update, context):
@@ -380,6 +413,34 @@ async def cmd_memory(update: Update, context):
         await msg.reply_text(f"Error: {e}")
 
 
+async def cmd_whisper(update: Update, context):
+    """Handle /whisper — show or switch transcription backend."""
+    global _whisper_backend
+    msg = update.effective_message
+    user = update.effective_user
+    chat = update.effective_chat
+    if not msg or not user or not chat or not _is_authorized(user.id, chat.id):
+        return
+
+    arg = context.args[0].lower() if context.args else ""
+    if not arg:
+        groq_status = "available" if _GROQ_API_KEY else "no API key"
+        await msg.reply_text(f"Whisper backend: <b>{_whisper_backend}</b>\nGroq: {groq_status}", parse_mode=ParseMode.HTML)
+        return
+
+    if arg == "groq":
+        if not _GROQ_API_KEY:
+            await msg.reply_text("GROQ_API_KEY not set. Start bot with the env var to use Groq.")
+            return
+        _whisper_backend = "groq"
+        await msg.reply_text("Switched to <b>groq</b> backend.", parse_mode=ParseMode.HTML)
+    elif arg == "local":
+        _whisper_backend = "local"
+        await msg.reply_text("Switched to <b>local</b> (faster-whisper) backend.", parse_mode=ParseMode.HTML)
+    else:
+        await msg.reply_text("Usage: /whisper [groq|local]")
+
+
 async def cmd_reset(update: Update, context):
     """Handle /reset — clear session for this chat."""
     msg = update.effective_message
@@ -412,6 +473,7 @@ def main():
     app.add_handler(CommandHandler("search", cmd_search))
     app.add_handler(CommandHandler("memory", cmd_memory))
     app.add_handler(CommandHandler("reset", cmd_reset))
+    app.add_handler(CommandHandler("whisper", cmd_whisper))
 
     # Messages — private chat: all text; groups: only @mentions or replies
     private_filter = filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND
