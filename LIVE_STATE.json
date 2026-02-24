@@ -1,11 +1,11 @@
 {
   "session_count": 216,
   "project": "torus-framework",
-  "feature": "wrapup-indexer-fix",
+  "feature": "indexer-cleanup",
   "framework_version": "v2.5.3",
-  "what_was_done": "Verified wrapup indexer fix from session 214 and found SECOND performance bug. When wrapup status file had no commit_hash (from stuck/failed run), the HEAD~1 incremental fallback only applied to boot, not wrapup \u2014 causing wrapup to full-reindex all ~3000 chunks every time (5+ min). Fixed by changing `elif snapshot_type == 'boot':` to `else:` in memory_server.py line 1404. Also confirmed boot indexer showing 0 chunks is correct incremental behavior.",
+  "what_was_done": "Verified both boot and wrapup indexers work fast (~1s) after session 214-215 fixes. Then removed the wrapup code indexer entirely — it was dead code (never triggered, 0 chunks, never queried). Kept boot indexer only. Simplified memory_server.py, chromadb_socket.py, statusline.py, and tests.",
   "next_steps": [
-    "Verify wrapup indexer runs fast after fix (restart MCP server to pick up new code)",
+    "Update wrap-up skill to remove wrapup indexer reindex step",
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Merge Self-Sprint-2 into main",
     "Optimize whisper transcription speed",
@@ -14,6 +14,7 @@
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
-    "test_framework.py Pyright import errors for shared modules (path resolution)"
+    "test_framework.py Pyright import errors for shared modules (path resolution)",
+    "code_wrapup ChromaDB collection orphaned - can be cleaned up after MCP restart"
   ]
 }

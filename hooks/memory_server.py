@@ -127,7 +127,7 @@ def _init_chromadb():
     Safe to call multiple times — idempotent after first run.
     Uses nomic-ai/nomic-embed-text-v2-moe embedding model (768-dim, 8192 tokens).
     """
-    global client, collection, fix_outcomes, observations, web_pages, quarantine, code_index, code_wrapup, _chromadb_degraded, _embedding_fn
+    global client, collection, fix_outcomes, observations, web_pages, quarantine, code_index, _chromadb_degraded, _embedding_fn
     if client is not None:
         return
     try:
@@ -165,7 +165,6 @@ def _init_chromadb():
         web_pages = _get_col("web_pages")
         quarantine = _get_col("quarantine")
         code_index = _get_col("code_index")
-        code_wrapup = _get_col("code_wrapup")
     except Exception as e:
         import traceback
         print(f"[MCP] ChromaDB init failed: {e}\n{traceback.format_exc()}", file=_sys.stderr)
@@ -240,7 +239,7 @@ def generate_id(content: str) -> str:
 # ── Code Indexing ────────────────────────────────────────────────────────────
 # Framework source code indexing for search_knowledge(mode="code").
 # Indexes .py and .md files under ~/.claude into ChromaDB collections
-# (code_index for boot snapshot, code_wrapup for wrap-up snapshot).
+# (code_index collection, indexed at boot).
 
 CODE_INDEX_EXCLUDE_PATTERNS = frozenset({
     "test_framework.py", "__pycache__", ".pyc", "chroma_db/", "chroma_db",
@@ -386,10 +385,8 @@ def _chunk_markdown_file(path, max_words=500):
 
 # Code index globals (lazy-initialized in _init_chromadb)
 code_index = None
-code_wrapup = None
 _code_index_building = False
 _code_index_lock = threading.Lock()
-_code_wrapup_lock = threading.Lock()
 
 
 # ── Auto Tier Classification ─────────────────────────────────────────────────
@@ -582,7 +579,7 @@ def _backfill_tiers():
 
 
 _EMBEDDING_MIGRATION_MARKER = os.path.join(os.path.dirname(__file__), ".embedding_migration_done")
-_COLLECTION_NAMES = ["knowledge", "fix_outcomes", "observations", "web_pages", "quarantine", "code_index", "code_wrapup"]
+_COLLECTION_NAMES = ["knowledge", "fix_outcomes", "observations", "web_pages", "quarantine", "code_index"]
 
 
 def _migrate_embeddings():
@@ -594,7 +591,7 @@ def _migrate_embeddings():
 
     Gated by marker file.  Called from _ensure_initialized() after _init_chromadb().
     """
-    global collection, fix_outcomes, observations, web_pages, quarantine, code_index, code_wrapup
+    global collection, fix_outcomes, observations, web_pages, quarantine, code_index
 
     if os.path.exists(_EMBEDDING_MIGRATION_MARKER):
         return 0
@@ -611,7 +608,6 @@ def _migrate_embeddings():
         "web_pages": web_pages,
         "quarantine": quarantine,
         "code_index": code_index,
-        "code_wrapup": code_wrapup,
     }
     _ef_kwargs = {"embedding_function": _embedding_fn}
 
@@ -1289,28 +1285,23 @@ _fts_count = 0
 _initialized = False
 
 
-def _run_code_indexer(snapshot_type="boot"):
-    """Background indexer: chunk and upsert framework source into code_index/code_wrapup.
+def _run_code_indexer():
+    """Background indexer: chunk and upsert framework source into code_index.
 
     Incremental: uses git diff to find changed files. Falls back to full reindex on failure.
-    Thread-safe: uses per-snapshot locks (trylock semantics — skips if already running).
+    Thread-safe: uses lock with trylock semantics — skips if already running.
     """
     global _code_index_building
 
-    if snapshot_type not in ("boot", "wrapup"):
-        print(f"[CodeIndex] Invalid snapshot_type: {snapshot_type}", file=_sys.stderr)
+    if not _code_index_lock.acquire(blocking=False):
+        print("[CodeIndex] Already running, skipping", file=_sys.stderr)
         return
 
-    lock = _code_index_lock if snapshot_type == "boot" else _code_wrapup_lock
-    if not lock.acquire(blocking=False):
-        print(f"[CodeIndex] {snapshot_type} already running, skipping", file=_sys.stderr)
-        return
-
-    _idx_status_path = os.path.join(os.path.expanduser("~"), ".claude", "hooks", f".code_index_{snapshot_type}_status")
+    _idx_status_path = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".code_index_boot_status")
 
     def _write_idx_status(status, **extra):
         try:
-            d = {"status": status, "snapshot_type": snapshot_type, "ts": time.time(), **extra}
+            d = {"status": status, "snapshot_type": "boot", "ts": time.time(), **extra}
             tmp = _idx_status_path + ".tmp"
             with open(tmp, "w") as f:
                 json.dump(d, f)
@@ -1321,9 +1312,8 @@ def _run_code_indexer(snapshot_type="boot"):
     try:
         _code_index_building = True
         _write_idx_status("indexing")
-        target_col = code_index if snapshot_type == "boot" else code_wrapup
-        if target_col is None:
-            print(f"[CodeIndex] Collection not initialized, skipping", file=_sys.stderr)
+        if code_index is None:
+            print("[CodeIndex] Collection not initialized, skipping", file=_sys.stderr)
             _write_idx_status("error", error="collection_not_initialized")
             return
 
@@ -1343,7 +1333,7 @@ def _run_code_indexer(snapshot_type="boot"):
             print(f"[CodeIndex] No indexable files found", file=_sys.stderr)
             return
 
-        # Get current HEAD hash (saved in status file for wrapup diffing)
+        # Get current HEAD hash (saved in status file for incremental diffing)
         _head_hash = None
         try:
             _hh = subprocess.run(
@@ -1355,12 +1345,11 @@ def _run_code_indexer(snapshot_type="boot"):
         except Exception:
             pass
 
-        # Incremental: find changed files since this collection's last indexed commit
-        # Each collection (boot/wrapup) is independent — no cross-collection copying
+        # Incremental: find changed files since last indexed commit
         base = os.path.expanduser("~/.claude")
         changed_set = None
 
-        # Read this collection's own last commit hash from its status file
+        # Read last commit hash from status file
         _last_hash = None
         try:
             if os.path.isfile(_idx_status_path):
@@ -1402,7 +1391,7 @@ def _run_code_indexer(snapshot_type="boot"):
                 except Exception:
                     pass  # Keep whatever we have
         else:
-            # No prior commit hash: diff against last commit only (boot or wrapup)
+            # No prior commit hash: diff against last commit only
             try:
                 git_result = subprocess.run(
                     ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
@@ -1420,7 +1409,7 @@ def _run_code_indexer(snapshot_type="boot"):
             files_to_index = [f for f in all_files if f in changed_set]
             # Also index files that aren't in the collection yet
             try:
-                existing_count = target_col.count()
+                existing_count = code_index.count()
                 if existing_count == 0:
                     files_to_index = all_files  # First run, index everything
             except Exception:
@@ -1429,7 +1418,7 @@ def _run_code_indexer(snapshot_type="boot"):
             files_to_index = all_files
 
         if not files_to_index:
-            print(f"[CodeIndex] {snapshot_type} snapshot: no files to index (all up-to-date)", file=_sys.stderr)
+            print("[CodeIndex] No files to index (all up-to-date)", file=_sys.stderr)
             _write_idx_status("done", chunks=0, files=0, commit_hash=_head_hash or "")
             return
 
@@ -1448,12 +1437,12 @@ def _run_code_indexer(snapshot_type="boot"):
 
             # Delete old chunks for this file
             try:
-                old = target_col.get(
+                old = code_index.get(
                     where={"file_rel_path": rel_path},
                     include=[],
                 )
                 if old and old.get("ids"):
-                    target_col.delete(ids=old["ids"])
+                    code_index.delete(ids=old["ids"])
             except Exception:
                 pass
 
@@ -1477,7 +1466,7 @@ def _run_code_indexer(snapshot_type="boot"):
                     "end_line": chunk["end_line"],
                     "chunk_index": chunk["chunk_index"],
                     "total_chunks": len(chunks),
-                    "snapshot_type": snapshot_type,
+                    "snapshot_type": "boot",
                     "session_number": session_number,
                     "file_mtime": file_mtime,
                     "file_hash": file_hash,
@@ -1492,7 +1481,7 @@ def _run_code_indexer(snapshot_type="boot"):
                 # Batch upsert every 50 chunks
                 if len(batch_docs) >= 50:
                     try:
-                        target_col.upsert(
+                        code_index.upsert(
                             documents=batch_docs, metadatas=batch_metas, ids=batch_ids,
                         )
                     except Exception as e:
@@ -1502,22 +1491,22 @@ def _run_code_indexer(snapshot_type="boot"):
         # Flush remaining batch
         if batch_docs:
             try:
-                target_col.upsert(
+                code_index.upsert(
                     documents=batch_docs, metadatas=batch_metas, ids=batch_ids,
                 )
             except Exception as e:
                 print(f"[CodeIndex] Final batch upsert error: {e}", file=_sys.stderr)
 
-        print(f"[CodeIndex] {snapshot_type} snapshot: {total_chunks} chunks from {len(files_to_index)} files", file=_sys.stderr)
+        print(f"[CodeIndex] Indexed {total_chunks} chunks from {len(files_to_index)} files", file=_sys.stderr)
         _write_idx_status("done", chunks=total_chunks, files=len(files_to_index),
                           commit_hash=_head_hash or "")
 
     except Exception as e:
-        print(f"[CodeIndex] {snapshot_type} indexer error: {e}", file=_sys.stderr)
+        print(f"[CodeIndex] Indexer error: {e}", file=_sys.stderr)
         _write_idx_status("error", error=str(e)[:200])
     finally:
         _code_index_building = False
-        lock.release()
+        _code_index_lock.release()
 
 
 def _search_code_internal(query, top_k=10):
@@ -4442,16 +4431,13 @@ def _dispatch_request(req):
             return {"ok": True, "result": result}
 
         if method == "reindex_code":
-            snapshot_type = params.get("snapshot_type", "boot")
-            if snapshot_type not in ("boot", "wrapup"):
-                return {"ok": False, "error": f"Invalid snapshot_type: {snapshot_type}"}
             _ensure_initialized()
             t = threading.Thread(
-                target=_run_code_indexer, args=(snapshot_type,),
-                daemon=True, name=f"code-indexer-{snapshot_type}",
+                target=_run_code_indexer,
+                daemon=True, name="code-indexer-boot",
             )
             t.start()
-            return {"ok": True, "result": {"started": True, "snapshot_type": snapshot_type}}
+            return {"ok": True, "result": {"started": True, "snapshot_type": "boot"}}
 
         if method == "auto_remember":
             content = params.get("content", "")
@@ -4497,7 +4483,6 @@ def _dispatch_request(req):
             "fix_outcomes": fix_outcomes,
             "web_pages": web_pages,
             "code_index": code_index,
-            "code_wrapup": code_wrapup,
         }
         col = col_map.get(col_name)
         if col is None:

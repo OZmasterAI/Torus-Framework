@@ -12042,15 +12042,11 @@ try:
 
     # === _run_code_indexer validation tests ===
 
-    # Invalid snapshot_type is rejected (prints to stderr, returns None)
-    import io as _ci_io
-    _ci_stderr = _ci_io.StringIO()
-    _ci_old_stderr = _ci_ms._sys.stderr
-    _ci_ms._sys.stderr = _ci_stderr
-    _run_code_indexer("invalid_type")
-    _ci_ms._sys.stderr = _ci_old_stderr
-    test("_run_code_indexer rejects invalid snapshot_type",
-         "Invalid snapshot_type" in _ci_stderr.getvalue())
+    # _run_code_indexer takes no arguments (boot-only)
+    import inspect as _ci_inspect
+    _ci_sig = _ci_inspect.signature(_run_code_indexer)
+    test("_run_code_indexer takes no parameters",
+         len(_ci_sig.parameters) == 0)
 
     # === Socket wrapper test ===
 

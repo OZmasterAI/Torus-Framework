@@ -151,10 +151,10 @@ def backup():
     return request("backup")
 
 
-def reindex_code(snapshot_type="boot"):
+def reindex_code():
     """Trigger code indexing on the server (background thread).
 
-    snapshot_type: "boot" or "wrapup" — determines which collection to populate.
-    Returns {"started": True, "snapshot_type": ...} on success.
+    Indexes into the code_index collection (boot snapshot).
+    Returns {"started": True, "snapshot_type": "boot"} on success.
     """
-    return request("reindex_code", params={"snapshot_type": snapshot_type})
+    return request("reindex_code")

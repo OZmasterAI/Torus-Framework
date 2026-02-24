@@ -938,13 +938,10 @@ def main():
     if pm_warns >= 1:
         line2_parts.append(f"PM:W{pm_warns}")
 
-    # Code indexer: boot status at end of line 1, wrapup at end of line 2
+    # Code indexer: boot status at end of line 1
     _idx_boot = get_idx_status("boot")
     if _idx_boot:
         line1_parts.append(_idx_boot)
-    _idx_wrap = get_idx_status("wrapup")
-    if _idx_wrap:
-        line2_parts.append(_idx_wrap)
 
     print(" | ".join(line1_parts))
     print(" | ".join(line2_parts))
