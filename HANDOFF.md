@@ -1,24 +1,30 @@
-# Session 214 — Wrapup Indexer Performance Fix
+# Session 218 — Boot Code Indexer Removal
 
 ## What Was Done
-- Fixed wrapup code indexer 5+ minute hang in `hooks/memory_server.py`
-- Root cause: unconditional bulk copy of ALL boot collection chunks (3093) into wrapup collection via upsert, re-embedding each through nomic model every session
-- Fix: removed cross-collection copy block entirely; boot and wrapup collections are now fully independent, each using its own status file's commit_hash for incremental git diffing
-- Tests: 1447 passed, 2 pre-existing failures (unchanged)
+- Removed the boot code indexer — the last piece of the code indexing system (wrapup indexer removed in session 216)
+- Deleted ~700 lines across 7 files:
+  - `memory_server.py`: removed `_run_code_indexer()`, `_search_code_internal()`, `CODE_INDEX_EXCLUDE_PATTERNS`, chunking functions, `code_index` collection, UDS handler for `reindex_code`, `mode="code"` from search
+  - `chromadb_socket.py`: removed `reindex_code()` wrapper
+  - `boot_pkg/orchestrator.py`: removed boot trigger + import
+  - `boot_pkg/memory.py`: removed `reindex_code` import
+  - `statusline.py`: removed `get_idx_status()` + call
+  - `test_framework.py`: removed all indexer tests (~186 lines)
+  - Deleted `.code_index_boot_status` file
+- Tests: 1422 passed, 2 failed (pre-existing UDS socket issues)
 
 ## Service Status
-- Memory MCP: UP (1307 memories)
-- Tests: 174 passed (agent-bench), 1447 passed (torus-framework)
+- Memory MCP: UP (1315 memories)
+- Tests: 1422 passed, 2 pre-existing failures
 - Framework: v2.5.3 (Torus)
 - Gates: 16 active
 - Branch: Self-Sprint-2
 
 ## What's Next
-1. Build Claude API adapter for agent-bench (real API scoring)
-2. Merge Self-Sprint-2 into main
-3. Verify wrapup indexer runs fast after fix (restart MCP server first)
+1. Clean up orphaned `code_index` + `code_wrapup` ChromaDB collections after MCP restart
+2. Build Claude API adapter for agent-bench (real API scoring)
+3. Merge Self-Sprint-2 into main
 4. Optimize whisper transcription speed
 5. Pick next evolution target
 
 ## Risk: GREEN
-Targeted fix to one function in memory_server.py. All tests passing.
+Pure deletion of dead code. All tests passing (pre-existing failures unchanged).

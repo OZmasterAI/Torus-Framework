@@ -151,10 +151,3 @@ def backup():
     return request("backup")
 
 
-def reindex_code():
-    """Trigger code indexing on the server (background thread).
-
-    Indexes into the code_index collection (boot snapshot).
-    Returns {"started": True, "snapshot_type": "boot"} on success.
-    """
-    return request("reindex_code")

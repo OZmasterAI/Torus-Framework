@@ -1,11 +1,11 @@
 {
-  "session_count": 217,
+  "session_count": 218,
   "project": "torus-framework",
   "feature": "indexer-cleanup",
   "framework_version": "v2.5.3",
-  "what_was_done": "Verified both boot and wrapup indexers work fast (~1s) after session 214-215 fixes. Then removed the wrapup code indexer entirely \u2014 it was dead code (never triggered, 0 chunks, never queried). Kept boot indexer only. Simplified memory_server.py, chromadb_socket.py, statusline.py, and tests.",
+  "what_was_done": "Removed the boot code indexer — the last remaining piece of the code indexing system. Deleted ~700 lines across 7 files: _run_code_indexer(), _search_code_internal(), CODE_INDEX_EXCLUDE_PATTERNS, chunking functions, reindex_code UDS handler/socket wrapper, boot trigger, statusline display, and all indexer tests. search_knowledge(mode='code') now gracefully falls back to auto-detect. Tests: 1422 pass, 2 fail (pre-existing UDS issues).",
   "next_steps": [
-    "Update wrap-up skill to remove wrapup indexer reindex step",
+    "Clean up orphaned code_index + code_wrapup ChromaDB collections after MCP restart",
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Merge Self-Sprint-2 into main",
     "Optimize whisper transcription speed",
@@ -15,6 +15,6 @@
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
     "ChromaDB concurrent access - tests skip when MCP running, correct behavior",
     "test_framework.py Pyright import errors for shared modules (path resolution)",
-    "code_wrapup ChromaDB collection orphaned - can be cleaned up after MCP restart"
+    "code_index + code_wrapup ChromaDB collections orphaned - clean up after MCP restart"
   ]
 }

@@ -689,27 +689,6 @@ MEMORY_TS_FILE = os.path.join(HOOKS_DIR, ".memory_last_queried")
 CTX_CACHE_FILE = "/tmp/statusline-ctx-cache"
 
 
-def get_idx_status(snapshot_type):
-    """Read code indexer status for a snapshot type. Returns formatted string or ''."""
-    path = os.path.join(HOOKS_DIR, f".code_index_{snapshot_type}_status")
-    label = snapshot_type[:4]
-    try:
-        if not os.path.exists(path):
-            return ""
-        with open(path) as f:
-            d = json.load(f)
-        st = d.get("status", "")
-        if st == "indexing":
-            return f"{COLOR_YELLOW}IDX:{label}\u2026{COLOR_RESET}"
-        elif st == "done":
-            chunks = d.get("chunks", "?")
-            return f"{COLOR_GREEN}IDX:{label}\u2714{chunks}{COLOR_RESET}"
-        elif st == "error":
-            return f"{COLOR_RED}IDX:{label}\u2718{COLOR_RESET}"
-    except (json.JSONDecodeError, OSError):
-        pass
-    return ""
-
 
 def get_memory_freshness():
     """Return minutes since last memory query, or None if unknown."""
@@ -937,11 +916,6 @@ def main():
     pm_warns = get_plan_mode_warns(sess_state)
     if pm_warns >= 1:
         line2_parts.append(f"PM:W{pm_warns}")
-
-    # Code indexer: boot status at end of line 1
-    _idx_boot = get_idx_status("boot")
-    if _idx_boot:
-        line1_parts.append(_idx_boot)
 
     print(" | ".join(line1_parts))
     print(" | ".join(line2_parts))

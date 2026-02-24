@@ -9,7 +9,7 @@ from datetime import datetime
 from boot_pkg.util import CLAUDE_DIR, read_file, load_live_state
 from boot_pkg.memory import (
     inject_memories_via_socket, _write_sideband_timestamp,
-    socket_available, socket_flush, socket_remember, socket_reindex,
+    socket_available, socket_flush, socket_remember,
 )
 from boot_pkg.context import (
     _extract_recent_errors, _extract_test_status, _extract_verification_quality,
@@ -376,18 +376,3 @@ def main():
     # Write sideband timestamp (auto-injection satisfies Gate 4)
     _write_sideband_timestamp()
 
-    # Trigger code index reindex (background thread on MCP server)
-    # Re-check socket availability here — MCP server may not have been ready
-    # during the early check (retries=1, 0.1s) but is likely up by now.
-    _reindex_worker = _worker_available
-    if not _reindex_worker:
-        try:
-            _reindex_worker = socket_available(retries=3, delay=0.5)
-        except Exception:
-            pass
-    if _reindex_worker:
-        try:
-            socket_reindex("boot")
-            print("  [BOOT] Code index: reindex triggered", file=sys.stderr)
-        except Exception:
-            pass  # Code indexing failure is non-fatal
