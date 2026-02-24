@@ -24,6 +24,7 @@ import signal
 import socket
 import sys
 import threading
+import time
 
 # Add hooks dir to path for enforcer imports
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -151,31 +152,36 @@ def _cleanup():
             pass
 
 
+def _bind_socket():
+    """Create, bind, and return a new server socket."""
+    if os.path.exists(SOCKET_PATH):
+        os.unlink(SOCKET_PATH)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(SOCKET_PATH)
+    srv.listen(4)
+    srv.settimeout(1.0)
+    return srv
+
+
 def main():
     global _server_socket
 
     # Pre-import enforcer so first request is fast
     import enforcer  # noqa: F401
 
-    # Remove stale socket file
-    try:
-        if os.path.exists(SOCKET_PATH):
-            os.unlink(SOCKET_PATH)
-    except OSError:
-        pass
-
     # Create and bind server socket
-    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    srv.bind(SOCKET_PATH)
-    srv.listen(4)
-    srv.settimeout(1.0)  # Allow periodic shutdown checks
+    srv = _bind_socket()
     _server_socket = srv
 
     _write_pid()
     atexit.register(_cleanup)
 
-    # Handle SIGTERM gracefully
+    # Shutdown flag prevents rebind during intentional SIGTERM
+    _shutting_down = False
+
     def _sigterm_handler(signum, frame):
+        nonlocal _shutting_down
+        _shutting_down = True
         _cleanup()
         sys.exit(0)
     signal.signal(signal.SIGTERM, _sigterm_handler)
@@ -189,9 +195,32 @@ def main():
                 t = threading.Thread(target=_handle_client, args=(conn,), daemon=True)
                 t.start()
             except socket.timeout:
+                # Proactive watchdog: detect deleted socket file
+                if not os.path.exists(SOCKET_PATH):
+                    print("[ENFORCER-DAEMON] Socket file missing, rebinding", file=sys.stderr)
+                    try:
+                        srv.close()
+                    except Exception:
+                        pass
+                    srv = _bind_socket()
+                    _server_socket = srv
                 continue
             except OSError:
-                break  # Socket closed (shutdown)
+                if _shutting_down:
+                    break
+                # Reactive rebind on accept() failure (EMFILE, etc.)
+                print("[ENFORCER-DAEMON] Accept error, rebinding", file=sys.stderr)
+                try:
+                    srv.close()
+                except Exception:
+                    pass
+                time.sleep(1)
+                try:
+                    srv = _bind_socket()
+                    _server_socket = srv
+                except OSError as e:
+                    print(f"[ENFORCER-DAEMON] Rebind failed, retry in 5s: {e}", file=sys.stderr)
+                    time.sleep(5)
     except KeyboardInterrupt:
         pass
     finally:
