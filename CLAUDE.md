@@ -63,13 +63,6 @@ Gates checked by enforcer.py. Blocking = exit 2. Advisory = warn only.
 - 7+ steps → Agent teams (real-time coordination)
 - Cross-session → Sub-agents + memory
 
-## DOMAIN MASTERY
-- Domains = knowledge-area overlays (WHAT you know): `~/.claude/domains/<name>/`
-- Orthogonal to modes (HOW you work) — both can be active simultaneously
-- Boot auto-detects domain from LIVE_STATE, injects mastery.md + behavior.md
-- `/domain list|activate|graduate|refresh|status` — manage domains
-- Graduation distills L1 memories + L2 terminal history into synthesized expertise
-
 ## FRUSTRATION SIGNALS (stop and verify):
 - "again" — Repeating a mistake. Query memory.
 - "still" — Fix didn't work. Prove it this time.
