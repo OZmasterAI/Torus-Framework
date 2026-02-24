@@ -1,38 +1,28 @@
-# Session 188 — Switch to nomic-embed-text-v2-moe
+# Session 213 — agent-bench v0.1.0
 
 ## What Was Done
-- Replaced Alibaba-NLP/gte-multilingual-base (broken, required 25-line monkey-patch) with nomic-ai/nomic-embed-text-v2-moe (clean, no patches)
-- Removed entire buffer-patching block from `_init_chromadb()` in memory_server.py
-- Installed `einops` dependency required by nomic model
-- Removed stale `.embedding_migration_done` marker so migration re-runs on next MCP restart
-- Fixed pre-existing test bugs: datetime import ordering, suggest_promotions crash when ChromaDB not initialized (lazy init guard)
-- Reset Gate 6 escalation counter (was stuck at 11 due to MCP being down)
-- Tests: 1311 passed, 1 pre-existing failure (compaction regression, unrelated)
-
-## Model Comparison
-| | thenlper/gte-base (old) | Alibaba (patched, abandoned) | nomic (new) |
-|---|---|---|---|
-| Context | 512 tokens | 8,192 tokens | 8,192 tokens |
-| MTEB | ~66% | ~68% | ~67% |
-| Patches | None | 4 buffer reinits | None |
-| Matryoshka | No | No | Yes (768→256) |
-| Architecture | Standard | Standard | MoE (305M active) |
-| Disk | ~440MB | 580MB | ~950MB |
+- Built complete AI agent framework benchmark suite at `/home/crab/Desktop/agent-bench`
+- 9 category scorers: token_context, tokens_per_prompt, speed, consistency, learning, memory_system, output_quality, reliability, multi_agent
+- Weighted composite scoring (weights sum to 100)
+- DummyAdapter for synthetic benchmarking (composite: ~70/100)
+- Click CLI: `agent-bench run`, `compare`, `list-adapters`, `list-categories`
+- 3 reporters: Rich terminal tables, JSON, HTML with Chart.js radar chart
+- 174 tests passing in 0.79s
+- Git repo initialized, pip-installable
+- Used 6 parallel sonnet sub-agents for implementation
 
 ## Service Status
-- Memory MCP: DOWN (needs restart to load nomic model + run migration)
-- Tests: 1311 passed, 1 pre-existing failure
+- Memory MCP: UP (1305 memories)
+- Tests: 174 passed (agent-bench), 1311 passed (torus-framework)
 - Framework: v2.5.3 (Torus)
-- Gates: 16 active (G8 dormant, G12 fully purged)
-- Ramdisk: active
+- Gates: 16 active
 - Branch: Self-Sprint-2
-- Embedding: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens, migration pending)
 
 ## What's Next
-1. **Restart MCP server** — triggers `_migrate_embeddings()` + `_backfill_tiers()` with nomic model
-2. Verify search quality post-migration, tune dedup thresholds if needed
-3. Merge Self-Sprint-2 into main (all audit items complete)
-4. Save session learnings to memory once MCP is back (Alibaba bug details, nomic selection rationale)
+1. Build Claude API adapter for agent-bench (enables real API scoring on all 9 categories)
+2. Merge Self-Sprint-2 into main
+3. Verify MCP UDS watchdog works after restart
+4. Pick next evolution target
 
 ## Risk: GREEN
-No monkey patches. Clean model swap. Backup exists at ~/data/memory/backup_minilm_20260222.json.
+New standalone project, no framework changes. All tests passing.

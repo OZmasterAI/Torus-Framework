@@ -1,13 +1,14 @@
 {
-  "session_count": 211,
+  "session_count": 213,
   "project": "torus-framework",
-  "feature": "self-evolve-sprint-2",
+  "feature": "agent-bench",
   "framework_version": "v2.5.3",
-  "what_was_done": "Ported UDS socket resilience to MCP memory server (Option A full port): extracted _bind_uds_socket() helper, added proactive watchdog in accept loop, shutdown-aware OSError handling, _uds_shutting_down flag. Fixed boot/wrapup indexer stuck-at-indexing bug (missing status write on empty-files early return). Commit ddc2729, 1448 tests pass.",
+  "what_was_done": "Built agent-bench v0.1.0 at ~/Desktop/agent-bench — standalone AI agent framework benchmark suite. 9 category scorers, DummyAdapter, Click CLI (run/compare/list-adapters/list-categories), Rich+JSON+HTML reporters, 174 tests passing. Used 6 parallel sub-agents for implementation.",
   "next_steps": [
+    "Build Claude API adapter for agent-bench (real API scoring)",
     "Merge Self-Sprint-2 into main",
-    "Verify MCP UDS watchdog works after restart (manual socket deletion test)",
-    "Optimize whisper transcription speed (GPU/quantization or smaller model)",
+    "Verify MCP UDS watchdog works after restart",
+    "Optimize whisper transcription speed",
     "Pick next evolution target"
   ],
   "known_issues": [
