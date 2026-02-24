@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Torus Framework — Architecture Map</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --accent3: #d29922;
+    --accent4: #f85149;
+    --tier1: #f85149;
+    --tier2: #d29922;
+    --tier3: #58a6ff;
+    --code-bg: #0d1117;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 0;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+  /* Header */
+  header {
+    background: linear-gradient(135deg, #161b22 0%, #1a2332 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 2.5rem 0;
+    text-align: center;
+  }
+  header h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 0.5rem; }
+  header h1 span { color: var(--accent); }
+  .badge-row { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 2rem; padding: 0.3rem 0.8rem; font-size: 0.8rem; color: var(--text-muted);
+  }
+  .badge strong { color: var(--text); }
+
+  /* Nav */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(13, 17, 23, 0.95); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0; overflow-x: auto; white-space: nowrap;
+  }
+  nav .container { display: flex; gap: 0.25rem; padding: 0.25rem 2rem; }
+  nav a {
+    color: var(--text-muted); text-decoration: none; font-size: 0.82rem;
+    padding: 0.35rem 0.7rem; border-radius: 6px; transition: all 0.15s;
+  }
+  nav a:hover { background: var(--surface); color: var(--text); }
+
+  /* Sections */
+  section { margin: 2.5rem 0; }
+  h2 {
+    font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+    color: var(--accent);
+  }
+  h3 { font-size: 1.1rem; font-weight: 600; margin: 1.5rem 0 0.75rem; color: var(--text); }
+  p { margin-bottom: 1rem; color: var(--text-muted); }
+  strong { color: var(--text); }
+
+  /* Principle cards */
+  .principles { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
+  .principle {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.25rem; border-left: 3px solid var(--accent);
+  }
+  .principle .num { color: var(--accent); font-weight: 700; font-size: 0.85rem; margin-bottom: 0.25rem; }
+  .principle .title { font-weight: 600; margin-bottom: 0.3rem; }
+  .principle .desc { font-size: 0.88rem; color: var(--text-muted); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.88rem; }
+  thead th {
+    text-align: left; padding: 0.6rem 0.75rem; background: var(--surface);
+    border-bottom: 2px solid var(--border); font-weight: 600; color: var(--text); white-space: nowrap;
+  }
+  tbody td {
+    padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); color: var(--text-muted);
+    vertical-align: top;
+  }
+  tbody tr:hover { background: rgba(88, 166, 255, 0.04); }
+  td:first-child { color: var(--text); font-weight: 500; white-space: nowrap; }
+  .tier-badge {
+    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
+    font-size: 0.75rem; font-weight: 600;
+  }
+  .tier1 { background: rgba(248,81,73,0.15); color: var(--tier1); }
+  .tier2 { background: rgba(210,153,34,0.15); color: var(--tier2); }
+  .tier3 { background: rgba(88,166,255,0.15); color: var(--tier3); }
+  .dormant { background: rgba(139,148,158,0.15); color: var(--text-muted); }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.25rem; overflow-x: auto; font-family: 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.82rem; line-height: 1.5; color: var(--text-muted); margin: 1rem 0;
+  }
+  code { font-family: 'Fira Code', 'Cascadia Code', monospace; font-size: 0.85em; }
+  p code, td code, li code {
+    background: rgba(88,166,255,0.1); padding: 0.15rem 0.4rem;
+    border-radius: 4px; color: var(--accent);
+  }
+
+  /* Stats grid */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem; text-align: center;
+  }
+  .stat-card .value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+  .stat-card .label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+  /* Module groups */
+  .module-group {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    margin: 0.75rem 0; overflow: hidden;
+  }
+  .module-group summary {
+    cursor: pointer; padding: 0.75rem 1rem; font-weight: 600;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .module-group summary:hover { background: rgba(88,166,255,0.04); }
+  .module-group summary .count { color: var(--text-muted); font-size: 0.85rem; font-weight: 400; }
+  .module-group .inner { padding: 0 1rem 0.75rem; }
+
+  /* Pipeline */
+  .pipeline-step {
+    display: flex; gap: 1rem; align-items: flex-start; margin: 0.5rem 0;
+    padding: 0.6rem 0.8rem; border-left: 2px solid var(--border);
+  }
+  .pipeline-step .event {
+    min-width: 160px; font-weight: 600; color: var(--accent2); font-size: 0.88rem;
+  }
+  .pipeline-step .handler { color: var(--text-muted); font-size: 0.88rem; }
+  .pipeline-step .handler code { color: var(--accent); }
+
+  /* Skill chips */
+  .skill-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0; }
+  .chip {
+    padding: 0.25rem 0.6rem; border-radius: 2rem; font-size: 0.78rem;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+  }
+
+  /* Footer */
+  footer {
+    text-align: center; padding: 2rem 0; margin-top: 3rem;
+    border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1><span>Torus</span> Framework</h1>
+    <p style="color:var(--text-muted); font-size:1rem;">Architecture Map &mdash; v2.6</p>
+    <div class="badge-row">
+      <span class="badge"><strong>113</strong> Python files</span>
+      <span class="badge"><strong>~48,552</strong> lines</span>
+      <span class="badge"><strong>17</strong> active gates</span>
+      <span class="badge"><strong>50</strong> shared modules</span>
+      <span class="badge"><strong>33</strong> skills</span>
+      <span class="badge"><strong>16</strong> MCP tools</span>
+      <span class="badge"><strong>~1,339</strong> memories</span>
+    </div>
+  </div>
+</header>
+
+<nav>
+  <div class="container">
+    <a href="#overview">Overview</a>
+    <a href="#stats">Stats</a>
+    <a href="#gates">Gates</a>
+    <a href="#shared">Shared Modules</a>
+    <a href="#pipeline">Hook Pipeline</a>
+    <a href="#mcp">MCP Servers</a>
+    <a href="#skills">Skills</a>
+    <a href="#agents">Agents &amp; Teams</a>
+    <a href="#orchestration">Orchestration</a>
+    <a href="#integrations">Integrations</a>
+    <a href="#config">Config</a>
+    <a href="#data">Data Files</a>
+    <a href="#directory">Directory</a>
+  </div>
+</nav>
+
+<div class="container">
+
+<!-- OVERVIEW -->
+<section id="overview">
+  <h2>Overview</h2>
+  <p>Torus is a <strong>self-improving quality framework</strong> for Claude Code. It wraps every tool call with gate enforcement (PreToolUse blocking), tracks outcomes via a mentor system (PostToolUse), persists knowledge via ChromaDB memory, and orchestrates multi-agent work via teams and external scripts. The framework runs entirely through Claude Code's hook system &mdash; no modifications to Claude Code itself.</p>
+
+  <div class="principles">
+    <div class="principle">
+      <div class="num">01</div>
+      <div class="title">Mechanical Enforcement</div>
+      <div class="desc"><code>sys.exit(2)</code> blocks tool calls mechanically &mdash; not just behavioral instructions</div>
+    </div>
+    <div class="principle">
+      <div class="num">02</div>
+      <div class="title">Fail-Closed / Fail-Open</div>
+      <div class="desc">Tier 1 crash = block (safety). Tier 2+ crash = warn + continue (quality)</div>
+    </div>
+    <div class="principle">
+      <div class="num">03</div>
+      <div class="title">Session Isolation</div>
+      <div class="desc">Per-session state files keyed by session_id. Agents can't bleed state</div>
+    </div>
+    <div class="principle">
+      <div class="num">04</div>
+      <div class="title">Memory-First Workflow</div>
+      <div class="desc">Every fix/decision/discovery persisted to ChromaDB. Compounding knowledge corpus</div>
+    </div>
+    <div class="principle">
+      <div class="num">05</div>
+      <div class="title">Causal Fix Tracking</div>
+      <div class="desc">Fingerprinted errors, strategy bans (3+ failures), outcome chains</div>
+    </div>
+    <div class="principle">
+      <div class="num">06</div>
+      <div class="title">Hot I/O on Ramdisk</div>
+      <div class="desc">~544 MB/s tmpfs vs ~1.2 MB/s disk. Async mirror for persistence</div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section id="stats">
+  <h2>Framework Statistics</h2>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="value">113</div><div class="label">Python Files</div></div>
+    <div class="stat-card"><div class="value">48.5K</div><div class="label">Lines of Code</div></div>
+    <div class="stat-card"><div class="value">17</div><div class="label">Active Gates</div></div>
+    <div class="stat-card"><div class="value">50</div><div class="label">Shared Modules</div></div>
+    <div class="stat-card"><div class="value">33</div><div class="label">Skills</div></div>
+    <div class="stat-card"><div class="value">9</div><div class="label">Plugins</div></div>
+    <div class="stat-card"><div class="value">6</div><div class="label">Agent Types</div></div>
+    <div class="stat-card"><div class="value">4</div><div class="label">Teams</div></div>
+    <div class="stat-card"><div class="value">2</div><div class="label">MCP Servers</div></div>
+    <div class="stat-card"><div class="value">16</div><div class="label">MCP Tools</div></div>
+    <div class="stat-card"><div class="value">2</div><div class="label">Orchestrators</div></div>
+    <div class="stat-card"><div class="value">1,339</div><div class="label">Memories</div></div>
+  </div>
+</section>
+
+<!-- GATE SYSTEM -->
+<section id="gates">
+  <h2>Gate System</h2>
+
+  <h3>Tier 1 &mdash; Safety <span class="tier-badge tier1">Fail-Closed</span></h3>
+  <table>
+    <thead><tr><th>#</th><th>Name</th><th>Lines</th><th>Watched</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>READ BEFORE EDIT</td><td>118</td><td>Edit, Write, NotebookEdit</td><td>Must Read file before editing. Guards 16 extensions. Stem matching: test_foo.py satisfies foo.py</td></tr>
+      <tr><td>2</td><td>NO DESTROY</td><td>312</td><td>Bash</td><td>Blocks rm -rf, DROP TABLE, force push, reset --hard, mkfs, dd, fork bombs. 47 patterns. Shlex tokenization</td></tr>
+      <tr><td>3</td><td>TEST BEFORE DEPLOY</td><td>131</td><td>Bash</td><td>Blocks scp, docker push, kubectl apply, npm publish, terraform unless tests ran in last 30 min</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Tier 2 &mdash; Quality <span class="tier-badge tier2">Fail-Open</span></h3>
+  <table>
+    <thead><tr><th>#</th><th>Name</th><th>Lines</th><th>Watched</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>4</td><td>MEMORY FIRST</td><td>82</td><td>Edit, Write, NotebookEdit, Task</td><td>Blocks if memory not queried in last 5 min. Sideband: .memory_last_queried</td></tr>
+      <tr><td>5</td><td>PROOF BEFORE FIXED</td><td>110</td><td>Edit, Write, NotebookEdit</td><td>Blocks edits to OTHER files when 3+ unverified. Same-file: warn at 4th, block at 6th</td></tr>
+      <tr><td>6</td><td>SAVE TO MEMORY</td><td>238</td><td>Edit, Write, Task, Bash</td><td>Advisory &rarr; blocking. Warns unsaved fixes. Escalates after 5 warnings. 20-min stale decay</td></tr>
+      <tr><td>9</td><td>STRATEGY BAN</td><td>175</td><td>Edit, Write, NotebookEdit</td><td>Blocks strategies that failed 3+ times. Auto-defers to PRP</td></tr>
+      <tr><td>10</td><td>MODEL COST GUARD</td><td>267</td><td>Task</td><td>Enforces explicit model param. 4-tier budget degradation. Role-based profiles</td></tr>
+      <tr><td>11</td><td>RATE LIMIT</td><td>82</td><td>All (except analytics)</td><td>Blocks &gt;60 calls/min, warns &gt;40/min. 120s rolling window</td></tr>
+      <tr><td>13</td><td>WORKSPACE ISOLATION</td><td>112</td><td>Edit, Write, NotebookEdit</td><td>Prevents concurrent file edits across agents. fcntl.flock. Main session exempt</td></tr>
+      <tr><td>14</td><td>CONFIDENCE CHECK</td><td>121</td><td>Edit, Write, NotebookEdit</td><td>Progressive: warn 2x per file &rarr; block on 3rd</td></tr>
+      <tr><td>15</td><td>CAUSAL CHAIN</td><td>79</td><td>Edit, Write, NotebookEdit</td><td>Blocks Edit after test failure until query_fix_history called</td></tr>
+      <tr><td>16</td><td>CODE QUALITY</td><td>154</td><td>Edit, Write, NotebookEdit</td><td>Catches secrets, debug prints, broad excepts. Progressive: warn 3x &rarr; block</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Tier 3 &mdash; Advanced <span class="tier-badge tier3">Specialized</span></h3>
+  <table>
+    <thead><tr><th>#</th><th>Name</th><th>Lines</th><th>Watched</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>17</td><td>INJECTION DEFENSE</td><td>771</td><td>WebFetch, WebSearch, MCP</td><td>6 injection categories. Base64/ROT13/hex/homoglyph/zero-width detection</td></tr>
+      <tr><td>18</td><td>CANARY MONITOR</td><td>216</td><td>All (advisory only)</td><td>Never blocks. Detects bursts, repeated sequences, new tools. Welford stats</td></tr>
+      <tr><td>19</td><td>HINDSIGHT</td><td>92</td><td>Edit, Write, NotebookEdit</td><td>Reads mentor signals. Blocks on sustained poor quality (score &lt; 0.3)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Dormant <span class="tier-badge dormant">Inactive</span></h3>
+  <table>
+    <thead><tr><th>#</th><th>Name</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>8</td><td>TEMPORAL</td><td>Never instantiated</td></tr>
+      <tr><td>12</td><td>PLAN MODE SAVE</td><td>Merged into Gate 6</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Gate Dispatch</h3>
+  <ul style="color:var(--text-muted); padding-left:1.5rem; font-size:0.9rem;">
+    <li>Gates run in priority order from <code>shared/gate_registry.GATE_MODULES</code></li>
+    <li>Q-learning optimization reorders Tier 2+ by historical block probability</li>
+    <li>Tool-scoped dispatch reduces unnecessary evaluations</li>
+    <li>Result caching for non-blocking gates (60s TTL)</li>
+    <li>Always-allowed tools bypass all gates: Read, Glob, Grep, WebFetch, WebSearch, AskUserQuestion, EnterPlanMode, ExitPlanMode, TaskCreate/Update/List/Get, all <code>mcp__memory__*</code> and <code>mcp__analytics__*</code> tools</li>
+  </ul>
+</section>
+
+<!-- SHARED MODULES -->
+<section id="shared">
+  <h2>Shared Modules (50 files, ~19,458 lines)</h2>
+
+  <details class="module-group" open>
+    <summary>State Management <span class="count">3 modules, ~1,277 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>state.py</td><td>700</td><td>load_state/save_state/default_state, atomic writes, fcntl.flock, per-session isolation</td></tr>
+        <tr><td>state_migrator.py</td><td>347</td><td>Schema migration/validation, get_schema_diff</td></tr>
+        <tr><td>ramdisk.py</td><td>230</td><td>Hybrid tmpfs for hot I/O. Async disk mirror. Graceful fallback</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Gate Execution <span class="count">4 modules, ~775 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>gate_result.py</td><td>70</td><td>GateResult class (block/ask/warn/allow)</td></tr>
+        <tr><td>gate_registry.py</td><td>28</td><td>GATE_MODULES canonical list</td></tr>
+        <tr><td>gate_router.py</td><td>456</td><td>Priority routing, Q-learning, short-circuit, tool-type filtering</td></tr>
+        <tr><td>gate_timing.py</td><td>221</td><td>Per-gate latency stats, percentile analysis</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Audit &amp; Logging <span class="count">3 modules, ~902 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>audit_log.py</td><td>537</td><td>JSONL trail with rotation, compaction, cleanup, block summaries</td></tr>
+        <tr><td>observation.py</td><td>284</td><td>Compress tool calls for ChromaDB auto-capture. Sentiment detection</td></tr>
+        <tr><td>secrets_filter.py</td><td>81</td><td>Scrub API keys/tokens/connection strings (12 patterns)</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Error Handling <span class="count">2 modules, ~546 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>error_normalizer.py</td><td>52</td><td>Strip paths/UUIDs/timestamps &rarr; stable FNV-1a fingerprint</td></tr>
+        <tr><td>error_pattern_analyzer.py</td><td>494</td><td>Recurring error analysis, correlations, prevention</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Performance &amp; Monitoring <span class="count">4 modules, ~1,508 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>metrics_collector.py</td><td>643</td><td>Counters/gauges/histograms with ramdisk persistence</td></tr>
+        <tr><td>health_monitor.py</td><td>542</td><td>0-100 health score across gates, memory, state, ramdisk, audit</td></tr>
+        <tr><td>hook_profiler.py</td><td>306</td><td>Nanosecond gate latency instrumentation</td></tr>
+        <tr><td>hook_cache.py</td><td>317</td><td>3-layer cache: modules, state, results with TTL</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Anomaly &amp; Drift Detection <span class="count">2 modules, ~566 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>anomaly_detector.py</td><td>496</td><td>Rate spikes, single-gate dominance, session drift</td></tr>
+        <tr><td>drift_detector.py</td><td>70</td><td>Cosine similarity gate effectiveness drift</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Analysis &amp; Correlation <span class="count">3 modules, ~2,614 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>gate_correlator.py</td><td>822</td><td>Co-occurrence matrix, gate chains, redundancy, optimal ordering</td></tr>
+        <tr><td>session_analytics.py</td><td>1,030</td><td>Rich session analysis from audit logs</td></tr>
+        <tr><td>tool_patterns.py</td><td>762</td><td>Markov chain tool sequences, workflow templates</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Security &amp; Validation <span class="count">4 modules, ~1,015 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>exemptions.py</td><td>53</td><td>Tiered file exemption: base/standard/full</td></tr>
+        <tr><td>security_profiles.py</td><td>187</td><td>Postures: strict/balanced/permissive/refactor</td></tr>
+        <tr><td>config_validator.py</td><td>320</td><td>Validate settings.json, LIVE_STATE.json, gates, skills</td></tr>
+        <tr><td>consensus_validator.py</td><td>455</td><td>Cross-reference signals for critical operations</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Resilience &amp; Recovery <span class="count">3 modules, ~1,734 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>circuit_breaker.py</td><td>679</td><td>CLOSED/OPEN/HALF_OPEN per-service failure tracking</td></tr>
+        <tr><td>rate_limiter.py</td><td>450</td><td>Token bucket (TOOL_RATE, GATE_RATE, API_RATE presets)</td></tr>
+        <tr><td>retry_strategy.py</td><td>605</td><td>Exponential/linear/constant/fibonacci backoff + jitter</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Memory &amp; Persistence <span class="count">3 modules, ~1,393 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>memory_maintenance.py</td><td>847</td><td>Health analysis, age scoring, cleanup candidates</td></tr>
+        <tr><td>chromadb_socket.py</td><td>153</td><td>UDS client for ChromaDB (avoids Rust segfaults)</td></tr>
+        <tr><td>experience_archive.py</td><td>393</td><td>CSV-based fix pattern learning, success rates</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Inter-Agent Communication <span class="count">3 modules, ~1,312 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>agent_channel.py</td><td>125</td><td>SQLite WAL inter-agent messaging</td></tr>
+        <tr><td>event_bus.py</td><td>479</td><td>Pub/sub with ramdisk ring buffer</td></tr>
+        <tr><td>event_replay.py</td><td>708</td><td>Replay hook events for regression testing</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Registry &amp; Catalog <span class="count">4 modules, ~2,047 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>plugin_registry.py</td><td>656</td><td>Scan plugins, resolve metadata, categorize</td></tr>
+        <tr><td>capability_registry.py</td><td>475</td><td>Agent capability mapping, ACL enforcement</td></tr>
+        <tr><td>skill_mapper.py</td><td>483</td><td>Skill dependency graph, health, reuse detection</td></tr>
+        <tr><td>skill_health.py</td><td>433</td><td>Validate skill structure and scripts</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Visualization &amp; Reporting <span class="count">3 modules, ~1,448 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>gate_dashboard.py</td><td>439</td><td>Gate effectiveness dashboard, ranked metrics</td></tr>
+        <tr><td>gate_graph.py</td><td>469</td><td>Dependency graph, circular dep detection, impact analysis</td></tr>
+        <tr><td>pipeline_optimizer.py</td><td>540</td><td>Optimal gate ordering, parallelization suggestions</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Testing &amp; Quality <span class="count">2 modules, ~1,344 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>test_generator.py</td><td>533</td><td>Auto-generate test stubs for gates/modules</td></tr>
+        <tr><td>mutation_tester.py</td><td>811</td><td>Mutation testing: kill rate, test gap detection</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>Utility <span class="count">2 modules, ~253 lines</span></summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>tool_fingerprint.py</td><td>174</td><td>SHA256 MCP tool supply chain verification</td></tr>
+        <tr><td>chain_sdk.py</td><td>79</td><td>Skill chain monitoring wrapper</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+</section>
+
+<!-- HOOK PIPELINE -->
+<section id="pipeline">
+  <h2>Hook Pipeline</h2>
+
+  <div class="pipeline-step" style="border-color: var(--accent2);">
+    <div class="event">SessionStart</div>
+    <div class="handler"><code>boot.py</code> &rarr; <code>boot_pkg/orchestrator.py</code> (378 lines) &mdash; 20-step pipeline: ramdisk init, audit rotation, memory injection, context extraction, state reset</div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--accent3);">
+    <div class="event">UserPromptSubmit</div>
+    <div class="handler"><code>user_prompt_capture.py</code> (queues) + <code>auto_commit.py commit</code> (batch staged changes)</div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--tier1);">
+    <div class="event">PreToolUse</div>
+    <div class="handler"><code>enforcer_shim.py</code> &rarr; <code>enforcer_daemon.py</code> (~5ms UDS) &mdash; 17 active gates, priority-ordered, Q-learning optimized</div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--accent);">
+    <div class="event">PostToolUse</div>
+    <div class="handler"><code>tracker.py</code> &rarr; <code>tracker_pkg/orchestrator.py</code> (537 lines) &mdash; 17-step pipeline: errors, observations, verification, mentor verdicts<br>+ <code>auto_commit.py stage</code> + <code>auto_format.py</code> + <code>event_logger.py</code></div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--text-muted);">
+    <div class="event">SubagentStart</div>
+    <div class="handler"><code>subagent_context.py</code> &mdash; inject LIVE_STATE + session state into sub-agents</div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--text-muted);">
+    <div class="event">PreCompact</div>
+    <div class="handler"><code>pre_compact.py</code> &mdash; snapshot gate state before context compression</div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--accent3);">
+    <div class="event">SessionEnd</div>
+    <div class="handler"><code>session_end.py</code> (554 lines) &mdash; flush queues, update LIVE_STATE, increment session_count</div>
+  </div>
+  <div class="pipeline-step" style="border-color: var(--text-muted);">
+    <div class="event">SessionStop</div>
+    <div class="handler"><code>stop_cleanup.py</code> &mdash; flush I/O, close handles, shutdown daemons</div>
+  </div>
+</section>
+
+<!-- MCP SERVERS -->
+<section id="mcp">
+  <h2>MCP Servers</h2>
+
+  <h3>Memory Server &mdash; <code>memory_server.py</code> (4,188 lines)</h3>
+  <p>Embedding: <strong>nomic-ai/nomic-embed-text-v2-moe</strong> (768-dim). Storage: <strong>~/data/memory/</strong> (ChromaDB SQLite). UDS gateway: <code>.chromadb.sock</code></p>
+  <table>
+    <thead><tr><th>Tool</th><th>Parameters</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>search_knowledge</td><td>query, top_k, mode, recency_weight, match_all</td><td>Semantic/keyword/hybrid search. Tag expansion. Recency boost</td></tr>
+      <tr><td>remember_this</td><td>content, context, tags, force</td><td>Save with dedup (cosine &gt; 0.85). FNV1a IDs. Noise filter</td></tr>
+      <tr><td>get_memory</td><td>id</td><td>Full memory retrieval. Batch support</td></tr>
+      <tr><td>record_attempt</td><td>error_text, strategy_id</td><td>Start causal chain &rarr; returns chain_id</td></tr>
+      <tr><td>record_outcome</td><td>chain_id, outcome</td><td>Complete chain (success/failure)</td></tr>
+      <tr><td>query_fix_history</td><td>error_text, top_k</td><td>Strategy success/failure lookup</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Analytics Server &mdash; <code>analytics_server.py</code> (379 lines)</h3>
+  <p>Lightweight, read-only, lazy-loaded. No ChromaDB dependency.</p>
+  <table>
+    <thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>framework_health</td><td>0-100 health score, per-component status</td></tr>
+      <tr><td>session_summary</td><td>Tool distribution, gate effectiveness, error rates</td></tr>
+      <tr><td>gate_dashboard</td><td>Ranked gates by block rate, coverage</td></tr>
+      <tr><td>gate_timing</td><td>Per-gate latency stats, slow gate detection</td></tr>
+      <tr><td>detect_anomalies</td><td>Bursts, high block rates, error spikes</td></tr>
+      <tr><td>skill_health</td><td>Skill validation: total/healthy/broken</td></tr>
+      <tr><td>all_metrics</td><td>Counters/gauges/histograms + rollups</td></tr>
+      <tr><td>telegram_search</td><td>FTS5 Telegram message history</td></tr>
+      <tr><td>terminal_history_search</td><td>FTS5 terminal/conversation history</td></tr>
+      <tr><td>web_search</td><td>ChromaDB semantic web search</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- SKILLS -->
+<section id="skills">
+  <h2>Skills Catalog (33 skills)</h2>
+  <h3>Dev Workflow (6)</h3>
+  <div class="skill-chips"><span class="chip">fix</span><span class="chip">commit</span><span class="chip">test</span><span class="chip">review</span><span class="chip">refactor</span><span class="chip">document</span></div>
+  <h3>Research (6)</h3>
+  <div class="skill-chips"><span class="chip">research</span><span class="chip">explore</span><span class="chip">deep-dive</span><span class="chip">analyze-errors</span><span class="chip">learn</span><span class="chip">teach</span></div>
+  <h3>Framework Ops (7)</h3>
+  <div class="skill-chips"><span class="chip">diagnose</span><span class="chip">health-report</span><span class="chip">super-health</span><span class="chip">introspect</span><span class="chip">status</span><span class="chip">wrap-up</span><span class="chip">audit</span></div>
+  <h3>Quality/Security (2)</h3>
+  <div class="skill-chips"><span class="chip">security-scan</span><span class="chip">benchmark</span></div>
+  <h3>Build/Deploy (3)</h3>
+  <div class="skill-chips"><span class="chip">build</span><span class="chip">deploy</span><span class="chip">report</span></div>
+  <h3>Orchestration (5)</h3>
+  <div class="skill-chips"><span class="chip">prp</span><span class="chip">wave</span><span class="chip">loop</span><span class="chip">chain</span><span class="chip">sprint</span></div>
+  <h3>Advanced (4)</h3>
+  <div class="skill-chips"><span class="chip">web</span><span class="chip">browser</span><span class="chip">ralph</span><span class="chip">super-evolve</span><span class="chip">super-prof-optimize</span></div>
+</section>
+
+<!-- AGENTS & TEAMS -->
+<section id="agents">
+  <h2>Agents &amp; Teams</h2>
+
+  <h3>Agent Definitions (6)</h3>
+  <table>
+    <thead><tr><th>Agent</th><th>Model</th><th>Capabilities</th></tr></thead>
+    <tbody>
+      <tr><td>researcher</td><td>haiku</td><td>Read-only: Glob, Grep, Read, WebFetch, WebSearch, memory</td></tr>
+      <tr><td>builder</td><td>sonnet</td><td>Full implementation: Edit, Write, Bash, NotebookEdit, memory, causal chain</td></tr>
+      <tr><td>debugger</td><td>sonnet</td><td>Diagnosis + fix: Edit, Write, Bash, causal chain tracking</td></tr>
+      <tr><td>stress-tester</td><td>sonnet</td><td>Test execution + verification: Bash, memory</td></tr>
+      <tr><td>perf-analyzer</td><td>sonnet</td><td>Performance profiling: Read-only + Bash</td></tr>
+      <tr><td>security</td><td>sonnet</td><td>Security audit: Read-only + Bash</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Teams (4)</h3>
+  <table>
+    <thead><tr><th>Team</th><th>Purpose</th><th>Members</th></tr></thead>
+    <tbody>
+      <tr><td>default</td><td>Inactive legacy</td><td>2 (shutdown)</td></tr>
+      <tr><td>eclipse-rebase</td><td>Rebase ProjectDawn to Eclipse L2</td><td>5</td></tr>
+      <tr><td>framework-v2-4-1</td><td>v2.4.1 sprint</td><td>1 builder</td></tr>
+      <tr><td>sprint-team</td><td>Self-improvement sprint</td><td>10</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Delegation Rules</h3>
+  <pre>2-5 steps, independent   → Sub-agents (parallel)
+2-5 steps, dependent     → Sub-agents (lead orchestrates, memory bridges)
+5-7 steps                → Either (teams preferred)
+7+ steps                 → Agent teams (real-time coordination)
+Cross-session            → Sub-agents + memory</pre>
+</section>
+
+<!-- ORCHESTRATION -->
+<section id="orchestration">
+  <h2>External Orchestration</h2>
+  <table>
+    <thead><tr><th>Script</th><th>Lines</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>torus-loop.sh</td><td>261</td><td>Sequential fresh-context task executor. Spawns fresh Claude per task from PRP</td></tr>
+      <tr><td>torus-wave.py</td><td>477</td><td>Parallel wave orchestrator. File-overlap guards. Spawns parallel <code>claude -p</code> processes</td></tr>
+    </tbody>
+  </table>
+  <p><strong>PRP System:</strong> /prp &rarr; task_manager.py &rarr; torus-loop.sh (sequential) or torus-wave.py (parallel) &rarr; Memory MCP cross-instance continuity &rarr; Gate 9 auto-defer feedback loop</p>
+</section>
+
+<!-- INTEGRATIONS -->
+<section id="integrations">
+  <h2>Integration Points</h2>
+  <table>
+    <thead><tr><th>System</th><th>Location</th><th>Protocol</th></tr></thead>
+    <tbody>
+      <tr><td>Telegram Bot</td><td>integrations/telegram-bot/</td><td>Bot API, SQLite msg_log.db (532KB)</td></tr>
+      <tr><td>Terminal History</td><td>integrations/terminal-history/</td><td>FTS5, SQLite terminal_history.db (19.8MB)</td></tr>
+      <tr><td>ChromaDB</td><td>~/data/memory/</td><td>UDS socket (.chromadb.sock)</td></tr>
+      <tr><td>Enforcer Daemon</td><td>hooks/.enforcer.sock</td><td>UDS (JSON-over-newline)</td></tr>
+      <tr><td>Ramdisk</td><td>/run/user/{uid}/claude-hooks/</td><td>tmpfs + async disk mirror</td></tr>
+      <tr><td>Git Auto-Commit</td><td>hooks/auto_commit.py</td><td>Two-phase: stage &rarr; commit</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- CONFIG -->
+<section id="config">
+  <h2>Config Reference</h2>
+  <table>
+    <thead><tr><th>Toggle</th><th>Value</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>context_enrichment</td><td>true</td><td>Inject context from memory/integrations at boot</td></tr>
+      <tr><td>gate_auto_tune</td><td>true</td><td>Self-evolving gate effectiveness thresholds</td></tr>
+      <tr><td>enforcer_daemon</td><td>true</td><td>Use persistent UDS server (~5ms vs ~134ms)</td></tr>
+      <tr><td>budget_degradation</td><td>false</td><td>4-tier model downgrade based on budget</td></tr>
+      <tr><td>model_profile</td><td>"efficient"</td><td>Role-based model selection</td></tr>
+      <tr><td>security_profile</td><td>"balanced"</td><td>Gate strictness posture</td></tr>
+      <tr><td>chain_memory</td><td>true</td><td>Persist causal chains to memory</td></tr>
+      <tr><td>mentor_all</td><td>true</td><td>Enable all mentor system modules</td></tr>
+      <tr><td>mentor_tracker</td><td>false</td><td>Mentor Module A tracker verdicts</td></tr>
+      <tr><td>mentor_hindsight_gate</td><td>false</td><td>Gate 19 mentor-driven blocking</td></tr>
+      <tr><td>tg_session_notify</td><td>true</td><td>Telegram session notifications</td></tr>
+      <tr><td>tg_mirror_messages</td><td>true</td><td>Mirror Claude responses to Telegram</td></tr>
+      <tr><td>terminal_l2_always</td><td>false</td><td>Always include terminal L2 in search</td></tr>
+      <tr><td>tg_enrichment</td><td>false</td><td>Telegram context enrichment</td></tr>
+      <tr><td>search_routing</td><td>"default"</td><td>Search mode routing strategy</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- DATA FILES -->
+<section id="data">
+  <h2>Data Files</h2>
+  <table>
+    <thead><tr><th>File</th><th>Size</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>.audit_trail.jsonl</td><td>46.3 MB</td><td>Complete tool call audit trail</td></tr>
+      <tr><td>.capture_queue.jsonl</td><td>~572 KB</td><td>PostToolUse observation queue</td></tr>
+      <tr><td>.auto_remember_queue.jsonl</td><td>~23 KB</td><td>Memory ingestion queue</td></tr>
+      <tr><td>.gate_effectiveness.json</td><td>&mdash;</td><td>Historical gate effectiveness</td></tr>
+      <tr><td>.gate_qtable.json</td><td>&mdash;</td><td>Q-learning gate routing</td></tr>
+      <tr><td>.gate_timings.json</td><td>89.5 KB</td><td>Per-gate latency statistics</td></tr>
+      <tr><td>.circuit_breaker_state.json</td><td>&mdash;</td><td>Per-service failure tracking</td></tr>
+      <tr><td>.file_claims.json</td><td>&mdash;</td><td>Workspace isolation claims</td></tr>
+      <tr><td>.integrity_hashes.json</td><td>&mdash;</td><td>SHA256 framework verification</td></tr>
+      <tr><td>.settings_snapshot.json</td><td>6.7 KB</td><td>Config snapshot at session start</td></tr>
+      <tr><td>state_*.json</td><td>43 files</td><td>Per-agent session state</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- DIRECTORY -->
+<section id="directory">
+  <h2>Directory Layout</h2>
+  <pre>~/.claude/
+├── CLAUDE.md                        # Master rules (~1,321 tokens)
+├── ARCHITECTURE.md                  # Architecture document
+├── HANDOFF.md                       # Session handoff state
+├── LIVE_STATE.json                  # Machine-readable project state
+├── config.json                      # Runtime toggles
+├── settings.json                    # Hook registration + permissions
+├── mcp.json                         # MCP server config
+│
+├── hooks/                           # Core framework (83 MB)
+│   ├── enforcer.py                  #   Gate dispatcher (632 lines)
+│   ├── enforcer_shim.py             #   Fast UDS proxy (83 lines)
+│   ├── enforcer_daemon.py           #   Persistent server (232 lines)
+│   ├── boot.py                      #   SessionStart (42 lines)
+│   ├── tracker.py                   #   PostToolUse (47 lines)
+│   ├── session_end.py               #   SessionEnd (554 lines)
+│   ├── statusline.py                #   Status display (1,061 lines)
+│   ├── memory_server.py             #   Memory MCP (4,188 lines)
+│   ├── analytics_server.py          #   Analytics MCP (379 lines)
+│   ├── test_framework.py            #   Tests (11,904 lines)
+│   ├── gates/                       #   17 active gates (348 KB)
+│   ├── shared/                      #   50 modules (19,458 lines)
+│   ├── boot_pkg/                    #   Boot pipeline (848 lines)
+│   ├── tracker_pkg/                 #   Tracker pipeline (1,537 lines)
+│   └── benchmarks/                  #   Performance benchmarks
+│
+├── skills/                          # 33 skill definitions
+├── agents/                          # 6 agent definitions
+├── teams/                           # 4 team definitions
+├── plugins/                         # 9 installed plugins
+├── scripts/                         # torus-loop.sh, torus-wave.py
+├── integrations/                    # telegram-bot, terminal-history
+└── rules/                           # hooks.md, memory.md, framework.md</pre>
+</section>
+
+</div>
+
+<footer>
+  <p>Torus Framework &mdash; Architecture Map v2.6 &mdash; Session 221 (2026-02-24)</p>
+</footer>
+
+</body>
+</html>
