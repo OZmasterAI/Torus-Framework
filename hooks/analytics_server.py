@@ -285,7 +285,8 @@ def all_metrics() -> dict:
 
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
-@mcp.tool()
+# DORMANT: uncomment @mcp.tool() to reactivate
+# @mcp.tool()
 @crash_proof
 def telegram_search(query: str, limit: int = 10) -> dict:
     """Search Telegram message history via FTS5 full-text search.
@@ -363,14 +364,14 @@ def transcript_context(session_id: str, around_timestamp: str = "", window_minut
 @mcp.tool()
 @crash_proof
 def web_search(query: str, n_results: int = 5) -> dict:
-    """Search locally indexed web pages via ChromaDB semantic search.
+    """Search locally indexed web pages via LanceDB semantic search.
 
     Args:
         query: Search query for semantic matching. Empty returns no results.
         n_results: Max results to return (1-20, default 5).
     """
     if not query or not query.strip():
-        return {"results": [], "count": 0, "source": "web_chromadb"}
+        return {"results": [], "count": 0, "source": "web_lancedb"}
 
     n_results = max(1, min(20, n_results))
 
@@ -384,14 +385,14 @@ def web_search(query: str, n_results: int = 5) -> dict:
             include=["metadatas", "documents", "distances"],
         )
     except chromadb_socket.WorkerUnavailable as e:
-        return {"error": f"ChromaDB worker unavailable: {e}", "source": "web_chromadb"}
+        return {"error": f"Memory worker unavailable: {e}", "source": "web_lancedb"}
     except RuntimeError as e:
         if "Unknown collection" in str(e):
-            return {"results": [], "count": 0, "source": "web_chromadb"}
+            return {"results": [], "count": 0, "source": "web_lancedb"}
         raise
 
     if not result or not result.get("ids") or not result["ids"][0]:
-        return {"results": [], "count": 0, "source": "web_chromadb"}
+        return {"results": [], "count": 0, "source": "web_lancedb"}
 
     hits = []
     ids = result["ids"][0]
@@ -415,7 +416,7 @@ def web_search(query: str, n_results: int = 5) -> dict:
             "preview": doc[:200] + "..." if len(doc) > 200 else doc,
         })
 
-    return {"results": hits, "count": len(hits), "source": "web_chromadb"}
+    return {"results": hits, "count": len(hits), "source": "web_lancedb"}
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────
