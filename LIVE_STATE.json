@@ -1,5 +1,5 @@
 {
-  "session_count": 235,
+  "session_count": 236,
   "project": "torus-framework",
   "feature": "l0-transcript-search",
   "framework_version": "v2.5.4",
@@ -8,11 +8,11 @@
     "Merge Self-Sprint-2 into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Consider removing ChromaDB dependency entirely after validation period",
-    "Memory maintenance — DB at 1414 entries, run stale cleanup"
+    "Memory maintenance \u2014 DB at 1414 entries, run stale cleanup"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
-    "LanceDB flat scan ~3x slower than ChromaDB HNSW (30ms vs 10ms) — acceptable at current scale",
+    "LanceDB flat scan ~3x slower than ChromaDB HNSW (30ms vs 10ms) \u2014 acceptable at current scale",
     "test_framework.py Pyright import errors for shared modules (path resolution)"
   ]
 }
