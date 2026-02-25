@@ -131,6 +131,18 @@ def _import_search_fts(integration_name: str):
     return mod.search_fts
 
 
+def _import_from_db(integration_name: str, func_name: str):
+    """Import a named function from an integration's db.py."""
+    import importlib.util
+    db_path = os.path.join(
+        os.path.expanduser("~"), ".claude", "integrations", integration_name, "db.py"
+    )
+    spec = importlib.util.spec_from_file_location(f"db_{integration_name}_{func_name}", db_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return getattr(mod, func_name)
+
+
 # ── Tools ────────────────────────────────────────────────────────────────────
 
 @mcp.tool()
@@ -313,6 +325,27 @@ def terminal_history_search(query: str, limit: int = 10) -> dict:
     )
     results = search_fts(db_path, query, limit=limit)
     return {"results": results, "count": len(results), "source": "terminal_fts"}
+
+
+@mcp.tool()
+@crash_proof
+def transcript_context(session_id: str, around_timestamp: str = "", window_minutes: int = 10, max_records: int = 30) -> dict:
+    """Get raw L0 transcript context from a session's JSONL file.
+
+    Args:
+        session_id: Session UUID (matches JSONL filename).
+        around_timestamp: ISO timestamp to center window on. Empty returns last records.
+        window_minutes: ±minutes around timestamp (default 10).
+        max_records: Max records to return (1-50, default 30).
+    """
+    if not session_id or not session_id.strip():
+        return {"error": "session_id is required", "source": "transcript_l0"}
+
+    max_records = max(1, min(50, max_records))
+    window_minutes = max(1, min(60, window_minutes))
+    get_window = _import_from_db("terminal-history", "get_raw_transcript_window")
+    return get_window(session_id, around_timestamp=around_timestamp,
+                      window_minutes=window_minutes, max_records=max_records)
 
 
 @mcp.tool()

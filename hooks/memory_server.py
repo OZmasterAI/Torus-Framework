@@ -1777,7 +1777,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         except Exception:
             pass
 
-    VALID_MODES = {"keyword", "semantic", "hybrid", "tags", "observations", "all"}
+    VALID_MODES = {"keyword", "semantic", "hybrid", "tags", "observations", "all", "transcript"}
     if mode and mode not in VALID_MODES:
         mode = ""  # Invalid mode falls back to auto-detect
     if not mode:
@@ -1803,6 +1803,43 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         result["total_memories"] = count
         _touch_memory_timestamp()
         return result
+
+    # Handle transcript mode: search L2t FTS5, then read raw L0 JSONL
+    if mode == "transcript":
+        _touch_memory_timestamp()
+        transcript_results = []
+        try:
+            _term_db = os.path.join(os.path.expanduser("~"), ".claude",
+                                    "integrations", "terminal-history",
+                                    "terminal_history.db")
+            if os.path.isfile(_term_db):
+                _term_dir = os.path.join(os.path.expanduser("~"), ".claude",
+                                         "integrations", "terminal-history")
+                if _term_dir not in _sys.path:
+                    _sys.path.insert(0, _term_dir)
+                from db import search_fts as _t_search_fts
+                from db import get_raw_transcript_window as _get_raw_window
+                hits = _t_search_fts(_term_db, query, limit=10)
+                # Deduplicate by session_id, keep best-ranked per session
+                seen_sessions = {}
+                for hit in hits:
+                    sid = hit.get("session_id", "")
+                    if sid and sid not in seen_sessions:
+                        seen_sessions[sid] = hit.get("timestamp", "")
+                # Get raw transcript windows for top 3 sessions
+                for sid, ts in list(seen_sessions.items())[:3]:
+                    window = _get_raw_window(sid, around_timestamp=ts,
+                                             window_minutes=10, max_records=30)
+                    transcript_results.append(window)
+        except Exception:
+            pass
+        return {
+            "results": transcript_results,
+            "mode": "transcript",
+            "query": query,
+            "total_memories": count,
+            "source": "transcript_l0",
+        }
 
     actual_k = min(top_k, count)
 

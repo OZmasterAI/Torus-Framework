@@ -252,6 +252,176 @@ def get_context_by_timestamp(db_path, timestamp, window_minutes=30, limit=5):
         return []
 
 
+def _summarize_record(record):
+    """Convert a raw JSONL transcript record to a compact summary dict.
+
+    Keeps all record types but truncates large fields:
+    - text: 500 chars, tool input: 300 chars, tool output: 300 chars
+    """
+    rtype = record.get("type", "unknown")
+    ts = record.get("timestamp", "")
+    summary = {"type": rtype, "timestamp": ts}
+
+    # User/assistant messages
+    msg = record.get("message")
+    if msg and isinstance(msg, dict):
+        role = msg.get("role", "")
+        summary["role"] = role
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            summary["text"] = content[:500]
+        elif isinstance(content, list):
+            blocks = []
+            for block in content:
+                btype = block.get("type", "unknown")
+                if btype == "text":
+                    blocks.append({"type": "text", "text": block.get("text", "")[:500]})
+                elif btype == "tool_use":
+                    inp = block.get("input", {})
+                    inp_str = str(inp)[:300] if inp else ""
+                    blocks.append({
+                        "type": "tool_use",
+                        "name": block.get("name", ""),
+                        "input_preview": inp_str,
+                    })
+                elif btype == "tool_result":
+                    content_val = block.get("content", "")
+                    if isinstance(content_val, list):
+                        text_parts = [c.get("text", "") for c in content_val if isinstance(c, dict)]
+                        content_val = "\n".join(text_parts)
+                    content_str = str(content_val)[:300]
+                    blocks.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.get("tool_use_id", ""),
+                        "output_preview": content_str,
+                    })
+                else:
+                    blocks.append({"type": btype})
+            summary["content_blocks"] = blocks
+        return summary
+
+    # Progress records (hook boot messages etc.)
+    if rtype == "progress":
+        data = record.get("data", {})
+        summary["hook_event"] = data.get("hookEvent", "")
+        summary["hook_name"] = data.get("hookName", "")
+        return summary
+
+    # Summary/data records
+    data = record.get("data")
+    if data and isinstance(data, dict):
+        summary["data_keys"] = list(data.keys())[:10]
+        # Include small text fields from data
+        for key in ("type", "hookEvent", "hookName"):
+            if key in data:
+                summary[key] = str(data[key])[:200]
+    return summary
+
+
+def _window_around_timestamp(records, target_ts, window_minutes=10):
+    """Filter records to those within ±window_minutes of target timestamp.
+
+    Falls back to last 30 records if timestamp parsing fails.
+    """
+    from datetime import datetime, timedelta
+    try:
+        # Parse target — try common formats
+        target_clean = target_ts.replace("Z", "").split(".")[0]
+        target_dt = datetime.fromisoformat(target_clean)
+        delta = timedelta(minutes=window_minutes)
+
+        filtered = []
+        for r in records:
+            rts = r.get("timestamp", "")
+            if not rts:
+                continue
+            try:
+                rts_clean = rts.replace("Z", "").split(".")[0]
+                rdt = datetime.fromisoformat(rts_clean)
+                if target_dt - delta <= rdt <= target_dt + delta:
+                    filtered.append(r)
+            except (ValueError, TypeError):
+                continue
+        if filtered:
+            return filtered
+    except (ValueError, TypeError):
+        pass
+    # Fallback: last 30 records
+    return records[-30:]
+
+
+def get_raw_transcript_window(session_id, around_timestamp="", window_minutes=10, max_records=30):
+    """Read raw JSONL transcript and return a structured window of records.
+
+    Args:
+        session_id: UUID session ID (matches JSONL filename)
+        around_timestamp: ISO timestamp to center the window on (optional)
+        window_minutes: ±minutes around timestamp (default 10)
+        max_records: Max records to return (default 30)
+
+    Returns dict with {session_id, records, record_count, total_in_session, source}.
+    """
+    import json as _json
+    import glob as _glob
+
+    transcript_dir = os.path.join(
+        os.path.expanduser("~"), ".claude", "projects", "-home-crab--claude"
+    )
+    jsonl_path = os.path.join(transcript_dir, f"{session_id}.jsonl")
+
+    if not os.path.isfile(jsonl_path):
+        # Try glob for partial match
+        matches = _glob.glob(os.path.join(transcript_dir, f"{session_id}*.jsonl"))
+        if matches:
+            jsonl_path = matches[0]
+        else:
+            return {"error": f"No transcript found for session {session_id}",
+                    "session_id": session_id, "source": "transcript_l0"}
+
+    # Read and parse all records
+    all_records = []
+    skip_types = {"file-history-snapshot"}
+    try:
+        with open(jsonl_path, "r", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = _json.loads(line)
+                except _json.JSONDecodeError:
+                    continue
+                rtype = record.get("type", "")
+                if rtype in skip_types:
+                    continue
+                # Skip noisy hook_progress boot messages
+                if rtype == "progress" and record.get("data", {}).get("type") == "hook_progress":
+                    continue
+                all_records.append(record)
+    except OSError as e:
+        return {"error": f"Failed to read transcript: {e}",
+                "session_id": session_id, "source": "transcript_l0"}
+
+    total = len(all_records)
+
+    # Apply timestamp windowing if provided
+    if around_timestamp:
+        windowed = _window_around_timestamp(all_records, around_timestamp, window_minutes)
+    else:
+        windowed = all_records[-max_records:]
+
+    # Summarize and cap at max_records
+    summaries = [_summarize_record(r) for r in windowed[:max_records]]
+
+    return {
+        "session_id": session_id,
+        "records": summaries,
+        "record_count": len(summaries),
+        "total_in_session": total,
+        "source": "transcript_l0",
+    }
+
+
 def mark_session_indexed(db_path, session_id, record_count):
     """Mark a session as indexed with its record count."""
     conn = sqlite3.connect(db_path)
