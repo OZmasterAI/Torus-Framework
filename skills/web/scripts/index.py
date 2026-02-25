@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Web page indexer — fetch, clean, chunk, and upsert to ChromaDB web_pages collection."""
+"""Web page indexer — fetch, clean, chunk, and upsert to LanceDB web_pages collection."""
 
 import argparse
 import hashlib
@@ -165,7 +165,7 @@ def index_url(url: str, preview: bool = False) -> dict:
             "first_chunk_preview": chunks[0][:300] + "..." if len(chunks[0]) > 300 else chunks[0],
         }
 
-    # Upsert to ChromaDB
+    # Upsert to LanceDB
     from shared import chromadb_socket
 
     # Check for existing content with same hash (dedup)
@@ -214,7 +214,7 @@ def index_url(url: str, preview: bool = False) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Index a web page into ChromaDB")
+    parser = argparse.ArgumentParser(description="Index a web page into LanceDB")
     parser.add_argument("url", help="URL to index")
     parser.add_argument("--preview", action="store_true",
                         help="Preview what would be indexed without storing")

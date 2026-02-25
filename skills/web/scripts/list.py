@@ -16,7 +16,7 @@ def list_pages(pattern: str = None) -> list[dict]:
     try:
         result = chromadb_socket.get("web_pages", limit=500, include=["metadatas"])
     except chromadb_socket.WorkerUnavailable:
-        print("Error: ChromaDB worker not available. Is memory_server running?", file=sys.stderr)
+        print("Error: Memory worker not available. Is memory_server running?", file=sys.stderr)
         sys.exit(1)
     except RuntimeError as e:
         if "Unknown collection" in str(e):

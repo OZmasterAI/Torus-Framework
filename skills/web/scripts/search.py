@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Search indexed web pages via ChromaDB semantic search."""
+"""Search indexed web pages via LanceDB semantic search."""
 
 import argparse
 import sys
@@ -19,7 +19,7 @@ def search_pages(query: str, n_results: int = 5) -> list[dict]:
             include=["metadatas", "documents", "distances"],
         )
     except chromadb_socket.WorkerUnavailable:
-        print("Error: ChromaDB worker not available. Is memory_server running?", file=sys.stderr)
+        print("Error: Memory worker not available. Is memory_server running?", file=sys.stderr)
         sys.exit(1)
     except RuntimeError as e:
         if "Unknown collection" in str(e):

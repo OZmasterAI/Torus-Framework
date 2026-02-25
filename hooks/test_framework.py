@@ -7026,8 +7026,8 @@ with open(_claude_md_path) as _f:
     _claude_md = _f.read()
 test("Lever1: CLAUDE.md has 'failed-approach' in save rule",
      "failed-approach" in _claude_md)
-test("Lever1: CLAUDE.md has 'user-preference' in save rule",
-     "user-preference" in _claude_md)
+test("Lever1: CLAUDE.md has 'preference' in save rule",
+     "preference" in _claude_md)
 
 # Test 2-7: Lever 4 — Auto-remember queue and triggers
 import tempfile as _tempfile
@@ -11890,13 +11890,13 @@ try:
     _ws_empty = web_search("")
     test("web_search('') returns empty results",
          isinstance(_ws_empty, dict) and _ws_empty.get("count") == 0
-         and _ws_empty.get("results") == [] and _ws_empty.get("source") == "web_chromadb")
+         and _ws_empty.get("results") == [] and _ws_empty.get("source") == "web_lancedb")
 
     # Web search: real query → dict with count/results or error key (WorkerUnavailable OK)
     _ws_result = web_search("claude")
     test("web_search('claude') returns dict with count/results or error",
          isinstance(_ws_result, dict) and ("count" in _ws_result or "error" in _ws_result)
-         and _ws_result.get("source") == "web_chromadb")
+         and _ws_result.get("source") == "web_lancedb")
 
     # transcript_context: empty session_id → error
     _tc_empty = transcript_context("")

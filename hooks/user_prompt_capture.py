@@ -55,6 +55,9 @@ _UNCERTAINTY_RE = re.compile(
 # 3+ consecutive uppercase words (e.g. "THIS IS WRONG")
 _ALL_CAPS_RE = re.compile(r'(?:\b[A-Z]{2,}\b[\s]+){2,}\b[A-Z]{2,}\b')
 
+# URL detection for auto-indexing into LanceDB web_pages
+_URL_RE = re.compile(r'https?://[^\s<>"\')\]]+', re.IGNORECASE)
+
 
 def detect_sentiment(text: str) -> str:
     """Detect sentiment from user prompt text.
@@ -97,6 +100,35 @@ def _is_duplicate_prompt(prompt_text):
         return False  # Fail-open
 
 
+_INDEX_SCRIPT = os.path.join(
+    os.path.expanduser("~"), ".claude", "skills", "web", "scripts", "index.py"
+)
+
+
+def _auto_index_urls(urls):
+    """Index URLs into LanceDB web_pages in the background. Fail-silent."""
+    import subprocess
+
+    for url in urls:
+        # Skip common non-page URLs (images, videos, API endpoints, etc.)
+        lower = url.lower().rstrip("/")
+        if any(lower.endswith(ext) for ext in (
+            ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
+            ".mp4", ".mp3", ".wav", ".pdf", ".zip", ".tar.gz",
+        )):
+            continue
+
+        try:
+            subprocess.Popen(
+                [sys.executable, _INDEX_SCRIPT, url],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            pass  # Fail-silent
+
+
 def main():
     # Read JSON from stdin
     try:
@@ -130,6 +162,15 @@ def main():
             "Run /wrap-up to save progress, update LIVE_STATE.json, and commit changes "
             "before the session ends.</session_ending>"
         )
+
+    # --- Auto-index URLs into LanceDB web_pages ---
+
+    try:
+        urls = _URL_RE.findall(prompt)
+        if urls:
+            _auto_index_urls(urls)
+    except Exception:
+        pass  # Index failures must never crash the hook
 
     # --- Capture phase (append observation to queue) ---
 
