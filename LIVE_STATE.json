@@ -3,17 +3,16 @@
   "project": "torus-framework",
   "feature": "lancedb-migration",
   "framework_version": "v2.5.3",
-  "what_was_done": "ChromaDB to LanceDB Phase 1 migration complete. Swapped persistence layer in memory_server.py (LanceCollection wrapper, Arrow schemas, _init_lancedb, _backup_database). Updated requirements.txt, backup_embeddings.py, test_framework.py. Created migrate_chromadb_to_lance.py script. Tests: 1425 passed (+1 fixed), 2 failed (pre-existing). Code changes only \u2014 actual data migration pending.",
+  "what_was_done": "LanceDB Phase 2 complete. Migrated 6,247 docs from ChromaDB (knowledge:1402, fix_outcomes:264, observations:4579, quarantine:2). Fixed numpy truthiness bug in migration script. Tested IVF_PQ indexes — hurt relevance (Jaccard 0.403); dropped them. Flat scan: 0.973 Jaccard, 98.4% recall at 30ms/query. 44/50 queries return identical top-10.",
   "next_steps": [
-    "Run migrate_chromadb_to_lance.py to transfer data (stop MCP server first)",
-    "Create vector indexes on knowledge/fix_outcomes/observations tables",
-    "Run 50-query benchmark to validate relevance rankings post-migration",
+    "Re-add vector indexes when data exceeds ~50K rows",
     "Merge Self-Sprint-2 into main",
-    "Build Claude API adapter for agent-bench (real API scoring)"
+    "Build Claude API adapter for agent-bench (real API scoring)",
+    "Consider removing ChromaDB dependency entirely after validation period"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
-    "LanceDB data migration not yet run \u2014 ChromaDB data still in ~/data/memory/chroma.sqlite3",
+    "LanceDB flat scan ~3x slower than ChromaDB HNSW (30ms vs 10ms) — acceptable at current scale",
     "test_framework.py Pyright import errors for shared modules (path resolution)"
   ]
 }

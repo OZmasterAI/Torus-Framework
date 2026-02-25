@@ -311,10 +311,11 @@ def export_collection(chroma_coll, name: str) -> list[dict]:
             offset=offset,
             include=["embeddings", "documents", "metadatas"],
         )
-        ids_batch   = batch.get("ids",        []) or []
-        docs_batch  = batch.get("documents",  []) or []
-        meta_batch  = batch.get("metadatas",  []) or []
-        emb_batch   = batch.get("embeddings", []) or []
+        ids_batch   = batch.get("ids") or []
+        docs_batch  = batch.get("documents") or []
+        meta_batch  = batch.get("metadatas") or []
+        emb_raw     = batch.get("embeddings")
+        emb_batch   = emb_raw if emb_raw is not None else []
 
         all_ids.extend(ids_batch)
         all_documents.extend(docs_batch)
