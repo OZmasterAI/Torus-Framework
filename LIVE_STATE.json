@@ -3,7 +3,7 @@
   "project": "torus-framework",
   "feature": "token-optimization",
   "framework_version": "v2.5.4",
-  "what_was_done": "Session 236: Compressed CLAUDE.md + rules (~1,086 tokens/prompt saved). Added auto-index URL hook. Moved domains to dormant/. Cleaned ChromaDB→LanceDB naming. Updated 7 HTML docs. 1437 pass.",
+  "what_was_done": "Session 236: Compressed CLAUDE.md + rules. Added auto-index URL hook. Moved domains to dormant/. ChromaDB→LanceDB naming. Updated 7 HTML docs.",
   "next_steps": [
     "Merge evolution-branch into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
