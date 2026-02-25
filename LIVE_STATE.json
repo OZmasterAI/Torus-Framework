@@ -1,18 +1,20 @@
 {
-  "session_count": 236,
+  "session_count": 237,
   "project": "torus-framework",
-  "feature": "l0-transcript-search",
+  "feature": "token-optimization",
   "framework_version": "v2.5.4",
-  "what_was_done": "Session 235: Wired L0 raw transcript search into memory system. Added 3 functions to db.py (_summarize_record, _window_around_timestamp, get_raw_transcript_window) for reading raw JSONL transcripts with truncation and time windowing. New mode=\"transcript\" in search_knowledge() and transcript_context() MCP tool in analytics_server.py. Added transcript_l0 toggle in config.json (default: off) and statusline line 3. Toggled terminal_l2_always to true. Compared L0 vs L2 vs Enrich tradeoffs. 15 new tests, 1437 pass. Pushed to origin/evolution-branch. Switched GitHub to sjxcrypto.",
+  "what_was_done": "Session 236: Token optimization sprint. Updated 7 HTML docs to v2.5.4 accuracy (sent via Telegram). Compressed CLAUDE.md + 3 rules files saving ~1,086 tokens/prompt with zero functionality lost. Moved domain system to dormant/ (discovered .dormant extension doesn't prevent rules/ loading). Dormanted telegram_search tool. Added auto-index URL hook to user_prompt_capture.py — URLs in user messages auto-indexed to LanceDB web_pages in background. Confirmed web system was already on LanceDB (chromadb_socket name is legacy). Cleaned ChromaDB→LanceDB naming in web scripts + analytics. Deleted obsolete run_migration.py. Fixed Lever1 test. Full branch comparison: evolution-branch is 61% leaner per-prompt than master. 1437 pass, 2 fail (pre-existing).",
   "next_steps": [
-    "Merge Self-Sprint-2 into main",
+    "Merge evolution-branch into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
-    "Consider removing ChromaDB dependency entirely after validation period",
-    "Memory maintenance \u2014 DB at 1414 entries, run stale cleanup"
+    "Consider removing ChromaDB pip dependency entirely (only legacy naming remains)",
+    "Memory maintenance — DB at 1431 entries, run stale cleanup",
+    "Fix remaining 2 test failures (UDS fallback, MemMentor socket)"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
-    "LanceDB flat scan ~3x slower than ChromaDB HNSW (30ms vs 10ms) \u2014 acceptable at current scale",
-    "test_framework.py Pyright import errors for shared modules (path resolution)"
+    "LanceDB flat scan ~3x slower than ChromaDB HNSW (30ms vs 10ms) — acceptable at current scale",
+    "test_framework.py Pyright import errors for shared modules (path resolution)",
+    "chromadb_socket.py module name is legacy — routes to LanceDB, rename is high-risk/low-value"
   ]
 }
