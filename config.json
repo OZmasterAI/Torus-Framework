@@ -1,5 +1,5 @@
 {
-  "terminal_l2_always": false,
+  "terminal_l2_always": true,
   "transcript_l0": false,
   "context_enrichment": true,
   "tg_l3_always": false,
