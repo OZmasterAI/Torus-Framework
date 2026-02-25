@@ -1,12 +1,12 @@
 {
-  "session_count": 230,
+  "session_count": 231,
   "project": "torus-framework",
   "feature": "framework-eval",
   "framework_version": "v2.5.3",
   "what_was_done": "- Completed scored comparison: Torus (84) vs claude-enforcer/AKIRA (70) across 8 dimensions\n- Fetched full claude-enforcer source (8 gate modules, 3 hooks, 4 shared modules) via gh api\n- Revisited LanceDB migration: documented 10 watchouts with mitigations (dual-write rollback, metadata audit, cosine drift testing, FTS phased approach)\n- Configured opus[1m] as default model in settings.json for 1M context on next restart\n- Saved 3 memories (comparison scoring, LanceDB mitigations, model config)",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
-    "Migrate ChromaDB to LanceDB (when triggered — concurrent access or TS-native memory needed)",
+    "Migrate ChromaDB to LanceDB (when triggered \u2014 concurrent access or TS-native memory needed)",
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Optimize whisper transcription speed",
     "Consider adopting no-hedging gate from AKIRA (evidence citations for numbers)"
