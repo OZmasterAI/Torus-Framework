@@ -1,13 +1,14 @@
 {
-  "session_count": 227,
+  "session_count": 230,
   "project": "torus-framework",
-  "feature": "branch-comparison",
+  "feature": "torus-pi-adapter",
   "framework_version": "v2.5.3",
-  "what_was_done": "Comprehensive 3-branch comparison (main vs self-evolve-test vs Self-Sprint-2) across 12 dimensions. Killed stale suspended session. Deactivated framework domain. Recalled sessions 222-225.",
+  "what_was_done": "- Built Torus-Pi Adapter Extension at ~/Desktop/torus-pi-adapter/pi-extension/ (8 files, 0 TS errors)\n- 7 TypeScript modules: types, config, tool-name-map, enforcer-bridge, tracker-bridge, boot-bridge, index\n- 1 Python module: hooks/gates/tool_aliases.py (PI_TO_TORUS_TOOL_MAP)\n- Zero runtime deps, fail-open on all errors/timeouts, gates stay in Python\n- All smoke tests passed (node + python)\n- Compared Torus memory vs Claude vanilla auto memory (notebook vs knowledge base)\n- Confirmed hookify is adopted marketplace plugin, not custom-built\n- Decided against replacing terminal history L2 with Claude JSONL transcript indexing (coupling risk)\n- Researched Claude Code 1M context window setup (opus[1m] / sonnet[1m] aliases)\n- Catalogued all ~100+ Claude Code settings and env vars",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
-    "Optimize whisper transcription speed"
+    "Optimize whisper transcription speed",
+    "Consider L2 transcript indexer refactor (boot-time, human-messages-only) if terminal history becomes painful"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",

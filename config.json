@@ -19,12 +19,12 @@
   "mentor_outcome_chains": false,
   "mentor_memory": false,
   "enforcer_daemon": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 3h 0m\n- **Tool Calls**: 244 (Read: 123, mcp__memory__search_knowledge: 43, mcp__memory__get_memory: 38, Bash: 15, mcp__memory__remember_this: 10, WebFetch: 4)\n- **Files Modified**: 3 (0 verified, 1 pending)\n- **Errors**: 3 (ToolFail:Read x2, ToolFail:Glob x1)\n- **Tests**: none this session\n- **Subagents**: 20 launched, 6,621 tokens\n\n**Files changed:**\n- `/home/crab/.claude/HANDOFF.md`\n- `/home/crab/.claude/LIVE_STATE.json`\n- `/home/crab/.claude/plans/eventual-popping-starlight.md` (pending)",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 23m\n- **Tool Calls**: 134 (Bash: 54, Read: 44, WebFetch: 15, Glob: 6, Task: 5, Grep: 4)\n- **Files Modified**: 1 (0 verified, 1 pending)\n- **Errors**: 1 (ToolFail:Bash x1)\n- **Tests**: none this session\n- **Subagents**: 8 launched, 10,730 tokens\n\n**Files changed:**\n- `/home/crab/.claude/plans/glittery-tickling-stallman.md` (pending)",
   "last_session_metrics": {
-    "reads": 4,
-    "edits": 2,
+    "reads": 27,
+    "edits": 1,
     "errors": 1,
     "verified": 0,
-    "pending": 0
+    "pending": 1
   }
 }

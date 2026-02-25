@@ -3,12 +3,12 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
   },
   "permissions": {
-    "defaultMode": "default",
     "allow": [
       "mcp__memory__get_memory",
       "mcp__memory__search_knowledge",
       "mcp__memory__remember_this"
-    ]
+    ],
+    "defaultMode": "default"
   },
   "hooks": {
     "PreToolUse": [
@@ -253,7 +253,6 @@
       }
     ]
   },
-  "effortLevel": "default",
   "contextCompactionThreshold": 0.85,
   "spinnerTips": [
     "Memory first — search_knowledge before building or fixing",
