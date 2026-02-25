@@ -3,7 +3,7 @@
   "project": "torus-framework",
   "feature": "token-optimization",
   "framework_version": "v2.5.4",
-  "what_was_done": "Session 236: Token optimization sprint. Updated 7 HTML docs to v2.5.4 accuracy (sent via Telegram). Compressed CLAUDE.md + 3 rules files saving ~1,086 tokens/prompt with zero functionality lost. Moved domain system to dormant/ (discovered .dormant extension doesn't prevent rules/ loading). Dormanted telegram_search tool. Added auto-index URL hook to user_prompt_capture.py — URLs in user messages auto-indexed to LanceDB web_pages in background. Confirmed web system was already on LanceDB (chromadb_socket name is legacy). Cleaned ChromaDB→LanceDB naming in web scripts + analytics. Deleted obsolete run_migration.py. Fixed Lever1 test. Full branch comparison: evolution-branch is 61% leaner per-prompt than master. 1437 pass, 2 fail (pre-existing).",
+  "what_was_done": "Session 236: Compressed CLAUDE.md + rules (~1,086 tokens/prompt saved). Added auto-index URL hook. Moved domains to dormant/. Cleaned ChromaDB→LanceDB naming. Updated 7 HTML docs. 1437 pass.",
   "next_steps": [
     "Merge evolution-branch into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
