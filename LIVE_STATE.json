@@ -1,14 +1,15 @@
 {
   "session_count": 230,
   "project": "torus-framework",
-  "feature": "torus-pi-adapter",
+  "feature": "framework-eval",
   "framework_version": "v2.5.3",
-  "what_was_done": "- Built Torus-Pi Adapter Extension at ~/Desktop/torus-pi-adapter/pi-extension/ (8 files, 0 TS errors)\n- Compared Torus memory vs Claude vanilla auto memory (semantic KB vs 200-line markdown notebook)\n- Confirmed hookify is adopted marketplace plugin (Session 164), not custom-built\n- Decided against replacing terminal history L2 with Claude JSONL transcript indexing (coupling risk outweighs simplification)\n- Evaluated LanceDB as ChromaDB replacement: loses nothing, gains concurrent access + native TS bindings + built-in FTS. Decision: do it when triggered by real need\n- Evaluated MySQL: rejected — no native vector search kills semantic mode\n- Created full backup (1.4GB) and framework-only backup (99MB) on Desktop\n- Catalogued all ~100+ Claude Code settings and env vars\n- Enabled extra usage for 1M context window (opus[1m] / sonnet[1m])",
+  "what_was_done": "- Completed scored comparison: Torus (84) vs claude-enforcer/AKIRA (70) across 8 dimensions\n- Fetched full claude-enforcer source (8 gate modules, 3 hooks, 4 shared modules) via gh api\n- Revisited LanceDB migration: documented 10 watchouts with mitigations (dual-write rollback, metadata audit, cosine drift testing, FTS phased approach)\n- Configured opus[1m] as default model in settings.json for 1M context on next restart\n- Saved 3 memories (comparison scoring, LanceDB mitigations, model config)",
   "next_steps": [
-    "Migrate ChromaDB to LanceDB (when triggered — concurrent access or TS-native memory needed)",
     "Merge Self-Sprint-2 into main",
+    "Migrate ChromaDB to LanceDB (when triggered — concurrent access or TS-native memory needed)",
     "Build Claude API adapter for agent-bench (real API scoring)",
-    "Optimize whisper transcription speed"
+    "Optimize whisper transcription speed",
+    "Consider adopting no-hedging gate from AKIRA (evidence citations for numbers)"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
