@@ -1,14 +1,14 @@
 {
   "session_count": 235,
   "project": "torus-framework",
-  "feature": "fts5-consolidation",
+  "feature": "l0-transcript-search",
   "framework_version": "v2.5.4",
-  "what_was_done": "Session 234: Consolidated FTS5 → LanceDB native FTS + TagIndex. Deleted 268-line FTS5Index class, replaced with ~60-line TagIndex (minimal SQLite tags table for boolean AND/OR search). LanceDB native BM25 handles keyword search (~19ms). Net: +134/-229 lines. Tags.db is self-healing — rebuilds from LanceDB on startup. All 1425 tests pass. Deferred vector index re-add (~22 months away). Compared all 4 branches side-by-side. Committed stale backup file deletions.",
+  "what_was_done": "Session 235: Wired L0 raw transcript search into memory system. Added 3 functions to db.py (_summarize_record, _window_around_timestamp, get_raw_transcript_window) for reading raw JSONL transcripts with truncation and time windowing. New mode=\"transcript\" in search_knowledge() and transcript_context() MCP tool in analytics_server.py. Added transcript_l0 toggle in config.json (default: off) and statusline line 3. Toggled terminal_l2_always to true. Compared L0 vs L2 vs Enrich tradeoffs. 15 new tests, 1437 pass. Pushed to origin/evolution-branch. Switched GitHub to sjxcrypto.",
   "next_steps": [
     "Merge Self-Sprint-2 into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Consider removing ChromaDB dependency entirely after validation period",
-    "Memory maintenance — DB at 1409 entries, run stale cleanup"
+    "Memory maintenance — DB at 1414 entries, run stale cleanup"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
