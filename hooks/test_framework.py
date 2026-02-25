@@ -24,7 +24,7 @@ SKIPPED = 0
 # Detect if memory_server MCP process is running.
 # UDS socket check first (fast, ~0.05ms), pgrep fallback (slower, ~50ms).
 # Both needed: socket may not exist if server was started before UDS code was added.
-# When server is running, ChromaDB Rust backend segfaults on concurrent PersistentClient access.
+# When server is running, skip direct DB access tests to avoid concurrent access issues.
 from shared.chromadb_socket import is_worker_available as _uds_available
 
 def _memory_server_running():
@@ -48,7 +48,7 @@ def _memory_server_running():
 MEMORY_SERVER_RUNNING = _memory_server_running()
 if MEMORY_SERVER_RUNNING:
     print("[INFO] Memory MCP server is running — skipping direct import tests")
-    print("[INFO] (ChromaDB Rust backend segfaults on concurrent DB access)")
+    print("[INFO] (LanceDB concurrent access avoided for test isolation)")
     print()
 
 # Back up sideband file so real memory queries don't interfere with gate tests
@@ -1340,7 +1340,7 @@ with open(os.path.expanduser("~/.claude/mcp.json")) as f:
 
 
 # --- _apply_recency_boost functional tests ---
-# These tests do NOT require ChromaDB, just the pure function
+# These tests do NOT require LanceDB, just the pure function
 
 if not MEMORY_SERVER_RUNNING:
     from datetime import datetime, timedelta
@@ -1421,7 +1421,7 @@ if not MEMORY_SERVER_RUNNING:
 
     # --- format_results functional tests ---
 
-    # Test: format_results with valid ChromaDB-style results
+    # Test: format_results with valid query results
     _fr_input = {
         "documents": [["doc1 content", "doc2 content"]],
         "metadatas": [[
@@ -1515,25 +1515,25 @@ if not MEMORY_SERVER_RUNNING:
          "relevance" not in _fs_get_out[0],
          f"keys={list(_fs_get_out[0].keys())}")
 
-    # --- suggest_promotions functional tests (requires ChromaDB) ---
+    # --- suggest_promotions functional tests (requires LanceDB) ---
 
     from memory_server import suggest_promotions, collection as _sp_coll
 
     if _sp_coll is None:
-        # ChromaDB not initialized (lazy init) — skip all suggest_promotions tests
+        # LanceDB not initialized (lazy init) — skip all suggest_promotions tests
         for _sp_skip in [
             "suggest_promotions returns dict with clusters key",
             "suggest_promotions has total_candidates key",
             "suggest_promotions has total_clusters key",
             "suggest_promotions clusters is a list",
-            "suggest_promotions cluster structure (no ChromaDB)",
-            "suggest_promotions cluster supporting_ids (no ChromaDB)",
-            "suggest_promotions cluster count (no ChromaDB)",
-            "suggest_promotions cluster score (no ChromaDB)",
-            "suggest_promotions cluster avg_age_days (no ChromaDB)",
-            "suggest_promotions score formula (no ChromaDB)",
-            "suggest_promotions sorted desc (no ChromaDB)",
-            "suggest_promotions top_k (no ChromaDB)",
+            "suggest_promotions cluster structure (no LanceDB)",
+            "suggest_promotions cluster supporting_ids (no LanceDB)",
+            "suggest_promotions cluster count (no LanceDB)",
+            "suggest_promotions cluster score (no LanceDB)",
+            "suggest_promotions cluster avg_age_days (no LanceDB)",
+            "suggest_promotions score formula (no LanceDB)",
+            "suggest_promotions sorted desc (no LanceDB)",
+            "suggest_promotions top_k (no LanceDB)",
         ]:
             skip(_sp_skip)
     else:
@@ -3387,13 +3387,13 @@ test("Settings: UserPromptSubmit uses user_prompt_capture.py",
 # ─────────────────────────────────────────────────
 # Test: session_time Type Regression (4 tests)
 # Ensures session_time is always float, never string
-# Regression for: ChromaDB $gte/$lte require numeric
+# Regression for: LanceDB filter predicates require numeric types
 # ─────────────────────────────────────────────────
-# ChromaDB-dependent tests: skip when MCP server is running to avoid
-# Rust backend segfaults from concurrent PersistentClient access
+# LanceDB-dependent tests: skip when MCP server is running to avoid
+# concurrent access issues
 # ─────────────────────────────────────────────────
 if MEMORY_SERVER_RUNNING:
-    print("\n[SKIP] ChromaDB-dependent tests skipped (memory MCP server running)")
+    print("\n[SKIP] LanceDB-dependent tests skipped (memory MCP server running)")
     print("[SKIP] Sections: session_time regression, Phase 1-3, audit, gates 10-12,")
     print("[SKIP]   auto-approve, subagent context, precompact, session end,")
     print("[SKIP]   ingestion filter, near-dedup, observation promotion")
@@ -3404,12 +3404,22 @@ if not MEMORY_SERVER_RUNNING:
     try:
         print("\n--- session_time Type Regression ---")
 
-        import chromadb as _chromadb
+        import lancedb as _lancedb
         import hashlib as _hashlib
 
-        _client = _chromadb.PersistentClient(path=os.path.expanduser("~/data/memory"))
-        _obs_col = _client.get_or_create_collection(name="observations", metadata={"hnsw:space": "cosine"})
-        _know_col = _client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
+        # Use LanceDB via LanceCollection wrapper (replaces old ChromaDB PersistentClient)
+        from memory_server import LanceCollection, _OBSERVATIONS_SCHEMA, _KNOWLEDGE_SCHEMA
+        _lance_client = _lancedb.connect(os.path.join(os.path.expanduser("~/data/memory"), "lancedb"))
+        try:
+            _obs_tbl = _lance_client.open_table("observations")
+        except Exception:
+            _obs_tbl = _lance_client.create_table("observations", schema=_OBSERVATIONS_SCHEMA)
+        _obs_col = LanceCollection(_obs_tbl, _OBSERVATIONS_SCHEMA, "observations")
+        try:
+            _know_tbl = _lance_client.open_table("knowledge")
+        except Exception:
+            _know_tbl = _lance_client.create_table("knowledge", schema=_KNOWLEDGE_SCHEMA)
+        _know_col = LanceCollection(_know_tbl, _KNOWLEDGE_SCHEMA, "knowledge")
 
         # Test 1: observation.py compress_observation returns float session_time
         from shared.observation import compress_observation
@@ -3423,7 +3433,7 @@ if not MEMORY_SERVER_RUNNING:
              isinstance(_test_obs["metadata"]["session_time"], float),
              f"got {type(_test_obs['metadata']['session_time']).__name__}")
 
-        # Test 2: Verify existing observations in ChromaDB have float session_time
+        # Test 2: Verify existing observations in LanceDB have float session_time
         _sample_obs = _obs_col.get(limit=10, include=["metadatas"])
         _all_float = True
         _bad_type = ""
@@ -3483,8 +3493,8 @@ if not MEMORY_SERVER_RUNNING:
                 ids=[_cid],
             )
 
-        # Import and run compaction in subprocess (ChromaDB Rust backend segfaults on
-        # concurrent write access when MCP server is running on the same DB)
+        # Import and run compaction in subprocess (avoids concurrent access
+        # issues when MCP server is running on the same DB)
         sys.path.insert(0, os.path.dirname(__file__))
         try:
             _compact_r = subprocess.run(
@@ -3593,8 +3603,8 @@ if not MEMORY_SERVER_RUNNING:
         # ─────────────────────────────────────────────────
         print("\n--- Phase 2: Hybrid Search (FTS5) ---")
 
-        # Test: FTS5 build from ChromaDB returns correct count
-        test("FTS5 index built from ChromaDB",
+        # Test: FTS5 build from LanceDB returns correct count
+        test("FTS5 index built from LanceDB",
              fts_index is not None and isinstance(fts_index, FTS5Index))
 
         # Test: FTS5 keyword search finds known terms
@@ -3677,7 +3687,7 @@ if not MEMORY_SERVER_RUNNING:
              _sk_kw.get("mode") == "keyword",
              f"mode={_sk_kw.get('mode')}")
 
-        # Test: search_knowledge mode=semantic uses ChromaDB
+        # Test: search_knowledge mode=semantic uses vector search
         _sk_sem = search_knowledge("how do I debug memory issues?")
         test("search_knowledge auto-detects semantic mode",
              _sk_sem.get("mode") == "semantic",
@@ -4743,9 +4753,9 @@ if not MEMORY_SERVER_RUNNING:
 
         # Hook registration tests removed — behavioral tests validate hooks work
 
-    except Exception as _chromadb_block_err:
-        print(f'    [SKIP] ChromaDB block failed ({type(_chromadb_block_err).__name__}): {_chromadb_block_err}')
-        print('    [SKIP] Skipping remaining ChromaDB-dependent tests')
+    except Exception as _db_block_err:
+        print(f'    [SKIP] LanceDB block failed ({type(_db_block_err).__name__}): {_db_block_err}')
+        print('    [SKIP] Skipping remaining LanceDB-dependent tests')
         MEMORY_SERVER_RUNNING = True
 # Test 5: Gate 10 check() creates model_agent_usage in state
 from gates.gate_10_model_enforcement import check as _g10_check
@@ -4924,7 +4934,7 @@ test("StatusLine: script exists",
 # 2. Produces output with project name
 import subprocess as _sp_auto
 if MEMORY_SERVER_RUNNING:
-    # StatusLine subprocesses import memory_server.py which segfaults with concurrent ChromaDB access
+    # StatusLine subprocesses import memory_server.py — avoid concurrent LanceDB access
     for _skip_name in [
         "StatusLine: produces output", "StatusLine: has gate count",
         "StatusLine: has memory count", "StatusLine: has cost",
@@ -5328,7 +5338,7 @@ else:
 
 
 # ─────────────────────────────────────────────────
-# Search Routing Tests (no ChromaDB needed — safe to run always)
+# Search Routing Tests (no LanceDB needed — safe to run always)
 # ─────────────────────────────────────────────────
 print("\n--- Search Routing ---")
 from memory_server import _detect_query_mode as _dqm
@@ -5366,7 +5376,7 @@ test("routing full_hybrid: quoted → hybrid", _dqm('"exact phrase" match', rout
 test("routing unknown: falls to default", _dqm("framework gate fix", routing="bogus") == "hybrid")
 
 # ─────────────────────────────────────────────────
-# FTS5 Persistence Tests (no ChromaDB needed — safe to run always)
+# FTS5 Persistence Tests (no LanceDB needed — safe to run always)
 # ─────────────────────────────────────────────────
 print("\n--- FTS5 Persistence ---")
 
@@ -6610,7 +6620,7 @@ os.remove(_t12_state_path)
 # ─────────────────────────────────────────────────
 print("\n--- Citation URL Extraction ---")
 
-# Import the citation functions directly (no ChromaDB needed)
+# Import the citation functions directly (no LanceDB needed)
 try:
     from memory_server import _validate_url, _rank_url_authority, _extract_citations, FTS5Index
     _citation_imports_ok = True
@@ -7165,7 +7175,7 @@ _ar_mod.AUTO_REMEMBER_QUEUE = _orig_queue
 
 # Test 8-10: Lever 2 scoped — promotion criteria (unit tests on promotion logic)
 # These test the criteria logic in memory_server._compact_observations
-# We test the data structures and filtering rather than full ChromaDB integration
+# We test the data structures and filtering rather than full LanceDB integration
 
 # Test 8: Standalone error criterion — error with no follow-up success should be promotable
 _exp_docs_l2 = [
@@ -8326,7 +8336,7 @@ try:
     _tier_spec = _tier_iu.spec_from_file_location("_tier_ms", _ms_path,
                                                     submodule_search_locations=[])
     _tier_mod = _tier_iu.module_from_spec(_tier_spec)
-    # Don't exec the full module (ChromaDB side effects); extract function source instead
+    # Don't exec the full module (LanceDB side effects); extract function source instead
     with open(_ms_path) as _tf:
         _tier_src = _tf.read()
     # Execute just the constants and _classify_tier function in isolated namespace
@@ -8422,13 +8432,13 @@ test("Embedding: _EMBEDDING_MODEL constant exists",
      '_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v2-moe"' in _emb_src,
      "_EMBEDDING_MODEL not found or wrong value")
 
-test("Embedding: SentenceTransformerEmbeddingFunction imported in init",
-     "SentenceTransformerEmbeddingFunction" in _emb_src,
-     "import not found")
+test("Embedding: SentenceTransformer used directly in init",
+     "SentenceTransformer" in _emb_src and "_embedding_fn" in _emb_src,
+     "SentenceTransformer not found in init")
 
-test("Embedding: embedding_function passed to collections",
-     "**_ef_kwargs" in _emb_src or "embedding_function=_embedding_fn" in _emb_src,
-     "embedding_function not passed to get_or_create_collection")
+test("Embedding: _embed_text helper exists",
+     "def _embed_text(" in _emb_src or "def _embed_texts(" in _emb_src,
+     "_embed_text(s) helper not found")
 
 test("Embedding: migration function exists",
      "def _migrate_embeddings()" in _emb_src,

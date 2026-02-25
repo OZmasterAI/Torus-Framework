@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Self-Healing Claude Framework — Memory MCP Server
 
-A ChromaDB-backed persistent memory system exposed as MCP tools.
+A LanceDB-backed persistent memory system exposed as MCP tools.
 Claude Code connects to this server and gets search_knowledge, remember_this,
 get_memory, and maintenance as native tools.
 
-The memory persists across sessions in ~/data/memory/, enabling cross-session
+The memory persists across sessions in ~/data/memory/lancedb/, enabling cross-session
 knowledge retention.
 
 Run standalone: python3 memory_server.py
 Used via MCP: configured in .claude/mcp.json
+
+Phase 1 migration: ChromaDB → LanceDB (Session 232).
+LanceDB provides optimistic concurrency control (no more segfaults),
+native TS bindings, and built-in BM25 FTS.
 """
 
 import atexit
@@ -23,7 +27,8 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-import chromadb
+import lancedb
+import pyarrow as pa
 from mcp.server.fastmcp import FastMCP
 
 # Sideband file: write memory query timestamps here so the enforcer
@@ -90,15 +95,16 @@ def crash_proof(fn):
     return wrapper
 
 
-# Persistent ChromaDB storage
+# Persistent LanceDB storage
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
-os.makedirs(MEMORY_DIR, exist_ok=True)
+LANCE_DIR = os.path.join(MEMORY_DIR, "lancedb")
+os.makedirs(LANCE_DIR, exist_ok=True)
 
 # Embedding model: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens, ~67% MTEB)
 # MoE architecture (305M active params), Matryoshka (truncatable to 256-dim)
-# Upgrade from ChromaDB default all-MiniLM-L6-v2 (384-dim, 256 tokens, ~63% MTEB)
 _EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v2-moe"
-_embedding_fn = None  # Lazy init in _init_chromadb()
+_EMBEDDING_DIM = 768
+_embedding_fn = None  # Lazy init — SentenceTransformer instance
 FTS5_DB_PATH = os.path.join(MEMORY_DIR, "fts5_index.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
@@ -108,65 +114,424 @@ SOCKET_PATH = os.path.join(
 _socket_server = None  # threading server reference for cleanup
 _uds_shutting_down = False  # prevents rebind during intentional shutdown
 
-# Lazy ChromaDB initialization — prevents segfault when module is imported
-# by test code while MCP server already holds a PersistentClient on the same path.
-# ChromaDB Rust backend cannot handle concurrent PersistentClient access.
-client = None
-collection = None
-fix_outcomes = None
-observations = None
-web_pages = None
-quarantine = None
-_chromadb_degraded = False
+# Lazy LanceDB initialization
+_lance_db = None  # lancedb.DBConnection
+collection = None  # LanceCollection wrapper for knowledge table
+fix_outcomes = None  # LanceCollection wrapper for fix_outcomes table
+observations = None  # LanceCollection wrapper for observations table
+web_pages = None  # LanceCollection wrapper for web_pages table
+quarantine = None  # LanceCollection wrapper for quarantine table
+_chromadb_degraded = False  # kept for backward compat (now means "lance degraded")
 
 
-def _init_chromadb():
-    """Lazy initialization of ChromaDB client and collections.
+# ── Arrow Schemas for LanceDB Tables ───────────────────────────────────────
+
+_KNOWLEDGE_SCHEMA = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("text", pa.string()),
+    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+    pa.field("context", pa.string()),
+    pa.field("tags", pa.string()),
+    pa.field("timestamp", pa.string()),
+    pa.field("session_time", pa.float64()),
+    pa.field("preview", pa.string()),
+    pa.field("primary_source", pa.string()),
+    pa.field("related_urls", pa.string()),
+    pa.field("source_method", pa.string()),
+    pa.field("tier", pa.int32()),
+    pa.field("retrieval_count", pa.int32()),
+    pa.field("last_retrieved", pa.string()),
+])
+
+_FIX_OUTCOMES_SCHEMA = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("text", pa.string()),
+    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+    pa.field("error_hash", pa.string()),
+    pa.field("strategy_id", pa.string()),
+    pa.field("chain_id", pa.string()),
+    pa.field("outcome", pa.string()),
+    pa.field("confidence", pa.string()),
+    pa.field("attempts", pa.string()),
+    pa.field("successes", pa.string()),
+    pa.field("timestamp", pa.string()),
+    pa.field("last_outcome_time", pa.string()),
+    pa.field("banned", pa.string()),
+    pa.field("bridged", pa.string()),
+])
+
+_OBSERVATIONS_SCHEMA = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("text", pa.string()),
+    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+    pa.field("session_id", pa.string()),
+    pa.field("tool_name", pa.string()),
+    pa.field("timestamp", pa.string()),
+    pa.field("session_time", pa.float64()),
+    pa.field("has_error", pa.string()),
+    pa.field("error_pattern", pa.string()),
+    pa.field("preview", pa.string()),
+])
+
+_WEB_PAGES_SCHEMA = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("text", pa.string()),
+    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+    pa.field("url", pa.string()),
+    pa.field("title", pa.string()),
+    pa.field("chunk_index", pa.string()),
+    pa.field("total_chunks", pa.string()),
+    pa.field("indexed_at", pa.string()),
+    pa.field("content_hash", pa.string()),
+    pa.field("word_count", pa.string()),
+])
+
+_QUARANTINE_SCHEMA = pa.schema([
+    pa.field("id", pa.string()),
+    pa.field("text", pa.string()),
+    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+    pa.field("quarantine_reason", pa.string()),
+    pa.field("quarantine_pair", pa.string()),
+    pa.field("quarantined_at", pa.string()),
+    pa.field("context", pa.string()),
+    pa.field("tags", pa.string()),
+    pa.field("timestamp", pa.string()),
+    pa.field("session_time", pa.float64()),
+    pa.field("preview", pa.string()),
+])
+
+_TABLE_SCHEMAS = {
+    "knowledge": _KNOWLEDGE_SCHEMA,
+    "fix_outcomes": _FIX_OUTCOMES_SCHEMA,
+    "observations": _OBSERVATIONS_SCHEMA,
+    "web_pages": _WEB_PAGES_SCHEMA,
+    "quarantine": _QUARANTINE_SCHEMA,
+}
+
+
+def _embed_texts(texts):
+    """Embed a list of texts using the loaded SentenceTransformer model.
+
+    Returns list of lists of floats (768-dim vectors).
+    Falls back to zero vectors if embedding model is unavailable.
+    """
+    if _embedding_fn is None:
+        return [[0.0] * _EMBEDDING_DIM for _ in texts]
+    try:
+        vectors = _embedding_fn.encode(texts, show_progress_bar=False)
+        return [v.tolist() for v in vectors]
+    except Exception:
+        return [[0.0] * _EMBEDDING_DIM for _ in texts]
+
+
+def _embed_text(text):
+    """Embed a single text string. Returns list of floats (768-dim)."""
+    return _embed_texts([text])[0]
+
+
+class LanceCollection:
+    """LanceDB wrapper with ChromaDB-compatible API around a LanceDB table.
+
+    Provides the same API surface as the old chromadb.Collection (query, get, upsert, update,
+    delete, count) so existing code works with minimal changes.
+
+    LanceDB cosine distance: 0 = identical, 2 = opposite (range 0-2).
+    LanceDB cosine distance: 0 = identical, 2 = opposite (same range).
+    No conversion needed — distance semantics match directly.
+    """
+
+    def __init__(self, table, schema, name):
+        self._table = table
+        self._schema = schema
+        self._name = name
+        # Build set of known column names for metadata handling
+        self._meta_cols = {f.name for f in schema} - {"id", "text", "vector"}
+
+    def count(self):
+        """Return number of rows in the table."""
+        try:
+            return self._table.count_rows()
+        except Exception:
+            return 0
+
+    def query(self, query_texts=None, n_results=5, include=None, where=None):
+        """Semantic search. Returns nested results.
+
+        Result format: {"ids": [[...]], "documents": [[...]], "metadatas": [[...]], "distances": [[...]]}
+        """
+        if include is None:
+            include = ["metadatas", "distances"]
+        text = query_texts[0] if query_texts else ""
+        vector = _embed_text(text)
+
+        try:
+            q = self._table.search(vector).distance_type("cosine").limit(n_results)
+            if where:
+                sql_where = self._translate_where(where)
+                if sql_where:
+                    q = q.where(sql_where, prefilter=True)
+            rows = q.to_list()
+        except Exception:
+            rows = []
+
+        ids = [[r["id"] for r in rows]]
+        result = {"ids": ids}
+
+        if "documents" in include:
+            result["documents"] = [[r.get("text", "") for r in rows]]
+        if "distances" in include:
+            result["distances"] = [[r.get("_distance", 1.0) for r in rows]]
+        if "metadatas" in include:
+            result["metadatas"] = [[self._row_to_meta(r) for r in rows]]
+        if "embeddings" in include:
+            result["embeddings"] = [[r.get("vector", []) for r in rows]]
+
+        return result
+
+    def get(self, ids=None, where=None, limit=None, offset=0, include=None):
+        """Fetch by IDs or filter. Returns flat results.
+
+        Result format: {"ids": [...], "documents": [...], "metadatas": [...]}
+        """
+        if include is None:
+            include = ["metadatas", "documents"]
+
+        try:
+            if ids is not None and len(ids) > 0:
+                # Fetch by specific IDs
+                escaped = ", ".join(f"'{i}'" for i in ids)
+                sql = f"id IN ({escaped})"
+                rows = self._table.search().where(sql, prefilter=True).limit(len(ids) + 10).to_list()
+                # Preserve requested order
+                id_order = {i: idx for idx, i in enumerate(ids)}
+                rows.sort(key=lambda r: id_order.get(r["id"], 999999))
+            elif where:
+                sql_where = self._translate_where(where)
+                q = self._table.search().where(sql_where, prefilter=True)
+                if limit:
+                    q = q.limit(limit)
+                else:
+                    q = q.limit(10000)  # practical cap
+                rows = q.to_list()
+            elif limit:
+                rows = self._table.search().limit(limit).to_list()
+                if offset and offset > 0:
+                    rows = rows[offset:]
+            else:
+                rows = self._table.search().limit(10000).to_list()
+        except Exception:
+            rows = []
+
+        result = {"ids": [r["id"] for r in rows]}
+
+        if "documents" in include:
+            result["documents"] = [r.get("text", "") for r in rows]
+        if "metadatas" in include:
+            result["metadatas"] = [self._row_to_meta(r) for r in rows]
+        if "embeddings" in include:
+            result["embeddings"] = [r.get("vector", []) for r in rows]
+
+        return result
+
+    def upsert(self, documents=None, metadatas=None, ids=None):
+        """Upsert records using LanceDB merge_insert."""
+        if not ids or not documents:
+            return
+        records = []
+        vectors = _embed_texts(documents)
+        for i, doc_id in enumerate(ids):
+            doc = documents[i] if i < len(documents) else ""
+            meta = metadatas[i] if metadatas and i < len(metadatas) else {}
+            record = self._build_record(doc_id, doc, vectors[i], meta)
+            records.append(record)
+
+        try:
+            self._table.merge_insert("id") \
+                .when_matched_update_all() \
+                .when_not_matched_insert_all() \
+                .execute(records)
+        except Exception as e:
+            # Fallback: try add (for new tables or if merge_insert fails)
+            try:
+                self._table.add(records)
+            except Exception:
+                print(f"[Lance] upsert failed for {self._name}: {e}", file=_sys.stderr)
+
+    def update(self, ids=None, metadatas=None, documents=None):
+        """Update metadata and/or documents for existing records.
+
+        API: collection.update(ids=[...], metadatas=[...], documents=[...])
+        LanceDB: fetch existing, merge, re-upsert (merge_insert pattern).
+        """
+        if not ids:
+            return
+        try:
+            # Fetch existing records
+            escaped = ", ".join(f"'{i}'" for i in ids)
+            existing = self._table.search().where(f"id IN ({escaped})", prefilter=True).limit(len(ids) + 10).to_list()
+            existing_map = {r["id"]: r for r in existing}
+
+            records = []
+            for i, doc_id in enumerate(ids):
+                old = existing_map.get(doc_id, {})
+                meta = metadatas[i] if metadatas and i < len(metadatas) else {}
+                doc = documents[i] if documents and i < len(documents) else old.get("text", "")
+                vector = old.get("vector", [0.0] * _EMBEDDING_DIM)
+
+                # If document changed, re-embed
+                if documents and i < len(documents) and documents[i] != old.get("text", ""):
+                    vector = _embed_text(documents[i])
+
+                # Merge: old metadata + new metadata
+                merged_meta = self._row_to_meta(old)
+                merged_meta.update(meta)
+
+                record = self._build_record(doc_id, doc, vector, merged_meta)
+                records.append(record)
+
+            if records:
+                self._table.merge_insert("id") \
+                    .when_matched_update_all() \
+                    .when_not_matched_insert_all() \
+                    .execute(records)
+        except Exception as e:
+            print(f"[Lance] update failed for {self._name}: {e}", file=_sys.stderr)
+
+    def delete(self, ids=None):
+        """Delete records by IDs."""
+        if not ids:
+            return
+        try:
+            escaped = ", ".join(f"'{i}'" for i in ids)
+            self._table.delete(f"id IN ({escaped})")
+        except Exception as e:
+            print(f"[Lance] delete failed for {self._name}: {e}", file=_sys.stderr)
+
+    def _build_record(self, doc_id, text, vector, meta):
+        """Build a typed record dict matching the Arrow schema."""
+        record = {
+            "id": str(doc_id),
+            "text": str(text) if text else "",
+            "vector": vector if vector and len(vector) == _EMBEDDING_DIM else [0.0] * _EMBEDDING_DIM,
+        }
+        # Fill metadata columns from schema
+        for col_name in self._meta_cols:
+            field = self._schema.field(col_name)
+            val = meta.get(col_name)
+            if pa.types.is_float64(field.type):
+                try:
+                    record[col_name] = float(val) if val is not None else 0.0
+                except (ValueError, TypeError):
+                    record[col_name] = 0.0
+            elif pa.types.is_int32(field.type):
+                try:
+                    record[col_name] = int(val) if val is not None else 0
+                except (ValueError, TypeError):
+                    record[col_name] = 0
+            else:
+                record[col_name] = str(val) if val is not None else ""
+        return record
+
+    def _row_to_meta(self, row):
+        """Extract metadata dict from a LanceDB row (exclude id, text, vector, _distance)."""
+        meta = {}
+        for col_name in self._meta_cols:
+            val = row.get(col_name)
+            if val is not None:
+                meta[col_name] = val
+        return meta
+
+    @staticmethod
+    def _translate_where(where):
+        """Translate where-clause dict (ChromaDB filter syntax) to LanceDB SQL string.
+
+        Examples:
+            {"session_time": {"$lt": 123.4}} → "session_time < 123.4"
+            {"error_hash": "abc"} → "error_hash = 'abc'"
+            {"$and": [...]} → "(clause1) AND (clause2)"
+        """
+        if not where or not isinstance(where, dict):
+            return ""
+
+        parts = []
+        for key, val in where.items():
+            if key == "$and":
+                sub_parts = []
+                for sub in val:
+                    translated = LanceCollection._translate_where(sub)
+                    if translated:
+                        sub_parts.append(f"({translated})")
+                if sub_parts:
+                    parts.append(" AND ".join(sub_parts))
+            elif key == "$or":
+                sub_parts = []
+                for sub in val:
+                    translated = LanceCollection._translate_where(sub)
+                    if translated:
+                        sub_parts.append(f"({translated})")
+                if sub_parts:
+                    parts.append(" OR ".join(sub_parts))
+            elif isinstance(val, dict):
+                # Operator clause: {"$lt": X}, {"$gte": X}, etc.
+                op_map = {"$lt": "<", "$lte": "<=", "$gt": ">", "$gte": ">=",
+                          "$eq": "=", "$ne": "!="}
+                for op, sql_op in op_map.items():
+                    if op in val:
+                        v = val[op]
+                        if isinstance(v, str):
+                            parts.append(f"{key} {sql_op} '{v}'")
+                        else:
+                            parts.append(f"{key} {sql_op} {v}")
+            else:
+                # Exact match: {"error_hash": "abc"}
+                if isinstance(val, str):
+                    parts.append(f"{key} = '{val}'")
+                else:
+                    parts.append(f"{key} = {val}")
+
+        return " AND ".join(parts)
+
+
+def _init_lancedb():
+    """Lazy initialization of LanceDB connection and table wrappers.
 
     Called from _ensure_initialized() on first MCP tool use.
     Safe to call multiple times — idempotent after first run.
     Uses nomic-ai/nomic-embed-text-v2-moe embedding model (768-dim, 8192 tokens).
     """
-    global client, collection, fix_outcomes, observations, web_pages, quarantine, _chromadb_degraded, _embedding_fn
-    if client is not None:
+    global _lance_db, collection, fix_outcomes, observations, web_pages, quarantine, _chromadb_degraded, _embedding_fn
+    if _lance_db is not None:
         return
     try:
         # Initialize embedding function (nomic-embed-text-v2-moe, 768-dim, 8192 tokens)
         try:
-            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-            _embedding_fn = SentenceTransformerEmbeddingFunction(
-                model_name=_EMBEDDING_MODEL, trust_remote_code=True,
-            )
-            print(f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} (768-dim)", file=_sys.stderr)
+            from sentence_transformers import SentenceTransformer
+            _embedding_fn = SentenceTransformer(_EMBEDDING_MODEL, trust_remote_code=True)
+            print(f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim)", file=_sys.stderr)
         except Exception as ef_err:
-            print(f"[MCP] Embedding model load failed, using default: {ef_err}", file=_sys.stderr)
-            _embedding_fn = None  # Falls back to ChromaDB default (all-MiniLM-L6-v2)
+            print(f"[MCP] Embedding model load failed: {ef_err}", file=_sys.stderr)
+            _embedding_fn = None
 
-        client = chromadb.PersistentClient(path=MEMORY_DIR)
-        _ef_kwargs = {"embedding_function": _embedding_fn} if _embedding_fn else {}
+        _lance_db = lancedb.connect(LANCE_DIR)
 
-        def _get_col(name: str):
-            """Open collection, falling back to persisted embedding on conflict."""
+        def _open_or_create(name: str, schema):
+            """Open table if exists, create with schema if not."""
             try:
-                return client.get_or_create_collection(
-                    name=name, metadata={"hnsw:space": "cosine"}, **_ef_kwargs,
-                )
-            except ValueError as ve:
-                if "embedding function" in str(ve).lower() or "Embedding function conflict" in str(ve):
-                    print(f"[MCP] Embedding conflict on '{name}' — using persisted embedding", file=_sys.stderr)
-                    return client.get_or_create_collection(
-                        name=name, metadata={"hnsw:space": "cosine"},
-                    )
-                raise
+                tbl = _lance_db.open_table(name)
+            except Exception:
+                tbl = _lance_db.create_table(name, schema=schema)
+            return LanceCollection(tbl, schema, name)
 
-        collection = _get_col("knowledge")
-        fix_outcomes = _get_col("fix_outcomes")
-        observations = _get_col("observations")
-        web_pages = _get_col("web_pages")
-        quarantine = _get_col("quarantine")
+        collection = _open_or_create("knowledge", _KNOWLEDGE_SCHEMA)
+        fix_outcomes = _open_or_create("fix_outcomes", _FIX_OUTCOMES_SCHEMA)
+        observations = _open_or_create("observations", _OBSERVATIONS_SCHEMA)
+        web_pages = _open_or_create("web_pages", _WEB_PAGES_SCHEMA)
+        quarantine = _open_or_create("quarantine", _QUARANTINE_SCHEMA)
+
+        print(f"[MCP] LanceDB initialized at {LANCE_DIR}", file=_sys.stderr)
     except Exception as e:
         import traceback
-        print(f"[MCP] ChromaDB init failed: {e}\n{traceback.format_exc()}", file=_sys.stderr)
+        print(f"[MCP] LanceDB init failed: {e}\n{traceback.format_exc()}", file=_sys.stderr)
         _chromadb_degraded = True
 
 # Progressive disclosure: preview length for search summaries
@@ -229,7 +594,7 @@ def generate_id(content: str) -> str:
     """Generate a deterministic ID from content alone.
 
     Using only content (no timestamp) means saving the same knowledge twice
-    produces the same ID, which ChromaDB treats as an upsert — preventing
+    produces the same ID, which is treated as an upsert — preventing
     duplicate entries and unbounded database growth.
     """
     return hashlib.sha256(content.encode()).hexdigest()[:16]
@@ -309,119 +674,20 @@ def _normalize_tags(tags: str) -> str:
 
 
 def _migrate_previews():
-    """One-time backfill: add preview field to all existing entries missing it.
-
-    Checks the first entry for a 'preview' key. If present, migration is
-    already done. Otherwise, batch-updates all entries in chunks of 100.
-    Called once at module load time.
+    """LEGACY: Preview backfill no longer needed — handled by ChromaDB→LanceDB migration.
+    Returns 0 (no-op).
     """
-    count = collection.count()
-    if count == 0:
-        return 0
-
-    # Check if migration is needed by sampling first entry
-    sample = collection.get(limit=1, include=["metadatas"])
-    if sample and sample.get("metadatas") and sample["metadatas"][0].get("preview"):
-        return 0  # Already migrated
-
-    # Fetch all entries to backfill previews
-    all_data = collection.get(limit=count, include=["documents", "metadatas"])
-    if not all_data or not all_data.get("ids"):
-        return 0
-
-    ids = all_data["ids"]
-    docs = all_data.get("documents", [])
-    metas = all_data.get("metadatas", [])
-
-    migrated = 0
-    batch_size = 100
-    for start in range(0, len(ids), batch_size):
-        end = min(start + batch_size, len(ids))
-        batch_ids = []
-        batch_metas = []
-
-        for i in range(start, end):
-            meta = metas[i] if i < len(metas) else {}
-            if meta.get("preview"):
-                continue  # Already has preview
-
-            doc = docs[i] if i < len(docs) else ""
-            preview = doc[:SUMMARY_LENGTH].replace("\n", " ")
-            if len(doc) > SUMMARY_LENGTH:
-                preview += "..."
-
-            updated_meta = dict(meta) if meta else {}
-            updated_meta["preview"] = preview
-            batch_ids.append(ids[i])
-            batch_metas.append(updated_meta)
-
-        if batch_ids:
-            collection.update(ids=batch_ids, metadatas=batch_metas)
-            migrated += len(batch_ids)
-
-    return migrated
+    return 0
 
 
 _TIER_BACKFILL_MARKER = os.path.join(os.path.dirname(__file__), ".tier_backfill_done")
 
 
 def _backfill_tiers():
-    """One-time backfill: add tier field to all existing entries missing it.
-
-    Uses _classify_tier() on each entry's content and tags.  Gated by a
-    marker file so it runs exactly once.  Called from _init_chromadb().
+    """LEGACY: Tier backfill no longer needed — handled by ChromaDB→LanceDB migration.
+    Returns 0 (no-op).
     """
-    if os.path.exists(_TIER_BACKFILL_MARKER):
-        return 0
-    count = collection.count()
-    if count == 0:
-        try:
-            with open(_TIER_BACKFILL_MARKER, "w") as f:
-                f.write(datetime.now().isoformat())
-        except OSError:
-            pass
-        return 0
-
-    all_data = collection.get(limit=count, include=["documents", "metadatas"])
-    if not all_data or not all_data.get("ids"):
-        return 0
-
-    ids = all_data["ids"]
-    docs = all_data.get("documents", [])
-    metas = all_data.get("metadatas", [])
-
-    migrated = 0
-    batch_size = 100
-    for start in range(0, len(ids), batch_size):
-        end = min(start + batch_size, len(ids))
-        batch_ids = []
-        batch_metas = []
-
-        for i in range(start, end):
-            meta = metas[i] if i < len(metas) else {}
-            if meta and meta.get("tier") is not None:
-                continue  # Already has tier
-
-            doc = docs[i] if i < len(docs) else ""
-            tags = meta.get("tags", "") if meta else ""
-            tier = _classify_tier(doc, tags)
-
-            updated_meta = dict(meta) if meta else {}
-            updated_meta["tier"] = tier
-            batch_ids.append(ids[i])
-            batch_metas.append(updated_meta)
-
-        if batch_ids:
-            collection.update(ids=batch_ids, metadatas=batch_metas)
-            migrated += len(batch_ids)
-
-    try:
-        with open(_TIER_BACKFILL_MARKER, "w") as f:
-            f.write(f"{datetime.now().isoformat()} migrated={migrated}")
-    except OSError:
-        pass
-
-    return migrated
+    return 0
 
 
 _EMBEDDING_MIGRATION_MARKER = os.path.join(os.path.dirname(__file__), ".embedding_migration_done")
@@ -429,109 +695,11 @@ _COLLECTION_NAMES = ["knowledge", "fix_outcomes", "observations", "web_pages", "
 
 
 def _migrate_embeddings():
-    """One-time re-embedding: delete+recreate collections with new embedding model.
-
-    Old 384-dim vectors (all-MiniLM-L6-v2) are incompatible with new 768-dim
-    (nomic-ai/nomic-embed-text-v2-moe).  Must export data, delete collection, recreate with
-    new embedding function, and re-add documents (ChromaDB auto-embeds).
-
-    Gated by marker file.  Called from _ensure_initialized() after _init_chromadb().
+    """LEGACY: Embedding migration no longer needed — LanceDB stores vectors directly.
+    ChromaDB→LanceDB migration script handles embedding transfer.
+    Returns 0 (no-op).
     """
-    global collection, fix_outcomes, observations, web_pages, quarantine
-
-    if os.path.exists(_EMBEDDING_MIGRATION_MARKER):
-        return 0
-    if _embedding_fn is None:
-        return 0  # No custom embedding loaded, skip migration
-    if client is None:
-        return 0
-
-    total_migrated = 0
-    col_map = {
-        "knowledge": collection,
-        "fix_outcomes": fix_outcomes,
-        "observations": observations,
-        "web_pages": web_pages,
-        "quarantine": quarantine,
-    }
-    _ef_kwargs = {"embedding_function": _embedding_fn}
-
-    for name, col_ref in col_map.items():
-        if col_ref is None:
-            continue
-        try:
-            count = col_ref.count()
-            if count == 0:
-                continue
-
-            # Export all data (docs + metas + ids, no embeddings)
-            all_ids, all_docs, all_metas = [], [], []
-            batch_size = 50
-            for offset in range(0, count, batch_size):
-                try:
-                    chunk = col_ref.get(
-                        limit=batch_size, offset=offset,
-                        include=["documents", "metadatas"],
-                    )
-                    all_ids.extend(chunk.get("ids", []))
-                    all_docs.extend(chunk.get("documents") or [])
-                    all_metas.extend(chunk.get("metadatas") or [])
-                except Exception:
-                    pass
-
-            if not all_ids:
-                continue
-
-            # Delete and recreate collection with new embedding function
-            client.delete_collection(name)
-            new_col = client.get_or_create_collection(
-                name=name,
-                metadata={"hnsw:space": "cosine"},
-                **_ef_kwargs,
-            )
-
-            # Re-add in batches (ChromaDB auto-embeds with new model)
-            for start in range(0, len(all_ids), batch_size):
-                end = min(start + batch_size, len(all_ids))
-                batch_ids = all_ids[start:end]
-                batch_docs = all_docs[start:end] if all_docs else None
-                batch_metas = all_metas[start:end] if all_metas else None
-                try:
-                    kwargs = {"ids": batch_ids}
-                    if batch_docs:
-                        kwargs["documents"] = batch_docs
-                    if batch_metas:
-                        kwargs["metadatas"] = batch_metas
-                    new_col.upsert(**kwargs)
-                except Exception as batch_err:
-                    print(f"[MCP] Migration batch error in {name}: {batch_err}", file=_sys.stderr)
-
-            total_migrated += len(all_ids)
-
-            # Update global reference
-            if name == "knowledge":
-                collection = new_col
-            elif name == "fix_outcomes":
-                fix_outcomes = new_col
-            elif name == "observations":
-                observations = new_col
-            elif name == "web_pages":
-                web_pages = new_col
-            elif name == "quarantine":
-                quarantine = new_col
-
-            print(f"[MCP] Migrated {name}: {len(all_ids)} entries re-embedded", file=_sys.stderr)
-        except Exception as e:
-            print(f"[MCP] Migration failed for {name}: {e}", file=_sys.stderr)
-
-    # Write marker
-    try:
-        with open(_EMBEDDING_MIGRATION_MARKER, "w") as f:
-            f.write(f"{datetime.now().isoformat()} migrated={total_migrated} model={_EMBEDDING_MODEL}")
-    except OSError:
-        pass
-
-    return total_migrated
+    return 0
 
 
 # ──────────────────────────────────────────────────
@@ -679,9 +847,9 @@ class FTS5Index:
     """SQLite FTS5 index for keyword and tag search.
 
     Persisted to disk by default; falls back to :memory: for tests.
-    ChromaDB remains the source of truth; FTS5 is a read-optimized
+    LanceDB remains the source of truth; FTS5 is a read-optimized
     secondary index. A sync_meta table tracks whether the on-disk
-    index matches ChromaDB, skipping rebuild when already synced.
+    index matches LanceDB, skipping rebuild when already synced.
     """
 
     def __init__(self, db_path=":memory:"):
@@ -716,14 +884,14 @@ class FTS5Index:
             pass  # Column already exists
         c.commit()
 
-    def is_synced(self, chromadb_count):
-        """Check if FTS5 index is in sync with ChromaDB by entry count."""
+    def is_synced(self, lance_count):
+        """Check if FTS5 index is in sync with LanceDB by entry count."""
         row = self.conn.execute(
             "SELECT value FROM sync_meta WHERE key='sync_count'"
         ).fetchone()
         if row is None:
             return False
-        return int(row[0]) == chromadb_count
+        return int(row[0]) == lance_count
 
     def _update_sync_count(self, count):
         """Record the current sync count after a successful rebuild or add."""
@@ -733,23 +901,23 @@ class FTS5Index:
         )
         self.conn.commit()
 
-    def reset_and_rebuild(self, chroma_collection):
-        """Drop all tables and rebuild from ChromaDB (corruption recovery)."""
+    def reset_and_rebuild(self, lance_collection):
+        """Drop all tables and rebuild from LanceDB (corruption recovery)."""
         self.conn.execute("DROP TABLE IF EXISTS mem_fts")
         self.conn.execute("DROP TABLE IF EXISTS mem_lookup")
         self.conn.execute("DROP TABLE IF EXISTS tags")
         self.conn.execute("DROP TABLE IF EXISTS sync_meta")
         self.conn.commit()
         self._create_tables()
-        return self.build_from_chromadb(chroma_collection)
+        return self.build_from_lance(lance_collection)
 
-    def build_from_chromadb(self, chroma_collection):
-        """Populate FTS5 index from ChromaDB data. Returns entry count."""
-        count = chroma_collection.count()
+    def build_from_lance(self, lance_collection):
+        """Populate FTS5 index from LanceDB data. Returns entry count."""
+        count = lance_collection.count()
         if count == 0:
             return 0
 
-        all_data = chroma_collection.get(
+        all_data = lance_collection.get(
             limit=count,
             include=["documents", "metadatas"],
         )
@@ -779,6 +947,9 @@ class FTS5Index:
         self.conn.commit()
         self._update_sync_count(len(ids))
         return len(ids)
+
+    # Legacy alias for backward compatibility (used by test_framework.py mock tests)
+    build_from_chromadb = build_from_lance
 
     def _insert_entry(self, memory_id, content, preview, tags_str, timestamp, session_time, url=""):
         """Insert a single entry into FTS5 + lookup + tags tables."""
@@ -978,7 +1149,7 @@ def _detect_query_mode(query, routing="default"):
         # Underscores or dots → identifiers (gate_timing, memory_server.py)
         if any("_" in w or "." in w for w in words):
             return "keyword"
-        # CamelCase → class/module names (ChromaDB, FTS5Index)
+        # CamelCase → class/module names (LanceDB, FTS5Index)
         if any(c.isupper() for w in words for c in w[1:]):
             return "keyword"
 
@@ -1081,7 +1252,7 @@ def _rerank_keyword_overlap(results, query, boost_weight=0.05):
 
 
 def _merge_results(fts_results, chroma_summaries, top_k=15):
-    """Merge FTS5 and ChromaDB results using Reciprocal Rank Fusion (RRF).
+    """Merge FTS5 and LanceDB results using Reciprocal Rank Fusion (RRF).
 
     RRF gives each engine equal weight: score = sum(1/(k+rank)) across engines.
     Items appearing in both engines naturally score ~2x higher.
@@ -1092,7 +1263,7 @@ def _merge_results(fts_results, chroma_summaries, top_k=15):
     entries = {}  # memory_id -> best entry dict
     sources = {}  # memory_id -> set of source names
 
-    # Score ChromaDB results by rank
+    # Score vector results by rank
     for rank, entry in enumerate(chroma_summaries, start=1):
         mid = entry.get("id", "")
         if not mid:
@@ -1123,7 +1294,7 @@ def _merge_results(fts_results, chroma_summaries, top_k=15):
 
 
 # Lazy initialization — only run when module is used as a server, not when imported
-# for testing. ChromaDB Rust backend segfaults on concurrent PersistentClient access.
+# for testing. LanceDB uses optimistic concurrency control (no more segfaults).
 _preview_migrated = False
 fts_index = FTS5Index(db_path=FTS5_DB_PATH)
 _fts_count = 0
@@ -1133,33 +1304,30 @@ _initialized = False
 
 
 def _ensure_initialized():
-    """Run one-time initialization (ChromaDB client + preview migration + FTS5 build).
+    """Run one-time initialization (LanceDB + FTS5 build).
 
     Called lazily on first MCP tool use or explicitly at server startup.
     Safe to call multiple times — idempotent after first run.
-    If the on-disk FTS5 index is already in sync with ChromaDB (by count),
+    If the on-disk FTS5 index is already in sync with LanceDB (by count),
     the expensive rebuild is skipped entirely.
     """
     global _preview_migrated, fts_index, _fts_count, _initialized
     if _initialized:
         return
-    _init_chromadb()
+    _init_lancedb()
     if collection is None:
-        print("[MCP] ChromaDB unavailable — starting in degraded mode.", file=_sys.stderr)
+        print("[MCP] LanceDB unavailable — starting in degraded mode.", file=_sys.stderr)
         _initialized = True
         return
-    _migrate_embeddings()
-    _preview_migrated = _migrate_previews()
-    _backfill_tiers()
 
-    # Check if persisted FTS5 is already synced with ChromaDB
-    chroma_count = collection.count()
-    if fts_index.is_synced(chroma_count):
-        _fts_count = chroma_count
+    # Check if persisted FTS5 is already synced with LanceDB
+    lance_count = collection.count()
+    if fts_index.is_synced(lance_count):
+        _fts_count = lance_count
         _initialized = True
         return  # Skip rebuild — disk FTS5 is current
 
-    _fts_count = fts_index.build_from_chromadb(collection)
+    _fts_count = fts_index.build_from_lance(collection)
     _initialized = True
 
 # ──────────────────────────────────────────────────
@@ -1245,7 +1413,7 @@ def _get_expanded_tags(query: str) -> list[str]:
 
 
 def format_results(results) -> list[dict]:
-    """Format ChromaDB results into readable dicts."""
+    """Format query results into readable dicts."""
     if not results or not results.get("documents"):
         return []
 
@@ -1269,7 +1437,7 @@ def format_results(results) -> list[dict]:
 
 
 def format_summaries(results) -> list[dict]:
-    """Format ChromaDB query results into compact summaries (id + preview).
+    """Format query results into compact summaries (id + preview).
 
     Returns lightweight entries for progressive disclosure. Use get_memory(id)
     to retrieve full content for specific entries.
@@ -1369,7 +1537,7 @@ def _temporal_decay(confidence, timestamp_str):
 
 
 def _flush_capture_queue():
-    """Read the capture queue and upsert all observations to ChromaDB.
+    """Read the capture queue and upsert all observations to LanceDB.
 
     Atomically replaces the queue file with an empty one to prevent
     duplicate ingestion. Skips corrupted lines gracefully.
@@ -1404,7 +1572,7 @@ def _flush_capture_queue():
                 continue  # skip corrupted lines
 
         if docs:
-            # Batch upsert (ChromaDB handles dedup via ids)
+            # Batch upsert (LanceDB handles dedup via merge_insert)
             batch_size = 100
             for i in range(0, len(docs), batch_size):
                 observations.upsert(
@@ -1619,7 +1787,7 @@ def _compact_observations():
             try:
                 oldest = observations.get(
                     limit=target_delete,
-                    # ChromaDB returns in insertion order by default
+                    # Returns in insertion order by default
                 )
                 if oldest and oldest.get("ids"):
                     batch_size = 100
@@ -1675,7 +1843,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     """
     _ensure_initialized()
     if _chromadb_degraded:
-        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     recency_weight = max(0.0, min(1.0, recency_weight))
     top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
     count = collection.count()
@@ -1910,7 +2078,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                     if lid and lid not in organic_ids:
                         linked_ids.add(lid)
 
-            # Terminal L2 linked_memory_ids: ChromaDB memory IDs linked to terminal records
+            # Terminal L2 linked_memory_ids: memory IDs linked to terminal records
             r_linked = r.get("linked_memory_ids", "") or ""
             if r_linked and r.get("source") == "terminal_l2":
                 for mid in r_linked.split(","):
@@ -1977,7 +2145,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     # Final trim: enforce top_k budget after all sources (L3, linked) have been appended
     formatted = formatted[:top_k]
 
-    # Session context enrichment: attach conversation context to ChromaDB hits
+    # Session context enrichment: attach conversation context to vector search hits
     enrichment_count = 0
     try:
         if _enrichment_enabled:
@@ -2007,7 +2175,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     except Exception:
         pass  # Enrichment is optional, never break search
 
-    # TG context enrichment: attach Telegram messages around ChromaDB hit timestamps
+    # TG context enrichment: attach Telegram messages around search hit timestamps
     tg_enrichment_count = 0
     try:
         if _tg_enrichment_enabled:
@@ -2173,7 +2341,7 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     """
     _ensure_initialized()
     if _chromadb_degraded:
-        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     # Cap metadata strings to 500 chars
     if len(context) > 500:
         context = context[:497] + "..."
@@ -2367,7 +2535,7 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
     """
     _ensure_initialized()
     if _chromadb_degraded:
-        return {"error": "ChromaDB unavailable — running in degraded mode"}
+        return {"error": "LanceDB unavailable — running in degraded mode"}
     threshold = _validate_distance_threshold(threshold, default=0.15, min_val=0.03, max_val=0.5)
 
     count = collection.count()
@@ -2470,7 +2638,7 @@ def get_memory(id: str) -> dict:
     """
     _ensure_initialized()
     if _chromadb_degraded:
-        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     try:
         # Support batch fetch: comma-separated IDs return multiple memories
         ids = [i.strip() for i in id.split(",") if i.strip()]
@@ -2534,7 +2702,7 @@ def delete_memory(id: str) -> dict:
         id: The memory ID to delete (from search results). Comma-separated for batch delete.
     """
     if _chromadb_degraded:
-        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     try:
         ids = [i.strip() for i in id.split(",") if i.strip()]
         if not ids:
@@ -2661,7 +2829,7 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
     """
     _ensure_initialized()
     if _chromadb_degraded:
-        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     normalized, error_hash = error_signature(error_text)
     strategy_hash = fnv1a_hash(strategy_id)
     chain_id = f"{error_hash}_{strategy_hash}"
@@ -2717,7 +2885,7 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
     """
     _ensure_initialized()
     if _chromadb_degraded:
-        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     if outcome not in ("success", "failure"):
         return {"error": "outcome must be 'success' or 'failure'"}
 
@@ -2775,7 +2943,7 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
     """
     _ensure_initialized()
     if _chromadb_degraded:
-        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
     normalized, error_hash = error_signature(error_text)
 
@@ -2909,7 +3077,7 @@ def suggest_promotions(top_k: int = 5) -> dict:
     if not candidates:
         return {"clusters": [], "message": "No promotable memories found (need type:error, type:learning, or type:correction tags)."}
 
-    # Get embeddings for clustering via ChromaDB
+    # Get embeddings for clustering
     candidate_ids = [c["id"] for c in candidates]
 
     # Build a lookup from id -> candidate info
@@ -2926,7 +3094,7 @@ def suggest_promotions(top_k: int = 5) -> dict:
     except Exception:
         pass
 
-    # Cluster similar memories using ChromaDB cosine distance
+    # Cluster similar memories using cosine distance
     # For each candidate, find others within distance 0.3
     clusters = []  # list of sets of ids
     clustered = set()
@@ -3126,9 +3294,9 @@ def list_stale_memories(days: int = 60, top_k: int = 20) -> dict:
 
 
 def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3) -> dict:
-    """Group related memories into semantic clusters using ChromaDB distance queries.
+    """Group related memories into semantic clusters using vector distance queries.
 
-    Uses a union-find algorithm over ChromaDB neighbor queries to discover
+    Uses a union-find algorithm over neighbor queries to discover
     clusters of related knowledge. Useful for finding themes, redundancies,
     and knowledge gaps.
 
@@ -3187,7 +3355,7 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
             rank[ra] += 1
 
     # For each memory, find neighbors within distance_threshold
-    # Process in batches to avoid overwhelming ChromaDB
+    # Process in batches to avoid overwhelming the database
     neighbor_k = min(30, n)  # Check up to 30 nearest neighbors per memory
 
     for i in range(n):
@@ -3669,7 +3837,7 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
         distance_threshold: Max cosine distance for clustering (used by cluster).
     """
     if _chromadb_degraded:
-        return {"error": "ChromaDB unavailable — running in degraded mode", "degraded": True}
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     if action == "promotions":
         return suggest_promotions(top_k=top_k if top_k is not None else 5)
     elif action == "stale":
@@ -3920,51 +4088,45 @@ def _handle_socket_client(conn):
 
 
 def _backup_database():
-    """Create a consistent backup of chroma.sqlite3 using sqlite3.backup() API.
-    Safe under WAL mode. Returns dict with backup_path and size_bytes.
+    """Create a consistent backup of the LanceDB directory.
+
+    LanceDB stores data as immutable Lance files, so a directory copy is safe.
+    Returns dict with backup_path and size_bytes.
     """
-    import sqlite3 as _sqlite3
+    import shutil
 
-    src_path = os.path.join(MEMORY_DIR, "chroma.sqlite3")
-    bak_path = os.path.join(MEMORY_DIR, "chroma.sqlite3.backup")
+    if not os.path.isdir(LANCE_DIR):
+        raise RuntimeError(f"LanceDB directory not found: {LANCE_DIR}")
 
-    if not os.path.exists(src_path):
-        raise RuntimeError(f"Source DB not found: {src_path}")
-
-    src_size = os.path.getsize(src_path)
-    if src_size < 1024:  # < 1 KB = clearly corrupt
-        raise RuntimeError(f"Source DB too small ({src_size} bytes), refusing to backup")
-
-    # Atomic: backup to .tmp then os.replace
+    bak_path = os.path.join(MEMORY_DIR, "lancedb.backup")
     tmp_path = bak_path + ".tmp"
-    src_conn = None
-    dst_conn = None
+
+    # Remove stale tmp if exists
+    if os.path.exists(tmp_path):
+        shutil.rmtree(tmp_path)
+
     try:
-        src_conn = _sqlite3.connect(src_path)
-        dst_conn = _sqlite3.connect(tmp_path)
-        src_conn.backup(dst_conn)
-        dst_conn.close()
-        dst_conn = None
-        src_conn.close()
-        src_conn = None
-        os.replace(tmp_path, bak_path)
+        shutil.copytree(LANCE_DIR, tmp_path)
+        # Atomic swap: remove old backup, rename tmp
+        if os.path.exists(bak_path):
+            shutil.rmtree(bak_path)
+        os.rename(tmp_path, bak_path)
     except Exception:
-        if dst_conn:
-            try: dst_conn.close()
-            except Exception: pass
-        if src_conn:
-            try: src_conn.close()
-            except Exception: pass
         if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+            shutil.rmtree(tmp_path, ignore_errors=True)
         raise
 
-    bak_size = os.path.getsize(bak_path)
-    return {"backup_path": bak_path, "size_bytes": bak_size}
+    # Calculate total size
+    total_size = 0
+    for dirpath, _dirnames, filenames in os.walk(bak_path):
+        for f in filenames:
+            total_size += os.path.getsize(os.path.join(dirpath, f))
+
+    return {"backup_path": bak_path, "size_bytes": total_size}
 
 
 def _dispatch_request(req):
-    """Route a UDS request to the appropriate ChromaDB operation."""
+    """Route a UDS request to the appropriate LanceDB operation."""
     method = req.get("method", "")
     col_name = req.get("collection", "")
     params = req.get("params", {})
@@ -4038,8 +4200,8 @@ def _dispatch_request(req):
                 n_results=params.get("n_results", 5),
                 include=params.get("include", ["metadatas", "distances"]),
             )
-            # Convert ChromaDB result to JSON-serializable dict
-            return {"ok": True, "result": _serialize_chromadb_result(result)}
+            # Convert result to JSON-serializable dict
+            return {"ok": True, "result": _serialize_result(result)}
 
         if method == "get":
             kwargs = {}
@@ -4049,7 +4211,7 @@ def _dispatch_request(req):
                 kwargs["limit"] = params["limit"]
             kwargs["include"] = params.get("include", ["metadatas", "documents"])
             result = col.get(**kwargs)
-            return {"ok": True, "result": _serialize_chromadb_result(result)}
+            return {"ok": True, "result": _serialize_result(result)}
 
         if method == "upsert":
             docs = params.get("documents", [])
@@ -4081,8 +4243,8 @@ def _dispatch_request(req):
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
-def _serialize_chromadb_result(result):
-    """Convert ChromaDB query/get result to a plain dict for JSON serialization."""
+def _serialize_result(result):
+    """Convert query/get result to a plain dict for JSON serialization."""
     if result is None:
         return {}
     out = {}
