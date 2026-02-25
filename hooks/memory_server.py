@@ -105,7 +105,7 @@ os.makedirs(LANCE_DIR, exist_ok=True)
 _EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v2-moe"
 _EMBEDDING_DIM = 768
 _embedding_fn = None  # Lazy init — SentenceTransformer instance
-FTS5_DB_PATH = os.path.join(MEMORY_DIR, "fts5_index.db")
+TAGS_DB_PATH = os.path.join(MEMORY_DIR, "tags.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
 SOCKET_PATH = os.path.join(
@@ -843,13 +843,11 @@ import sqlite3
 import re
 
 
-class FTS5Index:
-    """SQLite FTS5 index for keyword and tag search.
+class TagIndex:
+    """Minimal SQLite tag index for boolean AND/OR tag search.
 
-    Persisted to disk by default; falls back to :memory: for tests.
-    LanceDB remains the source of truth; FTS5 is a read-optimized
-    secondary index. A sync_meta table tracks whether the on-disk
-    index matches LanceDB, skipping rebuild when already synced.
+    LanceDB is the source of truth; this is a derived read-optimized cache.
+    Keyword search is handled by LanceDB native FTS (BM25).
     """
 
     def __init__(self, db_path=":memory:"):
@@ -862,14 +860,6 @@ class FTS5Index:
 
     def _create_tables(self):
         c = self.conn
-        c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS mem_fts USING fts5(content, preview)")
-        c.execute("""CREATE TABLE IF NOT EXISTS mem_lookup (
-            fts_rowid INTEGER PRIMARY KEY,
-            memory_id TEXT UNIQUE,
-            tags TEXT,
-            timestamp TEXT,
-            session_time REAL
-        )""")
         c.execute("""CREATE TABLE IF NOT EXISTS tags (
             memory_id TEXT,
             tag TEXT
@@ -877,15 +867,10 @@ class FTS5Index:
         c.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_tags_mid ON tags(memory_id)")
         c.execute("CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)")
-        # Migration: add url column for citation tracking
-        try:
-            c.execute("ALTER TABLE mem_lookup ADD COLUMN url TEXT DEFAULT ''")
-        except Exception:
-            pass  # Column already exists
         c.commit()
 
     def is_synced(self, lance_count):
-        """Check if FTS5 index is in sync with LanceDB by entry count."""
+        """Check if tag index is in sync with LanceDB by entry count."""
         row = self.conn.execute(
             "SELECT value FROM sync_meta WHERE key='sync_count'"
         ).fetchone()
@@ -894,7 +879,6 @@ class FTS5Index:
         return int(row[0]) == lance_count
 
     def _update_sync_count(self, count):
-        """Record the current sync count after a successful rebuild or add."""
         self.conn.execute(
             "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('sync_count', ?)",
             (str(count),),
@@ -903,8 +887,6 @@ class FTS5Index:
 
     def reset_and_rebuild(self, lance_collection):
         """Drop all tables and rebuild from LanceDB (corruption recovery)."""
-        self.conn.execute("DROP TABLE IF EXISTS mem_fts")
-        self.conn.execute("DROP TABLE IF EXISTS mem_lookup")
         self.conn.execute("DROP TABLE IF EXISTS tags")
         self.conn.execute("DROP TABLE IF EXISTS sync_meta")
         self.conn.commit()
@@ -912,204 +894,75 @@ class FTS5Index:
         return self.build_from_lance(lance_collection)
 
     def build_from_lance(self, lance_collection):
-        """Populate FTS5 index from LanceDB data. Returns entry count."""
+        """Rebuild tags table from LanceDB. Returns entry count."""
         count = lance_collection.count()
         if count == 0:
             return 0
-
-        all_data = lance_collection.get(
-            limit=count,
-            include=["documents", "metadatas"],
-        )
+        all_data = lance_collection.get(limit=count, include=["metadatas"])
         if not all_data or not all_data.get("ids"):
             return 0
-
         ids = all_data["ids"]
-        docs = all_data.get("documents", [])
         metas = all_data.get("metadatas", [])
 
-        for i, mid in enumerate(ids):
-            doc = docs[i] if i < len(docs) else ""
-            meta = metas[i] if i < len(metas) else {}
-            preview = meta.get("preview", doc[:SUMMARY_LENGTH] if doc else "")
-            tags_str = meta.get("tags", "")
-            timestamp = meta.get("timestamp", "")
-            session_time = meta.get("session_time", 0.0)
-            if isinstance(session_time, str):
-                try:
-                    session_time = float(session_time)
-                except (ValueError, TypeError):
-                    session_time = 0.0
-
-            url = meta.get("primary_source", "")
-            self._insert_entry(mid, doc, preview, tags_str, timestamp, session_time, url)
-
-        self.conn.commit()
-        self._update_sync_count(len(ids))
+        with self._lock:
+            self.conn.execute("DELETE FROM tags")
+            rows = []
+            for i, mid in enumerate(ids):
+                meta = metas[i] if i < len(metas) else {}
+                tags_str = meta.get("tags", "") if meta else ""
+                if tags_str:
+                    for tag in tags_str.split(","):
+                        tag = tag.strip()
+                        if tag:
+                            rows.append((mid, tag))
+            self.conn.executemany("INSERT INTO tags VALUES (?, ?)", rows)
+            self._update_sync_count(len(ids))
         return len(ids)
 
     # Legacy alias for backward compatibility (used by test_framework.py mock tests)
     build_from_chromadb = build_from_lance
 
-    def _insert_entry(self, memory_id, content, preview, tags_str, timestamp, session_time, url=""):
-        """Insert a single entry into FTS5 + lookup + tags tables."""
-        c = self.conn
-        # Upsert: delete old entry if exists
-        existing = c.execute(
-            "SELECT fts_rowid FROM mem_lookup WHERE memory_id = ?", (memory_id,)
-        ).fetchone()
-        if existing:
-            c.execute("DELETE FROM mem_fts WHERE rowid = ?", (existing[0],))
-            c.execute("DELETE FROM mem_lookup WHERE memory_id = ?", (memory_id,))
-            c.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
-
-        c.execute("INSERT INTO mem_fts(content, preview) VALUES (?, ?)", (content, preview))
-        rowid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
-        c.execute(
-            "INSERT INTO mem_lookup(fts_rowid, memory_id, tags, timestamp, session_time, url) VALUES (?,?,?,?,?,?)",
-            (rowid, memory_id, tags_str, timestamp, session_time, url),
-        )
-
-        # Normalize tags into tag table
-        if tags_str:
-            for tag in tags_str.split(","):
-                tag = tag.strip()
-                if tag:
-                    c.execute("INSERT INTO tags(memory_id, tag) VALUES (?, ?)", (memory_id, tag))
-
-    def add_entry(self, memory_id, content, preview, tags_str, timestamp, session_time, url=""):
-        """Add or update an entry (dual-write from remember_this)."""
+    def add_tags(self, memory_id, tags_str):
+        """Add/update tags for a single memory (called on remember_this)."""
+        if not tags_str:
+            return
         with self._lock:
-            self._insert_entry(memory_id, content, preview, tags_str, timestamp, session_time, url)
-            self.conn.commit()
-            # Keep sync_count in step with additions
+            self.conn.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
+            rows = [(memory_id, t.strip()) for t in tags_str.split(",") if t.strip()]
+            self.conn.executemany("INSERT INTO tags VALUES (?, ?)", rows)
+            # Increment sync count
             row = self.conn.execute(
                 "SELECT value FROM sync_meta WHERE key='sync_count'"
             ).fetchone()
             if row:
                 self._update_sync_count(int(row[0]) + 1)
-
-    def remove_entry(self, memory_id):
-        """Remove an entry from FTS5 index (used by dedup sweep)."""
-        with self._lock:
-            existing = self.conn.execute(
-                "SELECT fts_rowid FROM mem_lookup WHERE memory_id = ?", (memory_id,)
-            ).fetchone()
-            if existing:
-                self.conn.execute("DELETE FROM mem_fts WHERE rowid = ?", (existing[0],))
-                self.conn.execute("DELETE FROM mem_lookup WHERE memory_id = ?", (memory_id,))
-                self.conn.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
+            else:
                 self.conn.commit()
 
-    def keyword_search(self, query, top_k=15):
-        """FTS5 keyword search with BM25 ranking."""
-        sanitized = self._sanitize_fts_query(query)
-        if not sanitized:
-            return []
-
+    def remove(self, memory_id):
+        """Remove tags for a memory (used by dedup sweep)."""
         with self._lock:
-            try:
-                rows = self.conn.execute("""
-                    SELECT l.memory_id, f.preview, l.tags, l.timestamp,
-                           rank * -1 as score, l.url
-                    FROM mem_fts f
-                    JOIN mem_lookup l ON l.fts_rowid = f.rowid
-                    WHERE mem_fts MATCH ?
-                    ORDER BY rank
-                    LIMIT ?
-                """, (sanitized, top_k)).fetchall()
-            except sqlite3.OperationalError:
-                return []
-
-        results = []
-        for row in rows:
-            entry = {
-                "id": row[0],
-                "preview": row[1],
-                "tags": row[2],
-                "timestamp": row[3],
-                "fts_score": round(row[4], 4),
-            }
-            if row[5]:
-                entry["url"] = row[5]
-            results.append(entry)
-        return results
+            self.conn.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
+            self.conn.commit()
 
     def tag_search(self, tags_list, match_all=False, top_k=15):
-        """Exact tag matching via normalized tag table."""
+        """Boolean tag search. Returns list of memory_id strings."""
         if not tags_list:
             return []
-
+        placeholders = ",".join("?" * len(tags_list))
         with self._lock:
             if match_all:
-                # All tags must be present
-                placeholders = ",".join("?" * len(tags_list))
-                query = f"""
-                    SELECT t.memory_id, l.tags, l.timestamp,
-                           (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview,
-                           l.url
-                    FROM tags t
-                    JOIN mem_lookup l ON l.memory_id = t.memory_id
-                    WHERE t.tag IN ({placeholders})
-                    GROUP BY t.memory_id
-                    HAVING COUNT(DISTINCT t.tag) = ?
-                    LIMIT ?
-                """
-                rows = self.conn.execute(query, (*tags_list, len(tags_list), top_k)).fetchall()
+                sql = f"""SELECT memory_id FROM tags
+                    WHERE tag IN ({placeholders})
+                    GROUP BY memory_id HAVING COUNT(DISTINCT tag) = ?
+                    LIMIT ?"""
+                rows = self.conn.execute(sql, (*tags_list, len(tags_list), top_k)).fetchall()
             else:
-                # Any tag matches
-                placeholders = ",".join("?" * len(tags_list))
-                query = f"""
-                    SELECT DISTINCT t.memory_id, l.tags, l.timestamp,
-                           (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview,
-                           l.url
-                    FROM tags t
-                    JOIN mem_lookup l ON l.memory_id = t.memory_id
-                    WHERE t.tag IN ({placeholders})
-                    LIMIT ?
-                """
-                rows = self.conn.execute(query, (*tags_list, top_k)).fetchall()
-
-        results = []
-        for row in rows:
-            entry = {
-                "id": row[0],
-                "tags": row[1],
-                "timestamp": row[2],
-                "preview": row[3] or "(no preview)",
-            }
-            if row[4]:
-                entry["url"] = row[4]
-            results.append(entry)
-        return results
-
-    def get_preview(self, memory_id):
-        """Get preview + metadata for a single memory ID."""
-        with self._lock:
-            row = self.conn.execute("""
-                SELECT l.tags, l.timestamp,
-                       (SELECT preview FROM mem_fts WHERE rowid = l.fts_rowid) as preview,
-                       l.url
-                FROM mem_lookup l
-                WHERE l.memory_id = ?
-            """, (memory_id,)).fetchone()
-        if not row:
-            return None
-        result = {"id": memory_id, "tags": row[0], "timestamp": row[1], "preview": row[2]}
-        if row[3]:
-            result["url"] = row[3]
-        return result
-
-    @staticmethod
-    def _sanitize_fts_query(query):
-        """Strip FTS5 special characters to prevent query crashes."""
-        if len(query) > 5000:
-            query = query[:5000]
-        # Remove FTS5 operators that could cause syntax errors
-        sanitized = re.sub(r'[*(){}[\]^~"\'\\:;!@#$%&+=|<>]', " ", query)
-        # Collapse whitespace
-        sanitized = re.sub(r"\s+", " ", sanitized).strip()
-        return sanitized
+                sql = f"""SELECT DISTINCT memory_id FROM tags
+                    WHERE tag IN ({placeholders})
+                    LIMIT ?"""
+                rows = self.conn.execute(sql, (*tags_list, top_k)).fetchall()
+        return [r[0] for r in rows]
 
 
 def _detect_query_mode(query, routing="default"):
@@ -1296,22 +1149,72 @@ def _merge_results(fts_results, chroma_summaries, top_k=15):
 # Lazy initialization — only run when module is used as a server, not when imported
 # for testing. LanceDB uses optimistic concurrency control (no more segfaults).
 _preview_migrated = False
-fts_index = FTS5Index(db_path=FTS5_DB_PATH)
-_fts_count = 0
+tag_index = TagIndex(db_path=TAGS_DB_PATH)
+_tag_count = 0
 _initialized = False
+_lance_fts_ready = False  # True once LanceDB FTS index is built
 
 
+def _lance_fts_to_summary(row):
+    """Convert a LanceDB FTS result row to the standard summary dict format."""
+    entry = {
+        "id": row.get("id", ""),
+        "preview": row.get("preview", row.get("text", "")[:SUMMARY_LENGTH]),
+        "tags": row.get("tags", ""),
+        "timestamp": row.get("timestamp", ""),
+        "fts_score": round(row.get("_score", 0.0), 4),
+    }
+    url = row.get("primary_source", "")
+    if url:
+        entry["url"] = url
+    return entry
+
+
+def _lance_keyword_search(query, top_k=15):
+    """LanceDB native BM25 keyword search. Falls back to empty on error."""
+    if not _lance_fts_ready or collection is None:
+        return []
+    try:
+        rows = collection._table.search(query).limit(top_k).to_list()
+        return [_lance_fts_to_summary(r) for r in rows]
+    except Exception:
+        return []
+
+
+def _tag_ids_to_summaries(memory_ids, collection_ref=None):
+    """Fetch full metadata from LanceDB for a list of memory IDs."""
+    if not memory_ids:
+        return []
+    coll = collection_ref or collection
+    if coll is None:
+        return []
+    try:
+        data = coll.get(ids=list(memory_ids), include=["metadatas"])
+        results = []
+        for i, mid in enumerate(data.get("ids", [])):
+            meta = data["metadatas"][i] if i < len(data.get("metadatas", [])) else {}
+            entry = {
+                "id": mid,
+                "preview": meta.get("preview", ""),
+                "tags": meta.get("tags", ""),
+                "timestamp": meta.get("timestamp", ""),
+            }
+            url = meta.get("primary_source", "")
+            if url:
+                entry["url"] = url
+            results.append(entry)
+        return results
+    except Exception:
+        return []
 
 
 def _ensure_initialized():
-    """Run one-time initialization (LanceDB + FTS5 build).
+    """Run one-time initialization (LanceDB + TagIndex + LanceDB FTS).
 
     Called lazily on first MCP tool use or explicitly at server startup.
     Safe to call multiple times — idempotent after first run.
-    If the on-disk FTS5 index is already in sync with LanceDB (by count),
-    the expensive rebuild is skipped entirely.
     """
-    global _preview_migrated, fts_index, _fts_count, _initialized
+    global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
     if _initialized:
         return
     _init_lancedb()
@@ -1320,14 +1223,21 @@ def _ensure_initialized():
         _initialized = True
         return
 
-    # Check if persisted FTS5 is already synced with LanceDB
-    lance_count = collection.count()
-    if fts_index.is_synced(lance_count):
-        _fts_count = lance_count
-        _initialized = True
-        return  # Skip rebuild — disk FTS5 is current
+    # Build LanceDB native FTS index on text column
+    try:
+        collection._table.create_fts_index("text", replace=True)
+        _lance_fts_ready = True
+    except Exception:
+        pass  # FTS is optional — keyword search degrades gracefully
 
-    _fts_count = fts_index.build_from_lance(collection)
+    # Check if persisted tag index is already synced with LanceDB
+    lance_count = collection.count()
+    if tag_index.is_synced(lance_count):
+        _tag_count = lance_count
+        _initialized = True
+        return  # Skip rebuild — tag index is current
+
+    _tag_count = tag_index.build_from_lance(collection)
     _initialized = True
 
 # ──────────────────────────────────────────────────
@@ -1339,14 +1249,14 @@ _tag_cooccurrence_dirty: bool = True  # rebuild on first use
 
 
 def _build_tag_cooccurrence():
-    """Build tag co-occurrence matrix from FTS5 tag index.
+    """Build tag co-occurrence matrix from tag index.
 
     Scans all memory tags, counts how often tag pairs appear together.
     Called lazily on first search or explicitly via rebuild_tag_index().
     """
     global _tag_cooccurrence, _tag_counts, _tag_cooccurrence_dirty
 
-    conn = fts_index.conn
+    conn = tag_index.conn
     rows = conn.execute("SELECT memory_id, tag FROM tags").fetchall()
 
     # Group tags by memory_id
@@ -1900,12 +1810,13 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         # Strip tag:/tags: prefix and parse
         tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)
         tags_list = [t.strip() for t in tag_query.split(",") if t.strip()]
-        formatted = fts_index.tag_search(tags_list, match_all=match_all, top_k=actual_k)
+        tag_ids = tag_index.tag_search(tags_list, match_all=match_all, top_k=actual_k)
+        formatted = _tag_ids_to_summaries(tag_ids)
     elif mode == "keyword":
-        formatted = fts_index.keyword_search(query, top_k=actual_k)
+        formatted = _lance_keyword_search(query, top_k=actual_k)
     elif mode == "hybrid":
-        # Both engines, merged
-        fts_results = fts_index.keyword_search(query, top_k=actual_k)
+        # Both engines, merged via RRF
+        fts_results = _lance_keyword_search(query, top_k=actual_k)
         chroma_results = collection.query(
             query_texts=[query], n_results=actual_k,
             include=["metadatas", "distances"],
@@ -1967,7 +1878,8 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         expanded_tags = _get_expanded_tags(query)
         if expanded_tags:
             seen_ids = {r.get("id") for r in formatted if r.get("id")}
-            tag_results = fts_index.tag_search(expanded_tags, match_all=False, top_k=actual_k)
+            tag_ids = tag_index.tag_search(expanded_tags, match_all=False, top_k=actual_k)
+            tag_results = _tag_ids_to_summaries(tag_ids)
             if tag_results:
                 for tr in tag_results:
                     tid = tr.get("id", "")
@@ -2428,8 +2340,8 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
         ids=[doc_id],
     )
 
-    # Dual-write: keep FTS5 index in sync
-    fts_index.add_entry(doc_id, content, preview, tags, timestamp, now, primary_source)
+    # Update tag index
+    tag_index.add_tags(doc_id, tags)
 
     # Mark tag co-occurrence matrix as dirty (new tags may change co-occurrence rates)
     global _tag_cooccurrence_dirty
@@ -2478,19 +2390,11 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
                         target_meta_updated["tags"] = new_tags
                         collection.update(ids=[resolves_id], metadatas=[target_meta_updated])
 
-                        # Keep FTS5 index in sync for updated target tags
+                        # Update tag index for updated target tags
                         try:
-                            fts_index.add_entry(
-                                resolves_id,
-                                target.get("documents", [""])[0] if target.get("documents") else "",
-                                target_meta.get("preview", ""),
-                                new_tags,
-                                target_meta.get("timestamp", ""),
-                                target_meta.get("session_time", 0.0),
-                                target_meta.get("primary_source", ""),
-                            )
+                            tag_index.add_tags(resolves_id, new_tags)
                         except Exception:
-                            pass  # FTS sync failure is non-critical
+                            pass  # Tag index sync failure is non-critical
 
                 linked_to = resolves_id
         except Exception as e:
@@ -2604,9 +2508,9 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
                     v_meta["quarantined_at"] = datetime.now().isoformat()
                     quarantine.upsert(documents=[v_doc], metadatas=[v_meta], ids=[victim_id])
                     collection.delete(ids=[victim_id])
-                    # Remove from FTS5 index too
+                    # Remove from tag index
                     try:
-                        fts_index.remove_entry(victim_id)
+                        tag_index.remove(victim_id)
                     except Exception:
                         pass
                     moved += 1
@@ -3067,7 +2971,8 @@ def suggest_promotions(top_k: int = 5) -> dict:
 
     for tag in promotion_tags:
         try:
-            tag_results = fts_index.tag_search([tag], match_all=False, top_k=200)
+            tag_ids = tag_index.tag_search([tag], match_all=False, top_k=200)
+            tag_results = _tag_ids_to_summaries(tag_ids)
             for r in tag_results:
                 if r.get("id") and r["id"] not in [c["id"] for c in candidates]:
                     candidates.append(r)
@@ -3637,7 +3542,7 @@ def memory_health_report() -> dict:
         "total_memories": mem_count,
         "total_observations": obs_count,
         "total_fix_outcomes": fix_outcomes.count(),
-        "fts_index_count": _fts_count,
+        "tag_index_count": _tag_count,
         "capture_queue_lines": queue_lines,
         "capture_queue_bytes": queue_bytes,
         "added_24h": added_24h,
@@ -4177,7 +4082,7 @@ def _dispatch_request(req):
                 }],
                 ids=[doc_id],
             )
-            fts_index.add_entry(doc_id, content, preview, tags, timestamp, now, "")
+            tag_index.add_tags(doc_id, tags)
             return {"ok": True, "result": {"saved": True, "id": doc_id}}
 
         # Collection-based operations require a valid collection name
