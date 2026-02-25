@@ -1,48 +1,37 @@
 # Torus-Framework
 
 ## MEMORY FIRST (Non-Negotiable)
-BEFORE building/fixing ANYTHING: search_knowledge("[what you're about to do]")
-- \> 0.5 relevance: use directly | 0.2-0.5: get_memory(id) to verify | < 0.2: treat as unknown
-AFTER any fix/decision/failed-approach/user-preference: remember_this(content, context, tags)
-For ERROR FIX: use the Causal Chain (below) then remember_this()
+BEFORE building/fixing: search_knowledge("[topic]")
+- >0.5: use directly | 0.2-0.5: get_memory(id) to verify | <0.2: unknown
+AFTER any fix/decision/failed-approach/preference: remember_this(content, context, tags)
 
 ## THE LOOP
 memory check → plan → tests first → build → prove it → track → ship
 
-## CAUSAL CHAIN WORKFLOW
-When fixing errors, follow ALL 5 steps:
-1. query_fix_history("error text")
-2. record_attempt("error text", "strategy-name")
-3. Fix and verify with tests
-4. record_outcome("chain_id", "success"|"failure")
-5. remember_this("Fixed [error] using [strategy]", ..., "type:fix")
+## CAUSAL CHAIN (for errors)
+1. query_fix_history("error") → 2. record_attempt("error", "strategy") → 3. Fix + test → 4. record_outcome(chain_id, result) → 5. remember_this(type:fix)
 
-## BEHAVIORAL RULES
-1. **Prove it works** — Never claim "fixed" without evidence. Show test output.
-2. **Save to memory** — Every fix, discovery, and decision gets remember_this()
-3. **Protect main context** — Delegate heavy operations to sub-agents
+## RULES
+1. **Prove it** — Never claim "fixed" without test output
+2. **Save to memory** — Every fix, discovery, decision → remember_this()
+3. **Protect context** — Delegate heavy ops to sub-agents
 4. **Plan mode discipline** — Never write code in plan mode. enter plan → explore + write plan → ExitPlanMode → approval → implement. If rejected, ask what's wrong. Max 1 ExitPlanMode per turn.
 
 ## SESSION START (Non-Negotiable)
 1. Read HANDOFF.md & LIVE_STATE.json
-2. If previous state exists, present summary and ask: "Continue" or "New task"
-3. "New task" → Archive HANDOFF.md, reset LIVE_STATE.json
-4. "Continue" → Use handoff as context, pick up from "What's Next"
-5. User's current instructions ALWAYS override handoff state
+2. Previous state → present summary, ask "Continue" or "New task"
+3. New → archive handoff, reset state | Continue → pick up from "What's Next"
+4. User's current instructions ALWAYS override handoff state
 
-## AGENT DELEGATION
-- Memory MCP gives sub-agents shared context; causal chain shares fix history automatically
-- 2-5 steps, independent → Sub-agents (parallel)
-- 2-5 steps, dependent → Sub-agents (lead orchestrates, memory bridges)
+## DELEGATION
+- Memory MCP + causal chain bridge sub-agents automatically
+- 2-5 independent → parallel agents | 2-5 dependent → lead orchestrates
 - 5-7 steps → Either (teams preferred)
-- 7+ steps → Agent teams (real-time coordination)
-- Cross-session → Sub-agents + memory
+- 7+ steps → agent teams | Cross-session → agents + memory
 
-## FRUSTRATION SIGNALS (stop and verify):
-- "again" — Repeating a mistake. Query memory.
-- "still" — Fix didn't work. Prove it this time.
-- "why" — Unexpected behavior. Investigate deeper.
-- ALL CAPS — Important point missed. Re-read carefully.
+## FRUSTRATION: "again"=query memory | "still"=prove it | "why"=investigate | ALL CAPS=re-read
 
-## MEMORY TAG CONVENTIONS
-Tags: type (error, learning, fix, feature-request, correction, decision, auto-captured, preference) | priority (critical, high, medium, low) | area (frontend, backend, infra, framework, testing, docs, git) | outcome (success, failed) | error_pattern (Traceback, npm-ERR)
+## TAGS
+type: error,learning,fix,feature-request,correction,decision,auto-captured,preference
+priority: critical,high,medium,low | area: frontend,backend,infra,framework,testing,docs,git
+outcome: success,failed | error_pattern: Traceback,npm-ERR
