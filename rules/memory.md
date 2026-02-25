@@ -2,21 +2,18 @@
 globs: .claude/hooks/memory_server.py, **/mcp_server/**
 ---
 
-# Memory MCP Server Rules
+# Memory MCP Rules
 
-## MCP Tool Registration
-- Tools are registered via `@mcp.tool()` decorator in memory_server.py
-- Each tool function docstring becomes the tool description in Claude Code
-- Parameter types must match JSON Schema expectations (str, int, float, bool)
+## Tools
+- Registered via `@mcp.tool()` in memory_server.py — docstring becomes tool description
+- Params must match JSON Schema types (str, int, float, bool)
 
-## ChromaDB Collection Handling
-- Two collections: "knowledge" (curated memories) and "observations" (auto-captured)
-- Always use `get_or_create_collection()` — never `create_collection()`
-- Collection metadata: `{"hnsw:space": "cosine"}` for semantic similarity
-- ChromaDB can segfault under concurrent access — handle gracefully
+## LanceDB Storage
+- 5 tables: knowledge (curated), observations (auto-captured), fix_outcomes, quarantine, web_pages
+- Embedding: nomic-embed-text-v2-moe (768-dim), cosine similarity, flat scan
+- ChromaDB is backup only at ~/data/memory/chroma.sqlite3
 
-## Ingestion Validation
-- Validate non-empty, use `fnv1a_hash(content)` for IDs, metadata must be str/int/float/bool (no nested objects, 500 char cap)
+## Ingestion
+- Validate non-empty, `fnv1a_hash(content)` for IDs, metadata: str/int/float/bool only (500 char cap)
 
-## Sideband Timestamp Protocol
-- Gate 4 sideband: boot.py writes `hooks/.memory_last_queried` (atomic write), gate_04 reads it to verify memory was queried. See `docs/sideband-protocol.md` for details.
+## Sideband: Gate 4 reads `hooks/.memory_last_queried` (atomic write) to verify memory queried. See `docs/sideband-protocol.md`
