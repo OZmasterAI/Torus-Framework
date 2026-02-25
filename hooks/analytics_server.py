@@ -341,6 +341,18 @@ def transcript_context(session_id: str, around_timestamp: str = "", window_minut
     if not session_id or not session_id.strip():
         return {"error": "session_id is required", "source": "transcript_l0"}
 
+    # Check toggle
+    import json as _json
+    _cfg_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
+    try:
+        with open(_cfg_path) as _cf:
+            _cfg = _json.load(_cf)
+        if not _cfg.get("transcript_l0", False):
+            return {"disabled": True, "source": "transcript_l0",
+                    "hint": "Enable with transcript_l0: true in config.json"}
+    except Exception:
+        pass
+
     max_records = max(1, min(50, max_records))
     window_minutes = max(1, min(60, window_minutes))
     get_window = _import_from_db("terminal-history", "get_raw_transcript_window")

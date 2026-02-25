@@ -11850,7 +11850,7 @@ except Exception as _asd_e:
 print("\n--- Analytics MCP: Search Tools ---")
 
 try:
-    from analytics_server import telegram_search, terminal_history_search, web_search
+    from analytics_server import telegram_search, terminal_history_search, web_search, transcript_context
 
     # Telegram search: empty query → empty results
     _tg_empty = telegram_search("")
@@ -11898,10 +11898,134 @@ try:
          isinstance(_ws_result, dict) and ("count" in _ws_result or "error" in _ws_result)
          and _ws_result.get("source") == "web_chromadb")
 
+    # transcript_context: empty session_id → error
+    _tc_empty = transcript_context("")
+    test("transcript_context('') returns error dict",
+         isinstance(_tc_empty, dict) and "error" in _tc_empty
+         and _tc_empty.get("source") == "transcript_l0")
+
+    # transcript_context: nonexistent session → error or disabled
+    _tc_missing = transcript_context("nonexistent-session-id-000")
+    test("transcript_context(nonexistent) returns error or disabled",
+         isinstance(_tc_missing, dict) and _tc_missing.get("source") == "transcript_l0"
+         and ("error" in _tc_missing or _tc_missing.get("disabled")))
+
+    # transcript_context: real session → records list or disabled
+    import glob as _tc_glob
+    _tc_jsonls = _tc_glob.glob(os.path.join(
+        os.path.expanduser("~"), ".claude", "projects", "-home-crab--claude", "*.jsonl"))
+    if _tc_jsonls:
+        _tc_sid = os.path.basename(_tc_jsonls[0]).replace(".jsonl", "")
+        _tc_real = transcript_context(_tc_sid, max_records=5)
+        test("transcript_context(real_session) returns records or disabled",
+             isinstance(_tc_real, dict) and _tc_real.get("source") == "transcript_l0"
+             and ("records" in _tc_real or _tc_real.get("disabled")))
+    else:
+        test("transcript_context(real_session) — SKIP no JSONL files found", True)
+
 except Exception as _ast_e:
     FAIL += 1
     RESULTS.append(f"  FAIL: Analytics MCP search tools tests: {_ast_e}")
     print(f"  FAIL: Analytics MCP search tools tests: {_ast_e}")
+
+# ── L0 Transcript Functions (direct import) ──────────────────────────────
+print("\n--- L0 Transcript Functions ---")
+try:
+    _term_hist_dir = os.path.join(os.path.expanduser("~"), ".claude",
+                                  "integrations", "terminal-history")
+    if _term_hist_dir not in sys.path:
+        sys.path.insert(0, _term_hist_dir)
+    from db import _summarize_record, _window_around_timestamp, get_raw_transcript_window
+
+    # _summarize_record: text message
+    _sr_text = _summarize_record({
+        "type": "user", "timestamp": "2026-02-25T10:00:00",
+        "message": {"role": "user", "content": "hello world"}
+    })
+    test("_summarize_record(text msg) extracts role and text",
+         _sr_text.get("role") == "user" and _sr_text.get("text") == "hello world")
+
+    # _summarize_record: tool_use block
+    _sr_tool = _summarize_record({
+        "type": "assistant", "timestamp": "2026-02-25T10:00:01",
+        "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Read", "input": {"file_path": "/tmp/x"}}
+        ]}
+    })
+    test("_summarize_record(tool_use) extracts tool name",
+         _sr_tool.get("content_blocks") and _sr_tool["content_blocks"][0].get("name") == "Read")
+
+    # _summarize_record: tool_result block
+    _sr_result = _summarize_record({
+        "type": "user", "timestamp": "2026-02-25T10:00:02",
+        "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "abc123", "content": "output data here"}
+        ]}
+    })
+    test("_summarize_record(tool_result) extracts output preview",
+         _sr_result.get("content_blocks")
+         and _sr_result["content_blocks"][0].get("output_preview") == "output data here")
+
+    # _summarize_record: truncation
+    _sr_long = _summarize_record({
+        "type": "user", "timestamp": "2026-02-25T10:00:03",
+        "message": {"role": "user", "content": "x" * 1000}
+    })
+    test("_summarize_record truncates text at 500 chars",
+         len(_sr_long.get("text", "")) == 500)
+
+    # _summarize_record: progress record
+    _sr_prog = _summarize_record({
+        "type": "progress", "timestamp": "2026-02-25T10:00:04",
+        "data": {"type": "hook_progress", "hookEvent": "PreToolUse", "hookName": "enforcer"}
+    })
+    test("_summarize_record(progress) extracts hook_event",
+         _sr_prog.get("hook_event") == "PreToolUse")
+
+    # _window_around_timestamp: filters correctly
+    _wt_records = [
+        {"timestamp": "2026-02-25T10:00:00", "type": "a"},
+        {"timestamp": "2026-02-25T10:05:00", "type": "b"},
+        {"timestamp": "2026-02-25T10:10:00", "type": "c"},
+        {"timestamp": "2026-02-25T10:30:00", "type": "d"},
+        {"timestamp": "2026-02-25T11:00:00", "type": "e"},
+    ]
+    _wt_filtered = _window_around_timestamp(_wt_records, "2026-02-25T10:05:00", window_minutes=6)
+    _wt_types = [r["type"] for r in _wt_filtered]
+    test("_window_around_timestamp filters ±6min correctly",
+         "a" in _wt_types and "b" in _wt_types and "c" in _wt_types
+         and "d" not in _wt_types and "e" not in _wt_types)
+
+    # _window_around_timestamp: bad timestamp falls back to last 30
+    _wt_fallback = _window_around_timestamp(_wt_records, "not-a-timestamp", window_minutes=5)
+    test("_window_around_timestamp bad timestamp falls back to last records",
+         len(_wt_fallback) == len(_wt_records))  # all 5 since < 30
+
+    # get_raw_transcript_window: missing file
+    _grw_missing = get_raw_transcript_window("nonexistent-uuid-000")
+    test("get_raw_transcript_window(missing) returns error dict",
+         isinstance(_grw_missing, dict) and "error" in _grw_missing
+         and _grw_missing.get("source") == "transcript_l0")
+
+    # get_raw_transcript_window: real session
+    import glob as _grw_glob
+    _grw_jsonls = _grw_glob.glob(os.path.join(
+        os.path.expanduser("~"), ".claude", "projects", "-home-crab--claude", "*.jsonl"))
+    if _grw_jsonls:
+        _grw_sid = os.path.basename(_grw_jsonls[0]).replace(".jsonl", "")
+        _grw_real = get_raw_transcript_window(_grw_sid, max_records=5)
+        test("get_raw_transcript_window(real) returns records",
+             isinstance(_grw_real, dict) and "records" in _grw_real
+             and isinstance(_grw_real["records"], list)
+             and _grw_real.get("record_count", 0) <= 5
+             and _grw_real.get("total_in_session", 0) > 0)
+    else:
+        test("get_raw_transcript_window(real) — SKIP no JSONL files", True)
+
+except Exception as _l0_e:
+    FAIL += 1
+    RESULTS.append(f"  FAIL: L0 Transcript Functions tests: {_l0_e}")
+    print(f"  FAIL: L0 Transcript Functions tests: {_l0_e}")
 
 
 # Restore sideband file after tests
