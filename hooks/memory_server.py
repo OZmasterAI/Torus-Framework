@@ -1807,6 +1807,17 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     # Handle transcript mode: search L2t FTS5, then read raw L0 JSONL
     if mode == "transcript":
         _touch_memory_timestamp()
+        _transcript_enabled = _ls_toggles.get("transcript_l0", False)
+        if not _transcript_enabled:
+            return {
+                "results": [],
+                "mode": "transcript",
+                "query": query,
+                "total_memories": count,
+                "source": "transcript_l0",
+                "disabled": True,
+                "hint": "Enable with transcript_l0: true in config.json",
+            }
         transcript_results = []
         try:
             _term_db = os.path.join(os.path.expanduser("~"), ".claude",

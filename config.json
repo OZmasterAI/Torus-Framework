@@ -1,5 +1,6 @@
 {
   "terminal_l2_always": false,
+  "transcript_l0": false,
   "context_enrichment": true,
   "tg_l3_always": false,
   "tg_enrichment": false,
@@ -19,7 +20,7 @@
   "mentor_outcome_chains": false,
   "mentor_memory": false,
   "enforcer_daemon": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 12m\n- **Tool Calls**: 67 (Bash: 34, TaskUpdate: 8, Read: 6, Grep: 6, Write: 5, TaskCreate: 3)\n- **Files Modified**: 6 (0 verified, 0 pending)\n- **Errors**: 6 (ToolFail:Read x2, ToolFail:Bash x3, No such file or directory x1)\n- **Tests**: none this session\n- **Subagents**: 2 launched, 0 tokens\n\n**Files changed:**\n- `/home/crab/.claude/hooks/scripts/migrate_chromadb_to_lance.py`\n- `/home/crab/.claude/hooks/scripts/create_lance_indexes.py`\n- `/home/crab/.claude/hooks/scripts/benchmark_lance_vs_chroma.py`\n- `/home/crab/.claude/hooks/scripts/fix_lance_indexes.py`\n- `/home/crab/.claude/LIVE_STATE.json`\n- `/home/crab/.claude/projects/-home-crab--claude/memory/MEMORY.md`",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 27m\n- **Tool Calls**: 114 (Read: 55, Bash: 30, Grep: 18, mcp__memory__remember_this: 3, mcp__memory__search_knowledge: 3, Write: 2)\n- **Files Modified**: 2 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: none this session\n- **Subagents**: 11 launched, 825 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`\n- `/home/crab/.claude/plans/virtual-dazzling-pearl.md`",
   "last_session_metrics": {
     "reads": 6,
     "edits": 6,
