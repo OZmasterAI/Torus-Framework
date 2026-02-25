@@ -4,189 +4,394 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Torus Framework — Architecture Map</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0d1117;
     --surface: #161b22;
+    --surface2: #1c2128;
     --border: #30363d;
-    --text: #e6edf3;
+    --text: #c9d1d9;
     --text-muted: #8b949e;
     --accent: #58a6ff;
-    --accent2: #3fb950;
-    --accent3: #d29922;
-    --accent4: #f85149;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --orange: #db6d28;
+    --purple: #bc8cff;
+    --font: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
     --tier1: #f85149;
     --tier2: #d29922;
     --tier3: #58a6ff;
-    --code-bg: #0d1117;
   }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-family: var(--font);
     background: var(--bg);
     color: var(--text);
     line-height: 1.6;
-    padding: 0;
+    font-size: 14px;
   }
-  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
 
-  /* Header */
+  /* ── Header ── */
   header {
-    background: linear-gradient(135deg, #161b22 0%, #1a2332 100%);
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 2.5rem 0;
+    padding: 28px 0;
     text-align: center;
   }
-  header h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 0.5rem; }
-  header h1 span { color: var(--accent); }
-  .badge-row { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem; }
-  .badge {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 2rem; padding: 0.3rem 0.8rem; font-size: 0.8rem; color: var(--text-muted);
+  header h1 {
+    font-size: 1.7rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
   }
-  .badge strong { color: var(--text); }
+  header h1 .brand { color: var(--accent); }
+  header .subtitle {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-bottom: 14px;
+  }
 
-  /* Nav */
-  nav {
-    position: sticky; top: 0; z-index: 100;
-    background: rgba(13, 17, 23, 0.95); backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--border);
-    padding: 0.5rem 0; overflow-x: auto; white-space: nowrap;
+  .badge-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 12px;
   }
-  nav .container { display: flex; gap: 0.25rem; padding: 0.25rem 2rem; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+  .badge strong { color: var(--text); font-weight: 600; }
+  .badge.accent { border-color: var(--accent); }
+  .badge.green  { border-color: var(--green); }
+  .badge.yellow { border-color: var(--yellow); }
+
+  /* ── Sticky Nav ── */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(13,17,23,0.97);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  nav .nav-inner {
+    display: flex;
+    gap: 2px;
+    padding: 6px 16px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
   nav a {
-    color: var(--text-muted); text-decoration: none; font-size: 0.82rem;
-    padding: 0.35rem 0.7rem; border-radius: 6px; transition: all 0.15s;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.73rem;
+    padding: 4px 9px;
+    border-radius: 5px;
+    transition: all 0.15s;
+    font-family: var(--font);
   }
   nav a:hover { background: var(--surface); color: var(--text); }
 
-  /* Sections */
-  section { margin: 2.5rem 0; }
-  h2 {
-    font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;
-    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
-    color: var(--accent);
+  /* ── Container ── */
+  .container { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
+
+  /* ── Section Headings ── */
+  section { margin-bottom: 48px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
   }
-  h3 { font-size: 1.1rem; font-weight: 600; margin: 1.5rem 0 0.75rem; color: var(--text); }
-  p { margin-bottom: 1rem; color: var(--text-muted); }
+  .section-header h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+  }
+  .section-num {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 20px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  p {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    line-height: 1.65;
+    margin-bottom: 10px;
+  }
   strong { color: var(--text); }
 
-  /* Principle cards */
-  .principles { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
-  .principle {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 1rem 1.25rem; border-left: 3px solid var(--accent);
+  /* ── Principle Cards ── */
+  .principles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 10px;
   }
-  .principle .num { color: var(--accent); font-weight: 700; font-size: 0.85rem; margin-bottom: 0.25rem; }
-  .principle .title { font-weight: 600; margin-bottom: 0.3rem; }
-  .principle .desc { font-size: 0.88rem; color: var(--text-muted); }
+  .principle {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 14px;
+  }
+  .principle .num {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.7rem;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .principle .title { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: var(--text); }
+  .principle .desc { font-size: 0.78rem; color: var(--text-muted); }
 
-  /* Tables */
-  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.88rem; }
+  /* ── Stats Grid ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 12px;
+    text-align: center;
+  }
+  .stat-card .value { font-size: 1.6rem; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat-card .label { font-size: 0.7rem; color: var(--text-muted); margin-top: 5px; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.78rem; }
   thead th {
-    text-align: left; padding: 0.6rem 0.75rem; background: var(--surface);
-    border-bottom: 2px solid var(--border); font-weight: 600; color: var(--text); white-space: nowrap;
+    text-align: left;
+    padding: 8px 10px;
+    background: var(--surface);
+    border-bottom: 2px solid var(--border);
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
   }
   tbody td {
-    padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); color: var(--text-muted);
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
     vertical-align: top;
   }
-  tbody tr:hover { background: rgba(88, 166, 255, 0.04); }
+  tbody tr:hover td { background: rgba(88,166,255,0.03); }
   td:first-child { color: var(--text); font-weight: 500; white-space: nowrap; }
+
+  /* ── Tier Badges ── */
   .tier-badge {
-    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
-    font-size: 0.75rem; font-weight: 600;
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    vertical-align: middle;
   }
-  .tier1 { background: rgba(248,81,73,0.15); color: var(--tier1); }
-  .tier2 { background: rgba(210,153,34,0.15); color: var(--tier2); }
-  .tier3 { background: rgba(88,166,255,0.15); color: var(--tier3); }
-  .dormant { background: rgba(139,148,158,0.15); color: var(--text-muted); }
+  .tier1  { background: rgba(248,81,73,0.12);  color: var(--tier1);  border: 1px solid rgba(248,81,73,0.3); }
+  .tier2  { background: rgba(210,153,34,0.12); color: var(--tier2);  border: 1px solid rgba(210,153,34,0.3); }
+  .tier3  { background: rgba(88,166,255,0.12); color: var(--tier3);  border: 1px solid rgba(88,166,255,0.3); }
+  .dormant { background: rgba(139,148,158,0.12); color: var(--text-muted); border: 1px solid rgba(139,148,158,0.3); }
+  .new-badge { background: rgba(63,185,80,0.12); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .star-badge { background: rgba(188,140,255,0.12); color: var(--purple); border: 1px solid rgba(188,140,255,0.3); }
 
-  /* Code blocks */
+  /* ── Module Groups (collapsible) ── */
+  details.module-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 6px 0;
+    overflow: hidden;
+  }
+  details.module-group > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 0.82rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    transition: background 0.1s;
+  }
+  details.module-group > summary::-webkit-details-marker { display: none; }
+  details.module-group > summary::after {
+    content: "▶";
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    margin-left: 8px;
+  }
+  details.module-group[open] > summary::after { transform: rotate(90deg); }
+  details.module-group > summary:hover { background: rgba(88,166,255,0.04); }
+  details.module-group > summary .label-left { display: flex; align-items: center; gap: 8px; }
+  details.module-group > summary .count {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 400;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 1px 7px;
+    border-radius: 10px;
+  }
+  .module-group .inner { padding: 2px 14px 12px; }
+
+  /* ── Code / Pre ── */
   pre {
-    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
-    padding: 1.25rem; overflow-x: auto; font-family: 'Fira Code', 'Cascadia Code', monospace;
-    font-size: 0.82rem; line-height: 1.5; color: var(--text-muted); margin: 1rem 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--font);
+    font-size: 0.76rem;
+    line-height: 1.55;
+    color: var(--text-muted);
+    margin: 10px 0;
   }
-  code { font-family: 'Fira Code', 'Cascadia Code', monospace; font-size: 0.85em; }
+  code { font-family: var(--font); font-size: 0.88em; }
   p code, td code, li code {
-    background: rgba(88,166,255,0.1); padding: 0.15rem 0.4rem;
-    border-radius: 4px; color: var(--accent);
+    background: rgba(88,166,255,0.1);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--accent);
+    font-size: 0.85em;
   }
 
-  /* Stats grid */
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
-  .stat-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 1rem; text-align: center;
-  }
-  .stat-card .value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
-  .stat-card .label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
-
-  /* Module groups */
-  .module-group {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    margin: 0.75rem 0; overflow: hidden;
-  }
-  .module-group summary {
-    cursor: pointer; padding: 0.75rem 1rem; font-weight: 600;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .module-group summary:hover { background: rgba(88,166,255,0.04); }
-  .module-group summary .count { color: var(--text-muted); font-size: 0.85rem; font-weight: 400; }
-  .module-group .inner { padding: 0 1rem 0.75rem; }
-
-  /* Pipeline */
+  /* ── Pipeline Steps ── */
+  .pipeline { margin: 4px 0; }
   .pipeline-step {
-    display: flex; gap: 1rem; align-items: flex-start; margin: 0.5rem 0;
-    padding: 0.6rem 0.8rem; border-left: 2px solid var(--border);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 8px 12px;
+    margin: 4px 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: 0 6px 6px 0;
+    transition: border-left-color 0.15s;
   }
+  .pipeline-step:hover { border-left-color: var(--accent); }
   .pipeline-step .event {
-    min-width: 160px; font-weight: 600; color: var(--accent2); font-size: 0.88rem;
+    min-width: 170px;
+    font-weight: 700;
+    color: var(--green);
+    font-size: 0.78rem;
+    flex-shrink: 0;
   }
-  .pipeline-step .handler { color: var(--text-muted); font-size: 0.88rem; }
+  .pipeline-step .handler { color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; }
   .pipeline-step .handler code { color: var(--accent); }
 
-  /* Skill chips */
-  .skill-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0; }
+  /* ── Skill Chips ── */
+  .skill-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 12px; }
   .chip {
-    padding: 0.25rem 0.6rem; border-radius: 2rem; font-size: 0.78rem;
-    background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: var(--font);
+    transition: border-color 0.15s, color 0.15s;
   }
+  .chip:hover { border-color: var(--accent); color: var(--text); }
+  .chip.new { border-color: rgba(63,185,80,0.4); color: var(--green); }
 
-  /* Footer */
+  /* ── Note Callouts ── */
+  .note {
+    background: rgba(22,27,34,0.6);
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    margin: 10px 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    border-radius: 0 5px 5px 0;
+  }
+  .note.warn { border-left-color: var(--yellow); }
+  .note.green { border-left-color: var(--green); }
+  .note strong { color: var(--text); }
+
+  /* ── Footer ── */
   footer {
-    text-align: center; padding: 2rem 0; margin-top: 3rem;
-    border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem;
+    text-align: center;
+    padding: 24px 0;
+    margin-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.74rem;
   }
 
-  /* Scrollbar */
+  /* ── Scrollbar ── */
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .principles { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(3, 1fr); }
+    .pipeline-step .event { min-width: 120px; }
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="container">
-    <h1><span>Torus</span> Framework</h1>
-    <p style="color:var(--text-muted); font-size:1rem;">Architecture Map &mdash; v2.5.3</p>
+  <div>
+    <h1><span class="brand">Torus</span> Framework</h1>
+    <p class="subtitle">Architecture Map &mdash; v2.5.4 &mdash; Session 236 &mdash; 2026-02-25</p>
     <div class="badge-row">
-      <span class="badge"><strong>113</strong> Python files</span>
-      <span class="badge"><strong>~48,552</strong> lines</span>
-      <span class="badge"><strong>17</strong> active gates</span>
-      <span class="badge"><strong>50</strong> shared modules</span>
-      <span class="badge"><strong>33</strong> skills</span>
-      <span class="badge"><strong>16</strong> MCP tools</span>
-      <span class="badge"><strong>~1,345</strong> memories</span>
+      <span class="badge accent"><strong>17</strong> active gates</span>
+      <span class="badge"><strong>49</strong> shared modules</span>
+      <span class="badge green"><strong>35</strong> skills</span>
+      <span class="badge"><strong>17</strong> MCP tools</span>
+      <span class="badge accent"><strong>1,414</strong> memories</span>
+      <span class="badge"><strong>1,437</strong> tests passing</span>
+      <span class="badge yellow">LanceDB</span>
     </div>
   </div>
 </header>
 
 <nav>
-  <div class="container">
+  <div class="nav-inner">
     <a href="#overview">Overview</a>
     <a href="#stats">Stats</a>
     <a href="#gates">Gates</a>
@@ -205,10 +410,16 @@
 
 <div class="container">
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- OVERVIEW -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="overview">
-  <h2>Overview</h2>
-  <p>Torus is a <strong>self-improving quality framework</strong> for Claude Code. It wraps every tool call with gate enforcement (PreToolUse blocking), tracks outcomes via a mentor system (PostToolUse), persists knowledge via ChromaDB memory, and orchestrates multi-agent work via teams and external scripts. The framework runs entirely through Claude Code's hook system &mdash; no modifications to Claude Code itself.</p>
+  <div class="section-header">
+    <span class="section-num">01</span>
+    <h2>Overview</h2>
+  </div>
+
+  <p>Torus is a <strong>self-improving quality framework</strong> for Claude Code. It wraps every tool call with gate enforcement (PreToolUse blocking), tracks outcomes via a mentor system (PostToolUse), persists knowledge via <strong>LanceDB vector database</strong>, and orchestrates multi-agent work via teams and external scripts. The framework runs entirely through Claude Code's hook system &mdash; no modifications to Claude Code itself.</p>
 
   <div class="principles">
     <div class="principle">
@@ -229,7 +440,7 @@
     <div class="principle">
       <div class="num">04</div>
       <div class="title">Memory-First Workflow</div>
-      <div class="desc">Every fix/decision/discovery persisted to ChromaDB. Compounding knowledge corpus</div>
+      <div class="desc">Every fix/decision/discovery persisted to LanceDB. Compounding knowledge corpus</div>
     </div>
     <div class="principle">
       <div class="num">05</div>
@@ -244,36 +455,55 @@
   </div>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- STATS -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="stats">
-  <h2>Framework Statistics</h2>
+  <div class="section-header">
+    <span class="section-num">02</span>
+    <h2>Framework Statistics</h2>
+  </div>
   <div class="stats-grid">
-    <div class="stat-card"><div class="value">113</div><div class="label">Python Files</div></div>
-    <div class="stat-card"><div class="value">48.5K</div><div class="label">Lines of Code</div></div>
     <div class="stat-card"><div class="value">17</div><div class="label">Active Gates</div></div>
-    <div class="stat-card"><div class="value">50</div><div class="label">Shared Modules</div></div>
-    <div class="stat-card"><div class="value">33</div><div class="label">Skills</div></div>
-    <div class="stat-card"><div class="value">9</div><div class="label">Plugins</div></div>
+    <div class="stat-card"><div class="value">49</div><div class="label">Shared Modules</div></div>
+    <div class="stat-card"><div class="value">35</div><div class="label">Skills</div></div>
+    <div class="stat-card"><div class="value">17</div><div class="label">MCP Tools</div></div>
+    <div class="stat-card"><div class="value">1,414</div><div class="label">Memories</div></div>
+    <div class="stat-card"><div class="value">1,437</div><div class="label">Tests Passing</div></div>
     <div class="stat-card"><div class="value">6</div><div class="label">Agent Types</div></div>
     <div class="stat-card"><div class="value">4</div><div class="label">Teams</div></div>
     <div class="stat-card"><div class="value">2</div><div class="label">MCP Servers</div></div>
-    <div class="stat-card"><div class="value">16</div><div class="label">MCP Tools</div></div>
+    <div class="stat-card"><div class="value">9</div><div class="label">Plugins</div></div>
     <div class="stat-card"><div class="value">2</div><div class="label">Orchestrators</div></div>
-    <div class="stat-card"><div class="value">1,345</div><div class="label">Memories</div></div>
+    <div class="stat-card"><div class="value">768</div><div class="label">Embedding Dims</div></div>
   </div>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- GATE SYSTEM -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="gates">
-  <h2>Gate System</h2>
+  <div class="section-header">
+    <span class="section-num">03</span>
+    <h2>Gate System</h2>
+  </div>
 
   <h3>Tier 1 &mdash; Safety <span class="tier-badge tier1">Fail-Closed</span></h3>
   <table>
     <thead><tr><th>#</th><th>Name</th><th>Lines</th><th>Watched</th><th>Purpose</th></tr></thead>
     <tbody>
-      <tr><td>1</td><td>READ BEFORE EDIT</td><td>118</td><td>Edit, Write, NotebookEdit</td><td>Must Read file before editing. Guards 16 extensions. Stem matching: test_foo.py satisfies foo.py</td></tr>
-      <tr><td>2</td><td>NO DESTROY</td><td>312</td><td>Bash</td><td>Blocks rm -rf, DROP TABLE, force push, reset --hard, mkfs, dd, fork bombs. 47 patterns. Shlex tokenization</td></tr>
-      <tr><td>3</td><td>TEST BEFORE DEPLOY</td><td>131</td><td>Bash</td><td>Blocks scp, docker push, kubectl apply, npm publish, terraform unless tests ran in last 30 min</td></tr>
+      <tr>
+        <td>1</td><td>READ BEFORE EDIT</td><td>118</td><td>Edit, Write, NotebookEdit</td>
+        <td>Must Read file before editing. Guards 16 extensions. Stem matching: test_foo.py satisfies foo.py</td>
+      </tr>
+      <tr>
+        <td>2</td><td>NO DESTROY</td><td>312</td><td>Bash</td>
+        <td>Blocks rm -rf, DROP TABLE, force push, reset --hard, mkfs, dd, fork bombs. 47 patterns. Shlex tokenization</td>
+      </tr>
+      <tr>
+        <td>3</td><td>TEST BEFORE DEPLOY</td><td>131</td><td>Bash</td>
+        <td>Blocks scp, docker push, kubectl apply, npm publish, terraform unless tests ran in last 30 min</td>
+      </tr>
     </tbody>
   </table>
 
@@ -281,17 +511,50 @@
   <table>
     <thead><tr><th>#</th><th>Name</th><th>Lines</th><th>Watched</th><th>Purpose</th></tr></thead>
     <tbody>
-      <tr><td>4</td><td>MEMORY FIRST</td><td>82</td><td>Edit, Write, NotebookEdit, Task</td><td>Blocks if memory not queried in last 5 min. Sideband: .memory_last_queried</td></tr>
-      <tr><td>5</td><td>PROOF BEFORE FIXED</td><td>110</td><td>Edit, Write, NotebookEdit</td><td>Blocks edits to OTHER files when 3+ unverified. Same-file: warn at 4th, block at 6th</td></tr>
-      <tr><td>6</td><td>SAVE TO MEMORY</td><td>238</td><td>Edit, Write, Task, Bash</td><td>Advisory &rarr; blocking. Warns unsaved fixes. Escalates after 5 warnings. 20-min stale decay</td></tr>
-      <tr><td>7</td><td>CRITICAL FILE GUARD</td><td>100</td><td>Edit, Write, NotebookEdit</td><td>Extra checks for high-risk files (auth, config, enforcer, memory_server). Requires explicit justification</td></tr>
-      <tr><td>9</td><td>STRATEGY BAN</td><td>175</td><td>Edit, Write, NotebookEdit</td><td>Blocks strategies that failed 3+ times. Auto-defers to PRP</td></tr>
-      <tr><td>10</td><td>MODEL COST GUARD</td><td>267</td><td>Task</td><td>Enforces explicit model param. 4-tier budget degradation. Role-based profiles</td></tr>
-      <tr><td>11</td><td>RATE LIMIT</td><td>82</td><td>All (except analytics)</td><td>Blocks &gt;60 calls/min, warns &gt;40/min. 120s rolling window</td></tr>
-      <tr><td>13</td><td>WORKSPACE ISOLATION</td><td>112</td><td>Edit, Write, NotebookEdit</td><td>Prevents concurrent file edits across agents. fcntl.flock. Main session exempt</td></tr>
-      <tr><td>14</td><td>CONFIDENCE CHECK</td><td>121</td><td>Edit, Write, NotebookEdit</td><td>Progressive: warn 2x per file &rarr; block on 3rd</td></tr>
-      <tr><td>15</td><td>CAUSAL CHAIN</td><td>79</td><td>Edit, Write, NotebookEdit</td><td>Blocks Edit after test failure until query_fix_history called</td></tr>
-      <tr><td>16</td><td>CODE QUALITY</td><td>154</td><td>Edit, Write, NotebookEdit</td><td>Catches secrets, debug prints, broad excepts. Progressive: warn 3x &rarr; block</td></tr>
+      <tr>
+        <td>4</td><td>MEMORY FIRST</td><td>82</td><td>Edit, Write, NotebookEdit, Task</td>
+        <td>Blocks if memory not queried in last 5 min. Sideband: .memory_last_queried</td>
+      </tr>
+      <tr>
+        <td>5</td><td>PROOF BEFORE FIXED</td><td>110</td><td>Edit, Write, NotebookEdit</td>
+        <td>Blocks edits to OTHER files when 3+ unverified. Same-file: warn at 4th, block at 6th</td>
+      </tr>
+      <tr>
+        <td>6</td><td>SAVE TO MEMORY</td><td>238</td><td>Edit, Write, Task, Bash</td>
+        <td>Advisory &rarr; blocking. Warns unsaved fixes. Escalates after 5 warnings. 20-min stale decay</td>
+      </tr>
+      <tr>
+        <td>7</td><td>CRITICAL FILE GUARD</td><td>100</td><td>Edit, Write, NotebookEdit</td>
+        <td>Extra checks for high-risk files (auth, config, enforcer, memory_server). Requires explicit justification</td>
+      </tr>
+      <tr>
+        <td>9</td><td>STRATEGY BAN</td><td>175</td><td>Edit, Write, NotebookEdit</td>
+        <td>Blocks strategies that failed 3+ times. Auto-defers to PRP</td>
+      </tr>
+      <tr>
+        <td>10</td><td>MODEL COST GUARD</td><td>267</td><td>Task</td>
+        <td>Enforces explicit model param. 4-tier budget degradation. Role-based profiles</td>
+      </tr>
+      <tr>
+        <td>11</td><td>RATE LIMIT <span class="tier-badge star-badge">Tier 1*</span></td><td>82</td><td>All (except analytics)</td>
+        <td>Blocks &gt;60 calls/min, warns &gt;40/min. 120s rolling window. Fail-closed (rate limiting is safety-critical)</td>
+      </tr>
+      <tr>
+        <td>13</td><td>WORKSPACE ISOLATION</td><td>112</td><td>Edit, Write, NotebookEdit</td>
+        <td>Prevents concurrent file edits across agents. fcntl.flock. Main session exempt</td>
+      </tr>
+      <tr>
+        <td>14</td><td>CONFIDENCE CHECK</td><td>121</td><td>Edit, Write, NotebookEdit</td>
+        <td>Progressive: warn 2x per file &rarr; block on 3rd</td>
+      </tr>
+      <tr>
+        <td>15</td><td>CAUSAL CHAIN</td><td>79</td><td>Edit, Write, NotebookEdit</td>
+        <td>Blocks Edit after test failure until query_fix_history called</td>
+      </tr>
+      <tr>
+        <td>16</td><td>CODE QUALITY</td><td>154</td><td>Edit, Write, NotebookEdit</td>
+        <td>Catches secrets, debug prints, broad excepts. Progressive: warn 3x &rarr; block</td>
+      </tr>
     </tbody>
   </table>
 
@@ -299,9 +562,18 @@
   <table>
     <thead><tr><th>#</th><th>Name</th><th>Lines</th><th>Watched</th><th>Purpose</th></tr></thead>
     <tbody>
-      <tr><td>17</td><td>INJECTION DEFENSE</td><td>771</td><td>WebFetch, WebSearch, MCP</td><td>6 injection categories. Base64/ROT13/hex/homoglyph/zero-width detection</td></tr>
-      <tr><td>18</td><td>CANARY MONITOR</td><td>216</td><td>All (advisory only)</td><td>Never blocks. Detects bursts, repeated sequences, new tools. Welford stats</td></tr>
-      <tr><td>19</td><td>HINDSIGHT</td><td>92</td><td>Edit, Write, NotebookEdit</td><td>Reads mentor signals. Blocks on sustained poor quality (score &lt; 0.3)</td></tr>
+      <tr>
+        <td>17</td><td>INJECTION DEFENSE</td><td>771</td><td>WebFetch, WebSearch, MCP</td>
+        <td>6 injection categories. Base64/ROT13/hex/homoglyph/zero-width detection</td>
+      </tr>
+      <tr>
+        <td>18</td><td>CANARY MONITOR</td><td>216</td><td>All (advisory only)</td>
+        <td>Never blocks. Detects bursts, repeated sequences, new tools. Welford stats</td>
+      </tr>
+      <tr>
+        <td>19</td><td>HINDSIGHT</td><td>92</td><td>Edit, Write, NotebookEdit</td>
+        <td>Reads mentor signals. Blocks on sustained poor quality (score &lt; 0.3)</td>
+      </tr>
     </tbody>
   </table>
 
@@ -315,7 +587,7 @@
   </table>
 
   <h3>Gate Dispatch</h3>
-  <ul style="color:var(--text-muted); padding-left:1.5rem; font-size:0.9rem;">
+  <ul style="color:var(--text-muted); padding-left:1.4rem; font-size:0.78rem; line-height:1.8;">
     <li>Gates run in priority order from <code>shared/gate_registry.GATE_MODULES</code></li>
     <li>Q-learning optimization reorders Tier 2+ by historical block probability</li>
     <li>Tool-scoped dispatch reduces unnecessary evaluations</li>
@@ -324,12 +596,20 @@
   </ul>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- SHARED MODULES -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="shared">
-  <h2>Shared Modules (50 files, ~19,458 lines)</h2>
+  <div class="section-header">
+    <span class="section-num">04</span>
+    <h2>Shared Modules (49 files)</h2>
+  </div>
 
   <details class="module-group" open>
-    <summary>State Management <span class="count">3 modules, ~1,277 lines</span></summary>
+    <summary>
+      <span class="label-left">State Management</span>
+      <span class="count">3 modules &middot; ~1,277 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>state.py</td><td>700</td><td>load_state/save_state/default_state, atomic writes, fcntl.flock, per-session isolation</td></tr>
@@ -340,7 +620,10 @@
   </details>
 
   <details class="module-group">
-    <summary>Gate Execution <span class="count">4 modules, ~775 lines</span></summary>
+    <summary>
+      <span class="label-left">Gate Execution</span>
+      <span class="count">4 modules &middot; ~775 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>gate_result.py</td><td>70</td><td>GateResult class (block/ask/warn/allow)</td></tr>
@@ -352,18 +635,24 @@
   </details>
 
   <details class="module-group">
-    <summary>Audit &amp; Logging <span class="count">3 modules, ~902 lines</span></summary>
+    <summary>
+      <span class="label-left">Audit &amp; Logging</span>
+      <span class="count">3 modules &middot; ~902 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>audit_log.py</td><td>537</td><td>JSONL trail with rotation, compaction, cleanup, block summaries</td></tr>
-        <tr><td>observation.py</td><td>284</td><td>Compress tool calls for ChromaDB auto-capture. Sentiment detection</td></tr>
+        <tr><td>observation.py</td><td>284</td><td>Compress tool calls for LanceDB auto-capture. Sentiment detection</td></tr>
         <tr><td>secrets_filter.py</td><td>81</td><td>Scrub API keys/tokens/connection strings (12 patterns)</td></tr>
       </tbody></table>
     </div>
   </details>
 
   <details class="module-group">
-    <summary>Error Handling <span class="count">2 modules, ~546 lines</span></summary>
+    <summary>
+      <span class="label-left">Error Handling</span>
+      <span class="count">2 modules &middot; ~546 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>error_normalizer.py</td><td>52</td><td>Strip paths/UUIDs/timestamps &rarr; stable FNV-1a fingerprint</td></tr>
@@ -373,7 +662,10 @@
   </details>
 
   <details class="module-group">
-    <summary>Performance &amp; Monitoring <span class="count">4 modules, ~1,808 lines</span></summary>
+    <summary>
+      <span class="label-left">Performance &amp; Monitoring</span>
+      <span class="count">4 modules &middot; ~1,808 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>metrics_collector.py</td><td>643</td><td>Counters/gauges/histograms with ramdisk persistence</td></tr>
@@ -385,7 +677,10 @@
   </details>
 
   <details class="module-group">
-    <summary>Anomaly &amp; Drift Detection <span class="count">2 modules, ~566 lines</span></summary>
+    <summary>
+      <span class="label-left">Anomaly &amp; Drift Detection</span>
+      <span class="count">2 modules &middot; ~566 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>anomaly_detector.py</td><td>496</td><td>Rate spikes, single-gate dominance, session drift</td></tr>
@@ -395,7 +690,10 @@
   </details>
 
   <details class="module-group">
-    <summary>Analysis &amp; Correlation <span class="count">3 modules, ~2,614 lines</span></summary>
+    <summary>
+      <span class="label-left">Analysis &amp; Correlation</span>
+      <span class="count">3 modules &middot; ~2,614 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>gate_correlator.py</td><td>822</td><td>Co-occurrence matrix, gate chains, redundancy, optimal ordering</td></tr>
@@ -406,7 +704,10 @@
   </details>
 
   <details class="module-group">
-    <summary>Security &amp; Validation <span class="count">4 modules, ~1,015 lines</span></summary>
+    <summary>
+      <span class="label-left">Security &amp; Validation</span>
+      <span class="count">4 modules &middot; ~1,015 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>exemptions.py</td><td>53</td><td>Tiered file exemption: base/standard/full</td></tr>
@@ -418,7 +719,10 @@
   </details>
 
   <details class="module-group">
-    <summary>Resilience &amp; Recovery <span class="count">3 modules, ~1,734 lines</span></summary>
+    <summary>
+      <span class="label-left">Resilience &amp; Recovery</span>
+      <span class="count">3 modules &middot; ~1,734 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>circuit_breaker.py</td><td>679</td><td>CLOSED/OPEN/HALF_OPEN per-service failure tracking</td></tr>
@@ -429,18 +733,24 @@
   </details>
 
   <details class="module-group">
-    <summary>Memory &amp; Persistence <span class="count">3 modules, ~1,393 lines</span></summary>
+    <summary>
+      <span class="label-left">Memory &amp; Persistence</span>
+      <span class="count">3 modules &middot; ~1,393 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>memory_maintenance.py</td><td>847</td><td>Health analysis, age scoring, cleanup candidates</td></tr>
-        <tr><td>chromadb_socket.py</td><td>153</td><td>UDS client for ChromaDB (avoids Rust segfaults)</td></tr>
+        <tr><td>chromadb_socket.py</td><td>153</td><td>Legacy UDS client — retained for compatibility, LanceDB primary</td></tr>
         <tr><td>experience_archive.py</td><td>393</td><td>CSV-based fix pattern learning, success rates</td></tr>
       </tbody></table>
     </div>
   </details>
 
   <details class="module-group">
-    <summary>Inter-Agent Communication <span class="count">3 modules, ~1,312 lines</span></summary>
+    <summary>
+      <span class="label-left">Inter-Agent Communication</span>
+      <span class="count">3 modules &middot; ~1,312 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>agent_channel.py</td><td>125</td><td>SQLite WAL inter-agent messaging</td></tr>
@@ -451,7 +761,10 @@
   </details>
 
   <details class="module-group">
-    <summary>Registry &amp; Catalog <span class="count">4 modules, ~2,047 lines</span></summary>
+    <summary>
+      <span class="label-left">Registry &amp; Catalog</span>
+      <span class="count">4 modules &middot; ~2,047 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>plugin_registry.py</td><td>656</td><td>Scan plugins, resolve metadata, categorize</td></tr>
@@ -463,7 +776,10 @@
   </details>
 
   <details class="module-group">
-    <summary>Visualization &amp; Reporting <span class="count">3 modules, ~1,448 lines</span></summary>
+    <summary>
+      <span class="label-left">Visualization &amp; Reporting</span>
+      <span class="count">3 modules &middot; ~1,448 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>gate_dashboard.py</td><td>439</td><td>Gate effectiveness dashboard, ranked metrics</td></tr>
@@ -474,7 +790,10 @@
   </details>
 
   <details class="module-group">
-    <summary>Testing &amp; Quality <span class="count">2 modules, ~1,344 lines</span></summary>
+    <summary>
+      <span class="label-left">Testing &amp; Quality</span>
+      <span class="count">2 modules &middot; ~1,344 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>test_generator.py</td><td>533</td><td>Auto-generate test stubs for gates/modules</td></tr>
@@ -484,7 +803,22 @@
   </details>
 
   <details class="module-group">
-    <summary>Utility <span class="count">2 modules, ~253 lines</span></summary>
+    <summary>
+      <span class="label-left">Domain System</span>
+      <span class="count">1 module</span>
+    </summary>
+    <div class="inner">
+      <table><thead><tr><th>Module</th><th>Purpose</th></tr></thead><tbody>
+        <tr><td>domain_registry.py</td><td>Domain overlay management, profile.json schema, graduation lifecycle</td></tr>
+      </tbody></table>
+    </div>
+  </details>
+
+  <details class="module-group">
+    <summary>
+      <span class="label-left">Utility</span>
+      <span class="count">2 modules &middot; ~253 lines</span>
+    </summary>
     <div class="inner">
       <table><thead><tr><th>Module</th><th>Lines</th><th>Purpose</th></tr></thead><tbody>
         <tr><td>tool_fingerprint.py</td><td>174</td><td>SHA256 MCP tool supply chain verification</td></tr>
@@ -494,75 +828,109 @@
   </details>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- HOOK PIPELINE -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="pipeline">
-  <h2>Hook Pipeline</h2>
+  <div class="section-header">
+    <span class="section-num">05</span>
+    <h2>Hook Pipeline</h2>
+  </div>
 
-  <div class="pipeline-step" style="border-color: var(--accent2);">
-    <div class="event">SessionStart</div>
-    <div class="handler"><code>boot.py</code> &rarr; <code>boot_pkg/orchestrator.py</code> (378 lines) &mdash; 22-step pipeline: ramdisk init, audit rotation, memory injection, context extraction, state reset</div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--accent3);">
-    <div class="event">UserPromptSubmit</div>
-    <div class="handler"><code>user_prompt_capture.py</code> (queues) + <code>auto_commit.py commit</code> (batch staged changes)</div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--tier1);">
-    <div class="event">PreToolUse</div>
-    <div class="handler"><code>enforcer_shim.py</code> &rarr; <code>enforcer_daemon.py</code> (~43ms fast path UDS) &mdash; 17 active gates, priority-ordered, Q-learning optimized</div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--accent);">
-    <div class="event">PostToolUse</div>
-    <div class="handler"><code>tracker.py</code> &rarr; <code>tracker_pkg/orchestrator.py</code> (537 lines) &mdash; 17-step pipeline: errors, observations, verification, mentor verdicts<br>+ <code>auto_commit.py stage</code> + <code>auto_format.py</code></div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--text-muted);">
-    <div class="event">PostToolUseFailure</div>
-    <div class="handler"><code>event_logger.py</code> + <code>failure_recovery.py</code></div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--text-muted);">
-    <div class="event">SubagentStart</div>
-    <div class="handler"><code>subagent_context.py</code> &mdash; inject LIVE_STATE + session state into sub-agents</div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--text-muted);">
-    <div class="event">SubagentStop</div>
-    <div class="handler"><code>event_logger.py</code></div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--text-muted);">
-    <div class="event">PermissionRequest</div>
-    <div class="handler"><code>auto_approve.py</code></div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--text-muted);">
-    <div class="event">Notification</div>
-    <div class="handler"><code>event_logger.py</code></div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--text-muted);">
-    <div class="event">ConfigChange</div>
-    <div class="handler"><code>config_change.py</code></div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--text-muted);">
-    <div class="event">PreCompact</div>
-    <div class="handler"><code>pre_compact.py</code> &mdash; snapshot gate state before context compression</div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--accent3);">
-    <div class="event">SessionEnd</div>
-    <div class="handler"><code>session_end.py</code> (554 lines) &mdash; flush queues, update LIVE_STATE, increment session_count</div>
-  </div>
-  <div class="pipeline-step" style="border-color: var(--text-muted);">
-    <div class="event">Stop</div>
-    <div class="handler"><code>tg_mirror.py</code> + <code>stop_cleanup.py</code> &mdash; flush I/O, close handles, shutdown daemons</div>
+  <div class="pipeline">
+    <div class="pipeline-step" style="border-left-color: var(--green);">
+      <div class="event">SessionStart</div>
+      <div class="handler"><code>boot.py</code> &rarr; <code>boot_pkg/orchestrator.py</code> (378 lines) &mdash; 22-step pipeline: ramdisk init, audit rotation, memory injection, context extraction, state reset</div>
+    </div>
+    <div class="pipeline-step" style="border-left-color: var(--yellow);">
+      <div class="event">UserPromptSubmit</div>
+      <div class="handler"><code>user_prompt_capture.py</code> (queues) + <code>auto_commit.py commit</code> (batch staged changes)</div>
+    </div>
+    <div class="pipeline-step" style="border-left-color: var(--red);">
+      <div class="event">PreToolUse</div>
+      <div class="handler"><code>enforcer_shim.py</code> &rarr; <code>enforcer_daemon.py</code> (~43ms fast path UDS) &mdash; 17 active gates, priority-ordered, Q-learning optimized</div>
+    </div>
+    <div class="pipeline-step" style="border-left-color: var(--accent);">
+      <div class="event">PostToolUse</div>
+      <div class="handler"><code>tracker.py</code> &rarr; <code>tracker_pkg/orchestrator.py</code> (537 lines) &mdash; 17-step pipeline: errors, observations, verification, mentor verdicts<br>+ <code>auto_commit.py stage</code> + <code>auto_format.py</code></div>
+    </div>
+    <div class="pipeline-step">
+      <div class="event">PostToolUseFailure</div>
+      <div class="handler"><code>event_logger.py</code> + <code>failure_recovery.py</code></div>
+    </div>
+    <div class="pipeline-step">
+      <div class="event">SubagentStart</div>
+      <div class="handler"><code>subagent_context.py</code> &mdash; inject LIVE_STATE + session state into sub-agents</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="event">SubagentStop</div>
+      <div class="handler"><code>event_logger.py</code></div>
+    </div>
+    <div class="pipeline-step">
+      <div class="event">PermissionRequest</div>
+      <div class="handler"><code>auto_approve.py</code></div>
+    </div>
+    <div class="pipeline-step">
+      <div class="event">Notification</div>
+      <div class="handler"><code>event_logger.py</code></div>
+    </div>
+    <div class="pipeline-step">
+      <div class="event">ConfigChange</div>
+      <div class="handler"><code>config_change.py</code></div>
+    </div>
+    <div class="pipeline-step">
+      <div class="event">PreCompact</div>
+      <div class="handler"><code>pre_compact.py</code> &mdash; snapshot gate state before context compression</div>
+    </div>
+    <div class="pipeline-step" style="border-left-color: var(--yellow);">
+      <div class="event">SessionEnd</div>
+      <div class="handler"><code>session_end.py</code> (554 lines) &mdash; flush queues, update LIVE_STATE, increment session_count</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="event">Stop</div>
+      <div class="handler"><code>tg_mirror.py</code> + <code>stop_cleanup.py</code> &mdash; flush I/O, close handles, shutdown daemons</div>
+    </div>
   </div>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- MCP SERVERS -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="mcp">
-  <h2>MCP Servers</h2>
+  <div class="section-header">
+    <span class="section-num">06</span>
+    <h2>MCP Servers</h2>
+  </div>
 
-  <h3>Memory Server &mdash; <code>memory_server.py</code> (4,188 lines)</h3>
-  <p>Embedding: <strong>nomic-ai/nomic-embed-text-v2-moe</strong> (768-dim). Storage: <strong>~/data/memory/</strong> (ChromaDB SQLite). UDS gateway: <code>.chromadb.sock</code></p>
+  <h3>Memory Server &mdash; <code>memory_server.py</code></h3>
+  <p>
+    Embedding: <strong>nomic-embed-text-v2-moe</strong> (768-dim).
+    Storage: <strong>~/data/memory/lancedb/</strong> (LanceDB vector DB).
+    Tag index: <code>~/data/memory/tags.db</code> (SQLite, &lt;1MB).
+    ChromaDB: backup only at <code>~/data/memory/chroma.sqlite3</code>.
+  </p>
   <p>3-tier memory classification: <strong>Tier 1</strong> high-value memories boosted in ranking, <strong>Tier 2</strong> standard memories at neutral weight, <strong>Tier 3</strong> low-value memories penalized in ranking.</p>
+
+  <h3>Search Modes (8 total)</h3>
+  <table>
+    <thead><tr><th>Mode</th><th>Backend</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>semantic</td><td>LanceDB flat scan (~30ms)</td><td>768-dim cosine similarity. Default fallback</td></tr>
+      <tr><td>keyword</td><td>LanceDB BM25 FTS (~19ms)</td><td>Full-text search, replaced FTS5 in session 234</td></tr>
+      <tr><td>hybrid</td><td>Both, merged + reranked</td><td>Default mode for search_knowledge</td></tr>
+      <tr><td>tags</td><td>SQLite tags.db (&lt;2ms)</td><td>TagIndex, exact tag matching, returns memory IDs</td></tr>
+      <tr><td>observations</td><td>LanceDB observations table</td><td>Auto-captured PostToolUse summaries</td></tr>
+      <tr><td>all</td><td>All collections</td><td>Broad search across knowledge + observations</td></tr>
+      <tr><td>transcript <span class="tier-badge new-badge">NEW</span></td><td>L0 JSONL raw files</td><td>Raw Claude Code transcript search. Toggle: <code>transcript_l0</code> in config.json</td></tr>
+      <tr><td>code</td><td>Keyword + semantic</td><td>Code-optimized weighting</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Memory MCP Tools (6)</h3>
   <table>
     <thead><tr><th>Tool</th><th>Parameters</th><th>Purpose</th></tr></thead>
     <tbody>
-      <tr><td>search_knowledge</td><td>query, top_k, mode, recency_weight, match_all</td><td>Semantic/keyword/hybrid search. Tag expansion. Recency boost</td></tr>
+      <tr><td>search_knowledge</td><td>query, top_k, mode, recency_weight, match_all</td><td>Semantic/keyword/hybrid/transcript search. Tag expansion. Recency boost</td></tr>
       <tr><td>remember_this</td><td>content, context, tags, force</td><td>Save with dedup (cosine &gt; 0.85). FNV1a IDs. Noise filter</td></tr>
       <tr><td>get_memory</td><td>id</td><td>Full memory retrieval. Batch support</td></tr>
       <tr><td>record_attempt</td><td>error_text, strategy_id</td><td>Start causal chain &rarr; returns chain_id</td></tr>
@@ -571,8 +939,8 @@
     </tbody>
   </table>
 
-  <h3>Analytics Server &mdash; <code>analytics_server.py</code> (379 lines)</h3>
-  <p>Lightweight, read-only, lazy-loaded. No ChromaDB dependency.</p>
+  <h3>Analytics Server &mdash; <code>analytics_server.py</code></h3>
+  <p>Lightweight, read-only, lazy-loaded. No LanceDB dependency.</p>
   <table>
     <thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
     <tbody>
@@ -585,33 +953,79 @@
       <tr><td>all_metrics</td><td>Counters/gauges/histograms + rollups</td></tr>
       <tr><td>telegram_search</td><td>FTS5 Telegram message history</td></tr>
       <tr><td>terminal_history_search</td><td>FTS5 terminal/conversation history</td></tr>
-      <tr><td>web_search</td><td>ChromaDB semantic web search</td></tr>
+      <tr><td>transcript_context <span class="tier-badge new-badge">NEW</span></td><td>Raw L0 JSONL transcript window by session/timestamp</td></tr>
+      <tr><td>web_search</td><td>Semantic web search</td></tr>
     </tbody>
   </table>
+
+  <div class="note">
+    <strong>Memory Architecture (4-Layer):</strong><br>
+    L0 Raw transcripts (JSONL, Claude Code ~/.claude/projects/) &rarr;
+    L1 LanceDB curated memories (1,414 docs, knowledge + fix_outcomes) &rarr;
+    L2 Terminal history (FTS5 SQLite, 19.8MB) &rarr;
+    L3 Telegram messages (FTS5 SQLite, 532KB)
+  </div>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- SKILLS -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="skills">
-  <h2>Skills Catalog (33 skills)</h2>
+  <div class="section-header">
+    <span class="section-num">07</span>
+    <h2>Skills Catalog (35 skills)</h2>
+  </div>
+
   <h3>Dev Workflow (6)</h3>
-  <div class="skill-chips"><span class="chip">fix</span><span class="chip">commit</span><span class="chip">test</span><span class="chip">review</span><span class="chip">refactor</span><span class="chip">document</span></div>
+  <div class="skill-chips">
+    <span class="chip">fix</span><span class="chip">commit</span><span class="chip">test</span>
+    <span class="chip">review</span><span class="chip">refactor</span><span class="chip">document</span>
+  </div>
+
   <h3>Research (6)</h3>
-  <div class="skill-chips"><span class="chip">research</span><span class="chip">explore</span><span class="chip">deep-dive</span><span class="chip">analyze-errors</span><span class="chip">learn</span><span class="chip">teach</span></div>
+  <div class="skill-chips">
+    <span class="chip">research</span><span class="chip">explore</span><span class="chip">deep-dive</span>
+    <span class="chip">analyze-errors</span><span class="chip">learn</span><span class="chip">teach</span>
+  </div>
+
   <h3>Framework Ops (6)</h3>
-  <div class="skill-chips"><span class="chip">diagnose</span><span class="chip">super-health</span><span class="chip">introspect</span><span class="chip">status</span><span class="chip">wrap-up</span><span class="chip">audit</span></div>
-  <h3>Quality/Security (2)</h3>
-  <div class="skill-chips"><span class="chip">security-scan</span><span class="chip">benchmark</span></div>
-  <h3>Build/Deploy (3)</h3>
-  <div class="skill-chips"><span class="chip">build</span><span class="chip">deploy</span><span class="chip">report</span></div>
+  <div class="skill-chips">
+    <span class="chip">diagnose</span><span class="chip">super-health</span><span class="chip">introspect</span>
+    <span class="chip">status</span><span class="chip">wrap-up</span><span class="chip">audit</span>
+  </div>
+
+  <h3>Quality / Security (2)</h3>
+  <div class="skill-chips">
+    <span class="chip">security-scan</span><span class="chip">benchmark</span>
+  </div>
+
+  <h3>Build / Deploy (3)</h3>
+  <div class="skill-chips">
+    <span class="chip">build</span><span class="chip">deploy</span><span class="chip">report</span>
+  </div>
+
   <h3>Orchestration (5)</h3>
-  <div class="skill-chips"><span class="chip">prp</span><span class="chip">wave</span><span class="chip">loop</span><span class="chip">chain</span><span class="chip">sprint</span></div>
-  <h3>Advanced (5)</h3>
-  <div class="skill-chips"><span class="chip">web</span><span class="chip">browser</span><span class="chip">ralph</span><span class="chip">super-evolve</span><span class="chip">super-prof-optimize</span></div>
+  <div class="skill-chips">
+    <span class="chip">prp</span><span class="chip">wave</span><span class="chip">loop</span>
+    <span class="chip">chain</span><span class="chip">sprint</span>
+  </div>
+
+  <h3>Advanced (7)</h3>
+  <div class="skill-chips">
+    <span class="chip">web</span><span class="chip">browser</span><span class="chip">ralph</span>
+    <span class="chip">super-evolve</span><span class="chip">super-prof-optimize</span>
+    <span class="chip new">evolve</span><span class="chip new">prof-optimize</span>
+  </div>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- AGENTS & TEAMS -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="agents">
-  <h2>Agents &amp; Teams</h2>
+  <div class="section-header">
+    <span class="section-num">08</span>
+    <h2>Agents &amp; Teams</h2>
+  </div>
 
   <h3>Agent Definitions (6)</h3>
   <table>
@@ -645,9 +1059,14 @@
 Cross-session            → Sub-agents + memory</pre>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- ORCHESTRATION -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="orchestration">
-  <h2>External Orchestration</h2>
+  <div class="section-header">
+    <span class="section-num">09</span>
+    <h2>External Orchestration</h2>
+  </div>
   <table>
     <thead><tr><th>Script</th><th>Lines</th><th>Purpose</th></tr></thead>
     <tbody>
@@ -658,25 +1077,44 @@ Cross-session            → Sub-agents + memory</pre>
   <p><strong>PRP System:</strong> /prp &rarr; task_manager.py &rarr; torus-loop.sh (sequential) or torus-wave.py (parallel) &rarr; Memory MCP cross-instance continuity &rarr; Gate 9 auto-defer feedback loop</p>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- INTEGRATIONS -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="integrations">
-  <h2>Integration Points</h2>
+  <div class="section-header">
+    <span class="section-num">10</span>
+    <h2>Integration Points</h2>
+  </div>
   <table>
     <thead><tr><th>System</th><th>Location</th><th>Protocol</th></tr></thead>
     <tbody>
-      <tr><td>ChromaDB (L1)</td><td>~/data/memory/</td><td>UDS socket (.chromadb.sock), semantic search</td></tr>
+      <tr><td>LanceDB (L1 primary)</td><td>~/data/memory/lancedb/</td><td>LanceDB vector DB. Flat scan ~30ms semantic, ~19ms BM25 keyword</td></tr>
+      <tr><td>ChromaDB (L1 backup)</td><td>~/data/memory/chroma.sqlite3</td><td>Migration complete. Backup only. 6,247 docs migrated to LanceDB</td></tr>
+      <tr><td>Tag Index</td><td>~/data/memory/tags.db</td><td>SQLite &lt;1MB. TagIndex class (~60 lines). &lt;2ms tag queries</td></tr>
+      <tr><td>Raw Transcripts (L0)</td><td>~/.claude/projects/*/</td><td>JSONL files. Accessed via <code>search_knowledge(mode="transcript")</code></td></tr>
       <tr><td>Terminal History (L2)</td><td>integrations/terminal-history/</td><td>FTS5, SQLite terminal_history.db (19.8MB)</td></tr>
       <tr><td>Telegram Bot (L3)</td><td>integrations/telegram-bot/</td><td>Bot API, SQLite msg_log.db (532KB)</td></tr>
-      <tr><td>Enforcer Daemon</td><td>hooks/.enforcer.sock</td><td>UDS (JSON-over-newline)</td></tr>
+      <tr><td>Enforcer Daemon</td><td>hooks/.enforcer.sock</td><td>UDS (JSON-over-newline), ~43ms fast path</td></tr>
       <tr><td>Ramdisk</td><td>/run/user/{uid}/claude-hooks/</td><td>tmpfs + async disk mirror</td></tr>
       <tr><td>Git Auto-Commit</td><td>hooks/auto_commit.py</td><td>Two-phase: stage &rarr; commit</td></tr>
     </tbody>
   </table>
+
+  <div class="note warn">
+    <strong>Storage Engine:</strong> LanceDB is the primary vector database as of Session 234.
+    ChromaDB (<code>chroma.sqlite3</code>) is backup only &mdash; 6,247 docs migrated.
+    The UDS gateway (<code>.chromadb.sock</code>) is legacy and no longer required.
+  </div>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- CONFIG -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="config">
-  <h2>Config Reference</h2>
+  <div class="section-header">
+    <span class="section-num">11</span>
+    <h2>Config Reference</h2>
+  </div>
   <table>
     <thead><tr><th>Toggle</th><th>Value</th><th>Purpose</th></tr></thead>
     <tbody>
@@ -692,7 +1130,8 @@ Cross-session            → Sub-agents + memory</pre>
       <tr><td>mentor_hindsight_gate</td><td>false</td><td>Gate 19 mentor-driven blocking</td></tr>
       <tr><td>tg_session_notify</td><td>true</td><td>Telegram session notifications</td></tr>
       <tr><td>tg_mirror_messages</td><td>true</td><td>Mirror Claude responses to Telegram</td></tr>
-      <tr><td>terminal_l2_always</td><td>false</td><td>Always include terminal L2 in search</td></tr>
+      <tr><td>terminal_l2_always</td><td>true</td><td>Always include terminal L2 in search</td></tr>
+      <tr><td>transcript_l0 <span class="tier-badge new-badge">NEW</span></td><td>false</td><td>Enable L0 raw transcript search mode</td></tr>
       <tr><td>tg_enrichment</td><td>false</td><td>Telegram context enrichment</td></tr>
       <tr><td>search_routing</td><td>"default"</td><td>Search mode routing strategy</td></tr>
       <tr><td>tg_l3_always</td><td>false</td><td>Always include Telegram L3 in context enrichment</td></tr>
@@ -704,9 +1143,14 @@ Cross-session            → Sub-agents + memory</pre>
   </table>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- DATA FILES -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="data">
-  <h2>Data Files</h2>
+  <div class="section-header">
+    <span class="section-num">12</span>
+    <h2>Data Files</h2>
+  </div>
   <table>
     <thead><tr><th>File</th><th>Size</th><th>Purpose</th></tr></thead>
     <tbody>
@@ -721,19 +1165,28 @@ Cross-session            → Sub-agents + memory</pre>
       <tr><td>.integrity_hashes.json</td><td>&mdash;</td><td>SHA256 framework verification</td></tr>
       <tr><td>.settings_snapshot.json</td><td>6.7 KB</td><td>Config snapshot at session start</td></tr>
       <tr><td>state_*.json</td><td>43 files</td><td>Per-agent session state</td></tr>
+      <tr><td>~/data/memory/lancedb/</td><td>primary</td><td>LanceDB vector DB: knowledge (1,402 docs), fix_outcomes (264), observations (4,579), quarantine (2)</td></tr>
+      <tr><td>~/data/memory/tags.db</td><td>&lt;1 MB</td><td>SQLite tag index for fast tag queries</td></tr>
+      <tr><td>~/data/memory/chroma.sqlite3</td><td>backup</td><td>ChromaDB archive — backup only, no longer primary</td></tr>
     </tbody>
   </table>
 </section>
 
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- DIRECTORY -->
+<!-- ══════════════════════════════════════════════════════ -->
 <section id="directory">
-  <h2>Directory Layout</h2>
+  <div class="section-header">
+    <span class="section-num">13</span>
+    <h2>Directory Layout</h2>
+  </div>
   <pre>~/.claude/
 ├── CLAUDE.md                        # Master rules (~1,321 tokens)
 ├── ARCHITECTURE.md                  # Architecture document
+├── architecture.html                # This file — interactive architecture map
 ├── HANDOFF.md                       # Session handoff state
 ├── LIVE_STATE.json                  # Machine-readable project state
-├── config.json                      # Runtime toggles
+├── config.json                      # Runtime toggles (transcript_l0 added)
 ├── settings.json                    # Hook registration + permissions
 ├── mcp.json                         # MCP server config
 │
@@ -745,28 +1198,41 @@ Cross-session            → Sub-agents + memory</pre>
 │   ├── tracker.py                   #   PostToolUse (47 lines)
 │   ├── session_end.py               #   SessionEnd (554 lines)
 │   ├── statusline.py                #   Status display (1,061 lines)
-│   ├── memory_server.py             #   Memory MCP (4,188 lines)
-│   ├── analytics_server.py          #   Analytics MCP (379 lines)
-│   ├── test_framework.py            #   Tests (11,904 lines)
-│   ├── gates/                       #   17 active gates (348 KB)
-│   ├── shared/                      #   50 modules (19,458 lines)
+│   ├── memory_server.py             #   Memory MCP (4,188+ lines, L0 transcript search)
+│   ├── analytics_server.py          #   Analytics MCP (379+ lines, transcript_context tool)
+│   ├── test_framework.py            #   Tests (1,437 passing)
+│   ├── gates/                       #   17 active gates
+│   │   ├── gate_01 ... gate_07      #     Tier 1-2 core gates
+│   │   ├── gate_09 ... gate_16      #     Tier 2 quality gates
+│   │   └── gate_17 ... gate_19      #     Tier 3 advanced gates
+│   ├── shared/                      #   49 modules
 │   ├── boot_pkg/                    #   Boot pipeline (848 lines)
 │   ├── tracker_pkg/                 #   Tracker pipeline (1,537 lines)
 │   └── benchmarks/                  #   Performance benchmarks
 │
-├── skills/                          # 33 skill definitions
+├── skills/                          # 35 skill definitions
 ├── agents/                          # 6 agent definitions
 ├── teams/                           # 4 team definitions
 ├── plugins/                         # 9 installed plugins
 ├── scripts/                         # torus-loop.sh, torus-wave.py
 ├── integrations/                    # telegram-bot, terminal-history
-└── rules/                           # hooks.md, memory.md, framework.md</pre>
+└── rules/                           # hooks.md, memory.md, framework.md, domains.md
+
+~/data/memory/
+├── lancedb/                         # PRIMARY: LanceDB vector DB (6,247 docs)
+│   ├── knowledge/                   #   1,402 curated memories
+│   ├── fix_outcomes/                #   264 causal chain records
+│   ├── observations/                #   4,579 auto-captured observations
+│   └── quarantine/                  #   2 quarantined entries
+├── tags.db                          # SQLite tag index (&lt;1MB, replaces fts5_index.db)
+└── chroma.sqlite3                   # ChromaDB backup (migration complete 2026-02-25)</pre>
 </section>
 
 </div>
 
 <footer>
-  <p>Torus Framework &mdash; Architecture Map v2.5.3 &mdash; Session 223 (2026-02-24)</p>
+  <p>Torus Framework &mdash; Architecture Map v2.5.4 &mdash; Session 236 (2026-02-25)</p>
+  <p style="margin-top:6px; font-size:0.68rem;">LanceDB primary &middot; 1,414 memories &middot; 17 gates &middot; 35 skills &middot; 49 shared modules &middot; 17 MCP tools</p>
 </footer>
 
 </body>
