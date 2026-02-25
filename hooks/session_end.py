@@ -338,7 +338,7 @@ def generate_handoff(state, transcript_path=""):
             haiku_summary = _haiku_summarize(excerpt, metrics_section, session_num) if excerpt else ""
 
             if haiku_summary:
-                live_state["what_was_done"] = haiku_summary
+                live_state["what_was_done"] = haiku_summary[:200]
                 print("[SESSION_END] Haiku auto-summary generated", file=sys.stderr)
             else:
                 live_state["what_was_done"] = (

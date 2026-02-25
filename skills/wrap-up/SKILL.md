@@ -17,7 +17,7 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
    - Present promotion suggestions to user for approval — never auto-promote
 3. **UPDATE LIVE STATE** — Write ~/.claude/LIVE_STATE.json with:
    - Updated session count
-   - `what_was_done` — narrative of what was done this session (from conversation context, NOT the script)
+   - `what_was_done` — max ~200 chars, action verbs only, no metrics/explanations (full details go to remember_this)
    - `framework_version` — current version string (e.g. "v2.5.3")
    - known_issues (carry forward + any new ones)
    - next_steps (reprioritized by Claude)
