@@ -500,7 +500,7 @@ def main():
         flush_capture_queue()
         backup_database()
 
-        # Telegram Bot: post session summary to FTS5 + notify OZ (gated by toggle)
+        # Telegram Bot: post session summary + notify OZ (gated by toggle)
         try:
             _tg_notify = False
             try:
@@ -514,7 +514,7 @@ def main():
         except Exception:
             pass  # Telegram integration is optional, never block session end
 
-        # Terminal History: index this session's conversation into FTS5
+        # Terminal History: index this session's conversation
         try:
             _term_hook = os.path.join(CLAUDE_DIR, "integrations", "terminal-history", "hooks", "on_session_end.py")
             if os.path.isfile(_term_hook):

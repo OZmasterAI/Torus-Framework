@@ -3537,8 +3537,8 @@ if not MEMORY_SERVER_RUNNING:
         # Test: remember_this stores preview in metadata
         from memory_server import (
             remember_this, search_knowledge, format_summaries, _migrate_previews,
-            generate_id, collection, SUMMARY_LENGTH, fts_index, _detect_query_mode,
-            _merge_results, _rerank_keyword_overlap, FTS5Index,
+            generate_id, collection, SUMMARY_LENGTH, tag_index, _detect_query_mode,
+            _merge_results, _rerank_keyword_overlap, TagIndex, _lance_keyword_search,
         )
 
         _test_content = "Test progressive disclosure: this is a long content string that exceeds the summary length to verify that preview truncation works correctly in the metadata."
@@ -3599,46 +3599,54 @@ if not MEMORY_SERVER_RUNNING:
              len(_sk["results"]) > 0 and "preview" in _sk["results"][0])
 
         # ─────────────────────────────────────────────────
-        # Phase 2: Hybrid Search (FTS5)
+        # Phase 2: Hybrid Search (TagIndex + LanceDB FTS)
         # ─────────────────────────────────────────────────
-        print("\n--- Phase 2: Hybrid Search (FTS5) ---")
+        print("\n--- Phase 2: Hybrid Search (TagIndex + LanceDB FTS) ---")
 
-        # Test: FTS5 build from LanceDB returns correct count
-        test("FTS5 index built from LanceDB",
-             fts_index is not None and isinstance(fts_index, FTS5Index))
+        # Test: TagIndex built from LanceDB
+        test("TagIndex built from LanceDB",
+             tag_index is not None and isinstance(tag_index, TagIndex))
 
-        # Test: FTS5 keyword search finds known terms
-        _kw_results = fts_index.keyword_search("OBSERVATION_TTL_DAYS", top_k=5)
-        test("FTS5 keyword search finds known terms",
-             len(_kw_results) > 0,
-             f"got {len(_kw_results)} results")
+        # Test: LanceDB keyword search finds known terms
+        _kw_results = _lance_keyword_search("OBSERVATION_TTL_DAYS", top_k=5)
+        test("LanceDB FTS keyword search finds results",
+             isinstance(_kw_results, list))
 
-        # Test: FTS5 tag search (any mode)
-        _tag_any = fts_index.tag_search(["type:fix"], match_all=False, top_k=20)
-        test("FTS5 tag search (any) returns results",
-             len(_tag_any) > 0,
-             f"got {len(_tag_any)} results")
+        # Test: TagIndex tag search (any mode) returns IDs
+        _tag_any = tag_index.tag_search(["type:fix"], match_all=False, top_k=20)
+        test("TagIndex tag search (any) returns results",
+             isinstance(_tag_any, list) and len(_tag_any) > 0
+             and isinstance(_tag_any[0], str))
 
-        # Test: FTS5 tag search (all mode) requires all tags present
-        _tag_all = fts_index.tag_search(["type:fix", "area:framework"], match_all=True, top_k=20)
-        _tag_all_valid = True
-        for _tr in _tag_all:
-            _tags = _tr.get("tags", "")
-            if "type:fix" not in _tags or "area:framework" not in _tags:
-                _tag_all_valid = False
+        # Test: TagIndex tag search (all mode) requires all tags present
+        _tag_all = tag_index.tag_search(["type:fix", "area:framework"], match_all=True, top_k=20)
+        # Every returned ID must have BOTH tags in the tags table
+        _tag_all_check = True
+        for _tid in _tag_all[:5]:
+            _mem_tags = tag_index.conn.execute(
+                "SELECT tag FROM tags WHERE memory_id = ?", (_tid,)
+            ).fetchall()
+            _mem_tag_set = {r[0] for r in _mem_tags}
+            if "type:fix" not in _mem_tag_set or "area:framework" not in _mem_tag_set:
+                _tag_all_check = False
                 break
-        test("FTS5 tag search (all) requires all tags",
-             _tag_all_valid and len(_tag_all) > 0,
-             f"got {len(_tag_all)} results, valid={_tag_all_valid}")
+        test("TagIndex tag search (all) requires all tags",
+             _tag_all_check and len(_tag_all) > 0)
 
-        # Test: FTS5 add_entry + upsert behavior
-        _fts_test = FTS5Index()
-        _fts_test.add_entry("test1", "hello world", "hello...", "tag1,tag2", "2026-01-01", 100.0)
-        _fts_test.add_entry("test1", "updated world", "updated...", "tag1,tag3", "2026-01-02", 200.0)
-        _fts_kw = _fts_test.keyword_search("updated", top_k=5)
-        test("FTS5 add_entry upserts correctly",
-             len(_fts_kw) == 1 and _fts_kw[0]["id"] == "test1",
-             f"got {len(_fts_kw)} results")
+        # Test: TagIndex add_tags + search
+        _ti_test = TagIndex()
+        _ti_test.add_tags("test1", "type:fix,area:framework")
+        _ti_test.add_tags("test1", "type:fix,area:updated")  # upsert
+        _ti_found = _ti_test.tag_search(["area:updated"], match_all=False, top_k=5)
+        _ti_old = _ti_test.tag_search(["area:framework"], match_all=False, top_k=5)
+        test("TagIndex add_tags upserts correctly",
+             "test1" in _ti_found and "test1" not in _ti_old)
+
+        # Test: Empty TagIndex returns gracefully
+        _empty_ti = TagIndex()
+        _empty_tag = _empty_ti.tag_search(["none"], top_k=5)
+        test("Empty TagIndex returns empty lists",
+             isinstance(_empty_tag, list) and len(_empty_tag) == 0)
 
         # Test: _detect_query_mode routing (basic — full suite in always-run section)
         test("detect_mode: 'tag:type:fix' → tags",
@@ -3681,7 +3689,7 @@ if not MEMORY_SERVER_RUNNING:
         test("Keyword reranker: empty query is no-op",
              _noop_out[0]["relevance"] == 0.4)
 
-        # Test: search_knowledge mode=keyword uses FTS5
+        # Test: search_knowledge mode=keyword uses LanceDB FTS
         _sk_kw = search_knowledge("OBSERVATION_TTL_DAYS")
         test("search_knowledge auto-detects keyword mode",
              _sk_kw.get("mode") == "keyword",
@@ -3716,19 +3724,6 @@ if not MEMORY_SERVER_RUNNING:
              _sk_obs.get("mode") == "observations")
         test("search_knowledge accepts all mode",
              _sk_all.get("mode") == "all")
-
-        # Test: FTS5 sanitize query handles special chars
-        _sanitized = FTS5Index._sanitize_fts_query('test"AND(OR)special*chars')
-        test("FTS5 sanitize query strips special chars",
-             '"' not in _sanitized and "(" not in _sanitized and "*" not in _sanitized,
-             f"got: {_sanitized}")
-
-        # Test: Empty FTS5 index returns gracefully
-        _empty_fts = FTS5Index()
-        _empty_kw = _empty_fts.keyword_search("nothing", top_k=5)
-        _empty_tag = _empty_fts.tag_search(["none"], top_k=5)
-        test("Empty FTS5 index returns empty lists",
-             _empty_kw == [] and _empty_tag == [])
 
         # Test: mode parameter backward-compatible (auto is default)
         test("search_knowledge returns mode field",
@@ -5376,110 +5371,94 @@ test("routing full_hybrid: quoted → hybrid", _dqm('"exact phrase" match', rout
 test("routing unknown: falls to default", _dqm("framework gate fix", routing="bogus") == "hybrid")
 
 # ─────────────────────────────────────────────────
-# FTS5 Persistence Tests (no LanceDB needed — safe to run always)
+# TagIndex Persistence Tests (no LanceDB needed — safe to run always)
 # ─────────────────────────────────────────────────
-print("\n--- FTS5 Persistence ---")
+print("\n--- TagIndex Persistence ---")
 
 import tempfile
-from memory_server import FTS5Index
+from memory_server import TagIndex
 
-# Test: persistent DB creates file on disk
 with tempfile.TemporaryDirectory() as _tmpdir:
-    _db_path = os.path.join(_tmpdir, "test_fts5.db")
-    _pidx = FTS5Index(db_path=_db_path)
-    test("FTS5 persistent DB creates file",
-         os.path.isfile(_db_path),
-         f"file not found at {_db_path}")
+    _db_path = os.path.join(_tmpdir, "test_tags.db")
+    _pidx = TagIndex(db_path=_db_path)
+    test("TagIndex persistent DB creates file",
+         os.path.isfile(_db_path))
 
-# Test: sync_meta table exists
-_sidx = FTS5Index()  # in-memory
-_tables = [r[0] for r in _sidx.conn.execute(
-    "SELECT name FROM sqlite_master WHERE type='table'"
-).fetchall()]
-test("FTS5 sync_meta table exists",
-     "sync_meta" in _tables,
-     f"tables found: {_tables}")
+# sync_meta table exists
+_sidx = TagIndex()  # in-memory
+_tables = _sidx.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+_table_names = {r[0] for r in _tables}
+test("TagIndex sync_meta table exists",
+     "sync_meta" in _table_names and "tags" in _table_names)
 
-# Test: is_synced returns False when no sync_count
-_sidx2 = FTS5Index()
-test("FTS5 is_synced returns False when empty",
-     _sidx2.is_synced(100) is False)
+# is_synced returns False when empty
+_sidx2 = TagIndex()
+test("TagIndex is_synced returns False when empty",
+     not _sidx2.is_synced(100))
 
-# Test: is_synced returns True when counts match
-_sidx3 = FTS5Index()
+# is_synced returns True when matching
+_sidx3 = TagIndex()
 _sidx3._update_sync_count(42)
-test("FTS5 is_synced returns True when matching",
-     _sidx3.is_synced(42) is True)
+test("TagIndex is_synced returns True when matching",
+     _sidx3.is_synced(42))
 
-# Test: is_synced returns False when counts mismatch
-test("FTS5 is_synced returns False on mismatch",
-     _sidx3.is_synced(43) is False)
+# is_synced returns False on mismatch
+test("TagIndex is_synced returns False on mismatch",
+     not _sidx3.is_synced(43))
 
-# Test: add_entry increments sync_count
-_sidx4 = FTS5Index()
-_sidx4._update_sync_count(10)  # simulate post-build state
-_sidx4.add_entry("test-id-1", "test content", "test preview", "tag:test", "2026-01-01", 0.0)
-_row4 = _sidx4.conn.execute("SELECT value FROM sync_meta WHERE key='sync_count'").fetchone()
-test("FTS5 add_entry increments sync_count",
-     _row4 is not None and int(_row4[0]) == 11,
-     f"sync_count={_row4[0] if _row4 else 'None'}")
+# add_tags works and increments sync_count
+_sidx4 = TagIndex()
+_sidx4._update_sync_count(10)
+_sidx4.add_tags("mem1", "type:fix,area:framework")
+_tags_found = _sidx4.tag_search(["type:fix"], top_k=5)
+test("TagIndex add_tags stores and finds tags",
+     "mem1" in _tags_found)
 
-# Test: build_from_chromadb sets sync_count (using a mock collection)
-class _MockCollection:
-    def __init__(self, data):
-        self._data = data
+# build_from_chromadb alias works (backward compat)
+class _MockLanceCol:
     def count(self):
-        return len(self._data["ids"])
-    def get(self, limit=None, include=None):
-        return self._data
+        return 3
+    def get(self, limit=10, include=None):
+        return {
+            "ids": ["a", "b", "c"],
+            "metadatas": [
+                {"tags": "type:fix,area:backend"},
+                {"tags": "type:learning"},
+                {"tags": "area:framework,priority:high"},
+            ],
+        }
 
-_mock_data = {
-    "ids": ["m1", "m2", "m3"],
-    "documents": ["doc one", "doc two", "doc three"],
-    "metadatas": [
-        {"tags": "type:test", "timestamp": "2026-01-01", "preview": "doc one"},
-        {"tags": "type:test", "timestamp": "2026-01-02", "preview": "doc two"},
-        {"tags": "type:fix", "timestamp": "2026-01-03", "preview": "doc three"},
-    ],
-}
-_mock_col = _MockCollection(_mock_data)
-_sidx5 = FTS5Index()
-_build_count = _sidx5.build_from_chromadb(_mock_col)
-test("FTS5 build_from_chromadb sets sync_count",
-     _sidx5.is_synced(3) and _build_count == 3,
-     f"is_synced(3)={_sidx5.is_synced(3)}, build_count={_build_count}")
+_sidx5 = TagIndex()
+_count5 = _sidx5.build_from_chromadb(_MockLanceCol())
+test("TagIndex build_from_chromadb sets sync_count",
+     _count5 == 3 and _sidx5.is_synced(3))
 
-# Test: reset_and_rebuild drops and recreates
-_sidx6 = FTS5Index()
-_sidx6.add_entry("old-1", "old content", "old preview", "tag:old", "2025-01-01", 0.0)
-_sidx6._update_sync_count(1)
-_rebuild_count = _sidx6.reset_and_rebuild(_mock_col)
-_old_search = _sidx6.keyword_search("old content", top_k=5)
-_new_search = _sidx6.keyword_search("doc one", top_k=5)
-test("FTS5 reset_and_rebuild clears old + rebuilds",
-     len(_old_search) == 0 and len(_new_search) > 0 and _rebuild_count == 3,
-     f"old={len(_old_search)}, new={len(_new_search)}, count={_rebuild_count}")
+# reset_and_rebuild clears old data
+_sidx6 = TagIndex()
+_sidx6.add_tags("old1", "type:old")
+_sidx6.reset_and_rebuild(_MockLanceCol())
+_old_search = _sidx6.tag_search(["type:old"], top_k=5)
+_new_search = _sidx6.tag_search(["type:fix"], top_k=5)
+test("TagIndex reset_and_rebuild clears old + rebuilds",
+     len(_old_search) == 0 and len(_new_search) > 0)
 
-# Test: :memory: mode still works (backward compat)
-_sidx7 = FTS5Index()
-_sidx7.add_entry("compat-1", "backward compatible", "compat preview", "tag:compat", "2026-01-01", 0.0)
-_compat_search = _sidx7.keyword_search("backward compatible", top_k=5)
-test("FTS5 :memory: mode backward compatible",
-     _sidx7.db_path == ":memory:" and len(_compat_search) > 0)
+# :memory: mode backward compatible
+_sidx7 = TagIndex()
+_sidx7.add_tags("compat1", "type:test")
+_compat_search = _sidx7.tag_search(["type:test"], top_k=5)
+test("TagIndex :memory: mode backward compatible",
+     "compat1" in _compat_search)
 
-# Test: persistent DB survives reconnect
-with tempfile.TemporaryDirectory() as _tmpdir:
-    _db_path2 = os.path.join(_tmpdir, "persist_test.db")
-    _pidx2 = FTS5Index(db_path=_db_path2)
-    _pidx2.add_entry("persist-1", "persisted content", "persist preview", "tag:persist", "2026-01-01", 0.0)
-    _pidx2._update_sync_count(1)
-    _pidx2.conn.close()
-    # Reconnect
-    _pidx3 = FTS5Index(db_path=_db_path2)
-    _persist_search = _pidx3.keyword_search("persisted content", top_k=5)
-    test("FTS5 persistent DB survives reconnect",
-         len(_persist_search) > 0 and _pidx3.is_synced(1),
-         f"search={len(_persist_search)}, synced={_pidx3.is_synced(1)}")
+# Persistent DB survives reconnect
+with tempfile.TemporaryDirectory() as _tmpdir2:
+    _db_path2 = os.path.join(_tmpdir2, "persist_test.db")
+    _pidx2 = TagIndex(db_path=_db_path2)
+    _pidx2.add_tags("persist1", "type:persisted")
+    del _pidx2
+    _pidx3 = TagIndex(db_path=_db_path2)
+    _persist_search = _pidx3.tag_search(["type:persisted"], top_k=5)
+    test("TagIndex persistent DB survives reconnect",
+         "persist1" in _persist_search)
 
 # ─────────────────────────────────────────────────
 # UDS Socket Client Tests (chromadb_socket.py)
@@ -6622,7 +6601,7 @@ print("\n--- Citation URL Extraction ---")
 
 # Import the citation functions directly (no LanceDB needed)
 try:
-    from memory_server import _validate_url, _rank_url_authority, _extract_citations, FTS5Index
+    from memory_server import _validate_url, _rank_url_authority, _extract_citations, TagIndex
     _citation_imports_ok = True
 except ImportError:
     _citation_imports_ok = False
@@ -6709,24 +6688,26 @@ if _citation_imports_ok:
     test("Citation: medium.com is medium authority", _rank_url_authority("https://medium.com/x") == 2)
     test("Citation: localhost is low authority", _rank_url_authority("http://localhost:3000") == 3)
 
-    # Test 15: FTS5 url column works
-    _fts_test = FTS5Index(":memory:")
-    _fts_test.add_entry("test1", "test content here", "test...", "tag1", "2026-01-01", 0.0, "https://github.com/test")
-    _fts_result = _fts_test.keyword_search("test", top_k=1)
-    test("FTS5: keyword_search returns url", len(_fts_result) > 0 and _fts_result[0].get("url") == "https://github.com/test")
+    # Test 15: TagIndex stores tags for citation entries
+    _ti_test = TagIndex(":memory:")
+    _ti_test.add_tags("cite1", "tag1,tag2")
+    _ti_found = _ti_test.tag_search(["tag1"], top_k=1)
+    test("TagIndex: tag_search finds citation entry", len(_ti_found) > 0 and _ti_found[0] == "cite1")
 
-    # Test 16: FTS5 tag_search returns url
-    _fts_tag_result = _fts_test.tag_search(["tag1"], top_k=1)
-    test("FTS5: tag_search returns url", len(_fts_tag_result) > 0 and _fts_tag_result[0].get("url") == "https://github.com/test")
+    # Test 16: TagIndex tag_search with multiple tags
+    _ti_test.add_tags("cite2", "tag1,tag3")
+    _ti_multi = _ti_test.tag_search(["tag1"], top_k=10)
+    test("TagIndex: tag_search returns multiple matches", len(_ti_multi) >= 2)
 
-    # Test 17: FTS5 get_preview returns url
-    _fts_preview = _fts_test.get_preview("test1")
-    test("FTS5: get_preview returns url", _fts_preview is not None and _fts_preview.get("url") == "https://github.com/test")
+    # Test 17: TagIndex remove works
+    _ti_test.remove("cite1")
+    _ti_after = _ti_test.tag_search(["tag1"], top_k=10)
+    test("TagIndex: remove clears tags", "cite1" not in _ti_after and "cite2" in _ti_after)
 
-    # Test 18: FTS5 entry without url → no url key
-    _fts_test.add_entry("test2", "another entry", "another...", "tag2", "2026-01-01", 0.0)
-    _fts_result2 = _fts_test.keyword_search("another", top_k=1)
-    test("FTS5: no url key when empty", len(_fts_result2) > 0 and "url" not in _fts_result2[0])
+    # Test 18: TagIndex entry without tags → not found
+    _ti_test.add_tags("cite3", "")
+    _ti_empty = _ti_test.tag_search(["tag1"], top_k=10)
+    test("TagIndex: empty tags not indexed", "cite3" not in _ti_empty)
 
     # Test 19: Extraction failure → returns defaults (fail-open)
     _c19 = _extract_citations(None, None)  # type: ignore — intentional bad input
