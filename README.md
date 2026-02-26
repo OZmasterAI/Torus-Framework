@@ -64,59 +64,37 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
 
 ## 🏗️ Architecture
 
-```mermaid
-flowchart TB
-    Session["Claude Code Session"]
-
-    subgraph Hooks["Hook Pipeline"]
-        direction LR
-        Boot["SessionStart\nboot.py · 20 steps"]
-        Enforcer["PreToolUse\nenforcer · 17 gates"]
-        Tracker["PostToolUse\ntracker.py · 17 steps"]
-        End_["SessionEnd"]
-    end
-
-    subgraph Gates["Gate System"]
-        direction LR
-        T1["Tier 1 · Safety\nRead Before Edit\nNo Destroy\nTest Before Deploy"]
-        T2["Tier 2 · Quality\n11 gates: memory-first,\nproof, cost guard,\ncausal chain, etc."]
-        T3["Tier 3 · Advanced\nInjection Defense\nCanary · Hindsight"]
-    end
-
-    subgraph Intelligence["Intelligence Layer"]
-        direction LR
-        MemMCP["Memory MCP\n6 tools · LanceDB"]
-        AnalyticsMCP["Analytics MCP\n10 tools · read-only"]
-        Mentor["Mentor System\ndeterministic scoring"]
-    end
-
-    subgraph Infra["Shared Infrastructure · 50 Modules"]
-        direction LR
-        State["State & Resilience"]
-        Analysis["Analysis & Monitoring"]
-        Security["Security & Registry"]
-    end
-
-    subgraph Data["Data Layer"]
-        direction LR
-        LanceDB[("L1: LanceDB\n~6K memories")]
-        Terminal[("L2: Terminal\nHistory")]
-        Transcripts[("L0: Raw\nTranscripts")]
-        Telegram[("L3: Telegram")]
-        Ramdisk[("Ramdisk\ntmpfs")]
-    end
-
-    Session --> Boot & Enforcer & Tracker
-    Tracker --> End_
-    Enforcer --> T1 & T2 & T3
-    Boot --> MemMCP
-    Tracker --> Mentor
-    MemMCP --> LanceDB
-    MemMCP --> Terminal
-    MemMCP -.-> Transcripts
-    MemMCP -.-> Telegram
-    State --> Ramdisk
-    Mentor --> AnalyticsMCP
+```
+                          ┌─────────────────────────────────┐
+                          │      Claude Code Session         │
+                          │         (13 hook events)         │
+                          └──────┬───────────┬──────────┬────┘
+                                 │           │          │
+                    ┌────────────▼─┐  ┌──────▼────┐  ┌──▼──────────────┐
+                    │ SessionStart  │  │PreToolUse │  │  PostToolUse    │
+                    │ boot.py       │  │ enforcer  │  │  tracker.py     │
+                    │ (20 steps)    │  │(17 gates) │  │  (17 steps)     │
+                    └──────┬───────┘  └─────┬─────┘  └──┬──────────────┘
+                           │                │            │
+                 ┌─────────▼──────┐  ┌──────▼──────┐  ┌─▼────────────┐
+                 │  Memory MCP    │  │ Gate Tiers   │  │ Mentor       │
+                 │  6 tools       │  │ T1: Safety   │  │ System       │
+                 │  LanceDB +     │  │ T2: Quality  │  │ 0.0–1.0     │
+                 │  4-tier search │  │ T3: Advanced │  │ No LLM      │
+                 └───────┬────────┘  └─────────────┘  └─┬────────────┘
+                         │                               │
+           ┌─────────────▼───────────────────────────────▼─────────┐
+           │         Shared Infrastructure (50 modules)             │
+           │   state · resilience · analysis · monitoring · auth    │
+           └─────────────────────────┬─────────────────────────────┘
+                                     │
+      ┌───────────┬──────────────────┼───────────────┬───────────┐
+      │           │                  │               │           │
+  ┌───▼────┐ ┌───▼─────┐  ┌────────▼────────┐ ┌────▼────┐ ┌────▼─────┐
+  │   L1   │ │   L2    │  │   L0 Raw        │ │   L3    │ │ Ramdisk  │
+  │LanceDB │ │Terminal │  │   Transcripts   │ │Telegram │ │  tmpfs   │
+  │ ~6K mem│ │  FTS5   │  │  JSONL windows  │ │  FTS5   │ │ 544 MB/s │
+  └────────┘ └─────────┘  └─────────────────┘ └─────────┘ └──────────┘
 ```
 
 **245 files** · **50 shared modules** · **35 skills** · **6 agents** · **1,466 tests passing**
