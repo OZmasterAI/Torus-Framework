@@ -11,9 +11,6 @@ memory check → plan → tests first → build → prove it → track → ship
 ## CAUSAL CHAIN (for errors)
 1. query_fix_history("error") → 2. record_attempt("error", "strategy") → 3. Fix + test → 4. record_outcome(chain_id, result) → 5. remember_this(type:fix)
 
-## FORMATTING
-- Max 200 chars/line. No box-drawing tables. Use bullet lists for summaries.
-
 ## RULES
 1. **Prove it** — Never claim "fixed" without test output
 2. **Save to memory** — Every fix, discovery, decision → remember_this()
