@@ -205,6 +205,7 @@ def build_context(agent_type, live_state, session_state=None):
         skills_str = _format_skill_usage(session_state)
         if skills_str:
             parts.append(skills_str)
+        parts.append("IMPORTANT: Query search_knowledge before making claims or assumptions.")
         parts.append("Explore and report findings only.")
         domain_snippet = _get_domain_snippet()
         if domain_snippet:

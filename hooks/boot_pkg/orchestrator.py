@@ -402,6 +402,6 @@ def main():
     except Exception:
         pass  # Boot must never crash
 
-    # Write sideband timestamp (auto-injection satisfies Gate 4)
-    _write_sideband_timestamp()
+    # Sideband timestamp removed — Gate 4 should only pass when Claude
+    # actually queries memory, not auto-satisfied at boot (Session 262 fix)
 
