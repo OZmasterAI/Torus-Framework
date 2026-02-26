@@ -22,7 +22,7 @@ _SENTINEL_FILE = os.path.join(_PLUGIN_DIR, ".sentinel_sent")
 
 # Learning prefix injected with sentinel rule
 _LEARNING_PREFIX = (
-    "[System: If OZ shares a preference, decision, correction, or important context, "
+    "[System: If user shares a preference, decision, correction, or important context, "
     "call remember_this() to save it. Keep tags concise.]"
 )
 

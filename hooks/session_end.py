@@ -509,7 +509,7 @@ def main():
         except Exception as e:
             print(f"[SESSION_END] Audit flush failed (non-fatal): {e}", file=sys.stderr)
 
-        # Telegram Bot: post session summary + notify OZ (gated by toggle)
+        # Telegram Bot: post session summary + notify user (gated by toggle)
         try:
             _tg_notify = False
             try:

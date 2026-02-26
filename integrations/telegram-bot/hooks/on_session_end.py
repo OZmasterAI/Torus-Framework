@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Telegram Bot — Session End Hook
 
-Posts HANDOFF.md content to FTS5 log and optionally notifies OZ via Bot API.
+Posts HANDOFF.md content to FTS5 log and optionally notifies user via Bot API.
 Called by session_end.py via subprocess. Always exits 0.
 """
 
@@ -127,7 +127,7 @@ def main():
         log_message(DB_PATH, 0, "system", handoff_content[:4000], now)
         print(f"[TG_BOT_SESSION_END] Logged session {session_num} to FTS5", file=sys.stderr)
 
-        # Notify OZ via Bot API
+        # Notify user via Bot API
         try:
             with open(CONFIG_PATH) as f:
                 cfg = json.load(f)
@@ -139,9 +139,9 @@ def main():
                     notify += "\n..."
                 for uid in allowed_users:
                     _send_bot_message(bot_token, uid, notify)
-                print(f"[TG_BOT_SESSION_END] Notified OZ via Bot API", file=sys.stderr)
+                print(f"[TG_BOT_SESSION_END] Notified user via Bot API", file=sys.stderr)
         except Exception as e:
-            print(f"[TG_BOT_SESSION_END] OZ notification failed (non-fatal): {e}", file=sys.stderr)
+            print(f"[TG_BOT_SESSION_END] User notification failed (non-fatal): {e}", file=sys.stderr)
 
     except Exception as e:
         print(f"[TG_BOT_SESSION_END] Error (non-fatal): {e}", file=sys.stderr)

@@ -2,13 +2,13 @@
 """Telegram Bot — Main bot service using python-telegram-bot v21.
 
 Message flow:
-  OZ sends message → bot receives (long polling)
+  user sends message → bot receives (long polling)
     → log to FTS5 → look up session_id
       → claude -p --resume <session_id> → extract result
         → log response → send reply
 
   Voice messages:
-    OZ sends voice → bot downloads .ogg → faster-whisper transcribes
+    user sends voice → bot downloads .ogg → faster-whisper transcribes
       → same pipeline as text messages
 
 Usage:

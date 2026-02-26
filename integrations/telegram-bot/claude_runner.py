@@ -34,7 +34,7 @@ async def run_claude(message, session_id=None, cwd=None, timeout=120):
     """
     # Prepend learning prompt so bot saves preferences/decisions/corrections to memory
     _learning_prefix = (
-        "[System: If OZ shares a preference, decision, correction, or important context, "
+        "[System: If user shares a preference, decision, correction, or important context, "
         "call remember_this() to save it. Keep tags concise.]\n\n"
     )
     full_message = _learning_prefix + message
