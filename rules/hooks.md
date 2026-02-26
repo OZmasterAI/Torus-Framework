@@ -10,7 +10,7 @@ globs: .claude/hooks/**, .claude/hooks/gates/**
 - severity: "info" | "warn" | "error" | "critical"
 
 ## Exit Codes
-- `0` = allow | `2` = block (PreToolUse only, stderr shown) | `1` = non-blocking error (proceeds)
+- `0` = allow | `2` = block (PreToolUse only, stderr shown to Claude) | `1` = non-blocking error (proceeds)
 - ALWAYS `sys.exit(2)` for blocking — `sys.exit(1)` does NOT block
 
 ## Tiers
