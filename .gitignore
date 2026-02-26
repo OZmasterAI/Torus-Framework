@@ -29,6 +29,7 @@ skills/**/scripts/__pycache__/
 # Databases (runtime, not portable)
 hooks/agent_channel.db
 hooks/agent_channel.db.lock
+memory/chroma_db/
 
 # Audit logs (large, rotated)
 hooks/audit/
