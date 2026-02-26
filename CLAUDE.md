@@ -19,6 +19,7 @@ memory check → plan → tests first → build → prove it → track → ship
 4. **Plan mode** — Never write code in plan mode. explore + plan → ExitPlanMode → approval → implement. If rejected, ask what's wrong. Max 1 ExitPlanMode per turn.
 5. **Never guess** — Never assume file paths, branch state, or system state. Read/Glob/search_knowledge first. Unverified = unknown.
 6. **Model selection** — Gate 10 enforces model_profile from config.json. Do not override.
+7. **Gate awareness** — Gates enforce Edit/Write/Bash/Task automatically. Read/Glob/Grep are ungated — self-enforce rule 5.
 
 ## SESSION START (Non-Negotiable)
 1. Read HANDOFF.md & LIVE_STATE.json
