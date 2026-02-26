@@ -12061,7 +12061,7 @@ except Exception as _asd_e:
 print("\n--- Analytics MCP: Search Tools ---")
 
 try:
-    from analytics_server import telegram_search, terminal_history_search, web_search, transcript_context
+    from analytics_server import telegram_search, terminal_history_search, transcript_context
 
     # Telegram search: empty query → empty results
     _tg_empty = telegram_search("")
@@ -12096,18 +12096,6 @@ try:
     _th_clamp = terminal_history_search("x", limit=-1)
     test("terminal_history_search limit=-1 clamped to 1, no crash",
          isinstance(_th_clamp, dict) and "count" in _th_clamp)
-
-    # Web search: empty query → empty results
-    _ws_empty = web_search("")
-    test("web_search('') returns empty results",
-         isinstance(_ws_empty, dict) and _ws_empty.get("count") == 0
-         and _ws_empty.get("results") == [] and _ws_empty.get("source") == "web_lancedb")
-
-    # Web search: real query → dict with count/results or error key (WorkerUnavailable OK)
-    _ws_result = web_search("claude")
-    test("web_search('claude') returns dict with count/results or error",
-         isinstance(_ws_result, dict) and ("count" in _ws_result or "error" in _ws_result)
-         and _ws_result.get("source") == "web_lancedb")
 
     # transcript_context: empty session_id → error
     _tc_empty = transcript_context("")
