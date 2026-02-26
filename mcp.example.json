@@ -14,6 +14,13 @@
       ],
       "cwd": "$HOME"
     },
+    "web-search": {
+      "command": "/usr/bin/python3",
+      "args": [
+        "$HOME/.claude/hooks/web_search_server.py"
+      ],
+      "cwd": "$HOME"
+    },
     "analytics": {
       "command": "/usr/bin/python3",
       "args": [
