@@ -307,60 +307,6 @@ def telegram_search(query: str, limit: int = 10) -> dict:
     return {"results": results, "count": len(results), "source": "telegram_fts"}
 
 
-@mcp.tool()
-@crash_proof
-def terminal_history_search(query: str, limit: int = 10) -> dict:
-    """Search terminal/conversation history via FTS5 full-text search.
-
-    Args:
-        query: Search query (FTS5 MATCH syntax). Empty returns no results.
-        limit: Max results to return (1-50, default 10).
-    """
-    if not query or not query.strip():
-        return {"results": [], "count": 0, "source": "terminal_fts"}
-
-    limit = max(1, min(50, limit))
-    search_fts = _import_search_fts("terminal-history")
-    db_path = os.path.join(
-        os.path.expanduser("~"), ".claude", "integrations", "terminal-history", "terminal_history.db"
-    )
-    results = search_fts(db_path, query, limit=limit)
-    return {"results": results, "count": len(results), "source": "terminal_fts"}
-
-
-@mcp.tool()
-@crash_proof
-def transcript_context(session_id: str, around_timestamp: str = "", window_minutes: int = 10, max_records: int = 30) -> dict:
-    """Get raw L0 transcript context from a session's JSONL file.
-
-    Args:
-        session_id: Session UUID (matches JSONL filename).
-        around_timestamp: ISO timestamp to center window on. Empty returns last records.
-        window_minutes: ±minutes around timestamp (default 10).
-        max_records: Max records to return (1-50, default 30).
-    """
-    if not session_id or not session_id.strip():
-        return {"error": "session_id is required", "source": "transcript_l0"}
-
-    # Check toggle
-    import json as _json
-    _cfg_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
-    try:
-        with open(_cfg_path) as _cf:
-            _cfg = _json.load(_cf)
-        if not _cfg.get("transcript_l0", False):
-            return {"disabled": True, "source": "transcript_l0",
-                    "hint": "Enable with transcript_l0: true in config.json"}
-    except Exception:
-        pass
-
-    max_records = max(1, min(50, max_records))
-    window_minutes = max(1, min(60, window_minutes))
-    get_window = _import_from_db("terminal-history", "get_raw_transcript_window")
-    return get_window(session_id, around_timestamp=around_timestamp,
-                      window_minutes=window_minutes, max_records=max_records)
-
-
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

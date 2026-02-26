@@ -12061,7 +12061,8 @@ except Exception as _asd_e:
 print("\n--- Analytics MCP: Search Tools ---")
 
 try:
-    from analytics_server import telegram_search, terminal_history_search, transcript_context
+    from analytics_server import telegram_search
+    from search_server import terminal_history_search, transcript_context
 
     # Telegram search: empty query → empty results
     _tg_empty = telegram_search("")
