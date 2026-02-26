@@ -1414,8 +1414,11 @@ except Exception as e:
 with open(os.path.expanduser("~/.claude/settings.json")) as f:
     settings = json.load(f)
 
-with open(os.path.expanduser("~/.claude/mcp.json")) as f:
-    mcp_config = json.load(f)
+try:
+    with open(os.path.expanduser("~/.claude/mcp.json")) as f:
+        mcp_config = json.load(f)
+except FileNotFoundError:
+    mcp_config = {}
 
 
 # --- _apply_recency_boost functional tests ---
