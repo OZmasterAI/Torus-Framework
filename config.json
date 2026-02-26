@@ -8,7 +8,7 @@
   "gate_auto_tune": true,
   "budget_degradation": false,
   "session_token_budget": 0,
-  "model_profile": "efficient",
+  "model_profile": "balanced",
   "security_profile": "balanced",
   "search_routing": "default",
   "chain_memory": true,
@@ -20,11 +20,11 @@
   "mentor_outcome_chains": false,
   "mentor_memory": false,
   "enforcer_daemon": true,
-  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 27m\n- **Tool Calls**: 114 (Read: 55, Bash: 30, Grep: 18, mcp__memory__remember_this: 3, mcp__memory__search_knowledge: 3, Write: 2)\n- **Files Modified**: 2 (0 verified, 0 pending)\n- **Errors**: 0\n- **Tests**: none this session\n- **Subagents**: 11 launched, 825 tokens\n\n**Files changed:**\n- `/home/crab/.claude/LIVE_STATE.json`\n- `/home/crab/.claude/plans/virtual-dazzling-pearl.md`",
+  "session_metrics": "## Session Metrics (auto-generated)\n- **Duration**: 39m\n- **Tool Calls**: 112 (Bash: 66, Read: 15, Grep: 10, Edit: 10, mcp__memory__search_knowledge: 4, mcp__memory__get_memory: 2)\n- **Files Modified**: 7 (0 verified, 1 pending)\n- **Errors**: 0\n- **Tests**: exit code 0\n- **Subagents**: 20 launched, 8,049 tokens\n\n**Files changed:**\n- `/home/crab/.claude/integrations/telegram-bot/config.json`\n- `/home/crab/.claude/hooks/session_end.py`\n- `/home/crab/.claude/integrations/telegram-bot/claude_runner.py`\n- `/home/crab/.claude/integrations/telegram-bot/bot.py`\n- `/home/crab/.claude/integrations/telegram-bot/tmux_runner.py`\n- `/home/crab/.claude/integrations/telegram-bot/hooks/on_session_end.py`\n- `/home/crab/.claude/plans/adaptive-petting-tide.md` (pending)",
   "last_session_metrics": {
-    "reads": 6,
-    "edits": 6,
-    "errors": 3,
+    "reads": 0,
+    "edits": 0,
+    "errors": 0,
     "verified": 0,
     "pending": 0
   }
