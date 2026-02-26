@@ -68,3 +68,24 @@ integrations/terminal-history/terminal_history.db
 
 # Local settings (machine-specific)
 settings.local.json
+config.json
+mcp.json
+
+# Runtime state (not for GitHub)
+HANDOFF.md
+hooks/.enforcer.pid
+hooks/.settings_snapshot.json
+hooks/*.sock
+hooks/.integrity_hashes.json
+hooks/.remediation_stats.json
+hooks/scripts/__pycache__/
+
+# Local-only files
+backupclaude.md
+architecture.html
+diagram.html
+
+# Claude-managed plugin state
+plugins/installed_plugins.json
+plugins/known_marketplaces.json
+plugins/marketplaces/

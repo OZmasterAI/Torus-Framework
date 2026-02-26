@@ -1,0 +1,23 @@
+{
+  "terminal_l2_always": true,
+  "transcript_l0": false,
+  "context_enrichment": true,
+  "tg_l3_always": false,
+  "tg_enrichment": false,
+  "tg_bot_tmux": false,
+  "gate_auto_tune": true,
+  "budget_degradation": false,
+  "session_token_budget": 0,
+  "model_profile": "efficient",
+  "security_profile": "balanced",
+  "search_routing": "default",
+  "chain_memory": true,
+  "tg_session_notify": false,
+  "tg_mirror_messages": false,
+  "mentor_all": true,
+  "mentor_tracker": false,
+  "mentor_hindsight_gate": false,
+  "mentor_outcome_chains": false,
+  "mentor_memory": false,
+  "enforcer_daemon": true
+}
