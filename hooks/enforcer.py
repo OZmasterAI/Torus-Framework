@@ -612,7 +612,7 @@ def main():
     # of a new session_id. Gives subagents a fresh Gate 4 window at startup
     # without requiring a full SessionStart boot sequence.
     # Only triggers for UUID-pattern session IDs (real subagent sessions).
-    # Main sessions get sideband from SessionStart boot; test sessions are excluded.
+    # Main sessions must query memory explicitly (no boot pre-write); test sessions are excluded.
     if (not state.get("_sideband_refreshed")
             and len(session_id) >= 8 and session_id[8:9] == "-"
             and all(c in "0123456789abcdef" for c in session_id[:8])):
