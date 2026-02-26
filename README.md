@@ -66,97 +66,60 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
 
 ```mermaid
 flowchart TB
-    %% ── Row 1: Event Sources ──
-    subgraph Events["🔵 Event Source"]
-        Session["Claude Code Session<br/><sub>13 hook events</sub>"]
-        Prompt["User Prompt<br/><sub>capture + pre-flight</sub>"]
-        Subagents["Sub-Agents<br/><sub>6 types · 4 teams</sub>"]
+    Session["Claude Code Session"]
+
+    subgraph Hooks["Hook Pipeline"]
+        direction LR
+        Boot["SessionStart\nboot.py · 20 steps"]
+        Enforcer["PreToolUse\nenforcer · 17 gates"]
+        Tracker["PostToolUse\ntracker.py · 17 steps"]
+        End_["SessionEnd"]
     end
 
-    %% ── Row 2: Hook Pipeline ──
-    subgraph Hooks["🟢 Hook Pipeline"]
-        Boot["<b>SessionStart</b><br/>boot.py<br/><sub>20-step init pipeline</sub>"]
-        Enforcer["<b>PreToolUse</b><br/>enforcer<br/><sub>shim → daemon → 17 gates</sub>"]
-        Tracker["<b>PostToolUse</b><br/>tracker.py<br/><sub>17-step analysis pipeline</sub>"]
-        SessionEnd["<b>SessionEnd</b><br/><sub>flush queues · update state</sub>"]
-        Orchestration["<b>External</b><br/><sub>torus-loop · torus-wave · PRP</sub>"]
+    subgraph Gates["Gate System"]
+        direction LR
+        T1["Tier 1 · Safety\nRead Before Edit\nNo Destroy\nTest Before Deploy"]
+        T2["Tier 2 · Quality\n11 gates: memory-first,\nproof, cost guard,\ncausal chain, etc."]
+        T3["Tier 3 · Advanced\nInjection Defense\nCanary · Hindsight"]
     end
 
-    %% ── Row 3: Gate System ──
-    subgraph Gates["🛡️ Gate System — 17 Active"]
-        T1["<b>Tier 1 — Safety</b> 🔴<br/>G01 Read Before Edit<br/>G02 No Destroy<br/>G03 Test Before Deploy<br/><sub>fail-closed: crash = block</sub>"]
-        T2["<b>Tier 2 — Quality</b> 🟡<br/>G04 Memory First · G05 Proof Before Fixed<br/>G06 Save Fix · G07 Critical File Guard<br/>G09 Strategy Ban · G10 Model Cost<br/>G11 Rate Limit · G13 Workspace Isolation<br/>G14 Confidence · G15 Causal Chain · G16 Code Quality<br/><sub>fail-open: crash = warn</sub>"]
-        T3["<b>Tier 3 — Advanced</b> 🟣<br/>G17 Injection Defense<br/>G18 Canary Monitor<br/>G19 Hindsight<br/><sub>conditional block / passive</sub>"]
+    subgraph Intelligence["Intelligence Layer"]
+        direction LR
+        MemMCP["Memory MCP\n6 tools · LanceDB"]
+        AnalyticsMCP["Analytics MCP\n10 tools · read-only"]
+        Mentor["Mentor System\ndeterministic scoring"]
     end
 
-    %% ── Row 4: Intelligence Layer ──
-    subgraph Intel["🧠 Intelligence Layer"]
-        MemMCP["<b>Memory MCP</b><br/><sub>search_knowledge · remember_this<br/>query_fix_history · record_attempt<br/>record_outcome · get_memory</sub>"]
-        AnalyticsMCP["<b>Analytics MCP</b><br/><sub>framework_health · gate_dashboard<br/>session_summary · detect_anomalies<br/>gate_timing · transcript_context</sub>"]
-        Mentor["<b>Mentor System</b><br/><sub>deterministic signal analysis<br/>verdicts 0.0–1.0 · no LLM calls</sub>"]
-        Observe["<b>Observation Capture</b><br/><sub>compress tool calls<br/>secrets filter · queue flush</sub>"]
+    subgraph Infra["Shared Infrastructure · 50 Modules"]
+        direction LR
+        State["State & Resilience"]
+        Analysis["Analysis & Monitoring"]
+        Security["Security & Registry"]
     end
 
-    %% ── Row 5: Shared Infrastructure ──
-    subgraph Shared["🟠 Shared Infrastructure — 50 Modules"]
-        State["<b>State</b><br/><sub>atomic JSON · fcntl locks<br/>ramdisk · schema migration</sub>"]
-        Resilience["<b>Resilience</b><br/><sub>circuit breaker<br/>rate limiter · retry strategies</sub>"]
-        Analysis["<b>Analysis</b><br/><sub>gate correlator<br/>session analytics · Markov chains</sub>"]
-        Monitor["<b>Monitoring</b><br/><sub>metrics collector<br/>health monitor · hook profiler</sub>"]
-        Security["<b>Security</b><br/><sub>exemptions · security profiles<br/>config validator · consensus</sub>"]
+    subgraph Data["Data Layer"]
+        direction LR
+        LanceDB[("L1: LanceDB\n~6K memories")]
+        Terminal[("L2: Terminal\nHistory")]
+        Transcripts[("L0: Raw\nTranscripts")]
+        Telegram[("L3: Telegram")]
+        Ramdisk[("Ramdisk\ntmpfs")]
     end
 
-    %% ── Row 6: Skills & Agents ──
-    subgraph SkillsAgents["🟣 Skills & Agents"]
-        Skills["<b>35 Skills</b><br/><sub>Dev: fix · commit · test · review · refactor · document<br/>Research: explore · deep-dive · learn · analyze-errors<br/>Ops: diagnose · introspect · status · super-evolve<br/>Build: deploy · report · prp · sprint · wave</sub>"]
-        Agents["<b>6 Agents</b><br/><sub>researcher · builder · debugger<br/>stress-tester · perf-analyzer · security</sub>"]
-    end
-
-    %% ── Row 7: Data Layer ──
-    subgraph Data["💾 Data Layer"]
-        LanceDB[("LanceDB<br/><sub>~6K memories<br/>768-dim embeddings</sub>")]
-        Terminal[("Terminal History<br/><sub>FTS5 full-text<br/>session transcripts</sub>")]
-        Telegram[("Telegram Bot<br/><sub>L3 message history<br/>remote sessions</sub>")]
-        Ramdisk[("Ramdisk<br/><sub>tmpfs · ~544 MB/s<br/>state + audit + queues</sub>")]
-    end
-
-    %% ── Row 8: Testing ──
-    subgraph Testing["🧪 Testing & Quality"]
-        Tests["<b>Test Suite</b><br/><sub>1,437+ tests<br/>parameterized gate coverage</sub>"]
-        Fuzzer["<b>Gate Fuzzer</b><br/><sub>random inputs<br/>edge case detection</sub>"]
-        Bench["<b>Benchmarks</b><br/><sub>gate latency · DB perf<br/>I/O throughput</sub>"]
-        QualTools["<b>Quality Tools</b><br/><sub>test generator · mutation tester<br/>integrity checker</sub>"]
-    end
-
-    %% ── Connections ──
-    Session --> Boot
-    Prompt --> Enforcer
-    Subagents --> Tracker
-    Session --> SessionEnd
-    Orchestration -.->|"feedback loop"| Session
-
-    Enforcer --> T1
-    Enforcer --> T2
-    Enforcer --> T3
-
+    Session --> Boot & Enforcer & Tracker
+    Tracker --> End_
+    Enforcer --> T1 & T2 & T3
     Boot --> MemMCP
-    Boot --> State
     Tracker --> Mentor
-    Tracker --> Observe
-    SessionEnd --> LanceDB
-
     MemMCP --> LanceDB
     MemMCP --> Terminal
-    AnalyticsMCP --> Monitor
-
-    Mentor --> Observe
-    Skills --> Shared
-    Agents --> Shared
-
-    State --> Ramdisk
-    Observe --> LanceDB
+    MemMCP -.-> Transcripts
     MemMCP -.-> Telegram
+    State --> Ramdisk
+    Mentor --> AnalyticsMCP
 ```
+
+**245 files** · **50 shared modules** · **35 skills** · **6 agents** · **1,466 tests passing**
 
 For the full architecture reference, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
