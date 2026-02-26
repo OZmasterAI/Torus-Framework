@@ -500,6 +500,15 @@ def main():
         flush_capture_queue()
         backup_database()
 
+        # Flush old ramdisk audit logs to disk (compressed)
+        try:
+            from scripts.flush_audit import flush as flush_audit
+            flushed, freed = flush_audit()
+            if flushed > 0:
+                print(f"[SESSION_END] Audit flush: {flushed} files, {freed / 1024 / 1024:.1f}MB freed", file=sys.stderr)
+        except Exception as e:
+            print(f"[SESSION_END] Audit flush failed (non-fatal): {e}", file=sys.stderr)
+
         # Telegram Bot: post session summary + notify OZ (gated by toggle)
         try:
             _tg_notify = False

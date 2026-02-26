@@ -49,8 +49,8 @@ CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
 EXPECTED_GATES = 17
-EXPECTED_SKILLS = 39
-EXPECTED_HOOK_EVENTS = 12
+EXPECTED_SKILLS = 33
+EXPECTED_HOOK_EVENTS = 13
 
 # Health bar characters (legacy — kept for reference)
 BAR_WIDTH = 10
@@ -721,21 +721,29 @@ def get_memory_freshness():
         return None
 
 
-def get_compression_count(current_pct):
+def get_compression_count(current_pct, session_id=""):
     """Track context compression events by detecting significant % drops.
 
     Writes previous context % to a cache file. If current % drops by 10+
     points from previous, counts it as a compression event.
+    Resets counter when session_id changes (new session detected).
     Returns compression count (0 if none detected).
     """
     prev_pct = 0
     count = 0
+    cached_session = ""
     try:
         if os.path.exists(CTX_CACHE_FILE):
             with open(CTX_CACHE_FILE) as f:
                 cache = json.load(f)
-            prev_pct = cache.get("pct", 0)
-            count = cache.get("compressions", 0)
+            cached_session = cache.get("session_id", "")
+            # Reset on new session
+            if session_id and cached_session and session_id != cached_session:
+                prev_pct = 0
+                count = 0
+            else:
+                prev_pct = cache.get("pct", 0)
+                count = cache.get("compressions", 0)
     except (json.JSONDecodeError, OSError):
         pass
 
@@ -746,13 +754,21 @@ def get_compression_count(current_pct):
     # Write current state
     try:
         with open(CTX_CACHE_FILE, "w") as f:
-            json.dump({"pct": current_pct, "compressions": count}, f)
+            json.dump({"pct": current_pct, "compressions": count, "session_id": session_id}, f)
     except OSError:
         pass
     return count
 
 
 def main():
+    # Force line-buffered stdout so each print() flushes immediately.
+    # Without this, Python uses full buffering when stdout is a pipe (Claude Code),
+    # and if the script is cancelled mid-execution, unflushed lines are lost.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass  # Python < 3.7
+
     # Read session data from stdin
     try:
         data = json.load(sys.stdin)
@@ -899,7 +915,8 @@ def main():
 
     # ── LINE 2: Health bar + context bar + session metrics ──
     ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
-    cmp_count = get_compression_count(ctx_pct_val)
+    session_id = data.get("session_id", "")
+    cmp_count = get_compression_count(ctx_pct_val, session_id)
     ctx_bar = format_context_bar(ctx_pct_val, cmp_count)
 
     line2_parts = [health_bar, ctx_bar]
@@ -1037,6 +1054,9 @@ def main():
         f"{_tog('mentor_memory', 'Memory')}"
     )
     print(line5)
+
+    # Ensure all display lines are flushed before slow snapshot I/O
+    sys.stdout.flush()
 
     # ── SNAPSHOT: write bridge file for TUI ──
     # Check UDS socket health

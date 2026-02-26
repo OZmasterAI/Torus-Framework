@@ -46,7 +46,11 @@ def _query_uds(query_text: str, n_results: int = 3) -> Optional[dict]:
         sock.close()
 
         if response_bytes:
-            return json.loads(response_bytes.decode("utf-8"))
+            parsed = json.loads(response_bytes.decode("utf-8"))
+            # Fail-open: treat error responses the same as no response
+            if isinstance(parsed, dict) and not parsed.get("ok", True) and "ids" not in parsed:
+                return None
+            return parsed
         return None
 
     except Exception as e:

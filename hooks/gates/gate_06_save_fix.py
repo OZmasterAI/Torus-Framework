@@ -206,16 +206,17 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
                         severity="error",
                     )
 
-    # Escalation: track warning count and block after threshold
-    if issued_warning:
+    # Escalation: only verified_fixes warnings count toward blocking.
+    # Other warning types (unlogged errors, edit streaks, repair loops) stay
+    # advisory-only — they should not accumulate toward blocking because
+    # false positives from test output and crash logs inflate the counter.
+    fixes_warning = len(verified_fixes) >= WARN_THRESHOLD
+    if fixes_warning:
         warn_count += 1
         state["gate6_warn_count"] = warn_count
-        # Note: enforcer saves state after all gates (enforcer.py line 318).
-        # Do NOT save_state here — it races with external state clears
-        # and overwrites resets from remember_this(), causing deadlocks.
 
-        escalation_threshold = state.get("gate_tune_overrides", {}).get("gate_06_save_fix", {}).get("escalation_threshold", ESCALATION_THRESHOLD)
-        if warn_count >= escalation_threshold:
+    escalation_threshold = state.get("gate_tune_overrides", {}).get("gate_06_save_fix", {}).get("escalation_threshold", ESCALATION_THRESHOLD)
+    if fixes_warning and warn_count >= escalation_threshold:
             # Exempt Bash from escalation blocking — tests must still run
             # to satisfy Gate 5/15, and blocking Bash creates a deadlock
             if tool_name == "Bash":
