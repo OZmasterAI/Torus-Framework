@@ -1919,6 +1919,60 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         except Exception:
             pass  # Terminal history search is optional
 
+    # L0 Raw Transcript cascade: when toggle is on, pull raw JSONL windows
+    # between L2 (terminal history) and L3 (telegram)
+    transcript_l0_count = 0
+    _transcript_l0_enabled = _ls_toggles.get("transcript_l0", False)
+    if _transcript_l0_enabled and mode not in ("tags", "observations"):
+        # Only cascade if current results are weak (< 0.3) or always-on
+        _l0_weak = not formatted or all(
+            r.get("relevance", 0) < 0.3 for r in formatted
+            if not r.get("linked") and not r.get("tag_expanded")
+        )
+        if _l0_weak:
+            try:
+                _term_db_l0 = os.path.join(os.path.expanduser("~"), ".claude",
+                                           "integrations", "terminal-history",
+                                           "terminal_history.db")
+                if os.path.isfile(_term_db_l0):
+                    _term_dir_l0 = os.path.join(os.path.expanduser("~"), ".claude",
+                                                "integrations", "terminal-history")
+                    if _term_dir_l0 not in _sys.path:
+                        _sys.path.insert(0, _term_dir_l0)
+                    from db import search_fts as _l0_search_fts
+                    from db import get_raw_transcript_window as _l0_get_raw_window
+                    _l0_hits = _l0_search_fts(_term_db_l0, query, limit=6)
+                    # Deduplicate by session_id
+                    _l0_seen_sessions = {}
+                    for _l0_hit in _l0_hits:
+                        _l0_sid = _l0_hit.get("session_id", "")
+                        if _l0_sid and _l0_sid not in _l0_seen_sessions:
+                            _l0_seen_sessions[_l0_sid] = _l0_hit.get("timestamp", "")
+                    # Get raw transcript windows for top 2 sessions
+                    for _l0_sid, _l0_ts in list(_l0_seen_sessions.items())[:2]:
+                        _l0_window = _l0_get_raw_window(
+                            _l0_sid, around_timestamp=_l0_ts,
+                            window_minutes=10, max_records=20
+                        )
+                        if _l0_window and _l0_window.get("records"):
+                            # Compress into a single result entry
+                            _l0_preview = "; ".join(
+                                r.get("summary", r.get("text", ""))[:80]
+                                for r in _l0_window.get("records", [])[:3]
+                            )
+                            formatted.append({
+                                "id": f"l0_{_l0_sid[:16]}",
+                                "preview": _l0_preview[:200],
+                                "relevance": 0.22,
+                                "source": "transcript_l0",
+                                "timestamp": _l0_ts,
+                                "session_id": _l0_sid,
+                                "record_count": len(_l0_window.get("records", [])),
+                            })
+                            transcript_l0_count += 1
+            except Exception:
+                pass  # L0 transcript cascade is optional
+
     # Tag expansion: find co-occurring tags and merge additional results
     tag_expanded = False
     expanded_tags = []
@@ -2176,6 +2230,8 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         result["telegram_l3_count"] = tg_fallback_count
     if terminal_l2_count > 0:
         result["terminal_l2_count"] = terminal_l2_count
+    if transcript_l0_count > 0:
+        result["transcript_l0_count"] = transcript_l0_count
     if enrichment_count > 0:
         result["enrichment_count"] = enrichment_count
     if tg_enrichment_count > 0:
