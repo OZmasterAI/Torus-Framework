@@ -16,6 +16,8 @@ You are working within the **Torus framework** domain. These rules supplement al
 - Never break the enforcer while the enforcer is running (deadlock risk)
 
 ## Memory System
-- ChromaDB collections: "knowledge" (curated), "observations" (auto-captured)
+- LanceDB tables: knowledge (curated), observations (auto-captured), fix_outcomes, quarantine, web_pages
 - UDS socket to memory_server.py for fast operations — subprocess fallback exists
-- Always use get_or_create_collection(), never create_collection()
+- Embedding: nomic-embed-text-v2-moe (768-dim), cosine similarity, flat scan
+- Keyword search: LanceDB BM25 FTS (~19ms) | Tag search: SQLite tags.db (<2ms)
+- ChromaDB is backup only at ~/data/memory/chroma.sqlite3 — not used at runtime
