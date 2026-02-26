@@ -3,12 +3,12 @@
   "project": "torus-framework",
   "feature": "super-evolve",
   "framework_version": "v2.5.5",
-  "what_was_done": "Session 238: Super-evolve run. Fixed statusline EXPECTED counts (39→33 skills, 12→13 hooks), health 95→100%. Fixed test suite UDS hang (SIGALRM liveness check). Fixed compression counter cross-session bleed (session_id reset). Fixed statusline buffering (line_buffering + flush). Fixed 2 test failures (Lever4 TriggerC dual-path, MemMentor fail-open). Tests: 1439/1439 (was hanging/0).",
+  "what_was_done": "Session 238: Super-evolve (5 fixes), Gate 6 escalation fix, audit auto-flush, +27 gate tests (G01+G13). Tests: 1466/1466.",
   "next_steps": [
     "Merge evolution-branch into main",
     "Build Claude API adapter for agent-bench (real API scoring)",
     "Consider removing ChromaDB pip dependency entirely (only legacy naming remains)",
-    "Flush ramdisk audit mirror lag (75MB on tmpfs, 1.5MB on disk)"
+    "Memory pruning — 1469 entries, run maintenance(action='stale')"
   ],
   "known_issues": [
     "Plan mode exit loop - platform limitation, mitigated by behavioral rule",
