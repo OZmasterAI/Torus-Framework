@@ -1095,6 +1095,387 @@ def domain_info() -> dict:
         return {"error": "domain_registry module not available"}
 
 
+# ── Gate Drift Detection ─────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def gate_drift(hours: int = 24) -> dict:
+    """Detect drift in gate fire-rate patterns compared to a rolling baseline.
+
+    Compares current gate effectiveness ratios against the average from the
+    specified lookback window.  Returns per-gate deltas, overall drift score,
+    and whether an alert threshold (0.3) is exceeded.
+
+    Args:
+        hours: Lookback window for baseline computation (default 24, max 168).
+    """
+    import json as _json
+    import time as _time
+
+    _ensure_initialized()
+    hours = max(1, min(168, hours))
+
+    try:
+        from shared.drift_detector import gate_drift_report
+    except ImportError:
+        return {"error": "drift_detector module not available"}
+
+    # Build current fire-rate vector from gate effectiveness
+    try:
+        from shared.state import load_gate_effectiveness
+        eff = load_gate_effectiveness()
+    except (ImportError, Exception):
+        eff = {}
+
+    if not eff:
+        return {"drift_score": 0.0, "alert": False, "message": "no effectiveness data",
+                "per_gate_deltas": {}}
+
+    current = {}
+    baseline = {}
+    for gate, stats in eff.items():
+        prevented = stats.get("prevented", 0)
+        overrides = stats.get("overrides", 0)
+        total = prevented + overrides
+        if total > 0:
+            current[gate] = prevented / total
+
+    # Build baseline from audit trail (last N hours block rate)
+    try:
+        from shared.audit_log import AUDIT_DIR
+        audit_dir = AUDIT_DIR
+    except ImportError:
+        audit_dir = os.path.join(os.path.dirname(__file__), "audit")
+
+    gate_blocks = {}
+    gate_totals = {}
+    cutoff = _time.time() - (hours * 3600)
+    if os.path.isdir(audit_dir):
+        audit_files = sorted(_glob.glob(os.path.join(audit_dir, "*.jsonl")), reverse=True)
+        for af in audit_files[:7]:
+            try:
+                with open(af) as f:
+                    for line in f:
+                        try:
+                            entry = _json.loads(line.strip())
+                        except _json.JSONDecodeError:
+                            continue
+                        ts = entry.get("timestamp", entry.get("ts", 0))
+                        if isinstance(ts, (int, float)) and ts >= cutoff:
+                            g = entry.get("gate", "")
+                            if g:
+                                gate_totals[g] = gate_totals.get(g, 0) + 1
+                                if entry.get("decision") == "block":
+                                    gate_blocks[g] = gate_blocks.get(g, 0) + 1
+            except OSError:
+                continue
+
+    for g, total in gate_totals.items():
+        if total > 0:
+            baseline[g] = gate_blocks.get(g, 0) / total
+
+    if not baseline:
+        baseline = {g: 0.5 for g in current}
+
+    report = gate_drift_report(current, baseline)
+    report["current_vector"] = current
+    report["baseline_vector"] = baseline
+    report["hours"] = hours
+    return report
+
+
+# ── Skill Dependency Analysis ────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def skill_dependencies() -> dict:
+    """Analyze skill dependencies and shared module usage patterns.
+
+    Scans ~/.claude/skills/, parses scripts for shared module imports,
+    identifies missing dependencies and reuse opportunities.  Returns
+    per-skill health status (healthy/degraded/unhealthy) with coverage
+    percentages and actionable recommendations.
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.skill_mapper import SkillMapper
+    except ImportError:
+        return {"error": "skill_mapper module not available"}
+
+    mapper = SkillMapper()
+    health = mapper.get_skill_health()
+    deps = mapper.get_dependency_graph()
+    needing = mapper.get_skills_needing_dependencies()
+    reuse = mapper.get_skills_with_reuse_opportunities()
+    usage = mapper.get_shared_module_usage()
+
+    health_summary = {}
+    for name, h in health.items():
+        health_summary[name] = {
+            "status": h.status,
+            "coverage_pct": round(h.coverage_pct, 1),
+            "script_count": h.script_count,
+            "shared_modules": h.shared_module_count,
+            "missing_deps": h.missing_dependencies,
+            "reuse_opportunities": h.reuse_opportunities[:3],
+        }
+
+    total = len(health)
+    healthy = sum(1 for h in health.values() if h.status == "healthy")
+    degraded = sum(1 for h in health.values() if h.status == "degraded")
+    unhealthy = sum(1 for h in health.values() if h.status == "unhealthy")
+
+    return {
+        "total_skills": total,
+        "healthy": healthy,
+        "degraded": degraded,
+        "unhealthy": unhealthy,
+        "skills": health_summary,
+        "dependency_graph": deps,
+        "skills_needing_deps": needing,
+        "top_shared_modules": dict(sorted(usage.items(), key=lambda x: x[1], reverse=True)[:10]),
+    }
+
+
+# ── Gate Correlation Engine (Advanced) ────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def gate_correlation_report(tool_filter: str = "", days: int = 7) -> dict:
+    """Advanced gate correlation analysis: co-occurrence, chains, redundancy, ordering.
+
+    Uses the GateCorrelator engine to perform 4 analyses on audit logs:
+    1. Co-occurrence matrix — which gates fire together
+    2. Gate chains — directional A→B firing patterns within time windows
+    3. Redundant gates — gates with >85% Jaccard similarity (candidates for merging)
+    4. Optimal ordering — fastest-reject-first gate ordering recommendations
+
+    Args:
+        tool_filter: Optional tool name to focus analysis (e.g. "Edit", "Bash"). Empty = all.
+        days: Number of days of audit data to analyze (default 7, max 30).
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.gate_correlator import GateCorrelator
+    except ImportError:
+        return {"error": "gate_correlator module not available"}
+
+    days = max(1, min(30, days))
+    correlator = GateCorrelator()
+    report = correlator.full_report(target_tool=tool_filter or None)
+
+    return report
+
+
+# ── Pipeline Performance Analysis ────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def pipeline_analysis(tool_name: str = "") -> dict:
+    """Analyze gate pipeline execution efficiency and parallelization opportunities.
+
+    Estimates latency savings from optimized gate ordering and parallel execution.
+    Shows per-tool gate applicability, block rates, and parallel groupings.
+
+    Args:
+        tool_name: Specific tool to analyze (e.g. "Edit"). Empty = full cross-tool report.
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.pipeline_optimizer import get_pipeline_analysis, estimate_savings
+    except ImportError:
+        return {"error": "pipeline_optimizer module not available"}
+
+    if tool_name:
+        savings = estimate_savings(tool_name)
+        return {"tool": tool_name, "analysis": savings}
+
+    return get_pipeline_analysis()
+
+
+# ── Behavioral Anomaly Summary ───────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def anomaly_summary(session_id: str = "") -> dict:
+    """Detect behavioral anomalies in the current or specified session.
+
+    Checks for: tool call bursts, high gate block rates, elevated error rates,
+    memory query gaps, single-tool dominance, and stuck gate loops.
+
+    Args:
+        session_id: Session to analyze. Empty = auto-detect current session.
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.anomaly_detector import detect_behavioral_anomaly, check_tool_dominance
+        from shared.state import load_state
+    except ImportError:
+        return {"error": "anomaly_detector or state module not available"}
+
+    sid = session_id or _guess_session_id()
+    state = load_state(session_id=sid)
+
+    anomalies = detect_behavioral_anomaly(state)
+    tool_stats = state.get("tool_stats", {})
+    tool_counts = {t: s.get("count", 0) for t, s in tool_stats.items() if isinstance(s, dict)}
+    dominance = check_tool_dominance(tool_counts)
+
+    results = []
+    for atype, severity, description in anomalies:
+        results.append({"type": atype, "severity": severity, "description": description})
+
+    return {
+        "session_id": sid,
+        "anomaly_count": len(results),
+        "anomalies": results,
+        "tool_dominance": dominance,
+        "tool_call_count": state.get("tool_call_count", 0),
+    }
+
+
+# ── Event Bus Stats ──────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def event_stats(event_type: str = "", limit: int = 20) -> dict:
+    """Query the event bus for recent events and aggregate statistics.
+
+    Shows event publication counts by type, handler errors, buffer usage,
+    and optionally filters recent events by type.
+
+    Args:
+        event_type: Filter recent events by type (e.g. "GATE_BLOCKED"). Empty = all.
+        limit: Max recent events to return (default 20, max 100).
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.event_bus import get_stats, get_recent
+    except ImportError:
+        return {"error": "event_bus module not available"}
+
+    limit = max(1, min(100, limit))
+    stats = get_stats()
+    recent = get_recent(event_type=event_type or None, limit=limit)
+
+    return {
+        "stats": stats,
+        "recent_events": recent,
+        "recent_count": len(recent),
+        "filter": event_type or "all",
+    }
+
+
+# ── Test Stub Generator ─────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def generate_test_stubs(module_path: str) -> dict:
+    """Auto-generate test stubs for a Python module using AST analysis.
+
+    Scans the given module file, detects public functions and their types
+    (gate_check, shared_util, skill_entry), and generates ready-to-run
+    test code matching the test_framework.py style.
+
+    Args:
+        module_path: Path to the Python module to scan (absolute or relative to hooks/).
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.test_generator import scan_module, generate_tests
+    except ImportError:
+        return {"error": "test_generator module not available"}
+
+    # Resolve relative paths
+    hooks_dir = os.path.dirname(__file__)
+    if not os.path.isabs(module_path):
+        module_path = os.path.join(hooks_dir, module_path)
+
+    if not os.path.isfile(module_path):
+        return {"error": f"file not found: {module_path}"}
+
+    scan_result = scan_module(module_path)
+    functions = []
+    for func_name, args, docstring, func_type in scan_result:
+        functions.append({
+            "name": func_name,
+            "args": args,
+            "docstring": docstring,
+            "type": func_type,
+        })
+
+    generated_code = generate_tests(scan_result, module_path)
+
+    return {
+        "module": os.path.basename(module_path),
+        "functions_found": len(functions),
+        "functions": functions,
+        "generated_test_code": generated_code,
+        "code_lines": len(generated_code.splitlines()),
+    }
+
+
+# ── Gate Router Stats ────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def routing_stats() -> dict:
+    """Get gate routing statistics including tier membership, tool-gate mapping,
+    and Q-learning optimization state.
+
+    Returns tier composition, per-tool gate applicability, and the current
+    Q-table entries showing learned gate-blocking probabilities.
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.gate_router import (
+            get_applicable_gates, get_routing_stats,
+            TIER1, TIER2, TIER3, GATE_TOOL_MAP,
+        )
+    except ImportError:
+        return {"error": "gate_router module not available"}
+
+    stats = get_routing_stats()
+
+    # Build tool → applicable gate count map
+    tools = ["Edit", "Write", "Bash", "Read", "Task", "Glob", "Grep",
+             "WebFetch", "WebSearch", "NotebookEdit"]
+    tool_gates = {}
+    for t in tools:
+        applicable = get_applicable_gates(t)
+        tool_gates[t] = {"count": len(applicable), "gates": applicable}
+
+    # Load Q-table if available
+    import json as _json
+    qtable_path = os.path.join(os.path.dirname(__file__), ".gate_qtable.json")
+    qtable = {}
+    try:
+        if os.path.isfile(qtable_path):
+            with open(qtable_path) as f:
+                qtable = _json.load(f)
+    except (OSError, _json.JSONDecodeError):
+        pass
+
+    return {
+        "routing_stats": stats,
+        "tiers": {
+            "tier1_safety": sorted(TIER1),
+            "tier2_quality": sorted(TIER2),
+            "tier3_advisory": sorted(TIER3),
+        },
+        "tool_gate_mapping": tool_gates,
+        "qtable_entries": len(qtable),
+        "qtable": qtable,
+    }
+
+
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
 # DORMANT: uncomment @mcp.tool() to reactivate

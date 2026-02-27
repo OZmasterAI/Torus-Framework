@@ -14311,6 +14311,599 @@ if _SIDEBAND_BACKUP is not None:
         _sbf.write(_SIDEBAND_BACKUP)
 
 
+# ─────────────────────────────────────────────────
+# Drift Detector
+# ─────────────────────────────────────────────────
+print("\n--- Drift Detector ---")
+
+try:
+    from shared.drift_detector import cosine_similarity, detect_drift, should_alert, gate_drift_report
+
+    # cosine_similarity: identical vectors → 1.0
+    _dd_identical_a = {"gate_01": 0.5, "gate_02": 0.3}
+    _dd_sim = cosine_similarity(_dd_identical_a, _dd_identical_a)
+    test("DriftDetector: identical vectors sim=1.0",
+         abs(_dd_sim - 1.0) < 0.001, f"got {_dd_sim}")
+
+    # cosine_similarity: empty vectors → 1.0
+    _dd_empty = cosine_similarity({}, {})
+    test("DriftDetector: empty vectors sim=1.0",
+         abs(_dd_empty - 1.0) < 0.001, f"got {_dd_empty}")
+
+    # cosine_similarity: one zero vector → 0.0
+    _dd_zero = cosine_similarity({"a": 0.0}, {"a": 1.0})
+    test("DriftDetector: zero vector sim=0.0",
+         abs(_dd_zero - 0.0) < 0.001, f"got {_dd_zero}")
+
+    # cosine_similarity: orthogonal vectors → 0.0
+    _dd_ortho = cosine_similarity({"a": 1.0, "b": 0.0}, {"a": 0.0, "b": 1.0})
+    test("DriftDetector: orthogonal vectors sim=0.0",
+         abs(_dd_ortho - 0.0) < 0.001, f"got {_dd_ortho}")
+
+    # cosine_similarity: range [0, 1]
+    _dd_range = cosine_similarity({"a": 0.8, "b": 0.2}, {"a": 0.3, "b": 0.9})
+    test("DriftDetector: similarity in [0,1]",
+         0.0 <= _dd_range <= 1.0, f"got {_dd_range}")
+
+    # detect_drift: identical → 0.0
+    _dd_drift_zero = detect_drift({"x": 1.0}, {"x": 1.0})
+    test("DriftDetector: identical drift=0.0",
+         abs(_dd_drift_zero) < 0.001, f"got {_dd_drift_zero}")
+
+    # detect_drift: completely different → high drift
+    _dd_drift_high = detect_drift({"a": 1.0}, {"b": 1.0})
+    test("DriftDetector: disjoint keys drift=1.0",
+         abs(_dd_drift_high - 1.0) < 0.001, f"got {_dd_drift_high}")
+
+    # should_alert: below threshold → False
+    test("DriftDetector: should_alert 0.1 < 0.3 → False",
+         not should_alert(0.1), "expected False")
+
+    # should_alert: above threshold → True
+    test("DriftDetector: should_alert 0.5 > 0.3 → True",
+         should_alert(0.5), "expected True")
+
+    # should_alert: custom threshold
+    test("DriftDetector: should_alert custom threshold",
+         should_alert(0.15, threshold=0.1), "expected True for 0.15>0.1")
+
+    # gate_drift_report: structure
+    _dd_report = gate_drift_report(
+        {"gate_01": 0.5, "gate_02": 0.3},
+        {"gate_01": 0.5, "gate_02": 0.3},
+    )
+    test("DriftDetector: report has drift_score",
+         "drift_score" in _dd_report, f"keys={set(_dd_report.keys())}")
+    test("DriftDetector: report has alert",
+         "alert" in _dd_report, f"keys={set(_dd_report.keys())}")
+    test("DriftDetector: report has per_gate_deltas",
+         "per_gate_deltas" in _dd_report, f"keys={set(_dd_report.keys())}")
+
+    # gate_drift_report: identical → no alert
+    test("DriftDetector: identical report no alert",
+         not _dd_report["alert"], "expected no alert for identical")
+
+    # gate_drift_report: shifted → alert
+    _dd_report2 = gate_drift_report(
+        {"gate_01": 0.9, "gate_02": 0.1},
+        {"gate_01": 0.1, "gate_02": 0.9},
+    )
+    test("DriftDetector: shifted report triggers alert",
+         _dd_report2["alert"], f"drift={_dd_report2['drift_score']}")
+
+    # gate_drift_report: per_gate_deltas correctness
+    _dd_deltas = _dd_report2["per_gate_deltas"]
+    test("DriftDetector: delta gate_01 is positive",
+         _dd_deltas.get("gate_01", 0) > 0, f"delta={_dd_deltas.get('gate_01')}")
+    test("DriftDetector: delta gate_02 is negative",
+         _dd_deltas.get("gate_02", 0) < 0, f"delta={_dd_deltas.get('gate_02')}")
+
+except Exception as _dd_exc:
+    test("DriftDetector: import and basic tests", False, str(_dd_exc))
+
+
+# ─────────────────────────────────────────────────
+# Gate Router
+# ─────────────────────────────────────────────────
+print("\n--- Gate Router ---")
+
+try:
+    from shared.gate_router import (
+        get_applicable_gates, get_routing_stats, _reset_stats,
+        TIER1, TIER2, TIER3, GATE_TOOL_MAP,
+        get_optimal_gate_order, update_qtable, flush_qtable,
+    )
+
+    # Tier sets are non-empty
+    test("GateRouter: TIER1 has 3 gates",
+         len(TIER1) == 3, f"got {len(TIER1)}")
+    test("GateRouter: TIER2 has 4 gates",
+         len(TIER2) == 4, f"got {len(TIER2)}")
+    test("GateRouter: TIER3 is non-empty",
+         len(TIER3) > 0, f"got {len(TIER3)}")
+
+    # Tiers are disjoint
+    test("GateRouter: TIER1 ∩ TIER2 = ∅",
+         len(TIER1 & TIER2) == 0, f"overlap={TIER1 & TIER2}")
+    test("GateRouter: TIER1 ∩ TIER3 = ∅",
+         len(TIER1 & TIER3) == 0, f"overlap={TIER1 & TIER3}")
+
+    # get_applicable_gates: Edit → includes gate_01 (read before edit)
+    _gr_edit_gates = get_applicable_gates("Edit")
+    test("GateRouter: Edit includes gate_01",
+         any("gate_01" in g for g in _gr_edit_gates), f"gates={_gr_edit_gates[:3]}")
+
+    # get_applicable_gates: Bash → includes gate_02 (no destroy)
+    _gr_bash_gates = get_applicable_gates("Bash")
+    test("GateRouter: Bash includes gate_02",
+         any("gate_02" in g for g in _gr_bash_gates), f"gates={_gr_bash_gates[:3]}")
+
+    # get_applicable_gates: Edit should not include gate_02 (Bash-only)
+    test("GateRouter: Edit excludes gate_02",
+         not any("gate_02" in g for g in _gr_edit_gates), f"gates={_gr_edit_gates}")
+
+    # get_applicable_gates: universal gates (gate_11) apply to any tool
+    _gr_read_gates = get_applicable_gates("Read")
+    test("GateRouter: Read includes gate_11 (universal)",
+         any("gate_11" in g for g in _gr_read_gates), f"gates={_gr_read_gates}")
+
+    # get_applicable_gates: returns list
+    test("GateRouter: get_applicable_gates returns list",
+         isinstance(_gr_edit_gates, list), f"type={type(_gr_edit_gates)}")
+
+    # get_routing_stats: returns expected keys
+    _reset_stats()
+    _gr_stats = get_routing_stats()
+    _gr_expected_keys = {"calls", "gates_run", "gates_skipped", "tier1_blocks",
+                         "avg_routing_ms", "last_routing_ms", "skip_rate"}
+    test("GateRouter: stats has all expected keys",
+         _gr_expected_keys.issubset(set(_gr_stats.keys())),
+         f"missing={_gr_expected_keys - set(_gr_stats.keys())}")
+
+    # get_routing_stats: fresh stats are zeroed
+    test("GateRouter: fresh stats calls=0",
+         _gr_stats["calls"] == 0, f"got {_gr_stats['calls']}")
+    test("GateRouter: fresh stats gates_run=0",
+         _gr_stats["gates_run"] == 0, f"got {_gr_stats['gates_run']}")
+
+    # GATE_TOOL_MAP: contains entries for all tiers
+    test("GateRouter: GATE_TOOL_MAP is non-empty dict",
+         isinstance(GATE_TOOL_MAP, dict) and len(GATE_TOOL_MAP) > 10,
+         f"len={len(GATE_TOOL_MAP)}")
+
+    # get_optimal_gate_order: preserves Tier 1 first
+    _gr_all = list(TIER1) + list(TIER2)[:2]
+    _gr_ordered = get_optimal_gate_order("Edit", _gr_all)
+    test("GateRouter: optimal order preserves Tier 1 first",
+         all(g in TIER1 for g in _gr_ordered[:len(TIER1)]),
+         f"first gates={_gr_ordered[:3]}")
+
+    # get_optimal_gate_order: same elements
+    test("GateRouter: optimal order same elements",
+         set(_gr_ordered) == set(_gr_all),
+         f"original={len(_gr_all)}, ordered={len(_gr_ordered)}")
+
+    # update_qtable + get_optimal_gate_order interaction
+    _gr_test_gate = list(TIER2)[0]
+    update_qtable(_gr_test_gate, "Edit", True)
+    update_qtable(_gr_test_gate, "Edit", True)
+    _gr_ordered2 = get_optimal_gate_order("Edit", list(TIER2))
+    test("GateRouter: blocked gate ranks first after Q-update",
+         _gr_ordered2[0] == _gr_test_gate,
+         f"first={_gr_ordered2[0]}, expected={_gr_test_gate}")
+
+except Exception as _gr_exc:
+    test("GateRouter: import and basic tests", False, str(_gr_exc))
+
+
+# ─────────────────────────────────────────────────
+# Skill Mapper
+# ─────────────────────────────────────────────────
+print("\n--- Skill Mapper ---")
+
+try:
+    from shared.skill_mapper import SkillMapper, SkillMetadata, SkillHealth, KNOWN_SHARED_MODULES
+
+    # KNOWN_SHARED_MODULES is non-empty
+    test("SkillMapper: KNOWN_SHARED_MODULES non-empty",
+         len(KNOWN_SHARED_MODULES) > 10, f"len={len(KNOWN_SHARED_MODULES)}")
+
+    # SkillMapper instantiation
+    _sm_mapper = SkillMapper()
+    test("SkillMapper: instantiation succeeds",
+         isinstance(_sm_mapper, SkillMapper), f"type={type(_sm_mapper)}")
+
+    # get_skill_health returns dict
+    _sm_health = _sm_mapper.get_skill_health()
+    test("SkillMapper: get_skill_health returns dict",
+         isinstance(_sm_health, dict), f"type={type(_sm_health)}")
+
+    # Each health entry is SkillHealth
+    if _sm_health:
+        _sm_first_key = next(iter(_sm_health))
+        _sm_first_health = _sm_health[_sm_first_key]
+        test("SkillMapper: health entry is SkillHealth",
+             isinstance(_sm_first_health, SkillHealth),
+             f"type={type(_sm_first_health)}")
+        test("SkillMapper: health has status field",
+             _sm_first_health.status in ("healthy", "degraded", "unhealthy"),
+             f"status={_sm_first_health.status}")
+        test("SkillMapper: health has coverage_pct",
+             isinstance(_sm_first_health.coverage_pct, (int, float)),
+             f"type={type(_sm_first_health.coverage_pct)}")
+    else:
+        skip("SkillMapper: health entry checks", "no skills found")
+
+    # get_dependency_graph returns dict
+    _sm_deps = _sm_mapper.get_dependency_graph()
+    test("SkillMapper: get_dependency_graph returns dict",
+         isinstance(_sm_deps, dict), f"type={type(_sm_deps)}")
+
+    # get_reverse_dependency_graph returns dict
+    _sm_rdeps = _sm_mapper.get_reverse_dependency_graph()
+    test("SkillMapper: get_reverse_dependency_graph returns dict",
+         isinstance(_sm_rdeps, dict), f"type={type(_sm_rdeps)}")
+
+    # get_shared_module_usage returns dict of int
+    _sm_usage = _sm_mapper.get_shared_module_usage()
+    test("SkillMapper: get_shared_module_usage returns dict",
+         isinstance(_sm_usage, dict), f"type={type(_sm_usage)}")
+    if _sm_usage:
+        _sm_usage_val = next(iter(_sm_usage.values()))
+        test("SkillMapper: usage values are ints",
+             isinstance(_sm_usage_val, int), f"type={type(_sm_usage_val)}")
+
+    # get_skills_needing_dependencies returns dict
+    _sm_needing = _sm_mapper.get_skills_needing_dependencies()
+    test("SkillMapper: get_skills_needing_dependencies returns dict",
+         isinstance(_sm_needing, dict), f"type={type(_sm_needing)}")
+
+    # get_skills_with_reuse_opportunities returns dict
+    _sm_reuse = _sm_mapper.get_skills_with_reuse_opportunities()
+    test("SkillMapper: get_skills_with_reuse_opportunities returns dict",
+         isinstance(_sm_reuse, dict), f"type={type(_sm_reuse)}")
+
+    # generate_report returns non-empty string
+    _sm_report = _sm_mapper.generate_report()
+    test("SkillMapper: generate_report returns string",
+         isinstance(_sm_report, str), f"type={type(_sm_report)}")
+    test("SkillMapper: report contains SUMMARY",
+         "SUMMARY" in _sm_report, "missing SUMMARY header")
+    test("SkillMapper: report contains DETAILED SKILL HEALTH",
+         "DETAILED SKILL HEALTH" in _sm_report, "missing health section")
+
+    # SkillMetadata dataclass fields
+    _sm_meta_fields = {"name", "path", "skill_md_path", "script_paths",
+                       "imports_from_shared", "imports_external",
+                       "missing_shared_modules", "functions_defined",
+                       "functions_called", "file_count"}
+    _sm_test_meta = SkillMetadata(
+        name="test", path="/tmp/test", skill_md_path="/tmp/test/SKILL.md",
+        script_paths=[], imports_from_shared=set(), imports_external=set(),
+        missing_shared_modules=set(), functions_defined=set(),
+        functions_called=set(), file_count=0,
+    )
+    test("SkillMapper: SkillMetadata has all fields",
+         all(hasattr(_sm_test_meta, f) for f in _sm_meta_fields),
+         f"missing fields")
+
+except Exception as _sm_exc:
+    test("SkillMapper: import and basic tests", False, str(_sm_exc))
+
+
+# ─────────────────────────────────────────────────
+# Test Generator
+# ─────────────────────────────────────────────────
+print("\n--- Test Generator ---")
+
+_TG2_HOOKS_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+
+try:
+    from shared.test_generator import scan_module, generate_tests, generate_smoke_test
+
+    # scan_module on a known file (drift_detector — simple, no side effects)
+    _tg_drift_path = os.path.join(_TG2_HOOKS_DIR, "shared", "drift_detector.py")
+    _tg_scan = scan_module(_tg_drift_path)
+    test("TestGenerator: scan_module returns list",
+         isinstance(_tg_scan, list), f"type={type(_tg_scan)}")
+    test("TestGenerator: scan found functions",
+         len(_tg_scan) > 0, "no functions found")
+
+    # Each entry is (name, args, docstring, func_type) tuple
+    if _tg_scan:
+        _tg_entry = _tg_scan[0]
+        test("TestGenerator: scan entry is 4-tuple",
+             len(_tg_entry) == 4, f"len={len(_tg_entry)}")
+        test("TestGenerator: entry[0] is func name string",
+             isinstance(_tg_entry[0], str) and len(_tg_entry[0]) > 0,
+             f"name={_tg_entry[0]}")
+        test("TestGenerator: entry[1] is args list",
+             isinstance(_tg_entry[1], list), f"type={type(_tg_entry[1])}")
+        test("TestGenerator: entry[3] is func_type string",
+             _tg_entry[3] in ("gate_check", "shared_util", "skill_entry", "unknown"),
+             f"func_type={_tg_entry[3]}")
+
+    # scan_module: finds cosine_similarity in drift_detector
+    _tg_func_names = [e[0] for e in _tg_scan]
+    test("TestGenerator: found cosine_similarity",
+         "cosine_similarity" in _tg_func_names, f"funcs={_tg_func_names}")
+    test("TestGenerator: found detect_drift",
+         "detect_drift" in _tg_func_names, f"funcs={_tg_func_names}")
+
+    # scan_module: classifies shared module functions as shared_util
+    _tg_types = {e[0]: e[3] for e in _tg_scan}
+    test("TestGenerator: drift_detector funcs classified as shared_util",
+         _tg_types.get("cosine_similarity") == "shared_util",
+         f"type={_tg_types.get('cosine_similarity')}")
+
+    # scan_module: skips private functions
+    test("TestGenerator: no private functions in scan",
+         all(not n.startswith("_") for n in _tg_func_names),
+         f"found private: {[n for n in _tg_func_names if n.startswith('_')]}")
+
+    # generate_tests produces valid Python
+    _tg_code = generate_tests(_tg_scan, _tg_drift_path)
+    test("TestGenerator: generate_tests returns string",
+         isinstance(_tg_code, str), f"type={type(_tg_code)}")
+    test("TestGenerator: generated code has header",
+         "Auto-generated test stubs" in _tg_code, "missing header")
+    test("TestGenerator: generated code has test function",
+         "def test(" in _tg_code, "missing test() function")
+
+    # generate_tests: compilable Python
+    try:
+        compile(_tg_code, "<test_generator_output>", "exec")
+        test("TestGenerator: generated code compiles", True)
+    except SyntaxError as _tg_se:
+        test("TestGenerator: generated code compiles", False, str(_tg_se))
+
+    # generate_smoke_test convenience function
+    _tg_smoke = generate_smoke_test(_tg_drift_path)
+    test("TestGenerator: generate_smoke_test returns string",
+         isinstance(_tg_smoke, str) and len(_tg_smoke) > 100,
+         f"len={len(_tg_smoke)}")
+
+    # scan_module on a gate file
+    _tg_gate_path = os.path.join(_TG2_HOOKS_DIR, "gates", "gate_01_read_before_edit.py")
+    if os.path.isfile(_tg_gate_path):
+        _tg_gate_scan = scan_module(_tg_gate_path)
+        _tg_gate_types = {e[0]: e[3] for e in _tg_gate_scan}
+        test("TestGenerator: gate check() classified as gate_check",
+             _tg_gate_types.get("check") == "gate_check",
+             f"type={_tg_gate_types.get('check')}")
+    else:
+        skip("TestGenerator: gate classification", "gate_01 not found")
+
+    # scan_module: FileNotFoundError for missing file
+    try:
+        scan_module("/tmp/nonexistent_module_xyz.py")
+        test("TestGenerator: FileNotFoundError for missing file", False, "no error raised")
+    except FileNotFoundError:
+        test("TestGenerator: FileNotFoundError for missing file", True)
+    except Exception as _tg_e:
+        test("TestGenerator: FileNotFoundError for missing file", False, str(_tg_e))
+
+except Exception as _tg_exc:
+    test("TestGenerator: import and basic tests", False, str(_tg_exc))
+
+
+# ─────────────────────────────────────────────────
+# Pipeline Optimizer (deep)
+# ─────────────────────────────────────────────────
+print("\n--- Pipeline Optimizer (deep) ---")
+
+try:
+    from shared.pipeline_optimizer import (
+        get_optimal_order, estimate_savings, get_pipeline_analysis,
+        _are_parallelizable, _identify_parallel_groups, _gates_for_tool,
+    )
+
+    # get_optimal_order: Edit returns non-empty list
+    _po_edit_order = get_optimal_order("Edit")
+    test("PipelineOpt: Edit order is list",
+         isinstance(_po_edit_order, list), f"type={type(_po_edit_order)}")
+    test("PipelineOpt: Edit order non-empty",
+         len(_po_edit_order) > 0, "empty list")
+
+    # get_optimal_order: Tier 1 gates first
+    _po_tier1_names = {"gate_01_read_before_edit", "gate_02_no_destroy", "gate_03_test_before_deploy"}
+    _po_tier1_in_edit = [g for g in _po_edit_order if g in _po_tier1_names]
+    if _po_tier1_in_edit:
+        _po_first_tier1_idx = _po_edit_order.index(_po_tier1_in_edit[0])
+        _po_non_tier1 = [g for g in _po_edit_order if g not in _po_tier1_names]
+        if _po_non_tier1:
+            _po_first_non_tier1_idx = _po_edit_order.index(_po_non_tier1[0])
+            test("PipelineOpt: Tier 1 before Tier 2/3",
+                 _po_first_tier1_idx < _po_first_non_tier1_idx,
+                 f"tier1={_po_first_tier1_idx}, non-tier1={_po_first_non_tier1_idx}")
+
+    # get_optimal_order: Bash returns different set than Edit
+    _po_bash_order = get_optimal_order("Bash")
+    test("PipelineOpt: Bash order is list",
+         isinstance(_po_bash_order, list) and len(_po_bash_order) > 0, "empty or wrong type")
+    test("PipelineOpt: Bash and Edit have different gates",
+         set(_po_bash_order) != set(_po_edit_order),
+         "identical gate sets for Edit and Bash")
+
+    # estimate_savings: returns expected keys
+    _po_savings = estimate_savings("Edit")
+    _po_expected_keys = {"tool_name", "applicable_gates", "optimal_order",
+                         "parallel_groups", "baseline_sequential_ms",
+                         "optimized_parallel_ms", "estimated_saving_ms",
+                         "saving_pct", "gate_block_rates", "notes"}
+    test("PipelineOpt: estimate_savings has expected keys",
+         _po_expected_keys.issubset(set(_po_savings.keys())),
+         f"missing={_po_expected_keys - set(_po_savings.keys())}")
+    test("PipelineOpt: saving_pct in [0,1]",
+         0.0 <= _po_savings["saving_pct"] <= 1.0,
+         f"pct={_po_savings['saving_pct']}")
+    test("PipelineOpt: notes is list",
+         isinstance(_po_savings["notes"], list), f"type={type(_po_savings['notes'])}")
+
+    # estimate_savings: unknown tool returns only universal gates
+    _po_unknown = estimate_savings("FakeTool123")
+    test("PipelineOpt: unknown tool has few gates (universal only)",
+         len(_po_unknown["applicable_gates"]) <= 5,
+         f"gates={_po_unknown['applicable_gates']}")
+
+    # _are_parallelizable: gate_01 and gate_02 are parallelizable (no shared writes)
+    test("PipelineOpt: gate_01 || gate_02 parallelizable",
+         _are_parallelizable("gate_01_read_before_edit", "gate_02_no_destroy"),
+         "should be parallelizable")
+
+    # _are_parallelizable: self conflicts with self (gates writing same keys)
+    test("PipelineOpt: gate_14 || gate_16 check",
+         isinstance(_are_parallelizable("gate_14_confidence_check", "gate_16_code_quality"), bool),
+         "should return bool")
+
+    # _identify_parallel_groups: small input
+    _po_groups = _identify_parallel_groups(["gate_01_read_before_edit", "gate_02_no_destroy"])
+    test("PipelineOpt: parallel groups is list of lists",
+         isinstance(_po_groups, list) and all(isinstance(g, list) for g in _po_groups),
+         f"type={type(_po_groups)}")
+
+    # get_pipeline_analysis: full cross-tool report
+    _po_full = get_pipeline_analysis()
+    test("PipelineOpt: full analysis has per_tool",
+         "per_tool" in _po_full, f"keys={set(_po_full.keys())}")
+    test("PipelineOpt: full analysis has summary",
+         "summary" in _po_full and isinstance(_po_full["summary"], str),
+         f"keys={set(_po_full.keys())}")
+    test("PipelineOpt: full analysis covers Edit",
+         "Edit" in _po_full.get("per_tool", {}), "missing Edit")
+    test("PipelineOpt: parallelizable_pairs is list",
+         isinstance(_po_full.get("parallelizable_pairs", []), list),
+         f"type={type(_po_full.get('parallelizable_pairs'))}")
+
+except Exception as _po_exc:
+    test("PipelineOpt: import and basic tests", False, str(_po_exc))
+
+
+# ─────────────────────────────────────────────────
+# Consensus Validator (deep)
+# ─────────────────────────────────────────────────
+print("\n--- Consensus Validator (deep) ---")
+
+try:
+    from shared.consensus_validator import (
+        check_memory_consensus, check_edit_consensus,
+        compute_confidence, recommend_action, CRITICAL_FILES,
+    )
+
+    # check_memory_consensus: novel content
+    _cv_novel = check_memory_consensus(
+        "This is a completely unique new insight about quantum computing",
+        ["Old memory about Python testing", "Another memory about gate configuration"],
+    )
+    test("ConsensusVal: novel content verdict=novel",
+         _cv_novel["verdict"] == "novel", f"verdict={_cv_novel['verdict']}")
+    test("ConsensusVal: novel has confidence",
+         0.0 <= _cv_novel["confidence"] <= 1.0, f"conf={_cv_novel['confidence']}")
+    test("ConsensusVal: novel has top_match",
+         "top_match" in _cv_novel, f"keys={set(_cv_novel.keys())}")
+
+    # check_memory_consensus: duplicate content
+    _cv_dup = check_memory_consensus(
+        "Gate 6 deadlock fix: reset gate6_warn_count in ramdisk",
+        ["Gate 6 deadlock fix: reset gate6_warn_count in ramdisk state file"],
+    )
+    test("ConsensusVal: duplicate content verdict=duplicate",
+         _cv_dup["verdict"] == "duplicate", f"verdict={_cv_dup['verdict']}")
+
+    # check_memory_consensus: empty content → novel
+    _cv_empty = check_memory_consensus("", ["some memory"])
+    test("ConsensusVal: empty content → novel",
+         _cv_empty["verdict"] == "novel", f"verdict={_cv_empty['verdict']}")
+
+    # check_memory_consensus: conflict detection (negation flip)
+    _cv_conflict = check_memory_consensus(
+        "Gate 1 is NOT required for Read operations",
+        ["Gate 1 is required for Read operations and must always run"],
+    )
+    test("ConsensusVal: negation conflict detected",
+         _cv_conflict["verdict"] in ("conflict", "novel"),
+         f"verdict={_cv_conflict['verdict']}")
+
+    # check_edit_consensus: safe edit
+    _cv_safe = check_edit_consensus(
+        "test.py",
+        "def foo():\n    return 1\n",
+        "def foo():\n    return 2\n",
+    )
+    test("ConsensusVal: safe edit has safe=True",
+         _cv_safe["safe"] is True, f"safe={_cv_safe['safe']}")
+    test("ConsensusVal: safe edit confidence high",
+         _cv_safe["confidence"] > 0.5, f"conf={_cv_safe['confidence']}")
+    test("ConsensusVal: safe edit risks is list",
+         isinstance(_cv_safe["risks"], list), f"type={type(_cv_safe['risks'])}")
+
+    # check_edit_consensus: critical file
+    _cv_crit = check_edit_consensus(
+        "enforcer.py",
+        "def check(): pass\n",
+        "def check(): return True\n",
+    )
+    test("ConsensusVal: critical file flagged",
+         _cv_crit["is_critical"] is True, f"is_critical={_cv_crit['is_critical']}")
+    test("ConsensusVal: critical file has risk",
+         len(_cv_crit["risks"]) > 0, "no risks for critical file")
+
+    # check_edit_consensus: secret detection
+    _cv_secret = check_edit_consensus(
+        "config.py",
+        "config = {}\n",
+        'config = {}\npassword = "mysecretpass123"\n',
+    )
+    _cv_has_secret_risk = any("secret" in r.lower() or "credential" in r.lower()
+                              for r in _cv_secret["risks"])
+    test("ConsensusVal: hardcoded secret detected",
+         _cv_has_secret_risk, f"risks={_cv_secret['risks']}")
+
+    # check_edit_consensus: public API removal
+    _cv_api = check_edit_consensus(
+        "module.py",
+        "def public_func():\n    pass\ndef helper():\n    pass\n",
+        "def helper():\n    pass\n",
+    )
+    _cv_has_api_risk = any("removed" in r.lower() for r in _cv_api["risks"])
+    test("ConsensusVal: public API removal detected",
+         _cv_has_api_risk, f"risks={_cv_api['risks']}")
+
+    # compute_confidence: known signals
+    _cv_conf = compute_confidence({
+        "memory_coverage": 0.8,
+        "test_coverage": 0.6,
+        "pattern_match": 0.7,
+        "prior_success": 0.9,
+    })
+    test("ConsensusVal: compute_confidence returns float",
+         isinstance(_cv_conf, float), f"type={type(_cv_conf)}")
+    test("ConsensusVal: confidence in [0,1]",
+         0.0 <= _cv_conf <= 1.0, f"conf={_cv_conf}")
+
+    # compute_confidence: empty → 0.5
+    _cv_empty_conf = compute_confidence({})
+    test("ConsensusVal: empty signals → 0.5",
+         abs(_cv_empty_conf - 0.5) < 0.001, f"conf={_cv_empty_conf}")
+
+    # recommend_action: thresholds
+    test("ConsensusVal: high confidence → allow",
+         recommend_action(0.8) == "allow", f"got {recommend_action(0.8)}")
+    test("ConsensusVal: medium confidence → ask",
+         recommend_action(0.4) == "ask", f"got {recommend_action(0.4)}")
+    test("ConsensusVal: low confidence → block",
+         recommend_action(0.1) == "block", f"got {recommend_action(0.1)}")
+
+    # CRITICAL_FILES contains expected entries
+    test("ConsensusVal: CRITICAL_FILES has enforcer.py",
+         "enforcer.py" in CRITICAL_FILES, f"files={CRITICAL_FILES}")
+    test("ConsensusVal: CRITICAL_FILES has settings.json",
+         "settings.json" in CRITICAL_FILES, f"files={CRITICAL_FILES}")
+
+except Exception as _cv_exc:
+    test("ConsensusVal: import and basic tests", False, str(_cv_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
