@@ -18006,6 +18006,687 @@ except Exception as _gp_exc:
     test("GatePruner Extended: import and tests", False, str(_gp_exc))
 
 
+# --- Retry Strategy Deep Tests ---
+print("\n--- Retry Strategy Deep Tests ---")
+try:
+    from shared.retry_strategy import (
+        Strategy, Jitter, RetryConfig, _OperationState,
+        _fib, _compute_raw_delay, _apply_jitter,
+        should_retry, get_delay, record_attempt, reset, get_stats,
+        with_retry, _RetryContextManager, _registry,
+    )
+
+    # Fibonacci sequence
+    test("RetryStrategy: fib(0)==0", _fib(0) == 0)
+    test("RetryStrategy: fib(1)==1", _fib(1) == 1)
+    test("RetryStrategy: fib(5)==5", _fib(5) == 5)
+    test("RetryStrategy: fib(10)==55", _fib(10) == 55)
+
+    # Enums
+    test("RetryStrategy: Strategy has 4 members", len(Strategy) == 4)
+    test("RetryStrategy: Jitter has 4 members", len(Jitter) == 4)
+    test("RetryStrategy: Strategy values are strings", isinstance(Strategy.EXPONENTIAL_BACKOFF.value, str))
+    test("RetryStrategy: Jitter.NONE value", Jitter.NONE.value == "none")
+
+    # RetryConfig defaults
+    _rc_def = RetryConfig()
+    test("RetryStrategy: default strategy is EXPONENTIAL_BACKOFF", _rc_def.strategy == Strategy.EXPONENTIAL_BACKOFF)
+    test("RetryStrategy: default jitter is NONE", _rc_def.jitter == Jitter.NONE)
+    test("RetryStrategy: default max_retries is 3", _rc_def.max_retries == 3)
+    test("RetryStrategy: default base_delay is 1.0", _rc_def.base_delay == 1.0)
+    test("RetryStrategy: default max_delay is 60.0", _rc_def.max_delay == 60.0)
+
+    # _compute_raw_delay for all strategies
+    _cfg_exp = RetryConfig(strategy=Strategy.EXPONENTIAL_BACKOFF, base_delay=1.0, multiplier=2.0, max_delay=100.0)
+    test("RetryStrategy: exp delay attempt 0", abs(_compute_raw_delay(0, _cfg_exp) - 1.0) < 1e-9)
+    test("RetryStrategy: exp delay attempt 3", abs(_compute_raw_delay(3, _cfg_exp) - 8.0) < 1e-9)
+
+    _cfg_lin = RetryConfig(strategy=Strategy.LINEAR_BACKOFF, base_delay=2.0, step=3.0, max_delay=100.0)
+    test("RetryStrategy: linear delay attempt 0", abs(_compute_raw_delay(0, _cfg_lin) - 2.0) < 1e-9)
+    test("RetryStrategy: linear delay attempt 4", abs(_compute_raw_delay(4, _cfg_lin) - 14.0) < 1e-9)
+
+    _cfg_const = RetryConfig(strategy=Strategy.CONSTANT, base_delay=5.0, max_delay=100.0)
+    test("RetryStrategy: constant delay attempt 0", abs(_compute_raw_delay(0, _cfg_const) - 5.0) < 1e-9)
+    test("RetryStrategy: constant delay attempt 10", abs(_compute_raw_delay(10, _cfg_const) - 5.0) < 1e-9)
+
+    _cfg_fib = RetryConfig(strategy=Strategy.FIBONACCI, base_delay=2.0, max_delay=100.0)
+    test("RetryStrategy: fib delay attempt 0", abs(_compute_raw_delay(0, _cfg_fib) - 2.0) < 1e-9)  # fib(1)=1, *2
+    test("RetryStrategy: fib delay attempt 3", abs(_compute_raw_delay(3, _cfg_fib) - 6.0) < 1e-9)  # fib(4)=3, *2
+
+    # max_delay cap
+    _cfg_cap = RetryConfig(strategy=Strategy.EXPONENTIAL_BACKOFF, base_delay=1.0, multiplier=10.0, max_delay=5.0)
+    test("RetryStrategy: max_delay caps raw delay", _compute_raw_delay(5, _cfg_cap) <= 5.0)
+
+    # _apply_jitter NONE returns raw
+    test("RetryStrategy: jitter NONE returns raw", abs(_apply_jitter(4.0, RetryConfig(jitter=Jitter.NONE), 0.0) - 4.0) < 1e-9)
+
+    # _apply_jitter FULL in [0, raw]
+    import random as _rs_random
+    _rs_random.seed(42)
+    _jf_vals = [_apply_jitter(4.0, RetryConfig(jitter=Jitter.FULL), 0.0) for _ in range(50)]
+    test("RetryStrategy: FULL jitter in [0, raw]", all(0.0 <= v <= 4.0 + 1e-9 for v in _jf_vals))
+
+    # _apply_jitter EQUAL in [half, raw]
+    _je_vals = [_apply_jitter(4.0, RetryConfig(jitter=Jitter.EQUAL), 0.0) for _ in range(50)]
+    test("RetryStrategy: EQUAL jitter in [half, raw]", all(2.0 - 1e-9 <= v <= 4.0 + 1e-9 for v in _je_vals))
+
+    # _apply_jitter DECORRELATED >= base_delay
+    _jd_vals = [_apply_jitter(4.0, RetryConfig(jitter=Jitter.DECORRELATED, base_delay=1.0), 2.0) for _ in range(50)]
+    test("RetryStrategy: DECORRELATED jitter >= base_delay", all(v >= 1.0 - 1e-9 for v in _jd_vals))
+
+    # should_retry: respects max_retries
+    reset("__test_sr_limit__")
+    _sr_cfg = RetryConfig(max_retries=2)
+    test("RetryStrategy: should_retry True before failures", should_retry("__test_sr_limit__", config=_sr_cfg))
+    record_attempt("__test_sr_limit__", success=False, config=_sr_cfg)
+    record_attempt("__test_sr_limit__", success=False, config=_sr_cfg)
+    test("RetryStrategy: should_retry False after max failures", not should_retry("__test_sr_limit__", config=_sr_cfg))
+    reset("__test_sr_limit__")
+
+    # get_stats returns all expected keys
+    reset("__test_stats_deep__")
+    record_attempt("__test_stats_deep__", success=True)
+    record_attempt("__test_stats_deep__", success=False, error="err1")
+    record_attempt("__test_stats_deep__", success=False, error="err2")
+    _st = get_stats("__test_stats_deep__")
+    test("RetryStrategy: get_stats has operation key", _st.get("operation") == "__test_stats_deep__")
+    test("RetryStrategy: get_stats attempts=3", _st.get("attempts") == 3)
+    test("RetryStrategy: get_stats successes=1", _st.get("successes") == 1)
+    test("RetryStrategy: get_stats failures=2", _st.get("failures") == 2)
+    test("RetryStrategy: get_stats recent_errors length", len(_st.get("recent_errors", [])) == 2)
+    test("RetryStrategy: get_stats success_rate ~0.3333", abs(_st.get("success_rate", 0) - 0.3333) < 0.01)
+    reset("__test_stats_deep__")
+
+    # _OperationState defaults
+    _os = _OperationState()
+    test("RetryStrategy: _OperationState defaults", _os.attempts == 0 and _os.failures == 0 and _os.successes == 0)
+    test("RetryStrategy: _OperationState total_delay default", _os.total_delay == 0.0)
+    test("RetryStrategy: _OperationState max_errors_stored", _os.max_errors_stored == 10)
+
+    # record_attempt truncates error messages
+    reset("__test_trunc__")
+    record_attempt("__test_trunc__", success=False, error="x" * 500)
+    _st_t = get_stats("__test_trunc__")
+    test("RetryStrategy: error msg truncated to 200 chars", len(_st_t["recent_errors"][0]) <= 200)
+    reset("__test_trunc__")
+
+    # record_attempt caps stored errors at max_errors_stored
+    reset("__test_err_cap__")
+    for _i in range(15):
+        record_attempt("__test_err_cap__", success=False, error=f"err{_i}")
+    _st_c = get_stats("__test_err_cap__")
+    test("RetryStrategy: error list capped at 10", len(_st_c["recent_errors"]) <= 10)
+    reset("__test_err_cap__")
+
+    # with_retry as context manager — success
+    reset("__test_ctx_ok__")
+    with with_retry("__test_ctx_ok__", strategy=Strategy.CONSTANT, base_delay=0.0) as _rt:
+        _rt.success()
+    _ctx_s = get_stats("__test_ctx_ok__")
+    test("RetryStrategy: ctx manager success recorded", _ctx_s.get("successes") == 1)
+    reset("__test_ctx_ok__")
+
+    # with_retry as context manager — exception records failure
+    reset("__test_ctx_err__")
+    try:
+        with with_retry("__test_ctx_err__", strategy=Strategy.CONSTANT, base_delay=0.0) as _rt2:
+            raise ValueError("boom")
+    except ValueError:
+        pass
+    _ctx_e = get_stats("__test_ctx_err__")
+    test("RetryStrategy: ctx manager exception records failure", _ctx_e.get("failures") == 1)
+    reset("__test_ctx_err__")
+
+    # with_retry ctx manager — auto-success when no explicit call and no exception
+    reset("__test_ctx_auto__")
+    with with_retry("__test_ctx_auto__", strategy=Strategy.CONSTANT, base_delay=0.0) as _rt3:
+        pass  # no .success() call, no exception
+    _ctx_a = get_stats("__test_ctx_auto__")
+    test("RetryStrategy: ctx manager auto-success", _ctx_a.get("successes") == 1)
+    reset("__test_ctx_auto__")
+
+    # reset clears all state
+    reset("__test_reset_deep__")
+    record_attempt("__test_reset_deep__", success=False)
+    record_attempt("__test_reset_deep__", success=True)
+    reset("__test_reset_deep__")
+    _rst = get_stats("__test_reset_deep__")
+    test("RetryStrategy: reset clears attempts", _rst.get("attempts") == 0)
+    test("RetryStrategy: reset clears failures", _rst.get("failures") == 0)
+
+except Exception as _rs_exc:
+    test("RetryStrategy Deep Tests: import and tests", False, str(_rs_exc))
+
+
+# --- Circuit Breaker Deep Tests ---
+print("\n--- Circuit Breaker Deep Tests ---")
+try:
+    from shared.circuit_breaker import (
+        STATE_CLOSED, STATE_OPEN, STATE_HALF_OPEN,
+        DEFAULT_FAILURE_THRESHOLD, DEFAULT_RECOVERY_TIMEOUT, DEFAULT_SUCCESS_THRESHOLD,
+        _default_service_record, _maybe_recover,
+        record_success as cb_record_success,
+        record_failure as cb_record_failure,
+        is_open as cb_is_open,
+        get_state as cb_get_state,
+        get_all_states as cb_get_all_states,
+        reset as cb_reset,
+        should_skip_gate, record_gate_result,
+        get_gate_circuit_state, reset_gate_circuit,
+        get_all_gate_states,
+        _GATE_CRASH_THRESHOLD, _GATE_COOLDOWN, _TIER1_GATE_NAMES,
+        _default_gate_record, _prune_crash_window, _gate_maybe_recover,
+    )
+
+    # State constants
+    test("CB: STATE_CLOSED is CLOSED", STATE_CLOSED == "CLOSED")
+    test("CB: STATE_OPEN is OPEN", STATE_OPEN == "OPEN")
+    test("CB: STATE_HALF_OPEN is HALF_OPEN", STATE_HALF_OPEN == "HALF_OPEN")
+
+    # Default thresholds
+    test("CB: DEFAULT_FAILURE_THRESHOLD is 5", DEFAULT_FAILURE_THRESHOLD == 5)
+    test("CB: DEFAULT_RECOVERY_TIMEOUT is 60", DEFAULT_RECOVERY_TIMEOUT == 60)
+    test("CB: DEFAULT_SUCCESS_THRESHOLD is 2", DEFAULT_SUCCESS_THRESHOLD == 2)
+
+    # _default_service_record has all keys
+    _dsr = _default_service_record()
+    test("CB: default record state is CLOSED", _dsr["state"] == STATE_CLOSED)
+    test("CB: default record failure_count is 0", _dsr["failure_count"] == 0)
+    test("CB: default record total_failures is 0", _dsr["total_failures"] == 0)
+    test("CB: default record total_successes is 0", _dsr["total_successes"] == 0)
+    test("CB: default record total_rejections is 0", _dsr["total_rejections"] == 0)
+    test("CB: default record has opened_at None", _dsr["opened_at"] is None)
+
+    # Custom thresholds in _default_service_record
+    _dsr2 = _default_service_record(failure_threshold=3, recovery_timeout=30, success_threshold=1)
+    test("CB: custom failure_threshold", _dsr2["failure_threshold"] == 3)
+    test("CB: custom recovery_timeout", _dsr2["recovery_timeout"] == 30)
+    test("CB: custom success_threshold", _dsr2["success_threshold"] == 1)
+
+    # _maybe_recover: OPEN -> HALF_OPEN after timeout
+    import time as _cb_time
+    _mr_rec = _default_service_record()
+    _mr_rec["state"] = STATE_OPEN
+    _mr_rec["opened_at"] = _cb_time.time() - DEFAULT_RECOVERY_TIMEOUT - 10
+    _maybe_recover(_mr_rec)
+    test("CB: _maybe_recover transitions OPEN->HALF_OPEN", _mr_rec["state"] == STATE_HALF_OPEN)
+
+    # _maybe_recover: OPEN stays OPEN before timeout
+    _mr_rec2 = _default_service_record()
+    _mr_rec2["state"] = STATE_OPEN
+    _mr_rec2["opened_at"] = _cb_time.time()
+    _maybe_recover(_mr_rec2)
+    test("CB: _maybe_recover stays OPEN before timeout", _mr_rec2["state"] == STATE_OPEN)
+
+    # _maybe_recover: CLOSED is no-op
+    _mr_rec3 = _default_service_record()
+    _maybe_recover(_mr_rec3)
+    test("CB: _maybe_recover no-op on CLOSED", _mr_rec3["state"] == STATE_CLOSED)
+
+    # Service-level: full lifecycle test
+    _SVC = "__cb_deep_test__"
+    cb_reset(_SVC)
+    test("CB: fresh service is CLOSED", cb_get_state(_SVC) == STATE_CLOSED)
+    test("CB: is_open False when CLOSED", not cb_is_open(_SVC))
+
+    # Accumulate failures below threshold
+    for _i in range(DEFAULT_FAILURE_THRESHOLD - 1):
+        cb_record_failure(_SVC)
+    test("CB: still CLOSED below threshold", cb_get_state(_SVC) == STATE_CLOSED)
+
+    # One more failure crosses threshold
+    cb_record_failure(_SVC)
+    test("CB: OPEN at threshold", cb_get_state(_SVC) == STATE_OPEN)
+    test("CB: is_open True when OPEN", cb_is_open(_SVC))
+
+    # Successes while OPEN don't close
+    cb_record_success(_SVC)
+    test("CB: success while OPEN doesn't close", cb_get_state(_SVC) == STATE_OPEN)
+
+    # get_all_states includes service
+    _all = cb_get_all_states()
+    test("CB: get_all_states includes test service", _SVC in _all)
+
+    # Reset restores CLOSED
+    cb_reset(_SVC)
+    test("CB: reset restores CLOSED", cb_get_state(_SVC) == STATE_CLOSED)
+
+    # Unknown service defaults to CLOSED
+    test("CB: unknown service is CLOSED", cb_get_state("__nonexistent_svc__") == STATE_CLOSED)
+    test("CB: unknown service is_open False", not cb_is_open("__nonexistent_svc__"))
+    cb_reset(_SVC)
+
+    # --- Gate circuit breaker ---
+    # _default_gate_record
+    _dgr = _default_gate_record()
+    test("CB: gate record state is CLOSED", _dgr["state"] == STATE_CLOSED)
+    test("CB: gate record crash_timestamps empty", _dgr["crash_timestamps"] == [])
+    test("CB: gate record total_crashes is 0", _dgr["total_crashes"] == 0)
+    test("CB: gate record total_skips is 0", _dgr["total_skips"] == 0)
+
+    # Gate constants
+    test("CB: _GATE_CRASH_THRESHOLD is 3", _GATE_CRASH_THRESHOLD == 3)
+    test("CB: _GATE_COOLDOWN is 60", _GATE_COOLDOWN == 60)
+
+    # Tier 1 gates never skipped
+    _tier1_gate = "gate_01_read_before_edit"
+    test("CB: Tier 1 gate in _TIER1_GATE_NAMES", _tier1_gate in _TIER1_GATE_NAMES)
+    test("CB: should_skip_gate False for Tier 1", not should_skip_gate(_tier1_gate))
+
+    # Tier 1 gate stays CLOSED even after crashes
+    reset_gate_circuit(_tier1_gate)
+    for _i in range(5):
+        record_gate_result(_tier1_gate, success=False)
+    test("CB: Tier 1 gate stays CLOSED after crashes", get_gate_circuit_state(_tier1_gate) == STATE_CLOSED)
+    reset_gate_circuit(_tier1_gate)
+
+    # Non-tier-1 gate: crashes open circuit
+    _test_gate = "__test_gate_cb__"
+    reset_gate_circuit(_test_gate)
+    for _i in range(_GATE_CRASH_THRESHOLD):
+        record_gate_result(_test_gate, success=False)
+    test("CB: non-tier1 gate opens after crash threshold", get_gate_circuit_state(_test_gate) == STATE_OPEN)
+    test("CB: should_skip_gate True when gate OPEN", should_skip_gate(_test_gate))
+
+    # Gate recovery after cooldown
+    reset_gate_circuit(_test_gate)
+    for _i in range(_GATE_CRASH_THRESHOLD):
+        record_gate_result(_test_gate, success=False)
+    # Manually backdate opened_at to simulate cooldown
+    from shared.circuit_breaker import _load_gate_state, _save_gate_state
+    _gdata = _load_gate_state()
+    if _test_gate in _gdata:
+        _gdata[_test_gate]["opened_at"] = _cb_time.time() - _GATE_COOLDOWN - 10
+        _save_gate_state(_gdata)
+    test("CB: gate HALF_OPEN after cooldown", get_gate_circuit_state(_test_gate) == STATE_HALF_OPEN)
+    test("CB: should_skip_gate False in HALF_OPEN", not should_skip_gate(_test_gate))
+
+    # Success in HALF_OPEN closes gate circuit
+    record_gate_result(_test_gate, success=True)
+    test("CB: gate CLOSED after success in HALF_OPEN", get_gate_circuit_state(_test_gate) == STATE_CLOSED)
+
+    # get_all_gate_states returns dict
+    _gall = get_all_gate_states()
+    test("CB: get_all_gate_states returns dict", isinstance(_gall, dict))
+
+    # reset_gate_circuit restores CLOSED
+    reset_gate_circuit(_test_gate)
+    test("CB: reset_gate_circuit restores CLOSED", get_gate_circuit_state(_test_gate) == STATE_CLOSED)
+
+    # _prune_crash_window removes old timestamps
+    _prune_rec = {"crash_timestamps": [_cb_time.time() - 1000, _cb_time.time() - 500, _cb_time.time()]}
+    _prune_crash_window(_prune_rec)
+    test("CB: _prune_crash_window keeps recent timestamps", len(_prune_rec["crash_timestamps"]) >= 1)
+
+    # Cleanup
+    reset_gate_circuit(_test_gate)
+    reset_gate_circuit(_tier1_gate)
+
+except Exception as _cb_exc:
+    test("Circuit Breaker Deep Tests: import and tests", False, str(_cb_exc))
+
+
+# --- Rate Limiter Deep Tests ---
+print("\n--- Rate Limiter Deep Tests ---")
+try:
+    from shared.rate_limiter import (
+        allow as rl_allow,
+        consume as rl_consume,
+        get_remaining as rl_get_remaining,
+        reset as rl_reset,
+        get_all_limits as rl_get_all_limits,
+        TOOL_RATE, GATE_RATE, API_RATE,
+        _config_for, _refill_tokens, _DEFAULT_RATE,
+        _buckets,
+    )
+
+    # Preset constants
+    test("RateLimiter: TOOL_RATE is (10.0, 10)", TOOL_RATE == (10.0, 10))
+    test("RateLimiter: GATE_RATE is (30.0, 30)", GATE_RATE == (30.0, 30))
+    test("RateLimiter: API_RATE is (60.0, 60)", API_RATE == (60.0, 60))
+
+    # _config_for prefix matching
+    test("RateLimiter: tool: prefix -> TOOL_RATE", _config_for("tool:Edit") == TOOL_RATE)
+    test("RateLimiter: gate: prefix -> GATE_RATE", _config_for("gate:gate_04") == GATE_RATE)
+    test("RateLimiter: api: prefix -> API_RATE", _config_for("api:memory") == API_RATE)
+    test("RateLimiter: unknown prefix -> DEFAULT_RATE", _config_for("custom:xyz") == _DEFAULT_RATE)
+
+    # _refill_tokens
+    _rl_bucket = {"tokens": 5.0, "last_refill": _cb_time.time() - 60.0}
+    _rl_refilled = _refill_tokens(_rl_bucket, 10.0, 10, _cb_time.time())
+    test("RateLimiter: _refill_tokens adds tokens", _rl_refilled > 5.0)
+    test("RateLimiter: _refill_tokens capped at burst", _rl_refilled <= 10.0)
+
+    # _refill_tokens with zero elapsed
+    _rl_bucket2 = {"tokens": 3.0, "last_refill": _cb_time.time()}
+    _rl_refilled2 = _refill_tokens(_rl_bucket2, 10.0, 10, _cb_time.time())
+    test("RateLimiter: _refill_tokens zero elapsed ~= current tokens", abs(_rl_refilled2 - 3.0) < 0.1)
+
+    # Full lifecycle: consume until empty
+    _TK = "tool:__rl_test__"
+    rl_reset(_TK)
+    test("RateLimiter: fresh bucket at burst capacity", rl_get_remaining(_TK) == 10)
+    test("RateLimiter: allow True when full", rl_allow(_TK))
+    test("RateLimiter: consume True when available", rl_consume(_TK))
+    test("RateLimiter: remaining decremented by 1", rl_get_remaining(_TK) == 9)
+
+    # Exhaust bucket
+    for _i in range(9):
+        rl_consume(_TK)
+    test("RateLimiter: bucket empty after consuming all", rl_get_remaining(_TK) == 0)
+    test("RateLimiter: consume False when empty", not rl_consume(_TK))
+    test("RateLimiter: allow False when empty", not rl_allow(_TK))
+
+    # Reset refills
+    rl_reset(_TK)
+    test("RateLimiter: reset refills to burst", rl_get_remaining(_TK) == 10)
+
+    # Multi-token consume
+    _TK2 = "tool:__rl_multi__"
+    rl_reset(_TK2)
+    test("RateLimiter: allow 5 tokens True", rl_allow(_TK2, tokens=5))
+    test("RateLimiter: consume 5 tokens True", rl_consume(_TK2, tokens=5))
+    test("RateLimiter: remaining after consuming 5", rl_get_remaining(_TK2) == 5)
+    test("RateLimiter: consume 6 fails with 5 remaining", not rl_consume(_TK2, tokens=6))
+    rl_reset(_TK2)
+
+    # get_all_limits returns dict with expected fields
+    rl_reset("tool:__rl_fields__")
+    rl_consume("tool:__rl_fields__")
+    _limits = rl_get_all_limits()
+    test("RateLimiter: get_all_limits includes test key", "tool:__rl_fields__" in _limits)
+    if "tool:__rl_fields__" in _limits:
+        _entry = _limits["tool:__rl_fields__"]
+        test("RateLimiter: entry has tokens_remaining", "tokens_remaining" in _entry)
+        test("RateLimiter: entry has rate_per_minute", "rate_per_minute" in _entry)
+        test("RateLimiter: entry has burst", "burst" in _entry)
+        test("RateLimiter: entry has last_refill", "last_refill" in _entry)
+        test("RateLimiter: entry rate_per_minute is 10.0", _entry["rate_per_minute"] == 10.0)
+        test("RateLimiter: entry burst is 10", _entry["burst"] == 10)
+    rl_reset("tool:__rl_fields__")
+
+    # Gate rate uses burst=30
+    _GK = "gate:__rl_gate_test__"
+    rl_reset(_GK)
+    test("RateLimiter: gate burst is 30", rl_get_remaining(_GK) == 30)
+    rl_reset(_GK)
+
+    # API rate uses burst=60
+    _AK = "api:__rl_api_test__"
+    rl_reset(_AK)
+    test("RateLimiter: api burst is 60", rl_get_remaining(_AK) == 60)
+    rl_reset(_AK)
+
+    # Cleanup
+    for _k in ["tool:__rl_test__", "tool:__rl_multi__", "tool:__rl_fields__", "gate:__rl_gate_test__", "api:__rl_api_test__"]:
+        _buckets.pop(_k, None)
+
+except Exception as _rl_exc:
+    test("Rate Limiter Deep Tests: import and tests", False, str(_rl_exc))
+
+
+# --- Gate Correlator Deep Tests ---
+print("\n--- Gate Correlator Deep Tests ---")
+try:
+    from shared.gate_correlator import (
+        _normalize_gate, _ts_float, _group_by_tool_call,
+        build_cooccurrence_matrix, cooccurrence_summary,
+        detect_gate_chains, detect_redundant_gates, optimize_gate_order,
+        GateCorrelator, CHAIN_WINDOW_SECONDS, MIN_COOCCURRENCE,
+        REDUNDANCY_JACCARD_THRESHOLD, _TIER1_GATES, _CANONICAL_ORDER,
+        _GATE_NAME_MAP,
+    )
+    from datetime import datetime as _gc_dt
+
+    # _normalize_gate
+    test("GC: normalize full module path", _normalize_gate("gates.gate_01_read_before_edit") == "GATE 1: READ BEFORE EDIT")
+    test("GC: normalize short form", _normalize_gate("gate_02_no_destroy") == "GATE 2: NO DESTROY")
+    test("GC: normalize unknown passes through", _normalize_gate("unknown_gate") == "unknown_gate")
+
+    # Constants
+    test("GC: CHAIN_WINDOW_SECONDS is 5.0", CHAIN_WINDOW_SECONDS == 5.0)
+    test("GC: MIN_COOCCURRENCE is 3", MIN_COOCCURRENCE == 3)
+    test("GC: REDUNDANCY_JACCARD_THRESHOLD is 0.85", REDUNDANCY_JACCARD_THRESHOLD == 0.85)
+    test("GC: _TIER1_GATES has 3 gates", len(_TIER1_GATES) == 3)
+
+    # _ts_float
+    _ts_entry = {"timestamp": "2025-01-15T10:30:00"}
+    _ts_val = _ts_float(_ts_entry)
+    test("GC: _ts_float returns float > 0", isinstance(_ts_val, float) and _ts_val > 0)
+    test("GC: _ts_float handles missing timestamp", _ts_float({}) == 0.0)
+    test("GC: _ts_float handles invalid timestamp", _ts_float({"timestamp": "not-a-date"}) == 0.0)
+
+    # _group_by_tool_call
+    _now_str = "2025-01-15T10:30:00"
+    _later_str = "2025-01-15T10:30:00.100"
+    _much_later_str = "2025-01-15T10:30:05"
+    _gc_entries = [
+        {"gate": "G1", "tool": "Edit", "session_id": "s1", "timestamp": _now_str},
+        {"gate": "G2", "tool": "Edit", "session_id": "s1", "timestamp": _later_str},
+        {"gate": "G3", "tool": "Edit", "session_id": "s1", "timestamp": _much_later_str},
+    ]
+    _groups = _group_by_tool_call(_gc_entries)
+    test("GC: _group_by_tool_call groups by time window", len(_groups) == 2)
+
+    # Different sessions create different groups
+    _gc_entries2 = [
+        {"gate": "G1", "tool": "Edit", "session_id": "s1", "timestamp": _now_str},
+        {"gate": "G2", "tool": "Edit", "session_id": "s2", "timestamp": _later_str},
+    ]
+    _groups2 = _group_by_tool_call(_gc_entries2)
+    test("GC: different sessions = different groups", len(_groups2) == 2)
+
+    # build_cooccurrence_matrix
+    _cooc_entries = [
+        {"gate": "GA", "tool": "Edit", "session_id": "s1", "timestamp": _now_str},
+        {"gate": "GB", "tool": "Edit", "session_id": "s1", "timestamp": _later_str},
+    ]
+    _matrix = build_cooccurrence_matrix(_cooc_entries)
+    test("GC: cooccurrence matrix has pair", ("GA", "GB") in _matrix or ("GB", "GA") in _matrix)
+
+    # cooccurrence_summary
+    _summary = cooccurrence_summary(_matrix)
+    test("GC: cooccurrence_summary returns list", isinstance(_summary, list))
+    if _summary:
+        test("GC: summary entry has gate_a", "gate_a" in _summary[0])
+        test("GC: summary entry has count", "count" in _summary[0])
+
+    # Empty entries
+    _empty_matrix = build_cooccurrence_matrix([])
+    test("GC: empty entries -> empty matrix", len(_empty_matrix) == 0)
+
+    # detect_gate_chains
+    _chain_entries = []
+    _base_ts = _gc_dt(2025, 1, 15, 10, 30, 0)
+    for _i in range(5):  # 5 occurrences to exceed MIN_COOCCURRENCE
+        _t1 = f"2025-01-15T10:{30 + _i}:00"
+        _t2 = f"2025-01-15T10:{30 + _i}:01"
+        _chain_entries.append({"gate": "GA", "tool": "Edit", "session_id": "s1", "timestamp": _t1, "decision": "pass"})
+        _chain_entries.append({"gate": "GB", "tool": "Edit", "session_id": "s1", "timestamp": _t2, "decision": "pass"})
+    _chains = detect_gate_chains(_chain_entries, window_seconds=5.0, min_count=3)
+    test("GC: detect_gate_chains finds chain", len(_chains) >= 1)
+    if _chains:
+        test("GC: chain has from_gate", "from_gate" in _chains[0])
+        test("GC: chain has to_gate", "to_gate" in _chains[0])
+        test("GC: chain has avg_gap_ms", "avg_gap_ms" in _chains[0])
+        test("GC: chain has example_tool", "example_tool" in _chains[0])
+
+    # detect_gate_chains with no data
+    test("GC: no chains from empty entries", len(detect_gate_chains([], min_count=1)) == 0)
+
+    # detect_redundant_gates
+    _redundant_entries = []
+    for _i in range(10):
+        _t = f"2025-01-15T10:{30 + _i}:00"
+        _t2 = f"2025-01-15T10:{30 + _i}:00.100"
+        _redundant_entries.append({"gate": "GX", "tool": "Edit", "session_id": "s1", "timestamp": _t, "decision": "pass"})
+        _redundant_entries.append({"gate": "GY", "tool": "Edit", "session_id": "s1", "timestamp": _t2, "decision": "pass"})
+    _redundant = detect_redundant_gates(_redundant_entries, min_cooccurrence=3, jaccard_threshold=0.8)
+    test("GC: detect_redundant_gates finds redundancy", len(_redundant) >= 1)
+    if _redundant:
+        test("GC: redundancy has jaccard_similarity", "jaccard_similarity" in _redundant[0])
+        test("GC: redundancy has agreement_rate", "agreement_rate" in _redundant[0])
+        test("GC: redundancy has note", "note" in _redundant[0])
+
+    # optimize_gate_order
+    _order_entries = [
+        {"gate": "GATE 1: READ BEFORE EDIT", "tool": "Edit", "decision": "pass", "timestamp": _now_str},
+        {"gate": "GATE 4: MEMORY FIRST", "tool": "Edit", "decision": "block", "timestamp": _now_str},
+        {"gate": "GATE 5: PROOF BEFORE FIXED", "tool": "Edit", "decision": "pass", "timestamp": _now_str},
+    ]
+    _ordering = optimize_gate_order(_order_entries, effectiveness_data={})
+    test("GC: optimize_gate_order returns list", isinstance(_ordering, list))
+    test("GC: optimize_gate_order has entries", len(_ordering) > 0)
+    if _ordering:
+        test("GC: ordering entry has rank", "rank" in _ordering[0])
+        test("GC: ordering entry has gate", "gate" in _ordering[0])
+        test("GC: ordering entry has block_rate", "block_rate" in _ordering[0])
+        test("GC: ordering entry has pinned", "pinned" in _ordering[0])
+        test("GC: ordering entry has score", "score" in _ordering[0])
+        test("GC: ordering entry has reason", "reason" in _ordering[0])
+        # Tier 1 gates are pinned first
+        _pinned = [r for r in _ordering if r["pinned"]]
+        _free = [r for r in _ordering if not r["pinned"]]
+        if _pinned and _free:
+            test("GC: pinned gates rank before free gates", max(r["rank"] for r in _pinned) < min(r["rank"] for r in _free))
+
+    # optimize_gate_order with target_tool
+    _order_filtered = optimize_gate_order(_order_entries, effectiveness_data={}, target_tool="Edit")
+    test("GC: optimize_gate_order with target_tool returns list", isinstance(_order_filtered, list))
+
+    # GateCorrelator class
+    _gc = GateCorrelator(max_entries=100)
+    test("GC: GateCorrelator constructor", _gc._max_entries == 100)
+    test("GC: GateCorrelator _entries starts None", _gc._entries is None)
+
+    # _CANONICAL_ORDER has expected entries
+    test("GC: _CANONICAL_ORDER has >= 14 gates", len(_CANONICAL_ORDER) >= 14)
+    test("GC: GATE 1 is first in canonical order", _CANONICAL_ORDER[0] == "GATE 1: READ BEFORE EDIT")
+
+    # _GATE_NAME_MAP covers both forms
+    test("GC: _GATE_NAME_MAP has full module path entries", "gates.gate_01_read_before_edit" in _GATE_NAME_MAP)
+    test("GC: _GATE_NAME_MAP has short form entries", "gate_01_read_before_edit" in _GATE_NAME_MAP)
+
+except Exception as _gc_exc:
+    test("Gate Correlator Deep Tests: import and tests", False, str(_gc_exc))
+
+
+# --- Gate 04/07/13/15 Refactored Tests ---
+print("\n--- Gate 04/07/13/15 Refactored Tests ---")
+try:
+    # Gate 04: Verify gate_helpers integration
+    from gates.gate_04_memory_first import check as g04_check
+    import time as _g04_time
+
+    _g04_state = {"memory_last_queried": _g04_time.time()}
+    _g04_r = g04_check("Edit", {"file_path": "/tmp/test.py"}, _g04_state)
+    test("Gate 04 refactored: allows with recent memory query", not _g04_r.blocked)
+
+    # Note: Gate 04 block depends on sideband file (.memory_last_queried) which
+    # may have a recent timestamp from MCP server — test structure instead
+    _g04_state2 = {"memory_last_queried": 0}
+    _g04_r2 = g04_check("Edit", {"file_path": "/tmp/test.py"}, _g04_state2)
+    test("Gate 04 refactored: returns GateResult for stale memory", hasattr(_g04_r2, "blocked") and hasattr(_g04_r2, "gate_name"))
+
+    # Non-gated tool passes through
+    _g04_r3 = g04_check("Read", {"file_path": "/tmp/test.py"}, _g04_state2)
+    test("Gate 04 refactored: Read tool passes through", not _g04_r3.blocked)
+
+    # Read-only subagent exempt
+    _g04_r4 = g04_check("Task", {"subagent_type": "Explore"}, _g04_state2)
+    test("Gate 04 refactored: Explore subagent exempt", not _g04_r4.blocked)
+
+    # safe_tool_input handles non-dict
+    _g04_r5 = g04_check("Edit", "not_a_dict", _g04_state)
+    test("Gate 04 refactored: handles non-dict tool_input", not _g04_r5.blocked)
+
+    # PostToolUse passes through
+    _g04_r6 = g04_check("Edit", {"file_path": "/tmp/test.py"}, _g04_state2, event_type="PostToolUse")
+    test("Gate 04 refactored: PostToolUse passes through", not _g04_r6.blocked)
+
+    # Gate 07: Verify gate_helpers integration
+    from gates.gate_07_critical_file_guard import check as g07_check
+
+    _g07_state = {"memory_last_queried": _g04_time.time()}
+    _g07_r = g07_check("Edit", {"file_path": "/tmp/hooks/enforcer.py"}, _g07_state)
+    test("Gate 07 refactored: allows critical file with recent memory", not _g07_r.blocked)
+
+    # Note: Gate 07 block depends on sideband file (.memory_last_queried) — test structure
+    _g07_state2 = {"memory_last_queried": 0}
+    _g07_r2 = g07_check("Edit", {"file_path": "/tmp/hooks/enforcer.py"}, _g07_state2)
+    test("Gate 07 refactored: returns GateResult for stale memory", hasattr(_g07_r2, "blocked") and hasattr(_g07_r2, "gate_name"))
+
+    # Non-critical file passes
+    _g07_r3 = g07_check("Edit", {"file_path": "/tmp/ordinary.py"}, _g07_state2)
+    test("Gate 07 refactored: non-critical file passes", not _g07_r3.blocked)
+
+    # safe_tool_input handles non-dict
+    _g07_r4 = g07_check("Edit", "not_a_dict", _g07_state)
+    test("Gate 07 refactored: handles non-dict tool_input", not _g07_r4.blocked)
+
+    # Gate 13: Verify gate_helpers integration
+    from gates.gate_13_workspace_isolation import check as g13_check
+
+    # Solo session is exempt
+    _g13_state = {"_session_id": "main"}
+    _g13_r = g13_check("Edit", {"file_path": "/tmp/test.py"}, _g13_state)
+    test("Gate 13 refactored: solo session exempt", not _g13_r.blocked)
+
+    # Non-watched tool passes
+    _g13_state2 = {"_session_id": "agent-1"}
+    _g13_r2 = g13_check("Read", {"file_path": "/tmp/test.py"}, _g13_state2)
+    test("Gate 13 refactored: Read tool passes", not _g13_r2.blocked)
+
+    # No file path passes
+    _g13_r3 = g13_check("Edit", {}, _g13_state2)
+    test("Gate 13 refactored: no file_path passes", not _g13_r3.blocked)
+
+    # PostToolUse passes
+    _g13_r4 = g13_check("Edit", {"file_path": "/tmp/test.py"}, _g13_state2, event_type="PostToolUse")
+    test("Gate 13 refactored: PostToolUse passes", not _g13_r4.blocked)
+
+    # Gate 15: Verify gate_helpers integration
+    from gates.gate_15_causal_chain import check as g15_check
+
+    # No recent test failure -> passes
+    _g15_state = {}
+    _g15_r = g15_check("Edit", {"file_path": "/tmp/test.py"}, _g15_state)
+    test("Gate 15 refactored: passes with no test failure", not _g15_r.blocked)
+
+    # Test failure + fixing_error + no fix_history_queried -> blocks
+    _g15_state2 = {
+        "recent_test_failure": {"pattern": "ImportError", "timestamp": _g04_time.time()},
+        "fixing_error": True,
+        "fix_history_queried": 0,
+    }
+    _g15_r2 = g15_check("Edit", {"file_path": "/tmp/code.py"}, _g15_state2)
+    test("Gate 15 refactored: blocks when fix_history not queried", _g15_r2.blocked)
+
+    # Test failure + fix_history recent -> passes
+    _g15_state3 = {
+        "recent_test_failure": {"pattern": "ImportError", "timestamp": _g04_time.time()},
+        "fixing_error": True,
+        "fix_history_queried": _g04_time.time(),
+    }
+    _g15_r3 = g15_check("Edit", {"file_path": "/tmp/code.py"}, _g15_state3)
+    test("Gate 15 refactored: passes when fix_history queried recently", not _g15_r3.blocked)
+
+    # Exempt file passes even without fix_history
+    _g15_r4 = g15_check("Edit", {"file_path": "/tmp/test_something.py"}, _g15_state2)
+    test("Gate 15 refactored: test file exempt", not _g15_r4.blocked)
+
+    # Non-Edit tool passes
+    _g15_r5 = g15_check("Read", {"file_path": "/tmp/code.py"}, _g15_state2)
+    test("Gate 15 refactored: Read tool passes", not _g15_r5.blocked)
+
+    # safe_tool_input handles non-dict
+    _g15_r6 = g15_check("Edit", "not_a_dict", _g15_state2)
+    test("Gate 15 refactored: handles non-dict tool_input", not _g15_r6.blocked)
+
+except Exception as _gr_exc:
+    test("Gate 04/07/13/15 Refactored Tests: import and tests", False, str(_gr_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)

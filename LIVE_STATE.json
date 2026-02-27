@@ -1,21 +1,20 @@
 {
-  "session_count": 275,
+  "session_count": 276,
   "project": "torus-framework",
   "feature": "none",
-  "framework_version": "v2.5.5",
-  "what_was_done": "Session 275: Tests 1717→1821 (+104 assertions). 8 new MCP tools (gate_drift, skill_dependencies, generate_test_stubs, routing_stats, gate_correlation_report, pipeline_analysis, anomaly_summary, event_stats) → 35 total. Complete test coverage for all shared modules: drift_detector, gate_router, skill_mapper, test_generator + deep tests for pipeline_optimizer and consensus_validator.",
+  "framework_version": "v2.5.6",
+  "what_was_done": "Session 276 (continuation): Tests 2099->2339 (+240). 3 new MCP tools (fix_effectiveness, query_observations, inspect_domain) -> 42 total. Refactored gate_05 + gate_14 to use shared/gate_helpers. Added cycle detection + topological ordering to gate_dependency_graph. Deep tests for tool_patterns, gate_pruner, experience_archive, observation, domain_registry.",
   "next_steps": [
-    "Run memory maintenance(action='stale') — 1552 entries",
-    "Review dormant items — decide what to revive or remove",
-    "Add integration tests for MCP tool endpoints",
-    "Consider hot_reload module revival from dormant/"
+    "Refactor gates 04, 07, 13, 15 to use shared/gate_helpers",
+    "Write tests for pipeline_optimizer helpers",
+    "Build new features: self-correction loop or dashboard CLI",
+    "Run memory maintenance(action='stale')"
   ],
   "known_issues": [
-    "github-branch is orphan by design \u2014 never merge, always scrub ALL files on sync",
+    "github-branch is orphan by design -- never merge, always scrub ALL files on sync",
     "Pyright type-narrowing warnings on importlib.util in search_server.py and web_search_server.py (pre-existing)",
     "test_framework.py has Pyright import warnings for gather, index, search, list, delete modules (pre-existing)",
-    "domain system wired (enforcer/orchestrator/statusline/state) but inactive \u2014 skill renamed .dormant, .active file empty, one stale import fixed (load_domain_knowledge\u2192load_domain_mastery in subagent_context.py session268)",
-    "MCP memory server was unreachable at session 265 end \u2014 comparison findings not saved to memory"
+    "domain system wired (enforcer/orchestrator/statusline/state) but inactive"
   ],
-  "last_response_preview": "Task #22 was already completed just before this assignment came in. The file is built and tested \u2014 notified team-lead."
+  "last_response_preview": "Autonomous marathon continuation -- 4 commits, 240 new tests, 3 new MCP tools, 2 gate refactors."
 }
