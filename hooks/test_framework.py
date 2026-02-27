@@ -20232,6 +20232,195 @@ except Exception as _tr_exc:
     test("Tool Recommendation Engine Tests: import and tests", False, str(_tr_exc))
 
 
+# ── Health Correlation Analyzer Deep Tests ──────────────────────────────────
+# Tests for health_correlation.py: _pearson_correlation, build_fire_vectors,
+# compute_correlation_matrix, detect_redundant_pairs, detect_synergistic_pairs,
+# suggest_optimizations, generate_health_report
+
+try:
+    from shared.health_correlation import (
+        _pearson_correlation, build_fire_vectors, compute_correlation_matrix,
+        detect_redundant_pairs, detect_synergistic_pairs,
+        suggest_optimizations, generate_health_report,
+        _short, _redundancy_recommendation,
+        REDUNDANCY_THRESHOLD, SYNERGY_THRESHOLD,
+        MIN_BLOCKS_FOR_ANALYSIS, PROTECTED_GATES,
+    )
+
+    # --- _pearson_correlation ---
+    test("HC: pearson identical = 1.0",
+         abs(_pearson_correlation([1, 2, 3], [1, 2, 3]) - 1.0) < 0.001)
+    test("HC: pearson opposite = -1.0",
+         abs(_pearson_correlation([1, 2, 3], [3, 2, 1]) - (-1.0)) < 0.001)
+    test("HC: pearson uncorrelated ~0",
+         abs(_pearson_correlation([1, 2, 3, 4], [2, 4, 1, 3])) < 0.6)
+    test("HC: pearson empty = 0.0", _pearson_correlation([], []) == 0.0)
+    test("HC: pearson single = 0.0", _pearson_correlation([1.0], [2.0]) == 0.0)
+    test("HC: pearson diff lengths = 0.0",
+         _pearson_correlation([1, 2], [1, 2, 3]) == 0.0)
+    test("HC: pearson zero variance = 0.0",
+         _pearson_correlation([5, 5, 5], [1, 2, 3]) == 0.0)
+    test("HC: pearson in [-1, 1]",
+         -1.0 <= _pearson_correlation([1, 3, 5, 7], [2, 6, 4, 8]) <= 1.0)
+
+    # --- _short ---
+    test("HC: short gate_01", _short("gate_01_read_before_edit") == "G01")
+    test("HC: short gate_17", _short("gate_17_injection_defense") == "G17")
+    test("HC: short unknown", _short("custom_gate") == "custom_gate")
+    test("HC: short empty", _short("") == "")
+
+    # --- Constants ---
+    test("HC: REDUNDANCY_THRESHOLD in (0,1)", 0 < REDUNDANCY_THRESHOLD < 1)
+    test("HC: SYNERGY_THRESHOLD < 0", SYNERGY_THRESHOLD < 0)
+    test("HC: MIN_BLOCKS > 0", MIN_BLOCKS_FOR_ANALYSIS > 0)
+    test("HC: PROTECTED has gate_01", "gate_01_read_before_edit" in PROTECTED_GATES)
+    test("HC: PROTECTED has 3 gates", len(PROTECTED_GATES) == 3)
+
+    # --- build_fire_vectors ---
+    _hc_eff = {
+        "gate_01_read_before_edit": {"blocks": 100, "overrides": 5, "prevented": 20},
+        "gate_04_memory_first": {"blocks": 80, "overrides": 10, "prevented": 15},
+        "gate_07_critical_file_guard": {"blocks": 50, "overrides": 2, "prevented": 10},
+        "gate_16_low": {"blocks": 1, "overrides": 0, "prevented": 0},  # below threshold
+    }
+    _hc_vecs = build_fire_vectors(_hc_eff)
+    test("HC: vectors returns dict", isinstance(_hc_vecs, dict))
+    test("HC: 3 gates above threshold", len(_hc_vecs) == 3)
+    test("HC: low gate excluded", "gate_16_low" not in _hc_vecs)
+    test("HC: vectors are lists", all(isinstance(v, list) for v in _hc_vecs.values()))
+    test("HC: vectors same length", len(set(len(v) for v in _hc_vecs.values())) == 1)
+    test("HC: vector values >= 0", all(x >= 0 for v in _hc_vecs.values() for x in v))
+
+    # Empty input
+    test("HC: vectors empty input", build_fire_vectors({}) == {})
+
+    # Legacy 'block' key
+    _hc_legacy = {"gate_05": {"block": 50, "overrides": 0, "prevented": 5}}
+    _hc_legacy_vecs = build_fire_vectors(_hc_legacy)
+    test("HC: legacy block key works", "gate_05" in _hc_legacy_vecs)
+
+    # Custom time_windows
+    _hc_custom_vecs = build_fire_vectors(_hc_eff, time_windows=5)
+    test("HC: custom windows length",
+         all(len(v) == 5 for v in _hc_custom_vecs.values()))
+
+    # --- compute_correlation_matrix ---
+    _hc_matrix = compute_correlation_matrix(_hc_vecs)
+    test("HC: matrix returns dict", isinstance(_hc_matrix, dict))
+    test("HC: matrix has tuples", all(isinstance(k, tuple) for k in _hc_matrix.keys()))
+    test("HC: matrix values in [-1,1]",
+         all(-1.0 <= v <= 1.0 for v in _hc_matrix.values()))
+    # 3 gates → 3 pairs
+    test("HC: 3 gates = 3 pairs", len(_hc_matrix) == 3)
+    # No self-correlations
+    test("HC: no self-correlations", all(k[0] != k[1] for k in _hc_matrix.keys()))
+    # Lexicographic ordering
+    test("HC: pairs ordered", all(k[0] < k[1] for k in _hc_matrix.keys()))
+
+    # Empty vectors
+    test("HC: matrix empty", compute_correlation_matrix({}) == {})
+
+    # Single gate
+    test("HC: matrix single gate",
+         compute_correlation_matrix({"g1": [1, 2, 3]}) == {})
+
+    # --- detect_redundant_pairs ---
+    # Create a matrix with known correlations
+    _hc_test_matrix = {
+        ("gate_a", "gate_b"): 0.95,  # redundant
+        ("gate_a", "gate_c"): 0.50,  # not redundant
+        ("gate_b", "gate_c"): 0.85,  # redundant
+    }
+    _hc_red = detect_redundant_pairs(_hc_test_matrix)
+    test("HC: 2 redundant pairs found", len(_hc_red) == 2)
+    test("HC: redundant sorted by corr",
+         _hc_red[0]["correlation"] >= _hc_red[1]["correlation"])
+    test("HC: redundant has recommendation", "recommendation" in _hc_red[0])
+
+    # No redundant pairs
+    _hc_no_red = detect_redundant_pairs({("a", "b"): 0.3})
+    test("HC: no redundant pairs", len(_hc_no_red) == 0)
+
+    # Custom threshold
+    _hc_low_thresh = detect_redundant_pairs(_hc_test_matrix, threshold=0.4)
+    test("HC: low threshold = more pairs", len(_hc_low_thresh) == 3)
+
+    # --- detect_synergistic_pairs ---
+    _hc_syn_matrix = {
+        ("gate_a", "gate_b"): -0.70,  # synergistic
+        ("gate_a", "gate_c"): 0.50,   # not synergistic
+        ("gate_b", "gate_c"): -0.55,  # synergistic
+    }
+    _hc_syn = detect_synergistic_pairs(_hc_syn_matrix)
+    test("HC: 2 synergistic pairs found", len(_hc_syn) == 2)
+    test("HC: synergistic sorted ascending",
+         _hc_syn[0]["correlation"] <= _hc_syn[1]["correlation"])
+    test("HC: synergistic has recommendation", "complementary" in _hc_syn[0]["recommendation"])
+
+    # No synergistic pairs
+    _hc_no_syn = detect_synergistic_pairs({("a", "b"): 0.3})
+    test("HC: no synergistic pairs", len(_hc_no_syn) == 0)
+
+    # --- suggest_optimizations ---
+    _hc_opt_eff = {
+        "gate_04_memory_first": {"blocks": 100, "overrides": 5, "prevented": 20},
+        "gate_05_proof": {"blocks": 95, "overrides": 4, "prevented": 18},
+        "gate_16_low": {"blocks": 1, "overrides": 0, "prevented": 0},
+    }
+    _hc_opts = suggest_optimizations(_hc_opt_eff)
+    test("HC: optimizations is list", isinstance(_hc_opts, list))
+
+    # Low-value gate detected
+    _hc_low_opts = [o for o in _hc_opts if o["type"] == "low_value"]
+    test("HC: low-value gate found", len(_hc_low_opts) >= 1)
+    if _hc_low_opts:
+        test("HC: low-value has description", "description" in _hc_low_opts[0])
+        test("HC: low-value has confidence", "confidence" in _hc_low_opts[0])
+
+    # Protected gates never suggested for removal
+    _hc_prot_eff = {
+        "gate_01_read_before_edit": {"blocks": 1, "overrides": 0, "prevented": 0},
+    }
+    _hc_prot_opts = suggest_optimizations(_hc_prot_eff)
+    _hc_prot_gates = [g for o in _hc_prot_opts for g in o.get("gates_affected", [])]
+    test("HC: protected gate not in low_value",
+         "gate_01_read_before_edit" not in _hc_prot_gates or
+         all(o["type"] != "low_value" for o in _hc_prot_opts
+             if "gate_01_read_before_edit" in o.get("gates_affected", [])))
+
+    # --- _redundancy_recommendation ---
+    _hc_rec1 = _redundancy_recommendation("gate_01_read_before_edit", "gate_04_x", 0.9)
+    test("HC: rec mentions Tier-1", "Tier-1" in _hc_rec1 or "protected" in _hc_rec1)
+
+    _hc_rec2 = _redundancy_recommendation("gate_04_x", "gate_05_y", 0.85)
+    test("HC: rec mentions merging", "merging" in _hc_rec2.lower() or "consolidat" in _hc_rec2.lower())
+
+    # --- generate_health_report ---
+    _hc_report = generate_health_report(_hc_eff)
+    test("HC: report is dict", isinstance(_hc_report, dict))
+    test("HC: report has gates_analyzed", "gates_analyzed" in _hc_report)
+    test("HC: report has correlation_pairs", "correlation_pairs" in _hc_report)
+    test("HC: report has redundant_pairs", "redundant_pairs" in _hc_report)
+    test("HC: report has synergistic_pairs", "synergistic_pairs" in _hc_report)
+    test("HC: report has optimizations", "optimizations" in _hc_report)
+    test("HC: report has overall_diversity", "overall_diversity" in _hc_report)
+    test("HC: diversity in [0,1]", 0.0 <= _hc_report["overall_diversity"] <= 1.0)
+    test("HC: gates_analyzed = 3", _hc_report["gates_analyzed"] == 3)
+
+    # Empty effectiveness
+    _hc_empty_report = generate_health_report({})
+    test("HC: empty report gates = 0", _hc_empty_report["gates_analyzed"] == 0)
+    test("HC: empty report diversity = 1.0", _hc_empty_report["overall_diversity"] == 1.0)
+
+    # Non-dict entries ignored
+    _hc_bad_eff = {"gate_x": "not_a_dict", "gate_y": None}
+    _hc_bad_vecs = build_fire_vectors(_hc_bad_eff)
+    test("HC: non-dict entries skipped", len(_hc_bad_vecs) == 0)
+
+except Exception as _hc_exc:
+    test("Health Correlation Analyzer Tests: import and tests", False, str(_hc_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
