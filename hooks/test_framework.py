@@ -24281,6 +24281,460 @@ except Exception as _gr_exc:
     test("Gate Router Deep Tests: import and tests", False, str(_gr_exc))
 
 
+# ── Session Analytics Tests ───────────────────────────────────────────────────
+print("\n--- Session Analytics (SA) ---")
+try:
+    from shared.session_analytics import (
+        _state_session_metrics,
+        tool_call_distribution,
+        gate_fire_rates,
+        gate_block_rates,
+        error_frequency,
+        session_productivity,
+        _compute_resolve_score,
+        _stddev,
+        compare_sessions_metrics,
+        parse_audit_log,
+    )
+
+    _sa_state = {
+        "session_start": 1700000000.0,
+        "total_tool_calls": 42,
+        "tool_call_counts": {
+            "Edit": 10,
+            "Read": 20,
+            "mcp__memory__search_knowledge": 5,
+            "mcp__memory__remember_this": 3,
+            "Bash": 4,
+        },
+        "gate6_warn_count": 2,
+        "files_read": ["/a.py", "/b.py"],
+        "files_edited": ["/a.py"],
+        "gate_effectiveness": {"gate_01": {"blocks": 5}},
+        "security_profile": "strict",
+        "pending_verification": [{"file": "/a.py"}],
+        "active_bans": {"strat1": True},
+        "active_subagents": ["agent1"],
+        "auto_remember_count": 7,
+        "last_test_exit_code": 0,
+    }
+
+    _sa_metrics = _state_session_metrics("test-sa-session", _sa_state)
+
+    test("SA: session_id in result", _sa_metrics["session_id"] == "test-sa-session")
+    test("SA: total_tool_calls == 42", _sa_metrics["total_tool_calls"] == 42)
+    test("SA: memory_queries == 5", _sa_metrics["memory_queries"] == 5)
+    test("SA: memory_saves == 3", _sa_metrics["memory_saves"] == 3)
+    test("SA: files_read_count == 2", _sa_metrics["files_read_count"] == 2)
+    test("SA: files_edited_count == 1", _sa_metrics["files_edited_count"] == 1)
+    test("SA: warnings == 2", _sa_metrics["warnings_this_session"] == 2)
+    test("SA: security_profile == strict", _sa_metrics["security_profile"] == "strict")
+    test("SA: pending_verification_count == 1", _sa_metrics["pending_verification_count"] == 1)
+    test("SA: active_bans_count == 1", _sa_metrics["active_bans_count"] == 1)
+    test("SA: subagent_count == 1", _sa_metrics["subagent_count"] == 1)
+    test("SA: auto_remember_count == 7", _sa_metrics["auto_remember_count"] == 7)
+    test("SA: last_test_exit_code == 0", _sa_metrics["last_test_exit_code"] == 0)
+    test("SA: session_start matches", _sa_metrics["session_start"] == 1700000000.0)
+    test("SA: session_start_iso is non-empty string",
+         isinstance(_sa_metrics["session_start_iso"], str) and len(_sa_metrics["session_start_iso"]) > 0)
+
+    # tool_call_distribution
+    _sa_audit_entries = [
+        {"tool": "Edit", "gate": "gate_01", "decision": "pass"},
+        {"tool": "Edit", "gate": "gate_01", "decision": "block"},
+        {"tool": "Read",  "gate": "gate_01", "decision": "pass"},
+        {"tool": "Bash",  "gate": "gate_02", "decision": "warn"},
+        {"tool": "Read",  "gate": "gate_02", "decision": "pass"},
+    ]
+    _sa_dist = tool_call_distribution(_sa_audit_entries)
+    test("SA: tool_call_distribution returns dict", isinstance(_sa_dist, dict))
+    test("SA: tool_call_distribution Edit count == 2", _sa_dist.get("Edit") == 2)
+    test("SA: tool_call_distribution Read count == 2", _sa_dist.get("Read") == 2)
+    test("SA: tool_call_distribution Bash count == 1", _sa_dist.get("Bash") == 1)
+
+    # gate_fire_rates
+    _sa_fire = gate_fire_rates(_sa_audit_entries)
+    test("SA: gate_fire_rates returns dict", isinstance(_sa_fire, dict))
+    test("SA: gate_fire_rates gate_01 count == 3", _sa_fire.get("gate_01") == 3)
+    test("SA: gate_fire_rates gate_02 count == 2", _sa_fire.get("gate_02") == 2)
+
+    # gate_block_rates
+    _sa_block = gate_block_rates(_sa_audit_entries)
+    test("SA: gate_block_rates returns dict", isinstance(_sa_block, dict))
+    test("SA: gate_block_rates gate_01 has pass/warn/block/total keys",
+         set(_sa_block.get("gate_01", {}).keys()) >= {"pass", "warn", "block", "total"})
+    test("SA: gate_block_rates gate_01 block == 1", _sa_block["gate_01"]["block"] == 1)
+    test("SA: gate_block_rates gate_01 pass == 2", _sa_block["gate_01"]["pass"] == 2)
+    test("SA: gate_block_rates gate_02 warn == 1", _sa_block["gate_02"]["warn"] == 1)
+
+    # error_frequency
+    _sa_err_entries = [
+        {"gate": "gate_01", "decision": "block", "reason": "must Read /a.py before editing"},
+        {"gate": "gate_02", "decision": "block", "reason": "rm -rf /tmp blocked"},
+        {"gate": "gate_01", "decision": "block", "reason": "must Read /b.py before editing"},
+        {"gate": "gate_01", "decision": "pass",  "reason": ""},  # pass entries ignored
+    ]
+    _sa_errs = error_frequency(_sa_err_entries)
+    test("SA: error_frequency returns dict", isinstance(_sa_errs, dict))
+    test("SA: error_frequency gate1 pattern counted",
+         _sa_errs.get("gate1:read-before-edit", 0) == 2)
+    test("SA: error_frequency gate2 destructive-op counted",
+         _sa_errs.get("gate2:destructive-op", 0) == 1)
+
+    # session_productivity
+    _sa_prod_entries = [
+        {"tool": "Edit", "decision": "pass",  "gate": "gate_01"},
+        {"tool": "Edit", "decision": "pass",  "gate": "gate_01"},
+        {"tool": "Read", "decision": "pass",  "gate": "gate_01"},
+        {"tool": "Bash", "decision": "block", "gate": "gate_02"},
+    ]
+    _sa_prod = session_productivity(_sa_prod_entries, 60.0)
+    test("SA: session_productivity returns dict", isinstance(_sa_prod, dict))
+    test("SA: session_productivity has score key", "score" in _sa_prod)
+    test("SA: session_productivity score is float", isinstance(_sa_prod["score"], float))
+    test("SA: session_productivity has grade key", "grade" in _sa_prod)
+    test("SA: session_productivity has breakdown key", "breakdown" in _sa_prod)
+    test("SA: session_productivity grade is valid letter",
+         _sa_prod["grade"] in ("A", "B", "C", "D", "F"))
+    test("SA: session_productivity breakdown has expected keys",
+         set(_sa_prod["breakdown"].keys()) >= {"edit_velocity", "block_rate", "error_resolve", "memory_contrib"})
+
+    # _compute_resolve_score
+    _sa_resolve_empty = _compute_resolve_score([])
+    test("SA: _compute_resolve_score([]) == 1.0", _sa_resolve_empty == 1.0)
+
+    # _stddev
+    _sa_std_uniform = _stddev([5.0, 5.0, 5.0])
+    test("SA: _stddev([5,5,5]) == 0.0", _sa_std_uniform == 0.0)
+    _sa_std_empty = _stddev([])
+    test("SA: _stddev([]) == 0.0", _sa_std_empty == 0.0)
+
+    # compare_sessions_metrics — insufficient_data
+    _sa_trend = compare_sessions_metrics({"score": 80.0}, [], 10)
+    test("SA: compare_sessions_metrics empty history trend == insufficient_data",
+         _sa_trend.get("trend") == "insufficient_data")
+
+    # parse_audit_log — nonexistent file
+    _sa_parsed = parse_audit_log("/nonexistent/path/audit.jsonl")
+    test("SA: parse_audit_log nonexistent returns []", _sa_parsed == [])
+
+except Exception as _sa_exc:
+    test("Session Analytics Tests: import and tests", False, str(_sa_exc))
+
+
+# ── Event Bus Tests ───────────────────────────────────────────────────────────
+print("\n--- Event Bus (EB) ---")
+try:
+    from shared.event_bus import (
+        clear as _eb_clear,
+        subscribe as _eb_subscribe,
+        unsubscribe as _eb_unsubscribe,
+        publish as _eb_publish,
+        get_recent as _eb_get_recent,
+        get_stats as _eb_get_stats,
+        configure as _eb_configure,
+        EventType as _EventType,
+        _DEFAULT_MAX_EVENTS as _EB_DEFAULT_MAX_EVENTS,
+        EVENTS_RAMDISK_DIR as _EB_RAMDISK_DIR,
+    )
+
+    # Reset before all tests to avoid state from prior usage
+    _eb_clear()
+
+    # EventType constants
+    test("EB: EventType.GATE_FIRED constant exists",
+         hasattr(_EventType, "GATE_FIRED") and _EventType.GATE_FIRED == "GATE_FIRED")
+    test("EB: EventType.GATE_BLOCKED constant exists",
+         hasattr(_EventType, "GATE_BLOCKED") and _EventType.GATE_BLOCKED == "GATE_BLOCKED")
+    test("EB: EventType.MEMORY_QUERIED constant exists",
+         hasattr(_EventType, "MEMORY_QUERIED") and _EventType.MEMORY_QUERIED == "MEMORY_QUERIED")
+    test("EB: EventType.TEST_RUN constant exists",
+         hasattr(_EventType, "TEST_RUN") and _EventType.TEST_RUN == "TEST_RUN")
+    test("EB: EventType.ERROR_DETECTED constant exists",
+         hasattr(_EventType, "ERROR_DETECTED") and _EventType.ERROR_DETECTED == "ERROR_DETECTED")
+    test("EB: EventType.FIX_APPLIED constant exists",
+         hasattr(_EventType, "FIX_APPLIED") and _EventType.FIX_APPLIED == "FIX_APPLIED")
+    test("EB: EventType.TOOL_CALLED constant exists",
+         hasattr(_EventType, "TOOL_CALLED") and _EventType.TOOL_CALLED == "TOOL_CALLED")
+
+    # EventType.ALL
+    test("EB: EventType.ALL is a tuple", isinstance(_EventType.ALL, tuple))
+    test("EB: EventType.ALL has 7 entries", len(_EventType.ALL) == 7)
+
+    # _DEFAULT_MAX_EVENTS
+    test("EB: _DEFAULT_MAX_EVENTS == 1000", _EB_DEFAULT_MAX_EVENTS == 1000)
+
+    # EVENTS_RAMDISK_DIR constant
+    test("EB: EVENTS_RAMDISK_DIR is a string", isinstance(_EB_RAMDISK_DIR, str))
+
+    # After clear(), get_stats shows zeros
+    _eb_clear()
+    _eb_stats_empty = _eb_get_stats()
+    test("EB: after clear() total_published == 0", _eb_stats_empty["total_published"] == 0)
+    test("EB: after clear() events_in_buffer == 0", _eb_stats_empty["events_in_buffer"] == 0)
+    test("EB: after clear() subscriber_count == 0", _eb_stats_empty["subscriber_count"] == 0)
+
+    # subscribe + publish + handler called
+    _eb_received = []
+    _eb_handler = lambda e: _eb_received.append(e)
+    _eb_subscribe(_EventType.GATE_FIRED, _eb_handler)
+    _eb_evt = _eb_publish(_EventType.GATE_FIRED, {"gate": "gate_01"}, source="test")
+    test("EB: subscribe + publish calls handler", len(_eb_received) == 1)
+    test("EB: handler receives correct event type",
+         _eb_received[0].get("type") == _EventType.GATE_FIRED)
+
+    # publish returns event dict with required keys
+    test("EB: publish returns event dict", isinstance(_eb_evt, dict))
+    test("EB: event dict has type key", "type" in _eb_evt)
+    test("EB: event dict has timestamp key", "timestamp" in _eb_evt)
+    test("EB: event dict has data key", "data" in _eb_evt)
+    test("EB: event dict has source key", "source" in _eb_evt)
+
+    # unsubscribe removes handler
+    _eb_received2 = []
+    _eb_handler2 = lambda e: _eb_received2.append(e)
+    _eb_subscribe(_EventType.FIX_APPLIED, _eb_handler2)
+    _eb_unsubscribe(_EventType.FIX_APPLIED, _eb_handler2)
+    _eb_publish(_EventType.FIX_APPLIED, {"fix": "patch"})
+    test("EB: unsubscribe removes handler", len(_eb_received2) == 0)
+
+    # get_recent returns list
+    _eb_recent = _eb_get_recent()
+    test("EB: get_recent returns list", isinstance(_eb_recent, list))
+
+    # get_recent filters by event_type
+    _eb_publish(_EventType.GATE_BLOCKED, {"gate": "gate_02"})
+    _eb_only_blocked = _eb_get_recent(event_type=_EventType.GATE_BLOCKED)
+    test("EB: get_recent filters by event_type",
+         all(e.get("type") == _EventType.GATE_BLOCKED for e in _eb_only_blocked)
+         and len(_eb_only_blocked) >= 1)
+
+    # get_stats has expected keys
+    _eb_stats = _eb_get_stats()
+    _eb_expected_keys = {"total_published", "events_in_buffer", "buffer_capacity",
+                         "subscriber_count", "by_type", "handler_errors"}
+    test("EB: get_stats has all expected keys",
+         _eb_expected_keys.issubset(_eb_stats.keys()),
+         f"missing: {_eb_expected_keys - set(_eb_stats.keys())}")
+
+    # configure(max_events=5) caps buffer
+    _eb_configure(max_events=5)
+    for _i in range(10):
+        _eb_publish(_EventType.TEST_RUN, {"run": _i}, persist=False)
+    _eb_capped = _eb_get_recent()
+    test("EB: configure(max_events=5) caps buffer at 5",
+         len(_eb_capped) <= 5, f"len={len(_eb_capped)}")
+    # Restore default capacity
+    _eb_configure(max_events=_EB_DEFAULT_MAX_EVENTS)
+
+    # Broken handler does not crash publish (fail-open)
+    _eb_clear()
+    def _eb_bad_handler(e):
+        raise RuntimeError("intentional failure")
+    _eb_subscribe(_EventType.ERROR_DETECTED, _eb_bad_handler)
+    _eb_fail_result = _eb_publish(_EventType.ERROR_DETECTED, {"msg": "oops"})
+    test("EB: broken handler does not crash publish (fail-open)",
+         _eb_fail_result is not None and _eb_fail_result.get("type") == _EventType.ERROR_DETECTED)
+
+    # clear() resets everything
+    _eb_clear()
+    _eb_stats_final = _eb_get_stats()
+    test("EB: clear() resets total_published to 0", _eb_stats_final["total_published"] == 0)
+    test("EB: clear() resets events_in_buffer to 0", _eb_stats_final["events_in_buffer"] == 0)
+    test("EB: clear() resets subscriber_count to 0", _eb_stats_final["subscriber_count"] == 0)
+
+    # Cleanup
+    _eb_clear()
+
+except Exception as _eb_exc:
+    test("Event Bus Tests: import and tests", False, str(_eb_exc))
+
+
+# ── Pipeline Optimizer Tests ──────────────────────────────────────────────────
+print("\n--- Pipeline Optimizer (PO) ---")
+try:
+    from shared.pipeline_optimizer import (
+        _TIER1 as _PO_TIER1,
+        _SHORT_TO_MODULE as _PO_SHORT_TO_MODULE,
+        _MODULE_TO_SHORT as _PO_MODULE_TO_SHORT,
+        _GATE_STATE_DEPS as _PO_GATE_STATE_DEPS,
+        _load_json as _po_load_json,
+        _gates_for_tool as _po_gates_for_tool,
+        _block_rate as _po_block_rate,
+        _avg_ms as _po_avg_ms,
+        _are_parallelizable as _po_are_parallelizable,
+        _identify_parallel_groups as _po_identify_parallel_groups,
+        get_optimal_order as _po_get_optimal_order,
+        estimate_savings as _po_estimate_savings,
+        get_pipeline_analysis as _po_get_pipeline_analysis,
+    )
+
+    # _TIER1 set has 3 entries
+    test("PO: _TIER1 is a set", isinstance(_PO_TIER1, set))
+    test("PO: _TIER1 has 3 entries", len(_PO_TIER1) == 3)
+
+    # _SHORT_TO_MODULE and _MODULE_TO_SHORT are dicts
+    test("PO: _SHORT_TO_MODULE is a dict", isinstance(_PO_SHORT_TO_MODULE, dict))
+    test("PO: _MODULE_TO_SHORT is a dict", isinstance(_PO_MODULE_TO_SHORT, dict))
+
+    # _GATE_STATE_DEPS is a dict
+    test("PO: _GATE_STATE_DEPS is a dict", isinstance(_PO_GATE_STATE_DEPS, dict))
+
+    # _load_json nonexistent returns {}
+    _po_loaded = _po_load_json("/nonexistent/path/file.json")
+    test("PO: _load_json nonexistent returns {}", _po_loaded == {})
+
+    # _gates_for_tool("Edit") includes gate_01
+    _po_edit_gates = _po_gates_for_tool("Edit")
+    test("PO: _gates_for_tool('Edit') returns list", isinstance(_po_edit_gates, list))
+    test("PO: _gates_for_tool('Edit') includes gate_01",
+         "gates.gate_01_read_before_edit" in _po_edit_gates)
+
+    # _gates_for_tool("Bash") includes gate_02
+    _po_bash_gates = _po_gates_for_tool("Bash")
+    test("PO: _gates_for_tool('Bash') returns list", isinstance(_po_bash_gates, list))
+    test("PO: _gates_for_tool('Bash') includes gate_02",
+         "gates.gate_02_no_destroy" in _po_bash_gates)
+
+    # _block_rate with unknown gate returns 0.0
+    _po_br = _po_block_rate("unknown_gate", {})
+    test("PO: _block_rate('unknown_gate', {}) == 0.0", _po_br == 0.0)
+
+    # _avg_ms with unknown gate returns 0.0
+    _po_ms = _po_avg_ms("unknown_gate", {})
+    test("PO: _avg_ms('unknown_gate', {}) == 0.0", _po_ms == 0.0)
+
+    # _are_parallelizable: gate_01 and gate_02 both have empty writes, parallelizable
+    _po_par_01_02 = _po_are_parallelizable("gate_01_read_before_edit", "gate_02_no_destroy")
+    test("PO: _are_parallelizable(gate_01, gate_02) — no write conflicts",
+         isinstance(_po_par_01_02, bool))
+    test("PO: gate_01_read_before_edit and gate_02_no_destroy are parallelizable",
+         _po_par_01_02 is True)
+
+    # _are_parallelizable with gates having conflicting writes (gate_06 writes gate6_warn_count)
+    # gate_16 also writes code_quality_warnings_per_file; gate_14 writes confidence_warnings_per_file
+    # gate_06 writes gate6_warn_count; gate_11 reads tool_call_count (no writes) → parallelizable
+    # gate_06 writes gate6_warn_count; gate_06 vs itself should conflict (write-write)
+    _po_par_06_06 = _po_are_parallelizable("gate_06_save_fix", "gate_06_save_fix")
+    test("PO: gate_06 vs gate_06 not parallelizable (self write-write conflict)",
+         _po_par_06_06 is False)
+
+    # _identify_parallel_groups with two parallelizable gates gives them in same group
+    _po_groups = _po_identify_parallel_groups(
+        ["gate_01_read_before_edit", "gate_02_no_destroy"]
+    )
+    test("PO: _identify_parallel_groups returns list", isinstance(_po_groups, list))
+    test("PO: _identify_parallel_groups non-empty", len(_po_groups) >= 1)
+
+    # get_optimal_order returns list of strings
+    _po_order = _po_get_optimal_order("Edit")
+    test("PO: get_optimal_order('Edit') returns list", isinstance(_po_order, list))
+    test("PO: get_optimal_order('Edit') returns non-empty list", len(_po_order) > 0)
+    test("PO: get_optimal_order('Edit') contains strings",
+         all(isinstance(g, str) for g in _po_order))
+
+    # get_optimal_order starts with Tier 1 gates
+    _po_tier1_shorts = {"gate_01_read_before_edit", "gate_02_no_destroy", "gate_03_test_before_deploy"}
+    _po_tier1_in_order = [g for g in _po_order if g in _po_tier1_shorts]
+    _po_non_tier1_in_order = [g for g in _po_order if g not in _po_tier1_shorts]
+    if _po_tier1_in_order and _po_non_tier1_in_order:
+        _po_last_tier1_idx = max(_po_order.index(g) for g in _po_tier1_in_order)
+        _po_first_non_tier1_idx = min(_po_order.index(g) for g in _po_non_tier1_in_order)
+        test("PO: get_optimal_order starts with Tier 1 gates",
+             _po_last_tier1_idx < _po_first_non_tier1_idx)
+    else:
+        skip("PO: get_optimal_order starts with Tier 1 gates", "not enough gate types in Edit order")
+
+    # estimate_savings returns dict with expected keys
+    _po_savings = _po_estimate_savings("Edit")
+    test("PO: estimate_savings('Edit') returns dict", isinstance(_po_savings, dict))
+    _po_savings_keys = {"tool_name", "applicable_gates", "optimal_order", "parallel_groups",
+                        "baseline_sequential_ms", "optimized_sequential_ms",
+                        "optimized_parallel_ms", "estimated_saving_ms",
+                        "saving_pct", "gate_block_rates", "notes"}
+    test("PO: estimate_savings has expected keys",
+         _po_savings_keys.issubset(_po_savings.keys()),
+         f"missing: {_po_savings_keys - set(_po_savings.keys())}")
+
+    # estimate_savings("UnknownTool") — universal gates (None tool map) still apply,
+    # but a truly unknown-to-specific-gates tool returns no tool-specific gates.
+    # The function returns a valid dict regardless.
+    _po_unknown = _po_estimate_savings("UnknownTool")
+    test("PO: estimate_savings('UnknownTool') returns valid dict",
+         isinstance(_po_unknown, dict) and "applicable_gates" in _po_unknown)
+    test("PO: estimate_savings('UnknownTool') applicable_gates is a list",
+         isinstance(_po_unknown.get("applicable_gates"), list))
+
+    # get_pipeline_analysis returns dict with expected keys
+    _po_analysis = _po_get_pipeline_analysis()
+    test("PO: get_pipeline_analysis returns dict", isinstance(_po_analysis, dict))
+    test("PO: get_pipeline_analysis has per_tool key", "per_tool" in _po_analysis)
+    test("PO: get_pipeline_analysis has top_blocking_gates key",
+         "top_blocking_gates" in _po_analysis)
+    test("PO: get_pipeline_analysis has parallelizable_pairs key",
+         "parallelizable_pairs" in _po_analysis)
+    test("PO: get_pipeline_analysis has summary key", "summary" in _po_analysis)
+
+except Exception as _po_exc:
+    test("Pipeline Optimizer Tests: import and tests", False, str(_po_exc))
+
+
+# ── ChromaDB Socket Tests ─────────────────────────────────────────────────────
+print("\n--- ChromaDB Socket (CS) ---")
+try:
+    import shared.chromadb_socket as _cs_mod
+    from shared.chromadb_socket import (
+        SOCKET_PATH as _CS_SOCKET_PATH,
+        SOCKET_TIMEOUT as _CS_SOCKET_TIMEOUT,
+        WorkerUnavailable as _CS_WorkerUnavailable,
+        _CB_SVC as _CS_CB_SVC,
+        _CB_KWARGS as _CS_CB_KWARGS,
+        is_worker_available as _cs_is_worker_available,
+    )
+
+    # SOCKET_PATH contains ".chromadb.sock"
+    test("CS: SOCKET_PATH is a string", isinstance(_CS_SOCKET_PATH, str))
+    test("CS: SOCKET_PATH contains '.chromadb.sock'", ".chromadb.sock" in _CS_SOCKET_PATH)
+
+    # SOCKET_TIMEOUT == 2
+    test("CS: SOCKET_TIMEOUT == 2", _CS_SOCKET_TIMEOUT == 2)
+
+    # WorkerUnavailable is an Exception subclass
+    test("CS: WorkerUnavailable is Exception subclass",
+         issubclass(_CS_WorkerUnavailable, Exception))
+
+    # _CB_SVC == "memory_socket"
+    test("CS: _CB_SVC == 'memory_socket'", _CS_CB_SVC == "memory_socket")
+
+    # _CB_KWARGS has expected keys
+    _cs_expected_kwargs_keys = {"failure_threshold", "recovery_timeout", "success_threshold"}
+    test("CS: _CB_KWARGS has expected keys",
+         _cs_expected_kwargs_keys.issubset(_CS_CB_KWARGS.keys()),
+         f"missing: {_cs_expected_kwargs_keys - set(_CS_CB_KWARGS.keys())}")
+    test("CS: _CB_KWARGS failure_threshold == 3",
+         _CS_CB_KWARGS.get("failure_threshold") == 3)
+    test("CS: _CB_KWARGS recovery_timeout == 30",
+         _CS_CB_KWARGS.get("recovery_timeout") == 30)
+    test("CS: _CB_KWARGS success_threshold == 1",
+         _CS_CB_KWARGS.get("success_threshold") == 1)
+
+    # Module has expected functions
+    _cs_expected_functions = [
+        "request", "ping", "count", "query", "get",
+        "upsert", "delete", "remember", "flush_queue", "backup",
+    ]
+    for _cs_fn in _cs_expected_functions:
+        test(f"CS: module has function '{_cs_fn}'",
+             callable(getattr(_cs_mod, _cs_fn, None)),
+             f"missing or not callable: {_cs_fn}")
+
+    # is_worker_available is callable
+    test("CS: is_worker_available is callable", callable(_cs_is_worker_available))
+
+except Exception as _cs_exc:
+    test("ChromaDB Socket Tests: import and tests", False, str(_cs_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
