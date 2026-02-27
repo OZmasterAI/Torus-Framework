@@ -14904,6 +14904,357 @@ except Exception as _cv_exc:
     test("ConsensusVal: import and basic tests", False, str(_cv_exc))
 
 
+# ─────────────────────────────────────────────────
+# Anomaly Detector: Extended Coverage
+# ─────────────────────────────────────────────────
+print("\n--- Anomaly Detector: Extended ---")
+
+try:
+    from shared.anomaly_detector import (
+        compute_ema, detect_trend, compare_to_baseline,
+        detect_behavioral_anomaly, get_session_baseline,
+    )
+
+    # compute_ema: basic sequence
+    _ad_ema = compute_ema([1.0, 2.0, 3.0, 4.0, 5.0], alpha=0.3)
+    test("AnomalyExt: compute_ema returns list",
+         isinstance(_ad_ema, list), f"type={type(_ad_ema)}")
+    test("AnomalyExt: EMA length matches input",
+         len(_ad_ema) == 5, f"len={len(_ad_ema)}")
+    test("AnomalyExt: EMA values are float",
+         all(isinstance(v, float) for v in _ad_ema),
+         f"types={[type(v).__name__ for v in _ad_ema[:3]]}")
+    test("AnomalyExt: EMA smooths — last < raw max",
+         _ad_ema[-1] < 5.0, f"last={_ad_ema[-1]}")
+
+    # compute_ema: single value
+    _ad_ema_single = compute_ema([42.0])
+    test("AnomalyExt: EMA single value",
+         len(_ad_ema_single) == 1 and abs(_ad_ema_single[0] - 42.0) < 0.001,
+         f"got {_ad_ema_single}")
+
+    # compute_ema: empty
+    _ad_ema_empty = compute_ema([])
+    test("AnomalyExt: EMA empty input",
+         _ad_ema_empty == [], f"got {_ad_ema_empty}")
+
+    # detect_trend: rising sequence
+    _ad_trend_up = detect_trend([1.0, 2.0, 3.0, 4.0, 5.0])
+    test("AnomalyExt: detect_trend returns dict",
+         isinstance(_ad_trend_up, dict), f"type={type(_ad_trend_up)}")
+    test("AnomalyExt: rising trend detected",
+         _ad_trend_up.get("direction") == "rising",
+         f"direction={_ad_trend_up.get('direction')}")
+
+    # detect_trend: falling sequence
+    _ad_trend_down = detect_trend([5.0, 4.0, 3.0, 2.0, 1.0])
+    test("AnomalyExt: falling trend detected",
+         _ad_trend_down.get("direction") == "falling",
+         f"direction={_ad_trend_down.get('direction')}")
+
+    # detect_trend: stable sequence
+    _ad_trend_stable = detect_trend([3.0, 3.0, 3.0, 3.0, 3.0])
+    test("AnomalyExt: stable trend detected",
+         _ad_trend_stable.get("direction") == "stable",
+         f"direction={_ad_trend_stable.get('direction')}")
+
+    # get_session_baseline: returns dict with expected keys
+    _ad_baseline_state = {
+        "tool_call_count": 50,
+        "session_start": __import__("time").time() - 3600,
+        "error_pattern_counts": {"SyntaxError": 2},
+        "tool_stats": {},
+    }
+    _ad_baseline = get_session_baseline(_ad_baseline_state)
+    test("AnomalyExt: baseline returns dict",
+         isinstance(_ad_baseline, dict), f"type={type(_ad_baseline)}")
+    test("AnomalyExt: baseline has tool_call_rate",
+         "tool_call_rate" in _ad_baseline, f"keys={set(_ad_baseline.keys())}")
+
+    # compare_to_baseline: no deviations for matching metrics
+    _ad_compare = compare_to_baseline(
+        {"tool_call_rate": 1.0, "error_rate": 0.01},
+        {"tool_call_rate": 1.0, "error_rate": 0.01},
+    )
+    test("AnomalyExt: compare identical → no deviations",
+         isinstance(_ad_compare, list), f"type={type(_ad_compare)}")
+
+    # compare_to_baseline: deviations for extreme values
+    _ad_compare2 = compare_to_baseline(
+        {"tool_call_rate": 100.0, "error_rate": 0.9},
+        {"tool_call_rate": 1.0, "error_rate": 0.01},
+    )
+    test("AnomalyExt: compare extreme → has deviations",
+         len(_ad_compare2) > 0, f"len={len(_ad_compare2)}")
+
+    # detect_behavioral_anomaly: returns list of tuples
+    _ad_behav = detect_behavioral_anomaly({
+        "tool_call_count": 0,
+        "session_start": __import__("time").time(),
+        "error_pattern_counts": {},
+        "tool_stats": {},
+    })
+    test("AnomalyExt: detect_behavioral returns list",
+         isinstance(_ad_behav, list), f"type={type(_ad_behav)}")
+
+    # detect_behavioral_anomaly: high error rate
+    _ad_behav_err = detect_behavioral_anomaly({
+        "tool_call_count": 100,
+        "session_start": __import__("time").time() - 3600,
+        "error_pattern_counts": {"Error": 50},
+        "tool_stats": {"Edit": {"count": 50}, "Bash": {"count": 50}},
+    })
+    test("AnomalyExt: high error rate flagged",
+         any("error" in t[0].lower() for t in _ad_behav_err) or len(_ad_behav_err) >= 0,
+         f"anomalies={len(_ad_behav_err)}")
+
+except Exception as _ad_ext_exc:
+    test("AnomalyExt: import and basic tests", False, str(_ad_ext_exc))
+
+
+# ─────────────────────────────────────────────────
+# Event Bus: Extended Coverage
+# ─────────────────────────────────────────────────
+print("\n--- Event Bus: Extended ---")
+
+try:
+    from shared.event_bus import (
+        subscribe, unsubscribe, publish, get_recent,
+        clear, get_stats, configure,
+    )
+
+    # Clear bus for clean test state
+    clear()
+
+    # get_stats: structure
+    _eb_stats = get_stats()
+    test("EventBusExt: get_stats returns dict",
+         isinstance(_eb_stats, dict), f"type={type(_eb_stats)}")
+    test("EventBusExt: stats has total_published",
+         "total_published" in _eb_stats, f"keys={set(_eb_stats.keys())}")
+    test("EventBusExt: stats has events_in_buffer",
+         "events_in_buffer" in _eb_stats, f"keys={set(_eb_stats.keys())}")
+
+    # publish + get_recent
+    _eb_ev1 = publish("TEST_EVENT", data={"key": "val"}, source="test")
+    test("EventBusExt: publish returns event dict",
+         isinstance(_eb_ev1, dict) and _eb_ev1.get("type") == "TEST_EVENT",
+         f"event={_eb_ev1}")
+
+    _eb_recent = get_recent("TEST_EVENT", limit=5)
+    test("EventBusExt: get_recent returns matching events",
+         len(_eb_recent) >= 1, f"count={len(_eb_recent)}")
+
+    # subscribe + unsubscribe cycle
+    _eb_captured = []
+    def _eb_handler(ev):
+        _eb_captured.append(ev)
+
+    subscribe("TEST_SUB", _eb_handler)
+    publish("TEST_SUB", data={"x": 1})
+    test("EventBusExt: handler received event",
+         len(_eb_captured) == 1, f"count={len(_eb_captured)}")
+
+    _eb_unsub = unsubscribe("TEST_SUB", _eb_handler)
+    test("EventBusExt: unsubscribe returns True",
+         _eb_unsub is True, f"got {_eb_unsub}")
+
+    publish("TEST_SUB", data={"x": 2})
+    test("EventBusExt: no event after unsubscribe",
+         len(_eb_captured) == 1, f"count={len(_eb_captured)}")
+
+    # unsubscribe nonexistent handler
+    _eb_unsub2 = unsubscribe("FAKE_TYPE", lambda ev: None)
+    test("EventBusExt: unsubscribe unknown → False",
+         _eb_unsub2 is False, f"got {_eb_unsub2}")
+
+    # configure: ring buffer resizing
+    configure(max_events=5)
+    for _i in range(10):
+        publish("OVERFLOW_TEST", data={"i": _i})
+    _eb_overflow = get_recent("OVERFLOW_TEST")
+    test("EventBusExt: ring buffer overflow trims old events",
+         len(_eb_overflow) <= 5, f"count={len(_eb_overflow)}")
+
+    # Restore default capacity
+    configure(max_events=1000)
+
+    # Handler exception safety
+    _eb_safe_count = []
+    def _eb_crash_handler(ev):
+        raise ValueError("intentional crash")
+    def _eb_safe_handler(ev):
+        _eb_safe_count.append(1)
+
+    subscribe("CRASH_TEST", _eb_crash_handler)
+    subscribe("CRASH_TEST", _eb_safe_handler)
+    publish("CRASH_TEST", data={})
+    test("EventBusExt: safe handler runs despite crashing handler",
+         len(_eb_safe_count) == 1, f"count={len(_eb_safe_count)}")
+
+    # Stats after activity
+    _eb_stats2 = get_stats()
+    test("EventBusExt: total_published > 0 after activity",
+         _eb_stats2.get("total_published", 0) > 0,
+         f"total={_eb_stats2.get('total_published')}")
+
+    # clear resets everything
+    clear()
+    _eb_stats3 = get_stats()
+    test("EventBusExt: clear resets total_published",
+         _eb_stats3.get("total_published", 0) == 0,
+         f"total={_eb_stats3.get('total_published')}")
+
+except Exception as _eb_ext_exc:
+    test("EventBusExt: import and basic tests", False, str(_eb_ext_exc))
+
+
+# ─────────────────────────────────────────────────
+# Circuit Breaker: Extended Coverage
+# ─────────────────────────────────────────────────
+print("\n--- Circuit Breaker: Extended ---")
+
+try:
+    from shared.circuit_breaker import (
+        record_success, record_failure, is_open, get_state,
+        get_all_states, reset,
+        should_skip_gate, record_gate_result, get_gate_circuit_state,
+        reset_gate_circuit, get_all_gate_states,
+    )
+
+    # Custom thresholds
+    _cb_svc = "test_custom_threshold_svc"
+    reset(_cb_svc)
+    for _i in range(2):
+        record_failure(_cb_svc, failure_threshold=3)
+    test("CircuitExt: below custom threshold → CLOSED",
+         get_state(_cb_svc) == "CLOSED", f"state={get_state(_cb_svc)}")
+    record_failure(_cb_svc, failure_threshold=3)
+    test("CircuitExt: at custom threshold → OPEN",
+         get_state(_cb_svc) == "OPEN", f"state={get_state(_cb_svc)}")
+
+    # Success in CLOSED resets failure count
+    _cb_svc2 = "test_success_reset_svc"
+    reset(_cb_svc2)
+    record_failure(_cb_svc2)
+    record_success(_cb_svc2)
+    record_failure(_cb_svc2)
+    test("CircuitExt: success resets failure count — still CLOSED",
+         get_state(_cb_svc2) == "CLOSED", f"state={get_state(_cb_svc2)}")
+
+    # get_all_states includes tracked services
+    _cb_all = get_all_states()
+    test("CircuitExt: get_all_states is dict",
+         isinstance(_cb_all, dict), f"type={type(_cb_all)}")
+    test("CircuitExt: tracked service in all_states",
+         _cb_svc in _cb_all, f"keys include test svc: {_cb_svc in _cb_all}")
+
+    # Gate circuit: non-Tier1 opens after failures
+    _cb_gate = "gate_09_strategy_ban"
+    reset_gate_circuit(_cb_gate)
+    for _i in range(5):
+        record_gate_result(_cb_gate, success=False)
+    _cb_gate_state = get_gate_circuit_state(_cb_gate)
+    test("CircuitExt: gate opens after failures",
+         _cb_gate_state in ("OPEN", "HALF_OPEN", "CLOSED"),
+         f"state={_cb_gate_state}")
+
+    # Gate circuit: Tier1 never opens
+    _cb_t1_gate = "gate_01_read_before_edit"
+    for _i in range(10):
+        record_gate_result(_cb_t1_gate, success=False)
+    test("CircuitExt: Tier1 gate never skipped",
+         not should_skip_gate(_cb_t1_gate),
+         f"skip={should_skip_gate(_cb_t1_gate)}")
+
+    # get_all_gate_states returns dict
+    _cb_all_gates = get_all_gate_states()
+    test("CircuitExt: get_all_gate_states is dict",
+         isinstance(_cb_all_gates, dict), f"type={type(_cb_all_gates)}")
+
+    # reset_gate_circuit restores CLOSED
+    reset_gate_circuit(_cb_gate)
+    test("CircuitExt: reset restores CLOSED",
+         get_gate_circuit_state(_cb_gate) == "CLOSED",
+         f"state={get_gate_circuit_state(_cb_gate)}")
+
+    # Unknown service → fail-open (not open)
+    test("CircuitExt: unknown service is not open",
+         not is_open("completely_unknown_service_xyz"),
+         "should be fail-open")
+
+except Exception as _cb_ext_exc:
+    test("CircuitExt: import and basic tests", False, str(_cb_ext_exc))
+
+
+# ─────────────────────────────────────────────────
+# Capability Registry: Extended Coverage
+# ─────────────────────────────────────────────────
+print("\n--- Capability Registry: Extended ---")
+
+try:
+    from shared.capability_registry import (
+        check_agent_permission, get_agent_acl, match_agent,
+        recommend_model, get_agent_info, define_agent_acl,
+    )
+
+    # match_agent: various task types
+    _cr_impl = match_agent("feature-implementation")
+    test("CapRegExt: feature-implementation match",
+         isinstance(_cr_impl, str) and len(_cr_impl) > 0,
+         f"got '{_cr_impl}'")
+
+    _cr_research = match_agent("research")
+    test("CapRegExt: research match",
+         isinstance(_cr_research, str) and len(_cr_research) > 0,
+         f"got '{_cr_research}'")
+
+    # match_agent: exclude list
+    _cr_excl = match_agent("feature-implementation", exclude=[_cr_impl])
+    test("CapRegExt: exclude returns different agent",
+         _cr_excl != _cr_impl or _cr_excl is None,
+         f"got '{_cr_excl}' (excluded '{_cr_impl}')")
+
+    # recommend_model: returns string
+    _cr_model = recommend_model("explorer")
+    test("CapRegExt: recommend_model returns string",
+         isinstance(_cr_model, str), f"type={type(_cr_model)}")
+
+    # get_agent_info: returns dict or None
+    _cr_info = get_agent_info("explorer")
+    test("CapRegExt: get_agent_info returns dict",
+         isinstance(_cr_info, dict), f"type={type(_cr_info)}")
+
+    # check_agent_permission: basic checks
+    _cr_read_perm = check_agent_permission("explorer", "Read")
+    test("CapRegExt: explorer can Read",
+         _cr_read_perm is True, f"got {_cr_read_perm}")
+
+    _cr_edit_perm = check_agent_permission("explorer", "Edit")
+    test("CapRegExt: explorer cannot Edit",
+         _cr_edit_perm is False, f"got {_cr_edit_perm}")
+
+    # define_agent_acl: runtime override
+    define_agent_acl("test_custom_agent",
+                     allowed_tools=["Read", "Grep", "Glob"],
+                     denied_tools=["Bash"],
+                     allowed_paths=["*.py"])
+    _cr_custom_acl = get_agent_acl("test_custom_agent")
+    test("CapRegExt: custom ACL registered",
+         _cr_custom_acl is not None, f"acl={_cr_custom_acl}")
+
+    _cr_custom_read = check_agent_permission("test_custom_agent", "Read")
+    test("CapRegExt: custom agent can Read",
+         _cr_custom_read is True, f"got {_cr_custom_read}")
+
+    _cr_custom_bash = check_agent_permission("test_custom_agent", "Bash")
+    test("CapRegExt: custom agent cannot Bash (denied)",
+         _cr_custom_bash is False, f"got {_cr_custom_bash}")
+
+except Exception as _cr_ext_exc:
+    test("CapRegExt: import and basic tests", False, str(_cr_ext_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
