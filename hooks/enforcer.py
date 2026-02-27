@@ -349,6 +349,8 @@ def _check_and_reload_gates():
                         "",
                         severity="info",
                     )
+                    short_name = module_name.split(".")[-1]
+                    print(f"[ENFORCER] Hot-reloaded: {short_name}", file=sys.stderr)
 
             _gate_mtimes[module_name] = current_mtime
         except Exception:

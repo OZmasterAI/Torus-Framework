@@ -155,11 +155,11 @@ def _get_domain_snippet(max_chars=500):
     """
     try:
         sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
-        from shared.domain_registry import get_active_domain, load_domain_knowledge
+        from shared.domain_registry import get_active_domain, load_domain_mastery
         domain = get_active_domain()
         if not domain:
             return ""
-        knowledge = load_domain_knowledge(domain)
+        knowledge = load_domain_mastery(domain)
         if not knowledge:
             return f"Active domain: {domain}."
         # Truncate for sub-agent budget

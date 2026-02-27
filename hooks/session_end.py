@@ -73,6 +73,36 @@ def _load_live_state():
         return {}
 
 
+def _read_last_assistant_message():
+    """Read the last_assistant_message captured by stop_cleanup.py.
+
+    Returns the message string (up to 1000 chars) or empty string.
+    Cleans up the temp file after reading.
+    """
+    candidates = []
+    try:
+        from shared.ramdisk import TMPFS_STATE_DIR
+        candidates.append(os.path.join(TMPFS_STATE_DIR, ".last_assistant_message"))
+    except ImportError:
+        pass
+    candidates.append(os.path.join(HOOKS_DIR, ".last_assistant_message"))
+
+    for path in candidates:
+        try:
+            if os.path.isfile(path):
+                with open(path, "r") as f:
+                    msg = f.read().strip()
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+                if msg:
+                    return msg
+        except OSError:
+            continue
+    return ""
+
+
 def _parse_handoff_sections(content):
     """Parse HANDOFF.md into sections by ## headers.
 
@@ -347,6 +377,12 @@ def generate_handoff(state, transcript_path=""):
                 )
 
             _update_config("session_metrics", metrics_section)
+
+        # Capture last_assistant_message from Stop hook for session continuity
+        last_msg = _read_last_assistant_message()
+        if last_msg:
+            live_state["last_response_preview"] = last_msg[:500]
+            print(f"[SESSION_END] Captured last_assistant_message ({len(last_msg)} chars)", file=sys.stderr)
 
         # Atomic write back to LIVE_STATE.json (session state only, no toggles/metrics)
         tmp = LIVE_STATE_FILE + ".tmp"

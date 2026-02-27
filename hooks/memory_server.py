@@ -1153,6 +1153,7 @@ tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
 _lance_fts_ready = False  # True once LanceDB FTS index is built
+_SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
 def _lance_fts_to_summary(row):
@@ -1177,6 +1178,92 @@ def _lance_keyword_search(query, top_k=15):
     try:
         rows = collection._table.search(query).limit(top_k).to_list()
         return [_lance_fts_to_summary(r) for r in rows]
+    except Exception:
+        return []
+
+
+def _generate_fuzzy_variants(term: str, max_distance: int = 1) -> list:
+    """Generate spelling variants within edit distance for fuzzy matching."""
+    if len(term) <= 2:
+        return [term]
+
+    variants = {term}
+    alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789_'
+
+    # Deletions (remove one char)
+    for i in range(len(term)):
+        variants.add(term[:i] + term[i+1:])
+
+    # Substitutions (replace one char)
+    for i in range(len(term)):
+        for c in alphabet:
+            if c != term[i]:
+                variants.add(term[:i] + c + term[i+1:])
+
+    # Transpositions (swap adjacent chars)
+    for i in range(len(term) - 1):
+        variants.add(term[:i] + term[i+1] + term[i] + term[i+2:])
+
+    return list(variants)
+
+
+def _fuzzy_keyword_search(query: str, table_name: str = "knowledge", top_k: int = 10):
+    """Search with fuzzy term expansion for typo tolerance.
+
+    Splits query into terms, generates edit-distance-1 variants,
+    queries LanceDB FTS with expanded terms, boosts exact matches 2x.
+    """
+    if not _lance_fts_ready:
+        return []
+
+    global collection, observations, fix_outcomes, web_pages
+    tbl_map = {
+        "knowledge": collection,
+        "observations": observations,
+        "fix_outcomes": fix_outcomes,
+        "web_pages": web_pages,
+    }
+    tbl_coll = tbl_map.get(table_name, collection)
+    if tbl_coll is None:
+        return []
+
+    terms = query.lower().split()
+    if not terms:
+        return []
+
+    # Generate fuzzy variants for each term
+    all_variants = []
+    exact_terms = set(terms)
+    for term in terms:
+        all_variants.extend(_generate_fuzzy_variants(term))
+
+    # Build OR query with all variants (LanceDB FTS supports OR)
+    expanded_query = " OR ".join(set(all_variants))
+
+    try:
+        rows = tbl_coll._table.search(expanded_query, query_type="fts").limit(top_k * 2).to_list()
+        if not rows:
+            return []
+
+        # Boost exact matches 2x
+        scored_results = []
+        for row in rows:
+            text_lower = str(row.get("text", "")).lower()
+            boost = 1.0
+            for term in exact_terms:
+                if term in text_lower:
+                    boost = 2.0
+                    break
+            scored_results.append({
+                "id": str(row.get("id", "")),
+                "text": str(row.get("text", ""))[:500],
+                "relevance": float(row.get("_score", 0.5)) * boost,
+                "tags": str(row.get("tags", "")),
+                "match_type": "exact" if boost > 1.0 else "fuzzy",
+            })
+
+        scored_results.sort(key=lambda x: x["relevance"], reverse=True)
+        return scored_results[:top_k]
     except Exception:
         return []
 
@@ -2346,6 +2433,35 @@ def _check_dedup(content, tags=""):
 
 @mcp.tool()
 @crash_proof
+def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
+    """Search memory with typo tolerance and boosted relevance.
+
+    Like search_knowledge but handles misspellings and typos by expanding
+    search terms with edit-distance variants. Exact matches get 2x boost.
+
+    Args:
+        query: Search query (typos OK)
+        top_k: Max results (default 10)
+        table: Table to search (knowledge, observations, fix_outcomes)
+    """
+    _ensure_initialized()
+    if _chromadb_degraded:
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+
+    if not query or not query.strip():
+        return {"error": "Empty query"}
+
+    valid_tables = {"knowledge", "observations", "fix_outcomes", "web_pages"}
+    if table not in valid_tables:
+        table = "knowledge"
+
+    top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
+    results = _fuzzy_keyword_search(query.strip(), table, top_k)
+    return {"query": query, "table": table, "results": results, "count": len(results)}
+
+
+@mcp.tool()
+@crash_proof
 def remember_this(content: str, context: str = "", tags: str = "", force: bool = False) -> dict:
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
@@ -3052,6 +3168,77 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
             pass
 
     return result
+
+
+@mcp.tool()
+@crash_proof
+def health_check() -> dict:
+    """Return lightweight server health metrics.
+
+    Returns server uptime, table row counts, last write timestamp,
+    embedding model status, LanceDB connection status, Tags DB status,
+    total memory count, and disk usage of ~/data/memory/lancedb/.
+
+    No heavy queries — reads only cached globals and filesystem metadata.
+    """
+    now = time.time()
+    uptime_s = int(now - _SERVER_START_TIME)
+    uptime_str = f"{uptime_s // 3600}h {(uptime_s % 3600) // 60}m {uptime_s % 60}s"
+
+    # Table counts — cheap .count() calls on cached LanceCollection wrappers
+    table_counts = {}
+    for name, col in [
+        ("knowledge", collection),
+        ("observations", observations),
+        ("fix_outcomes", fix_outcomes),
+        ("web_pages", web_pages),
+        ("quarantine", quarantine),
+    ]:
+        try:
+            table_counts[name] = col.count() if col is not None else -1
+        except Exception:
+            table_counts[name] = -1
+
+    total_count = sum(v for v in table_counts.values() if v >= 0)
+
+    # Last write timestamp from sideband file
+    last_write = None
+    try:
+        if os.path.exists(MEMORY_TIMESTAMP_FILE):
+            with open(MEMORY_TIMESTAMP_FILE) as f:
+                data = json.load(f)
+                ts = data.get("timestamp")
+                if ts:
+                    last_write = datetime.fromtimestamp(float(ts)).isoformat()
+    except Exception:
+        pass
+
+    # Disk usage of lancedb directory
+    disk_bytes = 0
+    try:
+        if os.path.isdir(LANCE_DIR):
+            for dirpath, _dirs, files in os.walk(LANCE_DIR):
+                for fname in files:
+                    try:
+                        disk_bytes += os.path.getsize(os.path.join(dirpath, fname))
+                    except OSError:
+                        pass
+    except Exception:
+        disk_bytes = -1
+
+    return {
+        "status": "ok" if not _chromadb_degraded else "degraded",
+        "uptime": uptime_str,
+        "uptime_seconds": uptime_s,
+        "table_counts": table_counts,
+        "total_memories": total_count,
+        "last_write": last_write,
+        "embedding_model": "loaded" if _embedding_fn is not None else "not_loaded",
+        "lancedb": "connected" if (_lance_db is not None and not _chromadb_degraded) else ("degraded" if _chromadb_degraded else "not_connected"),
+        "tags_db": "ok" if os.path.exists(TAGS_DB_PATH) else "missing",
+        "disk_usage_mb": round(disk_bytes / (1024 * 1024), 2) if disk_bytes >= 0 else -1,
+        "initialized": _initialized,
+    }
 
 
 def suggest_promotions(top_k: int = 5) -> dict:

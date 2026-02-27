@@ -15,6 +15,7 @@ from boot_pkg.context import (
     _extract_recent_errors, _extract_test_status, _extract_verification_quality,
     _extract_session_duration, _extract_tool_activity,
     _extract_gate_effectiveness_suggestions, _extract_gate_blocks,
+    _extract_git_context,
 )
 from boot_pkg.maintenance import (
     reset_enforcement_state, _rotate_audit_logs,
@@ -25,6 +26,12 @@ try:
     _HAS_RAMDISK_MODULE = True
 except ImportError:
     _HAS_RAMDISK_MODULE = False
+
+try:
+    from shared.gate_health import get_gate_health_report as _get_gate_health_report
+    _HAS_GATE_HEALTH = True
+except ImportError:
+    _HAS_GATE_HEALTH = False
 
 
 def main():
@@ -191,6 +198,9 @@ def main():
     # Extract gate blocks from audit log
     gate_blocks = _extract_gate_blocks()
 
+    # Extract git context for session priming
+    git_context = _extract_git_context()
+
     # Build dashboard
     dashboard = f"""
 +====================================================================+
@@ -200,6 +210,15 @@ def main():
 |--------------------------------------------------------------------|
 |  GATES ACTIVE: {gate_count:<3} | MEMORY: ~/data/memory/                     |
 |--------------------------------------------------------------------|"""
+
+    if git_context:
+        branch = git_context["branch"]
+        uncommitted = git_context["uncommitted_count"]
+        git_line = f"GIT: {branch}"
+        if uncommitted > 0:
+            git_line += f" ({uncommitted} uncommitted)"
+        dashboard += f"\n|  {git_line:<66}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
 
     if time_warning:
         dashboard += f"\n|  {time_warning:<67}|"
@@ -294,6 +313,18 @@ def main():
     # Print to stderr (displayed in user's terminal)
     print(dashboard, file=sys.stderr)
 
+    # Gate health summary line
+    if _HAS_GATE_HEALTH:
+        try:
+            _health = _get_gate_health_report()
+            _gate_count = _health.get("gate_count", 0)
+            _degraded = len(_health.get("degraded_gates", []))
+            _score = _health.get("health_score", 100)
+            _avg_ms = _health.get("routing_stats", {}).get("avg_routing_ms", 0)
+            print(f"[BOOT] Gates: {_gate_count} tracked, {_degraded} degraded, health {_score}/100, avg {_avg_ms:.1f}ms", file=sys.stderr)
+        except Exception:
+            pass  # Gate health is non-critical
+
     # Print to stdout (INJECTED INTO CLAUDE'S CONVERSATION CONTEXT)
     context_parts = [f"<session-start-context>"]
     context_parts.append(f"Session {session_num} | Project: {project_name}")
@@ -317,6 +348,13 @@ def main():
         if "known_issues" in filtered:
             filtered["known_issues"] = filtered["known_issues"][:3]
         context_parts.append(f"LIVE_STATE.json: {json.dumps(filtered, indent=2)}")
+    if git_context:
+        git_info = f"Git: branch={git_context['branch']}"
+        if git_context["uncommitted_count"] > 0:
+            git_info += f", {git_context['uncommitted_count']} uncommitted files"
+        if git_context["recent_commits"]:
+            git_info += f"\nRecent commits: {'; '.join(git_context['recent_commits'][:3])}"
+        context_parts.append(git_info)
     if active_tasks:
         context_parts.append(f"Active tasks: {', '.join(active_tasks[:5])}")
     if injected:

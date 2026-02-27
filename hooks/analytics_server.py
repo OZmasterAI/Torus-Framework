@@ -225,6 +225,67 @@ def gate_timing(gate_name: str = "") -> dict:
 
 @mcp.tool()
 @crash_proof
+def gate_health() -> dict:
+    """Unified gate health report: health score, SLA status, degraded gates, routing stats.
+
+    Combines data from gate_timing, gate_router, and circuit_breaker into
+    a single health dashboard with a numeric health score (0-100).
+    """
+    _ensure_initialized()
+    from shared.gate_health import get_gate_health_report, format_health_dashboard
+
+    report = get_gate_health_report()
+    dashboard = format_health_dashboard()
+
+    return {
+        "health_score": report["health_score"],
+        "gate_count": report["gate_count"],
+        "degraded_gates": report["degraded_gates"],
+        "slow_gates": report["slow_gates"],
+        "routing_stats": report["routing_stats"],
+        "dashboard": dashboard,
+    }
+
+
+@mcp.tool()
+@crash_proof
+def gate_sla(gate_name: str = "") -> dict:
+    """Check SLA compliance for gates: latency thresholds, auto-skip status.
+
+    Args:
+        gate_name: Specific gate to check. Empty returns all gates.
+    """
+    _ensure_initialized()
+    from shared.gate_timing import check_gate_sla, get_sla_report
+
+    if gate_name:
+        return check_gate_sla(gate_name)
+    return get_sla_report()
+
+
+@mcp.tool()
+@crash_proof
+def gate_correlations(days: int = 7) -> dict:
+    """Analyze gate block co-occurrence patterns from audit logs.
+
+    Identifies which gates tend to block together — useful for finding
+    redundant gates and optimization opportunities.
+
+    Args:
+        days: Number of days of audit logs to analyze (default 7).
+    """
+    _ensure_initialized()
+    try:
+        from shared.gate_correlation import analyze_correlations, format_correlation_report
+        data = analyze_correlations(days=days)
+        report = format_correlation_report(data)
+        return {"data": data, "report": report}
+    except ImportError:
+        return {"error": "gate_correlation module not available"}
+
+
+@mcp.tool()
+@crash_proof
 def detect_anomalies(session_id: str = "") -> dict:
     """Detect behavioral anomalies: tool call bursts, high block rates, error spikes, memory gaps.
 
@@ -252,6 +313,45 @@ def detect_anomalies(session_id: str = "") -> dict:
 
 @mcp.tool()
 @crash_proof
+def session_metrics(session_id: str = "") -> dict:
+    """Current session metrics: tool calls, gate blocks, error rate, memory gaps, duration.
+
+    Reads real-time session state and returns operational metrics for the active session.
+
+    Args:
+        session_id: Session ID to analyze. Empty string auto-detects current session.
+    """
+    _ensure_initialized()
+    import time
+    from shared.state import load_state
+    from shared.anomaly_detector import get_session_baseline
+
+    sid = _resolve_session_id(session_id)
+    state = load_state(session_id=sid)
+    metrics = get_session_baseline(state)
+
+    session_start = state.get("session_start", 0)
+    elapsed_min = round((time.time() - session_start) / 60, 1) if session_start else 0
+
+    tool_stats = state.get("tool_stats", {})
+    top_tools = sorted(tool_stats.items(), key=lambda x: x[1].get("count", 0), reverse=True)[:5]
+
+    return {
+        "session_id": sid,
+        "duration_minutes": elapsed_min,
+        "total_tool_calls": state.get("tool_call_count", 0),
+        "tool_call_rate_per_min": round(metrics.get("tool_call_rate", 0), 2),
+        "gate_block_rate": round(metrics.get("gate_block_rate", 0), 3),
+        "error_rate": round(metrics.get("error_rate", 0), 3),
+        "memory_query_gap_seconds": round(metrics.get("memory_query_interval", 0), 1),
+        "top_tools": [{"tool": name, "count": info.get("count", 0)} for name, info in top_tools],
+        "gate_block_count": len(state.get("gate_block_outcomes", [])),
+        "error_count": len(state.get("unlogged_errors", [])),
+    }
+
+
+@mcp.tool()
+@crash_proof
 def skill_health() -> dict:
     """Skill health check: total/healthy/broken counts, errors, script issues.
 
@@ -260,6 +360,30 @@ def skill_health() -> dict:
     _ensure_initialized()
     from shared.skill_health import check_all_skills
     return check_all_skills()
+
+
+@mcp.tool()
+@crash_proof
+def gate_trends() -> dict:
+    """Gate latency trends over time: rising, falling, stable per gate.
+
+    Shows which gates are getting slower (rising) or faster (falling).
+    Takes a new snapshot if enough time has passed since the last one.
+    """
+    _ensure_initialized()
+    from shared.gate_trend import snapshot_gate_stats, get_trend_report, format_trend_report
+
+    snapshot_gate_stats()  # Take snapshot if rate limit allows
+    report = get_trend_report()
+    text = format_trend_report()
+
+    return {
+        "report": text,
+        "snapshot_count": report["snapshot_count"],
+        "rising_gates": report["rising_gates"],
+        "falling_gates": report["falling_gates"],
+        "gates": report["gates"],
+    }
 
 
 @mcp.tool()
@@ -281,6 +405,694 @@ def all_metrics() -> dict:
         "rollup_1m": rollup_1m,
         "rollup_5m": rollup_5m,
     }
+
+
+@mcp.tool()
+@crash_proof
+def gate_dependencies() -> dict:
+    """Gate dependency graph: state conflicts, parallel-safe gates, hotspots, mermaid diagram.
+
+    Analyzes which gates read/write which state keys to identify conflicts
+    and opportunities for parallelization.
+    """
+    _ensure_initialized()
+    from shared.gate_dependency_graph import (
+        find_state_conflicts,
+        find_parallel_safe_gates,
+        get_state_hotspots,
+        generate_mermaid_diagram,
+        format_dependency_report,
+    )
+
+    return {
+        "conflicts": find_state_conflicts(),
+        "parallel_safety": find_parallel_safe_gates(),
+        "hotspots": get_state_hotspots()[:15],
+        "mermaid_diagram": generate_mermaid_diagram(),
+        "report": format_dependency_report(),
+    }
+
+
+@mcp.tool()
+@crash_proof
+def memory_health() -> dict:
+    """Memory subsystem health: LanceDB table sizes, disk usage, tag index status.
+
+    Quick health check for the memory infrastructure without modifying anything.
+    """
+    _ensure_initialized()
+    import glob as _mh_glob
+
+    lance_dir = os.path.join(os.path.expanduser("~"), "data", "memory", "lancedb")
+    tags_db = os.path.join(os.path.expanduser("~"), "data", "memory", "tags.db")
+    result = {
+        "lance_dir": lance_dir,
+        "lance_exists": os.path.isdir(lance_dir),
+        "tables": {},
+        "tags_db_exists": os.path.isfile(tags_db),
+        "total_size_mb": 0,
+    }
+
+    if result["lance_exists"]:
+        # Get total disk usage
+        total_bytes = 0
+        for dirpath, dirnames, filenames in os.walk(lance_dir):
+            for f in filenames:
+                try:
+                    total_bytes += os.path.getsize(os.path.join(dirpath, f))
+                except OSError:
+                    pass
+        result["total_size_mb"] = round(total_bytes / (1024 * 1024), 2)
+
+        # Count rows per table
+        try:
+            import lancedb
+            db = lancedb.connect(lance_dir)
+            for table_name in db.table_names():
+                try:
+                    tbl = db.open_table(table_name)
+                    result["tables"][table_name] = {
+                        "row_count": tbl.count_rows(),
+                    }
+                except Exception:
+                    result["tables"][table_name] = {"error": "cannot open"}
+        except ImportError:
+            result["tables"] = {"error": "lancedb not installed"}
+        except Exception as e:
+            result["tables"] = {"error": str(e)}
+
+    if result["tags_db_exists"]:
+        try:
+            result["tags_db_size_kb"] = round(os.path.getsize(tags_db) / 1024, 1)
+        except OSError:
+            pass
+
+    # Migration marker
+    marker = os.path.join(lance_dir, ".migration_complete")
+    result["migration_complete"] = os.path.isfile(marker)
+
+    return result
+
+
+@mcp.tool()
+@crash_proof
+def memory_dedup_report(table: str = "knowledge", threshold: float = 0.85) -> dict:
+    """Scan memory for duplicate entries without executing compaction.
+
+    Reports how many duplicate clusters exist and estimated savings.
+    Uses cosine similarity to detect near-duplicates.
+
+    Args:
+        table: LanceDB table to scan (knowledge, observations, fix_outcomes)
+        threshold: Cosine similarity threshold (0.0-1.0, default 0.85)
+    """
+    _ensure_initialized()
+    try:
+        from scripts.memory_compactor import scan_duplicates, compact
+        clusters = scan_duplicates(table, threshold)
+        result = compact(clusters, table, dry_run=True)
+
+        return {
+            "table": table,
+            "threshold": threshold,
+            "clusters": result.get("clusters", 0),
+            "removable_entries": result.get("compacted", 0),
+            "survivors": result.get("survivors", 0),
+            "actions": result.get("actions", [])[:10],
+            "hint": "Run `python3 scripts/memory_compactor.py --execute` to compact",
+        }
+    except ImportError:
+        return {"error": "memory_compactor module not available"}
+    except Exception as e:
+        return {"error": f"Scan failed: {e}"}
+
+
+@mcp.tool()
+@crash_proof
+def stale_memory_report(table: str = "knowledge", days: int = 90) -> dict:
+    """Scan memory for stale entries that should be demoted.
+
+    Identifies old, low-value memories using a staleness scoring model.
+    Does not modify anything — reporting only.
+
+    Args:
+        table: LanceDB table to scan (default: knowledge)
+        days: Age threshold in days (default: 90)
+    """
+    _ensure_initialized()
+    try:
+        from scripts.stale_memory_archiver import scan_stale, archive_stale
+        stale = scan_stale(table, days)
+        result = archive_stale(stale, table, dry_run=True)
+
+        return {
+            "table": table,
+            "age_threshold_days": days,
+            "stale_count": len(stale),
+            "top_stale": stale[:10],
+            "hint": "Run `python3 scripts/stale_memory_archiver.py --execute` to demote",
+        }
+    except ImportError:
+        return {"error": "stale_memory_archiver module not available"}
+    except Exception as e:
+        return {"error": f"Scan failed: {e}"}
+
+
+@mcp.tool()
+@crash_proof
+def circuit_states() -> dict:
+    """Circuit breaker states for all tracked services and gates.
+
+    Shows per-service: state (CLOSED/OPEN/HALF_OPEN), failure counts, total stats.
+    Also shows per-gate circuit breaker: crash counts, skip counts, state.
+    """
+    _ensure_initialized()
+    from shared.circuit_breaker import get_all_states, get_all_gate_states
+
+    services = get_all_states()
+    gates = get_all_gate_states()
+
+    open_services = [s for s, r in services.items() if r.get("state") == "OPEN"]
+    open_gates = [g for g, r in gates.items() if r.get("state") == "OPEN"]
+
+    return {
+        "services": services,
+        "gates": gates,
+        "open_services": open_services,
+        "open_gates": open_gates,
+        "total_services": len(services),
+        "total_gates": len(gates),
+    }
+
+
+@mcp.tool()
+@crash_proof
+def audit_status() -> dict:
+    """Audit log disk usage and rotation status.
+
+    Shows total files, disk usage, files needing compression, files eligible
+    for deletion based on default thresholds (compress >7 days, delete >30 days).
+    """
+    _ensure_initialized()
+    from scripts.audit_rotation import scan_audit_files
+
+    files = scan_audit_files()
+    total_size = sum(f["size_bytes"] for f in files)
+    needs_compress = [f for f in files if f["ext"] == ".jsonl" and f["age_days"] > 7]
+    needs_delete = [f for f in files if f["ext"] == ".jsonl.gz" and f["age_days"] > 30]
+
+    return {
+        "total_files": len(files),
+        "total_size_mb": round(total_size / (1024 * 1024), 2),
+        "needs_compression": len(needs_compress),
+        "needs_deletion": len(needs_delete),
+        "oldest_file": files[0]["filename"] if files else None,
+        "newest_file": files[-1]["filename"] if files else None,
+        "hint": "Run `python3 scripts/audit_rotation.py --execute` to rotate",
+    }
+
+
+@mcp.tool()
+@crash_proof
+def framework_summary() -> dict:
+    """High-level framework status: health, gates, circuits, skills in one view.
+
+    Aggregates framework_health, gate_health, circuit_states, and skill_health
+    into a single summary for quick status checks.
+    """
+    _ensure_initialized()
+    summary = {}
+
+    # Framework health
+    try:
+        from shared.health_monitor import full_health_check
+        sid = _resolve_session_id("")
+        health = full_health_check(sid)
+        summary["health_score"] = health.get("overall_score", "?")
+        summary["health_status"] = health.get("status", "unknown")
+    except Exception:
+        summary["health_score"] = "unavailable"
+
+    # Gate health
+    try:
+        from shared.gate_health import get_gate_health_report
+        gate_report = get_gate_health_report()
+        summary["gate_health_score"] = gate_report.get("health_score", "?")
+        summary["gates_tracked"] = gate_report.get("gate_count", 0)
+        summary["gates_degraded"] = len(gate_report.get("degraded_gates", []))
+    except Exception:
+        summary["gate_health_score"] = "unavailable"
+
+    # Circuit breaker
+    try:
+        from shared.circuit_breaker import get_all_states, get_all_gate_states
+        services = get_all_states()
+        gates = get_all_gate_states()
+        summary["circuits_open"] = len([s for s, r in services.items() if r.get("state") == "OPEN"])
+        summary["gate_circuits_open"] = len([g for g, r in gates.items() if r.get("state") == "OPEN"])
+    except Exception:
+        summary["circuits_open"] = "unavailable"
+
+    # Skill health
+    try:
+        from shared.skill_health import check_all_skills
+        skills = check_all_skills()
+        summary["skills_total"] = skills.get("total", 0)
+        summary["skills_healthy"] = skills.get("healthy", 0)
+        summary["skills_broken"] = skills.get("broken", 0)
+    except Exception:
+        summary["skills_total"] = "unavailable"
+
+    return summary
+
+
+# ── Dry-Run Simulator ────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def preview_gates(tool_name: str, tool_input: str = "{}") -> dict:
+    """Dry-run all gates for a tool call without actually blocking.
+
+    Shows which gates would fire, which would block, and why.
+    Useful for understanding gate behavior before committing to an action.
+
+    Args:
+        tool_name: Tool to simulate (e.g. "Edit", "Bash", "Write", "Task")
+        tool_input: JSON string of tool input (e.g. '{"file_path": "/etc/passwd"}')
+    """
+    import importlib
+    import json as _json
+
+    _ensure_initialized()
+
+    # Parse tool_input
+    try:
+        parsed_input = _json.loads(tool_input) if isinstance(tool_input, str) else tool_input
+    except _json.JSONDecodeError:
+        parsed_input = {}
+
+    # Import gate infrastructure
+    try:
+        from shared.state import load_state
+        state = load_state(_detect_session_id())
+    except Exception:
+        state = {}
+
+    # Gate registry
+    GATE_TOOL_MAP = {
+        "gates.gate_01_read_before_edit": {"Edit", "Write", "NotebookEdit"},
+        "gates.gate_02_no_destroy": {"Bash"},
+        "gates.gate_03_test_before_deploy": {"Bash"},
+        "gates.gate_04_memory_first": {"Edit", "Write", "NotebookEdit", "Task"},
+        "gates.gate_05_proof_before_fixed": {"Edit", "Write", "NotebookEdit"},
+        "gates.gate_06_save_fix": {"Edit", "Write", "Task", "Bash", "NotebookEdit"},
+        "gates.gate_07_critical_file_guard": {"Edit", "Write", "NotebookEdit"},
+        "gates.gate_09_strategy_ban": {"Edit", "Write", "NotebookEdit"},
+        "gates.gate_10_model_enforcement": {"Task"},
+        "gates.gate_11_rate_limit": None,
+        "gates.gate_13_workspace_isolation": {"Edit", "Write", "NotebookEdit"},
+        "gates.gate_14_confidence_check": {"Edit", "Write", "NotebookEdit"},
+        "gates.gate_15_causal_chain": {"Edit", "Write", "NotebookEdit"},
+        "gates.gate_16_code_quality": {"Edit", "Write", "NotebookEdit"},
+        "gates.gate_17_injection_defense": {"WebFetch", "WebSearch"},
+        "gates.gate_18_canary": None,
+        "gates.gate_19_hindsight": {"Edit", "Write", "NotebookEdit"},
+    }
+
+    results = []
+    would_block = False
+
+    for module_name, watched_tools in GATE_TOOL_MAP.items():
+        # Check if this gate watches the given tool
+        if watched_tools is not None and tool_name not in watched_tools:
+            continue
+
+        gate_short = module_name.split(".")[-1]
+        entry = {"gate": gate_short, "status": "skip", "message": ""}
+
+        try:
+            mod = importlib.import_module(module_name)
+            if not hasattr(mod, "check"):
+                entry["status"] = "no_check"
+                results.append(entry)
+                continue
+
+            result = mod.check(tool_name, parsed_input, state, event_type="PreToolUse")
+            if result and getattr(result, "blocked", False):
+                entry["status"] = "WOULD_BLOCK"
+                entry["message"] = getattr(result, "message", "")[:200]
+                would_block = True
+            else:
+                entry["status"] = "pass"
+                msg = getattr(result, "message", "")
+                if msg:
+                    entry["message"] = msg[:200]
+        except Exception as e:
+            entry["status"] = "error"
+            entry["message"] = f"{type(e).__name__}: {str(e)[:150]}"
+
+        results.append(entry)
+
+    return {
+        "tool_name": tool_name,
+        "would_block": would_block,
+        "gates_checked": len(results),
+        "blocking_gates": [r["gate"] for r in results if r["status"] == "WOULD_BLOCK"],
+        "passing_gates": [r["gate"] for r in results if r["status"] == "pass"],
+        "gate_details": results,
+    }
+
+
+# ── Audit Trail Viewer ──────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def audit_trail(gate: str = "", tool: str = "", outcome: str = "",
+                hours: int = 24, limit: int = 50) -> dict:
+    """Query audit trail with filtering by gate, tool, outcome, and time range.
+
+    Args:
+        gate: Filter by gate name substring (e.g. "gate_01", "gate_17")
+        tool: Filter by tool name (e.g. "Edit", "Bash")
+        outcome: Filter by decision: "block", "allow", or "" for all
+        hours: Look back this many hours (default 24, max 168)
+        limit: Max entries to return (default 50, max 200)
+    """
+    import json as _json
+    import time as _time
+
+    _ensure_initialized()
+
+    hours = max(1, min(168, hours))
+    limit = max(1, min(200, limit))
+    cutoff = _time.time() - (hours * 3600)
+
+    # Find audit files
+    try:
+        from shared.audit_log import AUDIT_DIR
+        audit_dir = AUDIT_DIR
+    except ImportError:
+        audit_dir = os.path.join(os.path.dirname(__file__), "audit")
+
+    if not os.path.isdir(audit_dir):
+        return {"entries": [], "count": 0, "error": "audit directory not found"}
+
+    # Collect matching entries from recent audit files
+    entries = []
+    audit_files = sorted(_glob.glob(os.path.join(audit_dir, "*.jsonl")), reverse=True)
+
+    for af in audit_files[:7]:  # Max 7 days of files
+        try:
+            with open(af) as f:
+                for line in f:
+                    try:
+                        entry = _json.loads(line.strip())
+                    except _json.JSONDecodeError:
+                        continue
+
+                    # Time filter
+                    ts = entry.get("timestamp", entry.get("ts", 0))
+                    if isinstance(ts, str):
+                        continue  # Skip non-numeric timestamps
+                    if ts < cutoff:
+                        continue
+
+                    # Gate filter
+                    if gate and gate.lower() not in entry.get("gate", "").lower():
+                        continue
+
+                    # Tool filter
+                    if tool and tool.lower() != entry.get("tool", "").lower():
+                        continue
+
+                    # Outcome filter
+                    if outcome and entry.get("decision", "") != outcome:
+                        continue
+
+                    entries.append(entry)
+                    if len(entries) >= limit:
+                        break
+        except OSError:
+            continue
+
+        if len(entries) >= limit:
+            break
+
+    # Summary stats
+    block_count = sum(1 for e in entries if e.get("decision") == "block")
+    allow_count = sum(1 for e in entries if e.get("decision") == "allow")
+    gates_seen = set(e.get("gate", "unknown") for e in entries)
+
+    return {
+        "entries": entries[-limit:],
+        "count": len(entries),
+        "blocks": block_count,
+        "allows": allow_count,
+        "gates_seen": sorted(gates_seen),
+        "hours_searched": hours,
+    }
+
+
+# ── Error Clustering ─────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def error_clusters(hours: int = 48, top_n: int = 10) -> dict:
+    """Analyze error patterns from recent audit logs and group by root cause.
+
+    Shows common error patterns, their frequency, co-occurrences, and
+    prevention suggestions. Useful for identifying systemic issues.
+
+    Args:
+        hours: Look back this many hours (default 48, max 168)
+        top_n: Number of top patterns to return (default 10, max 30)
+    """
+    import json as _json
+    import time as _time
+
+    _ensure_initialized()
+
+    hours = max(1, min(168, hours))
+    top_n = max(1, min(30, top_n))
+    cutoff = _time.time() - (hours * 3600)
+
+    # Collect error entries from audit logs
+    try:
+        from shared.audit_log import AUDIT_DIR
+        audit_dir = AUDIT_DIR
+    except ImportError:
+        audit_dir = os.path.join(os.path.dirname(__file__), "audit")
+
+    if not os.path.isdir(audit_dir):
+        return {"patterns": [], "total_errors": 0, "error": "audit directory not found"}
+
+    error_entries = []
+    audit_files = sorted(_glob.glob(os.path.join(audit_dir, "*.jsonl")), reverse=True)
+
+    for af in audit_files[:7]:
+        try:
+            with open(af) as f:
+                for line in f:
+                    try:
+                        entry = _json.loads(line.strip())
+                    except _json.JSONDecodeError:
+                        continue
+                    ts = entry.get("timestamp", entry.get("ts", 0))
+                    if isinstance(ts, (int, float)) and ts >= cutoff:
+                        if entry.get("decision") == "block" or entry.get("error"):
+                            error_entries.append(entry)
+        except OSError:
+            continue
+
+    # Analyze with error_pattern_analyzer
+    try:
+        from shared.error_pattern_analyzer import (
+            analyze_errors, top_patterns as ep_top, suggest_prevention,
+        )
+        analysis = analyze_errors(error_entries)
+        top = ep_top(error_entries, n=top_n)
+
+        patterns = []
+        for pattern_name, count in top:
+            suggestion = suggest_prevention(pattern_name)
+            patterns.append({
+                "pattern": pattern_name,
+                "count": count,
+                "suggestion": suggestion,
+            })
+
+        return {
+            "patterns": patterns,
+            "total_errors": analysis.get("total_errors", len(error_entries)),
+            "categories": analysis.get("category_breakdown", {}),
+            "root_causes": analysis.get("root_cause_breakdown", {}),
+            "hours_searched": hours,
+        }
+    except ImportError:
+        # Fallback: simple gate-based grouping
+        from collections import Counter
+        gate_counts = Counter(e.get("gate", "unknown") for e in error_entries)
+        patterns = [{"pattern": g, "count": c, "suggestion": ""} for g, c in gate_counts.most_common(top_n)]
+        return {
+            "patterns": patterns,
+            "total_errors": len(error_entries),
+            "hours_searched": hours,
+        }
+
+
+# ── Tool Pattern Predictions ─────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def tool_predictions(recent_tools: str = "", top_k: int = 5) -> dict:
+    """Predict next likely tool calls and detect unusual sequences.
+
+    Uses Markov chain analysis of past tool call patterns to predict what
+    tool the agent will likely use next. Also detects anomalous sequences.
+
+    Args:
+        recent_tools: Comma-separated list of recent tool names (e.g. "Read,Edit,Bash")
+        top_k: Number of top predictions to return (default 5)
+    """
+    _ensure_initialized()
+
+    tools_list = [t.strip() for t in recent_tools.split(",") if t.strip()] if recent_tools else []
+    top_k = max(1, min(20, top_k))
+
+    result = {}
+
+    try:
+        from shared.tool_patterns import (
+            predict_next_tool, detect_unusual_sequence,
+            get_workflow_templates, summarize_patterns,
+        )
+
+        # Predictions
+        if tools_list:
+            predictions = predict_next_tool(tools_list, top_k=top_k)
+            result["predictions"] = [{"tool": t, "probability": round(p, 3)} for t, p in predictions]
+
+            # Anomaly detection
+            anomaly = detect_unusual_sequence(tools_list)
+            if anomaly:
+                result["anomaly"] = {
+                    "detected": True,
+                    "score": round(anomaly.score, 3),
+                    "reason": anomaly.reason,
+                    "unusual_transitions": anomaly.unusual_transitions[:5],
+                }
+            else:
+                result["anomaly"] = {"detected": False}
+        else:
+            result["predictions"] = []
+            result["anomaly"] = {"detected": False}
+
+        # Workflow templates
+        templates = get_workflow_templates(max_templates=5)
+        result["workflows"] = [
+            {"tools": t.tools, "count": t.count, "label": t.label}
+            for t in templates
+        ]
+
+        # Summary stats
+        summary = summarize_patterns()
+        result["vocabulary_size"] = summary.get("vocabulary_size", 0)
+        result["sequence_count"] = summary.get("sequence_count", 0)
+
+    except ImportError:
+        result["error"] = "tool_patterns module not available"
+
+    return result
+
+
+# ── Pruning Recommendations ─────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def gate_pruning() -> dict:
+    """Get gate pruning recommendations based on effectiveness analysis.
+
+    Analyzes gate block rates, override rates, and latency to recommend
+    which gates to keep, optimize, or consider merging/removing.
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.gate_pruner import analyze_gates, get_prune_recommendations
+
+        analysis = analyze_gates()
+        recommendations = get_prune_recommendations()
+
+        gates = {}
+        for name, a in analysis.items():
+            gates[name] = {
+                "verdict": a.verdict,
+                "avg_ms": round(a.avg_ms, 1),
+                "blocks": a.blocks,
+                "prevented": a.prevented,
+                "block_rate": round(a.block_rate, 3),
+                "reasons": a.reasons[:3],
+            }
+
+        recs = []
+        for r in recommendations[:10]:
+            recs.append({
+                "rank": r.rank,
+                "gate": r.gate,
+                "verdict": r.verdict,
+                "reasons": r.reasons[:3],
+            })
+
+        return {
+            "gates": gates,
+            "recommendations": recs,
+            "total_analyzed": len(analysis),
+        }
+    except ImportError:
+        return {"error": "gate_pruner module not available"}
+
+
+# ── Domain Management ────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def domain_info() -> dict:
+    """List all knowledge domains with active domain and profile details.
+
+    Shows registered domains, which is active, graduation status,
+    and mastery availability. Wraps domain_registry.py.
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.domain_registry import (
+            list_domains, get_active_domain, load_domain_profile,
+        )
+
+        domains = list_domains()
+        active = get_active_domain()
+
+        # Enrich with profile details for active domain
+        active_profile = None
+        if active:
+            profile = load_domain_profile(active)
+            active_profile = {
+                "name": active,
+                "description": profile.get("description", ""),
+                "security_profile": profile.get("security_profile", "balanced"),
+                "memory_tags": profile.get("memory_tags", []),
+                "token_budget": profile.get("token_budget", 800),
+                "graduated": profile.get("graduation", {}).get("graduated", False),
+            }
+
+        return {
+            "domains": domains,
+            "active_domain": active,
+            "active_profile": active_profile,
+            "total_domains": len(domains),
+        }
+    except ImportError:
+        return {"error": "domain_registry module not available"}
 
 
 # ── Search Tools ──────────────────────────────────────────────────────────────

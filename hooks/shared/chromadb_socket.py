@@ -11,12 +11,33 @@ One request/response per connection (short-lived).
 import json
 import os
 import socket
+import sys
 import time
 
 SOCKET_PATH = os.path.join(
     os.path.expanduser("~"), ".claude", "hooks", ".chromadb.sock"
 )
 SOCKET_TIMEOUT = 2  # seconds (kept low to avoid boot timeout — 15s hook limit)
+
+# ── Circuit-breaker integration ────────────────────────────────────────────────
+# Wraps socket calls so repeated failures open the circuit and short-circuit
+# future calls instead of hammering a dead worker.
+try:
+    from shared.circuit_breaker import (
+        is_open        as _cb_is_open,
+        record_success as _cb_record_success,
+        record_failure as _cb_record_failure,
+        get_state      as _cb_get_state,
+    )
+except ImportError:
+    # Degrade gracefully when circuit_breaker is unavailable
+    def _cb_is_open(s):              return False       # noqa: E704
+    def _cb_record_success(s, **kw): pass               # noqa: E704
+    def _cb_record_failure(s, **kw): pass               # noqa: E704
+    def _cb_get_state(s):            return "CLOSED"    # noqa: E704
+
+_CB_SVC    = "memory_socket"
+_CB_KWARGS = {"failure_threshold": 3, "recovery_timeout": 30, "success_threshold": 1}
 
 
 class WorkerUnavailable(Exception):
@@ -43,12 +64,24 @@ def is_worker_available(retries=3, delay=0.5):
     return False
 
 
+def _cb_log_transition(svc):
+    """Log circuit-breaker state if it has left CLOSED (i.e. a transition occurred)."""
+    state = _cb_get_state(svc)
+    if state != "CLOSED":
+        sys.stderr.write(f"[CB] {svc} → {state}\n")
+
+
 def request(method, collection=None, params=None):
     """Send a request to the UDS worker and return the result.
 
     Raises WorkerUnavailable if the socket is unreachable.
     Raises RuntimeError if the worker returns an error response.
     """
+    # Circuit breaker: fast-fail when memory socket is known unhealthy
+    if _cb_is_open(_CB_SVC):
+        sys.stderr.write(f"[CB] {_CB_SVC} OPEN – fast-failing\n")
+        raise WorkerUnavailable("Circuit breaker open: memory_socket unavailable")
+
     req = {"method": method}
     if collection is not None:
         req["collection"] = collection
@@ -60,8 +93,11 @@ def request(method, collection=None, params=None):
         sock.settimeout(SOCKET_TIMEOUT)
         sock.connect(SOCKET_PATH)
     except (FileNotFoundError, ConnectionRefusedError, OSError) as e:
+        _cb_record_failure(_CB_SVC, **_CB_KWARGS)
+        _cb_log_transition(_CB_SVC)
         raise WorkerUnavailable(f"Cannot connect to UDS worker: {e}")
 
+    _reached_worker = False
     try:
         # Send request as JSON + newline
         sock.sendall((json.dumps(req) + "\n").encode("utf-8"))
@@ -81,11 +117,17 @@ def request(method, collection=None, params=None):
             raise WorkerUnavailable("Empty response from UDS worker")
 
         resp = json.loads(buf.decode("utf-8").strip())
+        _reached_worker = True  # Valid JSON received — worker is reachable
         if not resp.get("ok"):
             raise RuntimeError(resp.get("error", "Unknown worker error"))
         return resp.get("result")
     finally:
         sock.close()
+        if _reached_worker:
+            _cb_record_success(_CB_SVC, **_CB_KWARGS)
+        else:
+            _cb_record_failure(_CB_SVC, **_CB_KWARGS)
+            _cb_log_transition(_CB_SVC)
 
 
 # ── Convenience wrappers ──────────────────────────────────────
