@@ -20633,6 +20633,131 @@ except Exception as _epa_exc:
     test("Error Pattern Analyzer Deep Tests: import and tests", False, str(_epa_exc))
 
 
+# ── Hook Cache Deep Tests ───────────────────────────────────────────────────
+# Tests for hook_cache.py: get_cached_module, get/set_cached_state,
+# get/set_cached_result, cache_stats, clear_cache, evict_expired
+
+try:
+    from shared.hook_cache import (
+        get_cached_module, invalidate_module,
+        get_cached_state, set_cached_state, invalidate_state,
+        get_cached_result, set_cached_result, invalidate_result,
+        cache_stats, clear_cache, evict_expired,
+    )
+
+    # Start clean
+    clear_cache()
+
+    # --- Module cache ---
+    _hkc_mod = get_cached_module("json")
+    test("HKC: module cache returns module", _hkc_mod is not None)
+    test("HKC: cached json has loads", hasattr(_hkc_mod, "loads"))
+
+    # Second call = cache hit
+    _hkc_mod2 = get_cached_module("json")
+    test("HKC: module cache hit same obj", _hkc_mod2 is _hkc_mod)
+
+    _hkc_s1 = cache_stats()
+    test("HKC: module miss counted", _hkc_s1["module_misses"] >= 1)
+    test("HKC: module hit counted", _hkc_s1["module_hits"] >= 1)
+    test("HKC: module_cached >= 1", _hkc_s1["module_cached"] >= 1)
+
+    # Invalidate
+    test("HKC: invalidate_module known", invalidate_module("json") is True)
+    test("HKC: invalidate_module unknown", invalidate_module("nonexistent") is False)
+
+    # --- State cache ---
+    clear_cache()
+    set_cached_state("test_session", {"key": "value"})
+    _hkc_state = get_cached_state("test_session")
+    test("HKC: state cache hit", _hkc_state == {"key": "value"})
+
+    _hkc_state_miss = get_cached_state("nonexistent")
+    test("HKC: state cache miss", _hkc_state_miss is None)
+
+    # TTL expiry
+    set_cached_state("expire_test", {"x": 1})
+    import time as _hkc_time
+    _hkc_time.sleep(0.01)
+    _hkc_stale = get_cached_state("expire_test", ttl_ms=5)  # 5ms TTL, slept 10ms
+    test("HKC: state TTL expired", _hkc_stale is None)
+
+    # Invalidate state
+    set_cached_state("inv_test", {"y": 2})
+    test("HKC: invalidate_state known", invalidate_state("inv_test") is True)
+    test("HKC: invalidate_state unknown", invalidate_state("nonexistent") is False)
+    test("HKC: state gone after invalidate", get_cached_state("inv_test") is None)
+
+    # Stats
+    _hkc_s2 = cache_stats()
+    test("HKC: state_hits counted", _hkc_s2["state_hits"] >= 1)
+    test("HKC: state_misses counted", _hkc_s2["state_misses"] >= 1)
+
+    # --- Result cache ---
+    clear_cache()
+
+    from shared.gate_result import GateResult
+    _hkc_gr = GateResult(blocked=False, gate_name="test_gate")
+    set_cached_result("gate_01", "Edit", "abc123", _hkc_gr)
+
+    _hkc_res = get_cached_result("gate_01", "Edit", "abc123")
+    test("HKC: result cache hit", _hkc_res is not None)
+    test("HKC: result is GateResult", hasattr(_hkc_res, "blocked"))
+    test("HKC: result not blocked", _hkc_res.blocked is False)
+
+    _hkc_res_miss = get_cached_result("gate_01", "Edit", "different")
+    test("HKC: result cache miss", _hkc_res_miss is None)
+
+    # TTL expiry (result TTL = 1s, so use sleep)
+    set_cached_result("gate_02", "Write", "xyz", _hkc_gr)
+    # Don't sleep for result TTL test - just verify it works when fresh
+    _hkc_res_fresh = get_cached_result("gate_02", "Write", "xyz")
+    test("HKC: fresh result returns", _hkc_res_fresh is not None)
+
+    # Invalidate result
+    test("HKC: invalidate_result known",
+         invalidate_result("gate_02", "Write", "xyz") is True)
+    test("HKC: invalidate_result unknown",
+         invalidate_result("gate_99", "X", "y") is False)
+
+    # --- cache_stats ---
+    _hkc_s3 = cache_stats()
+    test("HKC: stats is dict", isinstance(_hkc_s3, dict))
+    test("HKC: stats has module_hits", "module_hits" in _hkc_s3)
+    test("HKC: stats has state_hits", "state_hits" in _hkc_s3)
+    test("HKC: stats has result_hits", "result_hits" in _hkc_s3)
+    test("HKC: stats has module_cached", "module_cached" in _hkc_s3)
+    test("HKC: stats has state_cached", "state_cached" in _hkc_s3)
+    test("HKC: stats has result_cached", "result_cached" in _hkc_s3)
+    # stats is a snapshot (new dict)
+    test("HKC: stats returns new dict", _hkc_s3 is not cache_stats())
+
+    # --- clear_cache ---
+    set_cached_state("clear_test", {"z": 3})
+    clear_cache()
+    _hkc_s4 = cache_stats()
+    test("HKC: clear resets module_hits", _hkc_s4["module_hits"] == 0)
+    test("HKC: clear resets state_hits", _hkc_s4["state_hits"] == 0)
+    test("HKC: clear resets result_hits", _hkc_s4["result_hits"] == 0)
+    test("HKC: clear empties state", _hkc_s4["state_cached"] == 0)
+
+    # --- evict_expired ---
+    clear_cache()
+    set_cached_state("exp1", {"a": 1})
+    set_cached_state("exp2", {"b": 2})
+    _hkc_time.sleep(0.01)
+    _hkc_evicted = evict_expired(state_ttl_ms=5)  # 5ms TTL
+    test("HKC: evict_expired returns dict", isinstance(_hkc_evicted, dict))
+    test("HKC: evicted state entries", _hkc_evicted["state"] >= 2)
+    test("HKC: evicted result key exists", "result" in _hkc_evicted)
+
+    # Final cleanup
+    clear_cache()
+
+except Exception as _hkc_exc:
+    test("Hook Cache Deep Tests: import and tests", False, str(_hkc_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
