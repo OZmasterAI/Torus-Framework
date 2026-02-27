@@ -23699,6 +23699,588 @@ except Exception as _er_exc:
     test("Event Replay Deep Tests: import and tests", False, str(_er_exc))
 
 
+# ─────────────────────────────────────────────────
+# Metrics Collector Deep Tests (shared/metrics_collector.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.metrics_collector import (
+        TYPE_COUNTER, TYPE_GAUGE, TYPE_HISTOGRAM,
+        BUILTIN_METRICS, METRICS_RAMDISK_DIR,
+        _label_key, _MetricsStore,
+        inc as _mc_inc, set_gauge as _mc_set_gauge, observe as _mc_observe,
+        get_metric as _mc_get_metric, get_all_metrics as _mc_get_all,
+        flush as _mc_flush, rollup as _mc_rollup, export_json as _mc_export_json,
+        timed as _mc_timed,
+        record_gate_fire, record_gate_block, record_gate_latency,
+        record_hook_duration, record_memory_query, set_memory_total,
+        record_tool_call, set_test_pass_rate,
+    )
+    import time as _mc_time
+    import json as _mc_json
+    import shared.metrics_collector as _mc_mod
+
+    # ── Constants ──
+    test("MC: TYPE_COUNTER is 'counter'", TYPE_COUNTER == "counter")
+    test("MC: TYPE_GAUGE is 'gauge'", TYPE_GAUGE == "gauge")
+    test("MC: TYPE_HISTOGRAM is 'histogram'", TYPE_HISTOGRAM == "histogram")
+    test("MC: METRICS_RAMDISK_DIR is /dev/shm/claude-hooks", METRICS_RAMDISK_DIR == "/dev/shm/claude-hooks")
+    test("MC: BUILTIN_METRICS is dict", isinstance(BUILTIN_METRICS, dict))
+    test("MC: BUILTIN_METRICS has gate.fires", "gate.fires" in BUILTIN_METRICS)
+    test("MC: BUILTIN_METRICS has gate.blocks", "gate.blocks" in BUILTIN_METRICS)
+    test("MC: BUILTIN_METRICS has gate.latency_ms", "gate.latency_ms" in BUILTIN_METRICS)
+    test("MC: BUILTIN_METRICS has memory.total", "memory.total" in BUILTIN_METRICS)
+    test("MC: BUILTIN_METRICS has test.pass_rate", "test.pass_rate" in BUILTIN_METRICS)
+
+    # ── _label_key ──
+    test("MC: _label_key(None) returns ''", _label_key(None) == "")
+    test("MC: _label_key({}) returns ''", _label_key({}) == "")
+    test("MC: _label_key({'a':'1'}) returns 'a=1'", _label_key({"a": "1"}) == "a=1")
+    test("MC: _label_key sorted keys", _label_key({"b": "2", "a": "1"}) == "a=1,b=2")
+    test("MC: _label_key multi keys", _label_key({"z": "3", "a": "1", "m": "2"}) == "a=1,m=2,z=3")
+
+    # ── Fresh _MetricsStore: counter ──
+    _mc_s = _MetricsStore()
+    _mc_s._loaded = True
+    _mc_s.inc("test.counter", 1)
+    _mc_val = _mc_s.get_metric("test.counter")
+    test("MC: fresh store inc value=1", _mc_val.get("value") == 1)
+    test("MC: fresh store inc type=counter", _mc_val.get("type") == TYPE_COUNTER)
+
+    _mc_s.inc("test.counter", 5)
+    _mc_val2 = _mc_s.get_metric("test.counter")
+    test("MC: counter increments cumulative (1+5=6)", _mc_val2.get("value") == 6)
+
+    # ── Fresh _MetricsStore: gauge ──
+    _mc_s2 = _MetricsStore()
+    _mc_s2._loaded = True
+    _mc_s2.set_gauge("test.gauge", 42.0)
+    _mc_g = _mc_s2.get_metric("test.gauge")
+    test("MC: set_gauge value", _mc_g.get("value") == 42.0)
+    test("MC: set_gauge type", _mc_g.get("type") == TYPE_GAUGE)
+
+    _mc_s2.set_gauge("test.gauge", 99.0)
+    _mc_g2 = _mc_s2.get_metric("test.gauge")
+    test("MC: set_gauge overwrites previous", _mc_g2.get("value") == 99.0)
+
+    # ── Fresh _MetricsStore: histogram ──
+    _mc_s3 = _MetricsStore()
+    _mc_s3._loaded = True
+    _mc_s3.observe("test.hist", 10.0)
+    _mc_h = _mc_s3.get_metric("test.hist")
+    test("MC: observe creates histogram", _mc_h.get("type") == TYPE_HISTOGRAM)
+    test("MC: observe count=1", _mc_h.get("count") == 1)
+    test("MC: observe sum=10.0", _mc_h.get("sum") == 10.0)
+    test("MC: observe min=10.0", _mc_h.get("min") == 10.0)
+    test("MC: observe max=10.0", _mc_h.get("max") == 10.0)
+    test("MC: observe avg computed", _mc_h.get("avg") == 10.0)
+
+    _mc_s3.observe("test.hist", 2.0)
+    _mc_s3.observe("test.hist", 20.0)
+    _mc_h2 = _mc_s3.get_metric("test.hist")
+    test("MC: observe updates count", _mc_h2.get("count") == 3)
+    test("MC: observe min updates to 2.0", _mc_h2.get("min") == 2.0)
+    test("MC: observe max updates to 20.0", _mc_h2.get("max") == 20.0)
+    test("MC: observe avg = (10+2+20)/3", abs(_mc_h2.get("avg", 0) - 32.0/3) < 0.001)
+
+    # ── get_metric for nonexistent ──
+    _mc_s4 = _MetricsStore()
+    _mc_s4._loaded = True
+    test("MC: get_metric nonexistent returns {}", _mc_s4.get_metric("nonexistent.xyz") == {})
+
+    # ── get_all_metrics returns dict-of-dicts ──
+    _mc_s5 = _MetricsStore()
+    _mc_s5._loaded = True
+    _mc_s5.inc("all.counter", 3)
+    _mc_s5.set_gauge("all.gauge", 7.0)
+    _mc_all = _mc_s5.get_all_metrics()
+    test("MC: get_all_metrics returns dict", isinstance(_mc_all, dict))
+    test("MC: get_all_metrics has all.counter", "all.counter" in _mc_all)
+    test("MC: get_all_metrics has all.gauge", "all.gauge" in _mc_all)
+    test("MC: get_all_metrics nested dict", isinstance(_mc_all.get("all.counter", {}), dict))
+
+    # ── rollup returns non-empty after observations ──
+    _mc_s6 = _MetricsStore()
+    _mc_s6._loaded = True
+    _mc_s6.observe("rollup.hist", 5.0)
+    _mc_s6.inc("rollup.counter", 2)
+    _mc_r = _mc_s6.rollup(60)
+    test("MC: rollup returns dict", isinstance(_mc_r, dict))
+    test("MC: rollup non-empty after observations", len(_mc_r) > 0)
+
+    # ── timed context manager: patch module-level _store temporarily ──
+    _mc_orig_store = _mc_mod._store
+    _mc_s7 = _MetricsStore()
+    _mc_s7._loaded = True
+    _mc_mod._store = _mc_s7
+    try:
+        with _mc_timed("timed.test.metric"):
+            _mc_time.sleep(0.001)
+        _mc_timed_val = _mc_s7.get_metric("timed.test.metric")
+        test("MC: timed creates histogram observation", _mc_timed_val.get("count") == 1)
+        test("MC: timed records > 0 ms", _mc_timed_val.get("sum", 0) > 0)
+    finally:
+        _mc_mod._store = _mc_orig_store
+
+    # ── Convenience helpers: patch module store for isolation ──
+    _mc_fresh2 = _MetricsStore()
+    _mc_fresh2._loaded = True
+    _mc_mod._store = _mc_fresh2
+    try:
+        record_gate_fire("test_gate_99")
+        _mc_gf = _mc_fresh2.get_metric("gate.fires", {"gate": "test_gate_99"})
+        test("MC: record_gate_fire increments gate.fires", _mc_gf.get("value") == 1)
+
+        record_gate_block("test_gate_99")
+        _mc_gb = _mc_fresh2.get_metric("gate.blocks", {"gate": "test_gate_99"})
+        test("MC: record_gate_block increments gate.blocks", _mc_gb.get("value") == 1)
+
+        set_test_pass_rate(1.5)
+        _mc_tpr = _mc_fresh2.get_metric("test.pass_rate")
+        test("MC: set_test_pass_rate clamps >1 to 1.0", _mc_tpr.get("value") == 1.0)
+
+        set_test_pass_rate(-0.5)
+        _mc_tpr2 = _mc_fresh2.get_metric("test.pass_rate")
+        test("MC: set_test_pass_rate clamps <0 to 0.0", _mc_tpr2.get("value") == 0.0)
+
+        record_memory_query()
+        _mc_mq = _mc_fresh2.get_metric("memory.queries")
+        test("MC: record_memory_query increments memory.queries", _mc_mq.get("value") == 1)
+
+        record_tool_call()
+        record_tool_call()
+        _mc_tc = _mc_fresh2.get_metric("session.tool_calls")
+        test("MC: record_tool_call x2 = 2", _mc_tc.get("value") == 2)
+
+        set_memory_total(500)
+        _mc_mt = _mc_fresh2.get_metric("memory.total")
+        test("MC: set_memory_total sets gauge", _mc_mt.get("value") == 500.0)
+    finally:
+        _mc_mod._store = _mc_orig_store
+
+    # ── export_json ──
+    _mc_exported = _mc_export_json()
+    test("MC: export_json returns string", isinstance(_mc_exported, str))
+    _mc_parsed = _mc_json.loads(_mc_exported)
+    test("MC: export_json valid JSON", isinstance(_mc_parsed, dict))
+    test("MC: export_json has metrics key", "metrics" in _mc_parsed)
+    test("MC: export_json has rollup_1m", "rollup_1m" in _mc_parsed)
+    test("MC: export_json has rollup_5m", "rollup_5m" in _mc_parsed)
+    test("MC: export_json has rollup_session", "rollup_session" in _mc_parsed)
+
+except Exception as _mc_exc:
+    test("Metrics Collector Deep Tests: import and tests", False, str(_mc_exc))
+
+
+# ─────────────────────────────────────────────────
+# Circuit Breaker Deep Tests (shared/circuit_breaker.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.circuit_breaker import (
+        STATE_CLOSED, STATE_OPEN, STATE_HALF_OPEN,
+        DEFAULT_FAILURE_THRESHOLD, DEFAULT_RECOVERY_TIMEOUT, DEFAULT_SUCCESS_THRESHOLD,
+        _GATE_CRASH_THRESHOLD, _GATE_CRASH_WINDOW, _GATE_COOLDOWN, _GATE_SUCCESS_NEEDED,
+        _TIER1_GATE_NAMES,
+        _default_service_record, _default_gate_record,
+        _get_or_create, _maybe_recover, _prune_crash_window, _gate_maybe_recover,
+        should_skip_gate, record_gate_result, get_gate_circuit_state,
+        reset_gate_circuit, get_all_gate_states,
+        _load_gate_state, _save_gate_state, _get_or_create_gate,
+    )
+    import time as _cb_time
+
+    # ── State constants ──
+    test("CB: STATE_CLOSED == 'CLOSED'", STATE_CLOSED == "CLOSED")
+    test("CB: STATE_OPEN == 'OPEN'", STATE_OPEN == "OPEN")
+    test("CB: STATE_HALF_OPEN == 'HALF_OPEN'", STATE_HALF_OPEN == "HALF_OPEN")
+
+    # ── Default configuration constants ──
+    test("CB: DEFAULT_FAILURE_THRESHOLD == 5", DEFAULT_FAILURE_THRESHOLD == 5)
+    test("CB: DEFAULT_RECOVERY_TIMEOUT == 60", DEFAULT_RECOVERY_TIMEOUT == 60)
+    test("CB: DEFAULT_SUCCESS_THRESHOLD == 2", DEFAULT_SUCCESS_THRESHOLD == 2)
+
+    # ── Gate-specific constants ──
+    test("CB: _GATE_CRASH_THRESHOLD == 3", _GATE_CRASH_THRESHOLD == 3)
+    test("CB: _GATE_CRASH_WINDOW == 300", _GATE_CRASH_WINDOW == 300)
+    test("CB: _GATE_COOLDOWN == 60", _GATE_COOLDOWN == 60)
+    test("CB: _GATE_SUCCESS_NEEDED == 1", _GATE_SUCCESS_NEEDED == 1)
+
+    # ── _TIER1_GATE_NAMES ──
+    test("CB: _TIER1_GATE_NAMES contains gate_01", "gate_01_read_before_edit" in _TIER1_GATE_NAMES)
+    test("CB: _TIER1_GATE_NAMES contains gate_02", "gate_02_no_destroy" in _TIER1_GATE_NAMES)
+    test("CB: _TIER1_GATE_NAMES contains gate_03", "gate_03_test_before_deploy" in _TIER1_GATE_NAMES)
+
+    # ── _default_service_record ──
+    _cb_rec = _default_service_record()
+    test("CB: _default_service_record is dict", isinstance(_cb_rec, dict))
+    test("CB: _default_service_record state is CLOSED", _cb_rec["state"] == STATE_CLOSED)
+    test("CB: _default_service_record failure_count is 0", _cb_rec["failure_count"] == 0)
+    test("CB: _default_service_record success_count is 0", _cb_rec["success_count"] == 0)
+    test("CB: _default_service_record has failure_threshold", "failure_threshold" in _cb_rec)
+    test("CB: _default_service_record has recovery_timeout", "recovery_timeout" in _cb_rec)
+    test("CB: _default_service_record opened_at is None", _cb_rec["opened_at"] is None)
+
+    # ── _default_gate_record ──
+    _cb_grec = _default_gate_record()
+    test("CB: _default_gate_record is dict", isinstance(_cb_grec, dict))
+    test("CB: _default_gate_record state is CLOSED", _cb_grec["state"] == STATE_CLOSED)
+    test("CB: _default_gate_record crash_timestamps is list", isinstance(_cb_grec["crash_timestamps"], list))
+    test("CB: _default_gate_record crash_timestamps empty", _cb_grec["crash_timestamps"] == [])
+    test("CB: _default_gate_record has total_crashes", "total_crashes" in _cb_grec)
+    test("CB: _default_gate_record opened_at is None", _cb_grec["opened_at"] is None)
+
+    # ── _get_or_create ──
+    _cb_data = {}
+    _cb_svc_rec = _get_or_create(_cb_data, "test_svc_create")
+    test("CB: _get_or_create creates if missing", "test_svc_create" in _cb_data)
+    test("CB: _get_or_create returns dict", isinstance(_cb_svc_rec, dict))
+    _cb_svc_rec2 = _get_or_create(_cb_data, "test_svc_create")
+    test("CB: _get_or_create returns existing", _cb_svc_rec is _cb_svc_rec2)
+
+    # ── _maybe_recover: OPEN -> HALF_OPEN when timeout passed ──
+    _cb_open_rec = _default_service_record()
+    _cb_open_rec["state"] = STATE_OPEN
+    _cb_open_rec["opened_at"] = _cb_time.time() - DEFAULT_RECOVERY_TIMEOUT - 5
+    _maybe_recover(_cb_open_rec)
+    test("CB: _maybe_recover OPEN->HALF_OPEN after timeout", _cb_open_rec["state"] == STATE_HALF_OPEN)
+
+    # ── _maybe_recover: CLOSED unchanged ──
+    _cb_closed_rec = _default_service_record()
+    _maybe_recover(_cb_closed_rec)
+    test("CB: _maybe_recover does nothing for CLOSED", _cb_closed_rec["state"] == STATE_CLOSED)
+
+    # ── _maybe_recover: OPEN stays OPEN if timeout not elapsed ──
+    _cb_fresh_open_rec = _default_service_record()
+    _cb_fresh_open_rec["state"] = STATE_OPEN
+    _cb_fresh_open_rec["opened_at"] = _cb_time.time()
+    _maybe_recover(_cb_fresh_open_rec)
+    test("CB: _maybe_recover OPEN stays OPEN if timeout not elapsed", _cb_fresh_open_rec["state"] == STATE_OPEN)
+
+    # ── _prune_crash_window ──
+    _cb_prune_rec = _default_gate_record()
+    _cb_old_ts = _cb_time.time() - _GATE_CRASH_WINDOW - 10
+    _cb_new_ts = _cb_time.time() - 5
+    _cb_prune_rec["crash_timestamps"] = [_cb_old_ts, _cb_new_ts]
+    _prune_crash_window(_cb_prune_rec)
+    test("CB: _prune_crash_window removes old timestamps", _cb_old_ts not in _cb_prune_rec["crash_timestamps"])
+    test("CB: _prune_crash_window keeps recent timestamps", _cb_new_ts in _cb_prune_rec["crash_timestamps"])
+
+    # ── _gate_maybe_recover: OPEN -> HALF_OPEN after cooldown ──
+    _cb_gate_open = _default_gate_record()
+    _cb_gate_open["state"] = STATE_OPEN
+    _cb_gate_open["opened_at"] = _cb_time.time() - _GATE_COOLDOWN - 5
+    _gate_maybe_recover(_cb_gate_open)
+    test("CB: _gate_maybe_recover transitions OPEN->HALF_OPEN after cooldown", _cb_gate_open["state"] == STATE_HALF_OPEN)
+
+    # ── should_skip_gate: Tier 1 gates never skipped ──
+    test("CB: should_skip_gate False for gate_01 (Tier1)", not should_skip_gate("gate_01_read_before_edit"))
+    test("CB: should_skip_gate False for gate_02 (Tier1)", not should_skip_gate("gate_02_no_destroy"))
+    test("CB: should_skip_gate False for gate_03 (Tier1)", not should_skip_gate("gate_03_test_before_deploy"))
+
+    # ── should_skip_gate: unknown gate returns False (fail-open) ──
+    test("CB: should_skip_gate False for unknown gate", not should_skip_gate("gate_99_nonexistent"))
+
+    # ── get_gate_circuit_state: returns CLOSED for unknown gate ──
+    _cb_unknown_state = get_gate_circuit_state("gate_99_totally_unknown_xyz")
+    test("CB: get_gate_circuit_state CLOSED for unknown", _cb_unknown_state == STATE_CLOSED)
+
+    # ── reset_gate_circuit / get_gate_circuit_state round-trip ──
+    _cb_test_gate = "test_gate_cb_deep_xyz"
+    reset_gate_circuit(_cb_test_gate)
+    test("CB: reset_gate_circuit sets CLOSED", get_gate_circuit_state(_cb_test_gate) == STATE_CLOSED)
+
+    # ── get_all_gate_states returns dict ──
+    _cb_all = get_all_gate_states()
+    test("CB: get_all_gate_states returns dict", isinstance(_cb_all, dict))
+
+    # ── record_gate_result: success on HALF_OPEN closes circuit ──
+    _cb_test_gate2 = "test_gate_cb_deep_hopen"
+    reset_gate_circuit(_cb_test_gate2)
+    _cb_gs = _load_gate_state()
+    _cb_g2rec = _get_or_create_gate(_cb_gs, _cb_test_gate2)
+    _cb_g2rec["state"] = STATE_HALF_OPEN
+    _save_gate_state(_cb_gs)
+    record_gate_result(_cb_test_gate2, success=True)
+    test("CB: record_gate_result success in HALF_OPEN -> CLOSED",
+         get_gate_circuit_state(_cb_test_gate2) == STATE_CLOSED)
+
+    # Cleanup
+    reset_gate_circuit(_cb_test_gate)
+    reset_gate_circuit(_cb_test_gate2)
+
+except Exception as _cb_exc:
+    test("Circuit Breaker Deep Tests: import and tests", False, str(_cb_exc))
+
+
+# ─────────────────────────────────────────────────
+# Gate Correlator Deep Tests (shared/gate_correlator.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.gate_correlator import (
+        CHAIN_WINDOW_SECONDS, MIN_COOCCURRENCE, REDUNDANCY_JACCARD_THRESHOLD,
+        _GATE_NAME_MAP, _CANONICAL_ORDER, _TIER1_GATES,
+        _normalize_gate, _ts_float, _group_by_tool_call,
+        build_cooccurrence_matrix, cooccurrence_summary,
+        detect_gate_chains, detect_redundant_gates,
+        optimize_gate_order as _gc_optimize_order,
+        GateCorrelator,
+    )
+    from datetime import datetime as _gc_dt
+
+    # ── Constants ──
+    test("GC: CHAIN_WINDOW_SECONDS == 5.0", CHAIN_WINDOW_SECONDS == 5.0)
+    test("GC: MIN_COOCCURRENCE == 3", MIN_COOCCURRENCE == 3)
+    test("GC: REDUNDANCY_JACCARD_THRESHOLD == 0.85", REDUNDANCY_JACCARD_THRESHOLD == 0.85)
+
+    # ── _GATE_NAME_MAP ──
+    test("GC: _GATE_NAME_MAP is dict", isinstance(_GATE_NAME_MAP, dict))
+    test("GC: _GATE_NAME_MAP has gate_01_read_before_edit key",
+         "gate_01_read_before_edit" in _GATE_NAME_MAP)
+    test("GC: _GATE_NAME_MAP gate_01 maps to canonical",
+         _GATE_NAME_MAP["gate_01_read_before_edit"] == "GATE 1: READ BEFORE EDIT")
+
+    # ── _CANONICAL_ORDER ──
+    test("GC: _CANONICAL_ORDER is list", isinstance(_CANONICAL_ORDER, list))
+    test("GC: _CANONICAL_ORDER has >= 10 entries", len(_CANONICAL_ORDER) >= 10)
+    test("GC: _CANONICAL_ORDER starts with GATE 1", _CANONICAL_ORDER[0] == "GATE 1: READ BEFORE EDIT")
+
+    # ── _TIER1_GATES ──
+    test("GC: _TIER1_GATES is set", isinstance(_TIER1_GATES, set))
+    test("GC: _TIER1_GATES has 3 entries", len(_TIER1_GATES) == 3)
+    test("GC: _TIER1_GATES has GATE 1", "GATE 1: READ BEFORE EDIT" in _TIER1_GATES)
+    test("GC: _TIER1_GATES has GATE 2", "GATE 2: NO DESTROY" in _TIER1_GATES)
+    test("GC: _TIER1_GATES has GATE 3", "GATE 3: TEST BEFORE DEPLOY" in _TIER1_GATES)
+
+    # ── _normalize_gate ──
+    test("GC: _normalize_gate maps short name",
+         _normalize_gate("gate_01_read_before_edit") == "GATE 1: READ BEFORE EDIT")
+    test("GC: _normalize_gate maps full module path",
+         _normalize_gate("gates.gate_01_read_before_edit") == "GATE 1: READ BEFORE EDIT")
+    test("GC: _normalize_gate passes through unknown",
+         _normalize_gate("unknown_gate_xyz") == "unknown_gate_xyz")
+    test("GC: _normalize_gate already canonical is identity",
+         _normalize_gate("GATE 1: READ BEFORE EDIT") == "GATE 1: READ BEFORE EDIT")
+
+    # ── _ts_float ──
+    _gc_iso = _gc_dt(2025, 1, 1, 12, 0, 0).isoformat()
+    _gc_ts_result = _ts_float({"timestamp": _gc_iso})
+    test("GC: _ts_float valid ISO returns > 0", _gc_ts_result > 0)
+    test("GC: _ts_float invalid timestamp returns 0.0", _ts_float({"timestamp": "not-a-date"}) == 0.0)
+    test("GC: _ts_float empty string returns 0.0", _ts_float({"timestamp": ""}) == 0.0)
+    test("GC: _ts_float missing key returns 0.0", _ts_float({}) == 0.0)
+
+    # ── Synthetic audit entries for testing ──
+    _gc_ts = _gc_dt(2025, 1, 1, 12, 0, 0).isoformat()
+    _gc_entries = [
+        {"gate": "GATE 1: READ BEFORE EDIT", "tool": "Edit", "decision": "pass",
+         "timestamp": _gc_ts, "session_id": "s1"},
+        {"gate": "GATE 2: NO DESTROY", "tool": "Edit", "decision": "pass",
+         "timestamp": _gc_ts, "session_id": "s1"},
+    ]
+
+    # ── _group_by_tool_call ──
+    test("GC: _group_by_tool_call empty list returns []", _group_by_tool_call([]) == [])
+    _gc_groups = _group_by_tool_call(_gc_entries)
+    test("GC: _group_by_tool_call groups same-session same-tool same-second",
+         len(_gc_groups) == 1)
+    test("GC: _group_by_tool_call group has 2 entries", len(_gc_groups[0]) == 2)
+
+    _gc_entries2 = [
+        {"gate": "GATE 1: READ BEFORE EDIT", "tool": "Edit", "decision": "pass",
+         "timestamp": _gc_ts, "session_id": "s1"},
+        {"gate": "GATE 2: NO DESTROY", "tool": "Bash", "decision": "pass",
+         "timestamp": _gc_ts, "session_id": "s1"},
+    ]
+    _gc_groups2 = _group_by_tool_call(_gc_entries2)
+    test("GC: _group_by_tool_call different tools => separate groups", len(_gc_groups2) == 2)
+
+    # ── build_cooccurrence_matrix ──
+    _gc_empty_matrix = build_cooccurrence_matrix([])
+    test("GC: build_cooccurrence_matrix empty entries returns {}", _gc_empty_matrix == {})
+
+    _gc_matrix = build_cooccurrence_matrix(_gc_entries)
+    test("GC: build_cooccurrence_matrix with 2 gates on same call returns 1 pair",
+         len(_gc_matrix) == 1)
+    _gc_pair_key = (min("GATE 1: READ BEFORE EDIT", "GATE 2: NO DESTROY"),
+                    max("GATE 1: READ BEFORE EDIT", "GATE 2: NO DESTROY"))
+    test("GC: build_cooccurrence_matrix pair count == 1", _gc_matrix.get(_gc_pair_key) == 1)
+
+    # ── cooccurrence_summary ──
+    test("GC: cooccurrence_summary empty matrix returns []", cooccurrence_summary({}) == [])
+    _gc_summary = cooccurrence_summary(_gc_matrix)
+    test("GC: cooccurrence_summary returns list", isinstance(_gc_summary, list))
+    test("GC: cooccurrence_summary has 1 entry", len(_gc_summary) == 1)
+    test("GC: cooccurrence_summary entry has gate_a", "gate_a" in _gc_summary[0])
+    test("GC: cooccurrence_summary entry has gate_b", "gate_b" in _gc_summary[0])
+    test("GC: cooccurrence_summary entry has count", "count" in _gc_summary[0])
+
+    # ── detect_gate_chains ──
+    test("GC: detect_gate_chains empty entries returns []", detect_gate_chains([]) == [])
+    _gc_chains = detect_gate_chains(_gc_entries, min_count=1)
+    test("GC: detect_gate_chains with min_count=1 returns list", isinstance(_gc_chains, list))
+
+    # ── detect_redundant_gates ──
+    test("GC: detect_redundant_gates empty entries returns []", detect_redundant_gates([]) == [])
+
+    # ── optimize_gate_order ──
+    _gc_ordering = _gc_optimize_order([])
+    test("GC: optimize_gate_order returns list", isinstance(_gc_ordering, list))
+    test("GC: optimize_gate_order rows have rank key", all("rank" in r for r in _gc_ordering))
+    test("GC: optimize_gate_order rows have gate key", all("gate" in r for r in _gc_ordering))
+    test("GC: optimize_gate_order rows have pinned key", all("pinned" in r for r in _gc_ordering))
+    test("GC: optimize_gate_order rows have score key", all("score" in r for r in _gc_ordering))
+    test("GC: optimize_gate_order rows have reason key", all("reason" in r for r in _gc_ordering))
+
+    _gc_pinned = [r for r in _gc_ordering if r["pinned"]]
+    _gc_free = [r for r in _gc_ordering if not r["pinned"]]
+    test("GC: optimize_gate_order Tier1 gates are pinned", len(_gc_pinned) >= 3)
+    if _gc_pinned and _gc_free:
+        test("GC: optimize_gate_order pinned gates come before free gates",
+             max(r["rank"] for r in _gc_pinned) < min(r["rank"] for r in _gc_free))
+    else:
+        skip("GC: optimize_gate_order pinned before free", "no pinned or free gates")
+
+    # ── GateCorrelator class ──
+    _gc_corr = GateCorrelator()
+    test("GC: GateCorrelator constructor sets _entries to None", _gc_corr._entries is None)
+    test("GC: GateCorrelator _max_entries default is 50000", _gc_corr._max_entries == 50_000)
+    test("GC: GateCorrelator constructor sets _cooccurrence to None", _gc_corr._cooccurrence is None)
+
+    _gc_corr2 = GateCorrelator(max_entries=100)
+    test("GC: GateCorrelator custom max_entries", _gc_corr2._max_entries == 100)
+
+except Exception as _gc_exc:
+    test("Gate Correlator Deep Tests: import and tests", False, str(_gc_exc))
+
+
+# ─────────────────────────────────────────────────
+# Gate Router Deep Tests (shared/gate_router.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.gate_router import (
+        TIER1, TIER2, TIER3, GATE_TOOL_MAP,
+        _tier_of, get_applicable_gates,
+        _reset_stats, get_routing_stats,
+        _get_stat_int, _set_stat_int, _get_stat_list,
+        _load_qtable, _save_qtable, get_optimal_gate_order, update_qtable, flush_qtable,
+        _Q_ALPHA, _Q_REWARD_BLOCK, _Q_REWARD_PASS,
+    )
+
+    # ── Tier sets ──
+    test("GR: TIER1 has 3 entries", len(TIER1) == 3)
+    test("GR: TIER2 has 4 entries", len(TIER2) == 4)
+    test("GR: TIER3 is non-empty", len(TIER3) > 0)
+    test("GR: TIER1 contains gate_01", "gates.gate_01_read_before_edit" in TIER1)
+    test("GR: TIER1 contains gate_02", "gates.gate_02_no_destroy" in TIER1)
+    test("GR: TIER1 contains gate_03", "gates.gate_03_test_before_deploy" in TIER1)
+    test("GR: TIER2 contains gate_04", "gates.gate_04_memory_first" in TIER2)
+    test("GR: TIER2 contains gate_05", "gates.gate_05_proof_before_fixed" in TIER2)
+    test("GR: TIER2 contains gate_06", "gates.gate_06_save_fix" in TIER2)
+    test("GR: TIER2 contains gate_07", "gates.gate_07_critical_file_guard" in TIER2)
+
+    # ── GATE_TOOL_MAP ──
+    test("GR: GATE_TOOL_MAP is dict", isinstance(GATE_TOOL_MAP, dict))
+    test("GR: GATE_TOOL_MAP gate_11 is None (universal)",
+         GATE_TOOL_MAP.get("gates.gate_11_rate_limit") is None)
+    test("GR: GATE_TOOL_MAP gate_01 contains Edit",
+         "Edit" in (GATE_TOOL_MAP.get("gates.gate_01_read_before_edit") or set()))
+    test("GR: GATE_TOOL_MAP gate_02 contains Bash",
+         "Bash" in (GATE_TOOL_MAP.get("gates.gate_02_no_destroy") or set()))
+    test("GR: GATE_TOOL_MAP gate_10 contains Task",
+         "Task" in (GATE_TOOL_MAP.get("gates.gate_10_model_enforcement") or set()))
+
+    # ── _tier_of ──
+    test("GR: _tier_of gate_01 returns 1", _tier_of("gates.gate_01_read_before_edit") == 1)
+    test("GR: _tier_of gate_02 returns 1", _tier_of("gates.gate_02_no_destroy") == 1)
+    test("GR: _tier_of gate_04 returns 2", _tier_of("gates.gate_04_memory_first") == 2)
+    test("GR: _tier_of gate_09 returns 3", _tier_of("gates.gate_09_strategy_ban") == 3)
+    test("GR: _tier_of unknown gate returns 3", _tier_of("gates.gate_99_unknown") == 3)
+
+    # ── get_applicable_gates ──
+    _gr_edit_gates = get_applicable_gates("Edit")
+    test("GR: get_applicable_gates returns list", isinstance(_gr_edit_gates, list))
+    test("GR: get_applicable_gates Edit includes gate_01",
+         "gates.gate_01_read_before_edit" in _gr_edit_gates)
+    test("GR: get_applicable_gates Edit excludes gate_02 (Bash only)",
+         "gates.gate_02_no_destroy" not in _gr_edit_gates)
+    test("GR: get_applicable_gates Edit excludes gate_03 (Bash only)",
+         "gates.gate_03_test_before_deploy" not in _gr_edit_gates)
+
+    _gr_bash_gates = get_applicable_gates("Bash")
+    test("GR: get_applicable_gates Bash includes gate_02",
+         "gates.gate_02_no_destroy" in _gr_bash_gates)
+    test("GR: get_applicable_gates Bash includes gate_11 (universal)",
+         "gates.gate_11_rate_limit" in _gr_bash_gates)
+
+    _gr_task_gates = get_applicable_gates("Task")
+    test("GR: get_applicable_gates Task includes gate_10",
+         "gates.gate_10_model_enforcement" in _gr_task_gates)
+
+    test("GR: get_applicable_gates WebFetch includes gate_11 (universal)",
+         "gates.gate_11_rate_limit" in get_applicable_gates("WebFetch"))
+
+    # ── Stats functions ──
+    _reset_stats()
+    _gr_stats = get_routing_stats()
+    test("GR: _reset_stats sets calls to 0", _gr_stats.get("calls") == 0)
+    test("GR: get_routing_stats returns dict", isinstance(_gr_stats, dict))
+    test("GR: get_routing_stats has calls key", "calls" in _gr_stats)
+    test("GR: get_routing_stats has gates_run key", "gates_run" in _gr_stats)
+    test("GR: get_routing_stats has gates_skipped key", "gates_skipped" in _gr_stats)
+    test("GR: get_routing_stats has tier1_blocks key", "tier1_blocks" in _gr_stats)
+    test("GR: get_routing_stats has skip_rate key", "skip_rate" in _gr_stats)
+    test("GR: get_routing_stats has avg_routing_ms key", "avg_routing_ms" in _gr_stats)
+    test("GR: get_routing_stats has last_routing_ms key", "last_routing_ms" in _gr_stats)
+    test("GR: skip_rate is 0.0 after reset", _gr_stats.get("skip_rate") == 0.0)
+
+    # ── _get_stat_int / _set_stat_int ──
+    test("GR: _get_stat_int returns 0 for missing key", _get_stat_int("nonexistent_key_xyz") == 0)
+    _set_stat_int("calls", 99)
+    test("GR: _set_stat_int sets value", _get_stat_int("calls") == 99)
+    _reset_stats()
+
+    # ── _get_stat_list ──
+    test("GR: _get_stat_list returns list", isinstance(_get_stat_list("timing_ms"), list))
+    test("GR: _get_stat_list returns [] for missing key", _get_stat_list("nonexistent_list_xyz") == [])
+
+    # ── Q-table constants ──
+    test("GR: _Q_ALPHA == 0.1", _Q_ALPHA == 0.1)
+    test("GR: _Q_REWARD_BLOCK == 1.0", _Q_REWARD_BLOCK == 1.0)
+    test("GR: _Q_REWARD_PASS == -0.1", _Q_REWARD_PASS == -0.1)
+
+    # ── get_optimal_gate_order ──
+    _gr_sample_gates = [
+        "gates.gate_01_read_before_edit",
+        "gates.gate_04_memory_first",
+        "gates.gate_09_strategy_ban",
+        "gates.gate_11_rate_limit",
+    ]
+    _gr_ordered = get_optimal_gate_order("Edit", _gr_sample_gates)
+    test("GR: get_optimal_gate_order returns list", isinstance(_gr_ordered, list))
+    test("GR: get_optimal_gate_order same length as input", len(_gr_ordered) == len(_gr_sample_gates))
+    test("GR: get_optimal_gate_order same set as input",
+         set(_gr_ordered) == set(_gr_sample_gates))
+    _gr_t1_indices = [_gr_ordered.index(g) for g in _gr_ordered if g in TIER1]
+    _gr_non_t1_indices = [i for i, g in enumerate(_gr_ordered) if g not in TIER1]
+    if _gr_t1_indices and _gr_non_t1_indices:
+        test("GR: get_optimal_gate_order Tier1 gates first",
+             max(_gr_t1_indices) < min(_gr_non_t1_indices))
+    else:
+        skip("GR: get_optimal_gate_order Tier1 first", "not enough gate types to verify")
+
+    # ── update_qtable / _load_qtable / flush_qtable ──
+    update_qtable("gates.gate_04_memory_first", "Edit", blocked=True)
+    test("GR: update_qtable does not crash (block=True)", True)
+    update_qtable("gates.gate_04_memory_first", "Edit", blocked=False)
+    test("GR: update_qtable does not crash (block=False)", True)
+    _gr_qt = _load_qtable()
+    test("GR: _load_qtable returns dict", isinstance(_gr_qt, dict))
+    flush_qtable()
+    test("GR: flush_qtable does not crash", True)
+
+except Exception as _gr_exc:
+    test("Gate Router Deep Tests: import and tests", False, str(_gr_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
