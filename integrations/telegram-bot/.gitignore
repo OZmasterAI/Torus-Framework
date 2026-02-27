@@ -1,0 +1,4 @@
+msg_log.db
+sessions.json
+config.json
+__pycache__/

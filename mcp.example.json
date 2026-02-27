@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "/usr/bin/python3",
+      "args": [
+        "$HOME/.claude/hooks/memory_server.py"
+      ],
+      "cwd": "$HOME"
+    },
+    "search": {
+      "command": "/usr/bin/python3",
+      "args": [
+        "$HOME/.claude/hooks/search_server.py"
+      ],
+      "cwd": "$HOME"
+    },
+    "web-search": {
+      "command": "/usr/bin/python3",
+      "args": [
+        "$HOME/.claude/hooks/web_search_server.py"
+      ],
+      "cwd": "$HOME"
+    },
+    "analytics": {
+      "command": "/usr/bin/python3",
+      "args": [
+        "$HOME/.claude/hooks/analytics_server.py"
+      ],
+      "cwd": "$HOME"
+    }
+  }
+}

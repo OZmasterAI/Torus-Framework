@@ -1,0 +1,18 @@
+{
+  "prp": "{feature-name}",
+  "created": "{ISO-8601-timestamp}",
+  "milestone": 1,
+  "phase": 1,
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Task name from PRP",
+      "status": "pending",
+      "requirement_id": "R1",
+      "files": ["path/to/create-or-modify"],
+      "validate": "pytest tests/test_feature.py -x",
+      "done": "Specific observable outcome proving task is complete",
+      "depends_on": []
+    }
+  ]
+}

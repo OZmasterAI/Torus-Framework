@@ -1,0 +1,91 @@
+# Credentials & secrets
+.credentials.json
+
+# Session & runtime state
+history.jsonl
+hooks/state_*.json
+hooks/state_*.json.lock
+hooks/.memory_last_queried
+hooks/.capture_queue.jsonl
+hooks/.prompt_last_hash
+hooks/.auto_remember_queue.jsonl
+hooks/.auto_remember_queue.jsonl.ingesting
+hooks/.file_claims.json
+hooks/.statusline_snapshot.json
+hooks/.tg_mirror_cursor.json
+hooks/.auto_commit_staged.txt
+hooks/.audit_trail.jsonl
+hooks/.circuit_breaker_state.json
+hooks/.gate_effectiveness.json
+hooks/.gate_qtable.json
+hooks/.gate_timings.json
+hooks/__pycache__/
+hooks/gates/__pycache__/
+hooks/shared/__pycache__/
+hooks/boot_pkg/__pycache__/
+hooks/tracker_pkg/__pycache__/
+skills/**/scripts/__pycache__/
+
+# Databases (runtime, not portable)
+hooks/agent_channel.db
+hooks/agent_channel.db.lock
+memory/chroma_db/
+
+# Audit logs (large, rotated)
+hooks/audit/
+hooks/.disk_backup/
+
+# Transient directories
+paste-cache/
+cache/
+debug/
+downloads/
+file-history/
+session-env/
+shell-snapshots/
+tasks/
+teams/
+telemetry/
+todos/
+plans/
+projects/
+backups/
+archive/
+tui/__pycache__/
+tui/widgets/__pycache__/
+
+# Runtime state files
+LIVE_STATE.json
+stats-cache.json
+
+# Telegram bot plugin
+integrations/telegram-bot/msg_log.db
+integrations/telegram-bot/sessions.json
+integrations/telegram-bot/config.json
+integrations/telegram-bot/.sentinel_sent
+integrations/terminal-history/__pycache__/
+integrations/terminal-history/terminal_history.db
+
+# Local settings (machine-specific)
+settings.local.json
+config.json
+mcp.json
+
+# Runtime state (not for GitHub)
+HANDOFF.md
+hooks/.enforcer.pid
+hooks/.settings_snapshot.json
+hooks/*.sock
+hooks/.integrity_hashes.json
+hooks/.remediation_stats.json
+hooks/scripts/__pycache__/
+
+# Local-only files
+backupclaude.md
+architecture.html
+diagram.html
+
+# Claude-managed plugin state
+plugins/installed_plugins.json
+plugins/known_marketplaces.json
+plugins/marketplaces/

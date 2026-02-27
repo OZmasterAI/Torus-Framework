@@ -1,0 +1,7 @@
+{
+  "extraPaths": [
+    ".",
+    "../skills/wrap-up/scripts",
+    "../skills/web/scripts"
+  ]
+}

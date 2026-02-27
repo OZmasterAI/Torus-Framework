@@ -1,0 +1,65 @@
+{
+  "prp": "framework-validation",
+  "created": "2026-02-14T19:45:00Z",
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Create test workspace and seed memory",
+      "status": "passed",
+      "files": [
+        "~/.claude/PRPs/test-workspace/README.md"
+      ],
+      "validate": "test -f ~/.claude/PRPs/test-workspace/README.md",
+      "depends_on": []
+    },
+    {
+      "id": 2,
+      "name": "Implement utils.py with add and multiply functions",
+      "status": "passed",
+      "files": [
+        "~/.claude/PRPs/test-workspace/utils.py"
+      ],
+      "validate": "python3 -c \"from sys import path; path.insert(0, '~/.claude/PRPs/test-workspace'); from utils import add, multiply; assert add(2,3)==5; assert multiply(3,4)==12; print('PASS')\"",
+      "depends_on": []
+    },
+    {
+      "id": 3,
+      "name": "Write pytest tests for utils module",
+      "status": "passed",
+      "files": [
+        "~/.claude/PRPs/test-workspace/test_utils.py"
+      ],
+      "validate": "cd ~/.claude/PRPs/test-workspace && python3 -m pytest test_utils.py -v",
+      "depends_on": [
+        2
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Add error handling and docstrings to utils",
+      "status": "passed",
+      "files": [
+        "~/.claude/PRPs/test-workspace/utils.py"
+      ],
+      "validate": "cd ~/.claude/PRPs/test-workspace && python3 -m pytest test_utils.py -v && python3 -c \"import utils; assert 'Add two numbers' in utils.add.__doc__, 'Missing docstring'; print('DOCSTRING OK')\"",
+      "depends_on": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Generate validation report from memory",
+      "status": "passed",
+      "files": [
+        "~/.claude/PRPs/test-workspace/validation_report.md"
+      ],
+      "validate": "test -f ~/.claude/PRPs/test-workspace/validation_report.md && grep -q 'framework-validation' ~/.claude/PRPs/test-workspace/validation_report.md",
+      "depends_on": [
+        1,
+        3,
+        4
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+---
+globs: .claude/domains/**, .claude/hooks/shared/domain_registry.py
+---
+
+# Domain Rules
+
+## Layout: `~/.claude/domains/<name>/` → behavior.md, mastery.md, profile.json | `.active` = current domain
+
+## Domains vs Modes
+- Domains = knowledge overlays (WHAT you know) | Modes = task overlays (HOW you work) — orthogonal
+
+## Principles
+- L1 memories in LanceDB never modified by graduation — mastery.md is derivative
+- Token budget ~800 default | T1 gates (01/02/03) immune to domain downgrades
+
+## profile.json: description, security_profile, gate_modes, disabled_gates, memory_tags, l2_keywords, auto_detect, graduation, token_budget
+
+## Graduation: 20+ memories → `/domain graduate` → synthesize mastery.md
