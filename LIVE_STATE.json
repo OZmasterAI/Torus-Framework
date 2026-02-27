@@ -1,22 +1,21 @@
 {
-  "session_count": 295,
+  "session_count": 296,
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.8",
-  "what_was_done": "Auto-generated \u2014 no transcript available. Metrics below show session activity.",
+  "what_was_done": "Split test_framework.py (29K) into 8 focused modules + 53-line runner. Removed 90 duplicate AD tests, trimmed 231 blank lines. 3 commits on refactor-test branch.",
   "next_steps": [
-    "Run memory maintenance(action='stale') \u2014 1613 entries, pruning nudge active",
+    "Merge refactor-test branch to main (3 commits, all tests passing)",
+    "Run memory maintenance(action='stale') — 1622 entries, pruning nudge active",
     "Wire identify_stale_memories() for pruning workflow (when >2500 entries)",
-    "Causal chain auto-refinement \u2014 start read-only analysis mode first",
-    "Wire search_cache into memory_server (needs careful invalidation on writes)",
-    "Keep analytics server disabled \u2014 enable on-demand via /introspect or /benchmark"
+    "Causal chain auto-refinement — start read-only analysis mode first",
+    "Wire search_cache into memory_server (needs careful invalidation on writes)"
   ],
   "known_issues": [
     "github-branch is orphan by design -- never merge, always scrub ALL files on sync",
     "Pyright type-narrowing warnings on importlib.util in search_server.py and web_search_server.py (pre-existing)",
-    "test_framework.py has Pyright import warnings for gather, index, search, list, delete modules (pre-existing)",
     "domain system wired (enforcer/orchestrator/statusline/state) but inactive",
-    "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache"
-  ],
-  "last_response_preview": "Here's what we discussed \u2014 the full picture:\n\n## escalation=\"ask\" \u2014 Built, Never Wired, Then Deliberately Left Unwired\n\n**Built in Session 164 (Sprint-2):** A research swarm found Claude Code's `permissionDecision: \"ask\"` protocol. Full infrastructure was implemented:\n- `gate_result.py`: escalation field, `to_hook_decision()`, `is_ask` property\n- `enforcer.py`: `is_ask` branch (line 489) that prints JSON to stdout \u2192 user permission prompt\n- 13 tests covering all cases\n\n**Why it stopped there:** "
+    "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache",
+    "GateRouter Q-table test is flaky (execution order dependent) — pre-existing"
+  ]
 }
