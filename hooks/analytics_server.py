@@ -2049,6 +2049,189 @@ def inspect_domain() -> dict:
     return result
 
 
+# ── Framework Health Score ───────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def framework_health_score() -> dict:
+    """Compute an overall framework health score (0-100) from multiple signals.
+
+    Aggregates:
+    - Test pass rate (from metrics)
+    - Gate block rate (from gate effectiveness)
+    - Circuit breaker states (from circuit_breaker)
+    - Memory system freshness (from sideband file)
+    - Pending verification count (from latest state)
+
+    Returns a composite score with per-component breakdown and recommendations.
+    """
+    _ensure_initialized()
+    import json as _json
+
+    scores = {}
+    recommendations = []
+
+    # 1. Test pass rate (40% weight)
+    try:
+        from shared.metrics_collector import get_metric
+        tpr = get_metric("test.pass_rate")
+        rate = tpr.get("value", 0.0) if tpr else 0.0
+        scores["test_pass_rate"] = {
+            "value": round(rate, 3),
+            "score": min(100, int(rate * 100)),
+            "weight": 40,
+        }
+        if rate < 0.95:
+            recommendations.append("Test pass rate below 95% — run tests and fix failures")
+    except Exception:
+        scores["test_pass_rate"] = {"value": 0, "score": 0, "weight": 40}
+
+    # 2. Circuit breaker health (20% weight)
+    try:
+        from shared.circuit_breaker import get_all_states, get_all_gate_states
+        svc_states = get_all_states()
+        gate_states = get_all_gate_states()
+        open_count = sum(1 for r in svc_states.values() if r.get("state") == "OPEN")
+        open_gates = sum(1 for r in gate_states.values() if r.get("state") == "OPEN")
+        total = len(svc_states) + len(gate_states)
+        healthy = total - open_count - open_gates if total > 0 else 1
+        cb_score = int(100 * (healthy / max(1, total)))
+        scores["circuit_breakers"] = {
+            "open_services": open_count,
+            "open_gates": open_gates,
+            "total_tracked": total,
+            "score": cb_score,
+            "weight": 20,
+        }
+        if open_count + open_gates > 0:
+            recommendations.append(f"{open_count + open_gates} circuit(s) OPEN — investigate failures")
+    except Exception:
+        scores["circuit_breakers"] = {"score": 100, "weight": 20}
+
+    # 3. Memory system freshness (20% weight)
+    try:
+        _sideband = os.path.join(_HOOKS_DIR, ".memory_last_queried")
+        if os.path.exists(_sideband):
+            import time as _time
+            with open(_sideband) as f:
+                sb_data = _json.load(f)
+            age_sec = _time.time() - sb_data.get("timestamp", 0)
+            # Fresh = within 5 min, stale > 30 min
+            if age_sec < 300:
+                mem_score = 100
+            elif age_sec < 1800:
+                mem_score = max(50, 100 - int((age_sec - 300) / 15))
+            else:
+                mem_score = max(0, 50 - int((age_sec - 1800) / 60))
+        else:
+            mem_score = 0
+        scores["memory_freshness"] = {
+            "age_seconds": int(age_sec) if os.path.exists(_sideband) else -1,
+            "score": mem_score,
+            "weight": 20,
+        }
+        if mem_score < 50:
+            recommendations.append("Memory system stale — query search_knowledge()")
+    except Exception:
+        scores["memory_freshness"] = {"score": 50, "weight": 20}
+
+    # 4. Gate effectiveness (20% weight)
+    try:
+        eff_path = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
+        if os.path.exists(eff_path):
+            with open(eff_path) as f:
+                eff = _json.load(f)
+            total_blocks = sum(v.get("blocks", 0) + v.get("block", 0) for v in eff.values())
+            total_overrides = sum(v.get("overrides", 0) + v.get("override", 0) for v in eff.values())
+            total_prevented = sum(v.get("prevented", 0) for v in eff.values())
+            # High prevention = good, high override = concerning
+            if total_blocks > 0:
+                prevention_rate = total_prevented / max(1, total_blocks)
+                override_rate = total_overrides / max(1, total_blocks)
+                gate_score = min(100, int(80 + prevention_rate * 20 - override_rate * 40))
+            else:
+                gate_score = 80
+        else:
+            gate_score = 80
+        scores["gate_effectiveness"] = {
+            "score": max(0, gate_score),
+            "weight": 20,
+        }
+    except Exception:
+        scores["gate_effectiveness"] = {"score": 80, "weight": 20}
+
+    # Compute weighted average
+    total_weight = sum(s.get("weight", 0) for s in scores.values())
+    weighted_sum = sum(s.get("score", 0) * s.get("weight", 0) for s in scores.values())
+    overall = int(weighted_sum / max(1, total_weight))
+
+    grade = "A" if overall >= 90 else "B" if overall >= 75 else "C" if overall >= 60 else "D" if overall >= 40 else "F"
+
+    return {
+        "overall_score": overall,
+        "grade": grade,
+        "components": scores,
+        "recommendations": recommendations,
+    }
+
+
+# ── Session Context Snapshot ─────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def session_context_snapshot() -> dict:
+    """Generate a compressed snapshot of the current session state.
+
+    Combines session compressor output with key decisions and handoff data.
+    Useful for mid-session status checks and context preservation.
+    """
+    _ensure_initialized()
+    import json as _json
+
+    # Load current state from ramdisk
+    state = {}
+    try:
+        from shared.ramdisk import get_state_dir
+        state_dir = get_state_dir()
+        import glob as _glob2
+        state_files = sorted(_glob2.glob(os.path.join(state_dir, "state_*.json")),
+                            key=os.path.getmtime, reverse=True)
+        if state_files:
+            with open(state_files[0]) as f:
+                state = _json.load(f)
+    except Exception:
+        pass
+
+    from shared.session_compressor import (
+        compress_session_context, extract_key_decisions, format_handoff,
+    )
+
+    compressed = compress_session_context(state)
+    decisions = extract_key_decisions(state)
+    handoff = format_handoff(state, decisions)
+
+    # Extract key counters
+    files_edited = len(state.get("files_edited", []))
+    pending = len(state.get("pending_verification", []))
+    verified = len(state.get("verified_fixes", []))
+    chains = len(state.get("pending_chain_ids", []))
+    bans = state.get("active_bans", [])
+
+    return {
+        "compressed_context": compressed,
+        "decisions": decisions,
+        "handoff": handoff,
+        "counters": {
+            "files_edited": files_edited,
+            "pending_verification": pending,
+            "verified_fixes": verified,
+            "open_chains": chains,
+            "active_bans": bans,
+            "gate6_warns": state.get("gate6_warn_count", 0),
+        },
+    }
+
+
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
 # DORMANT: uncomment @mcp.tool() to reactivate

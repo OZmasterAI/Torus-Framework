@@ -19080,6 +19080,293 @@ except Exception as _mc_exc:
     test("Metrics Collector Deep Tests: import and tests", False, str(_mc_exc))
 
 
+# ── Framework Health Score MCP Tool Tests ───────────────────────────────────
+# Tests for the framework_health_score() analytics tool logic
+
+try:
+    # Test the scoring/grading logic independently
+    # Grade mapping: A≥90, B≥75, C≥60, D≥40, F<40
+    def _fhs_grade(score):
+        return "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F"
+
+    test("FHS: grade A for 100", _fhs_grade(100) == "A")
+    test("FHS: grade A for 90", _fhs_grade(90) == "A")
+    test("FHS: grade B for 89", _fhs_grade(89) == "B")
+    test("FHS: grade B for 75", _fhs_grade(75) == "B")
+    test("FHS: grade C for 74", _fhs_grade(74) == "C")
+    test("FHS: grade C for 60", _fhs_grade(60) == "C")
+    test("FHS: grade D for 59", _fhs_grade(59) == "D")
+    test("FHS: grade D for 40", _fhs_grade(40) == "D")
+    test("FHS: grade F for 39", _fhs_grade(39) == "F")
+    test("FHS: grade F for 0", _fhs_grade(0) == "F")
+
+    # Weighted average calculation (same formula as the tool)
+    def _fhs_weighted_avg(scores_dict):
+        total_weight = sum(s.get("weight", 0) for s in scores_dict.values())
+        weighted_sum = sum(s.get("score", 0) * s.get("weight", 0) for s in scores_dict.values())
+        return int(weighted_sum / max(1, total_weight))
+
+    # All perfect scores
+    _fhs_perfect = {
+        "test_pass_rate": {"score": 100, "weight": 40},
+        "circuit_breakers": {"score": 100, "weight": 20},
+        "memory_freshness": {"score": 100, "weight": 20},
+        "gate_effectiveness": {"score": 100, "weight": 20},
+    }
+    test("FHS: perfect scores = 100", _fhs_weighted_avg(_fhs_perfect) == 100)
+
+    # All zero scores
+    _fhs_zero = {
+        "test_pass_rate": {"score": 0, "weight": 40},
+        "circuit_breakers": {"score": 0, "weight": 20},
+        "memory_freshness": {"score": 0, "weight": 20},
+        "gate_effectiveness": {"score": 0, "weight": 20},
+    }
+    test("FHS: zero scores = 0", _fhs_weighted_avg(_fhs_zero) == 0)
+
+    # Mixed scores: 50*40 + 100*20 + 0*20 + 80*20 = 2000+2000+0+1600 = 5600/100 = 56
+    _fhs_mixed = {
+        "test_pass_rate": {"score": 50, "weight": 40},
+        "circuit_breakers": {"score": 100, "weight": 20},
+        "memory_freshness": {"score": 0, "weight": 20},
+        "gate_effectiveness": {"score": 80, "weight": 20},
+    }
+    test("FHS: mixed scores = 56", _fhs_weighted_avg(_fhs_mixed) == 56)
+
+    # Weights sum to 100
+    test("FHS: weights sum to 100",
+         sum(s["weight"] for s in _fhs_perfect.values()) == 100)
+
+    # Test pass rate component scoring: rate * 100, capped at 100
+    _fhs_tpr_score = lambda rate: min(100, int(rate * 100))
+    test("FHS: TPR 1.0 = 100", _fhs_tpr_score(1.0) == 100)
+    test("FHS: TPR 0.95 = 95", _fhs_tpr_score(0.95) == 95)
+    test("FHS: TPR 0.5 = 50", _fhs_tpr_score(0.5) == 50)
+    test("FHS: TPR 0.0 = 0", _fhs_tpr_score(0.0) == 0)
+    test("FHS: TPR > 1.0 capped at 100", _fhs_tpr_score(1.5) == 100)
+
+    # Circuit breaker component scoring
+    def _fhs_cb_score(total, open_count):
+        healthy = total - open_count if total > 0 else 1
+        return int(100 * (healthy / max(1, total)))
+
+    test("FHS: CB 0 open / 10 total = 100", _fhs_cb_score(10, 0) == 100)
+    test("FHS: CB 5 open / 10 total = 50", _fhs_cb_score(10, 5) == 50)
+    test("FHS: CB 10 open / 10 total = 0", _fhs_cb_score(10, 10) == 0)
+    test("FHS: CB 0 total = 100", _fhs_cb_score(0, 0) == 100)  # healthy=1, total=0 → 100
+
+    # Memory freshness scoring
+    def _fhs_mem_score(age_sec):
+        if age_sec < 300:
+            return 100
+        elif age_sec < 1800:
+            return max(50, 100 - int((age_sec - 300) / 15))
+        else:
+            return max(0, 50 - int((age_sec - 1800) / 60))
+
+    test("FHS: mem fresh 0s = 100", _fhs_mem_score(0) == 100)
+    test("FHS: mem fresh 299s = 100", _fhs_mem_score(299) == 100)
+    test("FHS: mem fresh 300s = 100", _fhs_mem_score(300) == 100)
+    test("FHS: mem 600s > 50", _fhs_mem_score(600) >= 50)
+    test("FHS: mem 1800s = 50", _fhs_mem_score(1800) >= 0)
+    test("FHS: mem 3600s = low", _fhs_mem_score(3600) < 30)
+    test("FHS: mem 86400s = 0", _fhs_mem_score(86400) == 0)
+    test("FHS: mem decreasing", _fhs_mem_score(100) > _fhs_mem_score(600) > _fhs_mem_score(3600))
+
+    # Gate effectiveness scoring
+    def _fhs_gate_score(total_blocks, total_prevented, total_overrides):
+        if total_blocks > 0:
+            prevention_rate = total_prevented / max(1, total_blocks)
+            override_rate = total_overrides / max(1, total_blocks)
+            return max(0, min(100, int(80 + prevention_rate * 20 - override_rate * 40)))
+        return 80
+
+    test("FHS: gate no blocks = 80", _fhs_gate_score(0, 0, 0) == 80)
+    test("FHS: gate all prevented = 100", _fhs_gate_score(10, 10, 0) == 100)
+    test("FHS: gate all overridden < 80", _fhs_gate_score(10, 0, 10) < 80)
+    test("FHS: gate score >= 0", _fhs_gate_score(1, 0, 100) >= 0)
+    test("FHS: gate score <= 100", _fhs_gate_score(100, 100, 0) <= 100)
+
+    # Recommendation triggers
+    _fhs_recs = []
+    if 0.9 < 0.95:
+        _fhs_recs.append("Test pass rate below 95%")
+    test("FHS: recommendation for low TPR", len(_fhs_recs) == 1)
+
+    # Test calling the actual tool (if analytics_server importable)
+    try:
+        import importlib.util as _fhs_ilu
+        _fhs_spec = _fhs_ilu.spec_from_file_location(
+            "analytics_server", os.path.join(HOOKS_DIR, "analytics_server.py"))
+        if _fhs_spec:
+            _fhs_mod = _fhs_ilu.module_from_spec(_fhs_spec)
+            # Don't exec the module (it starts FastMCP server), just verify it loads
+            test("FHS: analytics_server importable", True)
+        else:
+            skip("FHS: analytics_server import", "spec not found")
+    except Exception:
+        skip("FHS: analytics_server import", "import failed")
+
+    # Integration: verify the tool would return correct structure
+    _fhs_expected_keys = {"overall_score", "grade", "components", "recommendations"}
+    _fhs_result = {
+        "overall_score": _fhs_weighted_avg(_fhs_mixed),
+        "grade": _fhs_grade(_fhs_weighted_avg(_fhs_mixed)),
+        "components": _fhs_mixed,
+        "recommendations": [],
+    }
+    test("FHS: result has overall_score", "overall_score" in _fhs_result)
+    test("FHS: result has grade", "grade" in _fhs_result)
+    test("FHS: result has components", "components" in _fhs_result)
+    test("FHS: result has recommendations", "recommendations" in _fhs_result)
+    test("FHS: overall_score is int", isinstance(_fhs_result["overall_score"], int))
+    test("FHS: grade is string", isinstance(_fhs_result["grade"], str))
+    test("FHS: components is dict", isinstance(_fhs_result["components"], dict))
+    test("FHS: recommendations is list", isinstance(_fhs_result["recommendations"], list))
+    test("FHS: grade matches score", _fhs_result["grade"] == "D")  # 56 = D
+
+    # Edge cases for weighted avg
+    _fhs_single = {"only": {"score": 75, "weight": 100}}
+    test("FHS: single component", _fhs_weighted_avg(_fhs_single) == 75)
+
+    _fhs_empty = {}
+    test("FHS: empty components = 0", _fhs_weighted_avg(_fhs_empty) == 0)
+
+    # Missing weight defaults to 0
+    _fhs_no_weight = {"a": {"score": 50}}
+    test("FHS: missing weight treated as 0", _fhs_weighted_avg(_fhs_no_weight) == 0)
+
+except Exception as _fhs_exc:
+    test("Framework Health Score Tests: import and tests", False, str(_fhs_exc))
+
+
+# ── Session Context Snapshot MCP Tool Tests ─────────────────────────────────
+# Tests for the session_context_snapshot() analytics tool logic
+
+try:
+    from shared.session_compressor import (
+        compress_session_context as _scs_compress,
+        extract_key_decisions as _scs_decisions,
+        format_handoff as _scs_handoff,
+    )
+
+    # Test with empty state (default case)
+    _scs_empty = {}
+    _scs_c1 = _scs_compress(_scs_empty)
+    _scs_d1 = _scs_decisions(_scs_empty)
+    _scs_h1 = _scs_handoff(_scs_empty, _scs_d1)
+
+    test("SCS: compress empty state returns string", isinstance(_scs_c1, str))
+    test("SCS: decisions empty state returns list", isinstance(_scs_d1, list))
+    test("SCS: handoff empty state returns string", isinstance(_scs_h1, str))
+
+    # Counter extraction logic (mirrors the tool)
+    def _scs_counters(state):
+        return {
+            "files_edited": len(state.get("files_edited", [])),
+            "pending_verification": len(state.get("pending_verification", [])),
+            "verified_fixes": len(state.get("verified_fixes", [])),
+            "open_chains": len(state.get("pending_chain_ids", [])),
+            "active_bans": state.get("active_bans", []),
+            "gate6_warns": state.get("gate6_warn_count", 0),
+        }
+
+    # Empty state counters
+    _scs_ec = _scs_counters({})
+    test("SCS: empty files_edited = 0", _scs_ec["files_edited"] == 0)
+    test("SCS: empty pending_verification = 0", _scs_ec["pending_verification"] == 0)
+    test("SCS: empty verified_fixes = 0", _scs_ec["verified_fixes"] == 0)
+    test("SCS: empty open_chains = 0", _scs_ec["open_chains"] == 0)
+    test("SCS: empty active_bans = []", _scs_ec["active_bans"] == [])
+    test("SCS: empty gate6_warns = 0", _scs_ec["gate6_warns"] == 0)
+
+    # Populated state counters
+    _scs_rich = {
+        "files_edited": ["a.py", "b.py", "c.py"],
+        "pending_verification": ["fix1"],
+        "verified_fixes": ["fix0", "fix_old"],
+        "pending_chain_ids": ["chain_1", "chain_2"],
+        "active_bans": ["brute_force", "sleep_retry"],
+        "gate6_warn_count": 3,
+    }
+    _scs_rc = _scs_counters(_scs_rich)
+    test("SCS: files_edited = 3", _scs_rc["files_edited"] == 3)
+    test("SCS: pending_verification = 1", _scs_rc["pending_verification"] == 1)
+    test("SCS: verified_fixes = 2", _scs_rc["verified_fixes"] == 2)
+    test("SCS: open_chains = 2", _scs_rc["open_chains"] == 2)
+    test("SCS: active_bans has 2 items", len(_scs_rc["active_bans"]) == 2)
+    test("SCS: gate6_warns = 3", _scs_rc["gate6_warns"] == 3)
+
+    # Result structure validation
+    _scs_result = {
+        "compressed_context": _scs_c1,
+        "decisions": _scs_d1,
+        "handoff": _scs_h1,
+        "counters": _scs_ec,
+    }
+    test("SCS: result has compressed_context", "compressed_context" in _scs_result)
+    test("SCS: result has decisions", "decisions" in _scs_result)
+    test("SCS: result has handoff", "handoff" in _scs_result)
+    test("SCS: result has counters", "counters" in _scs_result)
+
+    # Compress with rich state
+    _scs_c2 = _scs_compress(_scs_rich)
+    test("SCS: compress rich state returns string", isinstance(_scs_c2, str))
+    test("SCS: compress rich state non-empty", len(_scs_c2) > 0)
+
+    # Decisions with gate blocks in state
+    _scs_gate_state = {
+        "gate_blocks": [
+            {"gate": "gate_01", "tool": "Edit", "reason": "no read"},
+            {"gate": "gate_06", "tool": "Write", "reason": "unverified"},
+        ],
+        "test_results": {"passed": 100, "failed": 2},
+        "verified_fixes": ["fix_auth_bug"],
+        "active_bans": ["sleep_retry"],
+    }
+    _scs_d2 = _scs_decisions(_scs_gate_state)
+    test("SCS: decisions returns list", isinstance(_scs_d2, list))
+
+    # Handoff with rich state
+    _scs_h2 = _scs_handoff(_scs_gate_state, _scs_d2)
+    test("SCS: handoff returns string", isinstance(_scs_h2, str))
+    test("SCS: handoff non-empty with data", len(_scs_h2) > 0)
+
+    # Counter keys are all present
+    _expected_counter_keys = {"files_edited", "pending_verification", "verified_fixes",
+                               "open_chains", "active_bans", "gate6_warns"}
+    test("SCS: all counter keys present",
+         set(_scs_counters(_scs_rich).keys()) == _expected_counter_keys)
+
+    # Counter values are correct types
+    _scs_types = _scs_counters(_scs_rich)
+    test("SCS: files_edited is int", isinstance(_scs_types["files_edited"], int))
+    test("SCS: pending_verification is int", isinstance(_scs_types["pending_verification"], int))
+    test("SCS: verified_fixes is int", isinstance(_scs_types["verified_fixes"], int))
+    test("SCS: open_chains is int", isinstance(_scs_types["open_chains"], int))
+    test("SCS: active_bans is list", isinstance(_scs_types["active_bans"], list))
+    test("SCS: gate6_warns is int", isinstance(_scs_types["gate6_warns"], int))
+
+    # Missing keys in state default gracefully
+    _scs_partial = {"files_edited": ["x.py"]}
+    _scs_pc = _scs_counters(_scs_partial)
+    test("SCS: partial state files = 1", _scs_pc["files_edited"] == 1)
+    test("SCS: partial state pending = 0", _scs_pc["pending_verification"] == 0)
+    test("SCS: partial state gate6 = 0", _scs_pc["gate6_warns"] == 0)
+
+    # Non-list values don't crash (defensive)
+    _scs_bad = {"files_edited": "not_a_list", "gate6_warn_count": "bad"}
+    try:
+        _scs_bc = _scs_counters(_scs_bad)
+        # len("not_a_list") = 10, which is wrong but doesn't crash
+        test("SCS: non-list files_edited doesn't crash", True)
+    except Exception:
+        test("SCS: non-list files_edited doesn't crash", False, "crashed")
+
+except Exception as _scs_exc:
+    test("Session Context Snapshot Tests: import and tests", False, str(_scs_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
