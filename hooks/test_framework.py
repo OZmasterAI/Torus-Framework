@@ -15255,6 +15255,114 @@ except Exception as _cr_ext_exc:
     test("CapRegExt: import and basic tests", False, str(_cr_ext_exc))
 
 
+# ─────────────────────────────────────────────────
+# Code Hotspot Analyzer
+# ─────────────────────────────────────────────────
+print("\n--- Code Hotspot ---")
+
+try:
+    from shared.code_hotspot import (
+        extract_file_path, analyze_file_blocks,
+        rank_files_by_risk, export_hotspot_report,
+    )
+
+    # extract_file_path: Edit tool
+    _ch_edit = extract_file_path({"file_path": "/home/user/test.py"}, "Edit")
+    test("Hotspot: extract Edit file_path",
+         _ch_edit == "/home/user/test.py", f"got '{_ch_edit}'")
+
+    # extract_file_path: Write tool
+    _ch_write = extract_file_path({"file_path": "/tmp/output.json"}, "Write")
+    test("Hotspot: extract Write file_path",
+         _ch_write == "/tmp/output.json", f"got '{_ch_write}'")
+
+    # extract_file_path: Read tool with path key
+    _ch_read = extract_file_path({"path": "/home/user/readme.md"}, "Read")
+    test("Hotspot: extract Read path",
+         _ch_read == "/home/user/readme.md", f"got '{_ch_read}'")
+
+    # extract_file_path: NotebookEdit
+    _ch_nb = extract_file_path({"notebook_path": "/tmp/notebook.ipynb"}, "NotebookEdit")
+    test("Hotspot: extract notebook_path",
+         _ch_nb == "/tmp/notebook.ipynb", f"got '{_ch_nb}'")
+
+    # extract_file_path: empty input
+    _ch_empty = extract_file_path({}, "Edit")
+    test("Hotspot: empty input → empty string",
+         _ch_empty == "", f"got '{_ch_empty}'")
+
+    # extract_file_path: non-dict input
+    _ch_bad = extract_file_path("not a dict", "Edit")
+    test("Hotspot: non-dict input → empty string",
+         _ch_bad == "", f"got '{_ch_bad}'")
+
+    # extract_file_path: Bash with path in command
+    _ch_bash = extract_file_path({"command": "python3 /tmp/test_file.py"}, "Bash")
+    test("Hotspot: extract Bash command path",
+         _ch_bash == "/tmp/test_file.py", f"got '{_ch_bash}'")
+
+    # analyze_file_blocks: returns expected structure
+    _ch_analysis = analyze_file_blocks(lookback_days=1)
+    test("Hotspot: analyze returns dict",
+         isinstance(_ch_analysis, dict), f"type={type(_ch_analysis)}")
+    test("Hotspot: analysis has file_blocks",
+         "file_blocks" in _ch_analysis, f"keys={set(_ch_analysis.keys())}")
+    test("Hotspot: analysis has total_blocks",
+         "total_blocks" in _ch_analysis, f"keys={set(_ch_analysis.keys())}")
+    test("Hotspot: file_blocks is list",
+         isinstance(_ch_analysis["file_blocks"], list),
+         f"type={type(_ch_analysis['file_blocks'])}")
+    test("Hotspot: total_blocks is int",
+         isinstance(_ch_analysis["total_blocks"], int),
+         f"type={type(_ch_analysis['total_blocks'])}")
+
+    # rank_files_by_risk: returns list
+    _ch_ranked = rank_files_by_risk(lookback_days=1)
+    test("Hotspot: rank returns list",
+         isinstance(_ch_ranked, list), f"type={type(_ch_ranked)}")
+
+    # Verify structure of ranked entries (if any exist)
+    if _ch_ranked:
+        _ch_first = _ch_ranked[0]
+        test("Hotspot: ranked entry has rank",
+             "rank" in _ch_first and _ch_first["rank"] == 1,
+             f"keys={set(_ch_first.keys())}")
+        test("Hotspot: ranked entry has risk_score",
+             "risk_score" in _ch_first and isinstance(_ch_first["risk_score"], (int, float)),
+             f"score={_ch_first.get('risk_score')}")
+        test("Hotspot: ranked entry has risk_level",
+             _ch_first.get("risk_level") in ("critical", "high", "medium", "low"),
+             f"level={_ch_first.get('risk_level')}")
+        test("Hotspot: ranked entry has churn_factor",
+             "churn_factor" in _ch_first, f"keys={set(_ch_first.keys())}")
+        test("Hotspot: ranked entry has error_density",
+             "error_density" in _ch_first, f"keys={set(_ch_first.keys())}")
+    else:
+        skip("Hotspot: ranked entry structure", "no blocks in recent audit logs")
+
+    # export_hotspot_report: returns string
+    _ch_report = export_hotspot_report(lookback_days=1)
+    test("Hotspot: export returns string",
+         isinstance(_ch_report, str), f"type={type(_ch_report)}")
+    test("Hotspot: report has header",
+         "File Hotspot Report" in _ch_report, "missing header")
+    test("Hotspot: report has separator lines",
+         "=" * 10 in _ch_report, "missing separators")
+
+    # rank_files_by_risk: respects limit
+    _ch_limited = rank_files_by_risk(lookback_days=7, limit=2)
+    test("Hotspot: limit=2 returns ≤2 files",
+         len(_ch_limited) <= 2, f"got {len(_ch_limited)}")
+
+    # rank_files_by_risk: risk_threshold filters
+    _ch_high = rank_files_by_risk(lookback_days=7, risk_threshold=999.0)
+    test("Hotspot: high threshold filters all",
+         len(_ch_high) == 0, f"got {len(_ch_high)}")
+
+except Exception as _ch_exc:
+    test("Hotspot: import and basic tests", False, str(_ch_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)

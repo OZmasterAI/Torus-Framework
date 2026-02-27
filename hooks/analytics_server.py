@@ -1371,6 +1371,47 @@ def event_stats(event_type: str = "", limit: int = 20) -> dict:
     }
 
 
+# ── Code Hotspot Analysis ────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def code_hotspots(lookback_days: int = 7, limit: int = 20) -> dict:
+    """Identify high-risk files by analyzing gate block patterns from audit logs.
+
+    Cross-references gate blocks with file paths to compute a composite risk
+    score per file: block_count * churn_factor * error_density.  Returns files
+    ranked from highest to lowest risk.
+
+    Args:
+        lookback_days: Days of audit data to analyze (default 7, max 30).
+        limit: Max files to return (default 20, max 50).
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.code_hotspot import rank_files_by_risk, analyze_file_blocks
+    except ImportError:
+        return {"error": "code_hotspot module not available"}
+
+    lookback_days = max(1, min(30, lookback_days))
+    limit = max(1, min(50, limit))
+
+    ranked = rank_files_by_risk(lookback_days=lookback_days, limit=limit)
+    analysis = analyze_file_blocks(lookback_days=lookback_days)
+
+    critical = sum(1 for r in ranked if r["risk_level"] == "critical")
+    high = sum(1 for r in ranked if r["risk_level"] == "high")
+
+    return {
+        "ranked_files": ranked,
+        "total_blocks": analysis["total_blocks"],
+        "total_files_blocked": analysis["total_files"],
+        "critical_count": critical,
+        "high_count": high,
+        "lookback_days": lookback_days,
+    }
+
+
 # ── Test Stub Generator ─────────────────────────────────────────────────────
 
 @mcp.tool()
