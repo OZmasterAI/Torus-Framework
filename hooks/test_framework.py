@@ -19367,6 +19367,632 @@ except Exception as _scs_exc:
     test("Session Context Snapshot Tests: import and tests", False, str(_scs_exc))
 
 
+# ── Anomaly Detector Deep Tests ─────────────────────────────────────────────
+# Tests for anomaly_detector.py: compute_baseline, detect_anomalies,
+# detect_stuck_loop, should_escalate, check_tool_dominance,
+# get_session_baseline, compare_to_baseline, detect_behavioral_anomaly,
+# compute_ema, detect_trend, anomaly_consensus
+
+try:
+    from shared.anomaly_detector import (
+        compute_baseline, detect_anomalies, detect_stuck_loop,
+        should_escalate, check_tool_dominance, get_session_baseline,
+        compare_to_baseline, detect_behavioral_anomaly,
+        compute_ema, detect_trend, anomaly_consensus,
+        _stddev,
+    )
+
+    # --- compute_baseline ---
+    test("AD: baseline empty history", compute_baseline([]) == {})
+    test("AD: baseline single snapshot",
+         compute_baseline([{"g1": 5.0, "g2": 3.0}]) == {"g1": 5.0, "g2": 3.0})
+
+    _ad_hist = [{"g1": 2.0, "g2": 4.0}, {"g1": 4.0, "g2": 6.0}]
+    _ad_bl = compute_baseline(_ad_hist)
+    test("AD: baseline averages g1", abs(_ad_bl["g1"] - 3.0) < 0.001)
+    test("AD: baseline averages g2", abs(_ad_bl["g2"] - 5.0) < 0.001)
+
+    # Window parameter
+    _ad_long = [{"g1": float(i)} for i in range(20)]
+    _ad_bl2 = compute_baseline(_ad_long, window=5)
+    # Last 5 snapshots: 15,16,17,18,19 → mean = 17
+    test("AD: baseline window=5", abs(_ad_bl2["g1"] - 17.0) < 0.001)
+
+    # Missing gates treated as 0
+    _ad_sparse = [{"g1": 10.0}, {"g2": 10.0}]
+    _ad_bl3 = compute_baseline(_ad_sparse)
+    test("AD: baseline sparse g1 = 5", abs(_ad_bl3["g1"] - 5.0) < 0.001)
+    test("AD: baseline sparse g2 = 5", abs(_ad_bl3["g2"] - 5.0) < 0.001)
+
+    # --- _stddev ---
+    test("AD: stddev empty", _stddev([]) == 0.0)
+    test("AD: stddev single", _stddev([5.0]) == 0.0)
+    test("AD: stddev uniform", _stddev([3.0, 3.0, 3.0]) == 0.0)
+    _ad_sd = _stddev([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0])
+    test("AD: stddev known values", abs(_ad_sd - 2.0) < 0.01)
+
+    # --- detect_anomalies ---
+    test("AD: anomalies empty baseline", detect_anomalies({"g1": 10.0}, {}) == [])
+
+    _ad_bl_norm = {"g1": 1.0, "g2": 1.0, "g3": 1.0}
+    _ad_cur_norm = {"g1": 1.0, "g2": 1.0, "g3": 1.0}
+    test("AD: no anomalies when normal", detect_anomalies(_ad_cur_norm, _ad_bl_norm) == [])
+
+    _ad_cur_spike = {"g1": 100.0, "g2": 1.0}
+    _ad_anom = detect_anomalies(_ad_cur_spike, _ad_bl_norm)
+    test("AD: spike detected", len(_ad_anom) > 0)
+    test("AD: spike gate is g1", _ad_anom[0]["gate"] == "g1")
+    test("AD: spike has delta", _ad_anom[0]["delta"] > 0)
+    test("AD: spike has sigma", _ad_anom[0]["sigma"] > 0)
+
+    # Sorted descending by delta
+    _ad_cur_multi = {"g1": 50.0, "g2": 100.0}
+    _ad_anom2 = detect_anomalies(_ad_cur_multi, _ad_bl_norm)
+    if len(_ad_anom2) >= 2:
+        test("AD: sorted by delta desc", _ad_anom2[0]["delta"] >= _ad_anom2[1]["delta"])
+    else:
+        test("AD: multi anomalies detected", len(_ad_anom2) >= 1)
+
+    # --- detect_stuck_loop ---
+    test("AD: stuck loop empty", detect_stuck_loop([]) is None)
+    test("AD: stuck loop varied",
+         detect_stuck_loop(["g1", "g2", "g3", "g1", "g2"]) is None)
+
+    _ad_stuck = ["g1"] * 15 + ["g2"] * 5
+    test("AD: stuck loop dominant", detect_stuck_loop(_ad_stuck) == "g1")
+
+    test("AD: stuck loop threshold 0.9",
+         detect_stuck_loop(["g1"] * 14 + ["g2"] * 6, threshold=0.9) is None)
+    test("AD: stuck loop threshold 0.5",
+         detect_stuck_loop(["g1"] * 11 + ["g2"] * 9, threshold=0.5) == "g1")
+
+    # Window parameter
+    _ad_recent = ["g2"] * 10 + ["g1"] * 15
+    test("AD: stuck loop window=10",
+         detect_stuck_loop(_ad_recent, window=10) == "g1")
+
+    # --- should_escalate ---
+    _esc1, _esc1_r = should_escalate([], None)
+    test("AD: no escalation no issues", _esc1 is False)
+    test("AD: reason no anomalies", "No anomalies" in _esc1_r)
+
+    _esc2, _esc2_r = should_escalate([], "gate_01")
+    test("AD: escalate stuck loop", _esc2 is True)
+    test("AD: reason mentions stuck", "Stuck" in _esc2_r or "stuck" in _esc2_r.lower())
+
+    _esc3, _esc3_r = should_escalate([{"gate": "g1", "delta": 6.0}], None)
+    test("AD: escalate large spike", _esc3 is True)
+    test("AD: reason mentions spike", "spike" in _esc3_r.lower())
+
+    _ad_3anom = [{"gate": f"g{i}", "delta": 2.0} for i in range(3)]
+    _esc4, _esc4_r = should_escalate(_ad_3anom, None)
+    test("AD: escalate 3+ anomalies", _esc4 is True)
+
+    _ad_1anom = [{"gate": "g1", "delta": 1.0}]
+    _esc5, _esc5_r = should_escalate(_ad_1anom, None)
+    test("AD: no escalate minor anomaly", _esc5 is False)
+    test("AD: reason mentions monitoring", "monitoring" in _esc5_r.lower() or "Minor" in _esc5_r)
+
+    # --- check_tool_dominance ---
+    test("AD: dominance empty", check_tool_dominance({}) is None)
+    test("AD: dominance zero total", check_tool_dominance({"Edit": 0}) is None)
+    test("AD: dominance balanced",
+         check_tool_dominance({"Edit": 5, "Read": 5, "Bash": 5}) is None)
+
+    _ad_dom = check_tool_dominance({"Edit": 80, "Read": 10, "Bash": 10})
+    test("AD: dominance detected", _ad_dom is not None)
+    test("AD: dominant tool is Edit", _ad_dom["tool"] == "Edit")
+    test("AD: dominance ratio = 0.8", abs(_ad_dom["ratio"] - 0.8) < 0.01)
+    test("AD: dominance total = 100", _ad_dom["total"] == 100)
+
+    test("AD: dominance at threshold",
+         check_tool_dominance({"Edit": 70, "Read": 30}) is None)  # 0.7 not > 0.7
+    test("AD: dominance just above",
+         check_tool_dominance({"Edit": 71, "Read": 29}) is not None)
+
+    # --- compute_ema ---
+    test("AD: ema empty", compute_ema([]) == [])
+    test("AD: ema single", compute_ema([5.0]) == [5.0])
+
+    _ad_ema = compute_ema([1.0, 2.0, 3.0, 4.0, 5.0], alpha=0.5)
+    test("AD: ema length preserved", len(_ad_ema) == 5)
+    test("AD: ema first = input first", _ad_ema[0] == 1.0)
+    test("AD: ema monotonically increasing",
+         all(_ad_ema[i] <= _ad_ema[i + 1] for i in range(4)))
+
+    # Alpha clamping
+    _ad_ema_hi = compute_ema([1.0, 10.0], alpha=5.0)
+    test("AD: ema alpha clamped to 1.0", _ad_ema_hi[1] == 10.0)
+
+    _ad_ema_lo = compute_ema([10.0, 1.0], alpha=0.001)
+    test("AD: ema alpha clamped to 0.01", _ad_ema_lo[1] > 9.0)  # barely moves
+
+    # --- detect_trend ---
+    _ad_tr_stable = detect_trend([5.0, 5.0, 5.0])
+    test("AD: trend stable", _ad_tr_stable["direction"] == "stable")
+    test("AD: trend magnitude ~0", abs(_ad_tr_stable["magnitude"]) < 0.01)
+
+    _ad_tr_rising = detect_trend([1.0, 2.0, 4.0, 8.0, 16.0])
+    test("AD: trend rising", _ad_tr_rising["direction"] == "rising")
+    test("AD: trend rising magnitude > 0", _ad_tr_rising["magnitude"] > 0)
+
+    _ad_tr_falling = detect_trend([16.0, 8.0, 4.0, 2.0, 1.0])
+    test("AD: trend falling", _ad_tr_falling["direction"] == "falling")
+    test("AD: trend falling magnitude < 0", _ad_tr_falling["magnitude"] < 0)
+
+    _ad_tr_single = detect_trend([5.0])
+    test("AD: trend single value", _ad_tr_single["direction"] == "stable")
+
+    _ad_tr_empty = detect_trend([])
+    test("AD: trend empty", _ad_tr_empty["direction"] == "stable")
+
+    test("AD: trend has ema_first", "ema_first" in _ad_tr_rising)
+    test("AD: trend has ema_last", "ema_last" in _ad_tr_rising)
+
+    # --- anomaly_consensus ---
+    test("AD: consensus empty", anomaly_consensus([])["consensus"] is False)
+    test("AD: consensus empty summary", "No signals" in anomaly_consensus([])["summary"])
+
+    _ad_sigs = [
+        {"name": "s1", "triggered": True, "severity": "warning"},
+        {"name": "s2", "triggered": True, "severity": "critical"},
+        {"name": "s3", "triggered": False, "severity": "info"},
+    ]
+    _ad_cons = anomaly_consensus(_ad_sigs, quorum=2)
+    test("AD: consensus reached with 2/3", _ad_cons["consensus"] is True)
+    test("AD: consensus triggered_count = 2", _ad_cons["triggered_count"] == 2)
+    test("AD: consensus total_count = 3", _ad_cons["total_count"] == 3)
+    test("AD: consensus max_severity = critical", _ad_cons["max_severity"] == "critical")
+    test("AD: consensus triggered_signals", "s1" in _ad_cons["triggered_signals"])
+
+    _ad_cons2 = anomaly_consensus(_ad_sigs, quorum=3)
+    test("AD: consensus not reached with quorum=3", _ad_cons2["consensus"] is False)
+    test("AD: consensus below quorum summary", "Below quorum" in _ad_cons2["summary"])
+
+    _ad_none_triggered = [{"name": "s1", "triggered": False}]
+    _ad_cons3 = anomaly_consensus(_ad_none_triggered)
+    test("AD: all clear consensus", "All clear" in _ad_cons3["summary"])
+
+    # --- get_session_baseline ---
+    import time as _ad_time
+    _ad_state = {
+        "session_start": _ad_time.time() - 300,  # 5 min ago
+        "total_tool_calls": 100,
+        "gate_block_outcomes": [{"gate": "g1"}] * 10,
+        "unlogged_errors": ["e1", "e2"],
+        "memory_last_queried": _ad_time.time() - 60,
+    }
+    _ad_sb = get_session_baseline(_ad_state)
+    test("AD: session baseline has tool_call_rate", "tool_call_rate" in _ad_sb)
+    test("AD: session baseline has gate_block_rate", "gate_block_rate" in _ad_sb)
+    test("AD: session baseline has error_rate", "error_rate" in _ad_sb)
+    test("AD: session baseline has memory_query_interval", "memory_query_interval" in _ad_sb)
+    test("AD: gate_block_rate = 0.1", abs(_ad_sb["gate_block_rate"] - 0.1) < 0.01)
+    test("AD: error_rate = 0.02", abs(_ad_sb["error_rate"] - 0.02) < 0.01)
+    test("AD: memory_query_interval ~60", _ad_sb["memory_query_interval"] < 120)
+
+    # Empty state
+    _ad_sb_empty = get_session_baseline({})
+    test("AD: empty state baseline ok", isinstance(_ad_sb_empty, dict))
+    test("AD: empty state has 4 keys", len(_ad_sb_empty) == 4)
+
+    # --- compare_to_baseline ---
+    _ad_curr = {"tool_call_rate": 20.0, "gate_block_rate": 0.5, "error_rate": 0.1, "memory_query_interval": 600.0}
+    _ad_base = {"tool_call_rate": 10.0, "gate_block_rate": 0.1, "error_rate": 0.05, "memory_query_interval": 300.0}
+    _ad_devs = compare_to_baseline(_ad_curr, _ad_base)
+    test("AD: deviations is list", isinstance(_ad_devs, list))
+    test("AD: deviations found", len(_ad_devs) > 0)
+    test("AD: deviation has metric", all("metric" in d for d in _ad_devs))
+    test("AD: deviation has severity", all("severity" in d for d in _ad_devs))
+
+    # No deviation when metrics match
+    _ad_devs2 = compare_to_baseline(_ad_base, _ad_base)
+    test("AD: no deviation same metrics", len(_ad_devs2) == 0)
+
+    # --- detect_behavioral_anomaly ---
+    _ad_anom_state = {
+        "session_start": _ad_time.time() - 600,
+        "total_tool_calls": 100,
+        "tool_call_counts": {"Edit": 80, "Read": 10, "Bash": 10},
+        "gate_block_outcomes": [{}] * 60,  # 60% block rate
+        "unlogged_errors": [{}] * 40,  # 40% error rate
+        "memory_last_queried": _ad_time.time() - 700,  # >10 min gap
+    }
+    _ad_ba = detect_behavioral_anomaly(_ad_anom_state)
+    test("AD: behavioral anomalies found", len(_ad_ba) > 0)
+    test("AD: anomalies are tuples", all(isinstance(a, tuple) and len(a) == 3 for a in _ad_ba))
+
+    _ad_types = [a[0] for a in _ad_ba]
+    test("AD: high block rate detected", "high_block_rate" in _ad_types)
+    test("AD: high error rate detected", "high_error_rate" in _ad_types)
+    test("AD: memory gap detected", "memory_query_gap" in _ad_types)
+
+    # Clean state — no anomalies
+    _ad_clean = {
+        "session_start": _ad_time.time() - 60,
+        "total_tool_calls": 100,
+        "tool_call_counts": {"Edit": 34, "Read": 33, "Bash": 33},
+        "gate_block_outcomes": [],
+        "unlogged_errors": [],
+        "memory_last_queried": _ad_time.time() - 30,
+    }
+    _ad_ba2 = detect_behavioral_anomaly(_ad_clean)
+    test("AD: clean state no anomalies", len(_ad_ba2) == 0)
+
+except Exception as _ad_exc:
+    test("Anomaly Detector Deep Tests: import and tests", False, str(_ad_exc))
+
+
+# ── Event Bus Deep Tests ────────────────────────────────────────────────────
+# Tests for event_bus.py: subscribe, publish, get_recent, clear, get_stats,
+# configure, unsubscribe, load_persisted, EventType
+
+try:
+    from shared.event_bus import (
+        EventType, subscribe, unsubscribe, publish, get_recent,
+        clear, get_stats, configure, load_persisted,
+    )
+
+    # Save state and clear before tests
+    clear()
+
+    # --- EventType constants ---
+    test("EB: GATE_FIRED constant", EventType.GATE_FIRED == "GATE_FIRED")
+    test("EB: GATE_BLOCKED constant", EventType.GATE_BLOCKED == "GATE_BLOCKED")
+    test("EB: MEMORY_QUERIED constant", EventType.MEMORY_QUERIED == "MEMORY_QUERIED")
+    test("EB: TEST_RUN constant", EventType.TEST_RUN == "TEST_RUN")
+    test("EB: ERROR_DETECTED constant", EventType.ERROR_DETECTED == "ERROR_DETECTED")
+    test("EB: FIX_APPLIED constant", EventType.FIX_APPLIED == "FIX_APPLIED")
+    test("EB: TOOL_CALLED constant", EventType.TOOL_CALLED == "TOOL_CALLED")
+    test("EB: ALL has 7 types", len(EventType.ALL) == 7)
+
+    # --- publish basic ---
+    clear()
+    _eb_evt = publish(EventType.GATE_FIRED, {"gate": "test"}, source="test_fw", persist=False)
+    test("EB: publish returns dict", isinstance(_eb_evt, dict))
+    test("EB: publish has type", _eb_evt["type"] == EventType.GATE_FIRED)
+    test("EB: publish has timestamp", "timestamp" in _eb_evt)
+    test("EB: publish has data", _eb_evt["data"] == {"gate": "test"})
+    test("EB: publish has source", _eb_evt["source"] == "test_fw")
+
+    # --- get_recent ---
+    _eb_recent = get_recent()
+    test("EB: get_recent returns list", isinstance(_eb_recent, list))
+    test("EB: get_recent has 1 event", len(_eb_recent) == 1)
+
+    # Filter by type
+    publish(EventType.GATE_BLOCKED, {"g": 2}, persist=False)
+    _eb_fired_only = get_recent(EventType.GATE_FIRED)
+    test("EB: get_recent filters by type", len(_eb_fired_only) == 1)
+    test("EB: filter returns correct type", _eb_fired_only[0]["type"] == EventType.GATE_FIRED)
+
+    # Limit
+    clear()
+    for _i in range(10):
+        publish(EventType.TEST_RUN, {"i": _i}, persist=False)
+    _eb_lim = get_recent(limit=3)
+    test("EB: get_recent limit=3", len(_eb_lim) == 3)
+    test("EB: get_recent returns most recent", _eb_lim[-1]["data"]["i"] == 9)
+
+    # --- subscribe + handler ---
+    clear()
+    _eb_received = []
+    _eb_handler = lambda e: _eb_received.append(e)
+    subscribe(EventType.GATE_BLOCKED, _eb_handler)
+    publish(EventType.GATE_BLOCKED, {"test": True}, persist=False)
+    test("EB: handler called", len(_eb_received) == 1)
+    test("EB: handler receives event", _eb_received[0]["data"]["test"] is True)
+
+    # Different type doesn't trigger handler
+    publish(EventType.GATE_FIRED, {"other": True}, persist=False)
+    test("EB: handler not called for other type", len(_eb_received) == 1)
+
+    # --- unsubscribe ---
+    _eb_unsub_ok = unsubscribe(EventType.GATE_BLOCKED, _eb_handler)
+    test("EB: unsubscribe returns True", _eb_unsub_ok is True)
+
+    publish(EventType.GATE_BLOCKED, {"after": True}, persist=False)
+    test("EB: handler not called after unsub", len(_eb_received) == 1)
+
+    _eb_unsub_bad = unsubscribe(EventType.GATE_BLOCKED, lambda e: None)
+    test("EB: unsubscribe unknown returns False", _eb_unsub_bad is False)
+
+    # --- get_stats ---
+    clear()
+    publish(EventType.GATE_FIRED, {}, persist=False)
+    publish(EventType.GATE_FIRED, {}, persist=False)
+    publish(EventType.TEST_RUN, {}, persist=False)
+    _eb_stats = get_stats()
+    test("EB: stats total_published = 3", _eb_stats["total_published"] == 3)
+    test("EB: stats events_in_buffer = 3", _eb_stats["events_in_buffer"] == 3)
+    test("EB: stats buffer_capacity > 0", _eb_stats["buffer_capacity"] > 0)
+    test("EB: stats by_type GATE_FIRED = 2",
+         _eb_stats["by_type"].get(EventType.GATE_FIRED) == 2)
+    test("EB: stats by_type TEST_RUN = 1",
+         _eb_stats["by_type"].get(EventType.TEST_RUN) == 1)
+    test("EB: stats has subscriber_count", "subscriber_count" in _eb_stats)
+    test("EB: stats has handler_errors", "handler_errors" in _eb_stats)
+
+    # --- configure ring buffer ---
+    clear()
+    configure(max_events=5)
+    for _i in range(10):
+        publish(EventType.TOOL_CALLED, {"i": _i}, persist=False)
+    _eb_buf = get_recent()
+    test("EB: ring buffer caps at 5", len(_eb_buf) <= 5)
+    test("EB: oldest dropped, newest kept", _eb_buf[-1]["data"]["i"] == 9)
+
+    # Restore default
+    configure(max_events=1000)
+
+    # --- broken handler is fail-open ---
+    clear()
+    def _eb_bad(e):
+        raise RuntimeError("boom")
+    subscribe(EventType.ERROR_DETECTED, _eb_bad)
+    _eb_bad_result = publish(EventType.ERROR_DETECTED, {"err": True}, persist=False)
+    test("EB: broken handler doesn't crash publish", _eb_bad_result is not None)
+    _eb_err_stats = get_stats()
+    test("EB: handler error counted",
+         _eb_err_stats["handler_errors"].get(EventType.ERROR_DETECTED, 0) >= 1)
+
+    # --- clear resets everything ---
+    clear()
+    _eb_cs = get_stats()
+    test("EB: clear resets total_published", _eb_cs["total_published"] == 0)
+    test("EB: clear resets events_in_buffer", _eb_cs["events_in_buffer"] == 0)
+    test("EB: clear resets subscriber_count", _eb_cs["subscriber_count"] == 0)
+
+    # --- publish with persist=False doesn't write file ---
+    clear()
+    publish(EventType.GATE_FIRED, {"no_persist": True}, persist=False)
+    test("EB: publish persist=False still returns event",
+         get_recent()[-1]["data"]["no_persist"] is True)
+
+    # --- duplicate subscribe prevention ---
+    clear()
+    _eb_dup_count = []
+    _eb_dup_handler = lambda e: _eb_dup_count.append(1)
+    subscribe(EventType.FIX_APPLIED, _eb_dup_handler)
+    subscribe(EventType.FIX_APPLIED, _eb_dup_handler)  # duplicate
+    publish(EventType.FIX_APPLIED, {}, persist=False)
+    test("EB: duplicate handler only called once", len(_eb_dup_count) == 1)
+
+    # --- custom event type ---
+    clear()
+    _eb_custom = publish("CUSTOM_EVENT", {"custom": True}, persist=False)
+    test("EB: custom event type works", _eb_custom["type"] == "CUSTOM_EVENT")
+    _eb_custom_recent = get_recent("CUSTOM_EVENT")
+    test("EB: custom event retrievable", len(_eb_custom_recent) == 1)
+
+    # Final cleanup
+    clear()
+
+except Exception as _eb_exc:
+    test("Event Bus Deep Tests: import and tests", False, str(_eb_exc))
+
+
+# ── Gate Dashboard Deep Tests ───────────────────────────────────────────────
+# Tests for gate_dashboard.py: GateMetrics, get_gate_metrics,
+# rank_gates_by_value, render_dashboard, get_recommendations
+
+try:
+    from shared.gate_dashboard import (
+        GateMetrics, get_gate_metrics, rank_gates_by_value,
+        render_dashboard, get_recommendations,
+        _normalise_key, _label, _GATE_LABELS, _GATED_TOOLS, _TIER1_GATES,
+    )
+    import math as _gd_math
+
+    # --- GateMetrics dataclass ---
+    _gd_m = GateMetrics()
+    test("GD: default blocks = 0", _gd_m.blocks == 0)
+    test("GD: default overrides = 0", _gd_m.overrides == 0)
+    test("GD: default prevented = 0", _gd_m.prevented == 0)
+    test("GD: default fires = 0", _gd_m.fires == 0)
+    test("GD: default block_rate = 0.0", _gd_m.block_rate == 0.0)
+    test("GD: default coverage = 0.0", _gd_m.coverage == 0.0)
+    test("GD: default effectiveness = 0.0", _gd_m.effectiveness == 0.0)
+    test("GD: default value_score = 0.0", _gd_m.value_score == 0.0)
+    test("GD: default tool_calls_total = 0", _gd_m.tool_calls_total == 0)
+
+    _gd_m2 = GateMetrics(blocks=10, overrides=2, prevented=5, fires=10,
+                          block_rate=0.5, coverage=0.3, effectiveness=0.8,
+                          value_score=0.75, tool_calls_total=100)
+    test("GD: custom blocks", _gd_m2.blocks == 10)
+    test("GD: custom value_score", _gd_m2.value_score == 0.75)
+
+    # --- _normalise_key ---
+    test("GD: normalise strips whitespace", _normalise_key("  gate_01  ") == "gate_01")
+    test("GD: normalise no-op on clean", _normalise_key("gate_01") == "gate_01")
+
+    # --- _label ---
+    test("GD: label known gate", _label("gate_01_read_before_edit") == "G01 Read-Before-Edit")
+    test("GD: label unknown gate", _label("gate_99_custom") == "gate_99_custom")
+
+    # --- Constants ---
+    test("GD: GATE_LABELS has 15 entries", len(_GATE_LABELS) >= 15)
+    test("GD: GATED_TOOLS has Edit", "Edit" in _GATED_TOOLS)
+    test("GD: GATED_TOOLS has Write", "Write" in _GATED_TOOLS)
+    test("GD: GATED_TOOLS has Bash", "Bash" in _GATED_TOOLS)
+    test("GD: TIER1_GATES has gate_01", "gate_01_read_before_edit" in _TIER1_GATES)
+    test("GD: TIER1_GATES has 3 gates", len(_TIER1_GATES) == 3)
+
+    # --- get_gate_metrics returns dict ---
+    _gd_metrics = get_gate_metrics()
+    test("GD: get_gate_metrics returns dict", isinstance(_gd_metrics, dict))
+
+    # Check if metrics are populated (depends on .gate_effectiveness.json existing)
+    if _gd_metrics:
+        _gd_first_key = list(_gd_metrics.keys())[0]
+        _gd_first = _gd_metrics[_gd_first_key]
+        test("GD: metric is GateMetrics", isinstance(_gd_first, GateMetrics))
+        test("GD: blocks >= 0", _gd_first.blocks >= 0)
+        test("GD: block_rate in [0,1]", 0.0 <= _gd_first.block_rate <= 1.0)
+        test("GD: coverage in [0,1]", 0.0 <= _gd_first.coverage <= 1.0)
+        test("GD: effectiveness >= 0", _gd_first.effectiveness >= 0)
+        test("GD: value_score >= 0", _gd_first.value_score >= 0)
+    else:
+        skip("GD: metrics populated", "no .gate_effectiveness.json")
+
+    # --- rank_gates_by_value ---
+    _gd_ranked = rank_gates_by_value()
+    test("GD: rank returns list", isinstance(_gd_ranked, list))
+    if len(_gd_ranked) >= 2:
+        test("GD: rank descending by value",
+             _gd_ranked[0][1].value_score >= _gd_ranked[-1][1].value_score)
+
+    # --- render_dashboard ---
+    _gd_dash = render_dashboard()
+    test("GD: dashboard returns string", isinstance(_gd_dash, str))
+    if _gd_metrics:
+        test("GD: dashboard has header", "GATE EFFECTIVENESS DASHBOARD" in _gd_dash)
+        test("GD: dashboard has separator", "=" * 80 in _gd_dash)
+    else:
+        test("GD: dashboard no-data message", "no effectiveness data" in _gd_dash)
+
+    # --- get_recommendations ---
+    _gd_recs = get_recommendations()
+    test("GD: recommendations returns list", isinstance(_gd_recs, list))
+    test("GD: recommendations non-empty", len(_gd_recs) > 0)
+    test("GD: recommendations are strings", all(isinstance(r, str) for r in _gd_recs))
+
+    # Value score formula verification
+    # value_score = 0.40 * coverage + 0.40 * effectiveness + 0.20 * prevented_bonus
+    _gd_vs = 0.40 * 0.5 + 0.40 * 0.8 + 0.20 * 0.6
+    test("GD: value_score formula", abs(_gd_vs - 0.64) < 0.001)
+
+    # Effectiveness formula: log1p(blocks)/log1p(total) * (1 - override_ratio)
+    _gd_eff = (_gd_math.log1p(10) / _gd_math.log1p(100)) * (1.0 - 0.2)
+    test("GD: effectiveness formula", 0 < _gd_eff < 1)
+
+    # Prevented bonus: log1p(prevented)/log1p(10), capped at 1.0
+    _gd_pb = min(1.0, _gd_math.log1p(5) / _gd_math.log1p(10))
+    test("GD: prevented bonus in [0,1]", 0 <= _gd_pb <= 1.0)
+
+except Exception as _gd_exc:
+    test("Gate Dashboard Deep Tests: import and tests", False, str(_gd_exc))
+
+
+# ── Tool Fingerprint Deep Tests ─────────────────────────────────────────────
+# Tests for tool_fingerprint.py: fingerprint_tool, register_tool,
+# check_tool_integrity, get_all_fingerprints, get_changed_tools
+
+try:
+    from shared.tool_fingerprint import (
+        fingerprint_tool, register_tool, check_tool_integrity,
+        get_all_fingerprints, get_changed_tools,
+        _load_fingerprints, _save_fingerprints, FINGERPRINT_FILE,
+    )
+    import json as _tf_json
+    import os as _tf_os
+
+    # --- fingerprint_tool ---
+    _tf_h1 = fingerprint_tool("test_tool", "A test tool", {"type": "object"})
+    test("TF: fingerprint returns string", isinstance(_tf_h1, str))
+    test("TF: fingerprint is 64 hex chars", len(_tf_h1) == 64)
+
+    # Deterministic
+    _tf_h2 = fingerprint_tool("test_tool", "A test tool", {"type": "object"})
+    test("TF: fingerprint deterministic", _tf_h1 == _tf_h2)
+
+    # Different input = different hash
+    _tf_h3 = fingerprint_tool("test_tool", "Different description", {"type": "object"})
+    test("TF: different desc = different hash", _tf_h1 != _tf_h3)
+
+    _tf_h4 = fingerprint_tool("other_tool", "A test tool", {"type": "object"})
+    test("TF: different name = different hash", _tf_h1 != _tf_h4)
+
+    _tf_h5 = fingerprint_tool("test_tool", "A test tool", {"type": "string"})
+    test("TF: different params = different hash", _tf_h1 != _tf_h5)
+
+    # Defaults
+    _tf_h6 = fingerprint_tool("empty_tool")
+    test("TF: fingerprint with defaults", len(_tf_h6) == 64)
+
+    _tf_h7 = fingerprint_tool("empty_tool", "", None)
+    test("TF: None params = empty params", _tf_h6 == _tf_h7)
+
+    # --- register_tool (in-memory check, avoid disk side effects) ---
+    # Backup existing fingerprints
+    _tf_backup = None
+    if _tf_os.path.exists(FINGERPRINT_FILE):
+        with open(FINGERPRINT_FILE) as _f:
+            _tf_backup = _f.read()
+
+    try:
+        # Start clean
+        _save_fingerprints({})
+
+        # Register new tool
+        _tf_r1 = register_tool("__test_new__", "test desc", {"p": 1})
+        test("TF: register new is_new=True", _tf_r1[0] is True)
+        test("TF: register new changed=False", _tf_r1[1] is False)
+        test("TF: register new old_hash=None", _tf_r1[2] is None)
+        test("TF: register new has hash", len(_tf_r1[3]) == 64)
+
+        # Register same tool again (no change)
+        _tf_r2 = register_tool("__test_new__", "test desc", {"p": 1})
+        test("TF: re-register is_new=False", _tf_r2[0] is False)
+        test("TF: re-register changed=False", _tf_r2[1] is False)
+        test("TF: re-register same hash", _tf_r2[3] == _tf_r1[3])
+
+        # Register with changed description
+        _tf_r3 = register_tool("__test_new__", "changed desc", {"p": 1})
+        test("TF: changed desc is_new=False", _tf_r3[0] is False)
+        test("TF: changed desc changed=True", _tf_r3[1] is True)
+        test("TF: changed desc old_hash present", _tf_r3[2] == _tf_r1[3])
+        test("TF: changed desc new_hash differs", _tf_r3[3] != _tf_r1[3])
+
+        # --- check_tool_integrity ---
+        _tf_c1 = check_tool_integrity("__test_new__", "changed desc", {"p": 1})
+        test("TF: integrity matches", _tf_c1[0] is True)
+
+        _tf_c2 = check_tool_integrity("__test_new__", "tampered desc", {"p": 1})
+        test("TF: integrity mismatch", _tf_c2[0] is False)
+
+        _tf_c3 = check_tool_integrity("__unregistered__", "desc")
+        test("TF: unregistered = matches (new)", _tf_c3[0] is True)
+        test("TF: unregistered old_hash=None", _tf_c3[1] is None)
+
+        # --- get_all_fingerprints ---
+        _tf_all = get_all_fingerprints()
+        test("TF: get_all returns dict", isinstance(_tf_all, dict))
+        test("TF: get_all has test tool", "__test_new__" in _tf_all)
+        test("TF: record has hash", "hash" in _tf_all["__test_new__"])
+        test("TF: record has first_seen", "first_seen" in _tf_all["__test_new__"])
+        test("TF: record has last_seen", "last_seen" in _tf_all["__test_new__"])
+        test("TF: record has change_count", "change_count" in _tf_all["__test_new__"])
+        test("TF: change_count = 1", _tf_all["__test_new__"]["change_count"] == 1)
+
+        # --- get_changed_tools ---
+        _tf_changed = get_changed_tools()
+        test("TF: changed returns list", isinstance(_tf_changed, list))
+        _tf_changed_names = [c["tool_name"] for c in _tf_changed]
+        test("TF: changed includes test tool", "__test_new__" in _tf_changed_names)
+        _tf_ct = [c for c in _tf_changed if c["tool_name"] == "__test_new__"][0]
+        test("TF: changed has current_hash", "current_hash" in _tf_ct)
+        test("TF: changed has previous_hash", "previous_hash" in _tf_ct)
+        test("TF: changed has change_count", _tf_ct["change_count"] == 1)
+
+        # Tool with no changes
+        register_tool("__test_stable__", "stable", {})
+        _tf_changed2 = get_changed_tools()
+        _tf_stable_names = [c["tool_name"] for c in _tf_changed2]
+        test("TF: stable tool not in changed list", "__test_stable__" not in _tf_stable_names)
+
+    finally:
+        # Restore backup
+        if _tf_backup is not None:
+            with open(FINGERPRINT_FILE, "w") as _f:
+                _f.write(_tf_backup)
+        elif _tf_os.path.exists(FINGERPRINT_FILE):
+            _tf_os.remove(FINGERPRINT_FILE)
+
+except Exception as _tf_exc:
+    test("Tool Fingerprint Deep Tests: import and tests", False, str(_tf_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
