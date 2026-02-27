@@ -27972,6 +27972,1153 @@ except Exception as _sm_exc:
     test("SM: state_migrator module-level tests", False, str(_sm_exc))
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AD: anomaly_detector tests
+# ═══════════════════════════════════════════════════════════════════════════════
+try:
+    import math as _math
+    from shared.anomaly_detector import (
+        compute_baseline,
+        _stddev,
+        detect_anomalies,
+        detect_stuck_loop,
+        should_escalate,
+        check_tool_dominance,
+        get_session_baseline,
+        compare_to_baseline,
+        detect_behavioral_anomaly,
+        compute_ema,
+        detect_trend,
+        anomaly_consensus,
+        _TOOL_RATE_SIGMA_THRESHOLD,
+        _TOOL_DOMINANCE_RATIO,
+        _BLOCK_RATE_HIGH_THRESHOLD,
+        _ERROR_RATE_HIGH_THRESHOLD,
+        _MEMORY_GAP_SECONDS,
+        _DEFAULT_EMA_ALPHA,
+    )
+
+    # ── compute_baseline ──────────────────────────────────────────────────────
+
+    test("AD: compute_baseline empty history returns {}",
+         compute_baseline([]) == {})
+
+    test("AD: compute_baseline single snapshot returns same rates",
+         compute_baseline([{"gate1": 2.0, "gate2": 4.0}]) == {"gate1": 2.0, "gate2": 4.0})
+
+    _ad_hist = [{"gate1": 2.0, "gate2": 4.0}, {"gate1": 4.0, "gate2": 2.0}]
+    _ad_bl = compute_baseline(_ad_hist)
+    test("AD: compute_baseline averages two snapshots gate1",
+         abs(_ad_bl["gate1"] - 3.0) < 1e-9)
+    test("AD: compute_baseline averages two snapshots gate2",
+         abs(_ad_bl["gate2"] - 3.0) < 1e-9)
+
+    _ad_hist3 = [{"g": float(i)} for i in range(20)]
+    _ad_bl3 = compute_baseline(_ad_hist3, window=5)
+    # window=5 → last 5 items are g=15..19, mean = (15+16+17+18+19)/5 = 17.0
+    test("AD: compute_baseline window=5 uses last 5 entries",
+         abs(_ad_bl3["g"] - 17.0) < 1e-9)
+
+    # gate absent from some snapshots treated as 0
+    _ad_sparse = [{"gate1": 3.0}, {"gate2": 6.0}]
+    _ad_bl4 = compute_baseline(_ad_sparse)
+    test("AD: compute_baseline absent gate treated as 0 in that snapshot (gate1)",
+         abs(_ad_bl4["gate1"] - 1.5) < 1e-9)
+    test("AD: compute_baseline absent gate treated as 0 in that snapshot (gate2)",
+         abs(_ad_bl4["gate2"] - 3.0) < 1e-9)
+
+    _ad_hist5 = [{"g": 1.0}, {"g": 2.0}, {"g": 3.0}]
+    _ad_bl5 = compute_baseline(_ad_hist5, window=2)
+    # window=2 → last 2 snapshots: g=2, g=3 → mean=2.5
+    test("AD: compute_baseline window < len uses last window entries",
+         abs(_ad_bl5["g"] - 2.5) < 1e-9)
+
+    # ── _stddev ───────────────────────────────────────────────────────────────
+
+    test("AD: _stddev empty list returns 0.0",
+         _stddev([]) == 0.0)
+    test("AD: _stddev single value returns 0.0",
+         _stddev([42.0]) == 0.0)
+    test("AD: _stddev all zeros returns 0.0",
+         _stddev([0.0, 0.0, 0.0]) == 0.0)
+    test("AD: _stddev [1,2,3] ~0.816",
+         abs(_stddev([1.0, 2.0, 3.0]) - _math.sqrt(2/3)) < 1e-9)
+    test("AD: _stddev [2,2,2,2] returns 0.0",
+         _stddev([2.0, 2.0, 2.0, 2.0]) == 0.0)
+    test("AD: _stddev [0,4] returns 2.0",
+         abs(_stddev([0.0, 4.0]) - 2.0) < 1e-9)
+
+    # ── detect_anomalies ──────────────────────────────────────────────────────
+
+    test("AD: detect_anomalies empty baseline returns []",
+         detect_anomalies({"g": 10.0}, {}) == [])
+
+    # All gates at same baseline → no anomaly since threshold == mean (std=0 → inf threshold)
+    _ad_curr1 = {"g1": 5.0, "g2": 5.0}
+    _ad_base1 = {"g1": 5.0, "g2": 5.0}
+    test("AD: detect_anomalies no anomaly when equal to baseline",
+         detect_anomalies(_ad_curr1, _ad_base1, threshold_sigma=2.0) == [])
+
+    # One gate clearly above threshold
+    _ad_base2 = {"g1": 1.0, "g2": 1.0, "g3": 1.0}
+    _ad_curr2 = {"g1": 20.0, "g2": 1.0, "g3": 1.0}
+    _ad_anoms = detect_anomalies(_ad_curr2, _ad_base2, threshold_sigma=2.0)
+    test("AD: detect_anomalies detects one anomalous gate",
+         len(_ad_anoms) == 1 and _ad_anoms[0]["gate"] == "g1")
+    test("AD: detect_anomalies anomaly dict has all required keys",
+         all(k in _ad_anoms[0] for k in ("gate", "current_rate", "baseline_rate", "delta", "sigma")))
+    test("AD: detect_anomalies anomaly delta is current minus baseline",
+         abs(_ad_anoms[0]["delta"] - 19.0) < 1e-9)
+
+    # Result sorted by delta descending
+    _ad_base3 = {"g1": 1.0, "g2": 1.0, "g3": 1.0}
+    _ad_curr3 = {"g1": 15.0, "g2": 25.0, "g3": 1.0}
+    _ad_anoms3 = detect_anomalies(_ad_curr3, _ad_base3, threshold_sigma=2.0)
+    test("AD: detect_anomalies results sorted delta desc",
+         len(_ad_anoms3) >= 2 and _ad_anoms3[0]["delta"] >= _ad_anoms3[1]["delta"])
+
+    # Gate not in baseline treated as 0 baseline
+    _ad_curr4 = {"new_gate": 30.0}
+    _ad_base4 = {"g1": 1.0, "g2": 1.0}
+    _ad_anoms4 = detect_anomalies(_ad_curr4, _ad_base4, threshold_sigma=2.0)
+    test("AD: detect_anomalies gate not in baseline uses 0 as baseline rate",
+         len(_ad_anoms4) > 0 and _ad_anoms4[0]["baseline_rate"] == 0.0)
+
+    # ── detect_stuck_loop ─────────────────────────────────────────────────────
+
+    test("AD: detect_stuck_loop empty list returns None",
+         detect_stuck_loop([]) is None)
+    test("AD: detect_stuck_loop dominant gate >70% returns gate name",
+         detect_stuck_loop(["gate1"] * 8 + ["gate2"] * 2, window=10, threshold=0.7) == "gate1")
+    test("AD: detect_stuck_loop exactly at threshold returns gate",
+         detect_stuck_loop(["gate1"] * 7 + ["gate3"] * 3, window=10, threshold=0.7) == "gate1")
+    test("AD: detect_stuck_loop below threshold returns None",
+         detect_stuck_loop(["gate1"] * 6 + ["gate2"] * 4, window=10, threshold=0.7) is None)
+    test("AD: detect_stuck_loop uses last window entries only",
+         detect_stuck_loop(["other"] * 100 + ["stuck"] * 9 + ["x"] * 1,
+                           window=10, threshold=0.7) == "stuck")
+    test("AD: detect_stuck_loop single gate always returns it",
+         detect_stuck_loop(["g"] * 5) == "g")
+
+    # ── should_escalate ───────────────────────────────────────────────────────
+
+    _se_no_anoms, _ = should_escalate([], None)
+    test("AD: should_escalate no anomalies no stuck returns False",
+         _se_no_anoms is False)
+
+    _se_stuck, _se_msg = should_escalate([], "gate7")
+    test("AD: should_escalate stuck_gate triggers escalation",
+         _se_stuck is True)
+    test("AD: should_escalate stuck_gate message mentions gate name",
+         "gate7" in _se_msg)
+
+    _se_many_anoms = [{"gate": f"g{i}", "delta": 1.0, "sigma": 2.5} for i in range(3)]
+    _se_many, _se_many_msg = should_escalate(_se_many_anoms, None)
+    test("AD: should_escalate 3+ anomalies triggers escalation",
+         _se_many is True)
+
+    _se_big_delta = [{"gate": "g1", "delta": 6.0, "sigma": 4.0}]
+    _se_big, _se_big_msg = should_escalate(_se_big_delta, None)
+    test("AD: should_escalate large delta >=5 triggers escalation",
+         _se_big is True)
+    test("AD: should_escalate large delta message mentions gate",
+         "g1" in _se_big_msg)
+
+    _se_small, _ = should_escalate([{"gate": "g1", "delta": 2.0, "sigma": 2.5}], None)
+    test("AD: should_escalate 1 anomaly small delta does not escalate",
+         _se_small is False)
+
+    _se_two, _ = should_escalate([{"gate": f"g{i}", "delta": 1.0} for i in range(2)], None)
+    test("AD: should_escalate 2 anomalies < 3 does not escalate",
+         _se_two is False)
+
+    # ── check_tool_dominance ──────────────────────────────────────────────────
+
+    test("AD: check_tool_dominance empty dict returns None",
+         check_tool_dominance({}) is None)
+    test("AD: check_tool_dominance all zeros returns None",
+         check_tool_dominance({"Bash": 0, "Read": 0}) is None)
+
+    _ctd_dom = check_tool_dominance({"Bash": 80, "Read": 10, "Edit": 10})
+    test("AD: check_tool_dominance dominant tool detected",
+         _ctd_dom is not None and _ctd_dom["tool"] == "Bash")
+    test("AD: check_tool_dominance ratio correct",
+         _ctd_dom is not None and abs(_ctd_dom["ratio"] - 0.8) < 1e-9)
+    test("AD: check_tool_dominance total correct",
+         _ctd_dom is not None and _ctd_dom["total"] == 100)
+
+    _ctd_even = check_tool_dominance({"Bash": 50, "Read": 50})
+    test("AD: check_tool_dominance even split returns None",
+         _ctd_even is None)
+
+    # Exactly at threshold (not strictly above) → None
+    _ctd_edge = check_tool_dominance({"Bash": 70, "Read": 30})
+    test("AD: check_tool_dominance exactly 70% not above threshold returns None",
+         _ctd_edge is None)
+
+    _ctd_one = check_tool_dominance({"OnlyTool": 5})
+    test("AD: check_tool_dominance single tool returns dominant",
+         _ctd_one is not None and _ctd_one["tool"] == "OnlyTool")
+
+    # ── compute_ema ───────────────────────────────────────────────────────────
+
+    test("AD: compute_ema empty list returns []",
+         compute_ema([]) == [])
+    test("AD: compute_ema single value returns same value",
+         compute_ema([7.0]) == [7.0])
+
+    _ema_vals = compute_ema([1.0, 1.0, 1.0, 1.0], alpha=0.5)
+    test("AD: compute_ema constant sequence stays constant",
+         all(abs(v - 1.0) < 1e-9 for v in _ema_vals))
+
+    _ema2 = compute_ema([0.0, 10.0], alpha=0.5)
+    test("AD: compute_ema length equals input length",
+         len(_ema2) == 2)
+    # second value = 0.5*10 + 0.5*0 = 5.0
+    test("AD: compute_ema second value correct for alpha=0.5",
+         abs(_ema2[1] - 5.0) < 1e-9)
+
+    # alpha clamped to [0.01, 1.0]
+    _ema_low = compute_ema([1.0, 2.0], alpha=0.0)
+    test("AD: compute_ema alpha clamped to 0.01 minimum",
+         len(_ema_low) == 2)
+
+    _ema_high = compute_ema([1.0, 10.0], alpha=2.0)
+    test("AD: compute_ema alpha clamped to 1.0 maximum (second val == input)",
+         abs(_ema_high[1] - 10.0) < 1e-9)
+
+    # ── detect_trend ──────────────────────────────────────────────────────────
+
+    test("AD: detect_trend empty list returns stable direction",
+         detect_trend([])["direction"] == "stable")
+    test("AD: detect_trend single value returns stable",
+         detect_trend([5.0])["direction"] == "stable")
+    test("AD: detect_trend single value magnitude is 0",
+         detect_trend([5.0])["magnitude"] == 0.0)
+
+    _td_rising = detect_trend([1.0, 2.0, 4.0, 8.0, 16.0], alpha=0.9, threshold=0.2)
+    test("AD: detect_trend rising sequence detected as rising",
+         _td_rising["direction"] == "rising")
+
+    _td_falling = detect_trend([16.0, 8.0, 4.0, 2.0, 1.0], alpha=0.9, threshold=0.2)
+    test("AD: detect_trend falling sequence detected as falling",
+         _td_falling["direction"] == "falling")
+
+    _td_flat = detect_trend([5.0, 5.01, 4.99, 5.0, 5.0], alpha=0.3, threshold=0.2)
+    test("AD: detect_trend flat sequence detected as stable",
+         _td_flat["direction"] == "stable")
+
+    _td_result = detect_trend([1.0, 2.0, 3.0])
+    test("AD: detect_trend result has required keys",
+         all(k in _td_result for k in ("direction", "magnitude", "ema_first", "ema_last")))
+
+    # ── anomaly_consensus ─────────────────────────────────────────────────────
+
+    _ac_empty = anomaly_consensus([])
+    test("AD: anomaly_consensus empty signals returns consensus=False",
+         _ac_empty["consensus"] is False)
+    test("AD: anomaly_consensus empty signals triggered_count=0",
+         _ac_empty["triggered_count"] == 0)
+    test("AD: anomaly_consensus empty signals total_count=0",
+         _ac_empty["total_count"] == 0)
+
+    _ac_sigs_all = [
+        {"name": "s1", "triggered": True, "severity": "warning"},
+        {"name": "s2", "triggered": True, "severity": "critical"},
+        {"name": "s3", "triggered": True, "severity": "info"},
+    ]
+    _ac_all = anomaly_consensus(_ac_sigs_all, quorum=2)
+    test("AD: anomaly_consensus quorum met returns consensus=True",
+         _ac_all["consensus"] is True)
+    test("AD: anomaly_consensus max_severity is critical",
+         _ac_all["max_severity"] == "critical")
+    test("AD: anomaly_consensus triggered_signals lists names",
+         set(_ac_all["triggered_signals"]) == {"s1", "s2", "s3"})
+
+    _ac_sigs_none = [
+        {"name": "s1", "triggered": False, "severity": "warning"},
+        {"name": "s2", "triggered": False, "severity": "critical"},
+    ]
+    _ac_none = anomaly_consensus(_ac_sigs_none, quorum=2)
+    test("AD: anomaly_consensus none triggered returns consensus=False",
+         _ac_none["consensus"] is False)
+    test("AD: anomaly_consensus none triggered max_severity=info",
+         _ac_none["max_severity"] == "info")
+
+    _ac_partial = anomaly_consensus([
+        {"name": "a", "triggered": True, "severity": "info"},
+        {"name": "b", "triggered": False, "severity": "warning"},
+        {"name": "c", "triggered": False, "severity": "warning"},
+    ], quorum=2)
+    test("AD: anomaly_consensus below quorum returns consensus=False",
+         _ac_partial["consensus"] is False)
+    test("AD: anomaly_consensus below quorum triggered_count=1",
+         _ac_partial["triggered_count"] == 1)
+
+    _ac_exact = anomaly_consensus([
+        {"name": "x", "triggered": True, "severity": "warning"},
+        {"name": "y", "triggered": True, "severity": "info"},
+    ], quorum=2)
+    test("AD: anomaly_consensus exactly at quorum triggers consensus",
+         _ac_exact["consensus"] is True)
+
+    # ── constants ─────────────────────────────────────────────────────────────
+
+    test("AD: _TOOL_RATE_SIGMA_THRESHOLD == 3.0",
+         _TOOL_RATE_SIGMA_THRESHOLD == 3.0)
+    test("AD: _TOOL_DOMINANCE_RATIO == 0.7",
+         _TOOL_DOMINANCE_RATIO == 0.7)
+    test("AD: _BLOCK_RATE_HIGH_THRESHOLD == 0.5",
+         _BLOCK_RATE_HIGH_THRESHOLD == 0.5)
+    test("AD: _ERROR_RATE_HIGH_THRESHOLD == 0.3",
+         _ERROR_RATE_HIGH_THRESHOLD == 0.3)
+    test("AD: _MEMORY_GAP_SECONDS == 600",
+         _MEMORY_GAP_SECONDS == 600)
+    test("AD: _DEFAULT_EMA_ALPHA == 0.3",
+         _DEFAULT_EMA_ALPHA == 0.3)
+
+    # ── get_session_baseline ──────────────────────────────────────────────────
+
+    import time as _time_mod
+    _ad_now = _time_mod.time()
+    _ad_state_clean = {
+        "session_start": _ad_now - 120.0,
+        "total_tool_calls": 10,
+        "gate_block_outcomes": [],
+        "unlogged_errors": [],
+        "memory_last_queried": _ad_now - 30.0,
+    }
+    _ad_gsb = get_session_baseline(_ad_state_clean)
+    test("AD: get_session_baseline returns dict with required keys",
+         all(k in _ad_gsb for k in ("tool_call_rate", "gate_block_rate", "error_rate", "memory_query_interval")))
+    test("AD: get_session_baseline block_rate is 0 with no blocks",
+         _ad_gsb["gate_block_rate"] == 0.0)
+    test("AD: get_session_baseline error_rate is 0 with no errors",
+         _ad_gsb["error_rate"] == 0.0)
+    test("AD: get_session_baseline memory_query_interval ~30s",
+         abs(_ad_gsb["memory_query_interval"] - 30.0) < 2.0)
+    test("AD: get_session_baseline tool_call_rate > 0",
+         _ad_gsb["tool_call_rate"] > 0.0)
+
+    _ad_state_blocks = {
+        "session_start": _ad_now - 60.0,
+        "total_tool_calls": 10,
+        "gate_block_outcomes": [{}] * 4,
+        "unlogged_errors": [{}] * 2,
+        "memory_last_queried": 0.0,
+    }
+    _ad_gsb2 = get_session_baseline(_ad_state_blocks)
+    test("AD: get_session_baseline block_rate correct fraction",
+         abs(_ad_gsb2["gate_block_rate"] - 0.4) < 1e-9)
+    test("AD: get_session_baseline error_rate correct fraction",
+         abs(_ad_gsb2["error_rate"] - 0.2) < 1e-9)
+    # memory_last_queried=0 → interval == elapsed_seconds (~60s)
+    test("AD: get_session_baseline memory never queried uses elapsed",
+         _ad_gsb2["memory_query_interval"] > 55.0)
+
+    # ── compare_to_baseline ───────────────────────────────────────────────────
+
+    _ad_curr_m = {"tool_call_rate": 2.0, "gate_block_rate": 0.0, "error_rate": 0.0, "memory_query_interval": 60.0}
+    _ad_base_m = {"tool_call_rate": 1.0, "gate_block_rate": 0.0, "error_rate": 0.0, "memory_query_interval": 60.0}
+    _ad_devs = compare_to_baseline(_ad_curr_m, _ad_base_m)
+    # tool_call_rate changed by 100% relative, threshold is 50% → should flag
+    _ad_devs_metrics = [d["metric"] for d in _ad_devs]
+    test("AD: compare_to_baseline detects tool_call_rate spike",
+         "tool_call_rate" in _ad_devs_metrics)
+
+    _ad_same_m = {"tool_call_rate": 1.0, "gate_block_rate": 0.05, "error_rate": 0.05, "memory_query_interval": 60.0}
+    _ad_no_devs = compare_to_baseline(_ad_same_m, _ad_same_m)
+    test("AD: compare_to_baseline no deviations when metrics are same",
+         _ad_no_devs == [])
+
+    _ad_block_curr = {"tool_call_rate": 1.0, "gate_block_rate": 0.9, "error_rate": 0.0, "memory_query_interval": 60.0}
+    _ad_block_base = {"tool_call_rate": 1.0, "gate_block_rate": 0.0, "error_rate": 0.0, "memory_query_interval": 60.0}
+    _ad_block_devs = compare_to_baseline(_ad_block_curr, _ad_block_base)
+    _ad_block_dev_objs = [d for d in _ad_block_devs if d["metric"] == "gate_block_rate"]
+    test("AD: compare_to_baseline gate_block_rate deviation has critical severity",
+         len(_ad_block_dev_objs) > 0 and _ad_block_dev_objs[0]["severity"] == "critical")
+
+    # ── detect_behavioral_anomaly ─────────────────────────────────────────────
+
+    _ad_now2 = _time_mod.time()
+    _ad_normal_state = {
+        "session_start": _ad_now2 - 60.0,
+        "total_tool_calls": 20,
+        "gate_block_outcomes": [],
+        "unlogged_errors": [],
+        "memory_last_queried": _ad_now2 - 10.0,
+        "tool_call_counts": {"Read": 10, "Bash": 10},
+    }
+    _ad_norm_anoms = detect_behavioral_anomaly(_ad_normal_state)
+    test("AD: detect_behavioral_anomaly normal state no anomalies",
+         isinstance(_ad_norm_anoms, list))
+
+    _ad_gap_state = {
+        "session_start": _ad_now2 - 3600.0,
+        "total_tool_calls": 5,
+        "gate_block_outcomes": [],
+        "unlogged_errors": [],
+        "memory_last_queried": _ad_now2 - 700.0,
+        "tool_call_counts": {},
+    }
+    _ad_gap_anoms = detect_behavioral_anomaly(_ad_gap_state)
+    _ad_gap_types = [a[0] for a in _ad_gap_anoms]
+    test("AD: detect_behavioral_anomaly memory gap >600s flagged",
+         "memory_query_gap" in _ad_gap_types)
+
+    _ad_block_state = {
+        "session_start": _ad_now2 - 60.0,
+        "total_tool_calls": 10,
+        "gate_block_outcomes": [{}] * 8,
+        "unlogged_errors": [],
+        "memory_last_queried": _ad_now2 - 5.0,
+        "tool_call_counts": {},
+    }
+    _ad_block_anoms = detect_behavioral_anomaly(_ad_block_state)
+    _ad_block_types = [a[0] for a in _ad_block_anoms]
+    test("AD: detect_behavioral_anomaly high block rate flagged",
+         "high_block_rate" in _ad_block_types)
+
+    _ad_err_state = {
+        "session_start": _ad_now2 - 60.0,
+        "total_tool_calls": 10,
+        "gate_block_outcomes": [],
+        "unlogged_errors": [{}] * 5,
+        "memory_last_queried": _ad_now2 - 5.0,
+        "tool_call_counts": {},
+    }
+    _ad_err_anoms = detect_behavioral_anomaly(_ad_err_state)
+    _ad_err_types = [a[0] for a in _ad_err_anoms]
+    test("AD: detect_behavioral_anomaly high error rate flagged",
+         "high_error_rate" in _ad_err_types)
+
+    test("AD: detect_behavioral_anomaly returns list of 3-tuples",
+         all(isinstance(a, tuple) and len(a) == 3 for a in _ad_gap_anoms))
+
+except Exception as _ad_exc:
+    test("AD: anomaly_detector module-level tests", False, str(_ad_exc))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CR2: capability_registry tests
+# ═══════════════════════════════════════════════════════════════════════════════
+try:
+    from shared.capability_registry import (
+        AGENT_CAPABILITIES,
+        TASK_REQUIREMENTS,
+        AGENT_ACLS,
+        _MODEL_IDS,
+        _DESTRUCTIVE_BASH_PATTERNS,
+        match_agent,
+        recommend_model,
+        get_agent_info,
+        define_agent_acl,
+        check_agent_permission,
+        get_agent_acl,
+    )
+
+    # ── AGENT_CAPABILITIES ────────────────────────────────────────────────────
+
+    test("CR2: AGENT_CAPABILITIES is a non-empty dict",
+         isinstance(AGENT_CAPABILITIES, dict) and len(AGENT_CAPABILITIES) > 0)
+
+    _cr2_required_agent_keys = {"description", "skills", "preferred_model", "max_complexity", "can_delegate"}
+    test("CR2: all AGENT_CAPABILITIES entries have required keys",
+         all(_cr2_required_agent_keys.issubset(v.keys()) for v in AGENT_CAPABILITIES.values()))
+
+    test("CR2: AGENT_CAPABILITIES contains builder",
+         "builder" in AGENT_CAPABILITIES)
+    test("CR2: AGENT_CAPABILITIES contains researcher",
+         "researcher" in AGENT_CAPABILITIES)
+    test("CR2: AGENT_CAPABILITIES contains auditor",
+         "auditor" in AGENT_CAPABILITIES)
+    test("CR2: AGENT_CAPABILITIES contains explorer",
+         "explorer" in AGENT_CAPABILITIES)
+    test("CR2: AGENT_CAPABILITIES contains team-lead",
+         "team-lead" in AGENT_CAPABILITIES)
+
+    test("CR2: all agents have list skills",
+         all(isinstance(v["skills"], list) for v in AGENT_CAPABILITIES.values()))
+    test("CR2: all agents have int max_complexity",
+         all(isinstance(v["max_complexity"], int) for v in AGENT_CAPABILITIES.values()))
+    test("CR2: all agents have bool can_delegate",
+         all(isinstance(v["can_delegate"], bool) for v in AGENT_CAPABILITIES.values()))
+    test("CR2: all agents preferred_model is valid tier",
+         all(v["preferred_model"] in _MODEL_IDS for v in AGENT_CAPABILITIES.values()))
+
+    # ── TASK_REQUIREMENTS ─────────────────────────────────────────────────────
+
+    test("CR2: TASK_REQUIREMENTS is a non-empty dict",
+         isinstance(TASK_REQUIREMENTS, dict) and len(TASK_REQUIREMENTS) > 0)
+    test("CR2: TASK_REQUIREMENTS has bug-fix",
+         "bug-fix" in TASK_REQUIREMENTS)
+    test("CR2: TASK_REQUIREMENTS has research",
+         "research" in TASK_REQUIREMENTS)
+    test("CR2: TASK_REQUIREMENTS has feature-implementation",
+         "feature-implementation" in TASK_REQUIREMENTS)
+    test("CR2: TASK_REQUIREMENTS has security-audit",
+         "security-audit" in TASK_REQUIREMENTS)
+    test("CR2: TASK_REQUIREMENTS has orchestration",
+         "orchestration" in TASK_REQUIREMENTS)
+
+    _cr2_required_task_keys = {"required_skills", "min_complexity", "preferred_agents"}
+    test("CR2: all TASK_REQUIREMENTS entries have required keys",
+         all(_cr2_required_task_keys.issubset(v.keys()) for v in TASK_REQUIREMENTS.values()))
+
+    # ── match_agent ───────────────────────────────────────────────────────────
+
+    test("CR2: match_agent bug-fix returns builder",
+         match_agent("bug-fix") == "builder")
+    test("CR2: match_agent research returns researcher",
+         match_agent("research") == "researcher")
+    test("CR2: match_agent unknown task returns None",
+         match_agent("unknown-task-type-xyz") is None)
+    test("CR2: match_agent orchestration returns team-lead",
+         match_agent("orchestration") == "team-lead")
+
+    # exclude first preference → falls to second
+    test("CR2: match_agent bug-fix exclude builder returns non-builder",
+         match_agent("bug-fix", exclude=["builder"]) != "builder")
+    test("CR2: match_agent bug-fix exclude builder returns valid agent or None",
+         match_agent("bug-fix", exclude=["builder"]) in (list(AGENT_CAPABILITIES.keys()) + [None]))
+
+    # exclude all → returns None
+    _cr2_all_agents = list(AGENT_CAPABILITIES.keys())
+    test("CR2: match_agent exclude all agents returns None",
+         match_agent("bug-fix", exclude=_cr2_all_agents) is None)
+
+    test("CR2: match_agent code-review returns code-reviewer",
+         match_agent("code-review") == "code-reviewer")
+    test("CR2: match_agent test-generation returns test-writer",
+         match_agent("test-generation") == "test-writer")
+
+    # ── recommend_model ───────────────────────────────────────────────────────
+
+    test("CR2: recommend_model builder returns sonnet ID",
+         recommend_model("builder") == _MODEL_IDS["sonnet"])
+    test("CR2: recommend_model researcher returns haiku ID",
+         recommend_model("researcher") == _MODEL_IDS["haiku"])
+    test("CR2: recommend_model team-lead returns opus ID",
+         recommend_model("team-lead") == _MODEL_IDS["opus"])
+    test("CR2: recommend_model unknown returns sonnet fallback",
+         recommend_model("nonexistent-agent") == _MODEL_IDS["sonnet"])
+    test("CR2: recommend_model auditor returns sonnet ID",
+         recommend_model("auditor") == _MODEL_IDS["sonnet"])
+
+    # ── get_agent_info ────────────────────────────────────────────────────────
+
+    _cr2_builder_info = get_agent_info("builder")
+    test("CR2: get_agent_info builder returns dict",
+         isinstance(_cr2_builder_info, dict))
+    test("CR2: get_agent_info builder has model_id key",
+         "model_id" in _cr2_builder_info)
+    test("CR2: get_agent_info builder model_id is sonnet",
+         _cr2_builder_info["model_id"] == _MODEL_IDS["sonnet"])
+    test("CR2: get_agent_info builder has skills list",
+         isinstance(_cr2_builder_info.get("skills"), list))
+
+    test("CR2: get_agent_info unknown returns None",
+         get_agent_info("nonexistent-agent-xyz") is None)
+
+    _cr2_researcher_info = get_agent_info("researcher")
+    test("CR2: get_agent_info researcher has can_delegate=False",
+         _cr2_researcher_info["can_delegate"] is False)
+    test("CR2: get_agent_info team-lead has can_delegate=True",
+         get_agent_info("team-lead")["can_delegate"] is True)
+
+    # ── check_agent_permission ────────────────────────────────────────────────
+
+    test("CR2: check_agent_permission explorer Read returns True",
+         check_agent_permission("explorer", "Read") is True)
+    test("CR2: check_agent_permission explorer Glob returns True",
+         check_agent_permission("explorer", "Glob") is True)
+    test("CR2: check_agent_permission explorer Grep returns True",
+         check_agent_permission("explorer", "Grep") is True)
+    test("CR2: check_agent_permission explorer Edit returns False",
+         check_agent_permission("explorer", "Edit") is False)
+    test("CR2: check_agent_permission explorer Bash returns False",
+         check_agent_permission("explorer", "Bash") is False)
+    test("CR2: check_agent_permission explorer Write returns False",
+         check_agent_permission("explorer", "Write") is False)
+
+    test("CR2: check_agent_permission unknown agent returns False",
+         check_agent_permission("unknown-agent-xyz", "Read") is False)
+
+    # builder has allowed_tools=["*"] so all tools pass
+    test("CR2: check_agent_permission builder Bash returns True",
+         check_agent_permission("builder", "Bash") is True)
+    test("CR2: check_agent_permission builder Edit returns True",
+         check_agent_permission("builder", "Edit") is True)
+
+    # destructive bash guard: file_path containing "rm -rf" should be denied
+    test("CR2: check_agent_permission builder Bash destructive pattern denied",
+         check_agent_permission("builder", "Bash", "rm -rf /") is False)
+    test("CR2: check_agent_permission builder Bash dd if= denied",
+         check_agent_permission("builder", "Bash", "dd if=/dev/zero of=/dev/sda") is False)
+
+    # researcher can't edit
+    test("CR2: check_agent_permission researcher Edit returns False",
+         check_agent_permission("researcher", "Edit") is False)
+    test("CR2: check_agent_permission researcher Read returns True",
+         check_agent_permission("researcher", "Read") is True)
+
+    # auditor can run Bash but cannot Edit
+    test("CR2: check_agent_permission auditor Bash returns True",
+         check_agent_permission("auditor", "Bash") is True)
+    test("CR2: check_agent_permission auditor Edit returns False",
+         check_agent_permission("auditor", "Edit") is False)
+
+    # team-lead cannot Edit (in denied_tools)
+    test("CR2: check_agent_permission team-lead Edit returns False",
+         check_agent_permission("team-lead", "Edit") is False)
+
+    # test-writer path restriction: allowed_paths are test paths
+    test("CR2: check_agent_permission test-writer Write on test file returns True",
+         check_agent_permission("test-writer", "Write", "test_foo.py") is True)
+    test("CR2: check_agent_permission test-writer Write on non-test file returns False",
+         check_agent_permission("test-writer", "Write", "src/main.py") is False)
+
+    # ── define_agent_acl / get_agent_acl ─────────────────────────────────────
+
+    # Register a brand-new agent type
+    define_agent_acl(
+        "test-custom-agent",
+        allowed_tools=["Read"],
+        denied_tools=["Bash"],
+        allowed_paths=["/tmp/*"],
+    )
+    _cr2_custom_acl = get_agent_acl("test-custom-agent")
+    test("CR2: define_agent_acl registers new agent type",
+         _cr2_custom_acl is not None)
+    test("CR2: get_agent_acl custom agent has allowed_tools",
+         _cr2_custom_acl.get("allowed_tools") == ["Read"])
+    test("CR2: get_agent_acl custom agent has denied_tools",
+         _cr2_custom_acl.get("denied_tools") == ["Bash"])
+    test("CR2: check_agent_permission custom agent Read /tmp allowed",
+         check_agent_permission("test-custom-agent", "Read", "/tmp/foo.txt") is True)
+    test("CR2: check_agent_permission custom agent Read outside path denied",
+         check_agent_permission("test-custom-agent", "Read", "/etc/passwd") is False)
+    test("CR2: check_agent_permission custom agent Bash denied",
+         check_agent_permission("test-custom-agent", "Bash") is False)
+
+    # Partial update: only override denied_tools
+    define_agent_acl("test-custom-agent", denied_tools=["Edit", "Write"])
+    _cr2_custom_acl2 = get_agent_acl("test-custom-agent")
+    test("CR2: define_agent_acl partial update merges denied_tools",
+         _cr2_custom_acl2.get("denied_tools") == ["Edit", "Write"])
+    # allowed_tools unchanged from previous define
+    test("CR2: define_agent_acl partial update preserves allowed_tools",
+         _cr2_custom_acl2.get("allowed_tools") == ["Read"])
+
+    test("CR2: get_agent_acl unknown agent returns None",
+         get_agent_acl("totally-unknown-agent-zzz") is None)
+
+    # ── _DESTRUCTIVE_BASH_PATTERNS ────────────────────────────────────────────
+
+    test("CR2: _DESTRUCTIVE_BASH_PATTERNS is a tuple",
+         isinstance(_DESTRUCTIVE_BASH_PATTERNS, tuple))
+    test("CR2: _DESTRUCTIVE_BASH_PATTERNS contains rm -rf",
+         "rm -rf" in _DESTRUCTIVE_BASH_PATTERNS)
+    test("CR2: _DESTRUCTIVE_BASH_PATTERNS contains rm -fr",
+         "rm -fr" in _DESTRUCTIVE_BASH_PATTERNS)
+    test("CR2: _DESTRUCTIVE_BASH_PATTERNS contains DROP TABLE",
+         "DROP TABLE" in _DESTRUCTIVE_BASH_PATTERNS)
+    test("CR2: _DESTRUCTIVE_BASH_PATTERNS contains mkfs",
+         "mkfs" in _DESTRUCTIVE_BASH_PATTERNS)
+    test("CR2: _DESTRUCTIVE_BASH_PATTERNS is non-empty",
+         len(_DESTRUCTIVE_BASH_PATTERNS) > 0)
+
+    # ── _MODEL_IDS ────────────────────────────────────────────────────────────
+
+    test("CR2: _MODEL_IDS has haiku tier",
+         "haiku" in _MODEL_IDS)
+    test("CR2: _MODEL_IDS has sonnet tier",
+         "sonnet" in _MODEL_IDS)
+    test("CR2: _MODEL_IDS has opus tier",
+         "opus" in _MODEL_IDS)
+    test("CR2: _MODEL_IDS sonnet contains sonnet",
+         "sonnet" in _MODEL_IDS["sonnet"])
+    test("CR2: _MODEL_IDS opus contains opus",
+         "opus" in _MODEL_IDS["opus"])
+
+    # ── AGENT_ACLS ────────────────────────────────────────────────────────────
+
+    test("CR2: AGENT_ACLS is a non-empty dict",
+         isinstance(AGENT_ACLS, dict) and len(AGENT_ACLS) > 0)
+    test("CR2: AGENT_ACLS has explorer entry",
+         "explorer" in AGENT_ACLS)
+    test("CR2: AGENT_ACLS has builder entry",
+         "builder" in AGENT_ACLS)
+    test("CR2: AGENT_ACLS explorer has denied_tools with Edit",
+         "Edit" in AGENT_ACLS["explorer"]["denied_tools"])
+    test("CR2: AGENT_ACLS builder allowed_tools is wildcard",
+         AGENT_ACLS["builder"]["allowed_tools"] == ["*"])
+
+except Exception as _cr2_exc:
+    test("CR2: capability_registry module-level tests", False, str(_cr2_exc))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EA: experience_archive tests
+# ═══════════════════════════════════════════════════════════════════════════════
+try:
+    import tempfile as _ea_tempfile
+    import shared.experience_archive as _ea_mod
+    from shared.experience_archive import (
+        ARCHIVE_PATH,
+        _COLUMNS,
+        OUTCOME_SUCCESS,
+        OUTCOME_FAILURE,
+        OUTCOME_PARTIAL,
+        _VALID_OUTCOMES,
+        _ensure_header,
+        _read_rows,
+        record_fix,
+        query_best_strategy,
+        get_success_rate,
+        get_archive_stats,
+    )
+
+    # ── constants ─────────────────────────────────────────────────────────────
+
+    test("EA: OUTCOME_SUCCESS == 'success'",
+         OUTCOME_SUCCESS == "success")
+    test("EA: OUTCOME_FAILURE == 'failure'",
+         OUTCOME_FAILURE == "failure")
+    test("EA: OUTCOME_PARTIAL == 'partial'",
+         OUTCOME_PARTIAL == "partial")
+    test("EA: _VALID_OUTCOMES is a set",
+         isinstance(_VALID_OUTCOMES, set))
+    test("EA: _VALID_OUTCOMES has 3 values",
+         len(_VALID_OUTCOMES) == 3)
+    test("EA: _VALID_OUTCOMES contains success",
+         "success" in _VALID_OUTCOMES)
+    test("EA: _VALID_OUTCOMES contains failure",
+         "failure" in _VALID_OUTCOMES)
+    test("EA: _VALID_OUTCOMES contains partial",
+         "partial" in _VALID_OUTCOMES)
+    test("EA: ARCHIVE_PATH is a non-empty string",
+         isinstance(ARCHIVE_PATH, str) and len(ARCHIVE_PATH) > 0)
+    test("EA: _COLUMNS has 7 entries",
+         len(_COLUMNS) == 7)
+    test("EA: _COLUMNS contains timestamp",
+         "timestamp" in _COLUMNS)
+    test("EA: _COLUMNS contains error_type",
+         "error_type" in _COLUMNS)
+    test("EA: _COLUMNS contains fix_strategy",
+         "fix_strategy" in _COLUMNS)
+    test("EA: _COLUMNS contains outcome",
+         "outcome" in _COLUMNS)
+    test("EA: _COLUMNS contains gate_id",
+         "gate_id" in _COLUMNS)
+    test("EA: _COLUMNS contains file",
+         "file" in _COLUMNS)
+    test("EA: _COLUMNS contains duration_s",
+         "duration_s" in _COLUMNS)
+
+    # ── file I/O tests using tempfile ─────────────────────────────────────────
+
+    _ea_orig_path = _ea_mod.ARCHIVE_PATH
+    import os as _ea_os
+    with _ea_tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as _ea_tmp:
+        _ea_tmp_path = _ea_tmp.name
+    # Delete the pre-created empty file so _ensure_header writes a proper header row
+    _ea_os.remove(_ea_tmp_path)
+    _ea_mod.ARCHIVE_PATH = _ea_tmp_path
+
+    try:
+        # _read_rows on non-existent file returns []
+        _ea_no_file = _ea_tmp_path + ".nonexistent"
+        test("EA: _read_rows non-existent file returns []",
+             _read_rows(_ea_no_file) == [])
+
+        # _ensure_header creates file with header
+        _ea_header_path = _ea_tmp_path + ".header_test"
+        _ensure_header(_ea_header_path)
+        test("EA: _ensure_header creates file if not exists",
+             _ea_os.path.exists(_ea_header_path))
+        _ea_header_rows = _read_rows(_ea_header_path)
+        test("EA: _ensure_header file has 0 data rows (header only)",
+             _ea_header_rows == [])
+        # Calling again should be a no-op
+        _ensure_header(_ea_header_path)
+        test("EA: _ensure_header is idempotent (no-op if exists)",
+             _ea_os.path.exists(_ea_header_path))
+        _ea_os.remove(_ea_header_path)
+
+        # record_fix success
+        _ea_ok = _ea_mod.record_fix("ImportError", "add-missing-import", "success",
+                                     "/tmp/foo.py", "gate_15", 1.2)
+        test("EA: record_fix returns True on success",
+             _ea_ok is True)
+
+        # record_fix failure
+        _ea_mod.record_fix("ImportError", "add-missing-import", "failure",
+                            "/tmp/foo.py", "gate_15", 0.5)
+
+        # record_fix partial
+        _ea_mod.record_fix("ImportError", "reinstall-package", "partial",
+                            "/tmp/foo.py", "", 2.0)
+
+        # record_fix invalid outcome coerced to failure
+        _ea_mod.record_fix("TypeError", "bad-strategy", "weird_outcome")
+        _ea_rows = _read_rows(_ea_tmp_path)
+        _ea_last = _ea_rows[-1]
+        test("EA: record_fix invalid outcome coerced to 'failure'",
+             _ea_last["outcome"] == "failure")
+
+        # record_fix rows written correctly
+        test("EA: record_fix rows count is 4",
+             len(_ea_rows) == 4)
+        test("EA: record_fix row has all column keys",
+             all(k in _ea_rows[0] for k in _COLUMNS))
+        test("EA: record_fix first row error_type is ImportError",
+             _ea_rows[0]["error_type"] == "ImportError")
+        test("EA: record_fix first row outcome is success",
+             _ea_rows[0]["outcome"] == "success")
+        test("EA: record_fix first row fix_strategy correct",
+             _ea_rows[0]["fix_strategy"] == "add-missing-import")
+        test("EA: record_fix first row gate_id correct",
+             _ea_rows[0]["gate_id"] == "gate_15")
+        test("EA: record_fix first row duration_s is formatted float",
+             _ea_rows[0]["duration_s"] == "1.200")
+
+        # record additional rows for query tests
+        # reinstall-package: 2 successes out of 3 total (partial + 2 success) = 0.667
+        # add-missing-import: 1 success out of 2 total = 0.5 → reinstall-package wins
+        _ea_mod.record_fix("ImportError", "reinstall-package", "success",
+                            "/tmp/bar.py", "", 3.1)
+        _ea_mod.record_fix("ImportError", "reinstall-package", "success",
+                            "/tmp/bar2.py", "", 2.5)
+        _ea_mod.record_fix("SyntaxError", "rewrite-block", "success",
+                            "/tmp/baz.py", "gate_1", 0.8)
+        _ea_mod.record_fix("SyntaxError", "rewrite-block", "success",
+                            "/tmp/baz.py", "gate_1", 0.9)
+        _ea_mod.record_fix("SyntaxError", "rewrite-block", "failure",
+                            "/tmp/baz.py", "gate_1", 1.1)
+
+        # query_best_strategy
+        _ea_best = _ea_mod.query_best_strategy("ImportError")
+        # reinstall-package: 2 success / 3 total (~0.667)
+        # add-missing-import: 1 success / 2 total (0.5) → reinstall-package wins
+        test("EA: query_best_strategy returns highest success rate strategy",
+             _ea_best == "reinstall-package")
+
+        _ea_best_syntax = _ea_mod.query_best_strategy("SyntaxError")
+        test("EA: query_best_strategy SyntaxError returns rewrite-block",
+             _ea_best_syntax == "rewrite-block")
+
+        _ea_best_none = _ea_mod.query_best_strategy("NonExistentErrorXYZ")
+        test("EA: query_best_strategy unknown error returns ''",
+             _ea_best_none == "")
+
+        # case-insensitive substring match
+        _ea_best_case = _ea_mod.query_best_strategy("IMPORTERROR")
+        test("EA: query_best_strategy case-insensitive match",
+             _ea_best_case != "")
+
+        # get_success_rate
+        _ea_rate = _ea_mod.get_success_rate("add-missing-import")
+        test("EA: get_success_rate add-missing-import is 0.5",
+             abs(_ea_rate - 0.5) < 1e-9)
+
+        _ea_rate_reinstall = _ea_mod.get_success_rate("reinstall-package")
+        # reinstall-package: 1 partial + 1 success = 2 total, 1 success → 0.5
+        # Actually: partial was first row, then success was added → check
+        _ea_reinstall_rows = [r for r in _read_rows(_ea_tmp_path)
+                               if r["fix_strategy"] == "reinstall-package"]
+        _ea_reinstall_expected = sum(1 for r in _ea_reinstall_rows if r["outcome"] == "success") / len(_ea_reinstall_rows)
+        test("EA: get_success_rate reinstall-package matches manual count",
+             abs(_ea_rate_reinstall - _ea_reinstall_expected) < 1e-9)
+
+        _ea_rate_missing = _ea_mod.get_success_rate("nonexistent-strategy-xyz")
+        test("EA: get_success_rate unknown strategy returns 0.0",
+             _ea_rate_missing == 0.0)
+
+        _ea_rate_rewrite = _ea_mod.get_success_rate("rewrite-block")
+        # 2 success, 1 failure = 2/3
+        test("EA: get_success_rate rewrite-block is 2/3",
+             abs(_ea_rate_rewrite - 2/3) < 1e-9)
+
+        # get_archive_stats
+        _ea_stats = _ea_mod.get_archive_stats()
+        test("EA: get_archive_stats returns dict with total_rows",
+             "total_rows" in _ea_stats)
+        test("EA: get_archive_stats returns dict with unique_errors",
+             "unique_errors" in _ea_stats)
+        test("EA: get_archive_stats returns dict with unique_strategies",
+             "unique_strategies" in _ea_stats)
+        test("EA: get_archive_stats returns dict with overall_success_rate",
+             "overall_success_rate" in _ea_stats)
+        test("EA: get_archive_stats returns dict with top_strategies",
+             "top_strategies" in _ea_stats)
+        test("EA: get_archive_stats total_rows > 0",
+             _ea_stats["total_rows"] > 0)
+        # unique_errors: ImportError, TypeError, SyntaxError = 3
+        test("EA: get_archive_stats unique_errors is 3",
+             _ea_stats["unique_errors"] == 3)
+        # unique_strategies: add-missing-import, reinstall-package, bad-strategy, rewrite-block = 4
+        test("EA: get_archive_stats unique_strategies is 4",
+             _ea_stats["unique_strategies"] == 4)
+        test("EA: get_archive_stats overall_success_rate in [0,1]",
+             0.0 <= _ea_stats["overall_success_rate"] <= 1.0)
+        test("EA: get_archive_stats top_strategies is a list",
+             isinstance(_ea_stats["top_strategies"], list))
+        test("EA: get_archive_stats top_strategies has <= 5 entries",
+             len(_ea_stats["top_strategies"]) <= 5)
+        if _ea_stats["top_strategies"]:
+            _ea_top0 = _ea_stats["top_strategies"][0]
+            test("EA: get_archive_stats top strategy has strategy key",
+                 "strategy" in _ea_top0)
+            test("EA: get_archive_stats top strategy has success_rate key",
+                 "success_rate" in _ea_top0)
+            test("EA: get_archive_stats top strategy has total key",
+                 "total" in _ea_top0)
+
+        # empty archive test
+        with _ea_tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as _ea_empty_tmp:
+            _ea_empty_path = _ea_empty_tmp.name
+        _ea_mod.ARCHIVE_PATH = _ea_empty_path
+        test("EA: query_best_strategy empty archive returns ''",
+             _ea_mod.query_best_strategy("anything") == "")
+        test("EA: get_success_rate empty archive returns 0.0",
+             _ea_mod.get_success_rate("any-strategy") == 0.0)
+        _ea_empty_stats = _ea_mod.get_archive_stats()
+        test("EA: get_archive_stats empty archive total_rows == 0",
+             _ea_empty_stats["total_rows"] == 0)
+        test("EA: get_archive_stats empty archive overall_success_rate == 0.0",
+             _ea_empty_stats["overall_success_rate"] == 0.0)
+        test("EA: get_archive_stats empty archive top_strategies == []",
+             _ea_empty_stats["top_strategies"] == [])
+        _ea_os.remove(_ea_empty_path)
+
+    finally:
+        _ea_mod.ARCHIVE_PATH = _ea_orig_path
+        try:
+            _ea_os.remove(_ea_tmp_path)
+        except OSError:
+            pass
+
+except Exception as _ea_exc:
+    test("EA: experience_archive module-level tests", False, str(_ea_exc))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RV: rules_validator tests
+# ═══════════════════════════════════════════════════════════════════════════════
+try:
+    import os as _rv_os
+    import tempfile as _rv_tempfile
+    from shared.rules_validator import (
+        _parse_frontmatter,
+        _glob_matches_any,
+        _extract_doc_paths,
+        _detect_overlaps,
+        validate_rules,
+        _GLOB_NOTE,
+    )
+
+    # ── _GLOB_NOTE ────────────────────────────────────────────────────────────
+
+    test("RV: _GLOB_NOTE is a non-empty string",
+         isinstance(_GLOB_NOTE, str) and len(_GLOB_NOTE) > 0)
+    test("RV: _GLOB_NOTE mentions advisory",
+         "advisory" in _GLOB_NOTE)
+
+    # ── _parse_frontmatter ────────────────────────────────────────────────────
+
+    _rv_fm_valid = "---\nglobs: *.py\ntitle: My Rule\n---\nBody text here"
+    _rv_fields, _rv_errs = _parse_frontmatter(_rv_fm_valid)
+    test("RV: _parse_frontmatter valid frontmatter returns fields dict",
+         isinstance(_rv_fields, dict))
+    test("RV: _parse_frontmatter valid frontmatter no errors",
+         _rv_errs == [])
+    test("RV: _parse_frontmatter parses globs field",
+         _rv_fields.get("globs") == "*.py")
+    test("RV: _parse_frontmatter parses title field",
+         _rv_fields.get("title") == "My Rule")
+
+    _rv_fm_no_fm = "# No Frontmatter\nJust body text"
+    _rv_fields2, _rv_errs2 = _parse_frontmatter(_rv_fm_no_fm)
+    test("RV: _parse_frontmatter no frontmatter returns empty fields",
+         _rv_fields2 == {})
+    test("RV: _parse_frontmatter no frontmatter returns error list",
+         len(_rv_errs2) > 0)
+    test("RV: _parse_frontmatter no frontmatter error mentions No frontmatter",
+         any("frontmatter" in e.lower() for e in _rv_errs2))
+
+    _rv_fm_unclosed = "---\nglobs: *.py\nBody with no closing"
+    _rv_fields3, _rv_errs3 = _parse_frontmatter(_rv_fm_unclosed)
+    test("RV: _parse_frontmatter unclosed frontmatter returns empty fields",
+         _rv_fields3 == {})
+    test("RV: _parse_frontmatter unclosed frontmatter returns error",
+         len(_rv_errs3) > 0)
+    test("RV: _parse_frontmatter unclosed frontmatter error mentions not closed",
+         any("not closed" in e.lower() or "frontmatter" in e.lower() for e in _rv_errs3))
+
+    _rv_fm_empty_body = "---\nglobs: *.txt\n---\n"
+    _rv_fields4, _rv_errs4 = _parse_frontmatter(_rv_fm_empty_body)
+    test("RV: _parse_frontmatter empty body still parses globs",
+         _rv_fields4.get("globs") == "*.txt")
+    test("RV: _parse_frontmatter empty body no errors",
+         _rv_errs4 == [])
+
+    _rv_fm_multi_globs = "---\nglobs: *.py, *.txt, *.json\n---\ncontent"
+    _rv_fields5, _ = _parse_frontmatter(_rv_fm_multi_globs)
+    test("RV: _parse_frontmatter multi-value globs parsed as single string",
+         "*.py" in _rv_fields5.get("globs", ""))
+
+    # ── _glob_matches_any ─────────────────────────────────────────────────────
+
+    with _rv_tempfile.TemporaryDirectory() as _rv_tmpdir:
+        # Create some test files
+        _rv_sub = _rv_os.path.join(_rv_tmpdir, "subdir")
+        _rv_os.makedirs(_rv_sub)
+        with open(_rv_os.path.join(_rv_tmpdir, "test_file.py"), "w") as _f:
+            _f.write("# py")
+        with open(_rv_os.path.join(_rv_sub, "data.json"), "w") as _f:
+            _f.write("{}")
+
+        test("RV: _glob_matches_any *.py matches existing py file",
+             _glob_matches_any("*.py", _rv_tmpdir) is True)
+        test("RV: _glob_matches_any *.xyz no match returns False",
+             _glob_matches_any("*.xyz", _rv_tmpdir) is False)
+        test("RV: _glob_matches_any **/*.json matches nested json file",
+             _glob_matches_any("**/*.json", _rv_tmpdir) is True)
+        test("RV: _glob_matches_any nonexistent-dir returns False",
+             _glob_matches_any("*.py", _rv_tmpdir + "/does_not_exist") is False)
+
+    # ── _extract_doc_paths ────────────────────────────────────────────────────
+
+    with _rv_tempfile.TemporaryDirectory() as _rv_tmpdir2:
+        # Create a real file to reference
+        _rv_real_file = _rv_os.path.join(_rv_tmpdir2, "real_file.md")
+        with open(_rv_real_file, "w") as _f:
+            _f.write("# real")
+
+        # Content referencing both existing and non-existing paths
+        _rv_content = "See `docs/real_file.md` and also `docs/missing.py` for details"
+        _rv_refs = _extract_doc_paths(_rv_content, _rv_tmpdir2)
+        test("RV: _extract_doc_paths returns list",
+             isinstance(_rv_refs, list))
+        # Should find at least one reference with a path component
+        test("RV: _extract_doc_paths finds path references",
+             len(_rv_refs) >= 1)
+        # Check that each ref is a (raw, exists) tuple
+        test("RV: _extract_doc_paths tuples are (str, bool)",
+             all(isinstance(r, tuple) and len(r) == 2 and isinstance(r[0], str) and isinstance(r[1], bool)
+                 for r in _rv_refs))
+
+        _rv_content_no_paths = "No file paths mentioned here at all."
+        _rv_refs2 = _extract_doc_paths(_rv_content_no_paths, _rv_tmpdir2)
+        test("RV: _extract_doc_paths no paths returns []",
+             _rv_refs2 == [])
+
+        # Inline code without slash should be ignored
+        _rv_content_no_slash = "Use `funcname` and `classname` to call things"
+        _rv_refs3 = _extract_doc_paths(_rv_content_no_slash, _rv_tmpdir2)
+        test("RV: _extract_doc_paths ignores backtick items without slash",
+             _rv_refs3 == [])
+
+    # ── _detect_overlaps ──────────────────────────────────────────────────────
+
+    _rv_no_overlap = {"rule_a.md": ["*.py"], "rule_b.md": ["*.txt"]}
+    _rv_overlaps = _detect_overlaps(_rv_no_overlap)
+    test("RV: _detect_overlaps non-overlapping globs returns []",
+         _rv_overlaps == [])
+
+    _rv_overlap_globs = {
+        "rule_a.md": ["hooks/*.py"],
+        "rule_b.md": ["hooks/**"],
+    }
+    _rv_overlaps2 = _detect_overlaps(_rv_overlap_globs)
+    test("RV: _detect_overlaps subsumption detected returns non-empty list",
+         len(_rv_overlaps2) > 0)
+    test("RV: _detect_overlaps result is list of strings",
+         all(isinstance(o, str) for o in _rv_overlaps2))
+
+    _rv_overlap_reversed = {
+        "rule_x.md": ["src/**"],
+        "rule_y.md": ["src/main.py"],
+    }
+    _rv_overlaps3 = _detect_overlaps(_rv_overlap_reversed)
+    test("RV: _detect_overlaps ** in first rule subsumes second",
+         len(_rv_overlaps3) > 0)
+
+    _rv_empty_globs = {}
+    test("RV: _detect_overlaps empty input returns []",
+         _detect_overlaps(_rv_empty_globs) == [])
+
+    _rv_single_entry = {"only_rule.md": ["*.py"]}
+    test("RV: _detect_overlaps single entry returns []",
+         _detect_overlaps(_rv_single_entry) == [])
+
+    # ── validate_rules ────────────────────────────────────────────────────────
+
+    # Non-existent rules directory
+    _rv_report_nonexistent = validate_rules("/nonexistent/rules/dir/xyz", "/tmp")
+    test("RV: validate_rules nonexistent dir returns report dict",
+         isinstance(_rv_report_nonexistent, dict))
+    test("RV: validate_rules nonexistent dir has issues key",
+         "issues" in _rv_report_nonexistent)
+    test("RV: validate_rules nonexistent dir issues has entry",
+         len(_rv_report_nonexistent["issues"]) > 0)
+    test("RV: validate_rules nonexistent dir total is 0",
+         _rv_report_nonexistent["total"] == 0)
+
+    # Validate with actual rules dir (smoke test structure)
+    _rv_real_rules = _rv_os.path.join(_rv_os.path.expanduser("~"), ".claude", "rules")
+    if _rv_os.path.isdir(_rv_real_rules):
+        _rv_real_report = validate_rules(_rv_real_rules)
+        test("RV: validate_rules real dir returns dict with all keys",
+             all(k in _rv_real_report for k in
+                 ("total", "valid", "dead", "issues", "overlaps", "suggestions")))
+        test("RV: validate_rules real dir total is int",
+             isinstance(_rv_real_report["total"], int))
+        test("RV: validate_rules real dir valid is list",
+             isinstance(_rv_real_report["valid"], list))
+        test("RV: validate_rules real dir dead is list",
+             isinstance(_rv_real_report["dead"], list))
+        test("RV: validate_rules real dir overlaps is list",
+             isinstance(_rv_real_report["overlaps"], list))
+        test("RV: validate_rules real dir suggestions is list",
+             isinstance(_rv_real_report["suggestions"], list))
+    else:
+        skip("RV: validate_rules real dir structure check", "rules dir not found")
+
+    # Validate with a synthetic rules directory
+    with _rv_tempfile.TemporaryDirectory() as _rv_rules_tmpdir:
+        with _rv_tempfile.TemporaryDirectory() as _rv_base_tmpdir:
+            # Create a valid rule file
+            _rv_rule_path = _rv_os.path.join(_rv_rules_tmpdir, "myrule.md")
+            with open(_rv_rule_path, "w") as _f:
+                _f.write("---\nglobs: *.py\n---\n# My Rule\nsome content")
+
+            # Create a matching file in base dir
+            with open(_rv_os.path.join(_rv_base_tmpdir, "example.py"), "w") as _f:
+                _f.write("# example")
+
+            _rv_synth = validate_rules(_rv_rules_tmpdir, _rv_base_tmpdir)
+            test("RV: validate_rules synthetic dir total == 1",
+                 _rv_synth["total"] == 1)
+            test("RV: validate_rules synthetic dir returns expected keys",
+                 all(k in _rv_synth for k in ("total", "valid", "dead", "issues", "overlaps", "suggestions")))
+
+            # Create a rule with no frontmatter
+            _rv_rule_nofm = _rv_os.path.join(_rv_rules_tmpdir, "nofm.md")
+            with open(_rv_rule_nofm, "w") as _f:
+                _f.write("# No frontmatter\nJust some content")
+            _rv_synth2 = validate_rules(_rv_rules_tmpdir, _rv_base_tmpdir)
+            test("RV: validate_rules no-frontmatter rule counted in total",
+                 _rv_synth2["total"] == 2)
+            test("RV: validate_rules no-frontmatter rule appears in issues",
+                 "nofm.md" in _rv_synth2["issues"])
+
+except Exception as _rv_exc:
+    test("RV: rules_validator module-level tests", False, str(_rv_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
