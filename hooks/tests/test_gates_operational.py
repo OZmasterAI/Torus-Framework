@@ -59,7 +59,6 @@ if 1 <= current_hour < 5:
 else:
     test("Gate 8: edit during normal hours passes", code == 0, msg)
 
-
 # Test 1-4: Gate 8 milestone tests — Gate 8 moved to dormant/, read from there
 _g8_dormant_path = os.path.join(os.path.dirname(HOOKS_DIR), "dormant", "gates", "gate_08_temporal.py")
 _g8_source = open(_g8_dormant_path).read() if os.path.isfile(_g8_dormant_path) else ""
@@ -363,7 +362,6 @@ _first = _gates_for_tool("Bash")
 _second = _gates_for_tool("Bash")
 test("Dispatch: gate modules cached (same objects on repeated calls)",
      all(a is b for a, b in zip(_first, _second)))
-
 
 # ─────────────────────────────────────────────────
 # Memory Ingestion Levers Tests
@@ -1062,7 +1060,6 @@ except Exception as _e:
     _h.RESULTS.append(f"  FAIL: Tier classification setup: {_e}")
     print(f"  FAIL: Tier classification setup: {_e}")
 
-
 # ─────────────────────────────────────────────────
 # Embedding Upgrade (nomic-ai/nomic-embed-text-v2-moe)
 # ─────────────────────────────────────────────────
@@ -1090,7 +1087,6 @@ test("Embedding: migration function exists",
 test("Embedding: migration marker file defined",
      "_EMBEDDING_MIGRATION_MARKER" in _emb_src,
      "marker file constant not found")
-
 
 # ─────────────────────────────────────────────────
 # New Skills: learn, self-improve, evolve, benchmark
@@ -1199,7 +1195,6 @@ _parsed_output = _json13.loads(_simulated_output)
 test('GradEsc: simulated ask output is valid JSON with hookSpecificOutput',
      _parsed_output.get('hookSpecificOutput', {}).get('permissionDecision') == 'ask',
      f'Expected valid ask JSON, got {_simulated_output}')
-
 
 # ─────────────────────────────────────────────────
 # shared/security_profiles.py
@@ -1316,7 +1311,6 @@ test("SecProf: refactor keeps gate_05 as block",
      get_gate_mode_for_profile("gate_05_proof_before_fixed", _sp_state_refactor) == "block",
      f"Got: {get_gate_mode_for_profile('gate_05_proof_before_fixed', _sp_state_refactor)}")
 
-
 # -------------------------------------------------
 # Tool Fingerprinting
 # -------------------------------------------------
@@ -1427,7 +1421,6 @@ except Exception as _g18_exc:
     _h.RESULTS.append("  FAIL: Gate 18 test suite crashed: " + str(_g18_exc))
     print("  FAIL: Gate 18 test suite crashed: " + str(_g18_exc))
 
-
 # ─────────────────────────────────────────────────
 
 print("\n--- R:W Ratio ---")
@@ -1477,7 +1470,6 @@ try:
 except Exception as _rw_exc:
     test("R:W ratio tests", False, str(_rw_exc))
 
-
 # ─────────────────────────────────────────────────
 # Test: Frustration Score (Upgrade 2)
 # ─────────────────────────────────────────────────
@@ -1518,7 +1510,6 @@ try:
 except Exception as _fs_exc:
     test("Frustration score tests", False, str(_fs_exc))
 
-
 # ─────────────────────────────────────────────────
 # Test: Aggregate Frustration (Upgrade 2)
 # ─────────────────────────────────────────────────
@@ -1534,7 +1525,6 @@ try:
 
 except Exception as _af_exc:
     test("Aggregate frustration tests", False, str(_af_exc))
-
 
 # ─────────────────────────────────────────────────
 # Test: Gate 2 — Shell Wrapping Now Allowed (Upgrade 4)

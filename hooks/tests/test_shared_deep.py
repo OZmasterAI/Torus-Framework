@@ -75,7 +75,6 @@ _hc_evicted = evict_expired()
 test("HookCache: evict_expired returns dict with state/result keys",
      isinstance(_hc_evicted, dict), f"type={type(_hc_evicted).__name__}")
 
-
 # ─── Gate Graph Tests ─────────────────────────────────────────────────
 print("\n--- Gate Graph ---")
 from shared.gate_graph import build_graph
@@ -242,7 +241,6 @@ test("Ramdisk: get_capture_queue returns non-empty string",
      isinstance(_rd_queue, str) and len(_rd_queue) > 0,
      f"path={_rd_queue}")
 
-
 # ─── Security Profiles Tests ─────────────────────────────────────────
 print("\n--- Security Profiles ---")
 from shared.security_profiles import (
@@ -329,12 +327,10 @@ test("Observation: result has metadata key",
 test("Observation: result has id key",
      "id" in _ob_result, f"keys={set(_ob_result.keys())}")
 
-
 # Restore sideband file after tests
 if _h._SIDEBAND_BACKUP is not None:
     with open(MEMORY_TIMESTAMP_FILE, "w") as _sbf:
         _sbf.write(_h._SIDEBAND_BACKUP)
-
 
 # ─────────────────────────────────────────────────
 # Drift Detector
@@ -425,7 +421,6 @@ try:
 
 except Exception as _dd_exc:
     test("DriftDetector: import and basic tests", False, str(_dd_exc))
-
 
 # ─────────────────────────────────────────────────
 # Gate Router
@@ -520,7 +515,6 @@ try:
 except Exception as _gr_exc:
     test("GateRouter: import and basic tests", False, str(_gr_exc))
 
-
 # ─────────────────────────────────────────────────
 # Skill Mapper
 # ─────────────────────────────────────────────────
@@ -614,7 +608,6 @@ try:
 
 except Exception as _sm_exc:
     test("SkillMapper: import and basic tests", False, str(_sm_exc))
-
 
 # ─────────────────────────────────────────────────
 # Test Generator
@@ -711,7 +704,6 @@ try:
 except Exception as _tg_exc:
     test("TestGenerator: import and basic tests", False, str(_tg_exc))
 
-
 # ─────────────────────────────────────────────────
 # Pipeline Optimizer (deep)
 # ─────────────────────────────────────────────────
@@ -802,7 +794,6 @@ try:
 
 except Exception as _po_exc:
     test("PipelineOpt: import and basic tests", False, str(_po_exc))
-
 
 # ─────────────────────────────────────────────────
 # Consensus Validator (deep)
@@ -928,7 +919,6 @@ try:
 except Exception as _cv_exc:
     test("ConsensusVal: import and basic tests", False, str(_cv_exc))
 
-
 # ─────────────────────────────────────────────────
 # Anomaly Detector: Extended Coverage
 # ─────────────────────────────────────────────────
@@ -1036,7 +1026,6 @@ try:
 except Exception as _ad_ext_exc:
     test("AnomalyExt: import and basic tests", False, str(_ad_ext_exc))
 
-
 # ─────────────────────────────────────────────────
 # Event Bus: Extended Coverage
 # ─────────────────────────────────────────────────
@@ -1133,7 +1122,6 @@ try:
 except Exception as _eb_ext_exc:
     test("EventBusExt: import and basic tests", False, str(_eb_ext_exc))
 
-
 # ─────────────────────────────────────────────────
 # Circuit Breaker: Extended Coverage
 # ─────────────────────────────────────────────────
@@ -1211,7 +1199,6 @@ try:
 except Exception as _cb_ext_exc:
     test("CircuitExt: import and basic tests", False, str(_cb_ext_exc))
 
-
 # ─────────────────────────────────────────────────
 # Capability Registry: Extended Coverage
 # ─────────────────────────────────────────────────
@@ -1278,7 +1265,6 @@ try:
 
 except Exception as _cr_ext_exc:
     test("CapRegExt: import and basic tests", False, str(_cr_ext_exc))
-
 
 # ─────────────────────────────────────────────────
 # Code Hotspot Analyzer
@@ -1364,7 +1350,6 @@ try:
 
 except Exception as _ea_exc:
     test("ExperienceArchive: import and tests", False, str(_ea_exc))
-
 
 # ─────────────────────────────────────────────────
 # Observation Compression
@@ -1467,7 +1452,6 @@ try:
 
 except Exception as _obs_exc:
     test("Observation Compression: import and tests", False, str(_obs_exc))
-
 
 # ─────────────────────────────────────────────────
 # Domain Registry
@@ -1573,7 +1557,6 @@ try:
 
 except Exception as _dr_exc:
     test("DomainRegistry: import and tests", False, str(_dr_exc))
-
 
 # ─────────────────────────────────────────────────
 # Tool Patterns Extended (Markov chain, anomaly detection)
@@ -1695,7 +1678,6 @@ try:
 
 except Exception as _tp_exc:
     test("ToolPatterns Extended: import and tests", False, str(_tp_exc))
-
 
 # ─────────────────────────────────────────────────
 # Gate Pruner Extended (classification logic)
@@ -1830,7 +1812,6 @@ try:
 
 except Exception as _gp_exc:
     test("GatePruner Extended: import and tests", False, str(_gp_exc))
-
 
 # --- Retry Strategy Deep Tests ---
 print("\n--- Retry Strategy Deep Tests ---")
@@ -1982,7 +1963,6 @@ try:
 
 except Exception as _rs_exc:
     test("RetryStrategy Deep Tests: import and tests", False, str(_rs_exc))
-
 
 # --- Circuit Breaker Deep Tests ---
 print("\n--- Circuit Breaker Deep Tests ---")
@@ -2151,7 +2131,6 @@ try:
 except Exception as _cb_exc:
     test("Circuit Breaker Deep Tests: import and tests", False, str(_cb_exc))
 
-
 # --- Rate Limiter Deep Tests ---
 print("\n--- Rate Limiter Deep Tests ---")
 try:
@@ -2249,7 +2228,6 @@ try:
 
 except Exception as _rl_exc:
     test("Rate Limiter Deep Tests: import and tests", False, str(_rl_exc))
-
 
 # --- Gate Correlator Deep Tests ---
 print("\n--- Gate Correlator Deep Tests ---")
@@ -2396,7 +2374,6 @@ try:
 except Exception as _gc_exc:
     test("Gate Correlator Deep Tests: import and tests", False, str(_gc_exc))
 
-
 # --- Gate 04/07/13/15 Refactored Tests ---
 print("\n--- Memory Decay Deep Tests ---")
 try:
@@ -2515,7 +2492,6 @@ try:
 except Exception as _md_exc:
     test("Memory Decay Deep Tests: import and tests", False, str(_md_exc))
 
-
 # --- Session Compressor Deep Tests ---
 print("\n--- Session Compressor Deep Tests ---")
 try:
@@ -2612,7 +2588,6 @@ try:
 except Exception as _sc_exc:
     test("Session Compressor Deep Tests: import and tests", False, str(_sc_exc))
 
-
 # --- Hook Profiler Deep Tests ---
 print("\n--- Hook Profiler Deep Tests ---")
 try:
@@ -2671,7 +2646,6 @@ try:
 
 except Exception as _hp_exc:
     test("Hook Profiler Deep Tests: import and tests", False, str(_hp_exc))
-
 
 # --- Metrics Collector Deep Tests ---
 print("\n--- Metrics Collector Deep Tests ---")
@@ -2788,7 +2762,6 @@ try:
 
 except Exception as _mc_exc:
     test("Metrics Collector Deep Tests: import and tests", False, str(_mc_exc))
-
 
 # ── Framework Health Score MCP Tool Tests ───────────────────────────────────
 # Tests for the framework_health_score() analytics tool logic
@@ -2949,7 +2922,6 @@ try:
 except Exception as _fhs_exc:
     test("Framework Health Score Tests: import and tests", False, str(_fhs_exc))
 
-
 # ── Session Context Snapshot MCP Tool Tests ─────────────────────────────────
 # Tests for the session_context_snapshot() analytics tool logic
 
@@ -3075,7 +3047,6 @@ try:
 
 except Exception as _scs_exc:
     test("Session Context Snapshot Tests: import and tests", False, str(_scs_exc))
-
 
 # ── Anomaly Detector Deep Tests ─────────────────────────────────────────────
 # Tests for anomaly_detector.py: compute_baseline, detect_anomalies,
@@ -3332,7 +3303,6 @@ try:
 except Exception as _ad_exc:
     test("Anomaly Detector Deep Tests: import and tests", False, str(_ad_exc))
 
-
 # ── Event Bus Deep Tests ────────────────────────────────────────────────────
 # Tests for event_bus.py: subscribe, publish, get_recent, clear, get_stats,
 # configure, unsubscribe, load_persisted, EventType
@@ -3481,7 +3451,6 @@ try:
 except Exception as _eb_exc:
     test("Event Bus Deep Tests: import and tests", False, str(_eb_exc))
 
-
 # ── Gate Dashboard Deep Tests ───────────────────────────────────────────────
 # Tests for gate_dashboard.py: GateMetrics, get_gate_metrics,
 # rank_gates_by_value, render_dashboard, get_recommendations
@@ -3582,7 +3551,6 @@ try:
 
 except Exception as _gd_exc:
     test("Gate Dashboard Deep Tests: import and tests", False, str(_gd_exc))
-
 
 # ── Tool Fingerprint Deep Tests ─────────────────────────────────────────────
 # Tests for tool_fingerprint.py: fingerprint_tool, register_tool,
@@ -3701,7 +3669,6 @@ try:
 
 except Exception as _tf_exc:
     test("Tool Fingerprint Deep Tests: import and tests", False, str(_tf_exc))
-
 
 # ── Tool Recommendation Engine Deep Tests ───────────────────────────────────
 # Tests for tool_recommendation.py: build_tool_profile, should_recommend,
@@ -3941,7 +3908,6 @@ try:
 except Exception as _tr_exc:
     test("Tool Recommendation Engine Tests: import and tests", False, str(_tr_exc))
 
-
 # ── Health Correlation Analyzer Deep Tests ──────────────────────────────────
 # Tests for health_correlation.py: _pearson_correlation, build_fire_vectors,
 # compute_correlation_matrix, detect_redundant_pairs, detect_synergistic_pairs,
@@ -4130,7 +4096,6 @@ try:
 except Exception as _hc_exc:
     test("Health Correlation Analyzer Tests: import and tests", False, str(_hc_exc))
 
-
 # ── Search Cache Deep Tests ─────────────────────────────────────────────────
 # Tests for search_cache.py: SearchCache class methods
 
@@ -4208,7 +4173,6 @@ try:
 
 except Exception as _sc_exc:
     test("Search Cache Deep Tests: import and tests", False, str(_sc_exc))
-
 
 # ── Error Pattern Analyzer Deep Tests ───────────────────────────────────────
 
@@ -4342,7 +4306,6 @@ try:
 except Exception as _epa_exc:
     test("Error Pattern Analyzer Deep Tests: import and tests", False, str(_epa_exc))
 
-
 # ── Hook Cache Deep Tests ───────────────────────────────────────────────────
 # Tests for hook_cache.py: get_cached_module, get/set_cached_state,
 # get/set_cached_result, cache_stats, clear_cache, evict_expired
@@ -4466,7 +4429,6 @@ try:
 
 except Exception as _hkc_exc:
     test("Hook Cache Deep Tests: import and tests", False, str(_hkc_exc))
-
 
 # ── Config Validator Deep Tests ─────────────────────────────────────────────
 # Tests for config_validator.py: validate_settings, validate_live_state,
@@ -4612,7 +4574,6 @@ try:
 
 except Exception as _cv_exc:
     test("Config Validator Deep Tests: import and tests", False, str(_cv_exc))
-
 
 # ── Memory Maintenance Deep Tests ─────────────────────────────────────────
 print("\n--- Memory Maintenance Deep Tests ---")
@@ -4781,7 +4742,6 @@ try:
 except Exception as _mm_exc:
     test("Memory Maintenance Deep Tests: import and tests", False, str(_mm_exc))
 
-
 # ── Gate Graph Deep Tests ─────────────────────────────────────────────────
 print("\n--- Gate Graph Deep Tests ---")
 try:
@@ -4906,7 +4866,6 @@ try:
 
 except Exception as _gg_exc:
     test("Gate Graph Deep Tests: import and tests", False, str(_gg_exc))
-
 
 # ── Session Analytics Deep Tests ─────────────────────────────────────────
 print("\n--- Session Analytics Deep Tests ---")
@@ -5067,7 +5026,6 @@ try:
 except Exception as _sa_exc:
     test("Session Analytics Deep Tests: import and tests", False, str(_sa_exc))
 
-
 # ── Metrics Exporter Deep Tests ─────────────────────────────────────────
 print("\n--- Metrics Exporter Deep Tests ---")
 try:
@@ -5139,7 +5097,6 @@ try:
 
 except Exception as _me_exc:
     test("Metrics Exporter Deep Tests: import and tests", False, str(_me_exc))
-
 
 # ── Domain Registry Deep Tests ──────────────────────────────────────────
 print("\n--- Domain Registry Deep Tests ---")
@@ -5284,7 +5241,6 @@ try:
 except Exception as _dr_exc:
     test("Domain Registry Deep Tests: import and tests", False, str(_dr_exc))
 
-
 # ── Agent Channel Deep Tests ────────────────────────────────────────────
 print("\n--- Agent Channel Deep Tests ---")
 try:
@@ -5344,7 +5300,6 @@ try:
 
 except Exception as _ac_exc:
     test("Agent Channel Deep Tests: import and tests", False, str(_ac_exc))
-
 
 # ── State Migrator Deep Tests ───────────────────────────────────────────
 print("\n--- State Migrator Deep Tests ---")
@@ -5438,7 +5393,6 @@ try:
 
 except Exception as _smig_exc:
     test("State Migrator Deep Tests: import and tests", False, str(_smig_exc))
-
 
 # ── Rules Validator Deep Tests ──────────────────────────────────────────
 print("\n--- Rules Validator Deep Tests ---")
@@ -5543,7 +5497,6 @@ try:
 except Exception as _rv_exc:
     test("Rules Validator Deep Tests: import and tests", False, str(_rv_exc))
 
-
 # ── Code Hotspot Deep Tests ─────────────────────────────────────────────
 print("\n--- Code Hotspot Deep Tests ---")
 try:
@@ -5577,7 +5530,6 @@ try:
 
 except Exception as _ch_exc:
     test("Code Hotspot Deep Tests: import and tests", False, str(_ch_exc))
-
 
 # ── Gate Correlation Deep Tests ─────────────────────────────────────────
 print("\n--- Gate Correlation Deep Tests ---")
@@ -5613,7 +5565,6 @@ try:
 
 except Exception as _gc_exc:
     test("Gate Correlation Deep Tests: import and tests", False, str(_gc_exc))
-
 
 # ── Consensus Validator Deep Tests ──────────────────────────────────────
 print("\n--- Consensus Validator Deep Tests ---")
@@ -5752,7 +5703,6 @@ try:
 
 except Exception as _cv2_exc:
     test("Consensus Validator Deep Tests: import and tests", False, str(_cv2_exc))
-
 
 # ─────────────────────────────────────────────────
 # Chain Refinement Deep Tests (chain_refinement.py)
@@ -6068,7 +6018,6 @@ try:
 except Exception as _cr_exc:
     test("Chain Refinement Deep Tests: import and tests", False, str(_cr_exc))
 
-
 # ─────────────────────────────────────────────────
 # Health Correlation Deep Tests (health_correlation.py)
 # ─────────────────────────────────────────────────
@@ -6212,7 +6161,6 @@ try:
 
 except Exception as _hc_exc:
     test("Health Correlation Deep Tests: import and tests", False, str(_hc_exc))
-
 
 # ─────────────────────────────────────────────────
 # Tool Recommendation Deep Tests (tool_recommendation.py)
@@ -6372,7 +6320,6 @@ try:
 
 except Exception as _tr_exc:
     test("Tool Recommendation Deep Tests: import and tests", False, str(_tr_exc))
-
 
 # ─────────────────────────────────────────────────
 # Mutation Tester Deep Tests (mutation_tester.py)
@@ -6547,7 +6494,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 except Exception as _mt_exc:
     test("Mutation Tester Deep Tests: import and tests", False, str(_mt_exc))
 
-
 # ─────────────────────────────────────────────────
 # Retry Strategy Deep Tests (retry_strategy.py)
 # ─────────────────────────────────────────────────
@@ -6681,7 +6627,6 @@ try:
 except Exception as _rs_exc:
     test("Retry Strategy Deep Tests: import and tests", False, str(_rs_exc))
 
-
 # ─────────────────────────────────────────────────
 # Tool Patterns Deep Tests (tool_patterns.py)
 # ─────────────────────────────────────────────────
@@ -6809,7 +6754,6 @@ try:
 except Exception as _tp_exc:
     test("Tool Patterns Deep Tests: import and tests", False, str(_tp_exc))
 
-
 # ─────────────────────────────────────────────────
 # Skill Mapper Deep Tests (skill_mapper.py)
 # ─────────────────────────────────────────────────
@@ -6918,7 +6862,6 @@ try:
 
 except Exception as _sm2_exc:
     test("Skill Mapper Deep Tests: import and tests", False, str(_sm2_exc))
-
 
 # ─────────────────────────────────────────────────
 # Hot Reload Deep Tests (hot_reload.py)
@@ -7035,7 +6978,6 @@ try:
 except Exception as _hr_exc:
     test("Hot Reload Deep Tests: import and tests", False, str(_hr_exc))
 
-
 # ─────────────────────────────────────────────────
 # Plugin Registry Deep Tests (plugin_registry.py)
 # ─────────────────────────────────────────────────
@@ -7148,7 +7090,6 @@ try:
 except Exception as _pr_exc:
     test("Plugin Registry Deep Tests: import and tests", False, str(_pr_exc))
 
-
 # ─────────────────────────────────────────────────
 # Test Generator Deep Tests (test_generator.py)
 # ─────────────────────────────────────────────────
@@ -7259,7 +7200,6 @@ try:
 
 except Exception as _tg_exc:
     test("Test Generator Deep Tests: import and tests", False, str(_tg_exc))
-
 
 # ─────────────────────────────────────────────────
 # Event Replay Deep Tests (event_replay.py)
@@ -7407,7 +7347,6 @@ try:
 
 except Exception as _er_exc:
     test("Event Replay Deep Tests: import and tests", False, str(_er_exc))
-
 
 # ─────────────────────────────────────────────────
 # Metrics Collector Deep Tests (shared/metrics_collector.py)
@@ -7580,7 +7519,6 @@ try:
 except Exception as _mc_exc:
     test("Metrics Collector Deep Tests: import and tests", False, str(_mc_exc))
 
-
 # ─────────────────────────────────────────────────
 # Circuit Breaker Deep Tests (shared/circuit_breaker.py)
 # ─────────────────────────────────────────────────
@@ -7719,7 +7657,6 @@ try:
 
 except Exception as _cb_exc:
     test("Circuit Breaker Deep Tests: import and tests", False, str(_cb_exc))
-
 
 # ─────────────────────────────────────────────────
 # Gate Correlator Deep Tests (shared/gate_correlator.py)
@@ -7861,7 +7798,6 @@ try:
 except Exception as _gc_exc:
     test("Gate Correlator Deep Tests: import and tests", False, str(_gc_exc))
 
-
 # ─────────────────────────────────────────────────
 # Gate Router Deep Tests (shared/gate_router.py)
 # ─────────────────────────────────────────────────
@@ -7989,7 +7925,6 @@ try:
 
 except Exception as _gr_exc:
     test("Gate Router Deep Tests: import and tests", False, str(_gr_exc))
-
 
 # ── Session Analytics Tests ───────────────────────────────────────────────────
 print("\n--- Session Analytics (SA) ---")
@@ -8131,7 +8066,6 @@ try:
 except Exception as _sa_exc:
     test("Session Analytics Tests: import and tests", False, str(_sa_exc))
 
-
 # ── Event Bus Tests ───────────────────────────────────────────────────────────
 print("\n--- Event Bus (EB) ---")
 try:
@@ -8258,7 +8192,6 @@ try:
 
 except Exception as _eb_exc:
     test("Event Bus Tests: import and tests", False, str(_eb_exc))
-
 
 # ── Pipeline Optimizer Tests ──────────────────────────────────────────────────
 print("\n--- Pipeline Optimizer (PO) ---")
@@ -8388,7 +8321,6 @@ try:
 except Exception as _po_exc:
     test("Pipeline Optimizer Tests: import and tests", False, str(_po_exc))
 
-
 # ── Memory Socket Tests ─────────────────────────────────────────────────────
 print("\n--- Memory Socket (CS) ---")
 try:
@@ -8443,7 +8375,6 @@ try:
 
 except Exception as _cs_exc:
     test("Memory Socket Tests: import and tests", False, str(_cs_exc))
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # Memory Maintenance Tests (MM:)
@@ -8588,7 +8519,6 @@ try:
 except Exception as _mm_exc:
     test("MM: import and tests", False, str(_mm_exc))
 
-
 # ═══════════════════════════════════════════════════════════════════════
 # Hook Profiler Tests (HP:)
 # ═══════════════════════════════════════════════════════════════════════
@@ -8658,7 +8588,6 @@ try:
 
 except Exception as _hp_exc:
     test("HP: import and tests", False, str(_hp_exc))
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # Memory Decay Tests (MD:)
@@ -8763,7 +8692,6 @@ try:
 
 except Exception as _md_exc:
     test("MD: import and tests", False, str(_md_exc))
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # Gate Pruner Tests (GP:)
@@ -8876,7 +8804,6 @@ try:
 
 except Exception as _gp_exc:
     test("GP: import and tests", False, str(_gp_exc))
-
 
 # =============================================================================
 # TP: tool_patterns (shared/tool_patterns.py)
@@ -9155,7 +9082,6 @@ try:
 except Exception as _tp_exc:
     test("TP: import and tests", False, str(_tp_exc))
 
-
 # =============================================================================
 # DR: domain_registry (shared/domain_registry.py)
 # =============================================================================
@@ -9312,7 +9238,6 @@ try:
 
 except Exception as _dr_exc:
     test("DR: import and tests", False, str(_dr_exc))
-
 
 # =============================================================================
 # MT: mutation_tester (shared/mutation_tester.py)
@@ -9516,7 +9441,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
 except Exception as _mt_exc:
     test("MT: import and tests", False, str(_mt_exc))
-
 
 # =============================================================================
 # CV: consensus_validator (shared/consensus_validator.py)
@@ -9772,7 +9696,6 @@ try:
 
 except Exception as _cv_exc:
     test("CV: import and tests", False, str(_cv_exc))
-
 
 # ─────────────────────────────────────────────────
 # RS: retry_strategy (shared/retry_strategy.py)
@@ -10131,7 +10054,6 @@ try:
 except Exception as _rs_exc:
     test("RS: import and module-level tests", False, str(_rs_exc))
 
-
 # ─────────────────────────────────────────────────
 # CR: chain_refinement (shared/chain_refinement.py)
 # ─────────────────────────────────────────────────
@@ -10405,7 +10327,6 @@ try:
 
 except Exception as _cr_exc:
     test("CR: import and module-level tests", False, str(_cr_exc))
-
 
 # ─────────────────────────────────────────────────
 # HC: health_correlation (shared/health_correlation.py)
@@ -10687,7 +10608,6 @@ try:
 except Exception as _hc_exc:
     test("HC: import and module-level tests", False, str(_hc_exc))
 
-
 # ─────────────────────────────────────────────────
 # RL: rate_limiter (shared/rate_limiter.py)
 # ─────────────────────────────────────────────────
@@ -10904,7 +10824,6 @@ try:
 except Exception as _rl_exc:
     test("RL: import and module-level tests", False, str(_rl_exc))
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # ME: metrics_exporter tests
 # ─────────────────────────────────────────────────────────────────────────────
@@ -11112,7 +11031,6 @@ try:
 
 except Exception as _me_exc:
     test("ME: metrics_exporter module-level tests", False, str(_me_exc))
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # EP: error_pattern_analyzer tests
@@ -11344,7 +11262,6 @@ try:
 except Exception as _ep_exc:
     test("EP: error_pattern_analyzer module-level tests", False, str(_ep_exc))
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # GD: gate_dependency_graph tests
 # ─────────────────────────────────────────────────────────────────────────────
@@ -11485,7 +11402,6 @@ try:
 
 except Exception as _gd_exc:
     test("GD: gate_dependency_graph module-level tests", False, str(_gd_exc))
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SM: state_migrator tests
@@ -11680,8 +11596,6 @@ try:
 
 except Exception as _sm_exc:
     test("SM: state_migrator module-level tests", False, str(_sm_exc))
-
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # AD: anomaly_detector tests
@@ -12109,7 +12023,6 @@ try:
 except Exception as _ad_exc:
     test("AD: anomaly_detector module-level tests", False, str(_ad_exc))
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # CR2: capability_registry tests
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -12368,7 +12281,6 @@ try:
 except Exception as _cr2_exc:
     test("CR2: capability_registry module-level tests", False, str(_cr2_exc))
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # EA: experience_archive tests
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -12613,7 +12525,6 @@ try:
 except Exception as _ea_exc:
     test("EA: experience_archive module-level tests", False, str(_ea_exc))
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # RV: rules_validator tests
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -12827,7 +12738,6 @@ try:
 
 except Exception as _rv_exc:
     test("RV: rules_validator module-level tests", False, str(_rv_exc))
-
 
 # ─────────────────────────────────────────────────
 # Test: R:W Ratio (Upgrade 1)

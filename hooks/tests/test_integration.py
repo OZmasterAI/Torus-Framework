@@ -18,7 +18,6 @@ import time
 from shared.state import get_state_schema
 import tests.harness as _h
 
-
 def _read_pkg_source(pkg_dir):
     """Read and concatenate all .py files in a _pkg/ directory."""
     combined = ""
@@ -31,7 +30,6 @@ def _read_pkg_source(pkg_dir):
                 except OSError:
                     pass
     return combined
-
 
 _tracker_pkg_dir = os.path.join(HOOKS_DIR, "tracker_pkg")
 _boot_pkg_dir = os.path.join(HOOKS_DIR, "boot_pkg")
@@ -53,7 +51,6 @@ else:
     skip("Boot exits cleanly")
     skip("Boot shows dashboard")
     skip("Boot shows gate count")
-
 
 from boot import _extract_test_status
 
@@ -94,8 +91,6 @@ test("_extract_test_status detects failed test",
      ts12 is not None and ts12["passed"] is False and ts12["framework"] == "npm test",
      f"Expected passed=False framework='npm test', got {ts12!r}")
 cleanup_test_states()
-
-
 
 from boot import _extract_verification_quality
 
@@ -143,7 +138,6 @@ test("_extract_verification_quality with only verified fixes",
      vq4 is not None and vq4["verified"] == 1 and vq4["pending"] == 0,
      f"Expected verified=1 pending=0, got {vq4!r}")
 cleanup_test_states()
-
 
 # Test 5: _extract_session_duration returns formatted string
 from boot import _extract_session_duration
@@ -237,7 +231,6 @@ try:
         mcp_config = json.load(f)
 except FileNotFoundError:
     mcp_config = {}
-
 
 # --- _apply_recency_boost functional tests ---
 # These tests do NOT require LanceDB, just the pure function
@@ -1143,7 +1136,6 @@ def _assistant_text_msg(text):
         }
     }
 
-
 # Test 1: _parse_transcript_actions — happy path
 _t1_lines = [
     _assistant_tool_msg("Read", {"file_path": "/home/crab/hooks/gate_01.py"}),
@@ -1378,7 +1370,6 @@ if _citation_imports_ok:
     _long_url = "https://example.org/" + "a" * 600
     test("Citation: long URL rejected", _validate_url(_long_url) == "")
 
-
 # ─────────────────────────────────────────────────
 # Hybrid Memory Linking: resolves:/resolved_by: co-retrieval
 # ─────────────────────────────────────────────────
@@ -1521,7 +1512,6 @@ else:
     ]:
         skip(_hl_skip_name)
 
-
 # ─────────────────────────────────────────────────
 # Gate 16: Code Quality Guard
 # ─────────────────────────────────────────────────
@@ -1598,7 +1588,6 @@ for _i in range(5):
     _g16("Edit", {"file_path": "/tmp/todo.py", "new_string": '# TODO something'}, _g16_state)
 _g16_r = _g16("Edit", {"file_path": "/tmp/todo.py", "new_string": '# FIXME urgent'}, _g16_state)
 test("G16: TODO never escalates (5 TODOs, still not blocked)", _g16_r.blocked is False)
-
 
 # ─────────────────────────────────────────────────
 # Lazy-Load Gate Dispatch (GATE_TOOL_MAP)
@@ -1839,7 +1828,6 @@ _repeated_promoted = [cmd for cmd, cnt in _cmd_counts_l2.items() if cnt >= 3]
 test("Lever2 Criterion3: 'ls -la' repeated 4x → promoted; 'pytest' excluded",
      len(_repeated_promoted) == 1 and "ls -la" in _repeated_promoted[0],
      f"promoted: {_repeated_promoted}")
-
 
 # ─────────────────────────────────────────────────
 # Telegram Memory Integration Tests

@@ -17,7 +17,6 @@ from shared.gate_router import (
     GATE_TOOL_MAP,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -28,7 +27,6 @@ def tier_of(module_name):
     if module_name in TIER2:
         return 2
     return 3
-
 
 def _make_mock_gate(name, blocked=False, ask=False):
     mod = types.ModuleType(name)
@@ -42,7 +40,6 @@ def _make_mock_gate(name, blocked=False, ask=False):
         )
     mod.check = check
     return mod
-
 
 def _install_all_mocks(overrides=None):
     """Put pass-through mocks in sys.modules for every gate, then clear router cache."""
@@ -70,7 +67,6 @@ def _install_all_mocks(overrides=None):
         else:
             sys.modules[g] = _make_mock_gate(g)
     gr._loaded.clear()
-
 
 # ---------------------------------------------------------------------------
 # Test 1: get_applicable_gates — tool filtering
@@ -100,7 +96,6 @@ def test_tool_filtering():
 
     print("PASS: test_tool_filtering")
 
-
 # ---------------------------------------------------------------------------
 # Test 2: get_applicable_gates — priority ordering within result
 # ---------------------------------------------------------------------------
@@ -113,7 +108,6 @@ def test_priority_ordering():
             f"Ordering wrong for '{tool}': {list(zip(gates, tiers))}"
         )
     print("PASS: test_priority_ordering")
-
 
 # ---------------------------------------------------------------------------
 # Test 3: get_routing_stats initial / empty state
@@ -131,7 +125,6 @@ def test_stats_empty():
     assert s["last_routing_ms"] == 0.0
     print("PASS: test_stats_empty")
 
-
 # ---------------------------------------------------------------------------
 # Test 4: route_gates normal path (no blocks)
 # ---------------------------------------------------------------------------
@@ -148,7 +141,6 @@ def test_route_normal():
     assert s["gates_run"] > 0
     assert s["tier1_blocks"] == 0
     print(f"PASS: test_route_normal — {s['gates_run']} gates ran, {s['gates_skipped']} skipped")
-
 
 # ---------------------------------------------------------------------------
 # Test 5: route_gates short-circuit on Tier 1 block
@@ -170,7 +162,6 @@ def test_route_tier1_shortcircuit():
     assert s["gates_skipped"] > 0, "Skipped count must be >0 after short-circuit"
     print(f"PASS: test_route_tier1_shortcircuit — {s['gates_skipped']} gates skipped after block")
 
-
 # ---------------------------------------------------------------------------
 # Test 6: route_gates short-circuit on Tier 1 ask
 # ---------------------------------------------------------------------------
@@ -188,7 +179,6 @@ def test_route_tier1_ask():
     assert any(r.is_ask for r in results), "Expected an 'ask' result from gate_02"
     assert s["tier1_blocks"] == 1, "ask should count as tier1_block for short-circuit purposes"
     print(f"PASS: test_route_tier1_ask — short-circuited after ask, {s['gates_skipped']} skipped")
-
 
 # ---------------------------------------------------------------------------
 # Test 7: stats accumulate across multiple calls
@@ -209,7 +199,6 @@ def test_stats_accumulate():
     assert s["last_routing_ms"] >= 0.0
     print(f"PASS: test_stats_accumulate — {s['calls']} calls, {s['gates_run']} total gate runs")
 
-
 # ---------------------------------------------------------------------------
 # Test 8: skip_rate calculation
 # ---------------------------------------------------------------------------
@@ -228,7 +217,6 @@ def test_skip_rate():
             f"skip_rate {s['skip_rate']} != expected {expected}"
         )
     print(f"PASS: test_skip_rate — skip_rate={s['skip_rate']}")
-
 
 # ---------------------------------------------------------------------------
 # Run all tests

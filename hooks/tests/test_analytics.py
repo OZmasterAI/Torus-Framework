@@ -200,7 +200,6 @@ except Exception as _mentor_e:
     _h.RESULTS.append(f"  FAIL: Mentor Tracker (A) tests: {_mentor_e}")
     print(f"  FAIL: Mentor Tracker (A) tests: {_mentor_e}")
 
-
 print('\n--- Mentor System: Hindsight Gate (B) ---')
 
 try:
@@ -296,7 +295,6 @@ except Exception as _g19_e:
     _h.RESULTS.append(f"  FAIL: Hindsight Gate (B) tests: {_g19_e}")
     print(f"  FAIL: Hindsight Gate (B) tests: {_g19_e}")
 
-
 print('\n--- Mentor System: Outcome Chains (D) ---')
 
 try:
@@ -357,7 +355,6 @@ except Exception as _oc_e:
     _h.RESULTS.append(f"  FAIL: Outcome Chains (D) tests: {_oc_e}")
     print(f"  FAIL: Outcome Chains (D) tests: {_oc_e}")
 
-
 print('\n--- Mentor System: Memory Mentor (E) ---')
 
 try:
@@ -413,7 +410,6 @@ except Exception as _mm_e:
     _h.FAIL += 1
     _h.RESULTS.append(f"  FAIL: Memory Mentor (E) tests: {_mm_e}")
     print(f"  FAIL: Memory Mentor (E) tests: {_mm_e}")
-
 
 print('\n--- Mentor System: Integration ---')
 
@@ -809,7 +805,6 @@ except Exception as _l0_e:
     _h.RESULTS.append(f"  FAIL: L0 Transcript Functions tests: {_l0_e}")
     print(f"  FAIL: L0 Transcript Functions tests: {_l0_e}")
 
-
 # ─────────────────────────────────────────────────
 # Capability Registry Tests
 # ─────────────────────────────────────────────────
@@ -943,7 +938,6 @@ test(
 )
 _ACL_OVERRIDES.pop("__test_agent__", None)
 
-
 # ─────────────────────────────────────────────────
 # Extended EventBus Tests
 # ─────────────────────────────────────────────────
@@ -1036,7 +1030,6 @@ test(
 
 # Cleanup
 _eb2.clear()
-
 
 # ─────────────────────────────────────────────────
 # Circuit Breaker Tests
@@ -1169,7 +1162,6 @@ test(
 reset(_CB_TEST_SVC)
 reset_gate_circuit(_CB_TEST_GATE)
 reset_gate_circuit("gate_01_read_before_edit")
-
 
 # ─────────────────────────────────────────────────
 # Consensus Validator Tests
@@ -1305,7 +1297,6 @@ test(
     f"verdict={_cv_result5['verdict']}, reason={_cv_result5.get('reason', '')}",
 )
 
-
 # ─────────────────────────────────────────────────
 # Git Context Tests
 # ─────────────────────────────────────────────────
@@ -1341,7 +1332,6 @@ except Exception as _gc_e:
     _h.FAIL += 1
     _h.RESULTS.append(f"  FAIL: GitContext tests: {_gc_e}")
     print(f"  FAIL: GitContext tests: {_gc_e}")
-
 
 # ─────────────────────────────────────────────────
 # Gate Trend Tracker Tests
@@ -1416,7 +1406,6 @@ test(
     f"direction={_gt_trend6['direction']}, data_points={_gt_trend6['data_points']}",
 )
 
-
 # ─────────────────────────────────────────────────
 # Gate Dependency Graph Tests
 # ─────────────────────────────────────────────────
@@ -1489,7 +1478,6 @@ test(
     isinstance(_gdg_report, str) and "Gate Dependency Analysis" in _gdg_report,
     f"starts with: {_gdg_report[:50]!r}",
 )
-
 
 # ─── Rate Limiter Tests ──────────────────────────────────────────────
 print("\n--- Rate Limiter ---")
@@ -1784,7 +1772,6 @@ _hp_rpt = hp_report()
 test("HookProfiler: report returns string",
      isinstance(_hp_rpt, str), f"type={type(_hp_rpt).__name__}")
 
-
 # ─── Tool Patterns Tests ─────────────────────────────────────────────
 print("\n--- Tool Patterns ---")
 from shared.tool_patterns import (
@@ -1899,7 +1886,6 @@ test("GateCorrelation: total_events >= 0",
 _gc_report = format_correlation_report(_gc_data)
 test("GateCorrelation: format_correlation_report returns string",
      isinstance(_gc_report, str), f"type={type(_gc_report).__name__}")
-
 
 # ─── Domain Registry Tests ───────────────────────────────────────────
 print("\n--- Domain Registry ---")
@@ -2031,7 +2017,6 @@ _pr_valid, _pr_errs = validate_plugin("/tmp/__nonexistent_plugin_path__")
 test("PluginRegistry: validate_plugin on missing path returns (False, errors)",
      _pr_valid is False and len(_pr_errs) > 0,
      f"valid={_pr_valid}, errors={_pr_errs[:2]}")
-
 
 # ─── Session Analytics Tests ─────────────────────────────────────────
 print("\n--- Session Analytics ---")
@@ -2194,7 +2179,6 @@ test("MetricsExporter: export_prometheus returns string",
 test("MetricsExporter: export_json has exported_at field",
      "exported_at" in _me_json, f"keys={set(_me_json.keys())}")
 
-
 # ─── Experience Archive Tests ────────────────────────────────────────
 print("\n--- Experience Archive ---")
 from shared.experience_archive import (
@@ -2277,7 +2261,6 @@ test("RulesValidator: total >= valid count",
 test("RulesValidator: report has issues field",
      "issues" in _rv_report and isinstance(_rv_report["issues"], (list, dict)),
      f"type={type(_rv_report.get('issues')).__name__}")
-
 
 # ─── Search Cache Tests ──────────────────────────────────────────────
 print("\n--- Search Cache ---")
@@ -2491,7 +2474,6 @@ try:
 except Exception as _ch_exc:
     test("Hotspot: import and basic tests", False, str(_ch_exc))
 
-
 # ─────────────────────────────────────────────────
 # Session Replay
 # ─────────────────────────────────────────────────
@@ -2609,7 +2591,6 @@ try:
 
 except Exception as _sr_exc:
     test("Replay: import and basic tests", False, str(_sr_exc))
-
 
 # ─── Gate Timing Extended Tests ─────────────────────────────────────
 print("\n--- Gate Timing Extended ---")
@@ -2753,7 +2734,6 @@ finally:
         os.unlink(_gte_tmp_path)
     except OSError:
         pass
-
 
 # ─── Gate Trend Extended Tests ──────────────────────────────────────
 print("\n--- Gate Trend Extended ---")
@@ -2922,7 +2902,6 @@ finally:
         os.unlink(_gtr_tmp_path)
     except OSError:
         pass
-
 
 # ─── Session Analytics Extended Tests ───────────────────────────────
 print("\n--- Session Analytics Extended ---")
@@ -3182,7 +3161,6 @@ try:
 except Exception as _sae_exc:
     test("SessionAnalyticsExt: import and basic tests", False, str(_sae_exc))
 
-
 # ─── Hook Cache Extended Tests ──────────────────────────────────────
 print("\n--- Hook Cache Extended ---")
 from shared.hook_cache import (
@@ -3302,7 +3280,6 @@ try:
 
 except Exception as _hce_exc:
     test("HookCacheExt: import and basic tests", False, str(_hce_exc))
-
 
 # ─── Metrics Collector Extended Tests ───────────────────────────────
 print("\n--- Metrics Collector Extended ---")
@@ -3443,7 +3420,6 @@ try:
 
 except Exception as _mce_exc:
     test("MetricsCollectorExt: import and basic tests", False, str(_mce_exc))
-
 
 # ─── Event Replay Extended Tests ────────────────────────────────────
 print("\n--- Event Replay Extended ---")
@@ -3620,7 +3596,6 @@ try:
 except Exception as _ere_exc:
     test("EventReplayExt: import and basic tests", False, str(_ere_exc))
 
-
 # ─── Gate Helpers Tests ─────────────────────────────────────────────
 print("\n--- Gate Helpers ---")
 from shared.gate_helpers import (
@@ -3779,7 +3754,6 @@ try:
 
 except Exception as _gh_exc:
     test("GateHelpers: import and basic tests", False, str(_gh_exc))
-
 
 # ─── Hot Reload Tests ───────────────────────────────────────────────
 print("\n--- Hot Reload ---")
@@ -3945,7 +3919,6 @@ try:
 
 except Exception as _hr_exc:
     test("HotReload: import and basic tests", False, str(_hr_exc))
-
 
 # ─────────────────────────────────────────────────
 # Gate Dependency Graph Extended (cycle detection, ordering)
@@ -4118,7 +4091,6 @@ try:
 
 except Exception as _gdg_exc:
     test("DepGraph Extended: import and basic tests", False, str(_gdg_exc))
-
 
 # ─────────────────────────────────────────────────
 # Gate 05 Refactored (gate_helpers integration)
@@ -4377,7 +4349,6 @@ except Exception as _mcp_exc:
     test("MCP Analytics Integration: import and tests", False,
          f"{_mcp_exc}\n{_mcp_tb.format_exc()}")
 
-
 # ─────────────────────────────────────────────────
 # New MCP Tools: fix_effectiveness, query_observations, inspect_domain
 # ─────────────────────────────────────────────────
@@ -4500,7 +4471,6 @@ except Exception as _new_mcp_exc:
     import traceback as _new_mcp_tb
     test("New MCP Tools: import and tests", False,
          f"{_new_mcp_exc}\n{_new_mcp_tb.format_exc()}")
-
 
 # ─────────────────────────────────────────────────
 # Experience Archive Integration

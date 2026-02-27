@@ -41,7 +41,6 @@ code, msg = _direct(_g01_check("Write", {"file_path": "/tmp/nonexistent_xyz_test
                      {"files_read": [], "memory_last_queried": time.time()}))
 test("Write new .py file → allowed", code == 0, msg)
 
-
 from gates.gate_01_read_before_edit import _is_related_read, _stem_normalize
 
 # Test 1: _stem_normalize strips test_ prefix
@@ -245,7 +244,6 @@ still_blocked_commands = [
 for cmd, desc in still_blocked_commands:
     code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Still blocked: {desc}", code != 0, f"code={code}, should be blocked")
-
 
 # Test 1: cryptsetup luksFormat blocked
 code_cf, msg_cf = _direct(_g02_check("Bash", {"command": "cryptsetup luksFormat /dev/sda1"}, {}))
@@ -505,7 +503,6 @@ for cmd, desc in safe_reset_commands:
     code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Safe reset allowed: {desc}", code == 0, f"code={code}, msg={msg}")
 
-
 # ─────────────────────────────────────────────────
 # Test: Gate 3 — Test Before Deploy
 # ─────────────────────────────────────────────────
@@ -519,7 +516,6 @@ test("Block message mentions Gate 3", "GATE 3" in msg, msg)
 # Run tests → then deploy → ALLOWED
 code, msg = _direct(_g03_check("Bash", {"command": "scp app.py root@10.0.0.1:/opt/"}, {"last_test_run": time.time()}))
 test("Deploy after tests → allowed", code == 0, msg)
-
 
 from gates.gate_03_test_before_deploy import _detect_test_framework
 
@@ -815,5 +811,4 @@ shell_wrap_still_blocked = [
 for cmd, desc in shell_wrap_still_blocked:
     code, msg = _direct(_g02_check("Bash", {"command": cmd}, {}))
     test(f"Still blocked via payload: {desc}", code != 0, f"code={code}, should block")
-
 

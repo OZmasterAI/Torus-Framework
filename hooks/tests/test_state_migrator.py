@@ -39,7 +39,6 @@ def test_migrate_state():
     assert migrated["security_profile"] == "balanced", "Wrong default value"
     print("PASSED")
 
-
 def test_validate_state():
     """Test validate_state() type checking"""
     print("\n" + "=" * 60)
@@ -69,7 +68,6 @@ def test_validate_state():
     assert len(errors) > 0, "Should have detected type error"
     print("Bad state detection: PASSED")
 
-
 def test_get_schema_diff():
     """Test get_schema_diff() shows missing fields"""
     print("\n" + "=" * 60)
@@ -92,7 +90,6 @@ def test_get_schema_diff():
     assert diff['summary']['extra'] == 0, "Should have no extra fields"
     print("PASSED")
 
-
 def test_validate_and_migrate():
     """Test validate_and_migrate() combined operation"""
     print("\n" + "=" * 60)
@@ -108,7 +105,6 @@ def test_validate_and_migrate():
     assert is_valid, f"Should be valid after migration, got errors: {errors}"
     assert len(migrated) == len(default_state()), "Should have all fields"
     print("PASSED")
-
 
 def test_get_schema_metadata():
     """Test get_schema_metadata() API info"""
@@ -128,7 +124,6 @@ def test_get_schema_metadata():
     assert "version" in metadata, "Should have version key"
     assert "schema" in metadata, "Should have schema key"
     print("PASSED")
-
 
 def test_security_profile_validation():
     """Test that security_profile is validated correctly"""
@@ -151,7 +146,6 @@ def test_security_profile_validation():
     print(f"Profile 'invalid_profile': valid={is_valid}, warnings={len(warnings)}")
     assert not is_valid or len(warnings) > 0, "Should warn on invalid profile"
     print("PASSED")
-
 
 if __name__ == "__main__":
     try:

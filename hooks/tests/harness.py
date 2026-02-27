@@ -64,7 +64,6 @@ MAIN_SESSION = "test-main"
 SUB_SESSION_A = "test-sub-a"
 SUB_SESSION_B = "test-sub-b"
 
-
 def test(name, condition, detail=""):
     """Record a test result."""
     global PASS, FAIL
@@ -75,14 +74,12 @@ def test(name, condition, detail=""):
         FAIL += 1
         RESULTS.append(f"  FAIL  {name} — {detail}")
 
-
 def skip(name, reason="memory server running"):
     """Mark a test as skipped (counts as pass)."""
     global PASS, SKIPPED
     PASS += 1
     SKIPPED += 1
     RESULTS.append(f"  SKIP  {name} — {reason}")
-
 
 def run_enforcer(event_type, tool_name, tool_input, session_id=MAIN_SESSION, tool_response=None):
     """Simulate running the enforcer (PreToolUse) or tracker (PostToolUse)."""
@@ -102,7 +99,6 @@ def run_enforcer(event_type, tool_name, tool_input, session_id=MAIN_SESSION, too
         cmd, input=data, capture_output=True, text=True, timeout=10
     )
     return result.returncode, result.stderr.strip()
-
 
 def cleanup_test_states():
     """Remove test state files, enforcer sideband files, memory sideband file, and clean file claims."""
@@ -131,7 +127,6 @@ def cleanup_test_states():
     except (json.JSONDecodeError, OSError):
         pass
 
-
 # ── Direct gate imports for in-process testing ──
 from gates.gate_01_read_before_edit import check as _g01_check
 from gates.gate_02_no_destroy import check as _g02_check
@@ -143,11 +138,9 @@ from gates.gate_07_critical_file_guard import check as _g07_check
 from gates.gate_09_strategy_ban import check as _g09_check
 from gates.gate_11_rate_limit import check as _g11_check
 
-
 def _direct(result):
     """Convert GateResult to (exit_code, msg) matching run_enforcer return."""
     return (2 if result.blocked else 0), (result.message or "")
-
 
 import io as _io
 import contextlib as _contextlib
@@ -164,14 +157,12 @@ def _direct_stderr(check_fn, tool_name, tool_input, state):
         msg = (msg + "\n" + captured).strip() if msg else captured
     return code, msg
 
-
 from tracker_pkg.orchestrator import handle_post_tool_use as _tracker_post
 
 def _post(tool_name, tool_input, state, session_id="main", tool_response=None):
     """Call tracker PostToolUse directly, mutating state in-place. Returns state."""
     _tracker_post(tool_name, tool_input, state, session_id=session_id, tool_response=tool_response)
     return state
-
 
 def table_test(prefix, check_fn, cases, state_factory=None):
     """Run a table of (label, tool_name, tool_input, expect_blocked) tests."""

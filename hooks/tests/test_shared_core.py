@@ -53,7 +53,6 @@ test("Secrets: normal text unchanged",
      scrub("Hello world, this is fine") == "Hello world, this is fine",
      scrub("Hello world, this is fine"))
 
-
 # Test 1: SSH public key is redacted
 from shared.secrets_filter import scrub as _scrub_239
 _ssh_test = _scrub_239("key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC user@host")
@@ -116,7 +115,6 @@ _obs = compress_observation("UserPrompt", {"prompt": "fix the bug"}, None, "test
 test("Observation: UserPrompt format",
      "UserPrompt: fix the bug" in _obs["document"],
      _obs["document"])
-
 
 # Import observation compression functions
 try:
@@ -361,7 +359,6 @@ try:
 
 except Exception:
     pass
-
 
 # Test 6: session_summary() returns dict with expected keys
 import session_end
@@ -1017,7 +1014,6 @@ if not MEMORY_SERVER_RUNNING:
         _g11_floor = g11_check("Bash", {}, {"tool_call_count": 3, "session_start": time.time() - 1})
         test("Gate 11: elapsed floor prevents false block", not _g11_floor.blocked)
 
-
         # Test 1: rate_window_timestamps exists in default_state as empty list
         ds = default_state()
         test("rate_window_timestamps in default_state as empty list",
@@ -1168,7 +1164,6 @@ if not MEMORY_SERVER_RUNNING:
              _aa_r12.stdout.strip() == "" and _aa_r12.returncode == 0,
              f"stdout='{_aa_r12.stdout.strip()}', rc={_aa_r12.returncode}")
 
-
         # Test 5: SAFE_COMMAND_PREFIXES includes diagnostic commands
         sys.path.insert(0, HOOKS_DIR)
         from auto_approve import SAFE_COMMAND_PREFIXES
@@ -1240,7 +1235,6 @@ if not MEMORY_SERVER_RUNNING:
         # 6. Always exits 0
         test("SubagentCtx: always exits 0",
              _sc_r5.returncode == 0, f"rc={_sc_r5.returncode}")
-
 
         # Test 10: _format_skill_usage returns empty string for no skills
         from subagent_context import _format_skill_usage
@@ -2108,7 +2102,6 @@ if not MEMORY_SERVER_RUNNING:
 # Skill existence + content tests removed — skills are user-facing docs,
 # behavioral tests validate the framework, not documentation wording.
 
-
 from statusline import get_session_age
 
 # Test 4: get_session_age exists and is callable
@@ -2194,7 +2187,6 @@ test("get_plan_mode_warns reads high value",
      pm8 == 5,
      f"Expected 5, got {pm8!r}")
 
-
 # Test 10: get_verification_ratio returns correct counts
 from statusline import get_verification_ratio
 _vr_state = {"verified_fixes": ["/a.py", "/b.py", "/c.py"], "pending_verification": ["/d.py", "/e.py"]}
@@ -2216,8 +2208,6 @@ test("V:x/y format correct for (3, 5) input",
      "Expected V:3/5 format")
 
 cleanup_test_states()
-
-
 
 # Test 5: get_total_tool_calls function exists
 from statusline import get_total_tool_calls as _gttc
@@ -2256,7 +2246,6 @@ _el_r6 = _sp_auto.run(
 test("EventLogger: malformed JSON → exits 0 (fail-open)",
      _el_r6.returncode == 0, f"rc={_el_r6.returncode}")
 
-
 # Test 5: _audit_log function accepts session_id parameter
 import inspect as _insp236
 from event_logger import _audit_log as _el_audit
@@ -2279,7 +2268,6 @@ test("handle_subagent_stop no longer calls _audit_log directly",
      "Expected _audit_log removed from handler (unified in main)")
 
 cleanup_test_states()
-
 
 def _read_pkg_source(pkg_dir):
     """Read and concatenate all .py files in a _pkg/ directory."""
@@ -2348,7 +2336,6 @@ if os.path.isfile(_ms_gw_path):
              f"action '{_action_name}' not found in maintenance dispatcher")
 else:
     test("gateway: memory_server.py exists", False, "memory_server.py not found")
-
 
 # ─────────────────────────────────────────────────
 # Search Cache Tests
@@ -3167,7 +3154,6 @@ except Exception as _e:
     _h.RESULTS.append("  FAIL: drift_detector gate_drift_report: " + str(_e))
     print("  FAIL: drift_detector gate_drift_report: " + str(_e))
 
-
 # -------------------------------------------------
 # Graduated Gate Escalation (escalation='ask')
 # -------------------------------------------------
@@ -3265,7 +3251,6 @@ test("ToolFP: fingerprint store persists to disk",
 
 # Restore FINGERPRINT_FILE after tests
 _tfp.FINGERPRINT_FILE = _tf_orig_fp_file
-
 
 # ─────────────────────────────────────────────────
 # --- Gate Timing Analytics ---
@@ -3455,8 +3440,6 @@ finally:
     except OSError:
         pass
 
-
-
 # Test 1: gate_timing_stats exists in default_state and is empty dict
 cleanup_test_states()
 ds = default_state()
@@ -3591,7 +3574,6 @@ test(
 # Cleanup
 _eb.clear()
 
-
 # ─────────────────────────────────────────────────
 # --- MetricsCollector smoke tests ---
 # ─────────────────────────────────────────────────
@@ -3636,7 +3618,6 @@ test(
     f"got {_mc_hist}",
 )
 
-
 # ─────────────────────────────────────────────────
 # --- PluginRegistry smoke tests ---
 # ─────────────────────────────────────────────────
@@ -3668,7 +3649,6 @@ test(
     _pr_missing is None,
     f"got {_pr_missing}",
 )
-
 
 # ─────────────────────────────────────────────────
 # --- HookCache smoke tests ---
@@ -3708,7 +3688,6 @@ test(
 
 _hc.clear_cache()
 
-
 # ─────────────────────────────────────────────────
 # --- SecretsFilter smoke tests ---
 # ─────────────────────────────────────────────────
@@ -3740,7 +3719,6 @@ test(
     _sf_out == _sf_clean,
     f"got {_sf_out!r}",
 )
-
 
 # ─────────────────────────────────────────────────
 # --- PipelineOptimizer smoke tests ---
@@ -3907,8 +3885,6 @@ test(
     f"optimal={sorted(_po_est['optimal_order'])}, applicable={sorted(_po_est['applicable_gates'])}",
 )
 
-
-
 from pre_compact import _categorize_tools
 
 # Test 9: _categorize_tools function exists and is callable
@@ -4008,8 +3984,6 @@ test("verified_ratio handles zero total",
 
 cleanup_test_states()
 
-
-
 # Test 6: high_confidence trajectory (>= 0.9 success rate)
 _t_verified = 9
 _t_pending = 1
@@ -4062,7 +4036,6 @@ test("trajectory high_confidence when no edits",
 # ─────────────────────────────────────────────────
 # Cleanup test state files
 # ─────────────────────────────────────────────────
-
 
 # ─────────────────────────────────────────────────
 # Extended Error Normalizer Tests
@@ -4136,7 +4109,6 @@ test(
     "<git-hash>" in _en_git,
     f"got {_en_git!r}",
 )
-
 
 # ─────────────────────────────────────────────────
 # Extended Observation Compression Tests
@@ -4227,8 +4199,6 @@ test(
     "uncategorized" in _obs_unknown["document"],
     f"got {_obs_unknown['document']!r}",
 )
-
-
 
 from shared.observation import _detect_sentiment
 
@@ -4405,8 +4375,6 @@ finally:
     _audit_mod.AUDIT_DIR = _al_orig_dir
     _audit_mod.AUDIT_TRAIL_PATH = _al_orig_trail
     _al_shutil.rmtree(_al_tmpdir, ignore_errors=True)
-
-
 
 from shared.audit_log import _aggregate_entry
 
@@ -4616,7 +4584,6 @@ test(
     f"expected None, got {_td_empty!r}",
 )
 
-
 # ─────────────────────────────────────────────────
 # Config Validator Tests
 # ─────────────────────────────────────────────────
@@ -4633,20 +4600,17 @@ from shared.config_validator import (
     validate_all,
 )
 
-
 def _make_settings_file(content, tmpdir):
     p = _cv_os.path.join(tmpdir, "settings.json")
     with open(p, "w") as f:
         _cv_json.dump(content, f)
     return p
 
-
 def _make_live_state_file(content, tmpdir):
     p = _cv_os.path.join(tmpdir, "LIVE_STATE.json")
     with open(p, "w") as f:
         _cv_json.dump(content, f)
     return p
-
 
 _cv_tmp = _cv_tempfile.mkdtemp(prefix="torus_cv_test_")
 
@@ -4812,7 +4776,6 @@ try:
 finally:
     import shutil as _cv_shutil
     _cv_shutil.rmtree(_cv_tmp, ignore_errors=True)
-
 
 # ─────────────────────────────────────────────────
 # Gate 18: Canary Monitor
@@ -5019,8 +4982,6 @@ except Exception as _gc_e:
     _h.FAIL += 1
     _h.RESULTS.append(f"  FAIL: GateCache stats: {_gc_e}")
     print(f"  FAIL: GateCache stats: {_gc_e}")
-
-
 
 from shared.gate_result import GateResult
 

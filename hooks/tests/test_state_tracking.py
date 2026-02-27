@@ -42,7 +42,6 @@ test("State file uses session_id", MAIN_SESSION in state_file_for(MAIN_SESSION))
 test("Different sessions get different files",
      state_file_for(MAIN_SESSION) != state_file_for(SUB_SESSION_A))
 
-
 from shared.state import MAX_EDIT_STREAK
 
 # Test 1: MAX_EDIT_STREAK constant exists and equals 50
@@ -123,7 +122,6 @@ test("Schema covers all default_state keys",
      f"Missing from schema: {_missing}")
 
 cleanup_test_states()
-
 
 # Test 9: default_state includes tool_call_counts
 from shared.state import default_state as _ds241
@@ -230,7 +228,6 @@ test("Test run populates verified_fixes", len(_st4.get("verified_fixes", [])) >=
      f"verified_fixes={_st4.get('verified_fixes', [])}")
 test("Test run clears pending_verification", len(_st4.get("pending_verification", [])) == 0)
 
-
 # Test 1: Edit tool adds file to files_edited list
 _st_ft1 = default_state()
 _post("Read", {"file_path": "/tmp/foo226.py"}, _st_ft1)
@@ -303,8 +300,6 @@ test("Edit without old_string falls back to path-only",
      f"Expected 'Edit:/tmp/no_content.py', got {_ok12!r}")
 
 cleanup_test_states()
-
-
 
 # Test 8: Verification timestamps recorded when files are verified
 _st_vts = default_state()
@@ -477,7 +472,6 @@ _result = _sp.run(["bash", _script_path],
 test("UserPromptSubmit: normal prompt → clean output",
      "<correction_detected>" not in _result.stdout and "<feature_request_detected>" not in _result.stdout,
      f"stdout={_result.stdout!r}")
-
 
 # Test 9: _is_duplicate_prompt function exists
 from user_prompt_capture import _is_duplicate_prompt, DEDUP_WINDOW
@@ -652,7 +646,6 @@ test("Normalizer: same error different paths → same hash", hash1 == hash2, f"{
 _, hash1 = error_signature("TypeError: cannot add str and int")
 _, hash2 = error_signature("ImportError: no module named foo")
 test("Normalizer: different errors → different hashes", hash1 != hash2, f"{hash1} vs {hash2}")
-
 
 # Test 1: normalize_error strips port numbers
 from shared.error_normalizer import normalize_error

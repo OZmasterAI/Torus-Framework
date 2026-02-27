@@ -64,7 +64,6 @@ code, msg = _direct(_g04_check("Task", {"subagent_type": "builder", "model": "so
                      {"memory_last_queried": 0}))
 test("Task builder without memory → blocked (write agent)", code != 0, msg)
 
-
 # Test 9: Gate 4 tracks exemptions in state (direct, no subprocess)
 # Remove sideband so Gate 4 reads state["memory_last_queried"]
 try:
@@ -138,7 +137,6 @@ _g5_state_cleared = {
 }
 code, msg = _direct(_g05_check("Edit", {"file_path": "/tmp/file_d.py"}, _g5_state_cleared))
 test("Gate 5: after verification, editing 4th file allowed", code == 0, msg)
-
 
 # Test 1: is_test_file identifies test_ prefix (via gate_helpers)
 from shared.gate_helpers import is_test_file as _g05_is_test_file
@@ -221,7 +219,6 @@ _post("Read", {"file_path": "/home/test/next_file.py"}, _st_g6)
 _g6_block_result = _g06_check("Edit", {"file_path": "/home/test/next_file.py"}, _st_g6)
 test("Gate 6: blocks at 2+ verified fixes", _g6_block_result.blocked, f"blocked={_g6_block_result.blocked}")
 test("Gate 6: block message mentions GATE 6", "GATE 6" in (_g6_block_result.message or ""), _g6_block_result.message)
-
 
 # Test 5: Gate 6 plan mode warning mentions "plan mode" when plan exited without memory save
 _g6pm5 = {"files_read": ["foo.py"], "memory_last_queried": time.time() - 120,
@@ -349,8 +346,6 @@ test("edit streak risk 3 hotspots → critical",
 
 cleanup_test_states()
 
-
-
 from gates.gate_06_save_fix import check as gate6_check_229
 import io as _io229
 
@@ -473,7 +468,6 @@ test("Gate 7: edit .env without memory → blocked", code != 0, f"code={code}")
 code, msg = _direct(_g07_check("Edit", {"file_path": "/tmp/auth_handler.py"},
                      {"memory_last_queried": time.time(), "files_read": ["/tmp/auth_handler.py"]}))
 test("Gate 7: edit auth_handler.py WITH memory → allowed", code == 0, msg)
-
 
 # Test 1: Gate 7 CRITICAL_PATTERNS is list of tuples
 from gates.gate_07_critical_file_guard import CRITICAL_PATTERNS as G7_PATTERNS
@@ -672,7 +666,6 @@ code, msg = _direct(_g09_check("Bash", {"command": "echo hello"},
                      {"current_strategy_id": "reinstall-package", "active_bans": ["reinstall-package"]}))
 test("Gate 9: Bash with banned strategy → allowed (only blocks Edit/Write)", code == 0, msg)
 
-
 from gates.gate_09_strategy_ban import _ban_severity
 
 # Test 5: _ban_severity(1) → ("first_fail", "warn")
@@ -745,8 +738,6 @@ test("Gate 9 passes with empty strategy",
      f"Expected not blocked, got blocked={_g9_result12.blocked!r}")
 
 cleanup_test_states()
-
-
 
 # Test 2: Gate 9 success context is conditional on success_count > 0
 
@@ -1084,7 +1075,6 @@ try:
 except Exception as _g05_exc:
     test("G05 Refactored: import and basic tests", False, str(_g05_exc))
 
-
 # ─────────────────────────────────────────────────
 # MCP Analytics Server Integration Tests
 # ─────────────────────────────────────────────────
@@ -1201,6 +1191,5 @@ try:
 
 except Exception as _gr_exc:
     test("Gate 04/07/13/15 Refactored Tests: import and tests", False, str(_gr_exc))
-
 
 # --- Memory Decay Deep Tests ---
