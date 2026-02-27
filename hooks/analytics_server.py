@@ -1569,6 +1569,91 @@ def routing_stats() -> dict:
     }
 
 
+# ── Framework Pulse Dashboard ────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def framework_pulse(lookback_hours: int = 1) -> dict:
+    """Comprehensive framework health pulse — one call to rule them all.
+
+    Aggregates data from session replay, code hotspots, gate trends,
+    anomaly detection, and circuit breakers into a single dashboard view.
+    Use this for a quick "how is the framework doing?" check.
+
+    Args:
+        lookback_hours: Hours of recent activity to analyze (default 1).
+    """
+    _ensure_initialized()
+    pulse = {"lookback_hours": lookback_hours}
+
+    # 1. Session replay stats
+    try:
+        from shared.session_replay import get_timeline_stats, detect_patterns
+        pulse["session"] = get_timeline_stats(lookback_hours)
+        patterns = detect_patterns(lookback_hours)
+        pulse["patterns"] = patterns["patterns"]
+        pulse["healthy"] = patterns["healthy"]
+    except Exception:
+        pulse["session"] = {"error": "unavailable"}
+        pulse["healthy"] = True
+        pulse["patterns"] = []
+
+    # 2. Code hotspots (top 5)
+    try:
+        from shared.code_hotspot import rank_files_by_risk
+        hotspots = rank_files_by_risk(lookback_days=max(1, lookback_hours // 24 + 1), limit=5)
+        pulse["hotspots"] = [{
+            "file": h["file_path"],
+            "risk": h["risk_score"],
+            "level": h["risk_level"],
+            "blocks": h["block_count"],
+        } for h in hotspots]
+    except Exception:
+        pulse["hotspots"] = []
+
+    # 3. Gate trends
+    try:
+        from shared.gate_trend import get_trend_report
+        report = get_trend_report()
+        pulse["gate_trends"] = {
+            "rising": report.get("rising_gates", []),
+            "falling": report.get("falling_gates", []),
+            "total_gates": report.get("total_gates", 0),
+            "snapshots": report.get("snapshot_count", 0),
+        }
+    except Exception:
+        pulse["gate_trends"] = {"rising": [], "falling": [], "total_gates": 0}
+
+    # 4. Circuit breaker states
+    try:
+        from shared.circuit_breaker import get_all_gate_states
+        gate_states = get_all_gate_states()
+        open_circuits = [g for g, s in gate_states.items() if s != "CLOSED"]
+        pulse["circuits"] = {
+            "total": len(gate_states),
+            "open": open_circuits,
+            "all_closed": len(open_circuits) == 0,
+        }
+    except Exception:
+        pulse["circuits"] = {"total": 0, "open": [], "all_closed": True}
+
+    # 5. Overall health score (0-100)
+    score = 100
+    if not pulse.get("healthy", True):
+        score -= 20
+    if pulse.get("patterns"):
+        score -= min(30, len(pulse["patterns"]) * 10)
+    if pulse.get("circuits", {}).get("open"):
+        score -= len(pulse["circuits"]["open"]) * 15
+    if pulse.get("gate_trends", {}).get("rising"):
+        score -= len(pulse["gate_trends"]["rising"]) * 5
+    hotspot_critical = sum(1 for h in pulse.get("hotspots", []) if h.get("level") == "critical")
+    score -= hotspot_critical * 10
+    pulse["health_score"] = max(0, min(100, score))
+
+    return pulse
+
+
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
 # DORMANT: uncomment @mcp.tool() to reactivate
