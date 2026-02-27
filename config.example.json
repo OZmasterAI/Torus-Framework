@@ -11,7 +11,6 @@
   "model_profile": "efficient",
   "security_profile": "balanced",
   "search_routing": "default",
-  "chain_memory": true,
   "tg_session_notify": false,
   "tg_mirror_messages": false,
   "mentor_all": true,

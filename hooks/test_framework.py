@@ -1728,11 +1728,11 @@ _g5_state_3pending = {
     "memory_last_queried": time.time(),
 }
 
-# Editing a 4th different file should WARN (3 unverified — graduated escalation)
+# Editing a 4th different file should BLOCK (3 unverified = BLOCK_THRESHOLD)
 _g5_result_3 = _g05_check("Edit", {"file_path": "/tmp/file_d.py"}, _g5_state_3pending)
 code, msg = _direct(_g5_result_3)
-test("Gate 5: 3 unverified edits warns (not blocks) 4th file", code == 0 and _g5_result_3.escalation == "warn", f"code={code} escalation={_g5_result_3.escalation}")
-test("Gate 5: warn message mentions GATE 5", "GATE 5" in _g5_result_3.message, _g5_result_3.message)
+test("Gate 5: 3 unverified edits blocks 4th file", code != 0 and _g5_result_3.blocked, f"code={code} blocked={_g5_result_3.blocked}")
+test("Gate 5: block message mentions GATE 5", "GATE 5" in (_g5_result_3.message or ""), _g5_result_3.message)
 
 # Re-editing file_a.py should be ALLOWED (same-file exemption)
 code, msg = _direct(_g05_check("Edit", {"file_path": "/tmp/file_a.py"}, _g5_state_3pending))
@@ -1784,9 +1784,9 @@ _g5_warn_state = {
     "edit_streak": {},
 }
 _g5_warn_result = _g5_check("Edit", {"file_path": "/tmp/new.py"}, _g5_warn_state)
-test("Gate 5 warns (not blocks) at 3 unverified files",
-     not _g5_warn_result.blocked and _g5_warn_result.escalation == "warn",
-     f"Expected warn escalation, got blocked={_g5_warn_result.blocked} escalation={_g5_warn_result.escalation}")
+test("Gate 5 blocks at 3 unverified files (no warn phase)",
+     _g5_warn_result.blocked is True,
+     f"Expected blocked=True, got blocked={_g5_warn_result.blocked}")
 
 # Test 6: Gate 5 graduated escalation — blocks at 5 unverified
 _g5_block_state = {
@@ -1806,9 +1806,9 @@ _g5_mid_state = {
     "edit_streak": {},
 }
 _g5_mid_result = _g5_check("Edit", {"file_path": "/tmp/new.py"}, _g5_mid_state)
-test("Gate 5 warns at 4 unverified files (between thresholds)",
-     not _g5_mid_result.blocked and _g5_mid_result.escalation == "warn",
-     f"Expected warn, got blocked={_g5_mid_result.blocked} escalation={_g5_mid_result.escalation}")
+test("Gate 5 blocks at 4 unverified files (above threshold 3)",
+     _g5_mid_result.blocked is True,
+     f"Expected blocked=True, got blocked={_g5_mid_result.blocked}")
 
 # ─────────────────────────────────────────────────
 # Test: Gate 6 — Save Verified Fix (advisory only)
@@ -1825,11 +1825,11 @@ _post("Bash", {"command": "pytest tests/"}, _st_g6)  # moves pending -> verified
 test("Gate 6 setup: verified_fixes populated", len(_st_g6.get("verified_fixes", [])) >= 2,
      f"verified_fixes={_st_g6.get('verified_fixes', [])}")
 
-# Edit with 2+ verified_fixes — should NOT block (advisory only)
+# Edit with 2+ verified_fixes — should BLOCK (immediate enforcement)
 _post("Read", {"file_path": "/home/test/next_file.py"}, _st_g6)
-code, msg = _direct_stderr(_g06_check, "Edit", {"file_path": "/home/test/next_file.py"}, _st_g6)
-test("Gate 6: never blocks (advisory only)", code == 0, msg)
-test("Gate 6: warning emitted to stderr", "GATE 6" in msg or "WARNING" in msg, msg)
+_g6_block_result = _g06_check("Edit", {"file_path": "/home/test/next_file.py"}, _st_g6)
+test("Gate 6: blocks at 2+ verified fixes", _g6_block_result.blocked, f"blocked={_g6_block_result.blocked}")
+test("Gate 6: block message mentions GATE 6", "GATE 6" in (_g6_block_result.message or ""), _g6_block_result.message)
 
 
 # Test 5: Gate 6 plan mode warning mentions "plan mode" when plan exited without memory save
@@ -1868,12 +1868,12 @@ test("Gate 6 plan mode — stale plan auto-forgiven",
      "plan mode" not in stderr12_8.lower(),
      f"Expected no plan mode warning for stale plan, got: {stderr12_8[:200]}")
 
-from gates.gate_06_save_fix import check as gate6_check, WARN_THRESHOLD
+from gates.gate_06_save_fix import check as gate6_check, BLOCK_THRESHOLD
 
 # Test 1: Gate 6 warns about high edit streak files
 _g6_state1 = default_state()
 _g6_state1["edit_streak"] = {"/tmp/churn.py": 5, "/tmp/stable.py": 1}
-_g6_state1["verified_fixes"] = ["/tmp/a.py", "/tmp/b.py"]
+_g6_state1["verified_fixes"] = []  # below BLOCK_THRESHOLD to isolate edit streak test
 _g6_state1["_session_id"] = MAIN_SESSION
 _g6_result1 = gate6_check("Edit", {"file_path": "/tmp/next.py"}, _g6_state1)
 test("Gate 6 warns with edit streak >= 3",
@@ -1886,13 +1886,13 @@ _g6_state2["edit_streak"] = {"/tmp/stable.py": 1}
 _g6_state2["_session_id"] = MAIN_SESSION
 _g6_result2 = gate6_check("Edit", {"file_path": "/tmp/next.py"}, _g6_state2)
 test("Gate 6 no warning with edit streak < 3",
-     _g6_result2.severity != "warn" or len(_g6_state2.get("verified_fixes", [])) >= WARN_THRESHOLD,
+     _g6_result2.severity != "warn" or len(_g6_state2.get("verified_fixes", [])) >= BLOCK_THRESHOLD,
      f"Got severity={_g6_result2.severity!r}")
 
 # Test 3: Gate 6 edit streak surfaces basename not full path
 _g6_state3 = default_state()
 _g6_state3["edit_streak"] = {"/very/long/path/to/file.py": 4}
-_g6_state3["verified_fixes"] = ["/tmp/a.py", "/tmp/b.py"]
+_g6_state3["verified_fixes"] = []  # below BLOCK_THRESHOLD to isolate edit streak test
 _g6_state3["_session_id"] = MAIN_SESSION
 import io as _io227
 _g6_stderr = _io227.StringIO()
@@ -2217,6 +2217,7 @@ state = load_state(session_id=MAIN_SESSION)
 state["files_read"] = ["/tmp/long_session.py"]
 state["memory_last_queried"] = time.time()
 state["session_start"] = time.time() - (4 * 3600)
+state["session_test_baseline"] = True  # satisfy Gate 14
 save_state(state, session_id=MAIN_SESSION)
 code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/long_session.py"})
 # Gate 8 long-session is advisory (prints warning, doesn't block)
@@ -2225,7 +2226,8 @@ if 1 <= current_hour < 5:
     test("Gate 8: long session (skipped — late night hours)", True)
 else:
     test("Gate 8: long session advisory doesn't block during normal hours", code == 0, msg)
-    test("Gate 8: long session advisory emits warning", "GATE 8" in msg or "session" in msg.lower(), msg)
+    # Gate 8 is dormant — warning emission test skipped
+    test("Gate 8: long session advisory (dormant — no warning expected)", True)
 
 # Test normal-hours pass: during normal hours, Edit should pass (with memory satisfied)
 cleanup_test_states()
@@ -2233,6 +2235,7 @@ reset_state(session_id=MAIN_SESSION)
 state = load_state(session_id=MAIN_SESSION)
 state["files_read"] = ["/tmp/normal_edit.py"]
 state["memory_last_queried"] = time.time()
+state["session_test_baseline"] = True  # satisfy Gate 14
 save_state(state, session_id=MAIN_SESSION)
 code, msg = run_enforcer("PreToolUse", "Edit", {"file_path": "/tmp/normal_edit.py"})
 if 1 <= current_hour < 5:
@@ -2388,24 +2391,24 @@ code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/gate6_err.py"}
 test("Gate 6 enhanced: warns on unlogged_errors",
      "error" in msg.lower() or "unlogged" in msg.lower(), msg)
 
-# Test: Gate 6 warns with both unlogged_errors AND verified_fixes
+# Test: Gate 6 blocks when verified_fixes reach threshold, even with unlogged_errors
 _g6_both_state = {
     "unlogged_errors": [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}],
     "verified_fixes": ["/tmp/fix1.py", "/tmp/fix2.py"],
     "files_read": ["/tmp/gate6_both.py"], "memory_last_queried": time.time(),
-    "pending_chain_ids": [], "gate6_warn_count": 0,
+    "pending_chain_ids": [],
 }
-code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/gate6_both.py"}, _g6_both_state)
-test("Gate 6 enhanced: warns on both errors and fixes", "GATE 6" in msg, msg)
+_g6_both_result = _g06_check("Edit", {"file_path": "/tmp/gate6_both.py"}, _g6_both_state)
+test("Gate 6 enhanced: blocks when verified_fixes at threshold", _g6_both_result.blocked, f"blocked={_g6_both_result.blocked}")
 
-# Test: Gate 6 still never blocks (advisory only) even with errors
+# Test: Gate 6 advisory-only when just errors (no verified_fixes)
 _g6_noblock_state = {
     "unlogged_errors": [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}],
     "files_read": ["/tmp/gate6_noblock.py"], "memory_last_queried": time.time(),
-    "verified_fixes": [], "pending_chain_ids": [], "gate6_warn_count": 0,
+    "verified_fixes": [], "pending_chain_ids": [],
 }
 code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/gate6_noblock.py"}, _g6_noblock_state)
-test("Gate 6 enhanced: never blocks even with errors", code == 0, f"code={code}")
+test("Gate 6 enhanced: advisory only with errors (no fixes)", code == 0, f"code={code}")
 
 # Test: Gate 6 error warning mentions pattern name
 _g6_pattern_state = {
@@ -2546,12 +2549,13 @@ test("Repair loop: Gate 6 emits REPAIR LOOP warning",
 # ─────────────────────────────────────────────────
 print("\n--- Outcome Tag Suggestions ---")
 
-# Test: Gate 6 verified_fixes warning mentions outcome:success
+# Test: Gate 6 blocks on verified_fixes at threshold with remember_this suggestion
 _g6_os = {"verified_fixes": ["/tmp/fix1.py", "/tmp/fix2.py"], "files_read": ["/tmp/outcome_s.py"],
-          "memory_last_queried": time.time(), "unlogged_errors": [], "pending_chain_ids": [], "gate6_warn_count": 0}
-code, msg = _direct_stderr(_g06_check,"Edit", {"file_path": "/tmp/outcome_s.py"}, _g6_os)
-test("Outcome tags: verified_fixes warning mentions outcome:success",
-     "outcome:success" in msg, msg)
+          "memory_last_queried": time.time(), "unlogged_errors": [], "pending_chain_ids": []}
+_g6_os_result = _g06_check("Edit", {"file_path": "/tmp/outcome_s.py"}, _g6_os)
+test("Outcome tags: verified_fixes block mentions remember_this",
+     _g6_os_result.blocked and "remember_this" in (_g6_os_result.message or ""),
+     f"blocked={_g6_os_result.blocked}, msg={_g6_os_result.message}")
 
 # Test: Gate 6 unlogged_errors warning mentions outcome:failed
 _g6_of = {"unlogged_errors": [{"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}],
@@ -6439,47 +6443,28 @@ _g14_state1 = default_state()
 _g14_state1["session_test_baseline"] = False
 _g14_state1["pending_verification"] = []
 _g14_state1["memory_last_queried"] = 0  # stale
-    # confidence_warnings removed in refactor1 (orphaned key)
 _g14_r1 = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state1)
-test("Gate14: no test baseline → warns first time (not blocked)",
-     not _g14_r1.blocked)
-test("Gate14: no test baseline → WARNING in message",
-     "WARNING" in (_g14_r1.message or ""))
-test("Gate14: per-file warning counter incremented to 1",
-     _g14_state1.get("confidence_warnings_per_file", {}).get("/tmp/new_feature.py") == 1)
+test("Gate14: no test baseline → BLOCKED immediately",
+     _g14_r1.blocked)
+test("Gate14: no test baseline → BLOCKED in message",
+     "BLOCKED" in (_g14_r1.message or ""))
 
-# Test 2: Same file again → per-file counter increments (suppressed warning, already warned)
-_g14_r2 = _g14_check("Edit", {"file_path": "/tmp/new_feature.py"}, _g14_state1)
-test("Gate14: second attempt same file → not blocked",
-     not _g14_r2.blocked)
-test("Gate14: second attempt same file → per-file counter is 2",
-     _g14_state1.get("confidence_warnings_per_file", {}).get("/tmp/new_feature.py") == 2)
-
-# Test 3: Third attempt same file → BLOCKED (per-file counter exceeds MAX_WARNINGS)
-_g14_r3 = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state1)
-test("Gate14: third attempt same file → BLOCKED",
-     _g14_r3.blocked)
-test("Gate14: third attempt same file → BLOCKED in message",
-     "BLOCKED" in (_g14_r3.message or ""))
-
-# Test 4: After test run + fresh memory → allowed
+# Test 2: After test run + fresh memory → allowed
 _g14_state2 = default_state()
 _g14_state2["session_test_baseline"] = True
 _g14_state2["pending_verification"] = []
 _g14_state2["memory_last_queried"] = time.time()  # fresh
-_g14_state2["confidence_warnings_per_file"] = {}
 _g14_r4 = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state2)
 test("Gate14: all signals pass → allowed",
      not _g14_r4.blocked)
 test("Gate14: all signals pass → no warning message",
      not _g14_r4.message)
 
-# Test 5: Re-editing file in pending_verification → allowed (iteration)
+# Test 3: Re-editing file in pending_verification → allowed (iteration)
 _g14_state3 = default_state()
 _g14_state3["session_test_baseline"] = False
 _g14_state3["pending_verification"] = ["/tmp/existing_edit.py"]
 _g14_state3["memory_last_queried"] = 0
-_g14_state3["confidence_warnings_per_file"] = {"/tmp/other.py": 5}  # would block if not exempt
 _g14_r5 = _g14_check("Edit", {"file_path": "/tmp/existing_edit.py"}, _g14_state3)
 test("Gate14: re-edit of pending file → allowed (iteration exemption)",
      not _g14_r5.blocked)
@@ -6488,7 +6473,6 @@ test("Gate14: re-edit of pending file → allowed (iteration exemption)",
 _g14_state4 = default_state()
 _g14_state4["session_test_baseline"] = False
 _g14_state4["memory_last_queried"] = 0
-    # confidence_warnings removed in refactor1 (orphaned key)
 for _exempt_file, _exempt_label in [
     ("test_something.py", "test file"),
     ("HANDOFF.md", "HANDOFF.md"),
@@ -7798,16 +7782,16 @@ try:
     _se_config_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
     with open(_se_config_path) as _se_f:
         _se_cfg = _se_json.load(_se_f)
-    for _se_key in ("gate_auto_tune", "budget_degradation", "session_token_budget", "chain_memory"):
+    for _se_key in ("gate_auto_tune", "budget_degradation", "session_token_budget"):
         assert _se_key in _se_cfg, f"Missing toggle in config.json: {_se_key}"
     assert isinstance(_se_cfg["gate_auto_tune"], bool), "gate_auto_tune must be bool"
     assert isinstance(_se_cfg["budget_degradation"], bool), "budget_degradation must be bool"
     assert isinstance(_se_cfg["session_token_budget"], (int, float)), "session_token_budget must be numeric"
-    assert isinstance(_se_cfg["chain_memory"], bool), "chain_memory must be bool"
+    assert "chain_memory" not in _se_cfg, "chain_memory should be removed from config.json"
     # Verify toggles are NOT in LIVE_STATE.json anymore
     with open(os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")) as _se_f2:
         _se_live = _se_json.load(_se_f2)
-    for _se_key in ("gate_auto_tune", "budget_degradation", "session_token_budget", "chain_memory"):
+    for _se_key in ("gate_auto_tune", "budget_degradation", "session_token_budget"):
         assert _se_key not in _se_live, f"Toggle {_se_key} should not be in LIVE_STATE.json"
     PASS += 1
     RESULTS.append("  PASS: config.json has toggles, LIVE_STATE.json does not")
@@ -12087,79 +12071,14 @@ except Exception as _ma_e:
     print(f"  FAIL: Upgrade C tests: {_ma_e}")
 
 # ─────────────────────────────────────────────────
-# Upgrade F: Gate 6 Analytics Advisory
+# Upgrade F: Gate 6 Analytics Advisory (REMOVED)
+# Analytics counter was removed — Gate 6 no longer tracks framework edits
+# without analytics queries. The deadlock path to nonexistent analytics server is eliminated.
 # ─────────────────────────────────────────────────
-print('\n--- Upgrade F: Gate 6 Analytics Advisory ---')
-
-try:
-    from gates.gate_06_save_fix import check as _g6f_check, ANALYTICS_ESCALATION_THRESHOLD as _g6f_thresh
-
-    # 1. Framework file edit without analytics → warning + counter increment
-    _g6f_state1 = {"gate6_warn_count": 0, "analytics_last_queried": 0, "analytics_warn_count": 0,
-                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
-                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
-                    "error_windows": [], "gate_tune_overrides": {}}
-    _g6f_r1 = _g6f_check("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, _g6f_state1)
-    test("UpgradeF: framework edit → analytics_warn_count increments",
-         _g6f_state1.get("analytics_warn_count") == 1 and not _g6f_r1.blocked,
-         f"count={_g6f_state1.get('analytics_warn_count')}, blocked={_g6f_r1.blocked}")
-
-    # 2. Non-framework file → no analytics warning
-    _g6f_state2 = {"gate6_warn_count": 0, "analytics_last_queried": 0, "analytics_warn_count": 0,
-                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
-                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
-                    "error_windows": [], "gate_tune_overrides": {}}
-    _g6f_r2 = _g6f_check("Edit", {"file_path": "/home/crab/Desktop/app.py"}, _g6f_state2)
-    test("UpgradeF: non-framework edit → no analytics warning",
-         _g6f_state2.get("analytics_warn_count", 0) == 0,
-         f"count={_g6f_state2.get('analytics_warn_count')}")
-
-    # 3. Recent analytics call → no warning
-    _g6f_state3 = {"gate6_warn_count": 0, "analytics_last_queried": _ma_time.time(), "analytics_warn_count": 0,
-                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
-                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
-                    "error_windows": [], "gate_tune_overrides": {}}
-    _g6f_r3 = _g6f_check("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, _g6f_state3)
-    test("UpgradeF: recent analytics → no warning",
-         _g6f_state3.get("analytics_warn_count", 0) == 0,
-         f"count={_g6f_state3.get('analytics_warn_count')}")
-
-    # 4. Separate counter — analytics_warn_count doesn't affect gate6_warn_count
-    _g6f_state4 = {"gate6_warn_count": 0, "analytics_last_queried": 0, "analytics_warn_count": 5,
-                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
-                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
-                    "error_windows": [], "gate_tune_overrides": {}}
-    _g6f_r4 = _g6f_check("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, _g6f_state4)
-    test("UpgradeF: analytics counter separate from gate6_warn_count",
-         _g6f_state4.get("gate6_warn_count") == 0 and _g6f_state4.get("analytics_warn_count") == 6,
-         f"g6={_g6f_state4.get('gate6_warn_count')}, analytics={_g6f_state4.get('analytics_warn_count')}")
-
-    # 5. Threshold 15 → blocks at 15
-    _g6f_state5 = {"gate6_warn_count": 0, "analytics_last_queried": 0, "analytics_warn_count": 14,
-                    "verified_fixes": [], "unlogged_errors": [], "error_pattern_counts": {},
-                    "edit_streak": {}, "pending_chain_ids": [], "last_exit_plan_mode": 0,
-                    "error_windows": [], "gate_tune_overrides": {}}
-    _g6f_r5 = _g6f_check("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, _g6f_state5)
-    test("UpgradeF: blocks at threshold 15",
-         _g6f_r5.blocked and _g6f_state5.get("analytics_warn_count") == 15,
-         f"blocked={_g6f_r5.blocked}, count={_g6f_state5.get('analytics_warn_count')}")
-
-    # 6. State defaults present
-    _g6f_ds = _mentor_default_state()
-    test("UpgradeF: analytics_last_used in default_state",
-         "analytics_last_used" in _g6f_ds and _g6f_ds["analytics_last_used"] == {},
-         f"got {_g6f_ds.get('analytics_last_used')}")
-    test("UpgradeF: analytics_last_queried in default_state",
-         "analytics_last_queried" in _g6f_ds and _g6f_ds["analytics_last_queried"] == 0,
-         f"got {_g6f_ds.get('analytics_last_queried')}")
-    test("UpgradeF: analytics_warn_count in default_state",
-         "analytics_warn_count" in _g6f_ds and _g6f_ds["analytics_warn_count"] == 0,
-         f"got {_g6f_ds.get('analytics_warn_count')}")
-
-except Exception as _g6f_e:
-    FAIL += 1
-    RESULTS.append(f"  FAIL: Upgrade F tests: {_g6f_e}")
-    print(f"  FAIL: Upgrade F tests: {_g6f_e}")
+print('\n--- Upgrade F: Gate 6 Analytics Advisory (removed) ---')
+test("UpgradeF: analytics counter removed from Gate 6",
+     not hasattr(__import__('gates.gate_06_save_fix', fromlist=['ANALYTICS_ESCALATION_THRESHOLD']), 'ANALYTICS_ESCALATION_THRESHOLD'),
+     "ANALYTICS_ESCALATION_THRESHOLD should not exist in gate_06")
 
 cleanup_test_states()
 
@@ -17031,22 +16950,22 @@ try:
         "/a.py", "/b.py", "/c.py", "/d.py", "/e.py"
     ]
     _r = g05_check("Edit", {"file_path": "/new.py"}, _g05_block_state)
-    test("G05 Refactored: blocks at 5 unverified files",
+    test("G05 Refactored: blocks at 5 unverified files (above threshold 3)",
          _r.blocked is True, f"blocked={_r.blocked}")
 
-    # Test 7: warns at WARN_THRESHOLD
+    # Test 7: blocks at BLOCK_THRESHOLD (3) — no warn phase
     _g05_warn_state = default_state()
     _g05_warn_state["pending_verification"] = ["/a.py", "/b.py", "/c.py"]
     _r = g05_check("Edit", {"file_path": "/new.py"}, _g05_warn_state)
-    test("G05 Refactored: warns at 3 unverified files",
-         not _r.blocked and _r.severity == "warn",
-         f"blocked={_r.blocked}, severity={getattr(_r, 'severity', None)}")
+    test("G05 Refactored: blocks at 3 unverified files (no warn phase)",
+         _r.blocked is True,
+         f"blocked={_r.blocked}")
 
     # Test 8: editing same pending file allowed (iterating on fix)
     _g05_same_state = default_state()
-    _g05_same_state["pending_verification"] = ["/a.py", "/b.py", "/c.py", "/d.py", "/e.py"]
+    _g05_same_state["pending_verification"] = ["/a.py", "/b.py", "/c.py"]
     _r = g05_check("Edit", {"file_path": "/a.py"}, _g05_same_state)
-    test("G05 Refactored: editing pending file ok (only 4 others)",
+    test("G05 Refactored: editing pending file ok (only 2 others)",
          not _r.blocked, f"blocked={_r.blocked}")
 
     # Test 9: notebook_path extraction works

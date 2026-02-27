@@ -996,7 +996,6 @@ def main():
         f"{_tog('tg_enrichment', 'TGe')} "
         f"{_tog('tg_bot_tmux', 'Bot')} "
         f"{_tog('gate_auto_tune', 'Tune')} "
-        f"{_tog('chain_memory', 'Chain')} "
         f"{_tog('tg_session_notify', 'Notify')} "
         f"{_tog('tg_mirror_messages', 'Mirror')} "
         f"{_tog('budget_degradation', 'Budget')} "

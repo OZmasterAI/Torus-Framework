@@ -497,7 +497,6 @@ Cross-session            → Sub-agents + memory
 | budget_degradation | false | 4-tier model downgrade based on budget |
 | model_profile | "efficient" | Role-based model selection |
 | security_profile | "balanced" | Gate strictness posture |
-| chain_memory | true | Persist causal chains to memory |
 | mentor_all | true | Enable all mentor system modules |
 | mentor_tracker | false | Mentor Module A tracker verdicts |
 | mentor_hindsight_gate | false | Gate 19 mentor-driven blocking |
