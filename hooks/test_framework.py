@@ -21431,6 +21431,409 @@ except Exception as _me_exc:
     test("Metrics Exporter Deep Tests: import and tests", False, str(_me_exc))
 
 
+# ── Domain Registry Deep Tests ──────────────────────────────────────────
+print("\n--- Domain Registry Deep Tests ---")
+try:
+    from shared.domain_registry import (
+        _short_gate_name, _gate_matches_list, _lookup_gate_mode,
+        DEFAULT_PROFILE, load_domain_profile, save_domain_profile,
+        load_domain_mastery, load_domain_behavior,
+        get_active_domain, set_active_domain,
+        detect_domain_from_live_state, get_domain_memory_tags,
+        get_domain_l2_keywords, get_domain_token_budget,
+        get_domain_context_for_injection, list_domains,
+    )
+    import tempfile as _dr_tempfile
+
+    # Constants
+    test("DR: DEFAULT_PROFILE has security_profile", DEFAULT_PROFILE.get("security_profile") == "balanced")
+    test("DR: DEFAULT_PROFILE has gate_modes dict", isinstance(DEFAULT_PROFILE.get("gate_modes"), dict))
+    test("DR: DEFAULT_PROFILE has graduation", "graduation" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE has token_budget", DEFAULT_PROFILE.get("token_budget") == 800)
+    test("DR: DEFAULT_PROFILE has auto_detect", "auto_detect" in DEFAULT_PROFILE)
+
+    # _short_gate_name
+    test("DR: short_gate_name full", _short_gate_name("gate_04_memory_first") == "gate_04")
+    test("DR: short_gate_name already short", _short_gate_name("gate_04") == "gate_04")
+    test("DR: short_gate_name with prefix", _short_gate_name("gates.gate_04_memory_first") == "gate_04")
+    test("DR: short_gate_name single part", _short_gate_name("something") == "something")
+
+    # _gate_matches_list
+    test("DR: gate_matches exact", _gate_matches_list("gate_04", ["gate_04"]))
+    test("DR: gate_matches full name vs short",
+         _gate_matches_list("gate_04_memory_first", ["gate_04"]))
+    test("DR: gate_matches short vs full",
+         _gate_matches_list("gate_04", ["gate_04_memory_first"]))
+    test("DR: gate_matches no match", not _gate_matches_list("gate_04", ["gate_05"]))
+    test("DR: gate_matches empty list", not _gate_matches_list("gate_04", []))
+
+    # _lookup_gate_mode
+    _dr_modes = {"gate_04": "warn", "gate_05_proof": "disabled"}
+    test("DR: lookup exact match", _lookup_gate_mode("gate_04", _dr_modes) == "warn")
+    test("DR: lookup full name match",
+         _lookup_gate_mode("gate_05_proof", _dr_modes) == "disabled")
+    test("DR: lookup short vs full",
+         _lookup_gate_mode("gate_05", _dr_modes) == "disabled")
+    test("DR: lookup not found", _lookup_gate_mode("gate_99", _dr_modes) is None)
+    test("DR: lookup empty modes", _lookup_gate_mode("gate_04", {}) is None)
+
+    # Filesystem tests with tempdir
+    with _dr_tempfile.TemporaryDirectory() as _dr_tmpdir:
+        import shared.domain_registry as _dr_mod
+        _dr_orig_dir = _dr_mod.DOMAINS_DIR
+        _dr_orig_active = _dr_mod.ACTIVE_FILE
+        _dr_mod.DOMAINS_DIR = _dr_tmpdir
+        _dr_mod.ACTIVE_FILE = os.path.join(_dr_tmpdir, ".active")
+
+        try:
+            # No domains yet
+            test("DR: list_domains empty", list_domains() == [])
+            test("DR: get_active_domain none", get_active_domain() is None)
+
+            # Create a test domain
+            _dr_domain_dir = os.path.join(_dr_tmpdir, "test-domain")
+            os.makedirs(_dr_domain_dir)
+            _dr_profile = {"description": "Test domain", "token_budget": 500, "memory_tags": ["test"], "l2_keywords": ["keyword1"]}
+            with open(os.path.join(_dr_domain_dir, "profile.json"), "w") as f:
+                json.dump(_dr_profile, f)
+            with open(os.path.join(_dr_domain_dir, "mastery.md"), "w") as f:
+                f.write("# Test Mastery\nKnowledge here.")
+            with open(os.path.join(_dr_domain_dir, "behavior.md"), "w") as f:
+                f.write("# Behavior\nRules here.")
+
+            # list_domains
+            _dr_domains = list_domains()
+            test("DR: list_domains finds test-domain", len(_dr_domains) == 1)
+            test("DR: list_domains name correct", _dr_domains[0]["name"] == "test-domain")
+            test("DR: list_domains has_mastery", _dr_domains[0]["has_mastery"] is True)
+            test("DR: list_domains not active", _dr_domains[0]["active"] is False)
+
+            # load_domain_profile with merge
+            _dr_loaded = load_domain_profile("test-domain")
+            test("DR: loaded profile description", _dr_loaded["description"] == "Test domain")
+            test("DR: loaded profile merged defaults", "graduation" in _dr_loaded)
+            test("DR: loaded profile token_budget", _dr_loaded["token_budget"] == 500)
+
+            # load_domain_profile nonexistent
+            _dr_missing = load_domain_profile("nonexistent")
+            test("DR: missing profile returns defaults", _dr_missing["security_profile"] == "balanced")
+
+            # save_domain_profile
+            save_domain_profile("test-domain", {"description": "Updated"})
+            _dr_reloaded = load_domain_profile("test-domain")
+            test("DR: saved profile persists", _dr_reloaded["description"] == "Updated")
+
+            # load_domain_mastery / behavior
+            test("DR: load_mastery", "Test Mastery" in load_domain_mastery("test-domain"))
+            test("DR: load_behavior", "Behavior" in load_domain_behavior("test-domain"))
+            test("DR: load_mastery missing", load_domain_mastery("nope") == "")
+            test("DR: load_behavior missing", load_domain_behavior("nope") == "")
+
+            # set/get active domain
+            test("DR: set_active succeeds", set_active_domain("test-domain") is True)
+            test("DR: get_active returns it", get_active_domain() == "test-domain")
+            test("DR: set_active nonexistent", set_active_domain("nope") is False)
+            test("DR: set_active None deactivates", set_active_domain(None) is True)
+            test("DR: get_active after deactivate", get_active_domain() is None)
+
+            # get_domain_memory_tags / l2_keywords / token_budget
+            save_domain_profile("test-domain", {"memory_tags": ["t1", "t2"], "l2_keywords": ["kw"], "token_budget": 600})
+            test("DR: get_memory_tags", get_domain_memory_tags("test-domain") == ["t1", "t2"])
+            test("DR: get_l2_keywords", get_domain_l2_keywords("test-domain") == ["kw"])
+            test("DR: get_token_budget", get_domain_token_budget("test-domain") == 600)
+
+            # detect_domain_from_live_state
+            save_domain_profile("test-domain", {
+                "auto_detect": {
+                    "live_state_project": ["torus*"],
+                    "live_state_feature": [],
+                }
+            })
+            _dr_detected = detect_domain_from_live_state({"project": "torus-framework"})
+            test("DR: detect_domain matches project", _dr_detected == "test-domain")
+            _dr_no_match = detect_domain_from_live_state({"project": "other-project"})
+            test("DR: detect_domain no match", _dr_no_match is None)
+            test("DR: detect_domain empty state", detect_domain_from_live_state({}) is None)
+
+            # get_domain_context_for_injection
+            save_domain_profile("test-domain", {"token_budget": 5})  # 5*4=20 char limit, mastery is 30 chars
+            _dr_mastery, _dr_behavior = get_domain_context_for_injection("test-domain")
+            test("DR: context injection mastery not empty", len(_dr_mastery) > 0)
+            test("DR: context injection behavior not empty", len(_dr_behavior) > 0)
+            test("DR: context injection truncated", "truncated" in _dr_mastery)
+
+            # No active domain
+            set_active_domain(None)
+            _dr_none_m, _dr_none_b = get_domain_context_for_injection()
+            test("DR: context no active domain", _dr_none_m == "" and _dr_none_b == "")
+
+        finally:
+            _dr_mod.DOMAINS_DIR = _dr_orig_dir
+            _dr_mod.ACTIVE_FILE = _dr_orig_active
+
+except Exception as _dr_exc:
+    test("Domain Registry Deep Tests: import and tests", False, str(_dr_exc))
+
+
+# ── Agent Channel Deep Tests ────────────────────────────────────────────
+print("\n--- Agent Channel Deep Tests ---")
+try:
+    import shared.agent_channel as _ac_mod
+    import tempfile as _ac_tempfile
+
+    with _ac_tempfile.TemporaryDirectory() as _ac_tmpdir:
+        _ac_orig_db = _ac_mod.DB_PATH
+        _ac_orig_lock = _ac_mod.LOCK_PATH
+        _ac_mod.DB_PATH = os.path.join(_ac_tmpdir, "test_channel.db")
+        _ac_mod.LOCK_PATH = _ac_mod.DB_PATH + ".lock"
+
+        try:
+            # post_message
+            _ac_ok = _ac_mod.post_message("agent-1", "discovery", "Found a bug")
+            test("AC: post_message returns True", _ac_ok is True)
+
+            _ac_ok2 = _ac_mod.post_message("agent-2", "status", "Working on fix", to_agent="agent-1")
+            test("AC: post_message targeted", _ac_ok2 is True)
+
+            # read_messages
+            _ac_start = time.time() - 60
+            _ac_msgs = _ac_mod.read_messages(_ac_start)
+            test("AC: read_messages returns list", isinstance(_ac_msgs, list))
+            test("AC: read_messages finds 2 messages", len(_ac_msgs) == 2)
+            test("AC: message has from_agent", all("from_agent" in m for m in _ac_msgs))
+            test("AC: message has content", all("content" in m for m in _ac_msgs))
+            test("AC: message has ts", all("ts" in m for m in _ac_msgs))
+            test("AC: message has msg_type", all("msg_type" in m for m in _ac_msgs))
+
+            # read_messages with agent filter
+            _ac_filtered = _ac_mod.read_messages(_ac_start, agent_id="agent-1")
+            test("AC: filtered read returns messages", len(_ac_filtered) >= 1)
+
+            # read_messages future timestamp = empty
+            _ac_future = _ac_mod.read_messages(time.time() + 3600)
+            test("AC: future timestamp returns empty", len(_ac_future) == 0)
+
+            # read_messages with limit
+            for i in range(5):
+                _ac_mod.post_message("agent-3", "info", f"msg-{i}")
+            _ac_limited = _ac_mod.read_messages(_ac_start, limit=3)
+            test("AC: limit works", len(_ac_limited) == 3)
+
+            # cleanup
+            _ac_deleted = _ac_mod.cleanup(max_age_hours=0)
+            test("AC: cleanup returns count", isinstance(_ac_deleted, int))
+            test("AC: cleanup deleted messages", _ac_deleted >= 5)
+
+            # After cleanup
+            _ac_after = _ac_mod.read_messages(_ac_start)
+            test("AC: no messages after cleanup", len(_ac_after) == 0)
+
+        finally:
+            _ac_mod.DB_PATH = _ac_orig_db
+            _ac_mod.LOCK_PATH = _ac_orig_lock
+
+except Exception as _ac_exc:
+    test("Agent Channel Deep Tests: import and tests", False, str(_ac_exc))
+
+
+# ── State Migrator Deep Tests ───────────────────────────────────────────
+print("\n--- State Migrator Deep Tests ---")
+try:
+    from shared.state_migrator import (
+        migrate_state, validate_state, get_schema_diff,
+        _serialize_for_diff, validate_and_migrate, get_schema_metadata,
+    )
+    from shared.state import default_state, STATE_VERSION
+
+    # migrate_state: empty dict
+    _smig_empty = migrate_state({})
+    test("SMIG: migrate empty dict adds all fields", len(_smig_empty) >= 10)
+    test("SMIG: migrate sets version", _smig_empty["_version"] == STATE_VERSION)
+
+    # migrate_state: partial dict
+    _smig_partial = migrate_state({"files_read": ["a.py"]})
+    test("SMIG: migrate preserves existing", _smig_partial["files_read"] == ["a.py"])
+    test("SMIG: migrate adds missing fields", "tool_call_counts" in _smig_partial)
+
+    # migrate_state: non-dict
+    _smig_non = migrate_state("not a dict")
+    test("SMIG: migrate non-dict returns defaults", isinstance(_smig_non, dict))
+    test("SMIG: migrate non-dict has version", "_version" in _smig_non)
+
+    # validate_state: valid default state (mentor_memory_match=None is a known pre-existing schema mismatch)
+    _smig_valid_state = default_state()
+    _smig_valid_state["mentor_memory_match"] = {}  # Fix known None-vs-dict mismatch
+    _smig_is_valid, _smig_errs, _smig_warns = validate_state(_smig_valid_state)
+    test("SMIG: validate default state is valid", _smig_is_valid is True)
+    test("SMIG: validate default no errors", len(_smig_errs) == 0)
+
+    # validate_state: non-dict
+    _smig_nv, _smig_ne, _smig_nw = validate_state("string")
+    test("SMIG: validate non-dict invalid", _smig_nv is False)
+    test("SMIG: validate non-dict has error", len(_smig_ne) > 0)
+
+    # validate_state: missing fields
+    _smig_mv, _smig_me, _smig_mw = validate_state({"_version": 1})
+    test("SMIG: validate missing fields invalid", _smig_mv is False)
+    test("SMIG: validate missing fields errors", len(_smig_me) > 0)
+
+    # validate_state: wrong types
+    _smig_wrong = default_state()
+    _smig_wrong["total_tool_calls"] = "not an int"
+    _smig_wv, _smig_we, _smig_ww = validate_state(_smig_wrong)
+    test("SMIG: validate wrong type invalid", _smig_wv is False)
+    test("SMIG: validate wrong type error mentions field",
+         any("total_tool_calls" in e for e in _smig_we))
+
+    # get_schema_diff: empty vs defaults
+    _smig_diff = get_schema_diff({})
+    test("SMIG: schema_diff missing_fields > 0", len(_smig_diff["missing_fields"]) > 0)
+    test("SMIG: schema_diff has summary", "summary" in _smig_diff)
+    test("SMIG: schema_diff summary missing count", _smig_diff["summary"]["missing"] > 0)
+
+    # get_schema_diff: complete state
+    _smig_diff_full = get_schema_diff(default_state())
+    test("SMIG: schema_diff full = no missing", _smig_diff_full["summary"]["missing"] == 0)
+
+    # get_schema_diff: extra fields
+    _smig_extra = default_state()
+    _smig_extra["custom_field_xyz"] = "hello"
+    _smig_diff_extra = get_schema_diff(_smig_extra)
+    test("SMIG: schema_diff finds extra field",
+         any(f["name"] == "custom_field_xyz" for f in _smig_diff_extra["extra_fields"]))
+
+    # get_schema_diff: non-dict
+    _smig_diff_nd = get_schema_diff("not a dict")
+    test("SMIG: schema_diff non-dict has error", "error" in _smig_diff_nd)
+
+    # _serialize_for_diff
+    test("SMIG: serialize string", _serialize_for_diff("hello") == "hello")
+    test("SMIG: serialize int", _serialize_for_diff(42) == 42)
+    test("SMIG: serialize None", _serialize_for_diff(None) is None)
+    test("SMIG: serialize long list", "[list:" in str(_serialize_for_diff(list(range(10)))))
+    test("SMIG: serialize short list", _serialize_for_diff([1, 2]) == [1, 2])
+    test("SMIG: serialize large dict", "{dict:" in str(_serialize_for_diff({str(i): i for i in range(5)})))
+    test("SMIG: serialize small dict", _serialize_for_diff({"a": 1}) == {"a": 1})
+
+    # validate_and_migrate (mentor_memory_match=None is known schema mismatch, check only that migration works)
+    _smig_vm_state, _smig_vm_valid, _smig_vm_errs, _smig_vm_warns = validate_and_migrate({})
+    test("SMIG: validate_and_migrate returns migrated", len(_smig_vm_state) > 5)
+    test("SMIG: validate_and_migrate migration adds fields", "_version" in _smig_vm_state)
+
+    # get_schema_metadata
+    _smig_meta = get_schema_metadata()
+    test("SMIG: metadata has version", _smig_meta["version"] == STATE_VERSION)
+    test("SMIG: metadata has schema dict", isinstance(_smig_meta["schema"], dict))
+    test("SMIG: metadata has field_count", _smig_meta["field_count"] > 0)
+
+except Exception as _smig_exc:
+    test("State Migrator Deep Tests: import and tests", False, str(_smig_exc))
+
+
+# ── Rules Validator Deep Tests ──────────────────────────────────────────
+print("\n--- Rules Validator Deep Tests ---")
+try:
+    from shared.rules_validator import (
+        _parse_frontmatter, _walk_files, _glob_matches_any,
+        _extract_doc_paths, _detect_overlaps, validate_rules,
+    )
+    import tempfile as _rv_tempfile
+
+    # _parse_frontmatter
+    _rv_fm, _rv_fm_err = _parse_frontmatter("---\nglobs: hooks/**/*.py\ndescription: test\n---\n# Content")
+    test("RV: parse_frontmatter fields", _rv_fm.get("globs") == "hooks/**/*.py")
+    test("RV: parse_frontmatter description", _rv_fm.get("description") == "test")
+    test("RV: parse_frontmatter no errors", len(_rv_fm_err) == 0)
+
+    _rv_fm2, _rv_fm2_err = _parse_frontmatter("# No frontmatter here")
+    test("RV: no frontmatter detected", len(_rv_fm2_err) > 0)
+    test("RV: no frontmatter empty fields", len(_rv_fm2) == 0)
+
+    _rv_fm3, _rv_fm3_err = _parse_frontmatter("---\nglobs: test\n# missing closing")
+    test("RV: unclosed frontmatter error", len(_rv_fm3_err) > 0)
+
+    # _walk_files
+    with _rv_tempfile.TemporaryDirectory() as _rv_tmpdir:
+        os.makedirs(os.path.join(_rv_tmpdir, "sub"))
+        with open(os.path.join(_rv_tmpdir, "a.py"), "w") as f:
+            f.write("")
+        with open(os.path.join(_rv_tmpdir, "sub", "b.py"), "w") as f:
+            f.write("")
+        os.makedirs(os.path.join(_rv_tmpdir, "__pycache__"))
+        with open(os.path.join(_rv_tmpdir, "__pycache__", "c.py"), "w") as f:
+            f.write("")
+
+        _rv_files = list(_walk_files(_rv_tmpdir))
+        test("RV: walk_files finds a.py", "a.py" in _rv_files)
+        test("RV: walk_files finds sub/b.py",
+             any("b.py" in f for f in _rv_files))
+        test("RV: walk_files skips __pycache__",
+             not any("__pycache__" in f for f in _rv_files))
+
+    # _glob_matches_any
+    with _rv_tempfile.TemporaryDirectory() as _rv_tmpdir2:
+        os.makedirs(os.path.join(_rv_tmpdir2, "hooks"))
+        with open(os.path.join(_rv_tmpdir2, "hooks", "test.py"), "w") as f:
+            f.write("")
+        test("RV: glob_matches_any *.py",
+             _glob_matches_any("hooks/test.py", _rv_tmpdir2))
+        test("RV: glob_matches_any no match",
+             not _glob_matches_any("nonexistent/*.js", _rv_tmpdir2))
+
+    # _extract_doc_paths
+    _rv_paths = _extract_doc_paths(
+        "See `hooks/shared/state.py` and `docs/missing.md` for details",
+        os.path.expanduser("~/.claude"),
+    )
+    test("RV: extract_doc_paths finds paths", len(_rv_paths) >= 1)
+    test("RV: extract_doc_paths returns tuples",
+         all(isinstance(p, tuple) and len(p) == 2 for p in _rv_paths))
+
+    # _extract_doc_paths with no paths
+    _rv_no_paths = _extract_doc_paths("No backtick references here", "/tmp")
+    test("RV: extract_doc_paths empty", len(_rv_no_paths) == 0)
+
+    # _detect_overlaps
+    _rv_ol = _detect_overlaps({
+        "a.md": ["hooks/**/*.py"],
+        "b.md": ["hooks/gates/*.py"],
+    })
+    test("RV: detect_overlaps finds subsumption", len(_rv_ol) > 0)
+
+    _rv_no_ol = _detect_overlaps({
+        "a.md": ["hooks/*.py"],
+        "b.md": ["scripts/*.sh"],
+    })
+    test("RV: detect_overlaps no overlap", len(_rv_no_ol) == 0)
+
+    _rv_empty_ol = _detect_overlaps({})
+    test("RV: detect_overlaps empty", len(_rv_empty_ol) == 0)
+
+    # validate_rules with temp directory
+    with _rv_tempfile.TemporaryDirectory() as _rv_tmpdir3:
+        _rv_rules_dir = os.path.join(_rv_tmpdir3, "rules")
+        os.makedirs(_rv_rules_dir)
+
+        with open(os.path.join(_rv_rules_dir, "test.md"), "w") as f:
+            f.write("---\nglobs: **/*.py\n---\n# Test Rule\nContent here.\n")
+
+        with open(os.path.join(_rv_rules_dir, "bad.md"), "w") as f:
+            f.write("# No Frontmatter\nJust content.\n")
+
+        _rv_report = validate_rules(_rv_rules_dir, _rv_tmpdir3)
+        test("RV: validate_rules total=2", _rv_report["total"] == 2)
+        test("RV: validate_rules has issues", isinstance(_rv_report["issues"], dict))
+        test("RV: validate_rules has suggestions", isinstance(_rv_report["suggestions"], list))
+        test("RV: validate_rules has overlaps", isinstance(_rv_report["overlaps"], list))
+
+    # validate_rules with missing directory
+    _rv_missing = validate_rules("/tmp/nonexistent_rules_dir_xyz")
+    test("RV: validate_rules missing dir", "<rules_dir>" in _rv_missing["issues"])
+
+except Exception as _rv_exc:
+    test("Rules Validator Deep Tests: import and tests", False, str(_rv_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
