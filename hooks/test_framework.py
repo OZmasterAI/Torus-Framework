@@ -15482,6 +15482,1016 @@ except Exception as _sr_exc:
     test("Replay: import and basic tests", False, str(_sr_exc))
 
 
+# ─── Gate Timing Extended Tests ─────────────────────────────────────
+print("\n--- Gate Timing Extended ---")
+import tempfile as _gte_tempfile
+import shared.gate_timing as _gte_mod
+
+_gte_tmp = _gte_tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+_gte_tmp.close()
+_gte_tmp_path = _gte_tmp.name
+_gte_orig_file = _gte_mod.TIMING_FILE
+_gte_mod.TIMING_FILE = _gte_tmp_path
+_gte_mod._reset_cache()
+
+try:
+    # Test 1: flush_timings persists data to disk
+    _gte_mod.record_timing("gate_flush_test", "Edit", 15.0, blocked=False)
+    _gte_mod.flush_timings()
+    _gte_mod._reset_cache()  # Force reload from disk
+    _gte_s1 = _gte_mod.get_gate_stats("gate_flush_test")
+    test("GateTimingExt: flush_timings persists data to disk",
+         _gte_s1 is not None and _gte_s1["count"] == 1 and abs(_gte_s1["avg_ms"] - 15.0) < 0.01,
+         f"After flush+reload got {_gte_s1}")
+
+    # Test 2: flush_timings is no-op when no dirty data
+    _gte_mod._reset_cache()
+    _gte_mod.flush_timings()  # Should not crash, no-op
+    test("GateTimingExt: flush_timings no-op when not dirty",
+         True, "No crash on clean flush")
+
+    # Test 3: min_ms tracked correctly across multiple records
+    _gte_mod._reset_cache()
+    _gte_mod.record_timing("gate_minmax", "Edit", 50.0)
+    _gte_mod.record_timing("gate_minmax", "Edit", 10.0)
+    _gte_mod.record_timing("gate_minmax", "Edit", 30.0)
+    _gte_s3 = _gte_mod.get_gate_stats("gate_minmax")
+    test("GateTimingExt: min_ms tracks minimum across records",
+         _gte_s3 is not None and abs(_gte_s3["min_ms"] - 10.0) < 0.01,
+         f"Expected min=10.0, got {_gte_s3.get('min_ms') if _gte_s3 else None}")
+
+    # Test 4: by_tool breakdown tracks per-tool counts
+    _gte_mod.record_timing("gate_bytool", "Edit", 5.0)
+    _gte_mod.record_timing("gate_bytool", "Edit", 7.0)
+    _gte_mod.record_timing("gate_bytool", "Bash", 3.0)
+    _gte_s4 = _gte_mod.get_gate_stats("gate_bytool")
+    _gte_bt = _gte_s4["by_tool"] if _gte_s4 else {}
+    test("GateTimingExt: by_tool tracks per-tool counts",
+         _gte_bt.get("Edit", {}).get("count") == 2
+         and _gte_bt.get("Bash", {}).get("count") == 1,
+         f"by_tool={_gte_bt}")
+
+    # Test 5: by_tool tracks per-tool total_ms
+    test("GateTimingExt: by_tool tracks per-tool total_ms",
+         abs(_gte_bt.get("Edit", {}).get("total_ms", 0) - 12.0) < 0.01
+         and abs(_gte_bt.get("Bash", {}).get("total_ms", 0) - 3.0) < 0.01,
+         f"Edit total_ms={_gte_bt.get('Edit', {}).get('total_ms')}, Bash total_ms={_gte_bt.get('Bash', {}).get('total_ms')}")
+
+    # Test 6: slow_count increments only when > threshold
+    _gte_mod.record_timing("gate_slow_cnt", "Edit", 10.0)  # Under threshold (50ms)
+    _gte_mod.record_timing("gate_slow_cnt", "Edit", 60.0)  # Over threshold
+    _gte_mod.record_timing("gate_slow_cnt", "Edit", 80.0)  # Over threshold
+    _gte_s6 = _gte_mod.get_gate_stats("gate_slow_cnt")
+    test("GateTimingExt: slow_count increments only for > threshold",
+         _gte_s6 is not None and _gte_s6["slow_count"] == 2,
+         f"Expected slow_count=2, got {_gte_s6.get('slow_count') if _gte_s6 else None}")
+
+    # Test 7: rolling window trims to 200 samples
+    for _i in range(210):
+        _gte_mod.record_timing("gate_window", "Edit", float(_i))
+    _gte_s7 = _gte_mod.get_gate_stats("gate_window")
+    # count should be 210, but samples list should be capped
+    test("GateTimingExt: count tracks all records (210)",
+         _gte_s7 is not None and _gte_s7["count"] == 210,
+         f"Expected count=210, got {_gte_s7.get('count') if _gte_s7 else None}")
+
+    # Test 8: avg_ms computed correctly over multiple records
+    _gte_mod.record_timing("gate_avg", "Edit", 10.0)
+    _gte_mod.record_timing("gate_avg", "Edit", 20.0)
+    _gte_mod.record_timing("gate_avg", "Edit", 30.0)
+    _gte_s8 = _gte_mod.get_gate_stats("gate_avg")
+    test("GateTimingExt: avg_ms computed correctly (10+20+30)/3=20",
+         _gte_s8 is not None and abs(_gte_s8["avg_ms"] - 20.0) < 0.01,
+         f"Expected avg=20.0, got {_gte_s8.get('avg_ms') if _gte_s8 else None}")
+
+    # Test 9: _percentile edge cases
+    test("GateTimingExt: _percentile empty list returns 0.0",
+         _gte_mod._percentile([], 95) == 0.0,
+         f"got {_gte_mod._percentile([], 95)}")
+
+    # Test 10: _percentile single element returns that element
+    test("GateTimingExt: _percentile single element returns it",
+         _gte_mod._percentile([42.0], 50) == 42.0,
+         f"got {_gte_mod._percentile([42.0], 50)}")
+
+    # Test 11: _percentile sorted list correct p50
+    _gte_p50 = _gte_mod._percentile([10, 20, 30, 40, 50], 50)
+    test("GateTimingExt: _percentile p50 of [10,20,30,40,50] = 30",
+         abs(_gte_p50 - 30.0) < 0.01,
+         f"Expected 30.0, got {_gte_p50}")
+
+    # Test 12: check_gate_sla "warn" status (avg between WARN and DEGRADE)
+    for _i in range(15):
+        _gte_mod.record_timing("gate_sla_warn_ext", "Edit", 70.0 + _i * 0.5)
+    _gte_sla12 = _gte_mod.check_gate_sla("gate_sla_warn_ext")
+    test("GateTimingExt: SLA warn status for 50 < avg < 200",
+         _gte_sla12["status"] == "warn" and _gte_sla12["skip"] is False,
+         f"Expected warn/no-skip, got {_gte_sla12}")
+
+    # Test 13: check_gate_sla for unknown gate
+    _gte_sla13 = _gte_mod.check_gate_sla("gate_totally_unknown")
+    test("GateTimingExt: SLA unknown for non-existent gate",
+         _gte_sla13["status"] == "unknown" and _gte_sla13["avg_ms"] == 0.0,
+         f"Expected unknown with avg=0, got {_gte_sla13}")
+
+    # Test 14: get_timing_report with no data returns correct message
+    _gte_mod._reset_cache()
+    # Write empty JSON to file
+    with open(_gte_tmp_path, "w") as _f14:
+        _f14.write("{}")
+    _gte_mod._reset_cache()
+    _gte_r14 = _gte_mod.get_timing_report()
+    test("GateTimingExt: empty timing report message",
+         "no data recorded" in _gte_r14.lower(),
+         f"got: {_gte_r14[:100]}")
+
+    # Test 15: get_slow_gates returns empty dict when no data
+    _gte_slow15 = _gte_mod.get_slow_gates()
+    test("GateTimingExt: get_slow_gates returns {} with no data",
+         isinstance(_gte_slow15, dict) and len(_gte_slow15) == 0,
+         f"got {_gte_slow15}")
+
+    # Test 16: get_sla_report returns empty dict when no data
+    _gte_sla16 = _gte_mod.get_sla_report()
+    test("GateTimingExt: get_sla_report returns {} with no data",
+         isinstance(_gte_sla16, dict) and len(_gte_sla16) == 0,
+         f"got {_gte_sla16}")
+
+finally:
+    _gte_mod.TIMING_FILE = _gte_orig_file
+    _gte_mod._reset_cache()
+    try:
+        os.unlink(_gte_tmp_path)
+    except OSError:
+        pass
+
+
+# ─── Gate Trend Extended Tests ──────────────────────────────────────
+print("\n--- Gate Trend Extended ---")
+from shared.gate_trend import (
+    compute_gate_trend, get_trend_report, format_trend_report,
+    TREND_THRESHOLD, _load_snapshots, _save_snapshots, _trend_path,
+)
+
+try:
+    import tempfile as _gtr_tempfile
+    import shared.gate_trend as _gtr_mod
+
+    # Save original path functions and override for isolation
+    _gtr_orig_trend_path = _gtr_mod._trend_path
+    _gtr_tmp = _gtr_tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+    _gtr_tmp.close()
+    _gtr_tmp_path = _gtr_tmp.name
+    _gtr_mod._trend_path = lambda: _gtr_tmp_path
+
+    # Write empty to start clean
+    with open(_gtr_tmp_path, "w") as _f:
+        _f.write("[]")
+
+    # Test 1: compute_gate_trend with no snapshots returns stable
+    _gtr_t1 = compute_gate_trend("test_gate", [])
+    test("GateTrend: no snapshots returns stable direction",
+         _gtr_t1["direction"] == "stable" and _gtr_t1["data_points"] == 0,
+         f"got {_gtr_t1}")
+
+    # Test 2: compute_gate_trend with 1 snapshot returns stable
+    _gtr_snaps2 = [{"timestamp": 1000, "gates": {"test_gate": {"avg_ms": 10.0, "p95_ms": 15.0, "count": 5}}}]
+    _gtr_t2 = compute_gate_trend("test_gate", _gtr_snaps2)
+    test("GateTrend: 1 snapshot returns stable with first/last equal",
+         _gtr_t2["direction"] == "stable" and _gtr_t2["data_points"] == 1
+         and _gtr_t2["first_avg_ms"] == 10.0 and _gtr_t2["last_avg_ms"] == 10.0,
+         f"got {_gtr_t2}")
+
+    # Test 3: compute_gate_trend detects rising trend (>20% increase)
+    _gtr_snaps3 = [
+        {"timestamp": 1000, "gates": {"g1": {"avg_ms": 10.0, "p95_ms": 12.0, "count": 5}}},
+        {"timestamp": 2000, "gates": {"g1": {"avg_ms": 15.0, "p95_ms": 18.0, "count": 10}}},
+    ]
+    _gtr_t3 = compute_gate_trend("g1", _gtr_snaps3)
+    test("GateTrend: detects rising trend (10->15ms, +50%)",
+         _gtr_t3["direction"] == "rising" and _gtr_t3["magnitude"] > 0.2,
+         f"got {_gtr_t3}")
+
+    # Test 4: compute_gate_trend detects falling trend
+    _gtr_snaps4 = [
+        {"timestamp": 1000, "gates": {"g2": {"avg_ms": 50.0, "p95_ms": 60.0, "count": 5}}},
+        {"timestamp": 2000, "gates": {"g2": {"avg_ms": 30.0, "p95_ms": 35.0, "count": 10}}},
+    ]
+    _gtr_t4 = compute_gate_trend("g2", _gtr_snaps4)
+    test("GateTrend: detects falling trend (50->30ms, -40%)",
+         _gtr_t4["direction"] == "falling" and _gtr_t4["magnitude"] < -0.2,
+         f"got {_gtr_t4}")
+
+    # Test 5: compute_gate_trend stable when change < threshold
+    _gtr_snaps5 = [
+        {"timestamp": 1000, "gates": {"g3": {"avg_ms": 10.0, "p95_ms": 12.0, "count": 5}}},
+        {"timestamp": 2000, "gates": {"g3": {"avg_ms": 11.0, "p95_ms": 13.0, "count": 10}}},
+    ]
+    _gtr_t5 = compute_gate_trend("g3", _gtr_snaps5)
+    test("GateTrend: stable when change < 20% (10->11ms)",
+         _gtr_t5["direction"] == "stable",
+         f"got direction={_gtr_t5['direction']}, magnitude={_gtr_t5['magnitude']}")
+
+    # Test 6: compute_gate_trend for missing gate returns stable
+    _gtr_t6 = compute_gate_trend("nonexistent_gate", _gtr_snaps3)
+    test("GateTrend: missing gate returns stable with 0 data_points",
+         _gtr_t6["direction"] == "stable" and _gtr_t6["data_points"] == 0,
+         f"got {_gtr_t6}")
+
+    # Test 7: get_trend_report structure with saved snapshots
+    _gtr_report_snaps = [
+        {"timestamp": 1000, "gates": {
+            "gate_fast": {"avg_ms": 10.0, "p95_ms": 12.0, "count": 5},
+            "gate_slow": {"avg_ms": 50.0, "p95_ms": 60.0, "count": 5},
+        }},
+        {"timestamp": 2000, "gates": {
+            "gate_fast": {"avg_ms": 5.0, "p95_ms": 7.0, "count": 10},
+            "gate_slow": {"avg_ms": 80.0, "p95_ms": 90.0, "count": 10},
+        }},
+    ]
+    _save_snapshots(_gtr_report_snaps)
+    _gtr_r7 = get_trend_report()
+    test("GateTrend: get_trend_report has expected structure",
+         isinstance(_gtr_r7, dict)
+         and "snapshot_count" in _gtr_r7
+         and "gates" in _gtr_r7
+         and "rising_gates" in _gtr_r7
+         and "falling_gates" in _gtr_r7
+         and "total_gates" in _gtr_r7,
+         f"keys={set(_gtr_r7.keys())}")
+
+    # Test 8: rising/falling gates categorized correctly
+    test("GateTrend: gate_slow classified as rising",
+         "gate_slow" in _gtr_r7.get("rising_gates", []),
+         f"rising={_gtr_r7.get('rising_gates')}")
+
+    # Test 9: gate_fast classified as falling
+    test("GateTrend: gate_fast classified as falling",
+         "gate_fast" in _gtr_r7.get("falling_gates", []),
+         f"falling={_gtr_r7.get('falling_gates')}")
+
+    # Test 10: snapshot_count matches saved data
+    test("GateTrend: snapshot_count == 2",
+         _gtr_r7["snapshot_count"] == 2,
+         f"got {_gtr_r7['snapshot_count']}")
+
+    # Test 11: total_gates counts unique gate names
+    test("GateTrend: total_gates == 2",
+         _gtr_r7["total_gates"] == 2,
+         f"got {_gtr_r7['total_gates']}")
+
+    # Test 12: format_trend_report returns readable string
+    _gtr_fmt = format_trend_report()
+    test("GateTrend: format_trend_report returns string with header",
+         isinstance(_gtr_fmt, str) and "Gate Performance Trends" in _gtr_fmt,
+         f"got: {_gtr_fmt[:100]}")
+
+    # Test 13: format_trend_report contains RISING section
+    test("GateTrend: format_trend_report shows RISING gates",
+         "RISING" in _gtr_fmt and "gate_slow" in _gtr_fmt,
+         f"missing RISING or gate_slow in report")
+
+    # Test 14: format_trend_report contains FALLING section
+    test("GateTrend: format_trend_report shows FALLING gates",
+         "FALLING" in _gtr_fmt and "gate_fast" in _gtr_fmt,
+         f"missing FALLING or gate_fast in report")
+
+    # Test 15: _load_snapshots returns list from file
+    _gtr_loaded = _load_snapshots()
+    test("GateTrend: _load_snapshots returns list",
+         isinstance(_gtr_loaded, list) and len(_gtr_loaded) == 2,
+         f"len={len(_gtr_loaded)}")
+
+    # Test 16: _load_snapshots returns [] for corrupt file
+    with open(_gtr_tmp_path, "w") as _f:
+        _f.write("{bad json")
+    _gtr_bad = _load_snapshots()
+    test("GateTrend: _load_snapshots returns [] for corrupt file",
+         isinstance(_gtr_bad, list) and len(_gtr_bad) == 0,
+         f"got {_gtr_bad}")
+
+    # Test 17: _save_snapshots + _load_snapshots roundtrip
+    _gtr_test_data = [{"timestamp": 999, "gates": {"test": {"avg_ms": 1.0, "p95_ms": 1.5, "count": 1}}}]
+    _save_snapshots(_gtr_test_data)
+    _gtr_rt = _load_snapshots()
+    test("GateTrend: save+load roundtrip preserves data",
+         len(_gtr_rt) == 1 and _gtr_rt[0]["timestamp"] == 999,
+         f"got {_gtr_rt}")
+
+    # Test 18: get_trend_report with empty snapshots
+    _save_snapshots([])
+    _gtr_empty = get_trend_report()
+    test("GateTrend: empty snapshots -> 0 gates and empty rising/falling",
+         _gtr_empty["total_gates"] == 0
+         and len(_gtr_empty["rising_gates"]) == 0
+         and len(_gtr_empty["falling_gates"]) == 0,
+         f"got total_gates={_gtr_empty['total_gates']}")
+
+finally:
+    _gtr_mod._trend_path = _gtr_orig_trend_path
+    try:
+        os.unlink(_gtr_tmp_path)
+    except OSError:
+        pass
+
+
+# ─── Session Analytics Extended Tests ───────────────────────────────
+print("\n--- Session Analytics Extended ---")
+from shared.session_analytics import (
+    gate_block_rates, error_frequency, compare_sessions,
+    compare_sessions_metrics, session_productivity,
+    parse_audit_log, analyse_session,
+    _stddev, _compute_resolve_score,
+)
+import tempfile as _sae_tempfile
+
+try:
+    # Test 1: gate_block_rates with mixed decisions
+    _sae_entries1 = [
+        {"gate": "gate_01", "decision": "pass"},
+        {"gate": "gate_01", "decision": "pass"},
+        {"gate": "gate_01", "decision": "block"},
+        {"gate": "gate_02", "decision": "warn"},
+        {"gate": "gate_02", "decision": "block"},
+    ]
+    _sae_gbr = gate_block_rates(_sae_entries1)
+    test("SessionAnalyticsExt: gate_block_rates pass/warn/block counts",
+         _sae_gbr.get("gate_01", {}).get("pass") == 2
+         and _sae_gbr.get("gate_01", {}).get("block") == 1
+         and _sae_gbr.get("gate_02", {}).get("warn") == 1,
+         f"got {_sae_gbr}")
+
+    # Test 2: gate_block_rates total includes all decisions
+    test("SessionAnalyticsExt: gate_block_rates total counts all decisions",
+         _sae_gbr.get("gate_01", {}).get("total") == 3
+         and _sae_gbr.get("gate_02", {}).get("total") == 2,
+         f"gate_01 total={_sae_gbr.get('gate_01', {}).get('total')}")
+
+    # Test 3: gate_block_rates empty input
+    _sae_gbr_empty = gate_block_rates([])
+    test("SessionAnalyticsExt: gate_block_rates empty -> {}",
+         isinstance(_sae_gbr_empty, dict) and len(_sae_gbr_empty) == 0,
+         f"got {_sae_gbr_empty}")
+
+    # Test 4: error_frequency categorizes known patterns
+    _sae_err_entries = [
+        {"decision": "block", "reason": "must Read /tmp/foo.py before editing it"},
+        {"decision": "block", "reason": "NO DESTROY: rm -rf blocked by safety gate"},
+        {"decision": "warn", "reason": "memory not queried before edit"},
+        {"decision": "block", "reason": "deploy without tests is forbidden"},
+        {"decision": "pass", "reason": "all good"},  # should be skipped (pass)
+    ]
+    _sae_ef = error_frequency(_sae_err_entries)
+    test("SessionAnalyticsExt: error_frequency categorizes gate1 pattern",
+         _sae_ef.get("gate1:read-before-edit") == 1,
+         f"got {_sae_ef}")
+
+    # Test 5: error_frequency categorizes gate2 pattern
+    test("SessionAnalyticsExt: error_frequency categorizes gate2 pattern",
+         _sae_ef.get("gate2:no-destroy") == 1,
+         f"got {_sae_ef}")
+
+    # Test 6: error_frequency categorizes gate4 pattern
+    test("SessionAnalyticsExt: error_frequency categorizes gate4 memory pattern",
+         _sae_ef.get("gate4:memory-first") == 1,
+         f"got {_sae_ef}")
+
+    # Test 7: error_frequency skips pass decisions
+    test("SessionAnalyticsExt: error_frequency skips pass decisions",
+         sum(_sae_ef.values()) == 4,  # 4 block/warn entries categorized
+         f"total={sum(_sae_ef.values())}, expected 4")
+
+    # Test 8: _stddev computation
+    _sae_sd = _stddev([10, 20, 30, 40, 50])
+    test("SessionAnalyticsExt: _stddev([10,20,30,40,50]) ≈ 14.14",
+         abs(_sae_sd - 14.1421) < 0.01,
+         f"got {_sae_sd}")
+
+    # Test 9: _stddev single value returns 0
+    test("SessionAnalyticsExt: _stddev single value returns 0",
+         _stddev([42.0]) == 0.0,
+         f"got {_stddev([42.0])}")
+
+    # Test 10: _stddev empty list returns 0
+    test("SessionAnalyticsExt: _stddev empty list returns 0",
+         _stddev([]) == 0.0,
+         f"got {_stddev([])}")
+
+    # Test 11: _compute_resolve_score with no blocks returns 1.0
+    _sae_rs11 = _compute_resolve_score([{"decision": "pass", "gate": "g1"}])
+    test("SessionAnalyticsExt: _compute_resolve_score no blocks -> 1.0",
+         abs(_sae_rs11 - 1.0) < 0.001,
+         f"got {_sae_rs11}")
+
+    # Test 12: _compute_resolve_score with block then pass = 1.0
+    _sae_entries12 = [
+        {"decision": "block", "gate": "g1"},
+        {"decision": "pass", "gate": "g1"},
+    ]
+    _sae_rs12 = _compute_resolve_score(_sae_entries12)
+    test("SessionAnalyticsExt: block then pass on same gate -> resolve=1.0",
+         abs(_sae_rs12 - 1.0) < 0.001,
+         f"got {_sae_rs12}")
+
+    # Test 13: _compute_resolve_score with unresolved block = 0.0
+    _sae_entries13 = [
+        {"decision": "block", "gate": "g1"},
+        {"decision": "pass", "gate": "g2"},  # Different gate, doesn't resolve g1
+    ]
+    _sae_rs13 = _compute_resolve_score(_sae_entries13)
+    test("SessionAnalyticsExt: unresolved block -> resolve=0.0",
+         abs(_sae_rs13 - 0.0) < 0.001,
+         f"got {_sae_rs13}")
+
+    # Test 14: session_productivity with actual entries
+    _sae_prod_entries = [
+        {"tool": "Edit", "decision": "pass", "gate": "g1"},
+        {"tool": "Edit", "decision": "pass", "gate": "g1"},
+        {"tool": "Edit", "decision": "block", "gate": "g1"},
+        {"tool": "Read", "decision": "pass", "gate": "g1"},
+        {"tool": "search_knowledge", "decision": "pass", "gate": "g4"},
+        {"tool": "remember_this", "decision": "pass", "gate": "g6"},
+    ]
+    _sae_prod = session_productivity(_sae_prod_entries, duration_minutes=60.0)
+    test("SessionAnalyticsExt: productivity has score, grade, breakdown",
+         isinstance(_sae_prod, dict)
+         and "score" in _sae_prod
+         and "grade" in _sae_prod
+         and "breakdown" in _sae_prod,
+         f"keys={set(_sae_prod.keys())}")
+
+    # Test 15: productivity score is 0-100
+    test("SessionAnalyticsExt: productivity score in range 0-100",
+         0.0 <= _sae_prod["score"] <= 100.0,
+         f"score={_sae_prod['score']}")
+
+    # Test 16: productivity grade is valid letter
+    test("SessionAnalyticsExt: productivity grade is A-F",
+         _sae_prod["grade"] in ("A", "B", "C", "D", "F"),
+         f"grade={_sae_prod['grade']}")
+
+    # Test 17: productivity breakdown has 4 sub-metrics
+    _sae_bd = _sae_prod.get("breakdown", {})
+    test("SessionAnalyticsExt: breakdown has 4 sub-metrics",
+         all(k in _sae_bd for k in ("edit_velocity", "block_rate", "error_resolve", "memory_contrib")),
+         f"breakdown keys={set(_sae_bd.keys())}")
+
+    # Test 18: productivity block_rate reflects actual blocks
+    _sae_br = _sae_bd.get("block_rate", {})
+    test("SessionAnalyticsExt: block_rate blocked_count=1",
+         _sae_br.get("blocked_count") == 1 and _sae_br.get("total_decisions") == 6,
+         f"blocked={_sae_br.get('blocked_count')}, total={_sae_br.get('total_decisions')}")
+
+    # Test 19: productivity memory_contrib counts memory tools
+    _sae_mc = _sae_bd.get("memory_contrib", {})
+    test("SessionAnalyticsExt: memory_contrib counts 2 memory calls",
+         _sae_mc.get("memory_calls") == 2,
+         f"memory_calls={_sae_mc.get('memory_calls')}")
+
+    # Test 20: compare_sessions_metrics with history
+    _sae_current = {"score": 80.0}
+    _sae_history = [{"score": 70.0}, {"score": 75.0}, {"score": 65.0}]
+    _sae_cmp = compare_sessions_metrics(_sae_current, _sae_history)
+    test("SessionAnalyticsExt: compare_sessions_metrics has expected keys",
+         isinstance(_sae_cmp, dict)
+         and "current_score" in _sae_cmp
+         and "rolling_avg" in _sae_cmp
+         and "delta" in _sae_cmp
+         and "trend" in _sae_cmp,
+         f"keys={set(_sae_cmp.keys())}")
+
+    # Test 21: compare_sessions_metrics correct rolling_avg
+    _sae_expected_avg = (70.0 + 75.0 + 65.0) / 3.0
+    test("SessionAnalyticsExt: rolling_avg = (70+75+65)/3 = 70.0",
+         abs(_sae_cmp["rolling_avg"] - _sae_expected_avg) < 0.1,
+         f"got {_sae_cmp['rolling_avg']}")
+
+    # Test 22: compare_sessions_metrics positive delta = improving
+    test("SessionAnalyticsExt: positive delta -> improving trend",
+         _sae_cmp["delta"] > 0 and _sae_cmp["trend"] == "improving",
+         f"delta={_sae_cmp['delta']}, trend={_sae_cmp['trend']}")
+
+    # Test 23: compare_sessions_metrics empty history -> insufficient_data
+    _sae_cmp23 = compare_sessions_metrics({"score": 80.0}, [])
+    test("SessionAnalyticsExt: empty history -> insufficient_data",
+         _sae_cmp23["trend"] == "insufficient_data",
+         f"trend={_sae_cmp23['trend']}")
+
+    # Test 24: parse_audit_log on non-existent file returns []
+    _sae_pal = parse_audit_log("/tmp/nonexistent_audit_test_12345.jsonl")
+    test("SessionAnalyticsExt: parse_audit_log missing file returns []",
+         isinstance(_sae_pal, list) and len(_sae_pal) == 0,
+         f"got len={len(_sae_pal)}")
+
+    # Test 25: parse_audit_log on valid JSONL file
+    _sae_tmp25 = _sae_tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, mode="w")
+    _sae_tmp25.write('{"gate": "g1", "decision": "pass", "tool": "Edit"}\n')
+    _sae_tmp25.write('{"gate": "g2", "decision": "block", "tool": "Bash"}\n')
+    _sae_tmp25.write('bad json line\n')
+    _sae_tmp25.close()
+    _sae_pal25 = parse_audit_log(_sae_tmp25.name)
+    test("SessionAnalyticsExt: parse_audit_log parses valid lines, skips bad",
+         len(_sae_pal25) == 2 and _sae_pal25[0]["gate"] == "g1",
+         f"got {len(_sae_pal25)} entries")
+    try:
+        os.unlink(_sae_tmp25.name)
+    except OSError:
+        pass
+
+    # Test 26: compare_sessions legacy mode (dict + list)
+    _sae_legacy = compare_sessions({"score": 90.0}, [{"score": 80.0}])
+    test("SessionAnalyticsExt: compare_sessions legacy mode works",
+         isinstance(_sae_legacy, dict) and "current_score" in _sae_legacy,
+         f"keys={set(_sae_legacy.keys())}")
+
+    # Test 27: compare_sessions session-ID mode (strings)
+    _sae_sid_cmp = compare_sessions("nonexistent_a", "nonexistent_b")
+    test("SessionAnalyticsExt: compare_sessions ID mode returns summary",
+         isinstance(_sae_sid_cmp, dict) and "summary" in _sae_sid_cmp,
+         f"keys={set(_sae_sid_cmp.keys())}")
+
+    # Test 28: compare_sessions handles missing sessions gracefully
+    test("SessionAnalyticsExt: compare_sessions missing sessions in summary",
+         "not found" in _sae_sid_cmp.get("summary", "").lower()
+         or "Neither" in _sae_sid_cmp.get("summary", ""),
+         f"summary={_sae_sid_cmp.get('summary')}")
+
+    # Test 29: analyse_session with empty audit dir
+    _sae_tmp_dir = _sae_tempfile.mkdtemp()
+    _sae_analysis = analyse_session(audit_dir=_sae_tmp_dir, duration_minutes=60.0)
+    test("SessionAnalyticsExt: analyse_session with empty dir returns valid structure",
+         isinstance(_sae_analysis, dict)
+         and "tool_distribution" in _sae_analysis
+         and "productivity" in _sae_analysis
+         and "entry_count" in _sae_analysis,
+         f"keys={set(_sae_analysis.keys())}")
+    try:
+        os.rmdir(_sae_tmp_dir)
+    except OSError:
+        pass
+
+    # Test 30: analyse_session entry_count is 0 for empty dir
+    test("SessionAnalyticsExt: analyse_session empty dir -> entry_count=0",
+         _sae_analysis["entry_count"] == 0,
+         f"got {_sae_analysis['entry_count']}")
+
+    # Test 31: session_productivity with 0 duration doesn't crash
+    _sae_prod31 = session_productivity([], duration_minutes=0)
+    test("SessionAnalyticsExt: productivity with 0 duration doesn't crash",
+         isinstance(_sae_prod31, dict) and "score" in _sae_prod31,
+         f"keys={set(_sae_prod31.keys())}")
+
+    # Test 32: spike detection in compare_sessions_metrics
+    _sae_spike = compare_sessions_metrics(
+        {"score": 95.0},
+        [{"score": 50.0}, {"score": 52.0}, {"score": 48.0}, {"score": 51.0}],
+    )
+    test("SessionAnalyticsExt: spike_detected when current far from history",
+         _sae_spike.get("spike_detected") is True,
+         f"spike_detected={_sae_spike.get('spike_detected')}")
+
+except Exception as _sae_exc:
+    test("SessionAnalyticsExt: import and basic tests", False, str(_sae_exc))
+
+
+# ─── Hook Cache Extended Tests ──────────────────────────────────────
+print("\n--- Hook Cache Extended ---")
+from shared.hook_cache import (
+    get_cached_module, invalidate_module,
+    get_cached_state, set_cached_state, invalidate_state,
+    get_cached_result, set_cached_result, invalidate_result,
+    cache_stats, clear_cache, evict_expired,
+)
+
+try:
+    clear_cache()
+
+    # Test 1: get_cached_module imports a real module
+    _hce_mod = get_cached_module("json")
+    test("HookCacheExt: get_cached_module('json') returns module",
+         _hce_mod is not None and hasattr(_hce_mod, "loads"),
+         f"got {type(_hce_mod)}")
+
+    # Test 2: second call returns same cached object (hit)
+    _hce_stats_before = cache_stats()
+    _hce_mod2 = get_cached_module("json")
+    _hce_stats_after = cache_stats()
+    test("HookCacheExt: repeated import is a cache hit",
+         _hce_stats_after["module_hits"] > _hce_stats_before["module_hits"],
+         f"hits before={_hce_stats_before['module_hits']}, after={_hce_stats_after['module_hits']}")
+
+    # Test 3: invalidate_module removes cached module
+    _hce_inv_mod = invalidate_module("json")
+    test("HookCacheExt: invalidate_module returns True for cached module",
+         _hce_inv_mod is True, f"got {_hce_inv_mod}")
+
+    # Test 4: invalidate_module returns False for uncached module
+    _hce_inv_mod2 = invalidate_module("nonexistent_module_xyz")
+    test("HookCacheExt: invalidate_module returns False for uncached",
+         _hce_inv_mod2 is False, f"got {_hce_inv_mod2}")
+
+    # Test 5: cache_stats tracks module_cached count
+    clear_cache()
+    get_cached_module("os")
+    get_cached_module("sys")
+    _hce_s5 = cache_stats()
+    test("HookCacheExt: module_cached counts loaded modules",
+         _hce_s5["module_cached"] >= 2,
+         f"module_cached={_hce_s5['module_cached']}")
+
+    # Test 6: state cache miss returns None
+    clear_cache()
+    _hce_miss = get_cached_state("__nonexistent_session__")
+    test("HookCacheExt: state cache miss returns None",
+         _hce_miss is None, f"got {_hce_miss}")
+
+    # Test 7: state cache miss increments counter
+    _hce_s7 = cache_stats()
+    test("HookCacheExt: state_misses incremented on miss",
+         _hce_s7["state_misses"] >= 1,
+         f"state_misses={_hce_s7['state_misses']}")
+
+    # Test 8: state cache hit increments counter
+    clear_cache()
+    set_cached_state("__hce_test__", {"x": 1})
+    get_cached_state("__hce_test__", ttl_ms=5000)
+    _hce_s8 = cache_stats()
+    test("HookCacheExt: state_hits incremented on hit",
+         _hce_s8["state_hits"] >= 1,
+         f"state_hits={_hce_s8['state_hits']}")
+
+    # Test 9: state_cached count
+    test("HookCacheExt: state_cached = 1 after one set",
+         _hce_s8["state_cached"] == 1,
+         f"state_cached={_hce_s8['state_cached']}")
+
+    # Test 10: result cache set/get roundtrip
+    clear_cache()
+    from shared.gate_result import GateResult
+    _hce_gr = GateResult(blocked=False, message="test", gate_name="test_gate")
+    set_cached_result("gate_01", "Edit", "abc123", _hce_gr)
+    _hce_r10 = get_cached_result("gate_01", "Edit", "abc123")
+    test("HookCacheExt: result cache set/get roundtrip",
+         _hce_r10 is not None and _hce_r10.blocked is False,
+         f"got {_hce_r10}")
+
+    # Test 11: result cache miss returns None
+    _hce_r11 = get_cached_result("gate_01", "Edit", "different_hash")
+    test("HookCacheExt: result cache miss for different hash",
+         _hce_r11 is None, f"got {_hce_r11}")
+
+    # Test 12: invalidate_result removes entry
+    _hce_inv_r = invalidate_result("gate_01", "Edit", "abc123")
+    _hce_r12 = get_cached_result("gate_01", "Edit", "abc123")
+    test("HookCacheExt: invalidate_result removes entry",
+         _hce_inv_r is True and _hce_r12 is None,
+         f"inv={_hce_inv_r}, after_get={_hce_r12}")
+
+    # Test 13: invalidate_result returns False for missing entry
+    _hce_inv_r2 = invalidate_result("gate_99", "Task", "zzz")
+    test("HookCacheExt: invalidate_result False for missing",
+         _hce_inv_r2 is False, f"got {_hce_inv_r2}")
+
+    # Test 14: evict_expired returns dict with state/result counts
+    clear_cache()
+    _hce_ev14 = evict_expired()
+    test("HookCacheExt: evict_expired returns {state: 0, result: 0} when empty",
+         _hce_ev14 == {"state": 0, "result": 0},
+         f"got {_hce_ev14}")
+
+    # Test 15: clear_cache resets all counters to 0
+    clear_cache()
+    _hce_s15 = cache_stats()
+    test("HookCacheExt: clear_cache resets all counters to 0",
+         _hce_s15["module_hits"] == 0
+         and _hce_s15["state_hits"] == 0
+         and _hce_s15["result_hits"] == 0
+         and _hce_s15["module_cached"] == 0,
+         f"stats={_hce_s15}")
+
+    clear_cache()  # Clean up
+
+except Exception as _hce_exc:
+    test("HookCacheExt: import and basic tests", False, str(_hce_exc))
+
+
+# ─── Metrics Collector Extended Tests ───────────────────────────────
+print("\n--- Metrics Collector Extended ---")
+from shared.metrics_collector import (
+    inc as mc_inc, set_gauge as mc_set_gauge, observe as mc_observe,
+    get_metric as mc_get_metric, get_all_metrics as mc_get_all_metrics,
+    flush as mc_flush, rollup as mc_rollup,
+    record_gate_fire, record_gate_block, record_gate_latency,
+    record_hook_duration, record_memory_query, set_memory_total,
+    record_tool_call, set_test_pass_rate, export_json as mc_export_json,
+    timed as mc_timed, TYPE_COUNTER, TYPE_GAUGE, TYPE_HISTOGRAM,
+    _label_key,
+)
+
+try:
+    # Test 1: counter increments correctly
+    mc_inc("__mce_counter__", 5)
+    mc_inc("__mce_counter__", 3)
+    _mce_c1 = mc_get_metric("__mce_counter__")
+    test("MetricsCollectorExt: counter increments to 8",
+         _mce_c1.get("value") == 8 and _mce_c1.get("type") == TYPE_COUNTER,
+         f"value={_mce_c1.get('value')}")
+
+    # Test 2: counter with labels
+    mc_inc("__mce_labeled__", 1, labels={"gate": "gate_01"})
+    mc_inc("__mce_labeled__", 1, labels={"gate": "gate_02"})
+    _mce_c2a = mc_get_metric("__mce_labeled__", labels={"gate": "gate_01"})
+    _mce_c2b = mc_get_metric("__mce_labeled__", labels={"gate": "gate_02"})
+    test("MetricsCollectorExt: labeled counters are independent",
+         _mce_c2a.get("value") == 1 and _mce_c2b.get("value") == 1,
+         f"gate_01={_mce_c2a.get('value')}, gate_02={_mce_c2b.get('value')}")
+
+    # Test 3: gauge set overwrites previous value
+    mc_set_gauge("__mce_gauge__", 100.0)
+    mc_set_gauge("__mce_gauge__", 42.0)
+    _mce_g3 = mc_get_metric("__mce_gauge__")
+    test("MetricsCollectorExt: gauge overwrites to 42.0",
+         abs(_mce_g3.get("value", 0) - 42.0) < 0.001,
+         f"value={_mce_g3.get('value')}")
+
+    # Test 4: histogram tracks count, sum, min, max, avg
+    mc_observe("__mce_hist__", 10.0)
+    mc_observe("__mce_hist__", 20.0)
+    mc_observe("__mce_hist__", 30.0)
+    _mce_h4 = mc_get_metric("__mce_hist__")
+    test("MetricsCollectorExt: histogram count/sum/min/max",
+         _mce_h4.get("count", 0) >= 3
+         and _mce_h4.get("type") == TYPE_HISTOGRAM,
+         f"count={_mce_h4.get('count')}")
+
+    # Test 5: histogram has computed avg
+    test("MetricsCollectorExt: histogram has avg field",
+         "avg" in _mce_h4 and _mce_h4["avg"] > 0,
+         f"avg={_mce_h4.get('avg')}")
+
+    # Test 6: _label_key encodes labels canonically
+    _mce_lk6 = _label_key({"b": "2", "a": "1"})
+    test("MetricsCollectorExt: _label_key sorts keys",
+         _mce_lk6 == "a=1,b=2",
+         f"got '{_mce_lk6}'")
+
+    # Test 7: _label_key returns "" for None/empty
+    test("MetricsCollectorExt: _label_key(None) returns ''",
+         _label_key(None) == "" and _label_key({}) == "",
+         f"None='{_label_key(None)}', empty='{_label_key({})}'")
+
+    # Test 8: get_metric returns {} for nonexistent
+    _mce_m8 = mc_get_metric("__totally_fake_metric__")
+    test("MetricsCollectorExt: get_metric returns {} for missing",
+         _mce_m8 == {}, f"got {_mce_m8}")
+
+    # Test 9: get_all_metrics contains our test metrics
+    _mce_all = mc_get_all_metrics()
+    test("MetricsCollectorExt: get_all_metrics contains test counter",
+         "__mce_counter__" in _mce_all,
+         f"keys={list(_mce_all.keys())[:5]}...")
+
+    # Test 10: rollup returns dict with windowed data
+    _mce_r10 = mc_rollup(60)
+    test("MetricsCollectorExt: rollup(60) returns dict",
+         isinstance(_mce_r10, dict),
+         f"type={type(_mce_r10).__name__}")
+
+    # Test 11: rollup includes counters as current values
+    _mce_has_counter = any("__mce_counter__" in k for k in _mce_r10)
+    test("MetricsCollectorExt: rollup includes counter metrics",
+         _mce_has_counter,
+         f"keys sample={list(_mce_r10.keys())[:5]}")
+
+    # Test 12: convenience helpers - record_gate_fire
+    record_gate_fire("__mce_gate_test__")
+    _mce_gf = mc_get_metric("gate.fires", labels={"gate": "__mce_gate_test__"})
+    test("MetricsCollectorExt: record_gate_fire increments gate.fires",
+         _mce_gf.get("value", 0) >= 1,
+         f"value={_mce_gf.get('value')}")
+
+    # Test 13: record_gate_block
+    record_gate_block("__mce_gate_test__")
+    _mce_gb = mc_get_metric("gate.blocks", labels={"gate": "__mce_gate_test__"})
+    test("MetricsCollectorExt: record_gate_block increments gate.blocks",
+         _mce_gb.get("value", 0) >= 1,
+         f"value={_mce_gb.get('value')}")
+
+    # Test 14: record_gate_latency
+    record_gate_latency("__mce_gate_test__", 5.5)
+    _mce_gl = mc_get_metric("gate.latency_ms", labels={"gate": "__mce_gate_test__"})
+    test("MetricsCollectorExt: record_gate_latency records histogram",
+         _mce_gl.get("count", 0) >= 1,
+         f"count={_mce_gl.get('count')}")
+
+    # Test 15: set_test_pass_rate clamps to [0, 1]
+    set_test_pass_rate(1.5)
+    _mce_tpr = mc_get_metric("test.pass_rate")
+    test("MetricsCollectorExt: set_test_pass_rate clamps 1.5 -> 1.0",
+         abs(_mce_tpr.get("value", 0) - 1.0) < 0.001,
+         f"value={_mce_tpr.get('value')}")
+
+    # Test 16: export_json returns valid JSON string
+    _mce_ej = mc_export_json()
+    _mce_parsed = json.loads(_mce_ej) if isinstance(_mce_ej, str) else _mce_ej
+    test("MetricsCollectorExt: export_json is valid JSON with expected keys",
+         isinstance(_mce_parsed, dict) and "metrics" in _mce_parsed,
+         f"type={type(_mce_parsed).__name__}, keys={set(_mce_parsed.keys()) if isinstance(_mce_parsed, dict) else 'N/A'}")
+
+    # Test 17: timed context manager records histogram
+    import time as _mce_time
+    with mc_timed("__mce_timed__"):
+        _mce_time.sleep(0.001)
+    _mce_t17 = mc_get_metric("__mce_timed__")
+    test("MetricsCollectorExt: timed context manager records observation",
+         _mce_t17.get("count", 0) >= 1,
+         f"count={_mce_t17.get('count')}")
+
+    # Test 18: flush returns True
+    _mce_f18 = mc_flush()
+    test("MetricsCollectorExt: flush returns True",
+         _mce_f18 is True, f"got {_mce_f18}")
+
+except Exception as _mce_exc:
+    test("MetricsCollectorExt: import and basic tests", False, str(_mce_exc))
+
+
+# ─── Event Replay Extended Tests ────────────────────────────────────
+print("\n--- Event Replay Extended ---")
+from shared.event_replay import (
+    load_events, filter_events, replay_event, diff_results,
+    summarise_replay, _extract_tool_input, _parse_context,
+    _is_always_allowed, _is_memory_tool, _build_replay_state,
+)
+import tempfile as _ere_tempfile
+
+try:
+    # Test 1: _is_always_allowed for Read
+    test("EventReplayExt: Read is always allowed",
+         _is_always_allowed("Read") is True, "Expected True")
+
+    # Test 2: _is_always_allowed for Edit
+    test("EventReplayExt: Edit is NOT always allowed",
+         _is_always_allowed("Edit") is False, "Expected False")
+
+    # Test 3: _is_memory_tool for mcp__memory__ prefix
+    test("EventReplayExt: mcp__memory__search_knowledge is memory tool",
+         _is_memory_tool("mcp__memory__search_knowledge") is True, "Expected True")
+
+    # Test 4: _is_memory_tool for non-memory tool
+    test("EventReplayExt: Edit is not memory tool",
+         _is_memory_tool("Edit") is False, "Expected False")
+
+    # Test 5: _parse_context with valid JSON
+    _ere_ctx5 = _parse_context('{"file_path": "/tmp/test.py"}')
+    test("EventReplayExt: _parse_context parses valid JSON",
+         _ere_ctx5.get("file_path") == "/tmp/test.py",
+         f"got {_ere_ctx5}")
+
+    # Test 6: _parse_context with non-JSON returns {}
+    _ere_ctx6 = _parse_context("just a string")
+    test("EventReplayExt: _parse_context non-JSON returns {}",
+         _ere_ctx6 == {}, f"got {_ere_ctx6}")
+
+    # Test 7: _parse_context with empty string returns {}
+    test("EventReplayExt: _parse_context('') returns {}",
+         _parse_context("") == {}, f"got {_parse_context('')}")
+
+    # Test 8: _extract_tool_input for Bash
+    _ere_ti8 = _extract_tool_input({"tool_name": "Bash", "context": "ls -la"})
+    test("EventReplayExt: _extract_tool_input Bash has command",
+         "command" in _ere_ti8,
+         f"got {_ere_ti8}")
+
+    # Test 9: _extract_tool_input for Edit
+    _ere_ti9 = _extract_tool_input({"tool_name": "Edit", "context": '{"file_path": "/tmp/foo.py"}'})
+    test("EventReplayExt: _extract_tool_input Edit has file_path",
+         "file_path" in _ere_ti9,
+         f"got {_ere_ti9}")
+
+    # Test 10: _extract_tool_input for Task
+    _ere_ti10 = _extract_tool_input({"tool_name": "Task", "context": '{"model": "haiku"}'})
+    test("EventReplayExt: _extract_tool_input Task has model",
+         "model" in _ere_ti10,
+         f"got {_ere_ti10}")
+
+    # Test 11: _build_replay_state returns valid state dict
+    _ere_state = _build_replay_state("test_replay")
+    test("EventReplayExt: _build_replay_state returns state with session_id",
+         isinstance(_ere_state, dict) and _ere_state.get("_session_id") == "test_replay",
+         f"session_id={_ere_state.get('_session_id')}")
+
+    # Test 12: _build_replay_state has memory_last_queried set
+    test("EventReplayExt: replay state has memory_last_queried",
+         _ere_state.get("memory_last_queried", 0) > 0,
+         f"mlq={_ere_state.get('memory_last_queried')}")
+
+    # Test 13: load_events on non-existent file returns []
+    _ere_ev13 = load_events("/tmp/__nonexistent_capture_queue_test__.jsonl")
+    test("EventReplayExt: load_events missing file returns []",
+         isinstance(_ere_ev13, list) and len(_ere_ev13) == 0,
+         f"len={len(_ere_ev13)}")
+
+    # Test 14: load_events on valid JSONL
+    _ere_tmp14 = _ere_tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, mode="w")
+    _ere_tmp14.write('{"document": "test", "metadata": {"tool_name": "Edit", "exit_code": "0", "session_id": "s1"}, "id": "obs_1"}\n')
+    _ere_tmp14.write('{"document": "test2", "metadata": {"tool_name": "Bash", "exit_code": "2", "session_id": "s1", "gate": "gate_02"}, "id": "obs_2"}\n')
+    _ere_tmp14.close()
+    _ere_ev14 = load_events(_ere_tmp14.name)
+    test("EventReplayExt: load_events parses 2 valid entries",
+         len(_ere_ev14) == 2,
+         f"len={len(_ere_ev14)}")
+
+    # Test 15: filter_events with tool_name filter
+    _ere_f15 = filter_events(tool_name="Edit", path=_ere_tmp14.name)
+    test("EventReplayExt: filter_events tool_name='Edit' returns 1",
+         len(_ere_f15) == 1 and _ere_f15[0].get("_replay_meta", {}).get("tool_name") == "Edit",
+         f"len={len(_ere_f15)}")
+
+    # Test 16: filter_events blocked=True
+    _ere_f16 = filter_events(blocked=True, path=_ere_tmp14.name)
+    test("EventReplayExt: filter_events blocked=True returns blocked events",
+         len(_ere_f16) == 1 and _ere_f16[0].get("_replay_meta", {}).get("originally_blocked") is True,
+         f"len={len(_ere_f16)}")
+
+    # Test 17: filter_events adds _replay_meta
+    _ere_f17 = filter_events(path=_ere_tmp14.name)
+    _ere_has_meta = all("_replay_meta" in ev for ev in _ere_f17)
+    test("EventReplayExt: filter_events adds _replay_meta to all entries",
+         _ere_has_meta and len(_ere_f17) == 2,
+         f"all_have_meta={_ere_has_meta}")
+
+    # Test 18: replay_event with always-allowed tool returns skipped
+    _ere_r18 = replay_event({"metadata": {"tool_name": "Read"}})
+    test("EventReplayExt: replay always-allowed tool -> skipped",
+         _ere_r18["final_outcome"] == "skipped"
+         and _ere_r18["skipped_always_allowed"] is True,
+         f"outcome={_ere_r18['final_outcome']}")
+
+    # Test 19: replay_event with empty tool_name -> skipped
+    _ere_r19 = replay_event({"metadata": {"tool_name": ""}})
+    test("EventReplayExt: replay empty tool_name -> skipped",
+         _ere_r19["final_outcome"] == "skipped",
+         f"outcome={_ere_r19['final_outcome']}")
+
+    # Test 20: diff_results with no change
+    _ere_d20 = diff_results(
+        {"originally_blocked": False},
+        {"final_outcome": "passed", "per_gate": {}},
+    )
+    test("EventReplayExt: diff_results no change -> changed=False",
+         _ere_d20["changed"] is False,
+         f"changed={_ere_d20['changed']}")
+
+    # Test 21: diff_results with change (passed -> blocked)
+    _ere_d21 = diff_results(
+        {"originally_blocked": False},
+        {"final_outcome": "blocked", "per_gate": {}},
+    )
+    test("EventReplayExt: diff_results passed->blocked -> changed=True",
+         _ere_d21["changed"] is True and len(_ere_d21["new_blocks"]) > 0,
+         f"changed={_ere_d21['changed']}, new_blocks={_ere_d21['new_blocks']}")
+
+    # Test 22: diff_results per-gate comparison
+    _ere_orig22 = {
+        "per_gate": {"gate_01": {"blocked": True}, "gate_02": {"blocked": False}},
+        "final_outcome": "blocked",
+    }
+    _ere_rep22 = {
+        "per_gate": {"gate_01": {"blocked": False}, "gate_02": {"blocked": False}},
+        "final_outcome": "passed",
+    }
+    _ere_d22 = diff_results(_ere_orig22, _ere_rep22)
+    test("EventReplayExt: diff_results per-gate detects gate_01 change",
+         _ere_d22["changed"] is True and "gate_01" in _ere_d22.get("new_passes", []),
+         f"new_passes={_ere_d22.get('new_passes')}")
+
+    # Test 23: summarise_replay with empty results
+    _ere_sum23 = summarise_replay([])
+    test("EventReplayExt: summarise_replay empty -> total=0",
+         _ere_sum23["total"] == 0 and _ere_sum23["changed"] == 0,
+         f"total={_ere_sum23['total']}")
+
+    # Test 24: summarise_replay with mixed results
+    _ere_items24 = [
+        {"diff": {"changed": False}},
+        {"diff": {"changed": True, "new_blocks": ["gate_01"], "new_passes": []},
+         "event": {"_replay_meta": {"timestamp": "t1", "tool_name": "Edit"}}},
+    ]
+    _ere_sum24 = summarise_replay(_ere_items24)
+    test("EventReplayExt: summarise_replay counts 1 changed, 1 unchanged",
+         _ere_sum24["total"] == 2 and _ere_sum24["changed"] == 1 and _ere_sum24["unchanged"] == 1,
+         f"total={_ere_sum24['total']}, changed={_ere_sum24['changed']}")
+
+    try:
+        os.unlink(_ere_tmp14.name)
+    except OSError:
+        pass
+
+except Exception as _ere_exc:
+    test("EventReplayExt: import and basic tests", False, str(_ere_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)

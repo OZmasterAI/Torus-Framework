@@ -1654,6 +1654,149 @@ def framework_pulse(lookback_hours: int = 1) -> dict:
     return pulse
 
 
+# ── Cache Health ─────────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def cache_health() -> dict:
+    """Hook invocation cache performance — hits, misses, evictions per layer.
+
+    Shows module cache (imported gates), state cache (session data),
+    and result cache (GateResult dedup) metrics. Useful for diagnosing
+    slow hook invocations or cache thrashing.
+    """
+    _ensure_initialized()
+    from shared.hook_cache import cache_stats, evict_expired
+
+    stats = cache_stats()
+    expired = evict_expired()
+
+    # Compute hit rates
+    module_total = stats.get("module_hits", 0) + stats.get("module_misses", 0)
+    state_total = stats.get("state_hits", 0) + stats.get("state_misses", 0)
+    result_total = stats.get("result_hits", 0) + stats.get("result_misses", 0)
+
+    return {
+        "module_cache": {
+            "hits": stats.get("module_hits", 0),
+            "misses": stats.get("module_misses", 0),
+            "cached": stats.get("module_cached", 0),
+            "hit_rate": round(stats.get("module_hits", 0) / max(module_total, 1), 3),
+        },
+        "state_cache": {
+            "hits": stats.get("state_hits", 0),
+            "misses": stats.get("state_misses", 0),
+            "evictions": stats.get("state_evictions", 0),
+            "cached": stats.get("state_cached", 0),
+            "hit_rate": round(stats.get("state_hits", 0) / max(state_total, 1), 3),
+        },
+        "result_cache": {
+            "hits": stats.get("result_hits", 0),
+            "misses": stats.get("result_misses", 0),
+            "evictions": stats.get("result_evictions", 0),
+            "cached": stats.get("result_cached", 0),
+            "hit_rate": round(stats.get("result_hits", 0) / max(result_total, 1), 3),
+        },
+        "just_expired": expired,
+    }
+
+
+@mcp.tool()
+@crash_proof
+def gate_sla_status(threshold_ms: int = 50) -> dict:
+    """Gate latency SLA compliance — identifies degraded/slow gates.
+
+    Checks all tracked gates against performance SLA thresholds.
+    Gates exceeding thresholds are flagged for investigation.
+    Tier 1 safety gates are never auto-skipped even when degraded.
+
+    Args:
+        threshold_ms: Custom slow-gate threshold in milliseconds (default 50).
+    """
+    _ensure_initialized()
+    from shared.gate_timing import get_sla_report, get_degraded_gates, get_slow_gates
+
+    sla_report = get_sla_report()
+    degraded = get_degraded_gates()
+    slow = get_slow_gates(threshold_ms=threshold_ms)
+
+    # Categorize
+    ok_gates = [g for g, s in sla_report.items() if s["status"] == "ok"]
+    warn_gates = [g for g, s in sla_report.items() if s["status"] == "warn"]
+    degrade_gates = [g for g, s in sla_report.items() if s["status"] == "degrade"]
+    unknown_gates = [g for g, s in sla_report.items() if s["status"] == "unknown"]
+
+    return {
+        "total_gates": len(sla_report),
+        "ok": len(ok_gates),
+        "warn": len(warn_gates),
+        "degraded": len(degrade_gates),
+        "unknown": len(unknown_gates),
+        "auto_skip_gates": degraded,
+        "slow_gates": {g: {"avg_ms": s["avg_ms"], "p95_ms": s["p95_ms"]}
+                       for g, s in slow.items()},
+        "warn_gates_detail": {g: sla_report[g] for g in warn_gates},
+        "degraded_gates_detail": {g: sla_report[g] for g in degrade_gates},
+    }
+
+
+@mcp.tool()
+@crash_proof
+def replay_events(
+    tool_filter: str = "",
+    gate_filter: str = "",
+    blocked_only: bool = False,
+    limit: int = 10,
+) -> dict:
+    """Replay captured tool events through the gate pipeline for regression testing.
+
+    Re-runs historical events from the capture queue through all applicable gates,
+    comparing current gate behavior against the original outcome to detect
+    regressions or improvements after gate modifications.
+
+    Args:
+        tool_filter: Filter by exact tool name (e.g., "Edit", "Bash").
+        gate_filter: Filter by gate name substring.
+        blocked_only: If true, only replay events that were originally blocked.
+        limit: Maximum events to replay (default 10, max 50).
+    """
+    _ensure_initialized()
+    from shared.event_replay import replay_all, summarise_replay
+
+    limit = max(1, min(50, limit))
+    results = replay_all(
+        gate_name=gate_filter or None,
+        tool_name=tool_filter or None,
+        blocked=True if blocked_only else None,
+    )
+    results = results[:limit]
+    summary = summarise_replay(results)
+
+    # Build per-event detail
+    events_detail = []
+    for item in results[:20]:  # Cap detail output
+        diff = item.get("diff", {})
+        event_meta = item.get("event", {}).get("_replay_meta", {})
+        replayed = item.get("replayed", {})
+        events_detail.append({
+            "tool": event_meta.get("tool_name", ""),
+            "original": event_meta.get("exit_code", ""),
+            "replayed_outcome": replayed.get("final_outcome", ""),
+            "gates_run": replayed.get("gates_run", 0),
+            "changed": diff.get("changed", False),
+            "summary": diff.get("summary", ""),
+        })
+
+    return {
+        "total_replayed": summary["total"],
+        "changed": summary["changed"],
+        "unchanged": summary["unchanged"],
+        "new_blocks": summary["new_blocks"],
+        "new_passes": summary["new_passes"],
+        "events": events_detail,
+    }
+
+
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
 # DORMANT: uncomment @mcp.tool() to reactivate
