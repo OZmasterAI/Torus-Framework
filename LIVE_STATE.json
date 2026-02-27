@@ -1,21 +1,21 @@
 {
-  "session_count": 288,
+  "session_count": 289,
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.7",
-  "what_was_done": "Session 287: Killed 12 stale evolution-swarm-268 agents + 7 orphan memory_servers. Cleaned 11 dead tmux panes. Started super-evolve (aborted by user). Baseline: 5463 tests, 0 failures.",
+  "what_was_done": "Session 288: Cleaned stale team/task dirs (79+5 dirs). Deep Sprint3 vs evolution-branch comparison. Gate architecture review (Python vs bash hooks) — decided to keep current system (Option C). Profiled enforcer at 102ms.",
   "next_steps": [
-    "Clean stale team/task dirs (79 UUID dirs in ~/.claude/tasks/, 5 team dirs) -- Gate 2 blocks rm -rf, run manually",
     "Build new features from web research: causal chain auto-refinement",
     "Register health_correlation as MCP tool",
-    "Deep tests for remaining modules: gate_graph, code_hotspot, agent_channel, skill_mapper, session_compressor, gate_health, gate_correlation, chain_sdk",
-    "Run memory maintenance(action='stale')"
+    "Wire unwired shared modules: search_cache into memory_server, memory_decay into stale_memory_report",
+    "Run memory maintenance(action='stale') — 1599 entries, pruning nudge active",
+    "Consider dormanting unused analytics tools to reduce MCP schema cost (5,673 tokens when active)"
   ],
   "known_issues": [
     "github-branch is orphan by design -- never merge, always scrub ALL files on sync",
     "Pyright type-narrowing warnings on importlib.util in search_server.py and web_search_server.py (pre-existing)",
     "test_framework.py has Pyright import warnings for gather, index, search, list, delete modules (pre-existing)",
-    "domain system wired (enforcer/orchestrator/statusline/state) but inactive"
-  ],
-  "last_response_preview": "---\n\n**SESSION 287 WRAP-UP**\n\n**What was done:**\n- Killed 12 stale evolution-swarm-268 agents (arxiv-3/4, builder-8/9/10/11, builder-parallel-gates/fuzzy-search/boot-banner/correlation/audit-rotation) + 7 orphan memory_servers\n- Killed 11 dead tmux panes \u2014 terminal is clean\n- Started super-evolve Phase 1-2 (aborted by user)\n- Baseline verified: 5463 tests, 0 failures\n\n**Risk: YELLOW** \u2014 Memory MCP died with the swarm agents. Will auto-restart next session.\n\n**Next session:**\n1. Clean stale team/"
+    "domain system wired (enforcer/orchestrator/statusline/state) but inactive",
+    "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache"
+  ]
 }
