@@ -3,13 +3,13 @@
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.8",
-  "what_was_done": "Created /brainstorm and /writing-plans skills (AKIRA-inspired pipeline). Performed full 7-dimension impact analysis (tokens, speed, consistency, learning, quality, reliability, multi-agent).",
+  "what_was_done": "Created /brainstorm + /writing-plans skills. Added access-count boost to search ranking (retrieval_count as tiebreaker, max +0.03). Deep analysis of 4 next-step items — revised priorities.",
   "next_steps": [
-    "Wire unwired shared modules: search_cache into memory_server, memory_decay into stale_memory_report",
-    "Register health_correlation as MCP tool",
-    "Run memory maintenance(action='stale') — 1612 entries, pruning nudge active",
-    "Build new features from web research: causal chain auto-refinement",
-    "Consider dormanting unused analytics tools to reduce MCP schema cost (5,673 tokens when active)"
+    "Run memory maintenance(action='stale') — 1613 entries, pruning nudge active",
+    "Wire identify_stale_memories() for pruning workflow (when >2500 entries)",
+    "Causal chain auto-refinement — start read-only analysis mode first",
+    "Wire search_cache into memory_server (needs careful invalidation on writes)",
+    "Keep analytics server disabled — enable on-demand via /introspect or /benchmark"
   ],
   "known_issues": [
     "github-branch is orphan by design -- never merge, always scrub ALL files on sync",
