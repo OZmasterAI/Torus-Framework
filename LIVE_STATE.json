@@ -1,14 +1,14 @@
 {
-  "session_count": 289,
+  "session_count": 290,
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.7",
-  "what_was_done": "Session 288: Cleaned stale team/task dirs (79+5 dirs). Deep Sprint3 vs evolution-branch comparison. Gate architecture review (Python vs bash hooks) — decided to keep current system (Option C). Profiled enforcer at 102ms.",
+  "what_was_done": "Session 288: Cleaned stale team/task dirs (79+5 dirs). Deep Sprint3 vs evolution-branch comparison. Gate architecture review (Python vs bash hooks) \u2014 decided to keep current system (Option C). Profiled enforcer at 102ms.",
   "next_steps": [
     "Build new features from web research: causal chain auto-refinement",
     "Register health_correlation as MCP tool",
     "Wire unwired shared modules: search_cache into memory_server, memory_decay into stale_memory_report",
-    "Run memory maintenance(action='stale') — 1599 entries, pruning nudge active",
+    "Run memory maintenance(action='stale') \u2014 1599 entries, pruning nudge active",
     "Consider dormanting unused analytics tools to reduce MCP schema cost (5,673 tokens when active)"
   ],
   "known_issues": [
@@ -17,5 +17,6 @@
     "test_framework.py has Pyright import warnings for gather, index, search, list, delete modules (pre-existing)",
     "domain system wired (enforcer/orchestrator/statusline/state) but inactive",
     "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache"
-  ]
+  ],
+  "last_response_preview": "---\n\n**SESSION 288 WRAP-UP**\n\n**What was done:**\n- Cleaned stale team/task dirs (79 UUID + 5 team dirs) \u2014 Gate 2 blocked, user ran manually\n- Full Sprint3 changelog (48 commits, 6 modules, 40 MCP tools, tests 1481\u21925463)\n- Deep Sprint3 vs evolution-branch comparison with exact token budget (17,800 tokens/prompt, our content only 1,794)\n- Gate architecture review: Python gates vs bash hooks. Profiled enforcer at 102ms (gate logic only 0.4ms \u2014 Python subprocess is the bottleneck). Scored 3 options,"
 }
