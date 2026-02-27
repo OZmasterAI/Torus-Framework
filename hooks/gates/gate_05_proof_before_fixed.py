@@ -20,6 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
+from shared.gate_helpers import extract_file_path, is_test_file, safe_tool_input
 
 GATE_NAME = "GATE 5: PROOF BEFORE FIXED"
 
@@ -30,20 +31,6 @@ BLOCK_THRESHOLD = 5
 from shared.exemptions import is_exempt_base as is_exempt
 
 
-def _is_test_file(file_path):
-    """Check if file is a test file (editing tests IS verification)."""
-    basename = os.path.basename(file_path)
-    stem = os.path.splitext(basename)[0]
-    return (
-        stem.startswith("test_") or
-        stem.endswith("_test") or
-        stem.endswith("_spec") or
-        stem.endswith(".test") or
-        stem.endswith(".spec") or
-        basename.startswith("test_")
-    )
-
-
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
@@ -51,17 +38,16 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in ("Edit", "Write", "NotebookEdit"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if not isinstance(tool_input, dict):
-        tool_input = {}
+    tool_input = safe_tool_input(tool_input)
 
-    file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    file_path = extract_file_path(tool_input)
 
     # Check exemptions
     if is_exempt(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Test files are inherently verification — exempt from proof requirements
-    if _is_test_file(file_path):
+    if is_test_file(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check pending verifications with progressive scoring

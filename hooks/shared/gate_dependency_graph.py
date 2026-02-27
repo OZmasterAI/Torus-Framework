@@ -206,6 +206,137 @@ def get_state_hotspots():
     return hotspots
 
 
+def detect_cycles():
+    """Detect circular dependencies in the gate graph.
+
+    Uses DFS-based cycle detection on the state-dependency graph.
+    A cycle exists when gate A writes key X, gate B reads key X and writes
+    key Y, and gate A reads key Y (or longer chains).
+
+    Returns dict with:
+        has_cycles  : bool
+        cycles      : list[list[str]] — each cycle as a list of gate names
+        summary     : str — human-readable summary
+    """
+    deps = _load_dependencies()
+    if not deps:
+        return {"has_cycles": False, "cycles": [], "summary": "No dependency data"}
+
+    # Build adjacency: gate_a -> gate_b means gate_a writes a key that gate_b reads
+    writers = {}  # key -> set of gates that write it
+    readers = {}  # key -> set of gates that read it
+    for gate_name, info in deps.items():
+        for key in info.get("writes", []):
+            writers.setdefault(key, set()).add(gate_name)
+        for key in info.get("reads", []):
+            readers.setdefault(key, set()).add(gate_name)
+
+    adj = {}  # gate -> set of gates it feeds data to
+    for key, w_gates in writers.items():
+        r_gates = readers.get(key, set())
+        for w in w_gates:
+            for r in r_gates:
+                if w != r:
+                    adj.setdefault(w, set()).add(r)
+
+    # DFS cycle detection
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {g: WHITE for g in deps}
+    cycles = []
+    path = []
+
+    def dfs(u):
+        color[u] = GRAY
+        path.append(u)
+        for v in adj.get(u, []):
+            if v not in color:
+                continue
+            if color[v] == GRAY:
+                # Found cycle: extract from path
+                idx = path.index(v)
+                cycles.append(list(path[idx:]))
+            elif color[v] == WHITE:
+                dfs(v)
+        path.pop()
+        color[u] = BLACK
+
+    for gate in deps:
+        if color[gate] == WHITE:
+            dfs(gate)
+
+    has_cycles = len(cycles) > 0
+    if has_cycles:
+        summary = f"{len(cycles)} cycle(s) detected: " + "; ".join(
+            " -> ".join(c) + " -> " + c[0] for c in cycles[:5]
+        )
+    else:
+        summary = "No circular dependencies detected"
+
+    return {"has_cycles": has_cycles, "cycles": cycles, "summary": summary}
+
+
+def recommend_gate_ordering():
+    """Recommend optimal gate execution ordering.
+
+    Uses topological sort (Kahn's algorithm) to find a valid ordering
+    that respects data dependencies. Gates with no dependencies come first.
+    Falls back to alphabetical if the graph has cycles.
+
+    Returns dict with:
+        ordering     : list[str] — recommended gate execution order
+        has_cycles   : bool — if True, ordering is approximate
+        tiers        : list[list[str]] — gates grouped by dependency depth
+    """
+    deps = _load_dependencies()
+    if not deps:
+        return {"ordering": [], "has_cycles": False, "tiers": []}
+
+    # Build adjacency: if gate A writes key X and gate B reads key X, then A -> B
+    writers = {}
+    readers = {}
+    for gate_name, info in deps.items():
+        for key in info.get("writes", []):
+            writers.setdefault(key, set()).add(gate_name)
+        for key in info.get("reads", []):
+            readers.setdefault(key, set()).add(gate_name)
+
+    adj = {}
+    in_degree = {g: 0 for g in deps}
+    for key, w_gates in writers.items():
+        r_gates = readers.get(key, set())
+        for w in w_gates:
+            for r in r_gates:
+                if w != r:
+                    if r not in adj.get(w, set()):
+                        adj.setdefault(w, set()).add(r)
+                        in_degree[r] = in_degree.get(r, 0) + 1
+
+    # Kahn's algorithm — topological sort with tier tracking
+    queue = sorted([g for g, d in in_degree.items() if d == 0])
+    ordering = []
+    tiers = []
+
+    while queue:
+        tiers.append(sorted(queue))
+        next_queue = []
+        for u in queue:
+            ordering.append(u)
+            for v in adj.get(u, []):
+                in_degree[v] -= 1
+                if in_degree[v] == 0:
+                    next_queue.append(v)
+        queue = sorted(next_queue)
+
+    has_cycles = len(ordering) < len(deps)
+    if has_cycles:
+        # Add remaining gates (in cycles) at the end
+        remaining = sorted(set(deps.keys()) - set(ordering))
+        ordering.extend(remaining)
+        tiers.append(remaining)
+
+    return {"ordering": ordering, "has_cycles": has_cycles, "tiers": tiers}
+
+
 def format_dependency_report():
     """Generate a comprehensive dependency analysis report."""
     lines = [
@@ -239,6 +370,18 @@ def format_dependency_report():
     if parallel["independent_gates"]:
         for g in parallel["independent_gates"]:
             lines.append(f"    - {g}")
+
+    # Cycle detection
+    cycle_info = detect_cycles()
+    lines.append(f"\nCycle Detection:")
+    lines.append(f"  {cycle_info['summary']}")
+
+    # Recommended ordering
+    order_info = recommend_gate_ordering()
+    if order_info["ordering"]:
+        lines.append(f"\nRecommended Gate Ordering ({len(order_info['tiers'])} tiers):")
+        for i, tier in enumerate(order_info["tiers"]):
+            lines.append(f"  Tier {i}: {', '.join(tier)}")
 
     lines.append("=" * 55)
     return "\n".join(lines)

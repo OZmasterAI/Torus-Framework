@@ -422,6 +422,8 @@ def gate_dependencies() -> dict:
         get_state_hotspots,
         generate_mermaid_diagram,
         format_dependency_report,
+        detect_cycles,
+        recommend_gate_ordering,
     )
 
     return {
@@ -430,6 +432,8 @@ def gate_dependencies() -> dict:
         "hotspots": get_state_hotspots()[:15],
         "mermaid_diagram": generate_mermaid_diagram(),
         "report": format_dependency_report(),
+        "cycles": detect_cycles(),
+        "recommended_ordering": recommend_gate_ordering(),
     }
 
 

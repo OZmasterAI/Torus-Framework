@@ -1748,20 +1748,20 @@ code, msg = _direct(_g05_check("Edit", {"file_path": "/tmp/file_d.py"}, _g5_stat
 test("Gate 5: after verification, editing 4th file allowed", code == 0, msg)
 
 
-# Test 1: _is_test_file identifies test_ prefix
-from gates.gate_05_proof_before_fixed import _is_test_file
-test("_is_test_file detects test_ prefix",
-     _is_test_file("/path/to/test_foo.py"),
+# Test 1: is_test_file identifies test_ prefix (via gate_helpers)
+from shared.gate_helpers import is_test_file as _g05_is_test_file
+test("is_test_file detects test_ prefix",
+     _g05_is_test_file("/path/to/test_foo.py"),
      "Expected test_foo.py to be detected as test file")
 
-# Test 2: _is_test_file identifies _test suffix
-test("_is_test_file detects _test suffix",
-     _is_test_file("/path/to/foo_test.py"),
+# Test 2: is_test_file identifies _test suffix
+test("is_test_file detects _test suffix",
+     _g05_is_test_file("/path/to/foo_test.py"),
      "Expected foo_test.py to be detected as test file")
 
-# Test 3: _is_test_file rejects non-test files
-test("_is_test_file rejects non-test files",
-     not _is_test_file("/path/to/server.py"),
+# Test 3: is_test_file rejects non-test files
+test("is_test_file rejects non-test files",
+     not _g05_is_test_file("/path/to/server.py"),
      "Expected server.py to NOT be detected as test file")
 
 # Test 4: Gate 5 check allows test file edits even with pending verification
@@ -16816,6 +16816,518 @@ try:
 
 except Exception as _hr_exc:
     test("HotReload: import and basic tests", False, str(_hr_exc))
+
+
+# ─────────────────────────────────────────────────
+# Gate Dependency Graph Extended (cycle detection, ordering)
+# ─────────────────────────────────────────────────
+print("\n--- Gate Dependency Graph Extended ---")
+
+try:
+    from shared.gate_dependency_graph import (
+        generate_mermaid_diagram,
+        find_state_conflicts,
+        find_parallel_safe_gates,
+        get_state_hotspots,
+        detect_cycles,
+        recommend_gate_ordering,
+        format_dependency_report,
+    )
+
+    # Test 1: detect_cycles returns expected structure
+    _dc = detect_cycles()
+    test("DepGraph: detect_cycles returns has_cycles key",
+         "has_cycles" in _dc, f"keys={list(_dc.keys())}")
+
+    # Test 2: detect_cycles returns cycles list
+    test("DepGraph: detect_cycles returns cycles list",
+         isinstance(_dc.get("cycles"), list), f"type={type(_dc.get('cycles'))}")
+
+    # Test 3: detect_cycles returns summary string
+    test("DepGraph: detect_cycles returns summary string",
+         isinstance(_dc.get("summary"), str) and len(_dc["summary"]) > 0,
+         f"summary={_dc.get('summary', '')[:50]}")
+
+    # Test 4: recommend_gate_ordering returns ordering list
+    _ro = recommend_gate_ordering()
+    test("DepGraph: recommend_ordering returns ordering list",
+         isinstance(_ro.get("ordering"), list), f"keys={list(_ro.keys())}")
+
+    # Test 5: recommend_gate_ordering returns tiers
+    test("DepGraph: recommend_ordering returns tiers list",
+         isinstance(_ro.get("tiers"), list), f"type={type(_ro.get('tiers'))}")
+
+    # Test 6: recommend_gate_ordering has_cycles is bool
+    test("DepGraph: recommend_ordering has_cycles is bool",
+         isinstance(_ro.get("has_cycles"), bool), f"type={type(_ro.get('has_cycles'))}")
+
+    # Test 7: format_dependency_report includes cycle section
+    _fdr = format_dependency_report()
+    test("DepGraph: format_report includes Cycle Detection",
+         "Cycle Detection" in _fdr, f"report snippet={_fdr[:100]}")
+
+    # Test 8: format_dependency_report includes ordering section
+    test("DepGraph: format_report includes Recommended Gate Ordering",
+         "Recommended Gate Ordering" in _fdr or "ordering" in _fdr.lower(),
+         f"report length={len(_fdr)}")
+
+    # Test 9: detect_cycles with synthetic acyclic graph
+    import shared.gate_dependency_graph as _gdg
+    _orig_load = _gdg._load_dependencies
+
+    def _mock_acyclic():
+        return {
+            "gate_a": {"reads": [], "writes": ["key_x"]},
+            "gate_b": {"reads": ["key_x"], "writes": ["key_y"]},
+            "gate_c": {"reads": ["key_y"], "writes": []},
+        }
+    _gdg._load_dependencies = _mock_acyclic
+    _dc_acyclic = detect_cycles()
+    test("DepGraph: acyclic graph has no cycles",
+         _dc_acyclic["has_cycles"] is False, f"cycles={_dc_acyclic['cycles']}")
+
+    # Test 10: recommend_ordering on acyclic graph gives valid topo order
+    _ro_acyclic = recommend_gate_ordering()
+    test("DepGraph: acyclic ordering has all gates",
+         set(_ro_acyclic["ordering"]) == {"gate_a", "gate_b", "gate_c"},
+         f"ordering={_ro_acyclic['ordering']}")
+
+    # Test 11: ordering respects dependencies (a before b before c)
+    _idx_a = _ro_acyclic["ordering"].index("gate_a")
+    _idx_b = _ro_acyclic["ordering"].index("gate_b")
+    _idx_c = _ro_acyclic["ordering"].index("gate_c")
+    test("DepGraph: acyclic ordering respects deps (a < b < c)",
+         _idx_a < _idx_b < _idx_c, f"indices a={_idx_a} b={_idx_b} c={_idx_c}")
+
+    # Test 12: tiers on acyclic graph have 3 tiers
+    test("DepGraph: acyclic graph has 3 tiers",
+         len(_ro_acyclic["tiers"]) == 3,
+         f"tiers={_ro_acyclic['tiers']}")
+
+    # Test 13: detect_cycles with synthetic cyclic graph
+    def _mock_cyclic():
+        return {
+            "gate_a": {"reads": ["key_y"], "writes": ["key_x"]},
+            "gate_b": {"reads": ["key_x"], "writes": ["key_y"]},
+        }
+    _gdg._load_dependencies = _mock_cyclic
+    _dc_cyclic = detect_cycles()
+    test("DepGraph: cyclic graph detects cycle",
+         _dc_cyclic["has_cycles"] is True, f"cycles={_dc_cyclic['cycles']}")
+
+    # Test 14: cyclic graph cycle contains both gates
+    _cycle_gates = set()
+    for c in _dc_cyclic["cycles"]:
+        _cycle_gates.update(c)
+    test("DepGraph: cyclic graph cycle contains gate_a and gate_b",
+         "gate_a" in _cycle_gates and "gate_b" in _cycle_gates,
+         f"cycle_gates={_cycle_gates}")
+
+    # Test 15: recommend_ordering on cyclic graph still returns all gates
+    _ro_cyclic = recommend_gate_ordering()
+    test("DepGraph: cyclic ordering includes all gates",
+         set(_ro_cyclic["ordering"]) == {"gate_a", "gate_b"},
+         f"ordering={_ro_cyclic['ordering']}")
+
+    # Test 16: cyclic ordering reports has_cycles=True
+    test("DepGraph: cyclic ordering reports has_cycles",
+         _ro_cyclic["has_cycles"] is True, f"has_cycles={_ro_cyclic['has_cycles']}")
+
+    # Test 17: empty deps returns no cycles
+    _gdg._load_dependencies = lambda: {}
+    _dc_empty = detect_cycles()
+    test("DepGraph: empty deps has no cycles",
+         _dc_empty["has_cycles"] is False and _dc_empty["cycles"] == [],
+         f"result={_dc_empty}")
+
+    # Test 18: empty deps ordering is empty
+    _ro_empty = recommend_gate_ordering()
+    test("DepGraph: empty deps ordering is empty list",
+         _ro_empty["ordering"] == [] and _ro_empty["tiers"] == [],
+         f"result={_ro_empty}")
+
+    # Test 19: independent gates (no shared keys) — no cycles, all in tier 0
+    def _mock_independent():
+        return {
+            "gate_x": {"reads": [], "writes": ["key_a"]},
+            "gate_y": {"reads": [], "writes": ["key_b"]},
+            "gate_z": {"reads": [], "writes": ["key_c"]},
+        }
+    _gdg._load_dependencies = _mock_independent
+    _dc_indep = detect_cycles()
+    test("DepGraph: independent gates have no cycles",
+         _dc_indep["has_cycles"] is False, f"cycles={_dc_indep['cycles']}")
+
+    _ro_indep = recommend_gate_ordering()
+    test("DepGraph: independent gates all in tier 0",
+         len(_ro_indep["tiers"]) == 1 and len(_ro_indep["tiers"][0]) == 3,
+         f"tiers={_ro_indep['tiers']}")
+
+    # Restore original
+    _gdg._load_dependencies = _orig_load
+
+    # Test 21: find_state_conflicts returns list
+    _conflicts = find_state_conflicts()
+    test("DepGraph: find_state_conflicts returns list",
+         isinstance(_conflicts, list), f"type={type(_conflicts)}")
+
+    # Test 22: find_parallel_safe_gates returns dict with expected keys
+    _parallel = find_parallel_safe_gates()
+    test("DepGraph: parallel_safe_gates has expected keys",
+         all(k in _parallel for k in ("independent_gates", "conflict_pairs", "total_gates")),
+         f"keys={list(_parallel.keys())}")
+
+    # Test 23: get_state_hotspots returns list
+    _hotspots = get_state_hotspots()
+    test("DepGraph: get_state_hotspots returns list",
+         isinstance(_hotspots, list), f"type={type(_hotspots)}")
+
+    # Test 24: generate_mermaid_diagram returns string with mermaid
+    _mermaid = generate_mermaid_diagram()
+    test("DepGraph: mermaid diagram contains mermaid tag",
+         "```mermaid" in _mermaid, f"snippet={_mermaid[:50]}")
+
+except Exception as _gdg_exc:
+    test("DepGraph Extended: import and basic tests", False, str(_gdg_exc))
+
+
+# ─────────────────────────────────────────────────
+# Gate 05 Refactored (gate_helpers integration)
+# ─────────────────────────────────────────────────
+print("\n--- Gate 05 Refactored ---")
+
+try:
+    from gates.gate_05_proof_before_fixed import check as g05_check
+    from shared.gate_result import GateResult
+
+    _g05_state = default_state()
+
+    # Test 1: non-PreToolUse passes
+    _r = g05_check("Edit", {"file_path": "/tmp/foo.py"}, _g05_state, event_type="PostToolUse")
+    test("G05 Refactored: non-PreToolUse passes", not _r.blocked, f"blocked={_r.blocked}")
+
+    # Test 2: non-edit tool passes
+    _r = g05_check("Read", {"file_path": "/tmp/foo.py"}, _g05_state)
+    test("G05 Refactored: Read tool passes", not _r.blocked, f"blocked={_r.blocked}")
+
+    # Test 3: test file is exempt
+    _r = g05_check("Edit", {"file_path": "/home/user/test_foo.py"}, _g05_state)
+    test("G05 Refactored: test file exempt", not _r.blocked, f"blocked={_r.blocked}")
+
+    # Test 4: _spec test file exempt
+    _r = g05_check("Edit", {"file_path": "/home/user/widget_spec.py"}, _g05_state)
+    test("G05 Refactored: _spec test file exempt", not _r.blocked, f"blocked={_r.blocked}")
+
+    # Test 5: normal file with no pending passes
+    _r = g05_check("Edit", {"file_path": "/home/user/app.py"}, _g05_state)
+    test("G05 Refactored: no pending passes", not _r.blocked, f"blocked={_r.blocked}")
+
+    # Test 6: blocks at BLOCK_THRESHOLD unverified files
+    _g05_block_state = default_state()
+    _g05_block_state["pending_verification"] = [
+        "/a.py", "/b.py", "/c.py", "/d.py", "/e.py"
+    ]
+    _r = g05_check("Edit", {"file_path": "/new.py"}, _g05_block_state)
+    test("G05 Refactored: blocks at 5 unverified files",
+         _r.blocked is True, f"blocked={_r.blocked}")
+
+    # Test 7: warns at WARN_THRESHOLD
+    _g05_warn_state = default_state()
+    _g05_warn_state["pending_verification"] = ["/a.py", "/b.py", "/c.py"]
+    _r = g05_check("Edit", {"file_path": "/new.py"}, _g05_warn_state)
+    test("G05 Refactored: warns at 3 unverified files",
+         not _r.blocked and _r.severity == "warn",
+         f"blocked={_r.blocked}, severity={getattr(_r, 'severity', None)}")
+
+    # Test 8: editing same pending file allowed (iterating on fix)
+    _g05_same_state = default_state()
+    _g05_same_state["pending_verification"] = ["/a.py", "/b.py", "/c.py", "/d.py", "/e.py"]
+    _r = g05_check("Edit", {"file_path": "/a.py"}, _g05_same_state)
+    test("G05 Refactored: editing pending file ok (only 4 others)",
+         not _r.blocked, f"blocked={_r.blocked}")
+
+    # Test 9: notebook_path extraction works
+    _r = g05_check("NotebookEdit", {"notebook_path": "/home/user/test_nb.ipynb"}, _g05_state)
+    test("G05 Refactored: notebook_path extracted", not _r.blocked, f"blocked={_r.blocked}")
+
+    # Test 10: non-dict tool_input handled safely
+    _r = g05_check("Edit", "not a dict", _g05_state)
+    test("G05 Refactored: non-dict tool_input safe", not _r.blocked, f"blocked={_r.blocked}")
+
+    # Test 11: edit streak warning at 4+ same-file edits
+    _g05_streak_state = default_state()
+    _g05_streak_state["edit_streak"] = {"/app.py": 3}
+    _r = g05_check("Edit", {"file_path": "/app.py"}, _g05_streak_state)
+    test("G05 Refactored: edit streak warning at 4",
+         not _r.blocked, f"blocked={_r.blocked}")
+
+    # Test 12: edit streak blocks at 6+ same-file edits
+    _g05_streak_block = default_state()
+    _g05_streak_block["edit_streak"] = {"/app.py": 5}
+    _r = g05_check("Edit", {"file_path": "/app.py"}, _g05_streak_block)
+    test("G05 Refactored: edit streak blocks at 6",
+         _r.blocked is True, f"blocked={_r.blocked}")
+
+except Exception as _g05_exc:
+    test("G05 Refactored: import and basic tests", False, str(_g05_exc))
+
+
+# ─────────────────────────────────────────────────
+# MCP Analytics Server Integration Tests
+# ─────────────────────────────────────────────────
+print("\n--- MCP Analytics Integration ---")
+
+try:
+    # Import analytics_server functions directly (not via MCP protocol)
+    sys.path.insert(0, os.path.dirname(__file__))
+
+    from analytics_server import (
+        crash_proof,
+        _detect_session_id,
+        _resolve_session_id,
+    )
+
+    # Test 1: crash_proof decorator catches exceptions
+    @crash_proof
+    def _failing_tool():
+        raise ValueError("test error")
+
+    _cp_result = _failing_tool()
+    test("MCP: crash_proof returns error dict on exception",
+         isinstance(_cp_result, dict) and "error" in _cp_result,
+         f"result={_cp_result}")
+
+    # Test 2: crash_proof passes through normal returns
+    @crash_proof
+    def _ok_tool():
+        return {"status": "ok"}
+
+    _cp_ok = _ok_tool()
+    test("MCP: crash_proof passes through normal return",
+         _cp_ok == {"status": "ok"}, f"result={_cp_ok}")
+
+    # Test 3: _detect_session_id returns string
+    _sid = _detect_session_id()
+    test("MCP: _detect_session_id returns string",
+         isinstance(_sid, str) and len(_sid) > 0, f"sid={_sid}")
+
+    # Test 4: _resolve_session_id with explicit ID returns it
+    _rsid = _resolve_session_id("my-test-session")
+    test("MCP: _resolve_session_id explicit returns same",
+         _rsid == "my-test-session", f"rsid={_rsid}")
+
+    # Test 5: _resolve_session_id empty auto-detects
+    _rsid_auto = _resolve_session_id("")
+    test("MCP: _resolve_session_id empty auto-detects",
+         isinstance(_rsid_auto, str) and len(_rsid_auto) > 0,
+         f"rsid={_rsid_auto}")
+
+    # Test framework_summary (aggregation tool)
+    from analytics_server import framework_summary
+    _fs = framework_summary()
+    test("MCP: framework_summary returns dict",
+         isinstance(_fs, dict), f"type={type(_fs)}")
+    test("MCP: framework_summary has health_score",
+         "health_score" in _fs, f"keys={list(_fs.keys())}")
+    test("MCP: framework_summary has skills_total",
+         "skills_total" in _fs, f"keys={list(_fs.keys())}")
+
+    # Test circuit_states
+    from analytics_server import circuit_states
+    _cs = circuit_states()
+    test("MCP: circuit_states returns dict",
+         isinstance(_cs, dict), f"type={type(_cs)}")
+    test("MCP: circuit_states has services key",
+         "services" in _cs, f"keys={list(_cs.keys())}")
+    test("MCP: circuit_states has gates key",
+         "gates" in _cs, f"keys={list(_cs.keys())}")
+    test("MCP: circuit_states total_services is int",
+         isinstance(_cs.get("total_services"), int), f"val={_cs.get('total_services')}")
+
+    # Test gate_dependencies (with new cycle detection)
+    from analytics_server import gate_dependencies
+    _gd = gate_dependencies()
+    test("MCP: gate_dependencies returns dict",
+         isinstance(_gd, dict), f"type={type(_gd)}")
+    test("MCP: gate_dependencies has conflicts key",
+         "conflicts" in _gd, f"keys={list(_gd.keys())}")
+    test("MCP: gate_dependencies has cycles key",
+         "cycles" in _gd, f"keys={list(_gd.keys())}")
+    test("MCP: gate_dependencies has recommended_ordering key",
+         "recommended_ordering" in _gd, f"keys={list(_gd.keys())}")
+    test("MCP: gate_dependencies cycles has has_cycles",
+         "has_cycles" in _gd.get("cycles", {}),
+         f"cycles_keys={list(_gd.get('cycles', {}).keys())}")
+    test("MCP: gate_dependencies ordering has ordering list",
+         isinstance(_gd.get("recommended_ordering", {}).get("ordering"), list),
+         f"type={type(_gd.get('recommended_ordering', {}).get('ordering'))}")
+
+    # Test cache_health
+    from analytics_server import cache_health
+    _ch = cache_health()
+    test("MCP: cache_health returns dict",
+         isinstance(_ch, dict), f"type={type(_ch)}")
+    test("MCP: cache_health has module_cache",
+         "module_cache" in _ch, f"keys={list(_ch.keys())}")
+    test("MCP: cache_health has state_cache",
+         "state_cache" in _ch, f"keys={list(_ch.keys())}")
+    test("MCP: cache_health has result_cache",
+         "result_cache" in _ch, f"keys={list(_ch.keys())}")
+    test("MCP: cache_health module hit_rate is float",
+         isinstance(_ch.get("module_cache", {}).get("hit_rate"), float),
+         f"val={_ch.get('module_cache', {}).get('hit_rate')}")
+
+    # Test gate_sla_status
+    from analytics_server import gate_sla_status
+    _gss = gate_sla_status()
+    test("MCP: gate_sla_status returns dict",
+         isinstance(_gss, dict), f"type={type(_gss)}")
+    test("MCP: gate_sla_status has total_gates",
+         "total_gates" in _gss, f"keys={list(_gss.keys())}")
+    test("MCP: gate_sla_status has ok count",
+         "ok" in _gss, f"keys={list(_gss.keys())}")
+
+    # Test gate_sla_status with custom threshold
+    _gss_custom = gate_sla_status(threshold_ms=10)
+    test("MCP: gate_sla_status custom threshold returns dict",
+         isinstance(_gss_custom, dict) and "total_gates" in _gss_custom,
+         f"keys={list(_gss_custom.keys())}")
+
+    # Test event_stats
+    from analytics_server import event_stats
+    _es = event_stats()
+    test("MCP: event_stats returns dict",
+         isinstance(_es, dict), f"type={type(_es)}")
+    test("MCP: event_stats has stats key",
+         "stats" in _es, f"keys={list(_es.keys())}")
+    test("MCP: event_stats has recent_events",
+         "recent_events" in _es, f"keys={list(_es.keys())}")
+
+    # Test event_stats with filter
+    _es_filtered = event_stats(event_type="GATE_BLOCKED", limit=5)
+    test("MCP: event_stats filtered returns dict",
+         isinstance(_es_filtered, dict), f"type={type(_es_filtered)}")
+    test("MCP: event_stats filtered has filter field",
+         _es_filtered.get("filter") == "GATE_BLOCKED",
+         f"filter={_es_filtered.get('filter')}")
+
+    # Test gate_trends
+    from analytics_server import gate_trends
+    _gt = gate_trends()
+    test("MCP: gate_trends returns dict",
+         isinstance(_gt, dict), f"type={type(_gt)}")
+    test("MCP: gate_trends has snapshot_count",
+         "snapshot_count" in _gt, f"keys={list(_gt.keys())}")
+
+    # Test all_metrics
+    from analytics_server import all_metrics
+    _am = all_metrics()
+    test("MCP: all_metrics returns dict",
+         isinstance(_am, dict), f"type={type(_am)}")
+    test("MCP: all_metrics has current key",
+         "current" in _am, f"keys={list(_am.keys())}")
+    test("MCP: all_metrics has rollup_1m",
+         "rollup_1m" in _am, f"keys={list(_am.keys())}")
+    test("MCP: all_metrics has rollup_5m",
+         "rollup_5m" in _am, f"keys={list(_am.keys())}")
+
+    # Test preview_gates (dry-run simulator)
+    from analytics_server import preview_gates
+    _pg = preview_gates("Read")
+    test("MCP: preview_gates Read returns dict",
+         isinstance(_pg, dict), f"type={type(_pg)}")
+    test("MCP: preview_gates has tool_name",
+         _pg.get("tool_name") == "Read", f"tool_name={_pg.get('tool_name')}")
+    test("MCP: preview_gates has would_block",
+         "would_block" in _pg, f"keys={list(_pg.keys())}")
+    test("MCP: preview_gates has gates_checked",
+         isinstance(_pg.get("gates_checked"), int), f"val={_pg.get('gates_checked')}")
+
+    # Test preview_gates with Edit tool (more gates apply)
+    _pg_edit = preview_gates("Edit", '{"file_path": "/tmp/test.py"}')
+    test("MCP: preview_gates Edit checks more gates",
+         _pg_edit.get("gates_checked", 0) > _pg.get("gates_checked", 0),
+         f"edit={_pg_edit.get('gates_checked')} > read={_pg.get('gates_checked')}")
+
+    # Test preview_gates with invalid JSON input
+    _pg_bad = preview_gates("Bash", "not valid json")
+    test("MCP: preview_gates handles invalid JSON gracefully",
+         isinstance(_pg_bad, dict) and "would_block" in _pg_bad,
+         f"result keys={list(_pg_bad.keys())}")
+
+    # Test skill_health
+    from analytics_server import skill_health
+    _sh = skill_health()
+    test("MCP: skill_health returns dict",
+         isinstance(_sh, dict), f"type={type(_sh)}")
+    test("MCP: skill_health has total_skills key",
+         "total_skills" in _sh, f"keys={list(_sh.keys())}")
+
+    # Test gate_dashboard
+    from analytics_server import gate_dashboard
+    _gdb = gate_dashboard()
+    test("MCP: gate_dashboard returns dict",
+         isinstance(_gdb, dict), f"type={type(_gdb)}")
+    test("MCP: gate_dashboard has dashboard text",
+         "dashboard" in _gdb, f"keys={list(_gdb.keys())}")
+    test("MCP: gate_dashboard has ranked_gates",
+         "ranked_gates" in _gdb, f"keys={list(_gdb.keys())}")
+
+    # Test memory_health
+    from analytics_server import memory_health
+    _mh = memory_health()
+    test("MCP: memory_health returns dict",
+         isinstance(_mh, dict), f"type={type(_mh)}")
+    test("MCP: memory_health has lance_exists",
+         "lance_exists" in _mh, f"keys={list(_mh.keys())}")
+    test("MCP: memory_health has tables key",
+         "tables" in _mh, f"keys={list(_mh.keys())}")
+
+    # Test session_replay
+    from analytics_server import session_replay
+    _sr = session_replay(lookback_hours=1)
+    test("MCP: session_replay returns dict",
+         isinstance(_sr, dict), f"type={type(_sr)}")
+    test("MCP: session_replay has event_count",
+         "event_count" in _sr, f"keys={list(_sr.keys())}")
+
+    # Test session_replay mermaid format
+    _sr_m = session_replay(format="mermaid")
+    test("MCP: session_replay mermaid returns dict with mermaid key",
+         "mermaid" in _sr_m, f"keys={list(_sr_m.keys())}")
+
+    # Test session_replay stats format
+    _sr_s = session_replay(format="stats")
+    test("MCP: session_replay stats returns dict",
+         isinstance(_sr_s, dict) and "total_events" in _sr_s,
+         f"keys={list(_sr_s.keys())}")
+
+    # Test session_replay patterns format
+    _sr_p = session_replay(format="patterns")
+    test("MCP: session_replay patterns returns dict with healthy key",
+         "healthy" in _sr_p, f"keys={list(_sr_p.keys())}")
+
+    # Test framework_pulse
+    from analytics_server import framework_pulse
+    _fp = framework_pulse(lookback_hours=1)
+    test("MCP: framework_pulse returns dict",
+         isinstance(_fp, dict), f"type={type(_fp)}")
+    test("MCP: framework_pulse has health_score",
+         "health_score" in _fp, f"keys={list(_fp.keys())}")
+    test("MCP: framework_pulse health_score 0-100",
+         0 <= _fp.get("health_score", -1) <= 100,
+         f"score={_fp.get('health_score')}")
+    test("MCP: framework_pulse has hotspots",
+         "hotspots" in _fp, f"keys={list(_fp.keys())}")
+    test("MCP: framework_pulse has gate_trends",
+         "gate_trends" in _fp, f"keys={list(_fp.keys())}")
+    test("MCP: framework_pulse has circuits",
+         "circuits" in _fp, f"keys={list(_fp.keys())}")
+
+except Exception as _mcp_exc:
+    import traceback as _mcp_tb
+    test("MCP Analytics Integration: import and tests", False,
+         f"{_mcp_exc}\n{_mcp_tb.format_exc()}")
 
 
 # SUMMARY (must be at very end of file)
