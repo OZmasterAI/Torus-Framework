@@ -24735,6 +24735,439 @@ except Exception as _cs_exc:
     test("ChromaDB Socket Tests: import and tests", False, str(_cs_exc))
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Memory Maintenance Tests (MM:)
+# ═══════════════════════════════════════════════════════════════════════
+try:
+    from shared.memory_maintenance import (
+        STALE_THRESHOLD_DAYS as _mm_STALE,
+        ANCIENT_THRESHOLD_DAYS as _mm_ANCIENT,
+        UNDERREPRESENTED_SHARE as _mm_UNDER,
+        MIN_MEMORIES_FOR_ANALYSIS as _mm_MIN,
+        _POSSIBLE_DUPE_TAG_PREFIX as _mm_DUPE_PREFIX,
+        _CANONICAL_CATEGORIES as _mm_CATS,
+        _SESSION_REF_RE as _mm_SESSION_RE,
+        _SUPERSEDED_PATTERNS as _mm_SUP_PATS,
+        _parse_timestamp as _mm_parse_ts,
+        _age_days as _mm_age_days,
+        _split_tags as _mm_split_tags,
+        _has_session_reference as _mm_has_session_ref,
+        _has_superseded_language as _mm_has_superseded,
+        _count_stats as _mm_count_stats,
+        _tag_distribution as _mm_tag_dist,
+        _stale_memory_scan as _mm_stale_scan,
+        _build_recommendations as _mm_build_recs,
+        _similarity_groups as _mm_sim_groups,
+    )
+    import re as _re_mod
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+
+    # Constants
+    test("MM: STALE_THRESHOLD_DAYS == 90", _mm_STALE == 90, str(_mm_STALE))
+    test("MM: ANCIENT_THRESHOLD_DAYS == 180", _mm_ANCIENT == 180, str(_mm_ANCIENT))
+    test("MM: UNDERREPRESENTED_SHARE == 0.03", _mm_UNDER == 0.03, str(_mm_UNDER))
+    test("MM: MIN_MEMORIES_FOR_ANALYSIS == 10", _mm_MIN == 10, str(_mm_MIN))
+    test("MM: _POSSIBLE_DUPE_TAG_PREFIX == 'possible-dupe:'",
+         _mm_DUPE_PREFIX == "possible-dupe:", str(_mm_DUPE_PREFIX))
+    test("MM: _CANONICAL_CATEGORIES is list with >= 10 entries",
+         isinstance(_mm_CATS, list) and len(_mm_CATS) >= 10,
+         f"got {type(_mm_CATS)} len={len(_mm_CATS)}")
+    test("MM: _SESSION_REF_RE is compiled regex",
+         isinstance(_mm_SESSION_RE, type(_re_mod.compile(""))))
+    test("MM: _SUPERSEDED_PATTERNS is list of compiled regex",
+         isinstance(_mm_SUP_PATS, list) and len(_mm_SUP_PATS) > 0
+         and isinstance(_mm_SUP_PATS[0], type(_re_mod.compile(""))))
+
+    # _parse_timestamp
+    _mm_ts = _mm_parse_ts("2025-01-15T12:00:00Z")
+    test("MM: _parse_timestamp valid returns datetime",
+         isinstance(_mm_ts, _dt), str(_mm_ts))
+    test("MM: _parse_timestamp empty string returns None",
+         _mm_parse_ts("") is None)
+    test("MM: _parse_timestamp None returns None",
+         _mm_parse_ts(None) is None)
+    test("MM: _parse_timestamp invalid returns None",
+         _mm_parse_ts("invalid") is None)
+
+    # _age_days
+    _mm_now_ref = _dt(2025, 1, 15, tzinfo=_tz.utc) + _td(days=100)
+    _mm_age = _mm_age_days("2025-01-15T12:00:00Z", _mm_now_ref)
+    test("MM: _age_days valid returns float > 0",
+         isinstance(_mm_age, float) and _mm_age > 0, str(_mm_age))
+    test("MM: _age_days empty string returns None",
+         _mm_age_days("", _mm_now_ref) is None)
+
+    # _split_tags
+    test("MM: _split_tags 'a,b,c' returns ['a','b','c']",
+         _mm_split_tags("a,b,c") == ["a", "b", "c"])
+    test("MM: _split_tags '' returns []",
+         _mm_split_tags("") == [])
+    test("MM: _split_tags None returns []",
+         _mm_split_tags(None) == [])
+    test("MM: _split_tags strips whitespace and removes empty",
+         _mm_split_tags("  a , b , ") == ["a", "b"])
+
+    # _has_session_reference
+    test("MM: _has_session_reference 'Fixed in Session 42' is True",
+         _mm_has_session_ref("Fixed in Session 42") is True)
+    test("MM: _has_session_reference 'normal text' is False",
+         _mm_has_session_ref("normal text") is False)
+    test("MM: _has_session_reference 'sprint-3 work' is True",
+         _mm_has_session_ref("sprint-3 work") is True)
+
+    # _has_superseded_language
+    test("MM: _has_superseded_language 'was fixed and resolved' is True",
+         _mm_has_superseded("was fixed and resolved") is True)
+    test("MM: _has_superseded_language 'the old approach was better' is True",
+         _mm_has_superseded("the old approach was better") is True)
+    test("MM: _has_superseded_language 'normal documentation text' is False",
+         _mm_has_superseded("normal documentation text") is False)
+    test("MM: _has_superseded_language 'replaced by new system' is True",
+         _mm_has_superseded("replaced by new system") is True)
+    test("MM: _has_superseded_language 'temporary workaround applied' is True",
+         _mm_has_superseded("temporary workaround applied") is True)
+
+    # Synthetic entries for _count_stats, _tag_distribution, etc.
+    _mm_now = _dt(2025, 6, 1, tzinfo=_tz.utc)
+    _mm_entries = [
+        {"id": "1", "document": "session 10 fix", "tags": "type:fix,area:framework",
+         "timestamp": "2025-01-01T00:00:00Z", "preview": "fix", "session_time": 0, "possible_dupe": ""},
+        {"id": "2", "document": "was fixed and resolved", "tags": "type:error",
+         "timestamp": "2024-10-01T00:00:00Z", "preview": "error", "session_time": 0, "possible_dupe": ""},
+        {"id": "3", "document": "current doc", "tags": "type:learning,area:testing",
+         "timestamp": "2025-05-20T00:00:00Z", "preview": "current", "session_time": 0, "possible_dupe": ""},
+        {"id": "4", "document": "possible dupe", "tags": "possible-dupe:abc123",
+         "timestamp": "2025-04-01T00:00:00Z", "preview": "dupe", "session_time": 0, "possible_dupe": "abc123"},
+    ]
+
+    # _count_stats
+    _mm_cs = _mm_count_stats(_mm_entries, _mm_now)
+    test("MM: _count_stats returns dict with total key",
+         isinstance(_mm_cs, dict) and "total" in _mm_cs, str(type(_mm_cs)))
+    test("MM: _count_stats returns dict with age_buckets key",
+         "age_buckets" in _mm_cs)
+    test("MM: _count_stats total == 4",
+         _mm_cs.get("total") == 4, str(_mm_cs.get("total")))
+
+    # _tag_distribution
+    _mm_td = _mm_tag_dist(_mm_entries)
+    test("MM: _tag_distribution returns dict with total_unique_tags",
+         isinstance(_mm_td, dict) and "total_unique_tags" in _mm_td)
+    test("MM: _tag_distribution has top_tags key",
+         "top_tags" in _mm_td)
+
+    # _stale_memory_scan
+    _mm_ss = _mm_stale_scan(_mm_entries, _mm_now)
+    test("MM: _stale_memory_scan returns dict with stale_count",
+         isinstance(_mm_ss, dict) and "stale_count" in _mm_ss)
+    test("MM: _stale_memory_scan detects stale entries (entry1 session ref + old)",
+         _mm_ss.get("stale_count", 0) >= 1,
+         f"stale_count={_mm_ss.get('stale_count')}")
+    # entry2 has superseded language ("was fixed and resolved"), entry1 has session ref + old age
+    _mm_stale_ids = {e["id"] for e in _mm_ss.get("stale_entries", [])}
+    test("MM: _stale_memory_scan detects entry with superseded language (id=2)",
+         "2" in _mm_stale_ids, f"stale_ids={_mm_stale_ids}")
+
+    # _build_recommendations
+    _mm_groups = _mm_sim_groups(_mm_entries)
+    _mm_recs = _mm_build_recs(_mm_cs, _mm_td, _mm_ss, _mm_groups)
+    test("MM: _build_recommendations returns list of strings",
+         isinstance(_mm_recs, list) and all(isinstance(r, str) for r in _mm_recs),
+         str(type(_mm_recs)))
+
+except Exception as _mm_exc:
+    test("MM: import and tests", False, str(_mm_exc))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Hook Profiler Tests (HP:)
+# ═══════════════════════════════════════════════════════════════════════
+try:
+    from shared.hook_profiler import (
+        LATENCY_LOG as _hp_LATENCY_LOG,
+        _percentile as _hp_percentile,
+        _ns_to_us as _hp_ns_to_us,
+        profile as _hp_profile,
+        analyze as _hp_analyze,
+        report as _hp_report,
+    )
+
+    # Constants
+    test("HP: LATENCY_LOG == '/tmp/gate_latency.jsonl'",
+         _hp_LATENCY_LOG == "/tmp/gate_latency.jsonl", str(_hp_LATENCY_LOG))
+
+    # _percentile
+    test("HP: _percentile([], 50) returns 0.0",
+         _hp_percentile([], 50) == 0.0)
+    test("HP: _percentile([1,2,3,4,5], 50) returns 3.0",
+         _hp_percentile([1.0, 2.0, 3.0, 4.0, 5.0], 50) == 3.0,
+         str(_hp_percentile([1.0, 2.0, 3.0, 4.0, 5.0], 50)))
+    test("HP: _percentile([1,2,3,4,5], 99) returns 5.0",
+         _hp_percentile([1.0, 2.0, 3.0, 4.0, 5.0], 99) == 5.0,
+         str(_hp_percentile([1.0, 2.0, 3.0, 4.0, 5.0], 99)))
+    test("HP: _percentile([10.0], 50) returns 10.0",
+         _hp_percentile([10.0], 50) == 10.0)
+    _hp_p_two = _hp_percentile([1.0, 2.0], 50)
+    test("HP: _percentile([1.0, 2.0], 50) returns 1.0 or 2.0",
+         _hp_p_two in (1.0, 2.0), str(_hp_p_two))
+
+    # _ns_to_us
+    test("HP: _ns_to_us(1000.0) returns '1.0'",
+         _hp_ns_to_us(1000.0) == "1.0", repr(_hp_ns_to_us(1000.0)))
+    test("HP: _ns_to_us(500.0) returns '0.5'",
+         _hp_ns_to_us(500.0) == "0.5", repr(_hp_ns_to_us(500.0)))
+    test("HP: _ns_to_us(0.0) returns '0.0'",
+         _hp_ns_to_us(0.0) == "0.0", repr(_hp_ns_to_us(0.0)))
+
+    # profile function
+    def _hp_fake_check(tool_name, tool_input, state):
+        class _R:
+            blocked = False
+        return _R()
+
+    _hp_wrapped = _hp_profile("test_gate", _hp_fake_check)
+    test("HP: profile returns a callable",
+         callable(_hp_wrapped))
+    _hp_result = _hp_wrapped("Edit", {}, {})
+    test("HP: wrapped returns result",
+         hasattr(_hp_result, "blocked"))
+    test("HP: wrapped has _profiler_wrapped == True",
+         getattr(_hp_wrapped, "_profiler_wrapped", False) is True)
+    test("HP: wrapped has _original_check attribute",
+         hasattr(_hp_wrapped, "_original_check"))
+    test("HP: wrapped _original_check is original function",
+         getattr(_hp_wrapped, "_original_check", None) is _hp_fake_check)
+
+    # analyze and report
+    _hp_stats = _hp_analyze()
+    test("HP: analyze() returns a dict",
+         isinstance(_hp_stats, dict))
+    _hp_rep = _hp_report()
+    test("HP: report() returns a string",
+         isinstance(_hp_rep, str))
+
+except Exception as _hp_exc:
+    test("HP: import and tests", False, str(_hp_exc))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Memory Decay Tests (MD:)
+# ═══════════════════════════════════════════════════════════════════════
+try:
+    from shared.memory_decay import (
+        DEFAULT_HALF_LIFE_DAYS as _md_HALF_LIFE,
+        TIER_BASE as _md_TIER_BASE,
+        TIER_BASE_DEFAULT as _md_TIER_BASE_DEFAULT,
+        _MAX_ACCESS_BOOST as _md_MAX_ACCESS_BOOST,
+        _RECENCY_BOOST as _md_RECENCY_BOOST,
+        _RECENCY_WINDOW_DAYS as _md_RECENCY_WINDOW,
+        _MAX_TAG_BONUS as _md_MAX_TAG_BONUS,
+        _time_decay_factor as _md_time_decay,
+        _access_boost as _md_access_boost,
+        _tag_relevance_bonus as _md_tag_bonus,
+        calculate_relevance_score as _md_calc_score,
+        rank_memories as _md_rank,
+        identify_stale_memories as _md_identify_stale,
+    )
+    import math as _math_mod
+    from datetime import datetime as _md_dt, timezone as _md_tz, timedelta as _md_td
+
+    # Constants
+    test("MD: DEFAULT_HALF_LIFE_DAYS == 45.0",
+         _md_HALF_LIFE == 45.0, str(_md_HALF_LIFE))
+    test("MD: TIER_BASE is dict with keys 1, 2, 3",
+         isinstance(_md_TIER_BASE, dict) and set(_md_TIER_BASE.keys()) == {1, 2, 3})
+    test("MD: TIER_BASE[1] == 1.0", _md_TIER_BASE.get(1) == 1.0)
+    test("MD: TIER_BASE[2] == 0.7", _md_TIER_BASE.get(2) == 0.7)
+    test("MD: TIER_BASE[3] == 0.4", _md_TIER_BASE.get(3) == 0.4)
+    test("MD: TIER_BASE_DEFAULT == 0.4",
+         _md_TIER_BASE_DEFAULT == 0.4, str(_md_TIER_BASE_DEFAULT))
+    test("MD: _MAX_ACCESS_BOOST == 0.20",
+         _md_MAX_ACCESS_BOOST == 0.20, str(_md_MAX_ACCESS_BOOST))
+    test("MD: _RECENCY_BOOST == 0.10",
+         _md_RECENCY_BOOST == 0.10, str(_md_RECENCY_BOOST))
+    test("MD: _RECENCY_WINDOW_DAYS == 7",
+         _md_RECENCY_WINDOW == 7, str(_md_RECENCY_WINDOW))
+    test("MD: _MAX_TAG_BONUS == 0.15",
+         _md_MAX_TAG_BONUS == 0.15, str(_md_MAX_TAG_BONUS))
+
+    # _time_decay_factor
+    test("MD: _time_decay_factor(0.0) returns 1.0",
+         _md_time_decay(0.0) == 1.0, str(_md_time_decay(0.0)))
+    _md_decay_45 = _md_time_decay(45.0)
+    test("MD: _time_decay_factor(45.0) returns ~0.5 (half-life)",
+         abs(_md_decay_45 - 0.5) < 1e-9, str(_md_decay_45))
+    _md_decay_90 = _md_time_decay(90.0)
+    test("MD: _time_decay_factor(90.0) returns ~0.25 (two half-lives)",
+         abs(_md_decay_90 - 0.25) < 1e-9, str(_md_decay_90))
+
+    # _access_boost
+    test("MD: _access_boost(0) returns 0.0",
+         _md_access_boost(0) == 0.0, str(_md_access_boost(0)))
+    _md_boost_100 = _md_access_boost(100)
+    test("MD: _access_boost(100) returns > 0 and <= 0.20",
+         0 < _md_boost_100 <= 0.20, str(_md_boost_100))
+
+    # _tag_relevance_bonus
+    _md_tb1 = _md_tag_bonus("type:fix", "type:fix")
+    test("MD: _tag_relevance_bonus matching tags returns > 0",
+         _md_tb1 > 0, str(_md_tb1))
+    test("MD: _tag_relevance_bonus empty entry tags returns 0.0",
+         _md_tag_bonus("", "type:fix") == 0.0)
+    test("MD: _tag_relevance_bonus empty query returns 0.0",
+         _md_tag_bonus("type:fix", "") == 0.0)
+    _md_tb_multi = _md_tag_bonus("type:fix,area:test", "type:fix,area:test")
+    test("MD: _tag_relevance_bonus multiple matching returns > 0 and <= 0.15",
+         0 < _md_tb_multi <= 0.15, str(_md_tb_multi))
+
+    # calculate_relevance_score
+    _md_fresh_ts = _md_dt.now(tz=_md_tz.utc).isoformat()
+    _md_score_t1 = _md_calc_score({"tier": 1, "timestamp": _md_fresh_ts, "retrieval_count": 0, "tags": ""})
+    test("MD: calculate_relevance_score T1 fresh returns > 0.9",
+         _md_score_t1 > 0.9, str(_md_score_t1))
+    _md_score_t3_empty = _md_calc_score({"tier": 3, "timestamp": "", "retrieval_count": 0, "tags": ""})
+    test("MD: calculate_relevance_score T3 missing timestamp returns > 0",
+         _md_score_t3_empty > 0, str(_md_score_t3_empty))
+
+    # rank_memories
+    _md_mem1 = {"tier": 1, "timestamp": _md_fresh_ts, "retrieval_count": 0, "tags": ""}
+    _md_old_ts = (_md_dt.now(tz=_md_tz.utc) - _md_td(days=200)).isoformat()
+    _md_mem2 = {"tier": 3, "timestamp": _md_old_ts, "retrieval_count": 0, "tags": ""}
+    _md_ranked = _md_rank([_md_mem1, _md_mem2])
+    test("MD: rank_memories returns list",
+         isinstance(_md_ranked, list))
+    test("MD: rank_memories sorted by _relevance_score descending",
+         len(_md_ranked) == 2 and
+         _md_ranked[0].get("_relevance_score", 0) >= _md_ranked[1].get("_relevance_score", 0))
+    test("MD: rank_memories each entry has _relevance_score key",
+         all("_relevance_score" in e for e in _md_ranked))
+    test("MD: rank_memories([]) returns []",
+         _md_rank([]) == [])
+
+    # identify_stale_memories
+    test("MD: identify_stale_memories([], threshold=0.2) returns []",
+         _md_identify_stale([], threshold=0.2) == [])
+    _md_stale_result = _md_identify_stale([_md_mem2], threshold=0.9)
+    test("MD: identify_stale_memories with old T3 entry below threshold returns it",
+         len(_md_stale_result) == 1, str(len(_md_stale_result)))
+
+except Exception as _md_exc:
+    test("MD: import and tests", False, str(_md_exc))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Gate Pruner Tests (GP:)
+# ═══════════════════════════════════════════════════════════════════════
+try:
+    from shared.gate_pruner import (
+        KEEP as _gp_KEEP,
+        OPTIMIZE as _gp_OPTIMIZE,
+        MERGE_CANDIDATE as _gp_MERGE,
+        DORMANT as _gp_DORMANT,
+        _TIER1 as _gp_TIER1,
+        _LOW_BLOCK_RATE as _gp_LOW_BLOCK_RATE,
+        _MIN_EVALS as _gp_MIN_EVALS,
+        _HIGH_LATENCY_MS as _gp_HIGH_LATENCY,
+        _HIGH_OVERRIDE as _gp_HIGH_OVERRIDE,
+        _VERDICT_RANK as _gp_VERDICT_RANK,
+        GateAnalysis as _gp_GateAnalysis,
+        PruneRecommendation as _gp_PruneRec,
+        _classify as _gp_classify,
+        _load_json as _gp_load_json,
+        analyze_gates as _gp_analyze_gates,
+        get_prune_recommendations as _gp_get_recs,
+        render_pruner_report as _gp_render,
+    )
+
+    # Constants
+    test("GP: KEEP == 'keep'", _gp_KEEP == "keep", repr(_gp_KEEP))
+    test("GP: OPTIMIZE == 'optimize'", _gp_OPTIMIZE == "optimize", repr(_gp_OPTIMIZE))
+    test("GP: MERGE_CANDIDATE == 'merge_candidate'",
+         _gp_MERGE == "merge_candidate", repr(_gp_MERGE))
+    test("GP: DORMANT == 'dormant'", _gp_DORMANT == "dormant", repr(_gp_DORMANT))
+    test("GP: _TIER1 is frozenset with 3 entries",
+         isinstance(_gp_TIER1, frozenset) and len(_gp_TIER1) == 3,
+         f"type={type(_gp_TIER1)} len={len(_gp_TIER1)}")
+    test("GP: _TIER1 contains 'gate_01_read_before_edit'",
+         "gate_01_read_before_edit" in _gp_TIER1)
+    test("GP: _LOW_BLOCK_RATE == 0.005",
+         _gp_LOW_BLOCK_RATE == 0.005, str(_gp_LOW_BLOCK_RATE))
+    test("GP: _MIN_EVALS == 1000",
+         _gp_MIN_EVALS == 1000, str(_gp_MIN_EVALS))
+    test("GP: _HIGH_LATENCY_MS == 10.0",
+         _gp_HIGH_LATENCY == 10.0, str(_gp_HIGH_LATENCY))
+    test("GP: _HIGH_OVERRIDE == 0.15",
+         _gp_HIGH_OVERRIDE == 0.15, str(_gp_HIGH_OVERRIDE))
+    test("GP: _VERDICT_RANK has 4 entries",
+         isinstance(_gp_VERDICT_RANK, dict) and len(_gp_VERDICT_RANK) == 4,
+         str(len(_gp_VERDICT_RANK)))
+    test("GP: _VERDICT_RANK[DORMANT] == 4",
+         _gp_VERDICT_RANK.get(_gp_DORMANT) == 4,
+         str(_gp_VERDICT_RANK.get(_gp_DORMANT)))
+
+    # Dataclass construction
+    _gp_ga = _gp_GateAnalysis(
+        gate="test_gate", tier1=False, blocks=0, overrides=0, prevented=0,
+        eval_count=0, avg_ms=0.0, block_rate=0.0, override_rate=0.0,
+        has_q_data=False, verdict=_gp_KEEP,
+    )
+    test("GP: GateAnalysis dataclass construction",
+         isinstance(_gp_ga, _gp_GateAnalysis))
+    test("GP: GateAnalysis defaults reasons to []",
+         _gp_ga.reasons == [])
+    _gp_pr = _gp_PruneRec(
+        rank=1, gate="test_gate", verdict=_gp_KEEP,
+        reasons=[], avg_ms=0.0, blocks=0, prevented=0,
+    )
+    test("GP: PruneRecommendation dataclass construction",
+         isinstance(_gp_pr, _gp_PruneRec))
+
+    # _classify Tier 1 always returns KEEP
+    _gp_v_t1, _gp_r_t1 = _gp_classify(
+        "gate_01_read_before_edit", True, 0, 0, 0, 5000, 1.0, 0.001, 0.0
+    )
+    test("GP: _classify Tier 1 gate always returns KEEP",
+         _gp_v_t1 == _gp_KEEP, str(_gp_v_t1))
+
+    # _classify dormant gate (enough evals, low block rate, nothing prevented)
+    _gp_v_dorm, _gp_r_dorm = _gp_classify(
+        "gate_99_test", False, blocks=2, overrides=0, prevented=0,
+        eval_count=2000, avg_ms=1.0, block_rate=0.001, override_rate=0.0
+    )
+    test("GP: _classify dormant gate returns DORMANT",
+         _gp_v_dorm == _gp_DORMANT, str(_gp_v_dorm))
+
+    # _classify high override rate
+    _gp_v_opt, _gp_r_opt = _gp_classify(
+        "gate_88_test", False, blocks=100, overrides=20, prevented=0,
+        eval_count=2000, avg_ms=1.0, block_rate=0.05, override_rate=0.2
+    )
+    test("GP: _classify high override rate returns OPTIMIZE",
+         _gp_v_opt == _gp_OPTIMIZE, str(_gp_v_opt))
+
+    # _load_json nonexistent path returns {}
+    test("GP: _load_json('/nonexistent') returns {}",
+         _gp_load_json("/nonexistent") == {})
+
+    # analyze_gates
+    _gp_analysis = _gp_analyze_gates()
+    test("GP: analyze_gates() returns a dict",
+         isinstance(_gp_analysis, dict))
+
+    # get_prune_recommendations
+    _gp_recs = _gp_get_recs()
+    test("GP: get_prune_recommendations() returns a list",
+         isinstance(_gp_recs, list))
+
+    # render_pruner_report
+    _gp_rendered = _gp_render()
+    test("GP: render_pruner_report() returns a string",
+         isinstance(_gp_rendered, str))
+
+except Exception as _gp_exc:
+    test("GP: import and tests", False, str(_gp_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
