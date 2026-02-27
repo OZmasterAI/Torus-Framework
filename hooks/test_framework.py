@@ -27195,6 +27195,783 @@ except Exception as _rl_exc:
     test("RL: import and module-level tests", False, str(_rl_exc))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ME: metrics_exporter tests
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from shared.metrics_exporter import (
+        DEFAULT_OUTPUT_PATH,
+        _DEFS,
+        _ls,
+        _emit_counter,
+        _emit_gauge,
+        _emit_histogram,
+        _zero_metric,
+        export_prometheus,
+        export_json,
+    )
+
+    # --- Constants ---
+    test("ME: DEFAULT_OUTPUT_PATH is correct string",
+         DEFAULT_OUTPUT_PATH == "/tmp/torus_metrics.prom")
+
+    test("ME: _DEFS is a non-empty list",
+         isinstance(_DEFS, list) and len(_DEFS) > 0)
+
+    test("ME: _DEFS entries are tuples of length 5",
+         all(isinstance(d, tuple) and len(d) == 5 for d in _DEFS))
+
+    test("ME: _DEFS contains expected prom name torus_gate_blocks_total",
+         any(d[0] == "torus_gate_blocks_total" for d in _DEFS))
+
+    test("ME: _DEFS contains expected prom name torus_gate_fires_total",
+         any(d[0] == "torus_gate_fires_total" for d in _DEFS))
+
+    test("ME: _DEFS contains torus_gate_latency_seconds as histogram",
+         any(d[0] == "torus_gate_latency_seconds" and d[2] == "histogram" for d in _DEFS))
+
+    test("ME: _DEFS contains torus_memory_count as gauge",
+         any(d[0] == "torus_memory_count" and d[2] == "gauge" for d in _DEFS))
+
+    test("ME: _DEFS latency entry has scale 0.001",
+         any(d[0] == "torus_gate_latency_seconds" and d[4] == 0.001 for d in _DEFS))
+
+    # --- _ls label formatting ---
+    test("ME: _ls({}) returns empty string",
+         _ls({}) == "")
+
+    test("ME: _ls with single label returns correct format",
+         _ls({"gate": "g1"}) == '{gate="g1"}')
+
+    test("ME: _ls with two labels sorts alphabetically",
+         _ls({"b": "2", "a": "1"}) == '{a="1",b="2"}')
+
+    test("ME: _ls with three labels sorts all keys",
+         _ls({"z": "3", "a": "1", "m": "2"}) == '{a="1",m="2",z="3"}')
+
+    test("ME: _ls result starts with { and ends with }",
+         _ls({"k": "v"}).startswith("{") and _ls({"k": "v"}).endswith("}"))
+
+    test("ME: _ls with le label for histogram",
+         _ls({"le": "+Inf"}) == '{le="+Inf"}')
+
+    # --- _emit_counter ---
+    _me_counter_lines = []
+    _me_counter_entries = {
+        "g1": {"labels": {"gate": "gate1"}, "value": 5},
+        "g2": {"labels": {"gate": "gate2"}, "value": 3},
+    }
+    _emit_counter(_me_counter_lines, "test_counter", "A test counter", _me_counter_entries, 1.0)
+
+    test("ME: _emit_counter produces # HELP line",
+         any("# HELP test_counter A test counter" in ln for ln in _me_counter_lines))
+
+    test("ME: _emit_counter produces # TYPE counter line",
+         any("# TYPE test_counter counter" in ln for ln in _me_counter_lines))
+
+    test("ME: _emit_counter produces value line for each entry",
+         sum(1 for ln in _me_counter_lines if ln.startswith("test_counter{")) == 2)
+
+    test("ME: _emit_counter applies scale of 1.0 correctly",
+         any("5.0" in ln or "5" in ln for ln in _me_counter_lines if "gate1" in ln))
+
+    _me_counter_lines2 = []
+    _emit_counter(_me_counter_lines2, "scaled_counter", "scaled", {"k": {"labels": {}, "value": 100}}, 0.001)
+    test("ME: _emit_counter applies scale 0.001 correctly",
+         any("0.1" in ln for ln in _me_counter_lines2 if ln.startswith("scaled_counter")))
+
+    # --- _emit_gauge ---
+    _me_gauge_lines = []
+    _me_gauge_entries = {
+        "k1": {"labels": {}, "value": 42.0},
+    }
+    _emit_gauge(_me_gauge_lines, "test_gauge", "A test gauge", _me_gauge_entries, 1.0)
+
+    test("ME: _emit_gauge produces # HELP line",
+         any("# HELP test_gauge" in ln for ln in _me_gauge_lines))
+
+    test("ME: _emit_gauge produces # TYPE gauge line",
+         any("# TYPE test_gauge gauge" in ln for ln in _me_gauge_lines))
+
+    test("ME: _emit_gauge produces value line",
+         any(ln.startswith("test_gauge") and not ln.startswith("# ") for ln in _me_gauge_lines))
+
+    _me_gauge_lines2 = []
+    _emit_gauge(_me_gauge_lines2, "test_gauge2", "injected", {"k": {"labels": {}, "value": 1.0}},
+                1.0, inject_labels={"table": "knowledge"})
+    test("ME: _emit_gauge inject_labels merges into output",
+         any("knowledge" in ln for ln in _me_gauge_lines2 if "test_gauge2" in ln))
+
+    # --- _emit_histogram ---
+    _me_hist_lines = []
+    _me_hist_entries = {
+        "g1": {"labels": {"gate": "g1"}, "count": 10, "sum": 500.0},
+    }
+    _emit_histogram(_me_hist_lines, "test_hist", "A test histogram", _me_hist_entries, 0.001)
+
+    test("ME: _emit_histogram produces # HELP line",
+         any("# HELP test_hist" in ln for ln in _me_hist_lines))
+
+    test("ME: _emit_histogram produces # TYPE histogram line",
+         any("# TYPE test_hist histogram" in ln for ln in _me_hist_lines))
+
+    test("ME: _emit_histogram produces _bucket line with le=+Inf",
+         any("test_hist_bucket" in ln and "+Inf" in ln for ln in _me_hist_lines))
+
+    test("ME: _emit_histogram produces _sum line",
+         any("test_hist_sum" in ln for ln in _me_hist_lines))
+
+    test("ME: _emit_histogram produces _count line",
+         any("test_hist_count" in ln for ln in _me_hist_lines))
+
+    test("ME: _emit_histogram scales sum by 0.001 (500ms -> 0.5s)",
+         any("0.5" in ln for ln in _me_hist_lines if "test_hist_sum" in ln))
+
+    test("ME: _emit_histogram _count matches entry count",
+         any("10" in ln for ln in _me_hist_lines if "test_hist_count" in ln))
+
+    # --- _zero_metric ---
+    _me_zero_counter = []
+    _zero_metric(_me_zero_counter, "zero_counter", "zero help", "counter")
+    test("ME: _zero_metric counter has # HELP line",
+         any("# HELP zero_counter" in ln for ln in _me_zero_counter))
+    test("ME: _zero_metric counter has # TYPE counter line",
+         any("# TYPE zero_counter counter" in ln for ln in _me_zero_counter))
+    test("ME: _zero_metric counter emits 'zero_counter 0'",
+         "zero_counter 0" in _me_zero_counter)
+
+    _me_zero_hist = []
+    _zero_metric(_me_zero_hist, "zero_hist", "zero hist help", "histogram")
+    test("ME: _zero_metric histogram has _bucket line",
+         any("zero_hist_bucket" in ln and "+Inf" in ln for ln in _me_zero_hist))
+    test("ME: _zero_metric histogram has _sum line",
+         any("zero_hist_sum 0" in ln for ln in _me_zero_hist))
+    test("ME: _zero_metric histogram has _count line",
+         any("zero_hist_count 0" in ln for ln in _me_zero_hist))
+    test("ME: _zero_metric histogram does NOT emit plain 'zero_hist 0'",
+         "zero_hist 0" not in _me_zero_hist)
+
+    _me_zero_gauge = []
+    _zero_metric(_me_zero_gauge, "zero_gauge", "zero gauge help", "gauge")
+    test("ME: _zero_metric gauge has # TYPE gauge line",
+         any("# TYPE zero_gauge gauge" in ln for ln in _me_zero_gauge))
+    test("ME: _zero_metric gauge emits 'zero_gauge 0'",
+         "zero_gauge 0" in _me_zero_gauge)
+
+    # --- export_prometheus ---
+    _me_prom_text = export_prometheus("/tmp/_test_torus_metrics.prom")
+    test("ME: export_prometheus returns a string",
+         isinstance(_me_prom_text, str))
+    test("ME: export_prometheus starts with '# Torus Framework Metrics'",
+         _me_prom_text.startswith("# Torus Framework Metrics"))
+    test("ME: export_prometheus contains # HELP lines",
+         "# HELP" in _me_prom_text)
+    test("ME: export_prometheus contains # TYPE lines",
+         "# TYPE" in _me_prom_text)
+    test("ME: export_prometheus contains torus_gate_blocks_total",
+         "torus_gate_blocks_total" in _me_prom_text)
+    test("ME: export_prometheus contains torus_health_score",
+         "torus_health_score" in _me_prom_text)
+    test("ME: export_prometheus contains torus_errors_total",
+         "torus_errors_total" in _me_prom_text)
+    test("ME: export_prometheus ends with newline",
+         _me_prom_text.endswith("\n"))
+
+    # --- export_json ---
+    _me_json = export_json()
+    test("ME: export_json returns a dict",
+         isinstance(_me_json, dict))
+    test("ME: export_json has 'exported_at' key",
+         "exported_at" in _me_json)
+    test("ME: export_json 'exported_at' is a number (float or int)",
+         isinstance(_me_json.get("exported_at"), (int, float)))
+    test("ME: export_json has 'metrics' key",
+         "metrics" in _me_json)
+    test("ME: export_json 'metrics' is a dict",
+         isinstance(_me_json.get("metrics"), dict))
+    test("ME: export_json metrics has torus_gate_blocks_total",
+         "torus_gate_blocks_total" in _me_json.get("metrics", {}))
+    test("ME: export_json metrics has torus_health_score",
+         "torus_health_score" in _me_json.get("metrics", {}))
+    test("ME: export_json metrics has torus_memory_count",
+         "torus_memory_count" in _me_json.get("metrics", {}))
+    test("ME: export_json metrics has torus_errors_total",
+         "torus_errors_total" in _me_json.get("metrics", {}))
+    test("ME: export_json exported_at is recent (within 10 seconds)",
+         abs(time.time() - _me_json["exported_at"]) < 10)
+
+except Exception as _me_exc:
+    test("ME: metrics_exporter module-level tests", False, str(_me_exc))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EP: error_pattern_analyzer tests
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from shared.error_pattern_analyzer import (
+        _PATTERN_TABLE,
+        _FALLBACK_PATTERN,
+        _FALLBACK_CATEGORY,
+        _FALLBACK_ROOT_CAUSE,
+        _PREVENTION_MAP,
+        extract_pattern,
+        _classify,
+        analyze_errors,
+        top_patterns,
+        correlate_errors,
+        suggest_prevention,
+        frequency_from_strings,
+    )
+
+    # --- Constants ---
+    test("EP: _FALLBACK_PATTERN is 'other:unclassified'",
+         _FALLBACK_PATTERN == "other:unclassified")
+    test("EP: _FALLBACK_CATEGORY is 'other'",
+         _FALLBACK_CATEGORY == "other")
+    test("EP: _FALLBACK_ROOT_CAUSE is 'unknown'",
+         _FALLBACK_ROOT_CAUSE == "unknown")
+    test("EP: _PATTERN_TABLE is a non-empty list",
+         isinstance(_PATTERN_TABLE, list) and len(_PATTERN_TABLE) > 0)
+    test("EP: _PATTERN_TABLE entries are tuples of length 4",
+         all(isinstance(e, tuple) and len(e) == 4 for e in _PATTERN_TABLE))
+    test("EP: _PREVENTION_MAP is a non-empty dict",
+         isinstance(_PREVENTION_MAP, dict) and len(_PREVENTION_MAP) > 0)
+    test("EP: _PREVENTION_MAP contains fallback pattern key",
+         _FALLBACK_PATTERN in _PREVENTION_MAP)
+
+    # All pattern table labels should have prevention tips
+    _ep_table_labels = [e[1] for e in _PATTERN_TABLE]
+    test("EP: _PREVENTION_MAP has entry for every pattern table label",
+         all(label in _PREVENTION_MAP for label in _ep_table_labels))
+
+    # --- extract_pattern ---
+    test("EP: extract_pattern 'must Read file before edit' -> gate1:read-before-edit",
+         extract_pattern("must Read file before edit") == "gate1:read-before-edit")
+
+    test("EP: extract_pattern 'rm -rf /important' -> gate2:destructive-command",
+         extract_pattern("rm -rf /important") == "gate2:destructive-command")
+
+    test("EP: extract_pattern 'ModuleNotFoundError: no module' -> python:import-error",
+         extract_pattern("ModuleNotFoundError: no module named foo") == "python:import-error")
+
+    test("EP: extract_pattern 'FileNotFoundError' -> fs:file-not-found",
+         extract_pattern("FileNotFoundError: /some/path") == "fs:file-not-found")
+
+    test("EP: extract_pattern 'No such file or directory' -> fs:file-not-found",
+         extract_pattern("No such file or directory: '/tmp/x'") == "fs:file-not-found")
+
+    test("EP: extract_pattern 'timeout occurred' -> net:timeout",
+         extract_pattern("timeout occurred connecting to server") == "net:timeout")
+
+    test("EP: extract_pattern unknown message -> other:unclassified",
+         extract_pattern("random unknown message xyz123") == "other:unclassified")
+
+    test("EP: extract_pattern empty string -> other:unclassified",
+         extract_pattern("") == "other:unclassified")
+
+    test("EP: extract_pattern None -> other:unclassified",
+         extract_pattern(None) == "other:unclassified")
+
+    test("EP: extract_pattern 'DROP TABLE users' -> gate2:destructive-command",
+         extract_pattern("DROP TABLE users") == "gate2:destructive-command")
+
+    test("EP: extract_pattern memory not queried -> gate4:memory-not-queried",
+         extract_pattern("memory not queried before this action") == "gate4:memory-not-queried")
+
+    test("EP: extract_pattern 'rate limit exceeded' -> gate11:rate-limit",
+         extract_pattern("rate limit exceeded in rolling window") == "gate11:rate-limit")
+
+    test("EP: extract_pattern 'SyntaxError invalid syntax' -> python:syntax-error",
+         extract_pattern("SyntaxError: invalid syntax") == "python:syntax-error")
+
+    test("EP: extract_pattern 'AttributeError' -> python:attribute-error",
+         extract_pattern("AttributeError: object has no attribute foo") == "python:attribute-error")
+
+    test("EP: extract_pattern 'TypeError' -> python:type-error",
+         extract_pattern("TypeError: expected str got int") == "python:type-error")
+
+    test("EP: extract_pattern 'KeyError' -> python:key-error",
+         extract_pattern("KeyError: 'missing_key'") == "python:key-error")
+
+    test("EP: extract_pattern 'Permission denied' -> fs:permission-denied",
+         extract_pattern("Permission denied: /etc/secret") == "fs:permission-denied")
+
+    test("EP: extract_pattern 'ConnectionRefused' -> net:connection-refused",
+         extract_pattern("ConnectionRefused: localhost:8080") == "net:connection-refused")
+
+    test("EP: extract_pattern case-insensitive matching",
+         extract_pattern("FILENOTFOUNDERROR: path missing") == "fs:file-not-found")
+
+    # --- _classify ---
+    _ep_cat, _ep_rc = _classify("gate1:read-before-edit")
+    test("EP: _classify gate1:read-before-edit returns gate-block category",
+         _ep_cat == "gate-block")
+    test("EP: _classify gate1:read-before-edit returns user-error root cause",
+         _ep_rc == "user-error")
+
+    _ep_cat2, _ep_rc2 = _classify("python:import-error")
+    test("EP: _classify python:import-error returns import category",
+         _ep_cat2 == "import")
+    test("EP: _classify python:import-error returns environmental root cause",
+         _ep_rc2 == "environmental")
+
+    _ep_cat3, _ep_rc3 = _classify("other:unclassified")
+    test("EP: _classify unknown pattern returns other category",
+         _ep_cat3 == "other")
+    test("EP: _classify unknown pattern returns unknown root cause",
+         _ep_rc3 == "unknown")
+
+    _ep_cat4, _ep_rc4 = _classify("fs:file-not-found")
+    test("EP: _classify fs:file-not-found returns filesystem category",
+         _ep_cat4 == "filesystem")
+
+    # --- suggest_prevention ---
+    _ep_tip = suggest_prevention("gate1:read-before-edit")
+    test("EP: suggest_prevention for known pattern returns non-empty string",
+         isinstance(_ep_tip, str) and len(_ep_tip) > 0)
+    test("EP: suggest_prevention for gate1 mentions Read",
+         "Read" in _ep_tip or "read" in _ep_tip.lower())
+
+    _ep_tip2 = suggest_prevention("other:unclassified")
+    test("EP: suggest_prevention for fallback returns non-empty string",
+         isinstance(_ep_tip2, str) and len(_ep_tip2) > 0)
+
+    _ep_tip3 = suggest_prevention("totally:unknown-pattern-xyz")
+    test("EP: suggest_prevention for truly unknown returns fallback tip",
+         _ep_tip3 == _PREVENTION_MAP[_FALLBACK_PATTERN])
+
+    _ep_tip4 = suggest_prevention("gate2:destructive-command")
+    test("EP: suggest_prevention for gate2 is non-empty",
+         isinstance(_ep_tip4, str) and len(_ep_tip4) > 0)
+
+    # --- analyze_errors ---
+    _ep_entries = [
+        {"decision": "block", "reason": "must Read file before edit", "session_id": "s1"},
+        {"decision": "block", "reason": "must Read file before edit", "session_id": "s1"},
+        {"decision": "warn",  "reason": "FileNotFoundError: /tmp/x",  "session_id": "s1"},
+        {"decision": "pass",  "reason": "ok",                         "session_id": "s1"},
+        {"decision": "block", "reason": "ModuleNotFoundError: no mod", "session_id": "s2"},
+    ]
+    _ep_analysis = analyze_errors(_ep_entries)
+
+    test("EP: analyze_errors returns dict",
+         isinstance(_ep_analysis, dict))
+    test("EP: analyze_errors total_errors counts block+warn only",
+         _ep_analysis.get("total_errors") == 4)
+    test("EP: analyze_errors has pattern_counts key",
+         "pattern_counts" in _ep_analysis)
+    test("EP: analyze_errors gate1 pattern count is 2",
+         _ep_analysis["pattern_counts"].get("gate1:read-before-edit") == 2)
+    test("EP: analyze_errors has category_breakdown key",
+         "category_breakdown" in _ep_analysis)
+    test("EP: analyze_errors has root_cause_breakdown key",
+         "root_cause_breakdown" in _ep_analysis)
+    test("EP: analyze_errors has suggestions key",
+         "suggestions" in _ep_analysis)
+    test("EP: analyze_errors suggestions keyed by observed patterns",
+         "gate1:read-before-edit" in _ep_analysis.get("suggestions", {}))
+    test("EP: analyze_errors has top_patterns key",
+         "top_patterns" in _ep_analysis)
+    test("EP: analyze_errors top_patterns is a list",
+         isinstance(_ep_analysis.get("top_patterns"), list))
+    test("EP: analyze_errors has session_breakdown key",
+         "session_breakdown" in _ep_analysis)
+    test("EP: analyze_errors session_breakdown has s1 and s2",
+         "s1" in _ep_analysis.get("session_breakdown", {}) and
+         "s2" in _ep_analysis.get("session_breakdown", {}))
+
+    # --- top_patterns ---
+    _ep_top = top_patterns(_ep_entries, n=5)
+    test("EP: top_patterns returns a list",
+         isinstance(_ep_top, list))
+    test("EP: top_patterns entries are (pattern, count) tuples",
+         all(isinstance(t, tuple) and len(t) == 2 for t in _ep_top))
+    test("EP: top_patterns first entry is most frequent",
+         len(_ep_top) > 0 and _ep_top[0][0] == "gate1:read-before-edit")
+    test("EP: top_patterns respects n limit",
+         len(top_patterns(_ep_entries, n=1)) <= 1)
+    test("EP: top_patterns with empty entries returns []",
+         top_patterns([], n=5) == [])
+
+    # --- correlate_errors ---
+    _ep_corr_entries = [
+        {"decision": "block", "reason": "must Read file before edit", "session_id": "s1", "timestamp": "t1"},
+        {"decision": "block", "reason": "must Read file before edit", "session_id": "s1", "timestamp": "t2"},
+        {"decision": "block", "reason": "FileNotFoundError: /x",      "session_id": "s1", "timestamp": "t3"},
+        {"decision": "block", "reason": "FileNotFoundError: /x",      "session_id": "s1", "timestamp": "t4"},
+    ]
+    _ep_corr = correlate_errors(_ep_corr_entries)
+    test("EP: correlate_errors returns a list",
+         isinstance(_ep_corr, list))
+    test("EP: correlate_errors returns [] for fewer than 2 errors",
+         correlate_errors([_ep_corr_entries[0]]) == [])
+    test("EP: correlate_errors returns [] for empty list",
+         correlate_errors([]) == [])
+    test("EP: correlate_errors entries have required keys",
+         all("pattern_a" in e and "pattern_b" in e and "count" in e
+             for e in _ep_corr))
+    test("EP: correlate_errors entries have example_session key",
+         all("example_session" in e for e in _ep_corr))
+
+    # --- frequency_from_strings ---
+    _ep_freq = frequency_from_strings([
+        "must Read file before edit",
+        "must Read file before edit",
+        "FileNotFoundError: /x",
+        "random unknown xyz",
+    ])
+    test("EP: frequency_from_strings returns a dict",
+         isinstance(_ep_freq, dict))
+    test("EP: frequency_from_strings gate1 count is 2",
+         _ep_freq.get("gate1:read-before-edit") == 2)
+    test("EP: frequency_from_strings fs:file-not-found count is 1",
+         _ep_freq.get("fs:file-not-found") == 1)
+    test("EP: frequency_from_strings unknown -> other:unclassified count is 1",
+         _ep_freq.get("other:unclassified") == 1)
+    test("EP: frequency_from_strings with empty list returns empty dict",
+         frequency_from_strings({}) == {} or frequency_from_strings([]) == {})
+
+except Exception as _ep_exc:
+    test("EP: error_pattern_analyzer module-level tests", False, str(_ep_exc))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GD: gate_dependency_graph tests
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from shared.gate_dependency_graph import (
+        _load_dependencies,
+        generate_mermaid_diagram,
+        find_state_conflicts,
+        find_parallel_safe_gates,
+        get_state_hotspots,
+        detect_cycles,
+        recommend_gate_ordering,
+        format_dependency_report,
+    )
+
+    # --- _load_dependencies ---
+    _gd_deps = _load_dependencies()
+    test("GD: _load_dependencies returns a dict",
+         isinstance(_gd_deps, dict))
+
+    # --- generate_mermaid_diagram ---
+    _gd_mermaid = generate_mermaid_diagram()
+    test("GD: generate_mermaid_diagram returns a string",
+         isinstance(_gd_mermaid, str))
+    test("GD: generate_mermaid_diagram contains 'mermaid'",
+         "mermaid" in _gd_mermaid)
+    test("GD: generate_mermaid_diagram contains 'flowchart'",
+         "flowchart" in _gd_mermaid)
+    test("GD: generate_mermaid_diagram is non-empty",
+         len(_gd_mermaid) > 0)
+    # Should have LR direction or fallback empty
+    test("GD: generate_mermaid_diagram contains 'LR' or 'No dependency'",
+         "LR" in _gd_mermaid or "No dependency" in _gd_mermaid)
+
+    # --- find_state_conflicts ---
+    _gd_conflicts = find_state_conflicts()
+    test("GD: find_state_conflicts returns a list",
+         isinstance(_gd_conflicts, list))
+    test("GD: find_state_conflicts entries are dicts",
+         all(isinstance(c, dict) for c in _gd_conflicts))
+    test("GD: find_state_conflicts entries have 'key' field",
+         all("key" in c for c in _gd_conflicts))
+    test("GD: find_state_conflicts entries have 'type' field",
+         all("type" in c for c in _gd_conflicts))
+    test("GD: find_state_conflicts entries have 'gates' field",
+         all("gates" in c for c in _gd_conflicts))
+    test("GD: find_state_conflicts type values are valid",
+         all(c["type"] in ("write-write", "read-write") for c in _gd_conflicts))
+
+    # --- find_parallel_safe_gates ---
+    _gd_parallel = find_parallel_safe_gates()
+    test("GD: find_parallel_safe_gates returns a dict",
+         isinstance(_gd_parallel, dict))
+    test("GD: find_parallel_safe_gates has independent_gates key",
+         "independent_gates" in _gd_parallel)
+    test("GD: find_parallel_safe_gates has conflict_pairs key",
+         "conflict_pairs" in _gd_parallel)
+    test("GD: find_parallel_safe_gates has total_gates key",
+         "total_gates" in _gd_parallel)
+    test("GD: find_parallel_safe_gates independent_gates is a list",
+         isinstance(_gd_parallel.get("independent_gates"), list))
+    test("GD: find_parallel_safe_gates conflict_pairs is a list",
+         isinstance(_gd_parallel.get("conflict_pairs"), list))
+    test("GD: find_parallel_safe_gates total_gates is an int",
+         isinstance(_gd_parallel.get("total_gates"), int))
+    test("GD: find_parallel_safe_gates total_gates >= 0",
+         _gd_parallel.get("total_gates", -1) >= 0)
+
+    # --- get_state_hotspots ---
+    _gd_hotspots = get_state_hotspots()
+    test("GD: get_state_hotspots returns a list",
+         isinstance(_gd_hotspots, list))
+    test("GD: get_state_hotspots entries are dicts",
+         all(isinstance(h, dict) for h in _gd_hotspots))
+    test("GD: get_state_hotspots entries have 'key' field",
+         all("key" in h for h in _gd_hotspots))
+    test("GD: get_state_hotspots entries have 'read_count' field",
+         all("read_count" in h for h in _gd_hotspots))
+    test("GD: get_state_hotspots entries have 'write_count' field",
+         all("write_count" in h for h in _gd_hotspots))
+    test("GD: get_state_hotspots entries have 'total_gates' field",
+         all("total_gates" in h for h in _gd_hotspots))
+    test("GD: get_state_hotspots sorted descending by total_gates",
+         all(_gd_hotspots[i]["total_gates"] >= _gd_hotspots[i+1]["total_gates"]
+             for i in range(len(_gd_hotspots)-1)) if len(_gd_hotspots) > 1 else True)
+
+    # --- detect_cycles ---
+    _gd_cycles = detect_cycles()
+    test("GD: detect_cycles returns a dict",
+         isinstance(_gd_cycles, dict))
+    test("GD: detect_cycles has has_cycles key",
+         "has_cycles" in _gd_cycles)
+    test("GD: detect_cycles has cycles key",
+         "cycles" in _gd_cycles)
+    test("GD: detect_cycles has summary key",
+         "summary" in _gd_cycles)
+    test("GD: detect_cycles has_cycles is a bool",
+         isinstance(_gd_cycles.get("has_cycles"), bool))
+    test("GD: detect_cycles cycles is a list",
+         isinstance(_gd_cycles.get("cycles"), list))
+    test("GD: detect_cycles summary is a non-empty string",
+         isinstance(_gd_cycles.get("summary"), str) and len(_gd_cycles["summary"]) > 0)
+    test("GD: detect_cycles summary mentions 'cycle' or 'No circular'",
+         "cycle" in _gd_cycles["summary"].lower() or "No circular" in _gd_cycles["summary"]
+         or "No dependency" in _gd_cycles["summary"])
+
+    # --- recommend_gate_ordering ---
+    _gd_order = recommend_gate_ordering()
+    test("GD: recommend_gate_ordering returns a dict",
+         isinstance(_gd_order, dict))
+    test("GD: recommend_gate_ordering has ordering key",
+         "ordering" in _gd_order)
+    test("GD: recommend_gate_ordering has has_cycles key",
+         "has_cycles" in _gd_order)
+    test("GD: recommend_gate_ordering has tiers key",
+         "tiers" in _gd_order)
+    test("GD: recommend_gate_ordering ordering is a list",
+         isinstance(_gd_order.get("ordering"), list))
+    test("GD: recommend_gate_ordering has_cycles is bool",
+         isinstance(_gd_order.get("has_cycles"), bool))
+    test("GD: recommend_gate_ordering tiers is a list",
+         isinstance(_gd_order.get("tiers"), list))
+    test("GD: recommend_gate_ordering ordering length matches total_gates",
+         len(_gd_order.get("ordering", [])) == _gd_parallel.get("total_gates", len(_gd_order.get("ordering", []))))
+
+    # --- format_dependency_report ---
+    _gd_report = format_dependency_report()
+    test("GD: format_dependency_report returns a string",
+         isinstance(_gd_report, str))
+    test("GD: format_dependency_report is non-empty",
+         len(_gd_report) > 0)
+    test("GD: format_dependency_report contains 'Gate Dependency Analysis'",
+         "Gate Dependency Analysis" in _gd_report)
+    test("GD: format_dependency_report contains 'Parallel Safety'",
+         "Parallel Safety" in _gd_report)
+    test("GD: format_dependency_report contains 'Cycle Detection'",
+         "Cycle Detection" in _gd_report)
+
+except Exception as _gd_exc:
+    test("GD: gate_dependency_graph module-level tests", False, str(_gd_exc))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SM: state_migrator tests
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from shared.state_migrator import (
+        migrate_state,
+        validate_state,
+        get_schema_diff,
+        _serialize_for_diff,
+        validate_and_migrate,
+        get_schema_metadata,
+    )
+    from shared.state import (
+        default_state as _sm_default_state,
+        get_state_schema as _sm_get_schema,
+        STATE_VERSION as _SM_STATE_VERSION,
+        MAX_FILES_READ,
+        MAX_VERIFIED_FIXES,
+    )
+
+    # --- migrate_state ---
+    _sm_migrated_empty = migrate_state({})
+    test("SM: migrate_state with empty dict returns a dict",
+         isinstance(_sm_migrated_empty, dict))
+    test("SM: migrate_state with empty dict adds all default fields",
+         len(_sm_migrated_empty) >= len(_sm_default_state()))
+    test("SM: migrate_state sets _version to STATE_VERSION",
+         _sm_migrated_empty.get("_version") == _SM_STATE_VERSION)
+    test("SM: migrate_state with empty dict includes 'files_read' field",
+         "files_read" in _sm_migrated_empty)
+    test("SM: migrate_state with empty dict includes '_version' field",
+         "_version" in _sm_migrated_empty)
+
+    _sm_partial = {"files_read": ["already_here.py"], "session_id": "mysession"}
+    _sm_migrated_partial = migrate_state(_sm_partial)
+    test("SM: migrate_state preserves existing values",
+         _sm_migrated_partial.get("files_read") == ["already_here.py"])
+    test("SM: migrate_state preserves existing session_id",
+         _sm_migrated_partial.get("session_id") == "mysession")
+    test("SM: migrate_state adds missing fields to partial dict",
+         len(_sm_migrated_partial) > len(_sm_partial))
+    test("SM: migrate_state partial still has _version set",
+         _sm_migrated_partial.get("_version") == _SM_STATE_VERSION)
+
+    _sm_migrated_nondict = migrate_state("not a dict")
+    test("SM: migrate_state with non-dict returns default_state()",
+         isinstance(_sm_migrated_nondict, dict) and "_version" in _sm_migrated_nondict)
+
+    _sm_migrated_none = migrate_state(None)
+    test("SM: migrate_state with None returns default_state()",
+         isinstance(_sm_migrated_none, dict))
+
+    _sm_migrated_list = migrate_state([1, 2, 3])
+    test("SM: migrate_state with list returns default_state()",
+         isinstance(_sm_migrated_list, dict))
+
+    # --- validate_state ---
+    _sm_default = _sm_default_state()
+    _sm_valid, _sm_errors, _sm_warnings = validate_state(_sm_default)
+    test("SM: validate_state with default_state() returns a 3-tuple",
+         isinstance((_sm_valid, _sm_errors, _sm_warnings), tuple) and len((_sm_valid, _sm_errors, _sm_warnings)) == 3)
+    test("SM: validate_state with default_state() returns bool for is_valid",
+         isinstance(_sm_valid, bool))
+    test("SM: validate_state with default_state() returns list for errors",
+         isinstance(_sm_errors, list))
+    test("SM: validate_state with default_state() returns warnings list",
+         isinstance(_sm_warnings, list))
+
+    _sm_valid2, _sm_errors2, _sm_warnings2 = validate_state("not a dict")
+    test("SM: validate_state with non-dict returns is_valid=False",
+         _sm_valid2 is False)
+    test("SM: validate_state with non-dict returns non-empty errors",
+         len(_sm_errors2) > 0)
+
+    _sm_valid3, _sm_errors3, _sm_warnings3 = validate_state(None)
+    test("SM: validate_state with None returns is_valid=False",
+         _sm_valid3 is False)
+
+    _sm_missing_field = _sm_default_state()
+    _sm_missing_field.pop("files_read", None)
+    _sm_valid4, _sm_errors4, _ = validate_state(_sm_missing_field)
+    test("SM: validate_state with missing field returns is_valid=False",
+         _sm_valid4 is False)
+    test("SM: validate_state error message mentions missing field",
+         any("files_read" in e for e in _sm_errors4))
+
+    _sm_wrong_type = _sm_default_state()
+    _sm_wrong_type["files_read"] = "not a list"
+    _sm_valid5, _sm_errors5, _ = validate_state(_sm_wrong_type)
+    test("SM: validate_state with wrong type field returns is_valid=False",
+         _sm_valid5 is False)
+
+    # --- get_schema_diff ---
+    _sm_diff_default = get_schema_diff(_sm_default_state())
+    test("SM: get_schema_diff with default_state() returns dict",
+         isinstance(_sm_diff_default, dict))
+    test("SM: get_schema_diff with default_state() has 0 missing fields",
+         _sm_diff_default.get("summary", {}).get("missing", -1) == 0)
+    test("SM: get_schema_diff with default_state() has summary key",
+         "summary" in _sm_diff_default)
+    test("SM: get_schema_diff has missing_fields key",
+         "missing_fields" in _sm_diff_default)
+    test("SM: get_schema_diff has extra_fields key",
+         "extra_fields" in _sm_diff_default)
+    test("SM: get_schema_diff has type_mismatches key",
+         "type_mismatches" in _sm_diff_default)
+    test("SM: get_schema_diff has schema_version key",
+         "schema_version" in _sm_diff_default)
+
+    _sm_diff_empty = get_schema_diff({})
+    test("SM: get_schema_diff with empty dict has many missing fields",
+         _sm_diff_empty.get("summary", {}).get("missing", 0) > 5)
+
+    _sm_diff_nondict = get_schema_diff("not a dict")
+    test("SM: get_schema_diff with non-dict returns error key",
+         "error" in _sm_diff_nondict)
+
+    _sm_diff_nondict2 = get_schema_diff(42)
+    test("SM: get_schema_diff with int returns error key",
+         "error" in _sm_diff_nondict2)
+
+    # --- _serialize_for_diff ---
+    test("SM: _serialize_for_diff with string returns string",
+         _serialize_for_diff("hello") == "hello")
+    test("SM: _serialize_for_diff with int returns int",
+         _serialize_for_diff(42) == 42)
+    test("SM: _serialize_for_diff with bool returns bool",
+         _serialize_for_diff(True) is True)
+    test("SM: _serialize_for_diff with None returns None",
+         _serialize_for_diff(None) is None)
+    test("SM: _serialize_for_diff with float returns float",
+         _serialize_for_diff(3.14) == 3.14)
+    test("SM: _serialize_for_diff with short list returns list",
+         _serialize_for_diff([1, 2, 3]) == [1, 2, 3])
+    test("SM: _serialize_for_diff with long list (>5) returns summary string",
+         isinstance(_serialize_for_diff([1, 2, 3, 4, 5, 6]), str) and
+         "[list:" in _serialize_for_diff([1, 2, 3, 4, 5, 6]))
+    test("SM: _serialize_for_diff long list summary contains item count",
+         "6" in _serialize_for_diff([1, 2, 3, 4, 5, 6]))
+    test("SM: _serialize_for_diff with small dict (<=3 keys) returns dict",
+         _serialize_for_diff({"a": 1, "b": 2}) == {"a": 1, "b": 2})
+    test("SM: _serialize_for_diff with large dict (>3 keys) returns summary string",
+         isinstance(_serialize_for_diff({"a": 1, "b": 2, "c": 3, "d": 4}), str) and
+         "{dict:" in _serialize_for_diff({"a": 1, "b": 2, "c": 3, "d": 4}))
+    test("SM: _serialize_for_diff large dict summary contains key count",
+         "4" in _serialize_for_diff({"a": 1, "b": 2, "c": 3, "d": 4}))
+
+    # --- validate_and_migrate ---
+    _sm_vm_state, _sm_vm_valid, _sm_vm_errors, _sm_vm_warnings = validate_and_migrate({})
+    test("SM: validate_and_migrate with empty dict returns 4-tuple",
+         True)  # if we got here without exception, tuple was returned
+    test("SM: validate_and_migrate with empty dict returns valid migrated state",
+         isinstance(_sm_vm_state, dict) and "_version" in _sm_vm_state)
+    test("SM: validate_and_migrate with empty dict returns bool for is_valid",
+         isinstance(_sm_vm_valid, bool))
+    test("SM: validate_and_migrate errors is a list",
+         isinstance(_sm_vm_errors, list))
+    test("SM: validate_and_migrate warnings is a list",
+         isinstance(_sm_vm_warnings, list))
+
+    _sm_vm2, _sm_vm2_valid, _, _ = validate_and_migrate(_sm_default_state())
+    test("SM: validate_and_migrate with default_state() returns bool is_valid",
+         isinstance(_sm_vm2_valid, bool))
+
+    # --- get_schema_metadata ---
+    _sm_meta = get_schema_metadata()
+    test("SM: get_schema_metadata returns a dict",
+         isinstance(_sm_meta, dict))
+    test("SM: get_schema_metadata has 'version' key",
+         "version" in _sm_meta)
+    test("SM: get_schema_metadata version matches STATE_VERSION",
+         _sm_meta.get("version") == _SM_STATE_VERSION)
+    test("SM: get_schema_metadata has 'schema' key",
+         "schema" in _sm_meta)
+    test("SM: get_schema_metadata schema is a dict",
+         isinstance(_sm_meta.get("schema"), dict))
+    test("SM: get_schema_metadata has 'field_count' key",
+         "field_count" in _sm_meta)
+    test("SM: get_schema_metadata field_count is a positive int",
+         isinstance(_sm_meta.get("field_count"), int) and _sm_meta["field_count"] > 0)
+    test("SM: get_schema_metadata field_count matches schema length",
+         _sm_meta.get("field_count") == len(_sm_meta.get("schema", {})))
+
+    # --- MAX_* constants are importable ---
+    test("SM: MAX_FILES_READ is a positive int",
+         isinstance(MAX_FILES_READ, int) and MAX_FILES_READ > 0)
+    test("SM: MAX_VERIFIED_FIXES is a positive int",
+         isinstance(MAX_VERIFIED_FIXES, int) and MAX_VERIFIED_FIXES > 0)
+    test("SM: STATE_VERSION is a positive int",
+         isinstance(_SM_STATE_VERSION, int) and _SM_STATE_VERSION > 0)
+
+except Exception as _sm_exc:
+    test("SM: state_migrator module-level tests", False, str(_sm_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
