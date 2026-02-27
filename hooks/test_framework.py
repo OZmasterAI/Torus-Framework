@@ -20758,6 +20758,152 @@ except Exception as _hkc_exc:
     test("Hook Cache Deep Tests: import and tests", False, str(_hkc_exc))
 
 
+# ── Config Validator Deep Tests ─────────────────────────────────────────────
+# Tests for config_validator.py: validate_settings, validate_live_state,
+# validate_gates, validate_skills, validate_all
+
+try:
+    from shared.config_validator import (
+        validate_settings, validate_live_state,
+        validate_gates, validate_skills, validate_all,
+        _VALID_EVENT_TYPES, _LIVE_STATE_REQUIRED,
+    )
+    import tempfile as _cv_tmp
+    import json as _cv_json
+
+    # --- Constants ---
+    test("CV: VALID_EVENT_TYPES has PreToolUse", "PreToolUse" in _VALID_EVENT_TYPES)
+    test("CV: VALID_EVENT_TYPES has PostToolUse", "PostToolUse" in _VALID_EVENT_TYPES)
+    test("CV: VALID_EVENT_TYPES has Stop", "Stop" in _VALID_EVENT_TYPES)
+    test("CV: LIVE_STATE_REQUIRED has session_count",
+         "session_count" in _LIVE_STATE_REQUIRED)
+    test("CV: LIVE_STATE_REQUIRED session_count is int",
+         _LIVE_STATE_REQUIRED["session_count"] is int)
+
+    # --- validate_settings with actual file ---
+    _cv_settings_errors = validate_settings()
+    test("CV: real settings.json validates", isinstance(_cv_settings_errors, list))
+
+    # Missing file
+    _cv_missing = validate_settings("/nonexistent/settings.json")
+    test("CV: missing settings = error", len(_cv_missing) == 1)
+    test("CV: missing settings mentions not found", "not found" in _cv_missing[0])
+
+    # Invalid JSON
+    _cv_tmp_bad = _cv_tmp.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+    _cv_tmp_bad.write("not valid json{{{")
+    _cv_tmp_bad.close()
+    _cv_bad_errors = validate_settings(_cv_tmp_bad.name)
+    test("CV: invalid JSON detected", len(_cv_bad_errors) == 1)
+    test("CV: error mentions JSON", "JSON" in _cv_bad_errors[0])
+    os.remove(_cv_tmp_bad.name)
+
+    # Valid minimal settings
+    _cv_tmp_ok = _cv_tmp.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+    _cv_json.dump({"hooks": {"PreToolUse": []}}, _cv_tmp_ok)
+    _cv_tmp_ok.close()
+    _cv_ok_errors = validate_settings(_cv_tmp_ok.name)
+    test("CV: minimal settings valid", len(_cv_ok_errors) == 0)
+    os.remove(_cv_tmp_ok.name)
+
+    # Missing hooks key
+    _cv_tmp_no_hooks = _cv_tmp.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+    _cv_json.dump({"other": "data"}, _cv_tmp_no_hooks)
+    _cv_tmp_no_hooks.close()
+    _cv_nh_errors = validate_settings(_cv_tmp_no_hooks.name)
+    test("CV: missing hooks key error", len(_cv_nh_errors) > 0)
+    test("CV: error mentions hooks", "hooks" in _cv_nh_errors[0])
+    os.remove(_cv_tmp_no_hooks.name)
+
+    # Unknown event type
+    _cv_tmp_bad_evt = _cv_tmp.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+    _cv_json.dump({"hooks": {"InvalidEvent": []}}, _cv_tmp_bad_evt)
+    _cv_tmp_bad_evt.close()
+    _cv_evt_errors = validate_settings(_cv_tmp_bad_evt.name)
+    test("CV: unknown event type flagged", len(_cv_evt_errors) > 0)
+    os.remove(_cv_tmp_bad_evt.name)
+
+    # --- validate_live_state ---
+    _cv_ls_errors = validate_live_state()
+    test("CV: real LIVE_STATE validates", isinstance(_cv_ls_errors, list))
+    test("CV: real LIVE_STATE no errors", len(_cv_ls_errors) == 0)
+
+    # Missing file
+    _cv_ls_missing = validate_live_state("/nonexistent/LIVE_STATE.json")
+    test("CV: missing LIVE_STATE = error", len(_cv_ls_missing) == 1)
+
+    # Valid LIVE_STATE
+    _cv_tmp_ls = _cv_tmp.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+    _cv_json.dump({
+        "session_count": 1,
+        "project": "test",
+        "feature": "none",
+        "framework_version": "v1.0",
+        "what_was_done": "test",
+        "next_steps": [],
+        "known_issues": [],
+    }, _cv_tmp_ls)
+    _cv_tmp_ls.close()
+    test("CV: valid LIVE_STATE passes", len(validate_live_state(_cv_tmp_ls.name)) == 0)
+    os.remove(_cv_tmp_ls.name)
+
+    # Missing required field
+    _cv_tmp_ls2 = _cv_tmp.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+    _cv_json.dump({"session_count": 1}, _cv_tmp_ls2)
+    _cv_tmp_ls2.close()
+    _cv_ls2_errors = validate_live_state(_cv_tmp_ls2.name)
+    test("CV: missing fields detected", len(_cv_ls2_errors) > 0)
+    os.remove(_cv_tmp_ls2.name)
+
+    # Wrong type
+    _cv_tmp_ls3 = _cv_tmp.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+    _cv_json.dump({
+        "session_count": "not_an_int",
+        "project": "test",
+        "feature": "none",
+        "framework_version": "v1.0",
+        "what_was_done": "test",
+        "next_steps": [],
+        "known_issues": [],
+    }, _cv_tmp_ls3)
+    _cv_tmp_ls3.close()
+    _cv_ls3_errors = validate_live_state(_cv_tmp_ls3.name)
+    test("CV: wrong type detected", len(_cv_ls3_errors) > 0)
+    test("CV: error mentions expected type", "int" in _cv_ls3_errors[0])
+    os.remove(_cv_tmp_ls3.name)
+
+    # --- validate_gates ---
+    _cv_gate_errors = validate_gates()
+    test("CV: real gates validate", isinstance(_cv_gate_errors, list))
+    test("CV: real gates no errors", len(_cv_gate_errors) == 0)
+
+    # --- validate_skills ---
+    _cv_skill_errors = validate_skills()
+    test("CV: real skills validate", isinstance(_cv_skill_errors, list))
+
+    # Missing skills dir
+    _cv_skill_missing = validate_skills("/nonexistent/skills")
+    test("CV: missing skills dir = error", len(_cv_skill_missing) == 1)
+
+    # --- validate_all ---
+    _cv_all = validate_all()
+    test("CV: validate_all returns dict", isinstance(_cv_all, dict))
+    test("CV: validate_all has settings", "settings" in _cv_all)
+    test("CV: validate_all has live_state", "live_state" in _cv_all)
+    test("CV: validate_all has gates", "gates" in _cv_all)
+    test("CV: validate_all has skills", "skills" in _cv_all)
+    test("CV: all values are lists",
+         all(isinstance(v, list) for v in _cv_all.values()))
+
+    # With custom base_dir
+    _cv_all_custom = validate_all("/nonexistent/dir")
+    test("CV: custom base_dir returns errors", isinstance(_cv_all_custom, dict))
+    test("CV: custom settings has error", len(_cv_all_custom["settings"]) > 0)
+
+except Exception as _cv_exc:
+    test("Config Validator Deep Tests: import and tests", False, str(_cv_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
