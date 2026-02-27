@@ -20904,6 +20904,533 @@ except Exception as _cv_exc:
     test("Config Validator Deep Tests: import and tests", False, str(_cv_exc))
 
 
+# ── Memory Maintenance Deep Tests ─────────────────────────────────────────
+print("\n--- Memory Maintenance Deep Tests ---")
+try:
+    from shared.memory_maintenance import (
+        _parse_timestamp, _age_days, _split_tags,
+        _has_session_reference, _has_superseded_language,
+        _count_stats, _tag_distribution, _similarity_groups,
+        _stale_memory_scan, _build_recommendations,
+        STALE_THRESHOLD_DAYS, ANCIENT_THRESHOLD_DAYS,
+        UNDERREPRESENTED_SHARE, MIN_MEMORIES_FOR_ANALYSIS,
+        _SESSION_REF_RE, _SUPERSEDED_PATTERNS,
+        _CANONICAL_CATEGORIES, _POSSIBLE_DUPE_TAG_PREFIX,
+    )
+    from datetime import datetime, timezone, timedelta
+
+    # Constants
+    test("MM: STALE_THRESHOLD_DAYS is 90", STALE_THRESHOLD_DAYS == 90)
+    test("MM: ANCIENT_THRESHOLD_DAYS is 180", ANCIENT_THRESHOLD_DAYS == 180)
+    test("MM: UNDERREPRESENTED_SHARE is 0.03", UNDERREPRESENTED_SHARE == 0.03)
+    test("MM: MIN_MEMORIES_FOR_ANALYSIS is 10", MIN_MEMORIES_FOR_ANALYSIS == 10)
+    test("MM: CANONICAL_CATEGORIES has type and area tags",
+         "type:fix" in _CANONICAL_CATEGORIES and "area:framework" in _CANONICAL_CATEGORIES)
+    test("MM: POSSIBLE_DUPE_TAG_PREFIX is possible-dupe:",
+         _POSSIBLE_DUPE_TAG_PREFIX == "possible-dupe:")
+
+    # _parse_timestamp
+    _mm_ts1 = _parse_timestamp("2025-01-15T10:30:00Z")
+    test("MM: parse_timestamp ISO with Z", _mm_ts1 is not None)
+    test("MM: parse_timestamp returns datetime", isinstance(_mm_ts1, datetime))
+    _mm_ts2 = _parse_timestamp("2025-01-15T10:30:00+00:00")
+    test("MM: parse_timestamp ISO with +00:00", _mm_ts2 is not None)
+    test("MM: parse_timestamp empty string", _parse_timestamp("") is None)
+    test("MM: parse_timestamp None", _parse_timestamp(None) is None)
+    test("MM: parse_timestamp garbage", _parse_timestamp("not-a-date") is None)
+
+    # _age_days
+    _mm_now = datetime(2025, 6, 15, tzinfo=timezone.utc)
+    _mm_age = _age_days("2025-06-14T12:00:00Z", _mm_now)
+    test("MM: age_days 1 day old", _mm_age is not None and 0.4 < _mm_age < 1.1)
+    _mm_age_old = _age_days("2025-01-01T00:00:00Z", _mm_now)
+    test("MM: age_days ~165 days", _mm_age_old is not None and 160 < _mm_age_old < 170)
+    test("MM: age_days unparseable", _age_days("garbage", _mm_now) is None)
+    test("MM: age_days non-negative", _age_days("2025-06-15T12:00:00Z", _mm_now) == 0.0)
+
+    # _split_tags
+    test("MM: split_tags normal", _split_tags("type:fix,area:framework") == ["type:fix", "area:framework"])
+    test("MM: split_tags empty", _split_tags("") == [])
+    test("MM: split_tags None", _split_tags(None) == [])
+    test("MM: split_tags whitespace", _split_tags(" a , b , c ") == ["a", "b", "c"])
+    test("MM: split_tags single", _split_tags("type:fix") == ["type:fix"])
+
+    # _has_session_reference
+    test("MM: has_session_ref 'Session 42'", _has_session_reference("Fixed in Session 42"))
+    test("MM: has_session_ref 'session #7'", _has_session_reference("done in session #7"))
+    test("MM: has_session_ref 'sprint-3'", _has_session_reference("sprint-3 work"))
+    test("MM: has_session_ref 'session_id'", _has_session_reference("uses session_id"))
+    test("MM: has_session_ref none", not _has_session_reference("a generic memory about fixing bugs"))
+
+    # _has_superseded_language
+    test("MM: superseded 'was fixed'", _has_superseded_language("This bug was fixed in v2"))
+    test("MM: superseded 'no longer needed'", _has_superseded_language("This is no longer needed"))
+    test("MM: superseded 'replaced by'", _has_superseded_language("old method replaced by new"))
+    test("MM: superseded 'obsolete'", _has_superseded_language("This approach is obsolete"))
+    test("MM: superseded 'temporary workaround'", _has_superseded_language("temporary workaround for X"))
+    test("MM: superseded 'the old implementation'", _has_superseded_language("the old implementation broke"))
+    test("MM: superseded none", not _has_superseded_language("This is a current best practice"))
+
+    # _count_stats with synthetic entries
+    _mm_now2 = datetime(2025, 6, 15, tzinfo=timezone.utc)
+    _mm_entries = [
+        {"id": "1", "document": "fresh", "tags": "a", "timestamp": "2025-06-10T00:00:00Z", "preview": "", "session_time": 0, "possible_dupe": ""},
+        {"id": "2", "document": "recent", "tags": "b", "timestamp": "2025-04-01T00:00:00Z", "preview": "", "session_time": 0, "possible_dupe": ""},
+        {"id": "3", "document": "aging", "tags": "c", "timestamp": "2025-02-01T00:00:00Z", "preview": "", "session_time": 0, "possible_dupe": ""},
+        {"id": "4", "document": "stale", "tags": "d", "timestamp": "2024-10-01T00:00:00Z", "preview": "", "session_time": 0, "possible_dupe": ""},
+        {"id": "5", "document": "unknown", "tags": "e", "timestamp": "", "preview": "", "session_time": 0, "possible_dupe": ""},
+    ]
+    _mm_cs = _count_stats(_mm_entries, _mm_now2)
+    test("MM: count_stats total", _mm_cs["total"] == 5)
+    test("MM: count_stats fresh bucket", _mm_cs["age_buckets"]["fresh_0_30d"] == 1)
+    test("MM: count_stats recent bucket", _mm_cs["age_buckets"]["recent_31_90d"] == 1)
+    test("MM: count_stats aging bucket", _mm_cs["age_buckets"]["aging_91_180d"] == 1)
+    test("MM: count_stats stale bucket", _mm_cs["age_buckets"]["stale_181d_plus"] == 1)
+    test("MM: count_stats unknown bucket", _mm_cs["age_buckets"]["unknown_age"] == 1)
+    test("MM: count_stats median_age", _mm_cs["median_age_days"] is not None)
+    test("MM: count_stats oldest_age", _mm_cs["oldest_age_days"] is not None)
+    test("MM: count_stats newest_age", _mm_cs["newest_age_days"] is not None)
+
+    # _tag_distribution
+    _mm_tag_entries = [
+        {"id": "1", "document": "d", "tags": "type:fix,area:framework", "timestamp": "", "preview": "", "session_time": 0, "possible_dupe": ""},
+        {"id": "2", "document": "d", "tags": "type:fix,area:testing", "timestamp": "", "preview": "", "session_time": 0, "possible_dupe": ""},
+        {"id": "3", "document": "d", "tags": "possible-dupe:abc123", "timestamp": "", "preview": "", "session_time": 0, "possible_dupe": ""},
+        {"id": "4", "document": "d", "tags": "", "timestamp": "", "preview": "", "session_time": 0, "possible_dupe": ""},
+    ]
+    _mm_td = _tag_distribution(_mm_tag_entries)
+    test("MM: tag_dist total_unique_tags >= 3", _mm_td["total_unique_tags"] >= 3)
+    test("MM: tag_dist untagged_count is 1", _mm_td["untagged_count"] == 1)
+    test("MM: tag_dist possible_dupe_count is 1", _mm_td["possible_dupe_count"] == 1)
+    test("MM: tag_dist has top_tags", isinstance(_mm_td["top_tags"], list))
+    test("MM: tag_dist has category_breakdown", isinstance(_mm_td["category_breakdown"], dict))
+    test("MM: tag_dist underrepresented is list", isinstance(_mm_td["underrepresented_categories"], list))
+    test("MM: tag_dist avg_tags_per_memory > 0", _mm_td["avg_tags_per_memory"] > 0)
+
+    # _similarity_groups
+    _mm_sim_entries = []
+    for i in range(10):
+        _mm_sim_entries.append({
+            "id": f"sim-{i}",
+            "document": f"doc {i}",
+            "tags": "custom:cluster-a" if i < 5 else "custom:cluster-b",
+            "timestamp": "", "preview": "", "session_time": 0, "possible_dupe": "",
+        })
+    _mm_sg = _similarity_groups(_mm_sim_entries)
+    test("MM: similarity_groups has clusters", isinstance(_mm_sg["clusters"], list))
+    test("MM: similarity_groups has singleton_count", "singleton_count" in _mm_sg)
+    test("MM: similarity_groups has cluster_count", "cluster_count" in _mm_sg)
+    test("MM: similarity_groups cluster_a detected",
+         any(c["label"] == "custom:cluster-a" for c in _mm_sg["clusters"]))
+
+    # _stale_memory_scan
+    _mm_stale_now = datetime(2025, 6, 15, tzinfo=timezone.utc)
+    _mm_stale_entries = [
+        {"id": "s1", "document": "Fixed in Session 42 long ago", "tags": "",
+         "timestamp": "2025-01-01T00:00:00Z", "preview": "old", "session_time": 0, "possible_dupe": ""},
+        {"id": "s2", "document": "This approach is obsolete now", "tags": "",
+         "timestamp": "2025-06-10T00:00:00Z", "preview": "obsol", "session_time": 0, "possible_dupe": ""},
+        {"id": "s3", "document": "current and valid", "tags": "possible-dupe:xyz",
+         "timestamp": "2025-06-14T00:00:00Z", "preview": "dupe", "session_time": 0, "possible_dupe": ""},
+        {"id": "s4", "document": "totally fresh and current", "tags": "",
+         "timestamp": "2025-06-14T00:00:00Z", "preview": "good", "session_time": 0, "possible_dupe": ""},
+    ]
+    _mm_ss = _stale_memory_scan(_mm_stale_entries, _mm_stale_now)
+    test("MM: stale_scan finds stale entries", _mm_ss["stale_count"] >= 2)
+    test("MM: stale_scan s1 detected (age+session ref)",
+         any(e["id"] == "s1" for e in _mm_ss["stale_entries"]))
+    test("MM: stale_scan s2 detected (superseded language)",
+         any(e["id"] == "s2" for e in _mm_ss["stale_entries"]))
+    test("MM: stale_scan s3 detected (possible dupe)",
+         any(e["id"] == "s3" for e in _mm_ss["stale_entries"]))
+    test("MM: stale_scan s4 not flagged",
+         not any(e["id"] == "s4" for e in _mm_ss["stale_entries"]))
+    test("MM: stale_scan entry has signals",
+         all("signals" in e for e in _mm_ss["stale_entries"]))
+
+    # _build_recommendations
+    _mm_cs_high = {"total": 1200, "age_buckets": {"stale_181d_plus": 60}, "quarantine_count": 250}
+    _mm_td_bad = {"untagged_count": 25, "possible_dupe_count": 30, "underrepresented_categories": ["area:docs"]}
+    _mm_ss_bad = {"stale_count": 10}
+    _mm_sg_big = {"clusters": [{"label": "big-cluster", "size": 55}], "largest_cluster_size": 55}
+    _mm_recs = _build_recommendations(_mm_cs_high, _mm_td_bad, _mm_ss_bad, _mm_sg_big)
+    test("MM: recommendations is list", isinstance(_mm_recs, list))
+    test("MM: recommendations has entries", len(_mm_recs) > 0)
+    test("MM: recommendations mentions deduplicate",
+         any("dedupl" in r.lower() for r in _mm_recs))
+
+    # Healthy case
+    _mm_cs_ok = {"total": 50, "age_buckets": {"stale_181d_plus": 0}, "quarantine_count": 0}
+    _mm_td_ok = {"untagged_count": 0, "possible_dupe_count": 0, "underrepresented_categories": []}
+    _mm_ss_ok = {"stale_count": 0}
+    _mm_sg_ok = {"clusters": [], "largest_cluster_size": 0}
+    _mm_recs_ok = _build_recommendations(_mm_cs_ok, _mm_td_ok, _mm_ss_ok, _mm_sg_ok)
+    test("MM: healthy recs say 'healthy'",
+         any("healthy" in r.lower() for r in _mm_recs_ok))
+
+except Exception as _mm_exc:
+    test("Memory Maintenance Deep Tests: import and tests", False, str(_mm_exc))
+
+
+# ── Gate Graph Deep Tests ─────────────────────────────────────────────────
+print("\n--- Gate Graph Deep Tests ---")
+try:
+    from shared.gate_graph import (
+        _parse_shared_imports, _gate_label, _module_label,
+        GateGraph, build_graph,
+    )
+    import tempfile as _gg_tempfile
+
+    # _gate_label
+    test("GG: gate_label strips .py", _gate_label("gate_01_read_before_edit.py") == "gate_01_read_before_edit")
+    test("GG: gate_label no extension", _gate_label("gate_02_no_destroy") == "gate_02_no_destroy")
+
+    # _module_label
+    test("GG: module_label strips .py", _module_label("state.py") == "state")
+    test("GG: module_label no ext", _module_label("gate_result") == "gate_result")
+
+    # _parse_shared_imports with a temp file
+    with _gg_tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as _gg_tmp:
+        _gg_tmp.write("from shared.gate_result import GateResult\n")
+        _gg_tmp.write("from shared.state import load_state\n")
+        _gg_tmp.write("import os\n")
+        _gg_tmp.write("import shared.audit_log\n")
+        _gg_tmp_path = _gg_tmp.name
+    _gg_imports = _parse_shared_imports(_gg_tmp_path)
+    os.unlink(_gg_tmp_path)
+    test("GG: parse_shared_imports finds gate_result", "gate_result" in _gg_imports)
+    test("GG: parse_shared_imports finds state", "state" in _gg_imports)
+    test("GG: parse_shared_imports finds audit_log", "audit_log" in _gg_imports)
+    test("GG: parse_shared_imports excludes os", "os" not in _gg_imports)
+    test("GG: parse_shared_imports sorted", _gg_imports == sorted(_gg_imports))
+
+    # _parse_shared_imports with nonexistent file
+    test("GG: parse_shared_imports missing file", _parse_shared_imports("/tmp/nonexistent_gate.py") == [])
+
+    # GateGraph construction
+    _gg_gate_deps = {
+        "gate_01_test": ["gate_result", "state"],
+        "gate_02_test": ["gate_result", "audit_log"],
+        "gate_03_test": ["state"],
+    }
+    _gg_module_deps = {
+        "gate_result": [],
+        "state": ["gate_result"],
+        "audit_log": ["state"],
+    }
+    _gg_shared = ["gate_result", "state", "audit_log"]
+    _gg = GateGraph(_gg_gate_deps, _gg_module_deps, _gg_shared)
+
+    test("GG: gates list sorted", _gg.gates == sorted(_gg_gate_deps.keys()))
+    test("GG: shared_modules sorted", _gg.shared_modules == sorted(_gg_shared))
+    test("GG: gate_deps preserved", _gg.gate_deps == _gg_gate_deps)
+    test("GG: repr includes counts", "gates=3" in repr(_gg) and "shared_modules=3" in repr(_gg))
+
+    # render_ascii
+    _gg_ascii = _gg.render_ascii()
+    test("GG: render_ascii contains GATE DEPENDENCY TREE", "GATE DEPENDENCY TREE" in _gg_ascii)
+    test("GG: render_ascii contains gate names", "gate_01_test" in _gg_ascii)
+    test("GG: render_ascii contains SUMMARY", "SUMMARY" in _gg_ascii)
+    test("GG: render_ascii contains connectors", "└──" in _gg_ascii or "├──" in _gg_ascii)
+    test("GG: render_ascii shows module usage", "gate(s)" in _gg_ascii)
+
+    # find_circular_deps — no cycles in our test graph
+    _gg_cycles = _gg.find_circular_deps()
+    test("GG: no circular deps in test graph", _gg_cycles == [])
+
+    # find_circular_deps — graph with cycle
+    _gg_cyclic_mod_deps = {
+        "mod_a": ["mod_b"],
+        "mod_b": ["mod_c"],
+        "mod_c": ["mod_a"],
+    }
+    _gg_cyclic = GateGraph({}, _gg_cyclic_mod_deps, ["mod_a", "mod_b", "mod_c"])
+    _gg_cyclic_cycles = _gg_cyclic.find_circular_deps()
+    test("GG: detects circular dep", len(_gg_cyclic_cycles) > 0)
+    test("GG: cycle contains mod_a",
+         any("mod_a" in c for c in _gg_cyclic_cycles))
+
+    # get_impact_analysis
+    _gg_impact = _gg.get_impact_analysis("gate_result")
+    test("GG: impact exists", _gg_impact["exists"] is True)
+    test("GG: impact direct_gates includes gate_01",
+         "gate_01_test" in _gg_impact["direct_gates"])
+    test("GG: impact all_gates covers all 3", len(_gg_impact["all_gates"]) == 3)
+    test("GG: impact has risk_level", _gg_impact["risk_level"] in ("critical", "high", "medium", "low"))
+    test("GG: impact score matches all_gates", _gg_impact["impact_score"] == len(_gg_impact["all_gates"]))
+    test("GG: impact transitive_modules includes state",
+         "state" in _gg_impact["transitive_modules"] or "audit_log" in _gg_impact["transitive_modules"])
+
+    # Impact for unknown module
+    _gg_unknown = _gg.get_impact_analysis("nonexistent_module")
+    test("GG: unknown module exists=False", _gg_unknown["exists"] is False)
+    test("GG: unknown module zero impact", _gg_unknown["impact_score"] == 0)
+    test("GG: unknown module risk=low", _gg_unknown["risk_level"] == "low")
+
+    # Impact analysis risk levels
+    _gg_high_gate_deps = {f"gate_{i:02d}": ["core_mod"] for i in range(10)}
+    _gg_high = GateGraph(_gg_high_gate_deps, {"core_mod": []}, ["core_mod"])
+    _gg_high_impact = _gg_high.get_impact_analysis("core_mod")
+    test("GG: high impact = critical risk", _gg_high_impact["risk_level"] == "critical")
+
+    # build_graph with temp directories
+    with _gg_tempfile.TemporaryDirectory() as _gg_tmpdir:
+        _gg_gates_dir = os.path.join(_gg_tmpdir, "gates")
+        _gg_shared_dir = os.path.join(_gg_tmpdir, "shared")
+        os.makedirs(_gg_gates_dir)
+        os.makedirs(_gg_shared_dir)
+
+        with open(os.path.join(_gg_gates_dir, "gate_01_test.py"), "w") as f:
+            f.write("from shared.state import load_state\n")
+        with open(os.path.join(_gg_shared_dir, "state.py"), "w") as f:
+            f.write("# no imports\n")
+
+        _gg_built = build_graph(_gg_gates_dir, _gg_shared_dir)
+        test("GG: build_graph finds gate", "gate_01_test" in _gg_built.gates)
+        test("GG: build_graph finds shared module", "state" in _gg_built.shared_modules)
+        test("GG: build_graph gate depends on state", "state" in _gg_built.gate_deps.get("gate_01_test", []))
+
+    # build_graph with missing dirs
+    _gg_empty = build_graph("/tmp/nonexistent_gates_dir", "/tmp/nonexistent_shared_dir")
+    test("GG: build_graph missing dirs returns empty", len(_gg_empty.gates) == 0)
+
+except Exception as _gg_exc:
+    test("Gate Graph Deep Tests: import and tests", False, str(_gg_exc))
+
+
+# ── Session Analytics Deep Tests ─────────────────────────────────────────
+print("\n--- Session Analytics Deep Tests ---")
+try:
+    from shared.session_analytics import (
+        tool_call_distribution, gate_fire_rates, gate_block_rates,
+        error_frequency, session_productivity, _compute_resolve_score,
+        _stddev, compare_sessions_metrics, _state_session_metrics,
+    )
+
+    # tool_call_distribution
+    _sa_entries = [
+        {"tool": "Read", "decision": "pass"},
+        {"tool": "Read", "decision": "pass"},
+        {"tool": "Edit", "decision": "pass"},
+        {"tool_name": "Write", "decision": "block"},
+    ]
+    _sa_tcd = tool_call_distribution(_sa_entries)
+    test("SA: tool_call_dist Read=2", _sa_tcd.get("Read") == 2)
+    test("SA: tool_call_dist Edit=1", _sa_tcd.get("Edit") == 1)
+    test("SA: tool_call_dist Write=1", _sa_tcd.get("Write") == 1)
+    test("SA: tool_call_dist empty", tool_call_distribution([]) == {})
+
+    # gate_fire_rates
+    _sa_gate_entries = [
+        {"gate": "gate_01", "decision": "pass"},
+        {"gate": "gate_01", "decision": "block"},
+        {"gate": "gate_02", "decision": "pass"},
+        {"gate_name": "gate_03", "decision": "warn"},
+    ]
+    _sa_gfr = gate_fire_rates(_sa_gate_entries)
+    test("SA: gate_fire_rates gate_01=2", _sa_gfr.get("gate_01") == 2)
+    test("SA: gate_fire_rates gate_02=1", _sa_gfr.get("gate_02") == 1)
+    test("SA: gate_fire_rates gate_03=1", _sa_gfr.get("gate_03") == 1)
+
+    # gate_block_rates
+    _sa_gbr = gate_block_rates(_sa_gate_entries)
+    test("SA: gate_block_rates gate_01 pass=1 block=1",
+         _sa_gbr.get("gate_01", {}).get("pass") == 1 and _sa_gbr["gate_01"]["block"] == 1)
+    test("SA: gate_block_rates gate_01 total=2", _sa_gbr["gate_01"]["total"] == 2)
+    test("SA: gate_block_rates gate_02 no blocks", _sa_gbr.get("gate_02", {}).get("block") == 0)
+
+    # error_frequency
+    _sa_err_entries = [
+        {"decision": "block", "reason": "must Read file.py before editing"},
+        {"decision": "block", "reason": "must Read other.py before editing"},
+        {"decision": "warn", "reason": "memory not queried in this session"},
+        {"decision": "block", "reason": "NO DESTROY pattern blocked"},
+        {"decision": "pass", "reason": "all good"},  # should be skipped
+        {"decision": "block", "reason": "something unusual happened"},
+    ]
+    _sa_ef = error_frequency(_sa_err_entries)
+    test("SA: error_freq gate1 read-before-edit=2", _sa_ef.get("gate1:read-before-edit") == 2)
+    test("SA: error_freq gate2 no-destroy=1", _sa_ef.get("gate2:no-destroy") == 1)
+    test("SA: error_freq gate4 memory-first=1", _sa_ef.get("gate4:memory-first") == 1)
+    test("SA: error_freq other bucket for unusual", _sa_ef.get("other-block-or-warn") == 1)
+    test("SA: error_freq pass decisions excluded", sum(_sa_ef.values()) == 5)
+
+    # _stddev
+    test("SA: stddev [1,2,3]", abs(_stddev([1.0, 2.0, 3.0]) - 0.8165) < 0.01)
+    test("SA: stddev empty", _stddev([]) == 0.0)
+    test("SA: stddev single", _stddev([5.0]) == 0.0)
+    test("SA: stddev identical values", _stddev([3.0, 3.0, 3.0]) == 0.0)
+
+    # _compute_resolve_score
+    _sa_resolve_entries = [
+        {"decision": "block", "gate": "gate_01"},
+        {"decision": "pass", "gate": "gate_01"},  # resolved within window
+        {"decision": "block", "gate": "gate_02"},
+        # no pass for gate_02 within window
+    ]
+    _sa_rs = _compute_resolve_score(_sa_resolve_entries)
+    test("SA: resolve_score 50% (1 of 2 resolved)", abs(_sa_rs - 0.5) < 0.01)
+    test("SA: resolve_score no blocks = 1.0", _compute_resolve_score([]) == 1.0)
+    test("SA: resolve_score all resolved",
+         _compute_resolve_score([
+             {"decision": "block", "gate": "g1"},
+             {"decision": "pass", "gate": "g1"},
+         ]) == 1.0)
+
+    # session_productivity
+    _sa_prod_entries = [
+        {"tool": "Edit", "decision": "pass", "gate": "g1"},
+        {"tool": "Write", "decision": "pass", "gate": "g2"},
+        {"tool": "Read", "decision": "pass", "gate": "g3"},
+        {"tool": "Edit", "decision": "block", "gate": "g4"},
+        {"tool": "mcp__memory__search_knowledge", "decision": "pass", "gate": "g5"},
+    ]
+    _sa_prod = session_productivity(_sa_prod_entries, 30.0)
+    test("SA: productivity has score", "score" in _sa_prod)
+    test("SA: productivity score 0-100", 0.0 <= _sa_prod["score"] <= 100.0)
+    test("SA: productivity has grade", _sa_prod["grade"] in ("A", "B", "C", "D", "F"))
+    test("SA: productivity has breakdown", "breakdown" in _sa_prod)
+    test("SA: productivity breakdown has edit_velocity", "edit_velocity" in _sa_prod["breakdown"])
+    test("SA: productivity breakdown has block_rate", "block_rate" in _sa_prod["breakdown"])
+    test("SA: productivity breakdown has memory_contrib", "memory_contrib" in _sa_prod["breakdown"])
+    test("SA: productivity edit sub_score > 0", _sa_prod["breakdown"]["edit_velocity"]["sub_score"] > 0)
+    test("SA: productivity memory sub_score > 0", _sa_prod["breakdown"]["memory_contrib"]["sub_score"] > 0)
+
+    # session_productivity edge: 0 duration
+    _sa_prod_zero = session_productivity([], 0.0)
+    test("SA: productivity 0 duration doesn't crash", _sa_prod_zero["score"] >= 0)
+
+    # compare_sessions_metrics
+    _sa_current = {"score": 80.0}
+    _sa_history = [{"score": 70.0}, {"score": 75.0}, {"score": 72.0}]
+    _sa_comp = compare_sessions_metrics(_sa_current, _sa_history)
+    test("SA: compare has current_score", _sa_comp["current_score"] == 80.0)
+    test("SA: compare has rolling_avg", _sa_comp["rolling_avg"] > 0)
+    test("SA: compare has delta", isinstance(_sa_comp["delta"], float))
+    test("SA: compare has trend", _sa_comp["trend"] in ("improving", "declining", "stable", "insufficient_data"))
+    test("SA: compare has spike_detected", isinstance(_sa_comp["spike_detected"], bool))
+    test("SA: compare improving delta positive", _sa_comp["delta"] > 0)
+    test("SA: compare trend improving", _sa_comp["trend"] == "improving")
+
+    # compare_sessions_metrics: empty history
+    _sa_comp_empty = compare_sessions_metrics({"score": 50}, [])
+    test("SA: compare empty history = insufficient_data", _sa_comp_empty["trend"] == "insufficient_data")
+
+    # _state_session_metrics
+    _sa_state = {
+        "session_start": 1700000000.0,
+        "tool_call_counts": {"Read": 10, "Edit": 5, "mcp__memory__search_knowledge": 3, "mcp__memory__remember_this": 2},
+        "total_tool_calls": 20,
+        "gate6_warn_count": 1,
+        "files_read": ["a.py", "b.py"],
+        "files_edited": ["a.py"],
+        "gate_effectiveness": {},
+        "security_profile": "strict",
+        "pending_verification": ["fix1"],
+        "active_bans": {"ban1": True},
+        "active_subagents": ["agent1", "agent2"],
+        "auto_remember_count": 5,
+        "last_test_exit_code": 0,
+    }
+    _sa_sm = _state_session_metrics("test-session", _sa_state)
+    test("SA: state_metrics session_id", _sa_sm["session_id"] == "test-session")
+    test("SA: state_metrics total_tool_calls", _sa_sm["total_tool_calls"] == 20)
+    test("SA: state_metrics memory_queries=3", _sa_sm["memory_queries"] == 3)
+    test("SA: state_metrics memory_saves=2", _sa_sm["memory_saves"] == 2)
+    test("SA: state_metrics files_read_count=2", _sa_sm["files_read_count"] == 2)
+    test("SA: state_metrics files_edited_count=1", _sa_sm["files_edited_count"] == 1)
+    test("SA: state_metrics warnings=1", _sa_sm["warnings_this_session"] == 1)
+    test("SA: state_metrics security_profile", _sa_sm["security_profile"] == "strict")
+    test("SA: state_metrics active_bans_count=1", _sa_sm["active_bans_count"] == 1)
+    test("SA: state_metrics subagent_count=2", _sa_sm["subagent_count"] == 2)
+    test("SA: state_metrics auto_remember_count=5", _sa_sm["auto_remember_count"] == 5)
+    test("SA: state_metrics last_test_exit_code=0", _sa_sm["last_test_exit_code"] == 0)
+    test("SA: state_metrics session_start_iso not empty", _sa_sm["session_start_iso"] != "")
+    test("SA: state_metrics duration_minutes > 0", _sa_sm["duration_minutes"] > 0)
+
+    # _state_session_metrics with empty state
+    _sa_sm_empty = _state_session_metrics("empty", {})
+    test("SA: empty state total_tool_calls=0", _sa_sm_empty["total_tool_calls"] == 0)
+    test("SA: empty state memory_queries=0", _sa_sm_empty["memory_queries"] == 0)
+    test("SA: empty state security_profile=balanced", _sa_sm_empty["security_profile"] == "balanced")
+
+except Exception as _sa_exc:
+    test("Session Analytics Deep Tests: import and tests", False, str(_sa_exc))
+
+
+# ── Metrics Exporter Deep Tests ─────────────────────────────────────────
+print("\n--- Metrics Exporter Deep Tests ---")
+try:
+    from shared.metrics_exporter import (
+        _ls, _emit_counter, _emit_gauge, _emit_histogram, _zero_metric,
+        _DEFS, DEFAULT_OUTPUT_PATH,
+    )
+
+    # Constants
+    test("ME: DEFAULT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH == "/tmp/torus_metrics.prom")
+    test("ME: _DEFS has entries", len(_DEFS) >= 7)
+
+    # _ls
+    test("ME: _ls empty dict", _ls({}) == "")
+    test("ME: _ls single label", _ls({"gate": "g01"}) == '{gate="g01"}')
+    test("ME: _ls multiple labels sorted",
+         _ls({"z": "1", "a": "2"}) == '{a="2",z="1"}')
+
+    # _emit_counter
+    _me_lines = []
+    _emit_counter(_me_lines, "test_counter", "A test counter", {"g1": {"labels": {"gate": "g01"}, "value": 5}}, 1.0)
+    test("ME: emit_counter has HELP", any("HELP test_counter" in l for l in _me_lines))
+    test("ME: emit_counter has TYPE counter", any("TYPE test_counter counter" in l for l in _me_lines))
+    test("ME: emit_counter has value", any("5" in l and "g01" in l for l in _me_lines))
+
+    # _emit_counter with scale
+    _me_lines2 = []
+    _emit_counter(_me_lines2, "scaled", "Scaled", {"x": {"labels": {}, "value": 1000}}, 0.001)
+    test("ME: emit_counter with scale",
+         any("1.0" in l or "1.0" in l for l in _me_lines2))
+
+    # _emit_gauge
+    _me_lines3 = []
+    _emit_gauge(_me_lines3, "test_gauge", "A gauge", {"g1": {"labels": {}, "value": 42}}, 1.0)
+    test("ME: emit_gauge has TYPE gauge", any("TYPE test_gauge gauge" in l for l in _me_lines3))
+    test("ME: emit_gauge has value 42", any("42" in l for l in _me_lines3))
+
+    # _emit_gauge with injected labels
+    _me_lines4 = []
+    _emit_gauge(_me_lines4, "mem", "Memory", {"m1": {"labels": {}, "value": 100}}, 1.0, {"table": "knowledge"})
+    test("ME: emit_gauge injected labels",
+         any("knowledge" in l for l in _me_lines4))
+
+    # _emit_histogram
+    _me_lines5 = []
+    _emit_histogram(_me_lines5, "test_hist", "A histogram",
+                    {"h1": {"labels": {"gate": "g01"}, "count": 10, "sum": 500}}, 0.001)
+    test("ME: emit_histogram has TYPE histogram", any("TYPE test_hist histogram" in l for l in _me_lines5))
+    test("ME: emit_histogram has _bucket", any("_bucket" in l for l in _me_lines5))
+    test("ME: emit_histogram has _sum", any("_sum" in l for l in _me_lines5))
+    test("ME: emit_histogram has _count", any("_count" in l for l in _me_lines5))
+    test("ME: emit_histogram le=+Inf", any('+Inf' in l for l in _me_lines5))
+
+    # _zero_metric
+    _me_lines6 = []
+    _zero_metric(_me_lines6, "zero_counter", "Zero", "counter")
+    test("ME: zero_metric counter has value 0", any("zero_counter 0" in l for l in _me_lines6))
+
+    _me_lines7 = []
+    _zero_metric(_me_lines7, "zero_hist", "Zero hist", "histogram")
+    test("ME: zero_metric histogram has _bucket", any("_bucket" in l for l in _me_lines7))
+    test("ME: zero_metric histogram has _sum 0", any("_sum 0" in l for l in _me_lines7))
+    test("ME: zero_metric histogram has _count 0", any("_count 0" in l for l in _me_lines7))
+
+    # _DEFS structure
+    for _me_prom_name, _me_help, _me_type, _me_src, _me_scale in _DEFS:
+        test(f"ME: def {_me_prom_name} has valid type",
+             _me_type in ("counter", "gauge", "histogram"))
+
+except Exception as _me_exc:
+    test("Metrics Exporter Deep Tests: import and tests", False, str(_me_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
