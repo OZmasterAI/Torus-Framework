@@ -2232,6 +2232,96 @@ def session_context_snapshot() -> dict:
     }
 
 
+# ── Tool Recommendation ───────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def tool_recommendations(tool_name: str = "") -> dict:
+    """Analyze tool call patterns and recommend alternatives for blocked tools.
+
+    When a tool has a high block rate, suggests equivalent tools with better
+    success rates or intermediate steps (e.g., Read before Edit).
+
+    Args:
+        tool_name: Specific tool to get recommendation for. If empty, returns
+                   overview stats for all tools.
+
+    Returns:
+        Dict with recommendation details or summary statistics.
+    """
+    _ensure_initialized()
+    import json as _json
+
+    # Load current state from ramdisk
+    state = {}
+    try:
+        from shared.ramdisk import get_state_dir
+        state_dir = get_state_dir()
+        import glob as _glob3
+        state_files = sorted(_glob3.glob(os.path.join(state_dir, "state_*.json")),
+                            key=os.path.getmtime, reverse=True)
+        if state_files:
+            with open(state_files[0]) as f:
+                state = _json.load(f)
+    except Exception:
+        pass
+
+    from shared.tool_recommendation import (
+        build_tool_profile, recommend_alternative,
+        get_recommendation_stats, should_recommend,
+    )
+
+    if not tool_name:
+        # Return overview stats
+        stats = get_recommendation_stats(state)
+        profiles = build_tool_profile(state)
+        profile_data = {}
+        for name, p in profiles.items():
+            if p.call_count > 0:
+                profile_data[name] = {
+                    "calls": p.call_count,
+                    "blocks": p.block_count,
+                    "success_rate": round(p.success_rate, 3),
+                    "block_rate": round(p.block_rate, 3),
+                }
+        return {
+            "stats": stats,
+            "profiles": profile_data,
+        }
+
+    # Get recommendation for specific tool
+    rec = recommend_alternative(tool_name, state)
+    needs_rec = should_recommend(tool_name, state)
+
+    profiles = build_tool_profile(state)
+    profile = profiles.get(tool_name)
+
+    result = {
+        "tool": tool_name,
+        "needs_recommendation": needs_rec,
+        "profile": None,
+        "recommendation": None,
+    }
+
+    if profile:
+        result["profile"] = {
+            "calls": profile.call_count,
+            "blocks": profile.block_count,
+            "success_rate": round(profile.success_rate, 3),
+            "block_rate": round(profile.block_rate, 3),
+        }
+
+    if rec:
+        result["recommendation"] = {
+            "suggested_tool": rec.suggested_tool,
+            "reason": rec.reason,
+            "confidence": round(rec.confidence, 3),
+            "improvement": round(rec.suggested_success - rec.original_success, 3),
+        }
+
+    return result
+
+
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
 # DORMANT: uncomment @mcp.tool() to reactivate

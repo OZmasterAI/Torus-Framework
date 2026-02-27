@@ -19993,6 +19993,245 @@ except Exception as _tf_exc:
     test("Tool Fingerprint Deep Tests: import and tests", False, str(_tf_exc))
 
 
+# ── Tool Recommendation Engine Deep Tests ───────────────────────────────────
+# Tests for tool_recommendation.py: build_tool_profile, should_recommend,
+# recommend_alternative, get_recommendation_stats
+
+try:
+    from shared.tool_recommendation import (
+        ToolProfile, Recommendation,
+        build_tool_profile, should_recommend, recommend_alternative,
+        get_recommendation_stats,
+        MIN_CALLS_FOR_STATS, BLOCK_RATE_THRESHOLD, MIN_IMPROVEMENT,
+        TOOL_EQUIVALENCES, ALWAYS_OK_TOOLS, SEQUENCE_FIXES,
+    )
+
+    # --- ToolProfile dataclass ---
+    _tr_tp = ToolProfile(tool_name="Edit")
+    test("TR: ToolProfile defaults", _tr_tp.call_count == 0)
+    test("TR: ToolProfile success_rate default", _tr_tp.success_rate == 1.0)
+    test("TR: ToolProfile block_rate default", _tr_tp.block_rate == 0.0)
+
+    _tr_tp2 = ToolProfile("Write", call_count=10, block_count=3, error_count=1,
+                           success_rate=0.6, block_rate=0.3)
+    test("TR: ToolProfile custom", _tr_tp2.success_rate == 0.6)
+
+    # --- Recommendation dataclass ---
+    _tr_rec = Recommendation("Edit", "Write", "test reason", 0.8, 0.5, 0.9)
+    test("TR: Recommendation fields", _tr_rec.original_tool == "Edit")
+    test("TR: Recommendation suggested", _tr_rec.suggested_tool == "Write")
+    test("TR: Recommendation confidence", _tr_rec.confidence == 0.8)
+
+    # --- Constants ---
+    test("TR: MIN_CALLS_FOR_STATS > 0", MIN_CALLS_FOR_STATS > 0)
+    test("TR: BLOCK_RATE_THRESHOLD > 0", BLOCK_RATE_THRESHOLD > 0)
+    test("TR: BLOCK_RATE_THRESHOLD < 1", BLOCK_RATE_THRESHOLD < 1.0)
+    test("TR: MIN_IMPROVEMENT > 0", MIN_IMPROVEMENT > 0)
+    test("TR: ALWAYS_OK has Read", "Read" in ALWAYS_OK_TOOLS)
+    test("TR: ALWAYS_OK has Glob", "Glob" in ALWAYS_OK_TOOLS)
+    test("TR: Edit has equivalents", "Edit" in TOOL_EQUIVALENCES)
+    test("TR: Write equiv of Edit", "Write" in TOOL_EQUIVALENCES["Edit"])
+    test("TR: SEQUENCE_FIXES non-empty", len(SEQUENCE_FIXES) > 0)
+
+    # --- build_tool_profile ---
+    # Empty state
+    _tr_empty_p = build_tool_profile({})
+    test("TR: empty state = empty profiles", len(_tr_empty_p) == 0)
+
+    # State with tool counts but no blocks
+    _tr_clean_state = {
+        "tool_call_counts": {"Edit": 20, "Read": 50, "Bash": 15},
+        "gate_block_outcomes": [],
+    }
+    _tr_clean_p = build_tool_profile(_tr_clean_state)
+    test("TR: clean state 3 profiles", len(_tr_clean_p) == 3)
+    test("TR: Edit success = 1.0", _tr_clean_p["Edit"].success_rate == 1.0)
+    test("TR: Edit block = 0.0", _tr_clean_p["Edit"].block_rate == 0.0)
+    test("TR: Edit calls = 20", _tr_clean_p["Edit"].call_count == 20)
+
+    # State with blocks
+    _tr_blocked_state = {
+        "tool_call_counts": {"Edit": 20, "Write": 10, "Read": 30},
+        "gate_block_outcomes": [
+            {"tool": "Edit"}, {"tool": "Edit"}, {"tool": "Edit"},
+            {"tool": "Edit"}, {"tool": "Edit"}, {"tool": "Edit"},
+            {"tool": "Edit"}, {"tool": "Edit"},  # 8 blocks on Edit
+            {"tool": "Write"},  # 1 block on Write
+        ],
+    }
+    _tr_blocked_p = build_tool_profile(_tr_blocked_state)
+    test("TR: Edit block_rate = 0.4", abs(_tr_blocked_p["Edit"].block_rate - 0.4) < 0.01)
+    test("TR: Edit success = 0.6", abs(_tr_blocked_p["Edit"].success_rate - 0.6) < 0.01)
+    test("TR: Write block_rate = 0.1", abs(_tr_blocked_p["Write"].block_rate - 0.1) < 0.01)
+    test("TR: Read block_rate = 0.0", _tr_blocked_p["Read"].block_rate == 0.0)
+    test("TR: Edit block_count = 8", _tr_blocked_p["Edit"].block_count == 8)
+
+    # With errors
+    _tr_error_state = {
+        "tool_call_counts": {"Bash": 10},
+        "gate_block_outcomes": [{"tool": "Bash"}] * 2,
+        "tool_errors": {"Bash": 3},
+    }
+    _tr_error_p = build_tool_profile(_tr_error_state)
+    test("TR: Bash with errors success = 0.5",
+         abs(_tr_error_p["Bash"].success_rate - 0.5) < 0.01)
+    test("TR: Bash error_count = 3", _tr_error_p["Bash"].error_count == 3)
+
+    # Legacy 'tool_name' key in block outcomes
+    _tr_legacy_state = {
+        "tool_call_counts": {"Edit": 10},
+        "gate_block_outcomes": [{"tool_name": "Edit"}] * 5,
+    }
+    _tr_legacy_p = build_tool_profile(_tr_legacy_state)
+    test("TR: legacy tool_name key works", _tr_legacy_p["Edit"].block_count == 5)
+
+    # --- should_recommend ---
+    _tr_sr_state = {
+        "tool_call_counts": {"Edit": 20, "Read": 50},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 8,
+    }
+    test("TR: should_recommend high block Edit", should_recommend("Edit", _tr_sr_state) is True)
+    test("TR: should_recommend clean Read", should_recommend("Read", _tr_sr_state) is False)
+    test("TR: should_recommend always-ok Glob",
+         should_recommend("Glob", _tr_sr_state) is False)
+
+    # Not enough data
+    _tr_few_state = {
+        "tool_call_counts": {"Edit": 3},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 2,
+    }
+    test("TR: should_recommend few calls = False",
+         should_recommend("Edit", _tr_few_state) is False)
+
+    # Unknown tool
+    test("TR: should_recommend unknown tool = False",
+         should_recommend("UnknownTool", _tr_sr_state) is False)
+
+    # Below threshold
+    _tr_low_block = {
+        "tool_call_counts": {"Edit": 20},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 4,  # 20% < 30% threshold
+    }
+    test("TR: should_recommend low block = False",
+         should_recommend("Edit", _tr_low_block) is False)
+
+    # --- recommend_alternative ---
+    # Always-OK tool
+    test("TR: no rec for Read", recommend_alternative("Read", {}) is None)
+
+    # Not enough data
+    test("TR: no rec few calls",
+         recommend_alternative("Edit", {"tool_call_counts": {"Edit": 2}}) is None)
+
+    # Sequence-based recommendation: Glob -> Edit should suggest Read
+    _tr_seq_state = {
+        "tool_call_counts": {"Edit": 10, "Read": 20, "Glob": 15},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 5,
+    }
+    _tr_seq_rec = recommend_alternative("Edit", _tr_seq_state, recent_tools=["Glob"])
+    test("TR: sequence rec for Glob->Edit", _tr_seq_rec is not None)
+    if _tr_seq_rec:
+        test("TR: sequence rec suggests Read", _tr_seq_rec.suggested_tool == "Read")
+        test("TR: sequence rec has reason", "Read" in _tr_seq_rec.reason)
+        test("TR: sequence rec confidence = 0.8", _tr_seq_rec.confidence == 0.8)
+
+    # Equivalence-based recommendation: Edit blocked, Write succeeds
+    _tr_equiv_state = {
+        "tool_call_counts": {"Edit": 20, "Write": 20},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 12,  # 60% block rate on Edit
+        # Write has 0 blocks → 100% success
+    }
+    _tr_equiv_rec = recommend_alternative("Edit", _tr_equiv_state)
+    test("TR: equiv rec Edit->Write", _tr_equiv_rec is not None)
+    if _tr_equiv_rec:
+        test("TR: equiv rec suggests Write", _tr_equiv_rec.suggested_tool == "Write")
+        test("TR: equiv rec confidence > 0", _tr_equiv_rec.confidence > 0)
+        test("TR: equiv rec improvement", _tr_equiv_rec.suggested_success > _tr_equiv_rec.original_success)
+
+    # No recommendation when both tools perform equally
+    _tr_equal_state = {
+        "tool_call_counts": {"Edit": 20, "Write": 20},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 3 + [{"tool": "Write"}] * 3,
+    }
+    _tr_equal_rec = recommend_alternative("Edit", _tr_equal_state)
+    test("TR: no rec when equal performance", _tr_equal_rec is None)
+
+    # Sequence fixes: Grep -> Write should suggest Read
+    _tr_grep_state = {
+        "tool_call_counts": {"Write": 10, "Read": 20, "Grep": 15},
+        "gate_block_outcomes": [{"tool": "Write"}] * 5,
+    }
+    _tr_grep_rec = recommend_alternative("Write", _tr_grep_state, recent_tools=["Grep"])
+    test("TR: Grep->Write suggests Read", _tr_grep_rec is not None)
+    if _tr_grep_rec:
+        test("TR: Grep->Write rec = Read", _tr_grep_rec.suggested_tool == "Read")
+
+    # --- get_recommendation_stats ---
+    _tr_stats_empty = get_recommendation_stats({})
+    test("TR: stats empty = 0 analyzed", _tr_stats_empty["tools_analyzed"] == 0)
+    test("TR: stats empty at_risk = []", _tr_stats_empty["tools_at_risk"] == [])
+
+    _tr_stats_state = {
+        "tool_call_counts": {"Edit": 20, "Read": 50, "Bash": 15, "Write": 10},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 8 + [{"tool": "Bash"}] * 6,
+    }
+    _tr_stats = get_recommendation_stats(_tr_stats_state)
+    test("TR: stats tools_analyzed = 4", _tr_stats["tools_analyzed"] == 4)
+    test("TR: stats at_risk has Edit", "Edit" in _tr_stats["tools_at_risk"])
+    test("TR: stats at_risk has Bash", "Bash" in _tr_stats["tools_at_risk"])
+    test("TR: stats top_blockers is list", isinstance(_tr_stats["top_blockers"], list))
+    test("TR: stats top_blockers <= 3", len(_tr_stats["top_blockers"]) <= 3)
+    test("TR: stats healthiest is list", isinstance(_tr_stats["healthiest"], list))
+    test("TR: stats healthiest <= 3", len(_tr_stats["healthiest"]) <= 3)
+
+    # Top blocker should be Bash (40% block rate) or Edit (40%)
+    _tr_blocker_names = [b[0] for b in _tr_stats["top_blockers"]]
+    test("TR: top blockers include Edit or Bash",
+         "Edit" in _tr_blocker_names or "Bash" in _tr_blocker_names)
+
+    # Healthiest should include Read (0% blocks)
+    _tr_healthy_names = [h[0] for h in _tr_stats["healthiest"]]
+    test("TR: healthiest includes Read", "Read" in _tr_healthy_names)
+
+    # Only reliable tools (>= MIN_CALLS_FOR_STATS) appear in at_risk
+    _tr_unreliable_state = {
+        "tool_call_counts": {"Edit": 3},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 3,  # 100% blocked but too few calls
+    }
+    _tr_unreliable_stats = get_recommendation_stats(_tr_unreliable_state)
+    test("TR: unreliable tool not at_risk", "Edit" not in _tr_unreliable_stats["tools_at_risk"])
+
+    # --- Edge cases ---
+    # Non-dict block outcomes are skipped
+    _tr_bad_block_state = {
+        "tool_call_counts": {"Edit": 10},
+        "gate_block_outcomes": ["not_a_dict", None, 42],
+    }
+    _tr_bad_p = build_tool_profile(_tr_bad_block_state)
+    test("TR: non-dict blocks skipped", _tr_bad_p["Edit"].block_count == 0)
+
+    # Zero call count
+    _tr_zero_state = {
+        "tool_call_counts": {"Edit": 0},
+        "gate_block_outcomes": [],
+    }
+    _tr_zero_p = build_tool_profile(_tr_zero_state)
+    test("TR: zero calls success = 1.0", _tr_zero_p["Edit"].success_rate == 1.0)
+    test("TR: zero calls block = 0.0", _tr_zero_p["Edit"].block_rate == 0.0)
+
+    # Tool only in blocks, not in counts
+    _tr_orphan_state = {
+        "tool_call_counts": {},
+        "gate_block_outcomes": [{"tool": "Mystery"}],
+    }
+    _tr_orphan_p = build_tool_profile(_tr_orphan_state)
+    test("TR: orphan block tool tracked", "Mystery" in _tr_orphan_p)
+    test("TR: orphan block count = 1", _tr_orphan_p["Mystery"].block_count == 1)
+
+except Exception as _tr_exc:
+    test("Tool Recommendation Engine Tests: import and tests", False, str(_tr_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
