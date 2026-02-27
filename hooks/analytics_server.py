@@ -1371,6 +1371,58 @@ def event_stats(event_type: str = "", limit: int = 20) -> dict:
     }
 
 
+# ── Session Replay ───────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def session_replay(lookback_hours: int = 1, gate_filter: str = "",
+                   tool_filter: str = "", format: str = "text") -> dict:
+    """Replay the session timeline showing gate decisions chronologically.
+
+    Builds a timeline from audit logs showing every gate fire, block, and
+    warning.  Supports text, mermaid, and stats export formats.  Also
+    detects anomalous patterns like consecutive blocks and gate thrashing.
+
+    Args:
+        lookback_hours: Hours of history to replay (default 1, max 168).
+        gate_filter: Only show events matching this gate name substring.
+        tool_filter: Only show events for this tool name.
+        format: Output format - "text", "mermaid", "stats", or "patterns".
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.session_replay import (
+            build_timeline, export_text, export_mermaid,
+            get_timeline_stats, detect_patterns,
+        )
+    except ImportError:
+        return {"error": "session_replay module not available"}
+
+    lookback_hours = max(1, min(168, lookback_hours))
+
+    if format == "mermaid":
+        return {"mermaid": export_mermaid(lookback_hours)}
+    elif format == "stats":
+        return get_timeline_stats(lookback_hours)
+    elif format == "patterns":
+        return detect_patterns(lookback_hours)
+    else:
+        timeline = build_timeline(lookback_hours, gate_filter, tool_filter)
+        text = export_text(lookback_hours)
+        patterns = detect_patterns(lookback_hours)
+        return {
+            "text_timeline": text,
+            "event_count": timeline["event_count"],
+            "duration_seconds": timeline["duration_seconds"],
+            "block_count": timeline["event_types"].get("BLOCK", 0),
+            "gates_seen": timeline["gates_seen"],
+            "tools_seen": timeline["tools_seen"],
+            "patterns": patterns["patterns"],
+            "healthy": patterns["healthy"],
+        }
+
+
 # ── Code Hotspot Analysis ────────────────────────────────────────────────────
 
 @mcp.tool()

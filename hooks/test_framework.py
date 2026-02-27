@@ -15363,6 +15363,125 @@ except Exception as _ch_exc:
     test("Hotspot: import and basic tests", False, str(_ch_exc))
 
 
+# ─────────────────────────────────────────────────
+# Session Replay
+# ─────────────────────────────────────────────────
+print("\n--- Session Replay ---")
+
+try:
+    from shared.session_replay import (
+        build_timeline, export_text, export_mermaid,
+        get_timeline_stats, detect_patterns,
+    )
+
+    # build_timeline: returns expected structure
+    _sr_timeline = build_timeline(lookback_hours=1)
+    test("Replay: build_timeline returns dict",
+         isinstance(_sr_timeline, dict), f"type={type(_sr_timeline)}")
+    test("Replay: timeline has events",
+         "events" in _sr_timeline, f"keys={set(_sr_timeline.keys())}")
+    test("Replay: timeline has event_count",
+         "event_count" in _sr_timeline and isinstance(_sr_timeline["event_count"], int),
+         f"count={_sr_timeline.get('event_count')}")
+    test("Replay: timeline has duration_seconds",
+         "duration_seconds" in _sr_timeline,
+         f"keys={set(_sr_timeline.keys())}")
+    test("Replay: events is list",
+         isinstance(_sr_timeline["events"], list),
+         f"type={type(_sr_timeline['events'])}")
+    test("Replay: gates_seen is list",
+         isinstance(_sr_timeline.get("gates_seen", []), list),
+         f"type={type(_sr_timeline.get('gates_seen'))}")
+    test("Replay: tools_seen is list",
+         isinstance(_sr_timeline.get("tools_seen", []), list),
+         f"type={type(_sr_timeline.get('tools_seen'))}")
+    test("Replay: event_types is dict",
+         isinstance(_sr_timeline.get("event_types", {}), dict),
+         f"type={type(_sr_timeline.get('event_types'))}")
+
+    # Verify event structure if events exist
+    if _sr_timeline["events"]:
+        _sr_ev = _sr_timeline["events"][0]
+        test("Replay: event has timestamp",
+             "timestamp" in _sr_ev, f"keys={set(_sr_ev.keys())}")
+        test("Replay: event has type",
+             _sr_ev.get("type") in ("BLOCK", "PASS", "WARN", "EVENT"),
+             f"type={_sr_ev.get('type')}")
+        test("Replay: event has gate",
+             "gate" in _sr_ev, f"keys={set(_sr_ev.keys())}")
+        test("Replay: event has tool",
+             "tool" in _sr_ev, f"keys={set(_sr_ev.keys())}")
+    else:
+        skip("Replay: event structure", "no events in last hour")
+
+    # build_timeline: gate_filter works
+    _sr_filtered = build_timeline(lookback_hours=1, gate_filter="gate_01")
+    test("Replay: gate_filter returns subset",
+         _sr_filtered["event_count"] <= _sr_timeline["event_count"],
+         f"filtered={_sr_filtered['event_count']}, total={_sr_timeline['event_count']}")
+
+    # export_text: returns string with header
+    _sr_text = export_text(lookback_hours=1)
+    test("Replay: export_text returns string",
+         isinstance(_sr_text, str), f"type={type(_sr_text)}")
+    test("Replay: text has Session Timeline header",
+         "Session Timeline" in _sr_text, "missing header")
+    test("Replay: text has separator",
+         "=" * 10 in _sr_text, "missing separator")
+
+    # export_mermaid: returns mermaid markdown
+    _sr_mermaid = export_mermaid(lookback_hours=1)
+    test("Replay: export_mermaid returns string",
+         isinstance(_sr_mermaid, str), f"type={type(_sr_mermaid)}")
+    test("Replay: mermaid starts with code fence",
+         "```mermaid" in _sr_mermaid, "missing mermaid fence")
+    test("Replay: mermaid has sequenceDiagram",
+         "sequenceDiagram" in _sr_mermaid, "missing sequenceDiagram")
+
+    # get_timeline_stats: returns expected keys
+    _sr_stats = get_timeline_stats(lookback_hours=1)
+    test("Replay: stats returns dict",
+         isinstance(_sr_stats, dict), f"type={type(_sr_stats)}")
+    _sr_stat_keys = {"total_events", "duration_minutes", "block_count",
+                     "block_rate", "gate_count"}
+    test("Replay: stats has expected keys",
+         _sr_stat_keys.issubset(set(_sr_stats.keys())),
+         f"missing={_sr_stat_keys - set(_sr_stats.keys())}")
+    test("Replay: block_rate in [0,1]",
+         0.0 <= _sr_stats.get("block_rate", 0) <= 1.0,
+         f"rate={_sr_stats.get('block_rate')}")
+
+    # detect_patterns: returns expected structure
+    _sr_patterns = detect_patterns(lookback_hours=1)
+    test("Replay: detect_patterns returns dict",
+         isinstance(_sr_patterns, dict), f"type={type(_sr_patterns)}")
+    test("Replay: patterns has 'patterns' list",
+         isinstance(_sr_patterns.get("patterns", []), list),
+         f"type={type(_sr_patterns.get('patterns'))}")
+    test("Replay: patterns has 'healthy' bool",
+         isinstance(_sr_patterns.get("healthy"), bool),
+         f"type={type(_sr_patterns.get('healthy'))}")
+    test("Replay: patterns has 'summary' string",
+         isinstance(_sr_patterns.get("summary", ""), str),
+         f"type={type(_sr_patterns.get('summary'))}")
+
+    # Verify pattern structure if any detected
+    if _sr_patterns["patterns"]:
+        _sr_pat = _sr_patterns["patterns"][0]
+        test("Replay: pattern has type",
+             _sr_pat.get("type") in ("consecutive_blocks", "rapid_blocks", "gate_dominance"),
+             f"type={_sr_pat.get('type')}")
+        test("Replay: pattern has severity",
+             _sr_pat.get("severity") in ("info", "warn", "error"),
+             f"severity={_sr_pat.get('severity')}")
+        test("Replay: pattern has description",
+             "description" in _sr_pat and isinstance(_sr_pat["description"], str),
+             f"keys={set(_sr_pat.keys())}")
+
+except Exception as _sr_exc:
+    test("Replay: import and basic tests", False, str(_sr_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
