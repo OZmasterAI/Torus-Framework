@@ -26064,6 +26064,1137 @@ except Exception as _cv_exc:
     test("CV: import and tests", False, str(_cv_exc))
 
 
+# ─────────────────────────────────────────────────
+# RS: retry_strategy (shared/retry_strategy.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.retry_strategy import (
+        Strategy, Jitter, RetryConfig, _OperationState,
+        _fib, _compute_raw_delay, _apply_jitter,
+        should_retry, get_delay, record_attempt,
+        reset as rs_reset, get_stats, with_retry,
+        _RetryContextManager, _get_state, _registry,
+    )
+
+    # Enum values
+    test("RS: Strategy.EXPONENTIAL_BACKOFF value",
+         Strategy.EXPONENTIAL_BACKOFF == "exponential_backoff")
+    test("RS: Strategy.LINEAR_BACKOFF value",
+         Strategy.LINEAR_BACKOFF == "linear_backoff")
+    test("RS: Strategy.CONSTANT value",
+         Strategy.CONSTANT == "constant")
+    test("RS: Strategy.FIBONACCI value",
+         Strategy.FIBONACCI == "fibonacci")
+    test("RS: Jitter.NONE value",
+         Jitter.NONE == "none")
+    test("RS: Jitter.FULL value",
+         Jitter.FULL == "full")
+    test("RS: Jitter.EQUAL value",
+         Jitter.EQUAL == "equal")
+    test("RS: Jitter.DECORRELATED value",
+         Jitter.DECORRELATED == "decorrelated")
+
+    # RetryConfig defaults
+    _rs_cfg_default = RetryConfig()
+    test("RS: RetryConfig default strategy is EXPONENTIAL_BACKOFF",
+         _rs_cfg_default.strategy == Strategy.EXPONENTIAL_BACKOFF)
+    test("RS: RetryConfig default jitter is NONE",
+         _rs_cfg_default.jitter == Jitter.NONE)
+    test("RS: RetryConfig default max_retries == 3",
+         _rs_cfg_default.max_retries == 3)
+    test("RS: RetryConfig default base_delay == 1.0",
+         _rs_cfg_default.base_delay == 1.0)
+    test("RS: RetryConfig default max_delay == 60.0",
+         _rs_cfg_default.max_delay == 60.0)
+    test("RS: RetryConfig default multiplier == 2.0",
+         _rs_cfg_default.multiplier == 2.0)
+    test("RS: RetryConfig default step == 1.0",
+         _rs_cfg_default.step == 1.0)
+
+    # _OperationState defaults
+    _rs_state_default = _OperationState()
+    test("RS: _OperationState default attempts == 0",
+         _rs_state_default.attempts == 0)
+    test("RS: _OperationState default successes == 0",
+         _rs_state_default.successes == 0)
+    test("RS: _OperationState default failures == 0",
+         _rs_state_default.failures == 0)
+    test("RS: _OperationState default last_delay == 0.0",
+         _rs_state_default.last_delay == 0.0)
+    test("RS: _OperationState default errors is empty list",
+         _rs_state_default.errors == [])
+    test("RS: _OperationState default total_delay == 0.0",
+         _rs_state_default.total_delay == 0.0)
+    test("RS: _OperationState default max_errors_stored == 10",
+         _rs_state_default.max_errors_stored == 10)
+
+    # _fib known values
+    test("RS: _fib(0) == 0",  _fib(0) == 0)
+    test("RS: _fib(1) == 1",  _fib(1) == 1)
+    test("RS: _fib(2) == 1",  _fib(2) == 1)
+    test("RS: _fib(3) == 2",  _fib(3) == 2)
+    test("RS: _fib(4) == 3",  _fib(4) == 3)
+    test("RS: _fib(5) == 5",  _fib(5) == 5)
+    test("RS: _fib(6) == 8",  _fib(6) == 8)
+    test("RS: _fib(10) == 55", _fib(10) == 55)
+
+    # _compute_raw_delay — EXPONENTIAL_BACKOFF: base * multiplier^attempt
+    _rs_exp_cfg = RetryConfig(strategy=Strategy.EXPONENTIAL_BACKOFF,
+                              base_delay=1.0, multiplier=2.0, max_delay=1000.0, jitter=Jitter.NONE)
+    test("RS: _compute_raw_delay EXPONENTIAL attempt=0 == 1.0",
+         abs(_compute_raw_delay(0, _rs_exp_cfg) - 1.0) < 1e-9)
+    test("RS: _compute_raw_delay EXPONENTIAL attempt=1 == 2.0",
+         abs(_compute_raw_delay(1, _rs_exp_cfg) - 2.0) < 1e-9)
+    test("RS: _compute_raw_delay EXPONENTIAL attempt=3 == 8.0",
+         abs(_compute_raw_delay(3, _rs_exp_cfg) - 8.0) < 1e-9)
+
+    # _compute_raw_delay — LINEAR_BACKOFF: base + step * attempt
+    _rs_lin_cfg = RetryConfig(strategy=Strategy.LINEAR_BACKOFF,
+                              base_delay=1.0, step=2.0, max_delay=1000.0, jitter=Jitter.NONE)
+    test("RS: _compute_raw_delay LINEAR attempt=0 == 1.0",
+         abs(_compute_raw_delay(0, _rs_lin_cfg) - 1.0) < 1e-9)
+    test("RS: _compute_raw_delay LINEAR attempt=1 == 3.0",
+         abs(_compute_raw_delay(1, _rs_lin_cfg) - 3.0) < 1e-9)
+    test("RS: _compute_raw_delay LINEAR attempt=4 == 9.0",
+         abs(_compute_raw_delay(4, _rs_lin_cfg) - 9.0) < 1e-9)
+
+    # _compute_raw_delay — CONSTANT: always base_delay
+    _rs_const_cfg = RetryConfig(strategy=Strategy.CONSTANT, base_delay=5.0,
+                                max_delay=100.0, jitter=Jitter.NONE)
+    test("RS: _compute_raw_delay CONSTANT attempt=0 == 5.0",
+         abs(_compute_raw_delay(0, _rs_const_cfg) - 5.0) < 1e-9)
+    test("RS: _compute_raw_delay CONSTANT attempt=10 == 5.0",
+         abs(_compute_raw_delay(10, _rs_const_cfg) - 5.0) < 1e-9)
+
+    # _compute_raw_delay — FIBONACCI: base * fib(attempt+1)
+    _rs_fib_cfg = RetryConfig(strategy=Strategy.FIBONACCI, base_delay=1.0,
+                              max_delay=1000.0, jitter=Jitter.NONE)
+    # attempt=0 -> fib(max(1,1))=fib(1)=1, *1.0 = 1.0
+    test("RS: _compute_raw_delay FIBONACCI attempt=0 == 1.0",
+         abs(_compute_raw_delay(0, _rs_fib_cfg) - 1.0) < 1e-9)
+    # attempt=2 -> fib(max(1,3))=fib(3)=2, *1.0 = 2.0
+    test("RS: _compute_raw_delay FIBONACCI attempt=2 == 2.0",
+         abs(_compute_raw_delay(2, _rs_fib_cfg) - 2.0) < 1e-9)
+    # attempt=3 -> fib(4)=3, *1.0 = 3.0
+    test("RS: _compute_raw_delay FIBONACCI attempt=3 == 3.0",
+         abs(_compute_raw_delay(3, _rs_fib_cfg) - 3.0) < 1e-9)
+
+    # max_delay cap in _compute_raw_delay
+    _rs_cap_cfg = RetryConfig(strategy=Strategy.EXPONENTIAL_BACKOFF,
+                              base_delay=1.0, multiplier=10.0, max_delay=5.0, jitter=Jitter.NONE)
+    test("RS: _compute_raw_delay respects max_delay cap",
+         _compute_raw_delay(5, _rs_cap_cfg) <= 5.0 + 1e-9)
+
+    # _apply_jitter — NONE returns raw unchanged
+    _rs_none_jit_cfg = RetryConfig(jitter=Jitter.NONE)
+    test("RS: _apply_jitter NONE returns raw unchanged",
+         abs(_apply_jitter(3.0, _rs_none_jit_cfg, 0.0) - 3.0) < 1e-9)
+
+    # _apply_jitter — FULL returns value in [0, raw]
+    _rs_full_jit_cfg = RetryConfig(jitter=Jitter.FULL, base_delay=4.0)
+    _rs_full_results = [_apply_jitter(4.0, _rs_full_jit_cfg, 0.0) for _ in range(50)]
+    test("RS: _apply_jitter FULL all values in [0, raw]",
+         all(0.0 <= v <= 4.0 + 1e-9 for v in _rs_full_results))
+
+    # _apply_jitter — EQUAL returns value in [raw/2, raw]
+    _rs_eq_jit_cfg = RetryConfig(jitter=Jitter.EQUAL, base_delay=4.0)
+    _rs_eq_results = [_apply_jitter(4.0, _rs_eq_jit_cfg, 0.0) for _ in range(50)]
+    test("RS: _apply_jitter EQUAL all values in [raw/2, raw]",
+         all(2.0 - 1e-9 <= v <= 4.0 + 1e-9 for v in _rs_eq_results))
+
+    # _apply_jitter — DECORRELATED result >= base_delay
+    _rs_decorr_cfg = RetryConfig(jitter=Jitter.DECORRELATED, base_delay=1.0)
+    _rs_decorr_results = [_apply_jitter(4.0, _rs_decorr_cfg, 2.0) for _ in range(30)]
+    test("RS: _apply_jitter DECORRELATED all values >= base_delay",
+         all(v >= 1.0 - 1e-9 for v in _rs_decorr_results))
+
+    # should_retry — before and after max_retries
+    rs_reset("_test_rs_should_retry_fresh")
+    _rs_sr_cfg = RetryConfig(max_retries=3)
+    test("RS: should_retry True before any failure",
+         should_retry("_test_rs_should_retry_fresh", config=_rs_sr_cfg))
+    for _ in range(3):
+        record_attempt("_test_rs_should_retry_fresh", success=False, config=_rs_sr_cfg)
+    test("RS: should_retry False after max_retries failures",
+         not should_retry("_test_rs_should_retry_fresh", config=_rs_sr_cfg))
+
+    # should_retry — partial failures still allow retry
+    rs_reset("_test_rs_partial_fail")
+    _rs_partial_cfg = RetryConfig(max_retries=5)
+    for _ in range(3):
+        record_attempt("_test_rs_partial_fail", success=False, config=_rs_partial_cfg)
+    test("RS: should_retry True when failures < max_retries",
+         should_retry("_test_rs_partial_fail", config=_rs_partial_cfg))
+
+    # get_delay — returns non-negative float
+    rs_reset("_test_rs_get_delay")
+    _rs_gd_cfg = RetryConfig(strategy=Strategy.EXPONENTIAL_BACKOFF,
+                             base_delay=1.0, multiplier=2.0, max_delay=60.0, jitter=Jitter.NONE)
+    _rs_gd_val = get_delay("_test_rs_get_delay", config=_rs_gd_cfg)
+    test("RS: get_delay returns non-negative float",
+         isinstance(_rs_gd_val, float) and _rs_gd_val >= 0.0)
+
+    # get_delay — grows with failures (EXPONENTIAL, no jitter)
+    rs_reset("_test_rs_get_delay_grows")
+    _rs_grow_cfg = RetryConfig(strategy=Strategy.EXPONENTIAL_BACKOFF,
+                               base_delay=1.0, multiplier=2.0, max_delay=1000.0, jitter=Jitter.NONE)
+    _rs_grow_delays = []
+    for _ in range(4):
+        _rs_grow_delays.append(get_delay("_test_rs_get_delay_grows", config=_rs_grow_cfg))
+        record_attempt("_test_rs_get_delay_grows", success=False, config=_rs_grow_cfg)
+    test("RS: get_delay grows with EXPONENTIAL_BACKOFF (no jitter)",
+         _rs_grow_delays == [1.0, 2.0, 4.0, 8.0],
+         f"got {_rs_grow_delays}")
+
+    # record_attempt — success increments successes and attempts
+    rs_reset("_test_rs_record_succ")
+    _rs_rec_cfg = RetryConfig(max_retries=10)
+    record_attempt("_test_rs_record_succ", success=True, config=_rs_rec_cfg)
+    _rs_rec_stats = get_stats("_test_rs_record_succ")
+    test("RS: record_attempt success increments attempts",
+         _rs_rec_stats.get("attempts") == 1)
+    test("RS: record_attempt success increments successes",
+         _rs_rec_stats.get("successes") == 1)
+    test("RS: record_attempt success does not increment failures",
+         _rs_rec_stats.get("failures") == 0)
+
+    # record_attempt — failure increments failures and stores error
+    rs_reset("_test_rs_record_fail")
+    _rs_rf_cfg = RetryConfig(max_retries=10)
+    record_attempt("_test_rs_record_fail", success=False, error="test error msg", config=_rs_rf_cfg)
+    _rs_rf_stats = get_stats("_test_rs_record_fail")
+    test("RS: record_attempt failure increments failures",
+         _rs_rf_stats.get("failures") == 1)
+    test("RS: record_attempt failure stores error message",
+         "test error msg" in _rs_rf_stats.get("recent_errors", []))
+
+    # record_attempt — mixed success/failure counts
+    rs_reset("_test_rs_mixed")
+    _rs_mix_cfg = RetryConfig(max_retries=10)
+    record_attempt("_test_rs_mixed", success=True, config=_rs_mix_cfg)
+    record_attempt("_test_rs_mixed", success=False, error="e1", config=_rs_mix_cfg)
+    record_attempt("_test_rs_mixed", success=True, config=_rs_mix_cfg)
+    _rs_mix_stats = get_stats("_test_rs_mixed")
+    test("RS: record_attempt mixed: attempts == 3",
+         _rs_mix_stats.get("attempts") == 3)
+    test("RS: record_attempt mixed: successes == 2",
+         _rs_mix_stats.get("successes") == 2)
+    test("RS: record_attempt mixed: failures == 1",
+         _rs_mix_stats.get("failures") == 1)
+
+    # reset — clears all state
+    rs_reset("_test_rs_reset_op")
+    record_attempt("_test_rs_reset_op", success=False, error="oops")
+    rs_reset("_test_rs_reset_op")
+    _rs_reset_stats = get_stats("_test_rs_reset_op")
+    test("RS: reset clears attempts to 0",
+         _rs_reset_stats.get("attempts") == 0)
+    test("RS: reset clears failures to 0",
+         _rs_reset_stats.get("failures") == 0)
+    test("RS: reset clears recent_errors to []",
+         _rs_reset_stats.get("recent_errors") == [])
+
+    # get_stats — expected keys present
+    rs_reset("_test_rs_stats_keys")
+    _rs_sk_stats = get_stats("_test_rs_stats_keys")
+    _rs_expected_keys = {"operation", "attempts", "successes", "failures",
+                         "last_delay", "total_delay", "recent_errors", "success_rate"}
+    test("RS: get_stats returns all expected keys",
+         _rs_expected_keys.issubset(set(_rs_sk_stats.keys())))
+
+    # get_stats — success_rate computed correctly
+    rs_reset("_test_rs_stats_rate")
+    _rs_rate_cfg = RetryConfig(max_retries=10)
+    record_attempt("_test_rs_stats_rate", success=True, config=_rs_rate_cfg)
+    record_attempt("_test_rs_stats_rate", success=True, config=_rs_rate_cfg)
+    record_attempt("_test_rs_stats_rate", success=False, config=_rs_rate_cfg)
+    _rs_rate_stats = get_stats("_test_rs_stats_rate")
+    test("RS: get_stats success_rate is 0.6667",
+         abs(_rs_rate_stats.get("success_rate", 0) - 0.6667) < 0.001,
+         f"got {_rs_rate_stats.get('success_rate')}")
+
+    # _get_state — creates new state for unknown operation
+    _rs_new_op = "_test_rs_brand_new_op_xyz999"
+    if _rs_new_op in _registry:
+        del _registry[_rs_new_op]
+    _rs_new_state = _get_state(_rs_new_op)
+    test("RS: _get_state creates new _OperationState for unknown op",
+         isinstance(_rs_new_state, _OperationState))
+    test("RS: _get_state new state has attempts == 0",
+         _rs_new_state.attempts == 0)
+    test("RS: _get_state registers op in _registry",
+         _rs_new_op in _registry)
+
+    # _get_state — returns same object on repeated calls
+    _rs_same_state = _get_state(_rs_new_op)
+    test("RS: _get_state returns same object on second call",
+         _rs_same_state is _rs_new_state)
+
+    # with_retry — returns _RetryContextManager
+    _rs_wcm = with_retry("_test_rs_wcm_op", strategy=Strategy.CONSTANT, base_delay=0.0)
+    test("RS: with_retry returns _RetryContextManager",
+         isinstance(_rs_wcm, _RetryContextManager))
+
+    # with_retry — as context manager records success when success() called
+    rs_reset("_test_rs_ctx_success")
+    with with_retry("_test_rs_ctx_success", strategy=Strategy.CONSTANT,
+                    base_delay=0.0) as _rs_rt:
+        _rs_rt.success()
+    _rs_ctx_stats = get_stats("_test_rs_ctx_success")
+    test("RS: with_retry ctx manager records success when success() called",
+         _rs_ctx_stats.get("successes") == 1)
+    test("RS: with_retry ctx manager attempts == 1 after success",
+         _rs_ctx_stats.get("attempts") == 1)
+
+    # with_retry — context manager records success on clean exit (no success() call)
+    rs_reset("_test_rs_ctx_auto_success")
+    with with_retry("_test_rs_ctx_auto_success", strategy=Strategy.CONSTANT,
+                    base_delay=0.0):
+        pass  # clean exit, no explicit success() call
+    _rs_ctx_auto_stats = get_stats("_test_rs_ctx_auto_success")
+    test("RS: with_retry ctx manager auto-records success on clean exit",
+         _rs_ctx_auto_stats.get("successes") == 1)
+
+    # with_retry — context manager records failure on exception
+    rs_reset("_test_rs_ctx_fail")
+    try:
+        with with_retry("_test_rs_ctx_fail", strategy=Strategy.CONSTANT,
+                        base_delay=0.0, max_retries=3):
+            raise ValueError("ctx exception")
+    except ValueError:
+        pass
+    _rs_ctx_fail_stats = get_stats("_test_rs_ctx_fail")
+    test("RS: with_retry ctx manager records failure on exception",
+         _rs_ctx_fail_stats.get("failures") == 1)
+
+    # with_retry — as decorator wraps function and retries
+    _rs_call_count = {"n": 0}
+    rs_reset("_test_rs_decorator")
+
+    @with_retry(strategy=Strategy.CONSTANT, base_delay=0.0, max_retries=5)
+    def _rs_flaky_fn():
+        _rs_call_count["n"] += 1
+        if _rs_call_count["n"] < 3:
+            raise RuntimeError("not yet")
+        return "done"
+
+    rs_reset(_rs_flaky_fn._operation)
+    try:
+        _rs_dec_result = _rs_flaky_fn()
+        test("RS: with_retry decorator succeeds on 3rd attempt",
+             _rs_dec_result == "done" and _rs_call_count["n"] == 3)
+    except Exception as _rs_dec_exc:
+        test("RS: with_retry decorator succeeds on 3rd attempt",
+             False, str(_rs_dec_exc))
+
+    # with_retry — exhausted retries re-raises exception
+    _rs_always_fail_count = {"n": 0}
+    rs_reset("_test_rs_exhausted")
+
+    @with_retry(strategy=Strategy.CONSTANT, base_delay=0.0, max_retries=2)
+    def _rs_always_fail():
+        _rs_always_fail_count["n"] += 1
+        raise ValueError("always fails")
+
+    rs_reset(_rs_always_fail._operation)
+    try:
+        _rs_always_fail()
+        test("RS: with_retry exhausted retries re-raises", False, "should have raised")
+    except ValueError:
+        test("RS: with_retry exhausted retries re-raises", True)
+
+    # _registry — is a module-level dict
+    test("RS: _registry is a dict",
+         isinstance(_registry, dict))
+
+    # Fail-open: None operation name does not raise
+    try:
+        should_retry(None)
+        get_delay(None)
+        record_attempt(None, True)
+        rs_reset(None)
+        get_stats(None)
+        test("RS: fail-open with None operation name", True)
+    except Exception as _rs_fo_exc:
+        test("RS: fail-open with None operation name", False, str(_rs_fo_exc))
+
+except Exception as _rs_exc:
+    test("RS: import and module-level tests", False, str(_rs_exc))
+
+
+# ─────────────────────────────────────────────────
+# CR: chain_refinement (shared/chain_refinement.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.chain_refinement import (
+        StrategyStats, RecurringPattern, Refinement, ChainHealth,
+        MIN_RECURRENCE, INEFFECTIVE_THRESHOLD, CHRONIC_FAILURE_THRESHOLD,
+        MIN_ATTEMPTS_FOR_STATS, MIN_IMPROVEMENT_DELTA,
+        _normalize_error, _extract_outcome_fields,
+        get_strategy_effectiveness, detect_recurring_failures,
+        suggest_refinement, compute_chain_health, analyze_outcomes,
+    )
+
+    # Dataclass defaults — StrategyStats
+    _cr_ss = StrategyStats(strategy="test_strat")
+    test("CR: StrategyStats default attempts == 0", _cr_ss.attempts == 0)
+    test("CR: StrategyStats default successes == 0", _cr_ss.successes == 0)
+    test("CR: StrategyStats default failures == 0", _cr_ss.failures == 0)
+    test("CR: StrategyStats default success_rate == 0.0", _cr_ss.success_rate == 0.0)
+    test("CR: StrategyStats default avg_attempts_to_success == 0.0",
+         _cr_ss.avg_attempts_to_success == 0.0)
+    test("CR: StrategyStats default errors_addressed == 0", _cr_ss.errors_addressed == 0)
+
+    # Dataclass defaults — RecurringPattern
+    _cr_rp = RecurringPattern(error_pattern="some error")
+    test("CR: RecurringPattern default occurrence_count == 0", _cr_rp.occurrence_count == 0)
+    test("CR: RecurringPattern default strategies_tried == []", _cr_rp.strategies_tried == [])
+    test("CR: RecurringPattern default best_strategy == ''", _cr_rp.best_strategy == "")
+    test("CR: RecurringPattern default best_success_rate == 0.0",
+         _cr_rp.best_success_rate == 0.0)
+    test("CR: RecurringPattern default is_chronic == False", _cr_rp.is_chronic is False)
+
+    # Dataclass defaults — Refinement
+    _cr_ref = Refinement(
+        error_pattern="err", current_strategy="old",
+        suggested_strategy="new", reason="better", confidence=0.8)
+    test("CR: Refinement default evidence == []", _cr_ref.evidence == [])
+
+    # Dataclass defaults — ChainHealth
+    _cr_ch = ChainHealth()
+    test("CR: ChainHealth default total_chains == 0", _cr_ch.total_chains == 0)
+    test("CR: ChainHealth default overall_success_rate == 0.0",
+         _cr_ch.overall_success_rate == 0.0)
+    test("CR: ChainHealth default chronic_failures == 0", _cr_ch.chronic_failures == 0)
+    test("CR: ChainHealth default strategy_diversity == 0", _cr_ch.strategy_diversity == 0)
+    test("CR: ChainHealth default improvement_trend == 'stable'",
+         _cr_ch.improvement_trend == "stable")
+    test("CR: ChainHealth default health_score == 50.0", _cr_ch.health_score == 50.0)
+    test("CR: ChainHealth default recommendations == []", _cr_ch.recommendations == [])
+
+    # Constants
+    test("CR: MIN_RECURRENCE == 3", MIN_RECURRENCE == 3)
+    test("CR: INEFFECTIVE_THRESHOLD == 0.3", abs(INEFFECTIVE_THRESHOLD - 0.3) < 1e-9)
+    test("CR: CHRONIC_FAILURE_THRESHOLD == 0.7", abs(CHRONIC_FAILURE_THRESHOLD - 0.7) < 1e-9)
+    test("CR: MIN_ATTEMPTS_FOR_STATS == 3", MIN_ATTEMPTS_FOR_STATS == 3)
+    test("CR: MIN_IMPROVEMENT_DELTA == 0.15", abs(MIN_IMPROVEMENT_DELTA - 0.15) < 1e-9)
+
+    # _normalize_error — removes file paths
+    _cr_ne_path = _normalize_error("Error in /home/crab/.claude/hooks/gate_01.py something")
+    test("CR: _normalize_error removes file paths",
+         "/home" not in _cr_ne_path and "<file>" in _cr_ne_path,
+         f"got: {_cr_ne_path!r}")
+
+    # _normalize_error — removes line numbers
+    _cr_ne_line = _normalize_error("Error at line 42 in code")
+    test("CR: _normalize_error replaces line numbers with 'line n'",
+         "42" not in _cr_ne_line and "line n" in _cr_ne_line,
+         f"got: {_cr_ne_line!r}")
+
+    # _normalize_error — removes timestamps
+    _cr_ne_ts = _normalize_error("Error at 2024-01-15T10:30:00 occurred")
+    test("CR: _normalize_error removes timestamps",
+         "2024" not in _cr_ne_ts and "<ts>" in _cr_ne_ts,
+         f"got: {_cr_ne_ts!r}")
+
+    # _normalize_error — removes hex addresses
+    _cr_ne_hex = _normalize_error("Object at 0xDEADBEEF failed")
+    test("CR: _normalize_error removes hex addresses",
+         "0xDEADBEEF" not in _cr_ne_hex and "<addr>" in _cr_ne_hex,
+         f"got: {_cr_ne_hex!r}")
+
+    # _normalize_error — lowercases output
+    _cr_ne_case = _normalize_error("UPPER CASE ERROR")
+    test("CR: _normalize_error lowercases output",
+         _cr_ne_case == _cr_ne_case.lower())
+
+    # _normalize_error — empty string returns empty
+    test("CR: _normalize_error empty string returns ''",
+         _normalize_error("") == "")
+
+    # _normalize_error — None returns empty
+    test("CR: _normalize_error None returns ''",
+         _normalize_error(None) == "")
+
+    # _normalize_error — non-string returns empty
+    test("CR: _normalize_error integer returns ''",
+         _normalize_error(42) == "")
+
+    # _extract_outcome_fields — with standard keys
+    _cr_eof_std = _extract_outcome_fields({
+        "error": "some error", "strategy": "strat_a",
+        "result": "success", "chain_id": "c1", "timestamp": "t1"
+    })
+    test("CR: _extract_outcome_fields extracts 'error' key",
+         _cr_eof_std.get("error") == "some error")
+    test("CR: _extract_outcome_fields extracts 'strategy' key",
+         _cr_eof_std.get("strategy") == "strat_a")
+    test("CR: _extract_outcome_fields extracts 'result' key",
+         _cr_eof_std.get("result") == "success")
+    test("CR: _extract_outcome_fields extracts 'chain_id' key",
+         _cr_eof_std.get("chain_id") == "c1")
+
+    # _extract_outcome_fields — with alternate keys (LanceDB format)
+    _cr_eof_alt = _extract_outcome_fields({
+        "error_text": "alt error", "strategy_name": "strat_b",
+        "outcome": "failure"
+    })
+    test("CR: _extract_outcome_fields prefers error_text over error",
+         _cr_eof_alt.get("error") == "alt error")
+    test("CR: _extract_outcome_fields falls back to strategy_name",
+         _cr_eof_alt.get("strategy") == "strat_b")
+    test("CR: _extract_outcome_fields falls back to outcome for result",
+         _cr_eof_alt.get("result") == "failure")
+
+    # _extract_outcome_fields — non-dict returns {}
+    test("CR: _extract_outcome_fields non-dict returns {}",
+         _extract_outcome_fields("not a dict") == {})
+    test("CR: _extract_outcome_fields None returns {}",
+         _extract_outcome_fields(None) == {})
+    test("CR: _extract_outcome_fields list returns {}",
+         _extract_outcome_fields([1, 2]) == {})
+
+    # get_strategy_effectiveness — synthetic outcomes
+    _cr_outcomes_eff = [
+        {"strategy": "alpha", "result": "success", "error": "file not found"},
+        {"strategy": "alpha", "result": "success", "error": "file not found"},
+        {"strategy": "alpha", "result": "failure", "error": "file not found"},
+        {"strategy": "beta",  "result": "failure", "error": "timeout error"},
+        {"strategy": "beta",  "result": "failure", "error": "timeout error"},
+    ]
+    _cr_eff = get_strategy_effectiveness(_cr_outcomes_eff)
+    test("CR: get_strategy_effectiveness returns dict",
+         isinstance(_cr_eff, dict))
+    test("CR: get_strategy_effectiveness includes 'alpha'",
+         "alpha" in _cr_eff)
+    test("CR: get_strategy_effectiveness alpha attempts == 3",
+         _cr_eff.get("alpha", StrategyStats("x")).attempts == 3)
+    test("CR: get_strategy_effectiveness alpha successes == 2",
+         _cr_eff.get("alpha", StrategyStats("x")).successes == 2)
+    test("CR: get_strategy_effectiveness beta failures == 2",
+         _cr_eff.get("beta", StrategyStats("x")).failures == 2)
+    test("CR: get_strategy_effectiveness alpha success_rate == 0.6667",
+         abs(_cr_eff.get("alpha", StrategyStats("x")).success_rate - 0.6667) < 0.001)
+
+    # get_strategy_effectiveness — empty outcomes returns empty dict
+    test("CR: get_strategy_effectiveness empty outcomes returns {}",
+         get_strategy_effectiveness([]) == {})
+
+    # detect_recurring_failures — errors appearing >= 3 times flagged
+    _cr_recurring_error = "module not found error"
+    _cr_outcomes_recur = (
+        [{"error": _cr_recurring_error, "strategy": "s1", "result": "failure"}] * 4 +
+        [{"error": "rare error only once", "strategy": "s1", "result": "failure"}]
+    )
+    _cr_patterns = detect_recurring_failures(_cr_outcomes_recur)
+    _cr_pattern_errors = [p.error_pattern for p in _cr_patterns]
+    test("CR: detect_recurring_failures finds error appearing 4 times",
+         any(_cr_recurring_error in ep for ep in _cr_pattern_errors),
+         f"found: {_cr_pattern_errors}")
+
+    # detect_recurring_failures — errors appearing < min_recurrence not flagged
+    test("CR: detect_recurring_failures ignores error appearing once",
+         not any("rare error only once" in ep for ep in _cr_pattern_errors))
+
+    # detect_recurring_failures — occurrence_count is correct
+    _cr_found_pattern = next(
+        (p for p in _cr_patterns if _cr_recurring_error in p.error_pattern), None)
+    test("CR: detect_recurring_failures occurrence_count == 4",
+         _cr_found_pattern is not None and _cr_found_pattern.occurrence_count == 4,
+         f"got: {_cr_found_pattern}")
+
+    # detect_recurring_failures — empty outcomes returns []
+    test("CR: detect_recurring_failures empty outcomes returns []",
+         detect_recurring_failures([]) == [])
+
+    # detect_recurring_failures — is_chronic flagged for high failure rate
+    _cr_chronic_outcomes = [
+        {"error": "stubborn error", "strategy": "s1", "result": "failure"}
+    ] * 5  # 5 failures, 0 successes -> failure_rate=1.0 > 0.7
+    _cr_chronic_patterns = detect_recurring_failures(_cr_chronic_outcomes)
+    _cr_chronic_found = next(
+        (p for p in _cr_chronic_patterns if "stubborn error" in p.error_pattern), None)
+    test("CR: detect_recurring_failures marks is_chronic for 100% failure rate",
+         _cr_chronic_found is not None and _cr_chronic_found.is_chronic is True,
+         f"found: {_cr_chronic_found}")
+
+    # suggest_refinement — returns Refinement when better strategy exists
+    _cr_good_strategy_outcomes = (
+        # Current strategy "slow" has poor record on this error
+        [{"error": "connection timeout", "strategy": "slow", "result": "failure"}] * 4 +
+        # Better strategy "fast" has strong record on same error
+        [{"error": "connection timeout", "strategy": "fast", "result": "success"}] * 5
+    )
+    _cr_refinement = suggest_refinement(
+        "connection timeout", _cr_good_strategy_outcomes, current_strategy="slow")
+    test("CR: suggest_refinement returns Refinement object when better strategy exists",
+         _cr_refinement is not None,
+         "got None — no refinement suggested")
+    if _cr_refinement is not None:
+        test("CR: suggest_refinement suggested_strategy is 'fast'",
+             _cr_refinement.suggested_strategy == "fast",
+             f"got: {_cr_refinement.suggested_strategy}")
+        test("CR: suggest_refinement confidence is in [0.0, 1.0]",
+             0.0 <= _cr_refinement.confidence <= 1.0)
+        test("CR: suggest_refinement evidence is a non-empty list",
+             isinstance(_cr_refinement.evidence, list) and len(_cr_refinement.evidence) > 0)
+
+    # suggest_refinement — no outcomes returns None
+    test("CR: suggest_refinement with no outcomes returns None",
+         suggest_refinement("any error", [], current_strategy="s1") is None)
+
+    # suggest_refinement — empty error returns None
+    test("CR: suggest_refinement with empty error returns None",
+         suggest_refinement("", _cr_good_strategy_outcomes) is None)
+
+    # compute_chain_health — empty outcomes returns default with recommendation
+    _cr_empty_health = compute_chain_health([])
+    test("CR: compute_chain_health empty returns ChainHealth",
+         isinstance(_cr_empty_health, ChainHealth))
+    test("CR: compute_chain_health empty total_chains == 0",
+         _cr_empty_health.total_chains == 0)
+    test("CR: compute_chain_health empty has recommendation",
+         len(_cr_empty_health.recommendations) > 0)
+
+    # compute_chain_health — with mixed outcomes
+    _cr_mixed_outcomes = (
+        [{"error": "err1", "strategy": "s1", "result": "success"}] * 6 +
+        [{"error": "err2", "strategy": "s2", "result": "failure"}] * 4
+    )
+    _cr_mixed_health = compute_chain_health(_cr_mixed_outcomes)
+    test("CR: compute_chain_health mixed total_chains == 10",
+         _cr_mixed_health.total_chains == 10)
+    test("CR: compute_chain_health mixed overall_success_rate == 0.6",
+         abs(_cr_mixed_health.overall_success_rate - 0.6) < 0.001,
+         f"got: {_cr_mixed_health.overall_success_rate}")
+    test("CR: compute_chain_health mixed strategy_diversity == 2",
+         _cr_mixed_health.strategy_diversity == 2)
+    test("CR: compute_chain_health health_score in [0, 100]",
+         0.0 <= _cr_mixed_health.health_score <= 100.0)
+
+    # analyze_outcomes — returns expected keys
+    _cr_analysis = analyze_outcomes(_cr_mixed_outcomes)
+    test("CR: analyze_outcomes returns dict",
+         isinstance(_cr_analysis, dict))
+    test("CR: analyze_outcomes has 'strategy_effectiveness' key",
+         "strategy_effectiveness" in _cr_analysis)
+    test("CR: analyze_outcomes has 'recurring_failures' key",
+         "recurring_failures" in _cr_analysis)
+    test("CR: analyze_outcomes has 'chain_health' key",
+         "chain_health" in _cr_analysis)
+    test("CR: analyze_outcomes has 'summary' key",
+         "summary" in _cr_analysis)
+    test("CR: analyze_outcomes 'summary' is a non-empty string",
+         isinstance(_cr_analysis.get("summary"), str) and len(_cr_analysis["summary"]) > 0)
+
+    # analyze_outcomes — empty outcomes
+    _cr_empty_analysis = analyze_outcomes([])
+    test("CR: analyze_outcomes empty outcomes returns dict with expected keys",
+         all(k in _cr_empty_analysis for k in
+             ("strategy_effectiveness", "recurring_failures", "chain_health", "summary")))
+
+except Exception as _cr_exc:
+    test("CR: import and module-level tests", False, str(_cr_exc))
+
+
+# ─────────────────────────────────────────────────
+# HC: health_correlation (shared/health_correlation.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.health_correlation import (
+        REDUNDANCY_THRESHOLD, SYNERGY_THRESHOLD,
+        MIN_BLOCKS_FOR_ANALYSIS, PROTECTED_GATES,
+        _pearson_correlation, _short, _redundancy_recommendation,
+        build_fire_vectors, compute_correlation_matrix,
+        detect_redundant_pairs, detect_synergistic_pairs,
+        suggest_optimizations, generate_health_report,
+    )
+
+    # Constants
+    test("HC: REDUNDANCY_THRESHOLD == 0.80",
+         abs(REDUNDANCY_THRESHOLD - 0.80) < 1e-9)
+    test("HC: SYNERGY_THRESHOLD == -0.50",
+         abs(SYNERGY_THRESHOLD - (-0.50)) < 1e-9)
+    test("HC: MIN_BLOCKS_FOR_ANALYSIS == 3",
+         MIN_BLOCKS_FOR_ANALYSIS == 3)
+
+    # PROTECTED_GATES contains exactly 3 expected gate names
+    test("HC: PROTECTED_GATES contains 'gate_01_read_before_edit'",
+         "gate_01_read_before_edit" in PROTECTED_GATES)
+    test("HC: PROTECTED_GATES contains 'gate_02_no_destroy'",
+         "gate_02_no_destroy" in PROTECTED_GATES)
+    test("HC: PROTECTED_GATES contains 'gate_03_test_before_deploy'",
+         "gate_03_test_before_deploy" in PROTECTED_GATES)
+    test("HC: PROTECTED_GATES has exactly 3 members",
+         len(PROTECTED_GATES) == 3)
+
+    # _pearson_correlation — perfectly correlated vectors
+    _hc_x_perf = [1.0, 2.0, 3.0, 4.0, 5.0]
+    _hc_y_perf = [2.0, 4.0, 6.0, 8.0, 10.0]
+    _hc_corr_perf = _pearson_correlation(_hc_x_perf, _hc_y_perf)
+    test("HC: _pearson_correlation perfectly correlated vectors == 1.0",
+         abs(_hc_corr_perf - 1.0) < 1e-9,
+         f"got {_hc_corr_perf}")
+
+    # _pearson_correlation — perfectly anti-correlated vectors
+    _hc_x_anti = [1.0, 2.0, 3.0, 4.0, 5.0]
+    _hc_y_anti = [5.0, 4.0, 3.0, 2.0, 1.0]
+    _hc_corr_anti = _pearson_correlation(_hc_x_anti, _hc_y_anti)
+    test("HC: _pearson_correlation anti-correlated vectors == -1.0",
+         abs(_hc_corr_anti - (-1.0)) < 1e-9,
+         f"got {_hc_corr_anti}")
+
+    # _pearson_correlation — uncorrelated vectors (near 0)
+    _hc_x_unc = [1.0, 2.0, 3.0, 4.0, 5.0]
+    _hc_y_unc = [3.0, 3.0, 3.0, 3.0, 3.0]  # constant — zero variance -> 0.0
+    _hc_corr_unc = _pearson_correlation(_hc_x_unc, _hc_y_unc)
+    test("HC: _pearson_correlation zero-variance vector returns 0.0",
+         abs(_hc_corr_unc - 0.0) < 1e-9,
+         f"got {_hc_corr_unc}")
+
+    # _pearson_correlation — different-length vectors returns 0.0
+    _hc_corr_len = _pearson_correlation([1.0, 2.0], [1.0, 2.0, 3.0])
+    test("HC: _pearson_correlation different-length vectors returns 0.0",
+         abs(_hc_corr_len - 0.0) < 1e-9,
+         f"got {_hc_corr_len}")
+
+    # _pearson_correlation — fewer than 2 elements returns 0.0
+    _hc_corr_one = _pearson_correlation([1.0], [1.0])
+    test("HC: _pearson_correlation single-element vectors returns 0.0",
+         abs(_hc_corr_one - 0.0) < 1e-9,
+         f"got {_hc_corr_one}")
+
+    # _pearson_correlation — empty vectors returns 0.0
+    _hc_corr_empty = _pearson_correlation([], [])
+    test("HC: _pearson_correlation empty vectors returns 0.0",
+         abs(_hc_corr_empty - 0.0) < 1e-9,
+         f"got {_hc_corr_empty}")
+
+    # _pearson_correlation — both zero-variance returns 0.0
+    _hc_corr_both_const = _pearson_correlation([3.0, 3.0, 3.0], [5.0, 5.0, 5.0])
+    test("HC: _pearson_correlation both zero-variance returns 0.0",
+         abs(_hc_corr_both_const - 0.0) < 1e-9,
+         f"got {_hc_corr_both_const}")
+
+    # _short — standard gate names
+    test("HC: _short('gate_01_read_before_edit') == 'G01'",
+         _short("gate_01_read_before_edit") == "G01")
+    test("HC: _short('gate_12_foo') == 'G12'",
+         _short("gate_12_foo") == "G12")
+    test("HC: _short('gate_03_test') == 'G03'",
+         _short("gate_03_test") == "G03")
+
+    # _short — non-gate names returned as-is
+    test("HC: _short('custom_gate') returns 'custom_gate'",
+         _short("custom_gate") == "custom_gate")
+    test("HC: _short('mygate') returns 'mygate'",
+         _short("mygate") == "mygate")
+
+    # _redundancy_recommendation — with protected gate g1
+    _hc_prot_g1 = "gate_01_read_before_edit"
+    _hc_other_g = "gate_07_something"
+    _hc_rec_prot = _redundancy_recommendation(_hc_prot_g1, _hc_other_g, 0.95)
+    test("HC: _redundancy_recommendation g1 protected mentions Tier-1",
+         "Tier-1" in _hc_rec_prot or "protected" in _hc_rec_prot.lower(),
+         f"got: {_hc_rec_prot!r}")
+    test("HC: _redundancy_recommendation g1 protected mentions the other gate short name",
+         "G07" in _hc_rec_prot or _hc_other_g in _hc_rec_prot,
+         f"got: {_hc_rec_prot!r}")
+
+    # _redundancy_recommendation — with protected gate g2
+    _hc_rec_prot2 = _redundancy_recommendation(_hc_other_g, _hc_prot_g1, 0.90)
+    test("HC: _redundancy_recommendation g2 protected mentions Tier-1",
+         "Tier-1" in _hc_rec_prot2 or "protected" in _hc_rec_prot2.lower(),
+         f"got: {_hc_rec_prot2!r}")
+
+    # _redundancy_recommendation — non-protected pair mentions merging
+    _hc_g_a = "gate_07_foo"
+    _hc_g_b = "gate_08_bar"
+    _hc_rec_nonprot = _redundancy_recommendation(_hc_g_a, _hc_g_b, 0.85)
+    test("HC: _redundancy_recommendation non-protected pair mentions merging/consolidat",
+         "merging" in _hc_rec_nonprot.lower() or "consolidat" in _hc_rec_nonprot.lower(),
+         f"got: {_hc_rec_nonprot!r}")
+    test("HC: _redundancy_recommendation non-protected includes correlation value",
+         "0.85" in _hc_rec_nonprot,
+         f"got: {_hc_rec_nonprot!r}")
+
+    # build_fire_vectors — excludes gates with blocks < MIN_BLOCKS_FOR_ANALYSIS
+    _hc_eff_data_low = {
+        "gate_low_blocks": {"blocks": 2, "overrides": 0, "prevented": 0},
+        "gate_enough":     {"blocks": 5, "overrides": 1, "prevented": 2},
+    }
+    _hc_vectors_low = build_fire_vectors(_hc_eff_data_low)
+    test("HC: build_fire_vectors excludes gate with blocks < MIN_BLOCKS_FOR_ANALYSIS",
+         "gate_low_blocks" not in _hc_vectors_low,
+         f"vectors: {list(_hc_vectors_low.keys())}")
+    test("HC: build_fire_vectors includes gate with sufficient blocks",
+         "gate_enough" in _hc_vectors_low,
+         f"vectors: {list(_hc_vectors_low.keys())}")
+
+    # build_fire_vectors — vector length equals time_windows
+    _hc_eff_data_vec = {
+        "gate_a": {"blocks": 10, "overrides": 2, "prevented": 3},
+    }
+    _hc_vectors_vec = build_fire_vectors(_hc_eff_data_vec, time_windows=8)
+    test("HC: build_fire_vectors vector length equals time_windows",
+         len(_hc_vectors_vec.get("gate_a", [])) == 8,
+         f"got length: {len(_hc_vectors_vec.get('gate_a', []))}")
+
+    # build_fire_vectors — all vector values are non-negative
+    _hc_eff_data_nn = {
+        "gate_x": {"blocks": 20, "overrides": 5, "prevented": 10},
+    }
+    _hc_vectors_nn = build_fire_vectors(_hc_eff_data_nn)
+    test("HC: build_fire_vectors all values non-negative",
+         all(v >= 0.0 for v in _hc_vectors_nn.get("gate_x", [])))
+
+    # build_fire_vectors — empty effectiveness data returns empty dict
+    test("HC: build_fire_vectors empty effectiveness_data returns {}",
+         build_fire_vectors({}) == {})
+
+    # build_fire_vectors — non-dict entry is skipped
+    _hc_eff_nondict = {
+        "gate_a": {"blocks": 10, "overrides": 0, "prevented": 0},
+        "gate_bad": "not a dict",
+    }
+    _hc_vectors_nondict = build_fire_vectors(_hc_eff_nondict)
+    test("HC: build_fire_vectors skips non-dict entries",
+         "gate_bad" not in _hc_vectors_nondict)
+
+    # compute_correlation_matrix — returns dict with tuple keys
+    _hc_vecs = {
+        "gate_a": [1.0, 2.0, 3.0, 4.0, 5.0],
+        "gate_b": [5.0, 4.0, 3.0, 2.0, 1.0],
+        "gate_c": [2.0, 4.0, 6.0, 8.0, 10.0],
+    }
+    _hc_matrix = compute_correlation_matrix(_hc_vecs)
+    test("HC: compute_correlation_matrix returns dict",
+         isinstance(_hc_matrix, dict))
+    test("HC: compute_correlation_matrix keys are tuples",
+         all(isinstance(k, tuple) for k in _hc_matrix.keys()))
+    test("HC: compute_correlation_matrix 3 gates -> 3 pairs",
+         len(_hc_matrix) == 3,
+         f"got {len(_hc_matrix)} pairs")
+
+    # compute_correlation_matrix — gate_a and gate_c should be highly correlated
+    _hc_ac_corr = _hc_matrix.get(("gate_a", "gate_c"), _hc_matrix.get(("gate_c", "gate_a"), None))
+    test("HC: compute_correlation_matrix gate_a and gate_c corr == 1.0",
+         _hc_ac_corr is not None and abs(_hc_ac_corr - 1.0) < 1e-3,
+         f"got {_hc_ac_corr}")
+
+    # compute_correlation_matrix — gate_a and gate_b should be anti-correlated
+    _hc_ab_corr = _hc_matrix.get(("gate_a", "gate_b"), _hc_matrix.get(("gate_b", "gate_a"), None))
+    test("HC: compute_correlation_matrix gate_a and gate_b corr == -1.0",
+         _hc_ab_corr is not None and abs(_hc_ab_corr - (-1.0)) < 1e-3,
+         f"got {_hc_ab_corr}")
+
+    # compute_correlation_matrix — empty vectors returns empty dict
+    test("HC: compute_correlation_matrix empty vectors returns {}",
+         compute_correlation_matrix({}) == {})
+
+    # detect_redundant_pairs — high correlation pair flagged
+    _hc_matrix_high = {("gate_a", "gate_c"): 0.95, ("gate_a", "gate_b"): -0.90}
+    _hc_redundant = detect_redundant_pairs(_hc_matrix_high, threshold=0.80)
+    test("HC: detect_redundant_pairs finds pair with corr >= threshold",
+         len(_hc_redundant) == 1,
+         f"found {len(_hc_redundant)} pairs")
+    test("HC: detect_redundant_pairs result has 'gate_a' and 'gate_c'",
+         len(_hc_redundant) > 0 and
+         _hc_redundant[0]["gate_a"] == "gate_a" and _hc_redundant[0]["gate_b"] == "gate_c")
+    test("HC: detect_redundant_pairs result has 'correlation' key",
+         len(_hc_redundant) > 0 and "correlation" in _hc_redundant[0])
+    test("HC: detect_redundant_pairs result has 'recommendation' key",
+         len(_hc_redundant) > 0 and "recommendation" in _hc_redundant[0])
+
+    # detect_redundant_pairs — no high-correlation pairs returns []
+    _hc_matrix_low = {("gate_x", "gate_y"): 0.50}
+    test("HC: detect_redundant_pairs no high-corr pairs returns []",
+         detect_redundant_pairs(_hc_matrix_low, threshold=0.80) == [])
+
+    # detect_synergistic_pairs — low correlation pair flagged
+    _hc_matrix_syn = {("gate_a", "gate_b"): -0.85, ("gate_a", "gate_c"): 0.92}
+    _hc_synergistic = detect_synergistic_pairs(_hc_matrix_syn, threshold=-0.50)
+    test("HC: detect_synergistic_pairs finds pair with corr <= threshold",
+         len(_hc_synergistic) == 1,
+         f"found {len(_hc_synergistic)} pairs")
+    test("HC: detect_synergistic_pairs result has 'recommendation' key",
+         len(_hc_synergistic) > 0 and "recommendation" in _hc_synergistic[0])
+
+    # detect_synergistic_pairs — no low-correlation pairs returns []
+    _hc_matrix_no_syn = {("gate_x", "gate_y"): 0.10}
+    test("HC: detect_synergistic_pairs no low-corr pairs returns []",
+         detect_synergistic_pairs(_hc_matrix_no_syn, threshold=-0.50) == [])
+
+    # suggest_optimizations — returns list of dicts with expected keys
+    _hc_eff_data_opt = {
+        "gate_a": {"blocks": 10, "overrides": 2, "prevented": 3},
+        "gate_b": {"blocks": 0,  "overrides": 0, "prevented": 0},
+    }
+    _hc_opts = suggest_optimizations(_hc_eff_data_opt)
+    test("HC: suggest_optimizations returns list",
+         isinstance(_hc_opts, list))
+    if _hc_opts:
+        _hc_opt_keys = {"type", "priority", "description", "gates_affected", "confidence"}
+        test("HC: suggest_optimizations entries have expected keys",
+             all(_hc_opt_keys.issubset(set(o.keys())) for o in _hc_opts),
+             f"missing keys in: {[set(o.keys()) for o in _hc_opts]}")
+        test("HC: suggest_optimizations 'type' is a string",
+             all(isinstance(o["type"], str) for o in _hc_opts))
+        test("HC: suggest_optimizations 'priority' is an int",
+             all(isinstance(o["priority"], int) for o in _hc_opts))
+
+    # generate_health_report — returns expected keys
+    _hc_eff_data_report = {
+        "gate_07_foo": {"blocks": 10, "overrides": 2, "prevented": 5},
+        "gate_08_bar": {"blocks": 15, "overrides": 1, "prevented": 8},
+        "gate_09_baz": {"blocks": 5,  "overrides": 3, "prevented": 2},
+    }
+    _hc_report = generate_health_report(_hc_eff_data_report)
+    test("HC: generate_health_report returns dict",
+         isinstance(_hc_report, dict))
+    _hc_report_keys = {"gates_analyzed", "correlation_pairs", "redundant_pairs",
+                       "synergistic_pairs", "optimizations", "overall_diversity"}
+    test("HC: generate_health_report has all expected keys",
+         _hc_report_keys.issubset(set(_hc_report.keys())),
+         f"missing: {_hc_report_keys - set(_hc_report.keys())}")
+    test("HC: generate_health_report gates_analyzed is int",
+         isinstance(_hc_report.get("gates_analyzed"), int))
+    test("HC: generate_health_report correlation_pairs is int",
+         isinstance(_hc_report.get("correlation_pairs"), int))
+    test("HC: generate_health_report overall_diversity in [0.0, 1.0]",
+         isinstance(_hc_report.get("overall_diversity"), float) and
+         0.0 <= _hc_report["overall_diversity"] <= 1.0,
+         f"got: {_hc_report.get('overall_diversity')}")
+
+    # generate_health_report — empty data returns sensible defaults
+    _hc_empty_report = generate_health_report({})
+    test("HC: generate_health_report empty data has gates_analyzed == 0",
+         _hc_empty_report.get("gates_analyzed") == 0)
+    test("HC: generate_health_report empty data has overall_diversity == 1.0",
+         abs(_hc_empty_report.get("overall_diversity", -1) - 1.0) < 1e-9,
+         f"got: {_hc_empty_report.get('overall_diversity')}")
+
+except Exception as _hc_exc:
+    test("HC: import and module-level tests", False, str(_hc_exc))
+
+
+# ─────────────────────────────────────────────────
+# RL: rate_limiter (shared/rate_limiter.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.rate_limiter import (
+        TOOL_RATE, GATE_RATE, API_RATE,
+        _config_for, _refill_tokens, _get_or_create_bucket,
+        allow, consume, get_remaining,
+        reset as rl_reset, get_all_limits, _buckets,
+    )
+
+    # Preset constants
+    test("RL: TOOL_RATE rate == 10.0",
+         abs(TOOL_RATE[0] - 10.0) < 1e-9)
+    test("RL: TOOL_RATE burst == 10",
+         TOOL_RATE[1] == 10)
+    test("RL: GATE_RATE rate == 30.0",
+         abs(GATE_RATE[0] - 30.0) < 1e-9)
+    test("RL: GATE_RATE burst == 30",
+         GATE_RATE[1] == 30)
+    test("RL: API_RATE rate == 60.0",
+         abs(API_RATE[0] - 60.0) < 1e-9)
+    test("RL: API_RATE burst == 60",
+         API_RATE[1] == 60)
+
+    # _config_for — prefix matching
+    test("RL: _config_for 'tool:Edit' returns TOOL_RATE",
+         _config_for("tool:Edit") == TOOL_RATE)
+    test("RL: _config_for 'tool:anything' returns TOOL_RATE",
+         _config_for("tool:anything") == TOOL_RATE)
+    test("RL: _config_for 'gate:gate_04' returns GATE_RATE",
+         _config_for("gate:gate_04") == GATE_RATE)
+    test("RL: _config_for 'api:memory' returns API_RATE",
+         _config_for("api:memory") == API_RATE)
+    test("RL: _config_for unknown prefix returns _DEFAULT_RATE (GATE_RATE)",
+         _config_for("unknown:key") == GATE_RATE)
+    test("RL: _config_for empty string returns _DEFAULT_RATE",
+         _config_for("") == GATE_RATE)
+
+    # _refill_tokens — known elapsed time
+    _rl_bucket_ref = {"tokens": 0.0, "last_refill": 0.0}
+    # rate=60/min = 1/sec. After 10s elapsed, should add 10 tokens. burst=60 -> 10.0
+    _rl_refilled = _refill_tokens(_rl_bucket_ref, 60.0, 60, 10.0)
+    test("RL: _refill_tokens adds tokens proportional to elapsed time",
+         abs(_rl_refilled - 10.0) < 1e-6,
+         f"got {_rl_refilled}")
+
+    # _refill_tokens — caps at burst
+    _rl_bucket_cap = {"tokens": 55.0, "last_refill": 0.0}
+    _rl_refilled_cap = _refill_tokens(_rl_bucket_cap, 60.0, 60, 10.0)
+    test("RL: _refill_tokens caps at burst capacity",
+         abs(_rl_refilled_cap - 60.0) < 1e-6,
+         f"got {_rl_refilled_cap}")
+
+    # _refill_tokens — no elapsed time returns same tokens
+    _rl_bucket_zero = {"tokens": 5.0, "last_refill": 100.0}
+    _rl_refilled_zero = _refill_tokens(_rl_bucket_zero, 60.0, 60, 100.0)
+    test("RL: _refill_tokens no elapsed time returns same tokens",
+         abs(_rl_refilled_zero - 5.0) < 1e-6,
+         f"got {_rl_refilled_zero}")
+
+    # _get_or_create_bucket — creates new bucket with full tokens
+    _rl_new_key = "_test_rl:brand_new_abc123"
+    if _rl_new_key in _buckets:
+        del _buckets[_rl_new_key]
+    _rl_new_bucket = _get_or_create_bucket(_rl_new_key, 9999.0)
+    _rl_rate, _rl_burst = _config_for(_rl_new_key)
+    test("RL: _get_or_create_bucket creates new bucket with full tokens",
+         abs(_rl_new_bucket["tokens"] - float(_rl_burst)) < 1e-6,
+         f"got {_rl_new_bucket['tokens']}, expected {_rl_burst}")
+
+    # _get_or_create_bucket — returns same bucket on second call
+    _rl_same_bucket = _get_or_create_bucket(_rl_new_key, 9999.0)
+    test("RL: _get_or_create_bucket returns same bucket on second call",
+         _rl_same_bucket is _rl_new_bucket)
+
+    # allow — full bucket returns True
+    rl_reset("_test_rl:allow_full")
+    test("RL: allow returns True when bucket is full",
+         allow("_test_rl:allow_full") is True)
+
+    # allow — does not consume tokens
+    rl_reset("_test_rl:allow_no_consume")
+    _rl_before = get_remaining("_test_rl:allow_no_consume")
+    allow("_test_rl:allow_no_consume")
+    allow("_test_rl:allow_no_consume")
+    allow("_test_rl:allow_no_consume")
+    _rl_after_allow = get_remaining("_test_rl:allow_no_consume")
+    test("RL: allow does not consume tokens",
+         _rl_before == _rl_after_allow,
+         f"before={_rl_before}, after={_rl_after_allow}")
+
+    # allow — returns False when bucket would be insufficient
+    rl_reset("_test_rl:allow_empty")
+    _rl_tool_burst = GATE_RATE[1]  # _test_rl: prefix uses default (GATE_RATE)
+    test("RL: allow returns False when requesting more tokens than burst",
+         allow("_test_rl:allow_empty", tokens=_rl_tool_burst + 1) is False)
+
+    # consume — decrements tokens
+    rl_reset("_test_rl:consume_dec")
+    _rl_before_consume = get_remaining("_test_rl:consume_dec")
+    _rl_consume_ok = consume("_test_rl:consume_dec")
+    _rl_after_consume = get_remaining("_test_rl:consume_dec")
+    test("RL: consume returns True when tokens available",
+         _rl_consume_ok is True)
+    test("RL: consume decrements remaining by 1",
+         _rl_after_consume == _rl_before_consume - 1,
+         f"before={_rl_before_consume}, after={_rl_after_consume}")
+
+    # consume — returns False on empty bucket
+    rl_reset("_test_rl:consume_empty")
+    _rl_empty_burst = _config_for("_test_rl:consume_empty")[1]
+    for _ in range(_rl_empty_burst):
+        consume("_test_rl:consume_empty")
+    test("RL: consume returns False on empty bucket",
+         consume("_test_rl:consume_empty") is False)
+    test("RL: get_remaining returns 0 when bucket empty",
+         get_remaining("_test_rl:consume_empty") == 0)
+
+    # consume — multiple tokens at once
+    rl_reset("_test_rl:consume_multi")
+    _rl_multi_before = get_remaining("_test_rl:consume_multi")
+    consume("_test_rl:consume_multi", tokens=3)
+    _rl_multi_after = get_remaining("_test_rl:consume_multi")
+    test("RL: consume with tokens=3 decrements by 3",
+         _rl_multi_before - _rl_multi_after == 3,
+         f"before={_rl_multi_before}, after={_rl_multi_after}")
+
+    # get_remaining — returns int
+    rl_reset("_test_rl:get_remaining_type")
+    test("RL: get_remaining returns int",
+         isinstance(get_remaining("_test_rl:get_remaining_type"), int))
+
+    # get_remaining — reflects current bucket state
+    rl_reset("_test_rl:get_remaining_val")
+    _rl_gr_burst = _config_for("_test_rl:get_remaining_val")[1]
+    test("RL: get_remaining returns burst for full bucket",
+         get_remaining("_test_rl:get_remaining_val") == _rl_gr_burst)
+
+    # reset — refills to burst
+    rl_reset("_test_rl:reset_refill")
+    for _ in range(5):
+        consume("_test_rl:reset_refill")
+    _rl_after_consume = get_remaining("_test_rl:reset_refill")
+    rl_reset("_test_rl:reset_refill")
+    _rl_after_reset = get_remaining("_test_rl:reset_refill")
+    _rl_reset_burst = _config_for("_test_rl:reset_refill")[1]
+    test("RL: reset refills bucket to burst capacity",
+         _rl_after_reset == _rl_reset_burst,
+         f"got {_rl_after_reset}, expected {_rl_reset_burst}")
+
+    # reset — works on non-existent key (creates it)
+    _rl_nonexist_key = "_test_rl:brand_new_reset_xyz"
+    if _rl_nonexist_key in _buckets:
+        del _buckets[_rl_nonexist_key]
+    rl_reset(_rl_nonexist_key)
+    test("RL: reset on non-existent key creates bucket",
+         _rl_nonexist_key in _buckets)
+
+    # get_all_limits — returns dict
+    _rl_limits = get_all_limits()
+    test("RL: get_all_limits returns dict",
+         isinstance(_rl_limits, dict))
+
+    # get_all_limits — entries have expected keys
+    rl_reset("_test_rl:all_limits")
+    _rl_all = get_all_limits()
+    test("RL: get_all_limits includes recently reset key",
+         "_test_rl:all_limits" in _rl_all,
+         f"keys (first 5): {list(_rl_all.keys())[:5]}")
+    if "_test_rl:all_limits" in _rl_all:
+        _rl_entry = _rl_all["_test_rl:all_limits"]
+        _rl_expected_entry_keys = {"tokens_remaining", "rate_per_minute", "burst", "last_refill"}
+        test("RL: get_all_limits entry has all expected keys",
+             _rl_expected_entry_keys.issubset(set(_rl_entry.keys())),
+             f"missing: {_rl_expected_entry_keys - set(_rl_entry.keys())}")
+        test("RL: get_all_limits tokens_remaining is int",
+             isinstance(_rl_entry.get("tokens_remaining"), int))
+        test("RL: get_all_limits rate_per_minute is float",
+             isinstance(_rl_entry.get("rate_per_minute"), float))
+        test("RL: get_all_limits burst is int",
+             isinstance(_rl_entry.get("burst"), int))
+        test("RL: get_all_limits last_refill is float",
+             isinstance(_rl_entry.get("last_refill"), float))
+
+    # _buckets — is a module-level dict
+    test("RL: _buckets is a dict",
+         isinstance(_buckets, dict))
+
+    # Verify tool: prefix uses TOOL_RATE burst (10)
+    rl_reset("tool:_test_rl_tool_prefix")
+    test("RL: tool: prefix bucket starts at burst=10",
+         get_remaining("tool:_test_rl_tool_prefix") == 10)
+
+    # Verify gate: prefix uses GATE_RATE burst (30)
+    rl_reset("gate:_test_rl_gate_prefix")
+    test("RL: gate: prefix bucket starts at burst=30",
+         get_remaining("gate:_test_rl_gate_prefix") == 30)
+
+    # Verify api: prefix uses API_RATE burst (60)
+    rl_reset("api:_test_rl_api_prefix")
+    test("RL: api: prefix bucket starts at burst=60",
+         get_remaining("api:_test_rl_api_prefix") == 60)
+
+    # Consume all tool tokens then verify exhaustion
+    rl_reset("tool:_test_rl_exhaust")
+    for _ in range(10):
+        consume("tool:_test_rl_exhaust")
+    test("RL: tool: bucket exhausted after 10 consumes (burst=10)",
+         get_remaining("tool:_test_rl_exhaust") == 0)
+    test("RL: allow returns False on exhausted tool bucket",
+         allow("tool:_test_rl_exhaust") is False)
+
+except Exception as _rl_exc:
+    test("RL: import and module-level tests", False, str(_rl_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
