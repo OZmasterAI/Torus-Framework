@@ -25,7 +25,7 @@ SKIPPED = 0
 # UDS socket check first (fast, ~0.05ms), pgrep fallback (slower, ~50ms).
 # Both needed: socket may not exist if server was started before UDS code was added.
 # When server is running, skip direct DB access tests to avoid concurrent access issues.
-from shared.chromadb_socket import is_worker_available as _uds_available
+from shared.memory_socket import is_worker_available as _uds_available
 
 def _memory_server_running():
     if _uds_available(retries=1, delay=0.1):
@@ -3873,7 +3873,7 @@ if not MEMORY_SERVER_RUNNING:
              _empty_inject == [])
 
         # Test: inject_memories_via_socket handles WorkerUnavailable
-        from shared.chromadb_socket import WorkerUnavailable as _WU
+        from shared.memory_socket import WorkerUnavailable as _WU
         with patch("boot.socket_count", side_effect=_WU("no worker")):
             _unavail_inject = inject_memories_via_socket("handoff", {})
         test("inject_memories_via_socket handles WorkerUnavailable",
@@ -5607,21 +5607,21 @@ with tempfile.TemporaryDirectory() as _tmpdir2:
          "persist1" in _persist_search)
 
 # ─────────────────────────────────────────────────
-# UDS Socket Client Tests (chromadb_socket.py)
+# UDS Socket Client Tests (memory_socket.py)
 # ─────────────────────────────────────────────────
 print("\n--- UDS Socket Client ---")
 
-from shared.chromadb_socket import (
+from shared.memory_socket import (
     SOCKET_PATH, SOCKET_TIMEOUT, WorkerUnavailable,
     is_worker_available, request, ping, count, query, get, upsert, flush_queue,
 )
 
 test("Socket module imports",
      True,
-     "from shared.chromadb_socket import ...")
+     "from shared.memory_socket import ...")
 
-test("SOCKET_PATH points to .chromadb.sock",
-     SOCKET_PATH.endswith(".claude/hooks/.chromadb.sock") and os.path.expanduser("~") in SOCKET_PATH,
+test("SOCKET_PATH points to .memory.sock",
+     SOCKET_PATH.endswith(".claude/hooks/.memory.sock") and os.path.expanduser("~") in SOCKET_PATH,
      f"got: {SOCKET_PATH}")
 
 test("WorkerUnavailable is subclass of Exception",
@@ -5632,7 +5632,7 @@ test("WorkerUnavailable is subclass of Exception",
 import tempfile as _uds_tempfile
 _uds_fake_path = os.path.join(_uds_tempfile.mkdtemp(), "nonexistent.sock")
 _uds_orig_path = SOCKET_PATH
-import shared.chromadb_socket as _uds_mod
+import shared.memory_socket as _uds_mod
 _uds_mod.SOCKET_PATH = _uds_fake_path
 try:
     _uds_avail_missing = _uds_mod.is_worker_available(retries=1, delay=0.01)
@@ -5662,8 +5662,8 @@ test("Convenience wrappers are callable",
      all(callable(fn) for fn in [ping, count, query, get, upsert, flush_queue]),
      "one or more wrappers not callable")
 
-# --- Circuit-breaker integration tests (chromadb_socket) ---
-import shared.chromadb_socket as _cbs_mod
+# --- Circuit-breaker integration tests (memory_socket) ---
+import shared.memory_socket as _cbs_mod
 _cbs_orig_is_open  = _cbs_mod._cb_is_open
 _cbs_orig_rec_fail = _cbs_mod._cb_record_failure
 
@@ -6092,10 +6092,10 @@ test("Web index: metadata keys defined",
      all(k in ["url", "title", "chunk_index", "total_chunks", "indexed_at", "content_hash", "word_count"]
          for k in _ws_expected_meta_keys))
 
-# Test chromadb_socket.delete exists
+# Test memory_socket.delete exists
 sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
-from shared import chromadb_socket as _ws_cdb
-test("Web: chromadb_socket.delete exists", hasattr(_ws_cdb, "delete") and callable(_ws_cdb.delete))
+from shared import memory_socket as _ws_cdb
+test("Web: memory_socket.delete exists", hasattr(_ws_cdb, "delete") and callable(_ws_cdb.delete))
 
 # Test memory_server col_map includes web_pages (import check)
 _ws_ms_path = os.path.join(os.path.expanduser("~"), ".claude", "hooks", "memory_server.py")
@@ -24682,11 +24682,11 @@ except Exception as _po_exc:
     test("Pipeline Optimizer Tests: import and tests", False, str(_po_exc))
 
 
-# ── ChromaDB Socket Tests ─────────────────────────────────────────────────────
-print("\n--- ChromaDB Socket (CS) ---")
+# ── Memory Socket Tests ─────────────────────────────────────────────────────
+print("\n--- Memory Socket (CS) ---")
 try:
-    import shared.chromadb_socket as _cs_mod
-    from shared.chromadb_socket import (
+    import shared.memory_socket as _cs_mod
+    from shared.memory_socket import (
         SOCKET_PATH as _CS_SOCKET_PATH,
         SOCKET_TIMEOUT as _CS_SOCKET_TIMEOUT,
         WorkerUnavailable as _CS_WorkerUnavailable,
@@ -24695,9 +24695,9 @@ try:
         is_worker_available as _cs_is_worker_available,
     )
 
-    # SOCKET_PATH contains ".chromadb.sock"
+    # SOCKET_PATH contains ".memory.sock"
     test("CS: SOCKET_PATH is a string", isinstance(_CS_SOCKET_PATH, str))
-    test("CS: SOCKET_PATH contains '.chromadb.sock'", ".chromadb.sock" in _CS_SOCKET_PATH)
+    test("CS: SOCKET_PATH contains '.memory.sock'", ".memory.sock" in _CS_SOCKET_PATH)
 
     # SOCKET_TIMEOUT == 2
     test("CS: SOCKET_TIMEOUT == 2", _CS_SOCKET_TIMEOUT == 2)
@@ -24735,7 +24735,7 @@ try:
     test("CS: is_worker_available is callable", callable(_cs_is_worker_available))
 
 except Exception as _cs_exc:
-    test("ChromaDB Socket Tests: import and tests", False, str(_cs_exc))
+    test("Memory Socket Tests: import and tests", False, str(_cs_exc))
 
 
 # ═══════════════════════════════════════════════════════════════════════

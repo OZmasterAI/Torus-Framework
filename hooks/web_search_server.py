@@ -48,16 +48,16 @@ def web_search(query: str, n_results: int = 5) -> dict:
 
     n_results = max(1, min(20, n_results))
 
-    from shared import chromadb_socket
+    from shared import memory_socket
 
     try:
-        result = chromadb_socket.query(
+        result = memory_socket.query(
             "web_pages",
             query_texts=[query],
             n_results=n_results,
             include=["metadatas", "documents", "distances"],
         )
-    except chromadb_socket.WorkerUnavailable as e:
+    except memory_socket.WorkerUnavailable as e:
         return {"error": f"Memory worker unavailable: {e}", "source": "web_lancedb"}
     except RuntimeError as e:
         if "Unknown collection" in str(e):

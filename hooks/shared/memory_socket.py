@@ -1,8 +1,8 @@
-"""ChromaDB Unix Domain Socket Client.
+"""Memory Unix Domain Socket Client.
 
 Connects to the UDS gateway exposed by memory_server.py to perform
-ChromaDB operations without creating a separate PersistentClient.
-This eliminates segfaults from concurrent Rust backend access.
+LanceDB operations without creating a separate connection.
+This eliminates segfaults from concurrent backend access.
 
 Protocol: JSON-over-newline on Unix Domain Socket.
 One request/response per connection (short-lived).
@@ -15,7 +15,7 @@ import sys
 import time
 
 SOCKET_PATH = os.path.join(
-    os.path.expanduser("~"), ".claude", "hooks", ".chromadb.sock"
+    os.path.expanduser("~"), ".claude", "hooks", ".memory.sock"
 )
 SOCKET_TIMEOUT = 2  # seconds (kept low to avoid boot timeout — 15s hook limit)
 
@@ -184,12 +184,12 @@ def remember(content, context="", tags=""):
 
 
 def flush_queue():
-    """Flush the capture queue to ChromaDB observations."""
+    """Flush the capture queue to LanceDB observations."""
     return request("flush_queue")
 
 
 def backup():
-    """Trigger a consistent backup of chroma.sqlite3 on the server."""
+    """Trigger a consistent backup of the database on the server."""
     return request("backup")
 
 

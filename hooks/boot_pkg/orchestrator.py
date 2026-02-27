@@ -95,7 +95,7 @@ def main():
     if os.path.isdir(gates_dir):
         gate_count = len([f for f in os.listdir(gates_dir) if f.startswith("gate_") and f.endswith(".py")])
 
-    # Check if UDS worker (memory_server.py) is available for ChromaDB access
+    # Check if UDS worker (memory_server.py) is available
     _worker_available = False
     try:
         _worker_available = socket_available(retries=1, delay=0.1)
@@ -139,7 +139,7 @@ def main():
     except Exception:
         pass  # Daemon startup is optional, never block boot
 
-    # Watchdog: detect ChromaDB truncation/shrinkage early
+    # Watchdog: detect database truncation/shrinkage early
     db_size_warning = None
     _mem_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
     _db_path = os.path.join(_mem_dir, "chroma.sqlite3")

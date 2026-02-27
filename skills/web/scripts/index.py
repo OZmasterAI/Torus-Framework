@@ -166,11 +166,11 @@ def index_url(url: str, preview: bool = False) -> dict:
         }
 
     # Upsert to LanceDB
-    from shared import chromadb_socket
+    from shared import memory_socket
 
     # Check for existing content with same hash (dedup)
     try:
-        existing = chromadb_socket.get("web_pages", limit=100, include=["metadatas"])
+        existing = memory_socket.get("web_pages", limit=100, include=["metadatas"])
         if existing and existing.get("metadatas"):
             for meta in existing["metadatas"]:
                 if meta.get("content_hash") == c_hash:
@@ -200,7 +200,7 @@ def index_url(url: str, preview: bool = False) -> dict:
         })
         ids.append(chunk_id)
 
-    chromadb_socket.upsert("web_pages", documents, metadatas, ids)
+    memory_socket.upsert("web_pages", documents, metadatas, ids)
 
     return {
         "status": "indexed",

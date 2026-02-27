@@ -12,7 +12,7 @@ from typing import Optional
 
 from tracker_pkg import _log_debug
 
-_UDS_SOCKET = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".chromadb.sock")
+_UDS_SOCKET = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".memory.sock")
 _QUERY_TIMEOUT = 2.0  # seconds
 _RELEVANCE_THRESHOLD = 0.5  # cosine distance threshold (lower = more similar)
 

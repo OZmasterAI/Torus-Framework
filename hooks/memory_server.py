@@ -11,7 +11,7 @@ knowledge retention.
 Run standalone: python3 memory_server.py
 Used via MCP: configured in .claude/mcp.json
 
-Phase 1 migration: ChromaDB → LanceDB (Session 232).
+Migrated from ChromaDB → LanceDB in Session 232.
 LanceDB provides optimistic concurrency control (no more segfaults),
 native TS bindings, and built-in BM25 FTS.
 """
@@ -109,7 +109,7 @@ TAGS_DB_PATH = os.path.join(MEMORY_DIR, "tags.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
 SOCKET_PATH = os.path.join(
-    os.path.expanduser("~"), ".claude", "hooks", ".chromadb.sock"
+    os.path.expanduser("~"), ".claude", "hooks", ".memory.sock"
 )
 _socket_server = None  # threading server reference for cleanup
 _uds_shutting_down = False  # prevents rebind during intentional shutdown
@@ -121,7 +121,7 @@ fix_outcomes = None  # LanceCollection wrapper for fix_outcomes table
 observations = None  # LanceCollection wrapper for observations table
 web_pages = None  # LanceCollection wrapper for web_pages table
 quarantine = None  # LanceCollection wrapper for quarantine table
-_chromadb_degraded = False  # kept for backward compat (now means "lance degraded")
+_lance_degraded = False  # kept for backward compat (now means "lance degraded")
 
 
 # ── Arrow Schemas for LanceDB Tables ───────────────────────────────────────
@@ -230,10 +230,9 @@ def _embed_text(text):
 
 
 class LanceCollection:
-    """LanceDB wrapper with ChromaDB-compatible API around a LanceDB table.
+    """LanceDB table wrapper with a familiar API surface.
 
-    Provides the same API surface as the old chromadb.Collection (query, get, upsert, update,
-    delete, count) so existing code works with minimal changes.
+    Provides query, get, upsert, update, delete, count methods.
 
     LanceDB cosine distance: 0 = identical, 2 = opposite (range 0-2).
     LanceDB cosine distance: 0 = identical, 2 = opposite (same range).
@@ -443,7 +442,7 @@ class LanceCollection:
 
     @staticmethod
     def _translate_where(where):
-        """Translate where-clause dict (ChromaDB filter syntax) to LanceDB SQL string.
+        """Translate where-clause dict to a LanceDB SQL filter string.
 
         Examples:
             {"session_time": {"$lt": 123.4}} → "session_time < 123.4"
@@ -499,7 +498,7 @@ def _init_lancedb():
     Safe to call multiple times — idempotent after first run.
     Uses nomic-ai/nomic-embed-text-v2-moe embedding model (768-dim, 8192 tokens).
     """
-    global _lance_db, collection, fix_outcomes, observations, web_pages, quarantine, _chromadb_degraded, _embedding_fn
+    global _lance_db, collection, fix_outcomes, observations, web_pages, quarantine, _lance_degraded, _embedding_fn
     if _lance_db is not None:
         return
     try:
@@ -532,7 +531,7 @@ def _init_lancedb():
     except Exception as e:
         import traceback
         print(f"[MCP] LanceDB init failed: {e}\n{traceback.format_exc()}", file=_sys.stderr)
-        _chromadb_degraded = True
+        _lance_degraded = True
 
 # Progressive disclosure: preview length for search summaries
 SUMMARY_LENGTH = 120
@@ -674,7 +673,7 @@ def _normalize_tags(tags: str) -> str:
 
 
 def _migrate_previews():
-    """LEGACY: Preview backfill no longer needed — handled by ChromaDB→LanceDB migration.
+    """LEGACY: Preview backfill no longer needed — handled during LanceDB migration.
     Returns 0 (no-op).
     """
     return 0
@@ -684,7 +683,7 @@ _TIER_BACKFILL_MARKER = os.path.join(os.path.dirname(__file__), ".tier_backfill_
 
 
 def _backfill_tiers():
-    """LEGACY: Tier backfill no longer needed — handled by ChromaDB→LanceDB migration.
+    """LEGACY: Tier backfill no longer needed — handled during LanceDB migration.
     Returns 0 (no-op).
     """
     return 0
@@ -695,8 +694,7 @@ _COLLECTION_NAMES = ["knowledge", "fix_outcomes", "observations", "web_pages", "
 
 
 def _migrate_embeddings():
-    """LEGACY: Embedding migration no longer needed — LanceDB stores vectors directly.
-    ChromaDB→LanceDB migration script handles embedding transfer.
+    """LEGACY: Embedding migration no longer needed — LanceDB stores vectors natively.
     Returns 0 (no-op).
     """
     return 0
@@ -1126,7 +1124,7 @@ def _rerank_keyword_overlap(results, query, boost_weight=0.05):
     return results
 
 
-def _merge_results(fts_results, chroma_summaries, top_k=15):
+def _merge_results(fts_results, lance_summaries, top_k=15):
     """Merge FTS5 and LanceDB results using Reciprocal Rank Fusion (RRF).
 
     RRF gives each engine equal weight: score = sum(1/(k+rank)) across engines.
@@ -1139,7 +1137,7 @@ def _merge_results(fts_results, chroma_summaries, top_k=15):
     sources = {}  # memory_id -> set of source names
 
     # Score vector results by rank
-    for rank, entry in enumerate(chroma_summaries, start=1):
+    for rank, entry in enumerate(lance_summaries, start=1):
         mid = entry.get("id", "")
         if not mid:
             continue
@@ -1862,7 +1860,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         match_all: For tag mode only — if true, all tags must be present (default false).
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     recency_weight = max(0.0, min(1.0, recency_weight))
     top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
@@ -1975,12 +1973,12 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     elif mode == "hybrid":
         # Both engines, merged via RRF
         fts_results = _lance_keyword_search(query, top_k=actual_k)
-        chroma_results = collection.query(
+        lance_results = collection.query(
             query_texts=[query], n_results=actual_k,
             include=["metadatas", "distances"],
         )
-        chroma_summaries = format_summaries(chroma_results)
-        formatted = _merge_results(fts_results, chroma_summaries, top_k=actual_k)
+        lance_summaries = format_summaries(lance_results)
+        formatted = _merge_results(fts_results, lance_summaries, top_k=actual_k)
     else:
         # Semantic (default)
         results = collection.query(
@@ -2474,7 +2472,7 @@ def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
         table: Table to search (knowledge, observations, fix_outcomes)
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
 
     if not query or not query.strip():
@@ -2501,7 +2499,7 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
         force: Skip dedup check entirely (escape hatch if threshold is wrong)
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     # Cap metadata strings to 500 chars
     if len(context) > 500:
@@ -2687,7 +2685,7 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
         threshold: Cosine distance threshold for duplicate detection (default 0.15)
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode"}
     threshold = _validate_distance_threshold(threshold, default=0.15, min_val=0.03, max_val=0.5)
 
@@ -2790,7 +2788,7 @@ def get_memory(id: str) -> dict:
         id: The memory ID (from search results)
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     try:
         # Support batch fetch: comma-separated IDs return multiple memories
@@ -2854,7 +2852,7 @@ def delete_memory(id: str) -> dict:
     Args:
         id: The memory ID to delete (from search results). Comma-separated for batch delete.
     """
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     try:
         ids = [i.strip() for i in id.split(",") if i.strip()]
@@ -2981,7 +2979,7 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
         strategy_id: A short name for the fix strategy (e.g., "fix-type-cast")
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     normalized, error_hash = error_signature(error_text)
     strategy_hash = fnv1a_hash(strategy_id)
@@ -3037,7 +3035,7 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
         outcome: "success" or "failure"
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     if outcome not in ("success", "failure"):
         return {"error": "outcome must be 'success' or 'failure'"}
@@ -3095,7 +3093,7 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
         top_k: Maximum number of results (default 10)
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
     normalized, error_hash = error_signature(error_text)
@@ -3256,14 +3254,14 @@ def health_check() -> dict:
         disk_bytes = -1
 
     return {
-        "status": "ok" if not _chromadb_degraded else "degraded",
+        "status": "ok" if not _lance_degraded else "degraded",
         "uptime": uptime_str,
         "uptime_seconds": uptime_s,
         "table_counts": table_counts,
         "total_memories": total_count,
         "last_write": last_write,
         "embedding_model": "loaded" if _embedding_fn is not None else "not_loaded",
-        "lancedb": "connected" if (_lance_db is not None and not _chromadb_degraded) else ("degraded" if _chromadb_degraded else "not_connected"),
+        "lancedb": "connected" if (_lance_db is not None and not _lance_degraded) else ("degraded" if _lance_degraded else "not_connected"),
         "tags_db": "ok" if os.path.exists(TAGS_DB_PATH) else "missing",
         "disk_usage_mb": round(disk_bytes / (1024 * 1024), 2) if disk_bytes >= 0 else -1,
         "initialized": _initialized,
@@ -4061,7 +4059,7 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
         min_cluster_size: Min memories per cluster (used by cluster).
         distance_threshold: Max cosine distance for clustering (used by cluster).
     """
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     if action == "promotions":
         return suggest_promotions(top_k=top_k if top_k is not None else 5)

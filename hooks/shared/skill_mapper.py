@@ -47,7 +47,7 @@ KNOWN_SHARED_MODULES = {
     "session_analytics": "Session metrics and analysis",
     "metrics_collector": "Metrics collection and aggregation",
     "config_validator": "Configuration validation",
-    "chromadb_socket": "ChromaDB socket communication",
+    "memory_socket": "Memory socket communication",
     "capability_registry": "Capability registration and discovery",
     "consensus_validator": "Multi-party consensus validation",
     "error_normalizer": "Error normalization and classification",

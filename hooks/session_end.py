@@ -3,7 +3,7 @@
 
 Fires on SessionEnd to:
 1. Update LIVE_STATE.json with session metrics and auto-summary if /wrap-up didn't run
-2. Flush the capture queue to ChromaDB (observations collection)
+2. Flush the capture queue to LanceDB (observations collection)
 3. Increment session_count in LIVE_STATE.json
 
 Fail-open: always exits 0.
@@ -18,7 +18,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shared.chromadb_socket import is_worker_available, flush_queue as socket_flush, backup as socket_backup, WorkerUnavailable
+from shared.memory_socket import is_worker_available, flush_queue as socket_flush, backup as socket_backup, WorkerUnavailable
 
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
@@ -444,7 +444,7 @@ def flush_capture_queue():
     with open(capture_queue, "r") as f:
         line_count = sum(1 for _ in f)
 
-    # Try UDS socket flush (memory_server.py handles the actual ChromaDB upsert)
+    # Try UDS socket flush (memory_server.py handles the actual LanceDB upsert)
     try:
         if is_worker_available(retries=2, delay=0.3):
             flushed = socket_flush()
@@ -459,7 +459,7 @@ def flush_capture_queue():
 
 
 def backup_database():
-    """Backup ChromaDB if DB changed since last backup. Fail-open."""
+    """Backup database if DB changed since last backup. Fail-open."""
     db_path = os.path.join(MEMORY_DIR, "chroma.sqlite3")
     bak_path = os.path.join(MEMORY_DIR, "chroma.sqlite3.backup")
     try:

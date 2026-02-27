@@ -22,7 +22,7 @@ HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 STATS_CACHE = os.path.join(CLAUDE_DIR, "stats-cache.json")
 
 sys.path.insert(0, HOOKS_DIR)
-from shared.chromadb_socket import is_worker_available, count as socket_count, WorkerUnavailable
+from shared.memory_socket import is_worker_available, count as socket_count, WorkerUnavailable
 
 # Import reusable functions from statusline
 from statusline import (

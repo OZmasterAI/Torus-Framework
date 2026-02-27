@@ -8,14 +8,14 @@ import os
 from collections import defaultdict
 
 sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
-from shared import chromadb_socket
+from shared import memory_socket
 
 
 def list_pages(pattern: str = None) -> list[dict]:
     """List indexed URLs, grouped by URL. Optional glob pattern filter."""
     try:
-        result = chromadb_socket.get("web_pages", limit=500, include=["metadatas"])
-    except chromadb_socket.WorkerUnavailable:
+        result = memory_socket.get("web_pages", limit=500, include=["metadatas"])
+    except memory_socket.WorkerUnavailable:
         print("Error: Memory worker not available. Is memory_server running?", file=sys.stderr)
         sys.exit(1)
     except RuntimeError as e:

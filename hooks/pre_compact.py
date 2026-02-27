@@ -243,7 +243,7 @@ def main():
     # Save to memory via UDS socket so post-compaction context is richer
     try:
         import socket as _socket
-        sock_path = os.path.join(os.path.dirname(__file__), ".chromadb_socket")
+        sock_path = os.path.join(os.path.dirname(__file__), ".memory.sock")
         if os.path.exists(sock_path):
             sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
             sock.settimeout(2)

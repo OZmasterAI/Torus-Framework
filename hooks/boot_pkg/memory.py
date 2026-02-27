@@ -3,7 +3,7 @@ import json
 import os
 import time
 
-from shared.chromadb_socket import (
+from shared.memory_socket import (
     is_worker_available as socket_available,
     query as _default_query,
     count as _default_count,
