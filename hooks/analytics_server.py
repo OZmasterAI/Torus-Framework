@@ -2412,6 +2412,45 @@ def causal_chain_analysis() -> dict:
     }
 
 
+# ── R:W Ratio & Frustration ───────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def rw_ratio(session_id: str = "") -> dict:
+    """Read:Write ratio for current session. Rating: good (>=4), fair (>=2), poor (<2)."""
+    _ensure_initialized()
+    from shared.session_analytics import compute_rw_ratio
+    from shared.state import load_state
+    sid = _resolve_session_id(session_id)
+    state = load_state(session_id=sid)
+    return compute_rw_ratio(state)
+
+
+@mcp.tool()
+@crash_proof
+def frustration_report(session_id: str = "") -> dict:
+    """Session frustration: band (calm/friction/frustrated), trend (rising/falling/stable)."""
+    _ensure_initialized()
+    from shared.session_analytics import aggregate_frustration
+    sid = _resolve_session_id(session_id) if session_id else None
+    return aggregate_frustration(session_id=sid)
+
+
+@mcp.tool()
+@crash_proof
+def skill_invocation_report(session_id: str = "") -> dict:
+    """Skill usage this session: which skills invoked and how many times."""
+    _ensure_initialized()
+    from shared.state import load_state
+    sid = _resolve_session_id(session_id)
+    state = load_state(session_id=sid)
+    return {
+        "skill_usage": state.get("skill_usage", {}),
+        "recent_skills": state.get("recent_skills", [])[-10:],
+        "total_invocations": sum(state.get("skill_usage", {}).values()),
+    }
+
+
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
 # DORMANT: uncomment @mcp.tool() to reactivate

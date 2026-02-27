@@ -5,7 +5,7 @@ import re
 import sys
 import time
 
-from shared.state import load_state, save_state, update_gate_effectiveness, get_live_toggle
+from shared.state import load_state, save_state, update_gate_effectiveness, get_live_toggle, read_enforcer_sideband, delete_enforcer_sideband
 from shared.error_normalizer import fnv1a_hash
 
 from tracker_pkg import _log_debug
@@ -506,6 +506,8 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         print("[SESSION] ADVISORY: Session running 1h+. Good time for a memory checkpoint.", file=sys.stderr)
 
     save_state(state, session_id=session_id)
+    # Promote complete: delete enforcer sideband (tracker is now the source of truth)
+    delete_enforcer_sideband(session_id)
 
 
 def main():
@@ -528,6 +530,15 @@ def main():
 
         state = load_state(session_id=session_id)
         state["_session_id"] = session_id
+
+        # Merge enforcer sideband — gate mutations from PreToolUse that
+        # haven't been promoted to disk state yet
+        _enforcer_pending = read_enforcer_sideband(session_id)
+        if _enforcer_pending is not None:
+            for _k, _v in _enforcer_pending.items():
+                if _k.startswith("_") and _k != "_sideband_refreshed":
+                    continue
+                state[_k] = _v
 
         handle_post_tool_use(tool_name, tool_input, state, session_id=session_id, tool_response=tool_response)
     except Exception as e:

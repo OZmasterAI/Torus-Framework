@@ -74,6 +74,35 @@ def detect_sentiment(text: str) -> str:
     return "neutral"
 
 
+# --- Frustration scoring (observability only) ---
+
+# Frustration severity weights (keyword -> base score)
+_FRUSTRATION_WEIGHTS = {
+    "again": 0.3, "still": 0.35, "ugh": 0.4, "sigh": 0.3,
+    "wrong": 0.4, "not working": 0.5, "broken": 0.5,
+    "doesn't work": 0.5, "won't work": 0.5,
+}
+
+
+def compute_frustration_score(text: str) -> float:
+    """Compute frustration score 0.0-1.0 from user prompt text.
+
+    OBSERVABILITY ONLY — this score must NEVER be used as a gate input.
+    Gates must not read frustration_score. Display as bands:
+    0.0-0.2 = calm, 0.3-0.5 = friction, 0.6+ = frustrated.
+    """
+    text_lower = text.lower()
+    matched_weights = [w for kw, w in _FRUSTRATION_WEIGHTS.items() if kw in text_lower]
+    if not matched_weights:
+        score = 0.0
+    else:
+        score = max(matched_weights)                    # strongest signal = base
+        score += 0.1 * (len(matched_weights) - 1)      # additional matches add 0.1 each
+    if _ALL_CAPS_RE.search(text):
+        score += 0.3
+    return min(round(score, 2), 1.0)
+
+
 # --- Capture constants ---
 
 CAPTURE_QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".capture_queue.jsonl")
@@ -189,6 +218,7 @@ def main():
         tool_input = {"prompt": scrubbed}
         obs = compress_observation("UserPrompt", tool_input, {}, "prompt_hook")
         obs["metadata"]["sentiment"] = sentiment
+        obs["metadata"]["frustration_score"] = compute_frustration_score(prompt)
         with open(CAPTURE_QUEUE, "a") as f:
             f.write(json.dumps(obs) + "\n")
     except Exception:
