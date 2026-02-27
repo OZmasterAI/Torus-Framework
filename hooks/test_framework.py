@@ -18687,6 +18687,399 @@ except Exception as _gr_exc:
     test("Gate 04/07/13/15 Refactored Tests: import and tests", False, str(_gr_exc))
 
 
+# --- Memory Decay Deep Tests ---
+print("\n--- Memory Decay Deep Tests ---")
+try:
+    from shared.memory_decay import (
+        calculate_relevance_score, rank_memories, identify_stale_memories,
+        _parse_timestamp, _age_days, _time_decay_factor, _access_boost,
+        _tag_relevance_bonus,
+        TIER_BASE, TIER_BASE_DEFAULT, DEFAULT_HALF_LIFE_DAYS,
+        _MAX_ACCESS_BOOST, _RECENCY_BOOST, _RECENCY_WINDOW_DAYS, _MAX_TAG_BONUS,
+    )
+    from datetime import datetime as _md_dt, timezone as _md_tz, timedelta as _md_td
+    import math as _md_math
+
+    # Constants
+    test("MemDecay: TIER_BASE has 3 tiers", len(TIER_BASE) == 3)
+    test("MemDecay: T1 base is 1.0", TIER_BASE[1] == 1.0)
+    test("MemDecay: T2 base is 0.7", TIER_BASE[2] == 0.7)
+    test("MemDecay: T3 base is 0.4", TIER_BASE[3] == 0.4)
+    test("MemDecay: DEFAULT_HALF_LIFE is 45.0", DEFAULT_HALF_LIFE_DAYS == 45.0)
+    test("MemDecay: _MAX_ACCESS_BOOST is 0.20", _MAX_ACCESS_BOOST == 0.20)
+    test("MemDecay: _RECENCY_BOOST is 0.10", _RECENCY_BOOST == 0.10)
+    test("MemDecay: _MAX_TAG_BONUS is 0.15", _MAX_TAG_BONUS == 0.15)
+
+    # _parse_timestamp
+    _pt1 = _parse_timestamp("2025-01-15T10:30:00")
+    test("MemDecay: _parse_timestamp valid ISO", _pt1 is not None and isinstance(_pt1, _md_dt))
+    test("MemDecay: _parse_timestamp with Z", _parse_timestamp("2025-01-15T10:30:00Z") is not None)
+    test("MemDecay: _parse_timestamp empty", _parse_timestamp("") is None)
+    test("MemDecay: _parse_timestamp invalid", _parse_timestamp("not-a-date") is None)
+    test("MemDecay: _parse_timestamp None", _parse_timestamp(None) is None)
+
+    # _age_days
+    _recent_ts = (_md_dt.now(tz=_md_tz.utc) - _md_td(hours=1)).isoformat()
+    _old_ts = (_md_dt.now(tz=_md_tz.utc) - _md_td(days=30)).isoformat()
+    test("MemDecay: _age_days recent ~0", _age_days(_recent_ts) < 1.0)
+    test("MemDecay: _age_days 30 days old", abs(_age_days(_old_ts) - 30.0) < 1.0)
+    test("MemDecay: _age_days invalid returns 0", _age_days("invalid") == 0.0)
+    test("MemDecay: _age_days empty returns 0", _age_days("") == 0.0)
+
+    # _time_decay_factor
+    test("MemDecay: decay at age 0 is 1.0", abs(_time_decay_factor(0.0) - 1.0) < 1e-9)
+    test("MemDecay: decay at half-life is 0.5", abs(_time_decay_factor(45.0) - 0.5) < 1e-9)
+    test("MemDecay: decay at 2x half-life is 0.25", abs(_time_decay_factor(90.0) - 0.25) < 1e-6)
+    test("MemDecay: decay at 3x half-life is 0.125", abs(_time_decay_factor(135.0) - 0.125) < 1e-6)
+    test("MemDecay: custom half-life", abs(_time_decay_factor(10.0, half_life=10.0) - 0.5) < 1e-9)
+
+    # _access_boost
+    test("MemDecay: access_boost 0 retrieval is 0", _access_boost(0) == 0.0)
+    test("MemDecay: access_boost 1 retrieval > 0", _access_boost(1) > 0.0)
+    test("MemDecay: access_boost capped at _MAX_ACCESS_BOOST", _access_boost(10000) <= _MAX_ACCESS_BOOST)
+    test("MemDecay: access_boost monotonically increasing", _access_boost(5) > _access_boost(1))
+    test("MemDecay: access_boost handles None", _access_boost(None) == 0.0)
+
+    # _tag_relevance_bonus
+    test("MemDecay: tag_bonus with matching tags", _tag_relevance_bonus("fix,error,python", "fix,error") > 0.0)
+    test("MemDecay: tag_bonus with no match", _tag_relevance_bonus("fix,error", "frontend,css") == 0.0)
+    test("MemDecay: tag_bonus with empty query", _tag_relevance_bonus("fix,error", None) == 0.0)
+    test("MemDecay: tag_bonus with empty tags", _tag_relevance_bonus("", "fix") == 0.0)
+    test("MemDecay: tag_bonus capped at _MAX_TAG_BONUS", _tag_relevance_bonus("a,b,c,d,e", "a,b,c,d,e") <= _MAX_TAG_BONUS)
+    test("MemDecay: tag_bonus case insensitive", _tag_relevance_bonus("FIX,ERROR", "fix,error") > 0.0)
+
+    # calculate_relevance_score
+    _fresh_t1 = {"tier": 1, "timestamp": _recent_ts, "retrieval_count": 5, "tags": "fix,error"}
+    _score_t1 = calculate_relevance_score(_fresh_t1)
+    test("MemDecay: fresh T1 score is high (>0.8)", _score_t1 > 0.8)
+
+    _old_t3 = {"tier": 3, "timestamp": _old_ts, "retrieval_count": 0, "tags": ""}
+    _score_t3 = calculate_relevance_score(_old_t3)
+    test("MemDecay: old T3 score is low", _score_t3 < 0.5)
+
+    test("MemDecay: score in [0,1]", 0.0 <= _score_t1 <= 1.0 and 0.0 <= _score_t3 <= 1.0)
+
+    # T1 > T3 for same age
+    _same_age_t1 = {"tier": 1, "timestamp": _old_ts, "retrieval_count": 0, "tags": ""}
+    _same_age_t3 = {"tier": 3, "timestamp": _old_ts, "retrieval_count": 0, "tags": ""}
+    test("MemDecay: T1 scores higher than T3 at same age",
+         calculate_relevance_score(_same_age_t1) > calculate_relevance_score(_same_age_t3))
+
+    # Query context boosts score
+    _tagged_mem = {"tier": 2, "timestamp": _recent_ts, "retrieval_count": 0, "tags": "fix,error"}
+    _s_no_ctx = calculate_relevance_score(_tagged_mem)
+    _s_with_ctx = calculate_relevance_score(_tagged_mem, query_context="fix,error")
+    test("MemDecay: query context boosts score", _s_with_ctx >= _s_no_ctx)
+
+    # Missing fields handled
+    _empty_entry = {}
+    _s_empty = calculate_relevance_score(_empty_entry)
+    test("MemDecay: empty entry doesn't crash", isinstance(_s_empty, float))
+    test("MemDecay: empty entry score in [0,1]", 0.0 <= _s_empty <= 1.0)
+
+    # rank_memories
+    _mems = [
+        {"tier": 3, "timestamp": _old_ts, "retrieval_count": 0, "tags": ""},
+        {"tier": 1, "timestamp": _recent_ts, "retrieval_count": 10, "tags": "fix"},
+        {"tier": 2, "timestamp": _recent_ts, "retrieval_count": 0, "tags": ""},
+    ]
+    _ranked = rank_memories(_mems)
+    test("MemDecay: rank_memories returns same count", len(_ranked) == 3)
+    test("MemDecay: rank_memories has _relevance_score", "_relevance_score" in _ranked[0])
+    test("MemDecay: rank_memories sorted descending",
+         _ranked[0]["_relevance_score"] >= _ranked[1]["_relevance_score"] >= _ranked[2]["_relevance_score"])
+    test("MemDecay: rank_memories doesn't modify original", "_relevance_score" not in _mems[0])
+
+    # identify_stale_memories
+    _very_old_ts = (_md_dt.now(tz=_md_tz.utc) - _md_td(days=365)).isoformat()
+    _stale_mems = [
+        {"tier": 1, "timestamp": _recent_ts, "retrieval_count": 10, "tags": "fix"},
+        {"tier": 3, "timestamp": _very_old_ts, "retrieval_count": 0, "tags": ""},
+    ]
+    _stale = identify_stale_memories(_stale_mems, threshold=0.2)
+    test("MemDecay: identify_stale finds old low-tier entries", len(_stale) >= 1)
+    test("MemDecay: stale entries have _relevance_score", all("_relevance_score" in s for s in _stale))
+    test("MemDecay: stale entries below threshold", all(s["_relevance_score"] < 0.2 for s in _stale))
+    test("MemDecay: empty list returns empty", len(identify_stale_memories([])) == 0)
+
+except Exception as _md_exc:
+    test("Memory Decay Deep Tests: import and tests", False, str(_md_exc))
+
+
+# --- Session Compressor Deep Tests ---
+print("\n--- Session Compressor Deep Tests ---")
+try:
+    from shared.session_compressor import (
+        compress_session_context, extract_key_decisions, format_handoff,
+    )
+
+    # compress_session_context with full state
+    _sc_state = {
+        "files_edited": ["/tmp/foo.py", "/tmp/bar.py"],
+        "verified_fixes": ["/tmp/foo.py"],
+        "pending_verification": ["/tmp/bar.py"],
+        "session_test_baseline": True,
+        "last_test_exit_code": 0,
+        "error_pattern_counts": {"ImportError": 3, "TypeError": 1},
+        "pending_chain_ids": ["chain1"],
+        "active_bans": ["bad_strategy"],
+        "gate6_warn_count": 2,
+        "edit_streak": {"/tmp/foo.py": 5, "/tmp/bar.py": 2},
+    }
+    _compressed = compress_session_context(_sc_state)
+    test("SC: compress returns string", isinstance(_compressed, str))
+    test("SC: compress includes FILES", "FILES:" in _compressed)
+    test("SC: compress includes VERIFY", "VERIFY:" in _compressed)
+    test("SC: compress includes TESTS:PASS", "TESTS:PASS" in _compressed)
+    test("SC: compress includes ERRORS", "ERRORS:" in _compressed)
+    test("SC: compress includes CHAINS", "CHAINS:" in _compressed)
+    test("SC: compress includes BANS", "BANS:" in _compressed)
+    test("SC: compress includes GATE6", "GATE6:" in _compressed)
+    test("SC: compress includes CHURN", "CHURN:" in _compressed)
+
+    # Verification tags
+    test("SC: verified file has check mark", "foo.py" in _compressed and "✓" in _compressed)
+    test("SC: pending file has question mark", "bar.py?" in _compressed)
+
+    # Test failure format
+    _sc_fail = {"session_test_baseline": True, "last_test_exit_code": 1}
+    _comp_fail = compress_session_context(_sc_fail)
+    test("SC: failed tests show FAIL", "FAIL" in _comp_fail)
+
+    # Empty state
+    _comp_empty = compress_session_context({})
+    test("SC: empty state returns string", isinstance(_comp_empty, str))
+
+    # Token budget truncation
+    _sc_huge = {"files_edited": [f"/tmp/file_{i}.py" for i in range(100)]}
+    _comp_huge = compress_session_context(_sc_huge, max_tokens=10)  # 40 chars max
+    test("SC: truncation adds ellipsis", len(_comp_huge) <= 40 + 3)  # +3 for "..."
+
+    # extract_key_decisions
+    _ekd_state = {
+        "tool_stats": {
+            "Edit": {"blocked": 3},
+            "remember_this": {"count": 5},
+        },
+        "gate_blocks": [{"gate": 1, "tool": "Edit"}, "legacy_block_str"],
+        "session_test_baseline": True,
+        "last_test_exit_code": 0,
+        "all_chain_ids": ["c1", "c2", "c3"],
+        "pending_chain_ids": ["c3"],
+        "active_bans": ["strat_x"],
+    }
+    _decisions = extract_key_decisions(_ekd_state)
+    test("SC: decisions is list", isinstance(_decisions, list))
+    test("SC: decisions has GATE_BLOCK", any("GATE_BLOCK" in d for d in _decisions))
+    test("SC: decisions has MEMORY saves", any("MEMORY" in d for d in _decisions))
+    test("SC: decisions has TEST_PASS", any("TEST_PASS" in d for d in _decisions))
+    test("SC: decisions has FIXED chains", any("FIXED" in d for d in _decisions))
+    test("SC: decisions has BANNED", any("BANNED" in d for d in _decisions))
+
+    # Legacy gate_blocks formats
+    test("SC: legacy dict gate_block", any("gate1" in d or "gate?" in d for d in _decisions))
+    test("SC: legacy string gate_block", any("legacy_block_str" in d for d in _decisions))
+
+    # Empty decisions
+    test("SC: empty state gives empty decisions", len(extract_key_decisions({})) == 0)
+
+    # format_handoff
+    _handoff = format_handoff(_sc_state, _decisions)
+    test("SC: handoff has DONE section", "DONE:" in _handoff)
+    test("SC: handoff has BLOCKED section", "BLOCKED:" in _handoff)
+    test("SC: handoff has NEXT section", "NEXT:" in _handoff)
+    test("SC: handoff includes verified files", "foo.py verified" in _handoff)
+    test("SC: handoff includes pending files", "bar.py needs verification" in _handoff)
+    test("SC: handoff includes open chains", "open causal chain" in _handoff)
+    test("SC: handoff mentions high-churn stabilize", "stabilize" in _handoff)
+
+    # Empty handoff
+    _empty_handoff = format_handoff({}, [])
+    test("SC: empty handoff has nothing verified", "nothing verified" in _empty_handoff)
+    test("SC: empty handoff has none blocked", "(none)" in _empty_handoff)
+    test("SC: empty handoff has continue next", "continue current work" in _empty_handoff)
+
+except Exception as _sc_exc:
+    test("Session Compressor Deep Tests: import and tests", False, str(_sc_exc))
+
+
+# --- Hook Profiler Deep Tests ---
+print("\n--- Hook Profiler Deep Tests ---")
+try:
+    from shared.hook_profiler import (
+        profile, _percentile, _ns_to_us, _read_records,
+        LATENCY_LOG,
+    )
+
+    # _percentile
+    test("HP: _percentile empty list", _percentile([], 50) == 0.0)
+    test("HP: _percentile single element", _percentile([100], 50) == 100)
+    test("HP: _percentile p50 of [1,2,3,4,5]", _percentile([1, 2, 3, 4, 5], 50) == 3)
+    test("HP: _percentile p0 returns first", _percentile([1, 2, 3], 0) == 1)
+    test("HP: _percentile p100 returns last", _percentile([1, 2, 3], 100) == 3)
+    test("HP: _percentile p95 of 100 elements", _percentile(list(range(100)), 95) == 94)  # nearest-rank
+    test("HP: _percentile p99 of 10 elements", _percentile(list(range(10)), 99) == 9)
+
+    # _ns_to_us formatting
+    test("HP: _ns_to_us 1000 -> 1.0", _ns_to_us(1000) == "1.0")
+    test("HP: _ns_to_us 0 -> 0.0", _ns_to_us(0) == "0.0")
+    test("HP: _ns_to_us 1500 -> 1.5", _ns_to_us(1500) == "1.5")
+    test("HP: _ns_to_us 500 -> 0.5", _ns_to_us(500) == "0.5")
+    test("HP: _ns_to_us large value", _ns_to_us(1_000_000) == "1000.0")
+
+    # profile wrapper
+    def _hp_fake_check(tool_name, tool_input, state, event_type="PreToolUse"):
+        class _FakeResult:
+            blocked = False
+            gate_name = "TEST"
+        return _FakeResult()
+
+    _wrapped = profile("__test_gate__", _hp_fake_check)
+    test("HP: profile returns callable", callable(_wrapped))
+    test("HP: wrapped has _profiler_wrapped", getattr(_wrapped, "_profiler_wrapped", False) is True)
+    test("HP: wrapped preserves name", _wrapped.__name__ == "_hp_fake_check")
+    test("HP: wrapped has _original_check", getattr(_wrapped, "_original_check", None) is _hp_fake_check)
+
+    # Call wrapped function and verify result
+    _hp_result = _wrapped("Edit", {"file_path": "/tmp/test.py"}, {})
+    test("HP: wrapped returns correct result", _hp_result.blocked is False)
+    test("HP: wrapped result has gate_name", _hp_result.gate_name == "TEST")
+
+    # Blocking function
+    def _hp_blocking_check(tool_name, tool_input, state, event_type="PreToolUse"):
+        class _BlockResult:
+            blocked = True
+            gate_name = "BLOCK_TEST"
+        return _BlockResult()
+
+    _wrapped_block = profile("__test_block_gate__", _hp_blocking_check)
+    _hp_br = _wrapped_block("Edit", {}, {})
+    test("HP: blocking gate returns blocked=True", _hp_br.blocked is True)
+
+    # LATENCY_LOG path
+    test("HP: LATENCY_LOG is /tmp/gate_latency.jsonl", LATENCY_LOG == "/tmp/gate_latency.jsonl")
+
+except Exception as _hp_exc:
+    test("Hook Profiler Deep Tests: import and tests", False, str(_hp_exc))
+
+
+# --- Metrics Collector Deep Tests ---
+print("\n--- Metrics Collector Deep Tests ---")
+try:
+    from shared.metrics_collector import (
+        inc as mc_inc, set_gauge as mc_set_gauge, observe as mc_observe,
+        get_metric as mc_get_metric, get_all_metrics as mc_get_all_metrics,
+        flush as mc_flush, rollup as mc_rollup, timed as mc_timed,
+        record_gate_fire, record_gate_block, record_gate_latency,
+        record_hook_duration, record_memory_query, set_memory_total,
+        record_tool_call, set_test_pass_rate,
+        _label_key, TYPE_COUNTER, TYPE_GAUGE, TYPE_HISTOGRAM,
+        BUILTIN_METRICS, _store,
+    )
+
+    # Type constants
+    test("MC: TYPE_COUNTER", TYPE_COUNTER == "counter")
+    test("MC: TYPE_GAUGE", TYPE_GAUGE == "gauge")
+    test("MC: TYPE_HISTOGRAM", TYPE_HISTOGRAM == "histogram")
+
+    # BUILTIN_METRICS
+    test("MC: BUILTIN_METRICS has gate.fires", "gate.fires" in BUILTIN_METRICS)
+    test("MC: BUILTIN_METRICS has gate.blocks", "gate.blocks" in BUILTIN_METRICS)
+    test("MC: BUILTIN_METRICS has gate.latency_ms", "gate.latency_ms" in BUILTIN_METRICS)
+    test("MC: BUILTIN_METRICS has 8 entries", len(BUILTIN_METRICS) == 8)
+
+    # _label_key
+    test("MC: _label_key empty", _label_key(None) == "")
+    test("MC: _label_key empty dict", _label_key({}) == "")
+    test("MC: _label_key single", _label_key({"gate": "g1"}) == "gate=g1")
+    test("MC: _label_key sorted", _label_key({"z": "1", "a": "2"}) == "a=2,z=1")
+
+    # Counter operations
+    mc_inc("__test_counter__", 1)
+    _tc = mc_get_metric("__test_counter__")
+    test("MC: counter increment", _tc.get("value", 0) >= 1)
+    test("MC: counter type", _tc.get("type") == TYPE_COUNTER)
+    mc_inc("__test_counter__", 5)
+    _tc2 = mc_get_metric("__test_counter__")
+    test("MC: counter accumulates", _tc2.get("value", 0) >= 6)
+
+    # Gauge operations
+    mc_set_gauge("__test_gauge__", 42.0)
+    _tg = mc_get_metric("__test_gauge__")
+    test("MC: gauge set value", _tg.get("value") == 42.0)
+    test("MC: gauge type", _tg.get("type") == TYPE_GAUGE)
+    mc_set_gauge("__test_gauge__", 99.0)
+    _tg2 = mc_get_metric("__test_gauge__")
+    test("MC: gauge overwrites", _tg2.get("value") == 99.0)
+
+    # Histogram operations
+    mc_observe("__test_hist__", 10.0)
+    mc_observe("__test_hist__", 20.0)
+    mc_observe("__test_hist__", 30.0)
+    _th = mc_get_metric("__test_hist__")
+    test("MC: histogram count >= 3", _th.get("count", 0) >= 3)
+    test("MC: histogram has sum", "sum" in _th)
+    test("MC: histogram has min", "min" in _th)
+    test("MC: histogram has max", "max" in _th)
+    test("MC: histogram has avg", "avg" in _th)
+    test("MC: histogram type", _th.get("type") == TYPE_HISTOGRAM)
+
+    # Labels
+    mc_inc("__test_labels__", 1, labels={"gate": "g1"})
+    _tl = mc_get_metric("__test_labels__", labels={"gate": "g1"})
+    test("MC: labeled counter", _tl.get("value", 0) >= 1)
+
+    # get_all_metrics
+    _all_mc = mc_get_all_metrics()
+    test("MC: get_all_metrics returns dict", isinstance(_all_mc, dict))
+    test("MC: get_all_metrics includes test counter", "__test_counter__" in _all_mc)
+
+    # rollup
+    _ru = mc_rollup(window_seconds=3600)
+    test("MC: rollup returns dict", isinstance(_ru, dict))
+
+    # Convenience helpers
+    record_gate_fire("__test_gate_mc__")
+    record_gate_block("__test_gate_mc__")
+    record_gate_latency("__test_gate_mc__", 5.0)
+    record_hook_duration("PreToolUse", 10.0)
+    record_memory_query()
+    set_memory_total(100)
+    record_tool_call()
+    set_test_pass_rate(0.95)
+
+    _tpr = mc_get_metric("test.pass_rate")
+    test("MC: set_test_pass_rate sets gauge", _tpr.get("value") == 0.95)
+
+    # set_test_pass_rate clamps
+    set_test_pass_rate(1.5)
+    _tpr2 = mc_get_metric("test.pass_rate")
+    test("MC: set_test_pass_rate clamps to 1.0", _tpr2.get("value") == 1.0)
+
+    set_test_pass_rate(-0.5)
+    _tpr3 = mc_get_metric("test.pass_rate")
+    test("MC: set_test_pass_rate clamps to 0.0", _tpr3.get("value") == 0.0)
+
+    # flush
+    _flush_ok = mc_flush()
+    test("MC: flush returns bool", isinstance(_flush_ok, bool))
+
+    # get_metric for nonexistent
+    _nonexist = mc_get_metric("__nonexistent_metric__")
+    test("MC: nonexistent metric returns empty dict", _nonexist == {})
+
+    # timed context manager
+    import time as _mc_time
+    with mc_timed("__test_timed__"):
+        _mc_time.sleep(0.001)
+    _tt = mc_get_metric("__test_timed__")
+    test("MC: timed records histogram", _tt.get("type") == TYPE_HISTOGRAM)
+    test("MC: timed count >= 1", _tt.get("count", 0) >= 1)
+
+except Exception as _mc_exc:
+    test("Metrics Collector Deep Tests: import and tests", False, str(_mc_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
