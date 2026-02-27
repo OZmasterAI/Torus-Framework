@@ -23210,6 +23210,495 @@ except Exception as _sm2_exc:
     test("Skill Mapper Deep Tests: import and tests", False, str(_sm2_exc))
 
 
+# ─────────────────────────────────────────────────
+# Hot Reload Deep Tests (hot_reload.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.hot_reload import (
+        _module_to_filepath,
+        _get_mtime,
+        _validate_module,
+        reload_gate,
+        check_for_changes,
+        auto_reload,
+        discover_gate_modules,
+        seed_mtimes,
+        get_reload_history,
+        reset_state as hr_reset_state,
+        CHECK_INTERVAL,
+        _known_mtimes,
+        _reload_history,
+        _lock as hr_lock,
+    )
+    import types as _hr_types
+    import tempfile as _hr_tempfile
+
+    # ── Constants ──
+    test("HR: CHECK_INTERVAL is 30.0", abs(CHECK_INTERVAL - 30.0) < 0.01)
+
+    # ── _module_to_filepath ──
+    _hr_fp = _module_to_filepath("gates.gate_01_read_before_edit")
+    test("HR: module_to_filepath has .py", _hr_fp.endswith(".py"))
+    test("HR: module_to_filepath has gate_01", "gate_01_read_before_edit" in _hr_fp)
+    test("HR: module_to_filepath nested", "gates" in _hr_fp)
+
+    # ── _get_mtime ──
+    test("HR: get_mtime existing file", _get_mtime(__file__) is not None)
+    test("HR: get_mtime nonexistent", _get_mtime("/nonexistent/path.py") is None)
+
+    # ── _validate_module ──
+    _hr_good_mod = _hr_types.ModuleType("test_good")
+    _hr_good_mod.check = lambda *a, **kw: None
+    test("HR: validate module with check()", _validate_module(_hr_good_mod))
+
+    _hr_bad_mod = _hr_types.ModuleType("test_bad")
+    test("HR: validate module without check()", not _validate_module(_hr_bad_mod))
+
+    # ── discover_gate_modules ──
+    with _hr_tempfile.TemporaryDirectory() as _hr_td:
+        # Create some gate files
+        open(os.path.join(_hr_td, "gate_01_alpha.py"), "w").close()
+        open(os.path.join(_hr_td, "gate_02_beta.py"), "w").close()
+        open(os.path.join(_hr_td, "__init__.py"), "w").close()
+        open(os.path.join(_hr_td, "utils.py"), "w").close()
+
+        _hr_discovered = discover_gate_modules(gates_dir=_hr_td)
+        test("HR: discover finds gate files", len(_hr_discovered) == 2)
+        test("HR: discover excludes non-gate files",
+             all("gate_" in d for d in _hr_discovered))
+        test("HR: discover returns dotted names",
+             all(d.startswith("gates.") for d in _hr_discovered))
+
+    # Nonexistent dir
+    test("HR: discover nonexistent dir", discover_gate_modules(gates_dir="/nonexistent") == [])
+
+    # ── reset_state ──
+    hr_reset_state()
+    with hr_lock:
+        test("HR: reset clears mtimes", len(_known_mtimes) == 0)
+        test("HR: reset clears history", len(_reload_history) == 0)
+
+    # ── seed_mtimes ──
+    hr_reset_state()
+    _hr_real_modules = discover_gate_modules()
+    seed_mtimes(_hr_real_modules)
+    with hr_lock:
+        test("HR: seed populates mtimes", len(_known_mtimes) > 0)
+
+    # ── check_for_changes ──
+    hr_reset_state()
+    seed_mtimes(_hr_real_modules)
+    _hr_changes = check_for_changes(_hr_real_modules)
+    test("HR: no changes after seed", _hr_changes == {})
+
+    # Force a stale mtime
+    hr_reset_state()
+    _hr_stale_changes = check_for_changes(_hr_real_modules)
+    test("HR: all changed when cache empty", len(_hr_stale_changes) == len(_hr_real_modules))
+
+    # ── reload_gate ──
+    hr_reset_state()
+    if _hr_real_modules:
+        _hr_ok = reload_gate(_hr_real_modules[0])
+        test("HR: reload real gate returns True", _hr_ok)
+        _hr_hist = get_reload_history()
+        test("HR: reload records history", len(_hr_hist) == 1)
+        test("HR: history entry success", _hr_hist[0]["success"])
+
+    # Reload nonexistent
+    hr_reset_state()
+    test("HR: reload nonexistent returns False",
+         not reload_gate("gates.__nonexistent_gate__"))
+
+    # ── get_reload_history returns copy ──
+    hr_reset_state()
+    if _hr_real_modules:
+        reload_gate(_hr_real_modules[0])
+    _hr_h1 = get_reload_history()
+    _hr_h1.append({"fake": True})
+    _hr_h2 = get_reload_history()
+    test("HR: history returns independent copy", {"fake": True} not in _hr_h2)
+
+    # Cleanup
+    hr_reset_state()
+
+except Exception as _hr_exc:
+    test("Hot Reload Deep Tests: import and tests", False, str(_hr_exc))
+
+
+# ─────────────────────────────────────────────────
+# Plugin Registry Deep Tests (plugin_registry.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.plugin_registry import (
+        scan_plugins,
+        get_plugin,
+        is_enabled,
+        get_by_category,
+        validate_plugin,
+        dependency_check,
+        _infer_category,
+        _build_plugin_record,
+        _read_plugin_json,
+        KNOWN_CATEGORIES,
+        _CATEGORY_KEYWORDS,
+        _CACHE_MAX_AGE,
+    )
+    import tempfile as _pr_tempfile
+
+    # ── Constants ──
+    test("PR: KNOWN_CATEGORIES has 5", len(KNOWN_CATEGORIES) == 5)
+    test("PR: quality in categories", "quality" in KNOWN_CATEGORIES)
+    test("PR: security in categories", "security" in KNOWN_CATEGORIES)
+    test("PR: development in categories", "development" in KNOWN_CATEGORIES)
+    test("PR: CACHE_MAX_AGE is 300", _CACHE_MAX_AGE == 300)
+    test("PR: CATEGORY_KEYWORDS has entries", len(_CATEGORY_KEYWORDS) > 0)
+
+    # ── _infer_category ──
+    test("PR: infer security", _infer_category("security-scanner", "checks vulnerabilities") == "security")
+    test("PR: infer quality", _infer_category("code-review", "reviews code quality") == "quality")
+    test("PR: infer development", _infer_category("typescript-lsp", "language server") == "development")
+    test("PR: infer monitoring", _infer_category("telemetry-dash", "alert telemetry") == "monitoring")
+    test("PR: infer default", _infer_category("unknown-thing", "does stuff") == "development")
+
+    # ── validate_plugin ──
+    test("PR: validate empty path", validate_plugin("") == (False, ["path must not be empty"]))
+    _pr_v, _pr_e = validate_plugin("/nonexistent/path")
+    test("PR: validate nonexistent", not _pr_v and len(_pr_e) > 0)
+
+    # Valid plugin with tempdir
+    with _pr_tempfile.TemporaryDirectory() as _pr_td:
+        _pr_manifest_dir = os.path.join(_pr_td, ".claude-plugin")
+        os.makedirs(_pr_manifest_dir)
+        import json as _pr_json
+        with open(os.path.join(_pr_manifest_dir, "plugin.json"), "w") as _pr_f:
+            _pr_json.dump({"name": "test-plugin", "version": "1.0.0", "category": "quality"}, _pr_f)
+        _pr_valid, _pr_errors = validate_plugin(_pr_td)
+        test("PR: validate valid plugin", _pr_valid and len(_pr_errors) == 0)
+
+        # Missing name
+        with open(os.path.join(_pr_manifest_dir, "plugin.json"), "w") as _pr_f:
+            _pr_json.dump({"version": "1.0.0"}, _pr_f)
+        _pr_v2, _pr_e2 = validate_plugin(_pr_td)
+        test("PR: validate missing name", not _pr_v2)
+
+        # Invalid category
+        with open(os.path.join(_pr_manifest_dir, "plugin.json"), "w") as _pr_f:
+            _pr_json.dump({"name": "test", "category": "invalid_cat"}, _pr_f)
+        _pr_v3, _pr_e3 = validate_plugin(_pr_td)
+        test("PR: validate invalid category", not _pr_v3)
+
+        # Bad JSON
+        with open(os.path.join(_pr_manifest_dir, "plugin.json"), "w") as _pr_f:
+            _pr_f.write("not json{{{")
+        _pr_v4, _pr_e4 = validate_plugin(_pr_td)
+        test("PR: validate bad json", not _pr_v4)
+
+    # ── _build_plugin_record ──
+    with _pr_tempfile.TemporaryDirectory() as _pr_td2:
+        _pr_md2 = os.path.join(_pr_td2, ".claude-plugin")
+        os.makedirs(_pr_md2)
+        with open(os.path.join(_pr_md2, "plugin.json"), "w") as _pr_f2:
+            _pr_json.dump({"name": "my-plugin", "version": "2.0", "description": "test"}, _pr_f2)
+        _pr_rec = _build_plugin_record(_pr_td2, "local", "", {})
+        test("PR: build_record returns dict", isinstance(_pr_rec, dict))
+        test("PR: build_record name", _pr_rec["name"] == "my-plugin")
+        test("PR: build_record version", _pr_rec["version"] == "2.0")
+        test("PR: build_record source", _pr_rec["source"] == "local")
+        test("PR: build_record not enabled", not _pr_rec["enabled"])
+
+    test("PR: build_record nonexistent dir", _build_plugin_record("/nonexistent", "local", "", {}) is None)
+
+    # ── _read_plugin_json ──
+    test("PR: read_plugin_json nonexistent", _read_plugin_json("/nonexistent") == {})
+
+    # ── scan_plugins ──
+    _pr_plugins = scan_plugins(use_cache=False)
+    test("PR: scan returns list", isinstance(_pr_plugins, list))
+    test("PR: scan records have required keys",
+         all({"name", "version", "category", "enabled", "source", "path"}.issubset(p.keys())
+             for p in _pr_plugins))
+
+    # ── get_plugin ──
+    test("PR: get_plugin unknown returns None", get_plugin("__nonexistent_plugin__") is None)
+
+    # ── is_enabled ──
+    test("PR: is_enabled unknown returns False", not is_enabled("__nonexistent__"))
+
+    # ── get_by_category ──
+    _pr_dev = get_by_category("development")
+    test("PR: get_by_category returns list", isinstance(_pr_dev, list))
+    test("PR: get_by_category all same category",
+         all(p["category"] == "development" for p in _pr_dev))
+
+    # ── dependency_check ──
+    _pr_sat, _pr_miss = dependency_check("__ghost__")
+    test("PR: dep check unknown plugin", not _pr_sat and len(_pr_miss) > 0)
+
+except Exception as _pr_exc:
+    test("Plugin Registry Deep Tests: import and tests", False, str(_pr_exc))
+
+
+# ─────────────────────────────────────────────────
+# Test Generator Deep Tests (test_generator.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.test_generator import (
+        scan_module,
+        generate_tests,
+        generate_smoke_test,
+        _is_gate_module,
+        _is_shared_module,
+        _is_skill_module,
+        _classify_function,
+        _stub_args,
+        _needs_state_stub,
+        _state_setup_block,
+        _find_hooks_dir as tg_find_hooks_dir,
+    )
+
+    # ── _is_gate_module ──
+    test("TG: is_gate_module true", _is_gate_module("gate_01_read_before_edit.py"))
+    test("TG: is_gate_module false", not _is_gate_module("utils.py"))
+    test("TG: is_gate_module no py", not _is_gate_module("gate_01_test.txt"))
+
+    # ── _is_shared_module ──
+    test("TG: is_shared_module true", _is_shared_module("/home/user/hooks/shared/state.py"))
+    test("TG: is_shared_module false", not _is_shared_module("/home/user/hooks/gates/gate_01.py"))
+
+    # ── _is_skill_module ──
+    test("TG: is_skill_module true", _is_skill_module("/home/user/.claude/skills/test/script.py"))
+    test("TG: is_skill_module false", not _is_skill_module("/home/user/.claude/hooks/shared/state.py"))
+
+    # ── _classify_function ──
+    test("TG: classify gate_check",
+         _classify_function("check", ["tool_name", "tool_input", "state"], "/gates/g.py") == "gate_check")
+    test("TG: classify shared_util",
+         _classify_function("load_data", ["path"], "/hooks/shared/data.py") == "shared_util")
+    test("TG: classify skill_entry run",
+         _classify_function("run", [], "/other/module.py") == "skill_entry")
+    test("TG: classify skill_entry by path",
+         _classify_function("process", [], "/skills/test/script.py") == "skill_entry")
+    test("TG: classify unknown",
+         _classify_function("helper", [], "/other/module.py") == "unknown")
+
+    # ── _stub_args ──
+    test("TG: stub_args empty", _stub_args([]) == "")
+    test("TG: stub_args path arg", '"/tmp/stub_' in _stub_args(["file_path"]))
+    test("TG: stub_args state arg", "_state" in _stub_args(["state"]))
+    test("TG: stub_args name arg", '"' in _stub_args(["tool_name"]))
+    test("TG: stub_args input arg", "{}" in _stub_args(["tool_input"]))
+    test("TG: stub_args single trailing comma", _stub_args(["x"]).endswith(","))
+    test("TG: stub_args multiple no trailing", not _stub_args(["a", "b"]).endswith(","))
+
+    # ── _needs_state_stub ──
+    test("TG: needs_state_stub true", _needs_state_stub(["tool_name", "state"]))
+    test("TG: needs_state_stub false", not _needs_state_stub(["path", "name"]))
+
+    # ── _state_setup_block ──
+    _tg_setup = _state_setup_block()
+    test("TG: state_setup has reset", "reset_state" in _tg_setup)
+    test("TG: state_setup has load", "load_state" in _tg_setup)
+
+    # ── _find_hooks_dir ──
+    _tg_hd = tg_find_hooks_dir(os.path.join(os.path.expanduser("~"), ".claude", "hooks", "shared", "state.py"))
+    test("TG: find_hooks_dir finds hooks/",
+         _tg_hd is not None and _tg_hd.endswith("hooks") if _tg_hd else True)
+
+    # ── scan_module ──
+    # Scan a real module
+    _tg_scan_path = os.path.join(os.path.expanduser("~"), ".claude", "hooks", "shared", "gate_result.py")
+    if os.path.exists(_tg_scan_path):
+        _tg_scan = scan_module(_tg_scan_path)
+        test("TG: scan_module returns list", isinstance(_tg_scan, list))
+        test("TG: scan entries are tuples",
+             all(isinstance(e, tuple) and len(e) == 4 for e in _tg_scan))
+        if _tg_scan:
+            test("TG: scan entry func_name", isinstance(_tg_scan[0][0], str))
+            test("TG: scan entry args", isinstance(_tg_scan[0][1], list))
+            test("TG: scan entry docstring", isinstance(_tg_scan[0][2], str))
+            test("TG: scan entry func_type",
+                 _tg_scan[0][3] in ("gate_check", "shared_util", "skill_entry", "unknown"))
+    else:
+        skip("TG: scan_module (gate_result.py not found)", "file missing")
+
+    # Scan nonexistent
+    try:
+        scan_module("/nonexistent/module.py")
+        test("TG: scan nonexistent raises", False, "should have raised")
+    except FileNotFoundError:
+        test("TG: scan nonexistent raises FileNotFoundError", True)
+
+    # ── generate_tests ──
+    _tg_fake_scan = [
+        ("check", ["tool_name", "tool_input", "state"], "Gate check function", "gate_check"),
+        ("helper", ["data"], "Helper function", "shared_util"),
+    ]
+    _tg_code = generate_tests(_tg_fake_scan, "/tmp/fake_module.py")
+    test("TG: generate_tests returns string", isinstance(_tg_code, str))
+    test("TG: generated code has test function", "def test(" in _tg_code)
+    test("TG: generated code has PASS", "PASS" in _tg_code)
+    test("TG: generated code has import", "import" in _tg_code)
+    test("TG: generated code mentions check", "check" in _tg_code)
+    test("TG: generated code mentions helper", "helper" in _tg_code)
+
+    # ── generate_smoke_test ──
+    if os.path.exists(_tg_scan_path):
+        _tg_smoke = generate_smoke_test(_tg_scan_path)
+        test("TG: smoke test returns string", isinstance(_tg_smoke, str) and len(_tg_smoke) > 100)
+
+except Exception as _tg_exc:
+    test("Test Generator Deep Tests: import and tests", False, str(_tg_exc))
+
+
+# ─────────────────────────────────────────────────
+# Event Replay Deep Tests (event_replay.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.event_replay import (
+        load_events,
+        filter_events,
+        replay_event,
+        diff_results,
+        summarise_replay,
+        _is_memory_tool,
+        _is_always_allowed,
+        _parse_context,
+        _extract_tool_input,
+        _build_replay_state,
+        CAPTURE_QUEUE_PATH,
+        _ALWAYS_ALLOWED_TOOLS,
+    )
+    import tempfile as _er_tempfile
+
+    # ── Constants ──
+    test("ER: CAPTURE_QUEUE_PATH ends with .jsonl", CAPTURE_QUEUE_PATH.endswith(".jsonl"))
+    test("ER: ALWAYS_ALLOWED has Read", "Read" in _ALWAYS_ALLOWED_TOOLS)
+    test("ER: ALWAYS_ALLOWED has Glob", "Glob" in _ALWAYS_ALLOWED_TOOLS)
+    test("ER: ALWAYS_ALLOWED has Grep", "Grep" in _ALWAYS_ALLOWED_TOOLS)
+
+    # ── _is_memory_tool ──
+    test("ER: is_memory_tool mcp__memory__", _is_memory_tool("mcp__memory__search_knowledge"))
+    test("ER: is_memory_tool mcp_memory_", _is_memory_tool("mcp_memory_remember_this"))
+    test("ER: is_memory_tool false", not _is_memory_tool("Edit"))
+
+    # ── _is_always_allowed ──
+    test("ER: always allowed Read", _is_always_allowed("Read"))
+    test("ER: always allowed memory tool", _is_always_allowed("mcp__memory__search"))
+    test("ER: not always allowed Edit", not _is_always_allowed("Edit"))
+    test("ER: not always allowed Bash", not _is_always_allowed("Bash"))
+
+    # ── _parse_context ──
+    test("ER: parse context empty", _parse_context("") == {})
+    test("ER: parse context json", _parse_context('{"file_path": "/tmp/x.py"}') == {"file_path": "/tmp/x.py"})
+    test("ER: parse context non-json", _parse_context("just a string") == {})
+    test("ER: parse context None", _parse_context(None) == {})
+
+    # ── _extract_tool_input ──
+    _er_bash_input = _extract_tool_input({"tool_name": "Bash", "context": "ls -la"})
+    test("ER: extract Bash has command", "command" in _er_bash_input)
+
+    _er_edit_input = _extract_tool_input({"tool_name": "Edit", "context": '{"file_path": "/tmp/x.py"}'})
+    test("ER: extract Edit has file_path", "file_path" in _er_edit_input)
+
+    _er_nb_input = _extract_tool_input({"tool_name": "NotebookEdit", "context": '{"notebook_path": "/tmp/n.ipynb"}'})
+    test("ER: extract NotebookEdit has notebook_path", "notebook_path" in _er_nb_input)
+
+    _er_task_input = _extract_tool_input({"tool_name": "Task", "context": '{"model": "opus"}'})
+    test("ER: extract Task has model", "model" in _er_task_input)
+
+    # ── _build_replay_state ──
+    _er_state = _build_replay_state("test-replay")
+    test("ER: replay state has session_id", _er_state.get("_session_id") == "test-replay")
+    test("ER: replay state has session_start", "session_start" in _er_state)
+    test("ER: replay state has memory_last_queried", "memory_last_queried" in _er_state)
+
+    # ── load_events ──
+    test("ER: load_events nonexistent file", load_events("/nonexistent.jsonl") == [])
+
+    with _er_tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as _er_tf:
+        import json as _er_json
+        _er_json.dump({"metadata": {"tool_name": "Edit"}, "document": "test", "id": "obs_1"}, _er_tf)
+        _er_tf.write("\n")
+        _er_json.dump({"metadata": {"tool_name": "Bash"}, "document": "test2", "id": "obs_2"}, _er_tf)
+        _er_tf.write("\n")
+        _er_tf_path = _er_tf.name
+
+    _er_events = load_events(_er_tf_path)
+    test("ER: load events count", len(_er_events) == 2)
+    test("ER: load events has metadata", all("metadata" in e for e in _er_events))
+    os.unlink(_er_tf_path)
+
+    # ── filter_events ──
+    with _er_tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as _er_tf2:
+        _er_json.dump({"metadata": {"tool_name": "Edit", "exit_code": "2", "gate": "gate_01"}, "document": "d1", "id": "o1"}, _er_tf2)
+        _er_tf2.write("\n")
+        _er_json.dump({"metadata": {"tool_name": "Bash", "exit_code": "0", "gate": "gate_02"}, "document": "d2", "id": "o2"}, _er_tf2)
+        _er_tf2.write("\n")
+        _er_tf2_path = _er_tf2.name
+
+    _er_filtered_tool = filter_events(tool_name="Edit", path=_er_tf2_path)
+    test("ER: filter by tool_name", len(_er_filtered_tool) == 1)
+    test("ER: filtered has _replay_meta", "_replay_meta" in _er_filtered_tool[0])
+    test("ER: replay_meta tool_name", _er_filtered_tool[0]["_replay_meta"]["tool_name"] == "Edit")
+
+    _er_filtered_blocked = filter_events(blocked=True, path=_er_tf2_path)
+    test("ER: filter blocked", len(_er_filtered_blocked) == 1)
+    test("ER: filtered blocked is Edit",
+         _er_filtered_blocked[0]["_replay_meta"]["tool_name"] == "Edit")
+
+    _er_filtered_gate = filter_events(gate_name="gate_01", path=_er_tf2_path)
+    test("ER: filter by gate_name", len(_er_filtered_gate) == 1)
+
+    os.unlink(_er_tf2_path)
+
+    # ── diff_results ──
+    _er_diff_same = diff_results(
+        {"originally_blocked": True},
+        {"final_outcome": "blocked", "per_gate": {}}
+    )
+    test("ER: diff same outcome not changed", not _er_diff_same["changed"])
+
+    _er_diff_changed = diff_results(
+        {"originally_blocked": True},
+        {"final_outcome": "passed", "per_gate": {}}
+    )
+    test("ER: diff changed outcome", _er_diff_changed["changed"])
+    test("ER: diff has new_passes", len(_er_diff_changed["new_passes"]) > 0)
+
+    # Per-gate diff
+    _er_diff_gate = diff_results(
+        {"per_gate": {"gate_01": {"blocked": True}, "gate_02": {"blocked": False}}, "final_outcome": "blocked"},
+        {"per_gate": {"gate_01": {"blocked": False}, "gate_02": {"blocked": True}}, "final_outcome": "blocked"}
+    )
+    test("ER: gate diff changed", _er_diff_gate["changed"])
+    test("ER: gate diff has changes", len(_er_diff_gate["gate_changes"]) == 2)
+
+    # ── summarise_replay ──
+    _er_replay_results = [
+        {"event": {"_replay_meta": {"timestamp": "t1", "tool_name": "Edit"}},
+         "replayed": {}, "diff": {"changed": True, "new_blocks": ["g1"], "new_passes": [],
+                                   "original_outcome": "passed", "replayed_outcome": "blocked", "summary": "s"}},
+        {"event": {"_replay_meta": {"timestamp": "t2", "tool_name": "Bash"}},
+         "replayed": {}, "diff": {"changed": False, "new_blocks": [], "new_passes": [],
+                                   "original_outcome": "passed", "replayed_outcome": "passed", "summary": "ok"}},
+    ]
+    _er_summary = summarise_replay(_er_replay_results)
+    test("ER: summary total", _er_summary["total"] == 2)
+    test("ER: summary changed", _er_summary["changed"] == 1)
+    test("ER: summary unchanged", _er_summary["unchanged"] == 1)
+    test("ER: summary has changed_events", len(_er_summary["changed_events"]) == 1)
+
+    # Empty summary
+    test("ER: empty summary", summarise_replay([]) == {
+        "total": 0, "changed": 0, "unchanged": 0,
+        "new_blocks": [], "new_passes": [], "changed_events": []
+    })
+
+except Exception as _er_exc:
+    test("Event Replay Deep Tests: import and tests", False, str(_er_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
