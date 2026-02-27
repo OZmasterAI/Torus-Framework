@@ -1801,6 +1801,254 @@ def replay_events(
     }
 
 
+# ── Fix Strategy Effectiveness ────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def fix_effectiveness(error_type: str = "") -> dict:
+    """Query historical fix outcomes and surface strategy recommendations with confidence.
+
+    Analyzes the experience archive to rank fix strategies by success rate,
+    compute confidence intervals based on sample size, and identify the
+    best strategy for a given error type.
+
+    Args:
+        error_type: Filter by error type substring (e.g. "ImportError"). Empty = all.
+    """
+    _ensure_initialized()
+    from shared.experience_archive import (
+        query_best_strategy, get_success_rate, get_archive_stats,
+        ARCHIVE_PATH, _read_rows,
+    )
+
+    stats = get_archive_stats()
+    result = {
+        "total_fix_attempts": stats["total_rows"],
+        "unique_errors": stats["unique_errors"],
+        "unique_strategies": stats["unique_strategies"],
+        "overall_success_rate": stats["overall_success_rate"],
+    }
+
+    if error_type:
+        best = query_best_strategy(error_type)
+        result["error_type"] = error_type
+        result["best_strategy"] = best
+        if best:
+            result["best_strategy_success_rate"] = round(get_success_rate(best), 3)
+
+        # Build per-strategy breakdown for this error type
+        rows = _read_rows(ARCHIVE_PATH)
+        needle = error_type.lower()
+        strat_stats = {}
+        for row in rows:
+            et = row.get("error_type", "")
+            if needle not in et.lower():
+                continue
+            strat = row.get("fix_strategy", "").strip()
+            if not strat:
+                continue
+            if strat not in strat_stats:
+                strat_stats[strat] = {"total": 0, "successes": 0}
+            strat_stats[strat]["total"] += 1
+            if row.get("outcome") == "success":
+                strat_stats[strat]["successes"] += 1
+
+        strategies = []
+        for name, s in strat_stats.items():
+            rate = s["successes"] / s["total"] if s["total"] > 0 else 0.0
+            # Confidence: low (<3 attempts), medium (3-9), high (10+)
+            confidence = "high" if s["total"] >= 10 else ("medium" if s["total"] >= 3 else "low")
+            strategies.append({
+                "strategy": name,
+                "total": s["total"],
+                "successes": s["successes"],
+                "success_rate": round(rate, 3),
+                "confidence": confidence,
+            })
+        strategies.sort(key=lambda x: (-x["success_rate"], -x["total"]))
+        result["strategies"] = strategies
+    else:
+        result["top_strategies"] = stats["top_strategies"]
+
+    return result
+
+
+# ── Observation Query ─────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def query_observations(
+    error_only: bool = False,
+    priority: str = "",
+    tool_name: str = "",
+    limit: int = 20,
+) -> dict:
+    """Search auto-captured tool observations by error, priority, or tool type.
+
+    Observations are compressed summaries of tool calls captured during sessions.
+    Use this to find error patterns, track tool usage, and analyze agent behavior.
+
+    Args:
+        error_only: If true, only return observations with errors.
+        priority: Filter by priority level: "high", "medium", or "low".
+        tool_name: Filter by tool name (e.g. "Bash", "Edit").
+        limit: Max results (default 20, max 100).
+    """
+    _ensure_initialized()
+    limit = max(1, min(100, limit))
+
+    # Read observations from LanceDB
+    try:
+        import lancedb
+        lance_dir = os.path.join(os.path.expanduser("~"), "data", "memory", "lancedb")
+        db = lancedb.connect(lance_dir)
+        tbl = db.open_table("observations")
+
+        # Build filter
+        filters = []
+        if error_only:
+            filters.append("metadata LIKE '%\"has_error\": \"true\"%' OR metadata LIKE '%has_error%true%'")
+        if priority:
+            filters.append(f"metadata LIKE '%\"priority\": \"{priority}\"%'")
+        if tool_name:
+            filters.append(f"metadata LIKE '%\"tool_name\": \"{tool_name}\"%'")
+
+        import json as _json
+
+        if filters:
+            # LanceDB SQL filter
+            try:
+                where_clause = " AND ".join(filters)
+                rows = tbl.search().where(where_clause).limit(limit).to_list()
+            except Exception:
+                # Fallback: scan and filter in Python
+                all_rows = tbl.search().limit(500).to_list()
+                rows = []
+                for r in all_rows:
+                    meta_str = r.get("metadata", "{}")
+                    try:
+                        meta = _json.loads(meta_str) if isinstance(meta_str, str) else meta_str
+                    except (ValueError, TypeError):
+                        meta = {}
+                    if error_only and meta.get("has_error") != "true":
+                        continue
+                    if priority and meta.get("priority") != priority:
+                        continue
+                    if tool_name and meta.get("tool_name") != tool_name:
+                        continue
+                    rows.append(r)
+                    if len(rows) >= limit:
+                        break
+        else:
+            rows = tbl.search().limit(limit).to_list()
+
+        # Format results
+        observations = []
+        sentiment_counts = {}
+        for r in rows[:limit]:
+            meta_str = r.get("metadata", "{}")
+            try:
+                meta = _json.loads(meta_str) if isinstance(meta_str, str) else meta_str
+            except (ValueError, TypeError):
+                meta = {}
+            sentiment = meta.get("sentiment", "")
+            if sentiment:
+                sentiment_counts[sentiment] = sentiment_counts.get(sentiment, 0) + 1
+            observations.append({
+                "id": r.get("id", ""),
+                "document": str(r.get("text", r.get("document", "")))[:200],
+                "tool_name": meta.get("tool_name", ""),
+                "priority": meta.get("priority", ""),
+                "has_error": meta.get("has_error", "false"),
+                "error_pattern": meta.get("error_pattern", ""),
+                "sentiment": sentiment,
+            })
+
+        return {
+            "total": len(observations),
+            "observations": observations,
+            "sentiment_breakdown": sentiment_counts,
+            "filters_applied": {
+                "error_only": error_only,
+                "priority": priority,
+                "tool_name": tool_name,
+            },
+        }
+    except ImportError:
+        return {"error": "lancedb not installed", "total": 0, "observations": []}
+    except Exception as e:
+        return {"error": str(e), "total": 0, "observations": []}
+
+
+# ── Domain Context Inspector ──────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def inspect_domain() -> dict:
+    """Inspect active domain context: mastery, behavior, gate overrides, token budget.
+
+    Shows what domain knowledge is being injected, how much token budget
+    is consumed, which gates are overridden, and graduation status.
+    Useful for debugging unexpected gate behavior or context injection issues.
+    """
+    _ensure_initialized()
+
+    try:
+        from shared.domain_registry import (
+            get_active_domain, load_domain_profile,
+            load_domain_mastery, load_domain_behavior,
+            get_domain_token_budget, list_domains,
+        )
+    except ImportError:
+        return {"error": "domain_registry module not available"}
+
+    active = get_active_domain()
+    domains = list_domains()
+
+    result = {
+        "active_domain": active,
+        "total_domains": len(domains),
+        "domains": domains,
+    }
+
+    if active:
+        profile = load_domain_profile(active)
+        mastery = load_domain_mastery(active)
+        behavior = load_domain_behavior(active)
+        budget = get_domain_token_budget(active)
+
+        mastery_chars = len(mastery)
+        behavior_chars = len(behavior)
+        token_estimate = (mastery_chars + behavior_chars) // 4  # ~4 chars/token
+
+        result["active_detail"] = {
+            "description": profile.get("description", ""),
+            "security_profile": profile.get("security_profile", "balanced"),
+            "mastery": {
+                "length_chars": mastery_chars,
+                "token_estimate": mastery_chars // 4,
+                "preview": mastery[:200] if mastery else "",
+            },
+            "behavior": {
+                "length_chars": behavior_chars,
+                "token_estimate": behavior_chars // 4,
+                "preview": behavior[:200] if behavior else "",
+            },
+            "gate_overrides": {
+                "disabled_gates": profile.get("disabled_gates", []),
+                "gate_modes": profile.get("gate_modes", {}),
+            },
+            "auto_detect": profile.get("auto_detect", {}),
+            "graduation": profile.get("graduation", {}),
+            "token_budget": budget,
+            "total_token_usage": token_estimate,
+            "over_budget": token_estimate > budget,
+            "memory_tags": profile.get("memory_tags", []),
+        }
+
+    return result
+
+
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
 # DORMANT: uncomment @mcp.tool() to reactivate

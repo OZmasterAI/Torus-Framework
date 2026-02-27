@@ -17330,6 +17330,425 @@ except Exception as _mcp_exc:
          f"{_mcp_exc}\n{_mcp_tb.format_exc()}")
 
 
+# ─────────────────────────────────────────────────
+# New MCP Tools: fix_effectiveness, query_observations, inspect_domain
+# ─────────────────────────────────────────────────
+print("\n--- New MCP Tools ---")
+
+try:
+    # Test fix_effectiveness
+    from analytics_server import fix_effectiveness
+
+    # Test 1: fix_effectiveness no filter
+    _fe = fix_effectiveness()
+    test("MCP fix_effectiveness: returns dict",
+         isinstance(_fe, dict), f"type={type(_fe)}")
+    test("MCP fix_effectiveness: has total_fix_attempts",
+         "total_fix_attempts" in _fe, f"keys={list(_fe.keys())}")
+    test("MCP fix_effectiveness: has unique_errors",
+         "unique_errors" in _fe, f"keys={list(_fe.keys())}")
+    test("MCP fix_effectiveness: has overall_success_rate",
+         "overall_success_rate" in _fe, f"keys={list(_fe.keys())}")
+    test("MCP fix_effectiveness: overall_success_rate is float",
+         isinstance(_fe.get("overall_success_rate"), (int, float)),
+         f"val={_fe.get('overall_success_rate')}")
+
+    # Test 2: fix_effectiveness with filter
+    _fe_import = fix_effectiveness(error_type="ImportError")
+    test("MCP fix_effectiveness: filtered has error_type",
+         _fe_import.get("error_type") == "ImportError",
+         f"error_type={_fe_import.get('error_type')}")
+    test("MCP fix_effectiveness: filtered has strategies list",
+         isinstance(_fe_import.get("strategies"), list),
+         f"type={type(_fe_import.get('strategies'))}")
+    test("MCP fix_effectiveness: filtered has best_strategy",
+         "best_strategy" in _fe_import,
+         f"keys={list(_fe_import.keys())}")
+
+    # Test 3: fix_effectiveness with unknown error type
+    _fe_unknown = fix_effectiveness(error_type="ZZZNonexistentErrorZZZ")
+    test("MCP fix_effectiveness: unknown error has empty strategies",
+         _fe_unknown.get("strategies") == [] or _fe_unknown.get("best_strategy") == "",
+         f"strategies={_fe_unknown.get('strategies', 'missing')}")
+
+    # Test query_observations
+    from analytics_server import query_observations
+
+    # Test 4: query_observations basic call
+    _qo = query_observations()
+    test("MCP query_observations: returns dict",
+         isinstance(_qo, dict), f"type={type(_qo)}")
+    test("MCP query_observations: has total key",
+         "total" in _qo, f"keys={list(_qo.keys())}")
+    test("MCP query_observations: has observations list",
+         isinstance(_qo.get("observations"), list),
+         f"type={type(_qo.get('observations'))}")
+
+    # Test 5: query_observations with filters
+    _qo_err = query_observations(error_only=True, limit=5)
+    test("MCP query_observations: error_only returns dict",
+         isinstance(_qo_err, dict) and "total" in _qo_err,
+         f"keys={list(_qo_err.keys())}")
+    test("MCP query_observations: filters_applied correct",
+         _qo_err.get("filters_applied", {}).get("error_only") is True,
+         f"filters={_qo_err.get('filters_applied')}")
+
+    # Test 6: query_observations with tool_name filter
+    _qo_tool = query_observations(tool_name="Bash", limit=5)
+    test("MCP query_observations: tool_name filter applied",
+         _qo_tool.get("filters_applied", {}).get("tool_name") == "Bash",
+         f"filters={_qo_tool.get('filters_applied')}")
+
+    # Test 7: query_observations with priority filter
+    _qo_pri = query_observations(priority="high", limit=5)
+    test("MCP query_observations: priority filter applied",
+         _qo_pri.get("filters_applied", {}).get("priority") == "high",
+         f"filters={_qo_pri.get('filters_applied')}")
+
+    # Test 8: query_observations has sentiment_breakdown
+    test("MCP query_observations: has sentiment_breakdown",
+         "sentiment_breakdown" in _qo,
+         f"keys={list(_qo.keys())}")
+
+    # Test inspect_domain
+    from analytics_server import inspect_domain
+
+    # Test 9: inspect_domain basic call
+    _id = inspect_domain()
+    test("MCP inspect_domain: returns dict",
+         isinstance(_id, dict), f"type={type(_id)}")
+    test("MCP inspect_domain: has active_domain key",
+         "active_domain" in _id, f"keys={list(_id.keys())}")
+    test("MCP inspect_domain: has total_domains",
+         "total_domains" in _id, f"keys={list(_id.keys())}")
+    test("MCP inspect_domain: has domains list",
+         isinstance(_id.get("domains"), list),
+         f"type={type(_id.get('domains'))}")
+    test("MCP inspect_domain: total_domains matches list length",
+         _id.get("total_domains") == len(_id.get("domains", [])),
+         f"total={_id.get('total_domains')}, list_len={len(_id.get('domains', []))}")
+
+    # Test 10: If there's an active domain, check detail
+    if _id.get("active_domain"):
+        _detail = _id.get("active_detail", {})
+        test("MCP inspect_domain: active_detail has mastery",
+             "mastery" in _detail, f"detail_keys={list(_detail.keys())}")
+        test("MCP inspect_domain: active_detail has behavior",
+             "behavior" in _detail, f"detail_keys={list(_detail.keys())}")
+        test("MCP inspect_domain: active_detail has gate_overrides",
+             "gate_overrides" in _detail, f"detail_keys={list(_detail.keys())}")
+        test("MCP inspect_domain: active_detail has token_budget",
+             "token_budget" in _detail, f"detail_keys={list(_detail.keys())}")
+        test("MCP inspect_domain: active_detail has over_budget bool",
+             isinstance(_detail.get("over_budget"), bool),
+             f"type={type(_detail.get('over_budget'))}")
+        test("MCP inspect_domain: active_detail has graduation",
+             "graduation" in _detail, f"detail_keys={list(_detail.keys())}")
+    else:
+        test("MCP inspect_domain: no active domain → no active_detail",
+             "active_detail" not in _id, f"keys={list(_id.keys())}")
+
+except Exception as _new_mcp_exc:
+    import traceback as _new_mcp_tb
+    test("New MCP Tools: import and tests", False,
+         f"{_new_mcp_exc}\n{_new_mcp_tb.format_exc()}")
+
+
+# ─────────────────────────────────────────────────
+# Experience Archive Integration
+# ─────────────────────────────────────────────────
+print("\n--- Experience Archive ---")
+
+try:
+    import tempfile as _ea_tmp
+    from shared.experience_archive import (
+        record_fix, query_best_strategy, get_success_rate,
+        get_archive_stats, ARCHIVE_PATH, _read_rows,
+    )
+    import shared.experience_archive as _ea_mod
+
+    # Use temp file for test isolation — delete first so _ensure_header writes CSV header
+    _ea_orig_path = _ea_mod.ARCHIVE_PATH
+    with _ea_tmp.NamedTemporaryFile(suffix=".csv", delete=False) as _ea_tf:
+        _ea_test_path = _ea_tf.name
+    os.remove(_ea_test_path)  # Must not exist so _ensure_header creates with header row
+    _ea_mod.ARCHIVE_PATH = _ea_test_path
+
+    # Test 1: record_fix returns True
+    _ea_ok = record_fix("ImportError", "add-import", "success", "/f.py", "gate_15", 1.0)
+    test("ExperienceArchive: record_fix returns True", _ea_ok is True, f"got {_ea_ok}")
+
+    # Test 2: record more entries
+    record_fix("ImportError", "add-import", "failure", "/f.py", "gate_15", 0.5)
+    record_fix("ImportError", "reinstall-pkg", "success", "/f.py", "", 3.0)
+    record_fix("SyntaxError", "rewrite", "success", "/g.py", "gate_1", 0.8)
+    record_fix("SyntaxError", "rewrite", "failure", "/g.py", "gate_1", 1.0)
+
+    # Test 3: query_best_strategy
+    _ea_best = query_best_strategy("ImportError")
+    test("ExperienceArchive: best strategy for ImportError",
+         _ea_best == "reinstall-pkg",
+         f"got '{_ea_best}' (expected reinstall-pkg with 100% vs add-import 50%)")
+
+    # Test 4: get_success_rate
+    _ea_rate = get_success_rate("add-import")
+    test("ExperienceArchive: success rate add-import is 0.5",
+         abs(_ea_rate - 0.5) < 0.01, f"got {_ea_rate}")
+
+    # Test 5: get_success_rate for 100% strategy
+    _ea_rate2 = get_success_rate("reinstall-pkg")
+    test("ExperienceArchive: success rate reinstall-pkg is 1.0",
+         abs(_ea_rate2 - 1.0) < 0.01, f"got {_ea_rate2}")
+
+    # Test 6: get_success_rate unknown strategy
+    _ea_rate3 = get_success_rate("nonexistent")
+    test("ExperienceArchive: unknown strategy rate is 0.0",
+         _ea_rate3 == 0.0, f"got {_ea_rate3}")
+
+    # Test 7: get_archive_stats
+    _ea_stats = get_archive_stats()
+    test("ExperienceArchive: stats total_rows == 5",
+         _ea_stats["total_rows"] == 5, f"got {_ea_stats['total_rows']}")
+    test("ExperienceArchive: stats unique_errors == 2",
+         _ea_stats["unique_errors"] == 2, f"got {_ea_stats['unique_errors']}")
+    test("ExperienceArchive: stats unique_strategies == 3",
+         _ea_stats["unique_strategies"] == 3, f"got {_ea_stats['unique_strategies']}")
+    test("ExperienceArchive: stats overall_success_rate > 0",
+         _ea_stats["overall_success_rate"] > 0,
+         f"got {_ea_stats['overall_success_rate']}")
+    test("ExperienceArchive: stats top_strategies non-empty",
+         len(_ea_stats["top_strategies"]) > 0,
+         f"got {len(_ea_stats['top_strategies'])}")
+
+    # Test 8: invalid outcome coerced to failure
+    record_fix("TypeError", "bad", "INVALID_OUTCOME")
+    _ea_rows = _read_rows(_ea_test_path)
+    test("ExperienceArchive: invalid outcome coerced to failure",
+         _ea_rows[-1]["outcome"] == "failure",
+         f"got '{_ea_rows[-1]['outcome']}'")
+
+    # Test 9: query_best_strategy unknown returns empty
+    _ea_none = query_best_strategy("ZZZNonexistent")
+    test("ExperienceArchive: unknown error returns ''",
+         _ea_none == "", f"got '{_ea_none}'")
+
+    # Cleanup
+    _ea_mod.ARCHIVE_PATH = _ea_orig_path
+    os.remove(_ea_test_path)
+
+except Exception as _ea_exc:
+    test("ExperienceArchive: import and tests", False, str(_ea_exc))
+
+
+# ─────────────────────────────────────────────────
+# Observation Compression
+# ─────────────────────────────────────────────────
+print("\n--- Observation Compression ---")
+
+try:
+    from shared.observation import (
+        compress_observation, _detect_error_pattern, _extract_exit_code,
+        _get_output_text, _extract_command_name, _compute_priority,
+        _detect_sentiment, CAPTURABLE_TOOLS,
+    )
+
+    # Test 1: CAPTURABLE_TOOLS includes expected tools
+    test("Observation: CAPTURABLE_TOOLS includes Bash",
+         "Bash" in CAPTURABLE_TOOLS, f"got {CAPTURABLE_TOOLS}")
+    test("Observation: CAPTURABLE_TOOLS includes Edit",
+         "Edit" in CAPTURABLE_TOOLS, f"got {CAPTURABLE_TOOLS}")
+
+    # Test 2: _detect_error_pattern
+    test("Observation: detect Traceback",
+         _detect_error_pattern("some Traceback (most recent call)") == "Traceback", "")
+    test("Observation: detect ImportError",
+         _detect_error_pattern("ImportError: no module foo") == "ImportError:", "")
+    test("Observation: no error returns empty",
+         _detect_error_pattern("all good") == "", "")
+
+    # Test 3: _extract_exit_code
+    test("Observation: exit code from dict",
+         _extract_exit_code({"exit_code": 1}) == "1", "")
+    test("Observation: exit code from JSON string",
+         _extract_exit_code('{"exit_code": 0}') == "0", "")
+    test("Observation: exit code from plain string",
+         _extract_exit_code("hello") == "", "")
+
+    # Test 4: _get_output_text
+    test("Observation: output from dict stdout",
+         "hello" in _get_output_text({"stdout": "hello"}), "")
+    test("Observation: output from string",
+         _get_output_text("raw output") == "raw output", "")
+
+    # Test 5: _extract_command_name
+    test("Observation: extract cmd from 'python3 foo.py'",
+         _extract_command_name("python3 foo.py") == "python3", "")
+    test("Observation: extract cmd strips sudo",
+         _extract_command_name("sudo apt install foo") == "apt", "")
+    test("Observation: extract cmd empty",
+         _extract_command_name("") == "", "")
+
+    # Test 6: _compute_priority
+    test("Observation: error is high priority",
+         _compute_priority("Bash", True, "1") == "high", "")
+    test("Observation: Edit is medium priority",
+         _compute_priority("Edit", False, "") == "medium", "")
+    test("Observation: Read is low priority",
+         _compute_priority("Read", False, "") == "low", "")
+
+    # Test 7: _detect_sentiment
+    test("Observation: frustration on repeated errors",
+         _detect_sentiment("Edit", {}, {"error_pattern_counts": {"x": 2}}) == "frustration", "")
+    test("Observation: exploration on Read",
+         _detect_sentiment("Read", {}, {}) == "exploration", "")
+    test("Observation: None state returns empty",
+         _detect_sentiment("Bash", {}, None) == "", "")
+
+    # Test 8: compress_observation Bash
+    _co_bash = compress_observation(
+        "Bash", {"command": "ls /tmp"}, {"stdout": "file1\nfile2", "exit_code": 0},
+        "test-session", {}
+    )
+    test("Observation: compress Bash returns dict with document",
+         "document" in _co_bash and "Bash:" in _co_bash["document"], "")
+    test("Observation: compress Bash has id",
+         _co_bash["id"].startswith("obs_"), f"id={_co_bash['id']}")
+    test("Observation: compress Bash has metadata",
+         "metadata" in _co_bash and _co_bash["metadata"]["tool_name"] == "Bash", "")
+
+    # Test 9: compress_observation Edit
+    _co_edit = compress_observation(
+        "Edit", {"file_path": "/tmp/foo.py", "old_string": "a\nb\n", "new_string": "c\n"},
+        "ok", "test-session", {}
+    )
+    test("Observation: compress Edit has file_path in document",
+         "/tmp/foo.py" in _co_edit["document"], f"doc={_co_edit['document']}")
+
+    # Test 10: compress_observation with error
+    _co_err = compress_observation(
+        "Bash", {"command": "pytest"}, {"stdout": "Traceback error", "exit_code": 1},
+        "test-session", {}
+    )
+    test("Observation: error observation has_error metadata",
+         _co_err["metadata"]["has_error"] == "true",
+         f"has_error={_co_err['metadata']['has_error']}")
+    test("Observation: error observation has error_pattern",
+         _co_err["metadata"]["error_pattern"] == "Traceback",
+         f"pattern={_co_err['metadata']['error_pattern']}")
+    test("Observation: error observation is high priority",
+         _co_err["metadata"]["priority"] == "high",
+         f"priority={_co_err['metadata']['priority']}")
+
+except Exception as _obs_exc:
+    test("Observation Compression: import and tests", False, str(_obs_exc))
+
+
+# ─────────────────────────────────────────────────
+# Domain Registry
+# ─────────────────────────────────────────────────
+print("\n--- Domain Registry ---")
+
+try:
+    from shared.domain_registry import (
+        list_domains, get_active_domain, load_domain_profile,
+        load_domain_mastery, load_domain_behavior,
+        detect_domain_from_live_state, get_domain_memory_tags,
+        get_domain_l2_keywords, get_domain_token_budget,
+        get_domain_context_for_injection, DEFAULT_PROFILE,
+        _short_gate_name, _gate_matches_list, _lookup_gate_mode,
+    )
+
+    # Test 1: list_domains returns list
+    _dr_doms = list_domains()
+    test("DomainRegistry: list_domains returns list",
+         isinstance(_dr_doms, list), f"type={type(_dr_doms)}")
+
+    # Test 2: each domain has expected keys
+    if _dr_doms:
+        _dr_first = _dr_doms[0]
+        test("DomainRegistry: domain has name key",
+             "name" in _dr_first, f"keys={list(_dr_first.keys())}")
+        test("DomainRegistry: domain has active key",
+             "active" in _dr_first, f"keys={list(_dr_first.keys())}")
+        test("DomainRegistry: domain has graduated key",
+             "graduated" in _dr_first, f"keys={list(_dr_first.keys())}")
+    else:
+        skip("DomainRegistry: domain key checks", "no domains configured")
+
+    # Test 3: get_active_domain returns str or None
+    _dr_active = get_active_domain()
+    test("DomainRegistry: get_active_domain returns str or None",
+         _dr_active is None or isinstance(_dr_active, str), f"type={type(_dr_active)}")
+
+    # Test 4: load_domain_profile for nonexistent domain returns defaults
+    _dr_prof = load_domain_profile("__nonexistent_domain__")
+    test("DomainRegistry: nonexistent domain returns defaults",
+         _dr_prof.get("security_profile") == "balanced",
+         f"security_profile={_dr_prof.get('security_profile')}")
+    test("DomainRegistry: nonexistent domain has token_budget",
+         _dr_prof.get("token_budget") == 800,
+         f"token_budget={_dr_prof.get('token_budget')}")
+
+    # Test 5: _short_gate_name
+    test("DomainRegistry: _short_gate_name full",
+         _short_gate_name("gate_04_memory_first") == "gate_04", "")
+    test("DomainRegistry: _short_gate_name with gates. prefix",
+         _short_gate_name("gates.gate_04_memory_first") == "gate_04", "")
+    test("DomainRegistry: _short_gate_name short",
+         _short_gate_name("gate_04") == "gate_04", "")
+
+    # Test 6: _gate_matches_list
+    test("DomainRegistry: gate matches list exact",
+         _gate_matches_list("gate_04_memory_first", ["gate_04"]) is True, "")
+    test("DomainRegistry: gate not in list",
+         _gate_matches_list("gate_04_memory_first", ["gate_05"]) is False, "")
+
+    # Test 7: _lookup_gate_mode
+    test("DomainRegistry: lookup exact match",
+         _lookup_gate_mode("gate_04", {"gate_04": "warn"}) == "warn", "")
+    test("DomainRegistry: lookup short match",
+         _lookup_gate_mode("gate_04_memory_first", {"gate_04": "disabled"}) == "disabled", "")
+    test("DomainRegistry: lookup miss returns None",
+         _lookup_gate_mode("gate_99", {"gate_04": "warn"}) is None, "")
+
+    # Test 8: detect_domain_from_live_state with empty state
+    _dr_detect = detect_domain_from_live_state({})
+    test("DomainRegistry: detect empty state returns None",
+         _dr_detect is None, f"got {_dr_detect}")
+
+    # Test 9: get_domain_context_for_injection with None
+    _dr_ctx = get_domain_context_for_injection(None)
+    test("DomainRegistry: context injection returns tuple",
+         isinstance(_dr_ctx, tuple) and len(_dr_ctx) == 2,
+         f"type={type(_dr_ctx)}")
+
+    # Test 10: DEFAULT_PROFILE has expected keys
+    test("DomainRegistry: DEFAULT_PROFILE has token_budget",
+         "token_budget" in DEFAULT_PROFILE, f"keys={list(DEFAULT_PROFILE.keys())}")
+    test("DomainRegistry: DEFAULT_PROFILE has graduation",
+         "graduation" in DEFAULT_PROFILE, f"keys={list(DEFAULT_PROFILE.keys())}")
+    test("DomainRegistry: DEFAULT_PROFILE has auto_detect",
+         "auto_detect" in DEFAULT_PROFILE, f"keys={list(DEFAULT_PROFILE.keys())}")
+
+    # Test 11: get_domain_token_budget for nonexistent returns default
+    _dr_budget = get_domain_token_budget("__nonexistent__")
+    test("DomainRegistry: nonexistent domain budget is 800",
+         _dr_budget == 800, f"got {_dr_budget}")
+
+    # Test 12: get_domain_memory_tags for nonexistent returns []
+    _dr_tags = get_domain_memory_tags("__nonexistent__")
+    test("DomainRegistry: nonexistent domain tags is []",
+         _dr_tags == [], f"got {_dr_tags}")
+
+    # Test 13: get_domain_l2_keywords for nonexistent returns []
+    _dr_l2 = get_domain_l2_keywords("__nonexistent__")
+    test("DomainRegistry: nonexistent domain l2_keywords is []",
+         _dr_l2 == [], f"got {_dr_l2}")
+
+except Exception as _dr_exc:
+    test("DomainRegistry: import and tests", False, str(_dr_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
