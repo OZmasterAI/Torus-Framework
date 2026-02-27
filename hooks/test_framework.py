@@ -17749,6 +17749,263 @@ except Exception as _dr_exc:
     test("DomainRegistry: import and tests", False, str(_dr_exc))
 
 
+# ─────────────────────────────────────────────────
+# Tool Patterns Extended (Markov chain, anomaly detection)
+# ─────────────────────────────────────────────────
+print("\n--- Tool Patterns Extended ---")
+
+try:
+    from shared.tool_patterns import (
+        build_markov_chain, MarkovChain, WorkflowTemplate, AnomalyReport,
+        _transition_probability, _sequence_log_probability, _std,
+        _extract_ngrams, _label_for_template, _invalidate_cache,
+    )
+
+    # Test 1: build_markov_chain empty
+    _tp_mc_empty = build_markov_chain([])
+    test("ToolPatterns: empty sequences → empty chain",
+         _tp_mc_empty.sequence_count == 0 and len(_tp_mc_empty.vocabulary) == 0, "")
+
+    # Test 2: build_markov_chain single sequence
+    _tp_mc = build_markov_chain([["Read", "Edit", "Bash"]])
+    test("ToolPatterns: single sequence → 3 vocab",
+         len(_tp_mc.vocabulary) == 3, f"vocab={_tp_mc.vocabulary}")
+    test("ToolPatterns: single sequence → 1 seq count",
+         _tp_mc.sequence_count == 1, f"count={_tp_mc.sequence_count}")
+    test("ToolPatterns: Read is start tool",
+         _tp_mc.start_counts.get("Read", 0) == 1, f"starts={dict(_tp_mc.start_counts)}")
+
+    # Test 3: transitions recorded
+    test("ToolPatterns: Read→Edit transition recorded",
+         _tp_mc.transitions["Read"]["Edit"] == 1, "")
+    test("ToolPatterns: Edit→Bash transition recorded",
+         _tp_mc.transitions["Edit"]["Bash"] == 1, "")
+
+    # Test 4: multiple sequences
+    _tp_mc2 = build_markov_chain([
+        ["Read", "Edit", "Bash"],
+        ["Read", "Edit", "Bash"],
+        ["Read", "Write", "Bash"],
+    ])
+    test("ToolPatterns: 3 sequences → seq_count=3",
+         _tp_mc2.sequence_count == 3, f"count={_tp_mc2.sequence_count}")
+    test("ToolPatterns: Read→Edit=2 transitions",
+         _tp_mc2.transitions["Read"]["Edit"] == 2, "")
+    test("ToolPatterns: Read→Write=1 transition",
+         _tp_mc2.transitions["Read"]["Write"] == 1, "")
+    test("ToolPatterns: vocabulary includes Write",
+         "Write" in _tp_mc2.vocabulary, f"vocab={_tp_mc2.vocabulary}")
+
+    # Test 5: _transition_probability Laplace smoothing
+    _tp_prob = _transition_probability(_tp_mc2, "Read", "Edit")
+    test("ToolPatterns: P(Edit|Read) > P(Write|Read)",
+         _tp_prob > _transition_probability(_tp_mc2, "Read", "Write"), "")
+    test("ToolPatterns: P(Edit|Read) > 0",
+         _tp_prob > 0, f"prob={_tp_prob}")
+
+    # Test 6: _transition_probability for unseen transition
+    _tp_prob_unseen = _transition_probability(_tp_mc2, "Bash", "Read")
+    test("ToolPatterns: unseen transition > 0 (Laplace)",
+         _tp_prob_unseen > 0, f"prob={_tp_prob_unseen}")
+
+    # Test 7: _sequence_log_probability
+    _tp_logp = _sequence_log_probability(_tp_mc2, ["Read", "Edit", "Bash"])
+    test("ToolPatterns: log-prob is negative",
+         _tp_logp < 0, f"logp={_tp_logp}")
+    test("ToolPatterns: common seq has higher log-prob than rare",
+         _tp_logp > _sequence_log_probability(_tp_mc2, ["Bash", "Write", "Read"]),
+         "common > rare")
+
+    # Test 8: _sequence_log_probability empty
+    _tp_logp_empty = _sequence_log_probability(_tp_mc2, [])
+    test("ToolPatterns: empty sequence → -inf",
+         _tp_logp_empty == float("-inf"), f"logp={_tp_logp_empty}")
+
+    # Test 9: _std
+    test("ToolPatterns: _std([1,1,1]) == 0", _std([1.0, 1.0, 1.0]) == 0.0, "")
+    test("ToolPatterns: _std([0,2]) == 1", abs(_std([0.0, 2.0]) - 1.0) < 0.01, "")
+    test("ToolPatterns: _std([]) == 0", _std([]) == 0.0, "")
+    test("ToolPatterns: _std([5]) == 0", _std([5.0]) == 0.0, "")
+
+    # Test 10: _extract_ngrams
+    _tp_ng = _extract_ngrams(["A", "B", "C", "D"], 2)
+    test("ToolPatterns: 2-grams of ABCD = 3 ngrams",
+         len(_tp_ng) == 3, f"ngrams={_tp_ng}")
+    test("ToolPatterns: first 2-gram is [A,B]",
+         _tp_ng[0] == ["A", "B"], f"first={_tp_ng[0]}")
+    _tp_ng3 = _extract_ngrams(["A", "B", "C"], 3)
+    test("ToolPatterns: 3-grams of ABC = 1 ngram",
+         len(_tp_ng3) == 1 and _tp_ng3[0] == ["A", "B", "C"], f"ngrams={_tp_ng3}")
+
+    # Test 11: _label_for_template
+    test("ToolPatterns: label Read,Edit,Bash = read-edit-test",
+         _label_for_template(["Read", "Edit", "Bash"]) == "read-edit-test", "")
+    test("ToolPatterns: label Read,Edit = read-then-edit",
+         _label_for_template(["Read", "Edit"]) == "read-then-edit", "")
+    test("ToolPatterns: label unknown gets fallback",
+         "workflow" in _label_for_template(["Xyz", "Abc"]), "")
+
+    # Test 12: _invalidate_cache runs without error
+    _invalidate_cache()
+    test("ToolPatterns: _invalidate_cache succeeds", True, "")
+
+    # Test 13: MarkovChain dataclass fields
+    _tp_mc_dc = MarkovChain()
+    test("ToolPatterns: MarkovChain defaults are empty",
+         _tp_mc_dc.sequence_count == 0 and _tp_mc_dc.total_starts == 0, "")
+
+    # Test 14: WorkflowTemplate dataclass
+    _tp_wt = WorkflowTemplate(tools=["A", "B"], count=5, frequency=0.5, label="test")
+    test("ToolPatterns: WorkflowTemplate stores fields",
+         _tp_wt.count == 5 and _tp_wt.frequency == 0.5 and _tp_wt.label == "test", "")
+
+    # Test 15: AnomalyReport dataclass
+    _tp_ar = AnomalyReport(
+        tools=["A"], score=-5.0, baseline_mean=-2.0, baseline_std=1.0,
+        sigma=3.0, reason="test", unusual_transitions=[("A", "B")]
+    )
+    test("ToolPatterns: AnomalyReport stores sigma",
+         _tp_ar.sigma == 3.0 and len(_tp_ar.unusual_transitions) == 1, "")
+
+except Exception as _tp_exc:
+    test("ToolPatterns Extended: import and tests", False, str(_tp_exc))
+
+
+# ─────────────────────────────────────────────────
+# Gate Pruner Extended (classification logic)
+# ─────────────────────────────────────────────────
+print("\n--- Gate Pruner Extended ---")
+
+try:
+    from shared.gate_pruner import (
+        _classify, _TIER1, _LOW_BLOCK_RATE, _MIN_EVALS, _HIGH_LATENCY_MS,
+        _HIGH_OVERRIDE, KEEP, OPTIMIZE, MERGE_CANDIDATE, DORMANT,
+        analyze_gates, get_prune_recommendations, render_pruner_report,
+        GateAnalysis, PruneRecommendation,
+    )
+
+    # Test 1: Tier 1 gate always returns KEEP
+    _gp_v, _gp_r = _classify("gate_01_read_before_edit", True, 100, 5, 10, 5000, 5.0, 0.02, 0.05)
+    test("GatePruner: Tier 1 always KEEP",
+         _gp_v == KEEP, f"verdict={_gp_v}")
+    test("GatePruner: Tier 1 reason mentions 'Tier 1'",
+         any("Tier 1" in r for r in _gp_r), f"reasons={_gp_r}")
+
+    # Test 2: Dormant verdict — enough evals, very low block rate, 0 prevented
+    _gp_v2, _gp_r2 = _classify("gate_99", False, 2, 0, 0, 2000, 3.0, 0.001, 0.0)
+    test("GatePruner: low block rate + 0 prevented = DORMANT",
+         _gp_v2 == DORMANT, f"verdict={_gp_v2}")
+
+    # Test 3: Dormant with latency → extra reason
+    _gp_v3, _gp_r3 = _classify("gate_99", False, 2, 0, 0, 2000, 15.0, 0.001, 0.0)
+    test("GatePruner: dormant + high latency adds latency reason",
+         _gp_v3 == DORMANT and any("latency" in r.lower() for r in _gp_r3),
+         f"verdict={_gp_v3}, reasons={_gp_r3}")
+
+    # Test 4: Merge candidate — low block rate, some blocks
+    _gp_v4, _gp_r4 = _classify("gate_99", False, 20, 0, 0, 2000, 3.0, 0.01, 0.0)
+    test("GatePruner: low standalone impact = MERGE_CANDIDATE",
+         _gp_v4 == MERGE_CANDIDATE, f"verdict={_gp_v4}")
+
+    # Test 5: Optimize — high override rate
+    _gp_v5, _gp_r5 = _classify("gate_99", False, 100, 30, 5, 2000, 3.0, 0.05, 0.30)
+    test("GatePruner: high override rate = OPTIMIZE",
+         _gp_v5 == OPTIMIZE, f"verdict={_gp_v5}")
+    test("GatePruner: optimize reason mentions 'override'",
+         any("override" in r.lower() for r in _gp_r5), f"reasons={_gp_r5}")
+
+    # Test 6: Keep with healthy stats
+    _gp_v6, _gp_r6 = _classify("gate_99", False, 500, 10, 50, 2000, 3.0, 0.25, 0.02)
+    test("GatePruner: high block rate + prevented = KEEP",
+         _gp_v6 == KEEP, f"verdict={_gp_v6}")
+    test("GatePruner: healthy reason mentions 'healthy'",
+         any("healthy" in r.lower() for r in _gp_r6), f"reasons={_gp_r6}")
+
+    # Test 7: Zero blocks with sufficient evals → dormant
+    _gp_v7, _gp_r7 = _classify("gate_99", False, 0, 0, 0, 5000, 2.0, 0.0, 0.0)
+    test("GatePruner: zero blocks over many evals = DORMANT",
+         _gp_v7 == DORMANT, f"verdict={_gp_v7}")
+    test("GatePruner: zero blocks dormant reason present",
+         any("block rate" in r.lower() or "zero blocks" in r.lower() for r in _gp_r7),
+         f"reasons={_gp_r7}")
+
+    # Test 8: Prevented incidents add note even when verdict != KEEP
+    _gp_v8, _gp_r8 = _classify("gate_99", False, 2, 0, 5, 2000, 3.0, 0.001, 0.0)
+    test("GatePruner: prevented note on non-keep verdict",
+         any("prevented" in r.lower() for r in _gp_r8), f"reasons={_gp_r8}")
+
+    # Test 9: Low eval count doesn't trigger dormant
+    _gp_v9, _gp_r9 = _classify("gate_99", False, 0, 0, 0, 500, 1.0, 0.0, 0.0)
+    test("GatePruner: low eval count → KEEP not DORMANT",
+         _gp_v9 == KEEP, f"verdict={_gp_v9}, evals=500")
+
+    # Test 10: analyze_gates returns dict of GateAnalysis
+    _gp_analysis = analyze_gates()
+    test("GatePruner: analyze_gates returns dict",
+         isinstance(_gp_analysis, dict), f"type={type(_gp_analysis)}")
+
+    # Test 11: all Tier 1 gates are KEEP
+    for _gp_t1 in _TIER1:
+        if _gp_t1 in _gp_analysis:
+            test(f"GatePruner: {_gp_t1} is KEEP",
+                 _gp_analysis[_gp_t1].verdict == KEEP,
+                 f"verdict={_gp_analysis[_gp_t1].verdict}")
+
+    # Test 12: get_prune_recommendations returns list
+    _gp_recs = get_prune_recommendations()
+    test("GatePruner: recommendations is list",
+         isinstance(_gp_recs, list), f"type={type(_gp_recs)}")
+
+    # Test 13: ranks are sequential
+    if _gp_recs:
+        _gp_ranks = [r.rank for r in _gp_recs]
+        test("GatePruner: ranks are sequential",
+             _gp_ranks == list(range(1, len(_gp_recs) + 1)),
+             f"ranks={_gp_ranks[:10]}")
+
+    # Test 14: all verdicts are valid
+    _gp_valid_verdicts = {KEEP, OPTIMIZE, MERGE_CANDIDATE, DORMANT}
+    test("GatePruner: all verdicts valid",
+         all(r.verdict in _gp_valid_verdicts for r in _gp_recs),
+         f"verdicts={set(r.verdict for r in _gp_recs)}")
+
+    # Test 15: render_pruner_report returns string
+    _gp_report = render_pruner_report()
+    test("GatePruner: report is string",
+         isinstance(_gp_report, str) and len(_gp_report) > 0,
+         f"len={len(_gp_report)}")
+    test("GatePruner: report contains header",
+         "GATE PRUNING" in _gp_report, f"snippet={_gp_report[:60]}")
+
+    # Test 16: GateAnalysis dataclass
+    _gp_ga = GateAnalysis(
+        gate="test_gate", tier1=False, blocks=10, overrides=2, prevented=3,
+        eval_count=100, avg_ms=5.0, block_rate=0.1, override_rate=0.2,
+        has_q_data=False, verdict=KEEP
+    )
+    test("GatePruner: GateAnalysis stores fields",
+         _gp_ga.gate == "test_gate" and _gp_ga.blocks == 10, "")
+
+    # Test 17: PruneRecommendation dataclass
+    _gp_pr = PruneRecommendation(
+        rank=1, gate="test", verdict=KEEP, reasons=["healthy"],
+        avg_ms=5.0, blocks=10, prevented=3
+    )
+    test("GatePruner: PruneRecommendation stores fields",
+         _gp_pr.rank == 1 and _gp_pr.gate == "test", "")
+
+    # Test 18: constants have expected values
+    test("GatePruner: _LOW_BLOCK_RATE is 0.005",
+         _LOW_BLOCK_RATE == 0.005, f"val={_LOW_BLOCK_RATE}")
+    test("GatePruner: _MIN_EVALS is 1000",
+         _MIN_EVALS == 1000, f"val={_MIN_EVALS}")
+    test("GatePruner: _HIGH_OVERRIDE is 0.15",
+         _HIGH_OVERRIDE == 0.15, f"val={_HIGH_OVERRIDE}")
+
+except Exception as _gp_exc:
+    test("GatePruner Extended: import and tests", False, str(_gp_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)

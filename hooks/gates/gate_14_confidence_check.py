@@ -20,6 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
+from shared.gate_helpers import extract_file_path, safe_tool_input
 
 GATE_NAME = "GATE 14: CONFIDENCE CHECK"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
@@ -65,10 +66,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in WATCHED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if not isinstance(tool_input, dict):
-        tool_input = {}
-
-    file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    tool_input = safe_tool_input(tool_input)
+    file_path = extract_file_path(tool_input)
 
     # Exempt files
     if _is_exempt(file_path):
