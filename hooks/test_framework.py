@@ -22044,6 +22044,626 @@ except Exception as _cv2_exc:
     test("Consensus Validator Deep Tests: import and tests", False, str(_cv2_exc))
 
 
+# ─────────────────────────────────────────────────
+# Chain Refinement Deep Tests (chain_refinement.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.chain_refinement import (
+        _normalize_error,
+        _extract_outcome_fields,
+        get_strategy_effectiveness,
+        detect_recurring_failures,
+        suggest_refinement,
+        compute_chain_health,
+        analyze_outcomes,
+        StrategyStats,
+        RecurringPattern,
+        Refinement,
+        ChainHealth,
+        MIN_RECURRENCE,
+        INEFFECTIVE_THRESHOLD,
+        CHRONIC_FAILURE_THRESHOLD,
+        MIN_ATTEMPTS_FOR_STATS,
+        MIN_IMPROVEMENT_DELTA,
+    )
+
+    # ── Constants ──
+    test("CR: MIN_RECURRENCE is 3", MIN_RECURRENCE == 3)
+    test("CR: INEFFECTIVE_THRESHOLD is 0.3", INEFFECTIVE_THRESHOLD == 0.3)
+    test("CR: CHRONIC_FAILURE_THRESHOLD is 0.7", CHRONIC_FAILURE_THRESHOLD == 0.7)
+    test("CR: MIN_ATTEMPTS_FOR_STATS is 3", MIN_ATTEMPTS_FOR_STATS == 3)
+    test("CR: MIN_IMPROVEMENT_DELTA is 0.15", MIN_IMPROVEMENT_DELTA == 0.15)
+
+    # ── _normalize_error ──
+    test("CR: normalize empty", _normalize_error("") == "")
+    test("CR: normalize None", _normalize_error(None) == "")
+    test("CR: normalize non-string", _normalize_error(123) == "")
+    test("CR: normalize strips file paths",
+         "<file>" in _normalize_error("Error in /home/user/project/foo.py"))
+    test("CR: normalize strips line numbers",
+         "line n" in _normalize_error("Error at line 42 in module"))
+    test("CR: normalize strips timestamps",
+         "<ts>" in _normalize_error("Error at 2024-01-15T10:30:00"))
+    test("CR: normalize strips hex addresses",
+         "<addr>" in _normalize_error("Object at 0x7f3a2b4c"))
+    test("CR: normalize collapses whitespace",
+         "  " not in _normalize_error("error    with   spaces"))
+    test("CR: normalize lowercases",
+         _normalize_error("ERROR MESSAGE") == "error message")
+    test("CR: normalize combined",
+         _normalize_error("Error in /foo/bar.py at line 42: NoneType") ==
+         "error in <file> at line n: nonetype")
+
+    # ── _extract_outcome_fields ──
+    test("CR: extract non-dict returns empty", _extract_outcome_fields("string") == {})
+    test("CR: extract empty dict", _extract_outcome_fields({}) == {
+        "error": "", "strategy": "", "result": "", "chain_id": "", "timestamp": ""
+    })
+    test("CR: extract primary keys",
+         _extract_outcome_fields({
+             "error_text": "err1", "strategy": "strat1", "result": "success",
+             "chain_id": "c1", "timestamp": "2024-01-01"
+         })["error"] == "err1")
+    test("CR: extract fallback keys",
+         _extract_outcome_fields({
+             "error": "err2", "strategy_name": "strat2", "outcome": "failed"
+         })["strategy"] == "strat2")
+    test("CR: extract result fallback",
+         _extract_outcome_fields({"outcome": "resolved"})["result"] == "resolved")
+
+    # ── StrategyStats dataclass ──
+    _cr_ss = StrategyStats(strategy="test")
+    test("CR: StrategyStats defaults", _cr_ss.attempts == 0 and _cr_ss.successes == 0)
+    test("CR: StrategyStats success_rate default", _cr_ss.success_rate == 0.0)
+
+    # ── RecurringPattern dataclass ──
+    _cr_rp = RecurringPattern(error_pattern="test error")
+    test("CR: RecurringPattern defaults",
+         _cr_rp.occurrence_count == 0 and _cr_rp.is_chronic == False)
+    test("CR: RecurringPattern strategies default", _cr_rp.strategies_tried == [])
+
+    # ── Refinement dataclass ──
+    _cr_ref = Refinement(
+        error_pattern="e", current_strategy="c", suggested_strategy="s",
+        reason="r", confidence=0.5
+    )
+    test("CR: Refinement fields", _cr_ref.confidence == 0.5 and _cr_ref.reason == "r")
+    test("CR: Refinement evidence default", _cr_ref.evidence == [])
+
+    # ── ChainHealth dataclass ──
+    _cr_ch = ChainHealth()
+    test("CR: ChainHealth defaults",
+         _cr_ch.total_chains == 0 and _cr_ch.health_score == 50.0)
+    test("CR: ChainHealth trend default", _cr_ch.improvement_trend == "stable")
+    test("CR: ChainHealth recommendations default", _cr_ch.recommendations == [])
+
+    # ── get_strategy_effectiveness ──
+    test("CR: effectiveness empty list", get_strategy_effectiveness([]) == {})
+
+    _cr_outcomes_eff = [
+        {"strategy": "retry", "result": "success", "error_text": "timeout"},
+        {"strategy": "retry", "result": "success", "error_text": "timeout"},
+        {"strategy": "retry", "result": "failure", "error_text": "timeout"},
+        {"strategy": "rewrite", "result": "success", "error_text": "import error"},
+        {"strategy": "rewrite", "result": "failure", "error_text": "import error"},
+        {"strategy": "rewrite", "result": "failure", "error_text": "syntax error"},
+    ]
+    _cr_eff = get_strategy_effectiveness(_cr_outcomes_eff)
+    test("CR: effectiveness has retry", "retry" in _cr_eff)
+    test("CR: effectiveness has rewrite", "rewrite" in _cr_eff)
+    test("CR: effectiveness retry attempts", _cr_eff["retry"].attempts == 3)
+    test("CR: effectiveness retry successes", _cr_eff["retry"].successes == 2)
+    test("CR: effectiveness retry failures", _cr_eff["retry"].failures == 1)
+    test("CR: effectiveness retry rate",
+         abs(_cr_eff["retry"].success_rate - 0.6667) < 0.01)
+    test("CR: effectiveness rewrite attempts", _cr_eff["rewrite"].attempts == 3)
+    test("CR: effectiveness rewrite successes", _cr_eff["rewrite"].successes == 1)
+    test("CR: effectiveness rewrite errors_addressed",
+         _cr_eff["rewrite"].errors_addressed == 2)  # import error + syntax error
+    test("CR: effectiveness skips no-strategy entries",
+         len(get_strategy_effectiveness([{"result": "success"}])) == 0)
+
+    # ── detect_recurring_failures ──
+    test("CR: recurring empty", detect_recurring_failures([]) == [])
+
+    _cr_outcomes_rec = [
+        {"error_text": "ImportError: no module", "strategy": "install", "result": "success"},
+        {"error_text": "ImportError: no module", "strategy": "install", "result": "failure"},
+        {"error_text": "ImportError: no module", "strategy": "install", "result": "failure"},
+        {"error_text": "ImportError: no module", "strategy": "rewrite", "result": "success"},
+        {"error_text": "KeyError: missing key", "strategy": "fix", "result": "success"},
+        {"error_text": "KeyError: missing key", "strategy": "fix", "result": "success"},
+    ]
+    _cr_rec = detect_recurring_failures(_cr_outcomes_rec, min_recurrence=3)
+    test("CR: recurring finds importerror pattern", len(_cr_rec) == 1)
+    test("CR: recurring pattern count", _cr_rec[0].occurrence_count == 4)
+    test("CR: recurring strategies tried",
+         sorted(_cr_rec[0].strategies_tried) == ["install", "rewrite"])
+    test("CR: recurring best strategy",
+         _cr_rec[0].best_strategy == "rewrite")  # 1/1 = 100% vs install 1/3 = 33%
+    test("CR: recurring best rate", _cr_rec[0].best_success_rate == 1.0)
+
+    # Chronic failure detection: 3 attempts, 0 successes -> failure_rate = 1.0 > 0.7
+    _cr_outcomes_chronic = [
+        {"error_text": "DeadlockError", "strategy": "wait", "result": "failure"},
+        {"error_text": "DeadlockError", "strategy": "wait", "result": "failure"},
+        {"error_text": "DeadlockError", "strategy": "restart", "result": "failure"},
+    ]
+    _cr_chronic = detect_recurring_failures(_cr_outcomes_chronic, min_recurrence=3)
+    test("CR: chronic detected", len(_cr_chronic) == 1 and _cr_chronic[0].is_chronic)
+
+    # Non-chronic: 4 attempts, 3 successes -> failure_rate = 0.25 < 0.7
+    _cr_outcomes_healthy = [
+        {"error_text": "TimeoutError", "strategy": "retry", "result": "success"},
+        {"error_text": "TimeoutError", "strategy": "retry", "result": "success"},
+        {"error_text": "TimeoutError", "strategy": "retry", "result": "success"},
+        {"error_text": "TimeoutError", "strategy": "retry", "result": "failure"},
+    ]
+    _cr_healthy = detect_recurring_failures(_cr_outcomes_healthy, min_recurrence=3)
+    test("CR: non-chronic healthy", len(_cr_healthy) == 1 and not _cr_healthy[0].is_chronic)
+
+    # Sorted by occurrence count descending
+    _cr_outcomes_sort = [
+        {"error_text": "A", "strategy": "s", "result": "failure"},
+        {"error_text": "A", "strategy": "s", "result": "failure"},
+        {"error_text": "A", "strategy": "s", "result": "failure"},
+        {"error_text": "B", "strategy": "s", "result": "failure"},
+        {"error_text": "B", "strategy": "s", "result": "failure"},
+        {"error_text": "B", "strategy": "s", "result": "failure"},
+        {"error_text": "B", "strategy": "s", "result": "failure"},
+    ]
+    _cr_sorted = detect_recurring_failures(_cr_outcomes_sort, min_recurrence=3)
+    test("CR: recurring sorted by count", _cr_sorted[0].occurrence_count > _cr_sorted[1].occurrence_count)
+
+    # min_recurrence filter
+    _cr_below = detect_recurring_failures(_cr_outcomes_sort, min_recurrence=5)
+    test("CR: min_recurrence filters", len(_cr_below) == 0 or _cr_below[0].occurrence_count >= 5)
+
+    # ── suggest_refinement ──
+    test("CR: refinement empty error", suggest_refinement("", []) is None)
+    test("CR: refinement no outcomes", suggest_refinement("some error", []) is None)
+
+    # Build outcomes where strategy "B" is clearly better than "A" for similar errors
+    _cr_ref_outcomes = []
+    for _ in range(5):
+        _cr_ref_outcomes.append({"error_text": "connection timeout error", "strategy": "A", "result": "failure"})
+    for _ in range(5):
+        _cr_ref_outcomes.append({"error_text": "connection timeout error", "strategy": "B", "result": "success"})
+
+    _cr_sugg = suggest_refinement("connection timeout error", _cr_ref_outcomes, "A")
+    test("CR: refinement found", _cr_sugg is not None)
+    if _cr_sugg:
+        test("CR: refinement suggests B", _cr_sugg.suggested_strategy == "B")
+        test("CR: refinement has reason", len(_cr_sugg.reason) > 0)
+        test("CR: refinement confidence > 0", _cr_sugg.confidence > 0)
+        test("CR: refinement has evidence", len(_cr_sugg.evidence) > 0)
+        test("CR: refinement error pattern set", _cr_sugg.error_pattern != "")
+
+    # No refinement when no clear improvement
+    _cr_ref_same = [
+        {"error_text": "err", "strategy": "X", "result": "success"},
+        {"error_text": "err", "strategy": "X", "result": "success"},
+        {"error_text": "err", "strategy": "X", "result": "success"},
+    ]
+    test("CR: no refinement when same strategy ok",
+         suggest_refinement("err", _cr_ref_same, "X") is None)
+
+    # No refinement when alternative has insufficient data
+    _cr_ref_few = [
+        {"error_text": "err2", "strategy": "C", "result": "failure"},
+        {"error_text": "err2", "strategy": "C", "result": "failure"},
+        {"error_text": "err2", "strategy": "C", "result": "failure"},
+        {"error_text": "err2", "strategy": "C", "result": "failure"},
+        {"error_text": "err2", "strategy": "C", "result": "failure"},
+        {"error_text": "err2", "strategy": "D", "result": "success"},  # only 1 attempt
+    ]
+    test("CR: no refinement insufficient alt data",
+         suggest_refinement("err2", _cr_ref_few, "C") is None)
+
+    # ── compute_chain_health ──
+    _cr_health_empty = compute_chain_health([])
+    test("CR: health empty total", _cr_health_empty.total_chains == 0)
+    test("CR: health empty has recommendation", len(_cr_health_empty.recommendations) > 0)
+    test("CR: health empty score", _cr_health_empty.health_score == 50.0)
+
+    # All successes
+    _cr_all_success = [{"result": "success", "strategy": f"s{i}"} for i in range(10)]
+    _cr_health_good = compute_chain_health(_cr_all_success)
+    test("CR: health good total", _cr_health_good.total_chains == 10)
+    test("CR: health good rate", _cr_health_good.overall_success_rate == 1.0)
+    test("CR: health good score > 70", _cr_health_good.health_score > 70)
+    test("CR: health good diversity", _cr_health_good.strategy_diversity == 10)
+
+    # All failures
+    _cr_all_fail = [{"result": "failure", "strategy": "retry", "error_text": "err"} for _ in range(10)]
+    _cr_health_bad = compute_chain_health(_cr_all_fail)
+    test("CR: health bad rate", _cr_health_bad.overall_success_rate == 0.0)
+    test("CR: health bad score < 30", _cr_health_bad.health_score < 30)
+    test("CR: health bad has recs", len(_cr_health_bad.recommendations) > 0)
+    test("CR: health bad rec mentions rate",
+         any("success rate" in r.lower() for r in _cr_health_bad.recommendations))
+
+    # Trend detection: first half fails, second half succeeds -> "improving"
+    _cr_trend_outcomes = []
+    for i in range(12):
+        result = "failure" if i < 6 else "success"
+        _cr_trend_outcomes.append({"result": result, "strategy": f"s{i % 3}", "error_text": "e"})
+    _cr_health_trend = compute_chain_health(_cr_trend_outcomes)
+    test("CR: trend improving", _cr_health_trend.improvement_trend == "improving")
+
+    # Reverse trend: first half succeeds, second half fails -> "declining"
+    _cr_trend_decline = []
+    for i in range(12):
+        result = "success" if i < 6 else "failure"
+        _cr_trend_decline.append({"result": result, "strategy": f"s{i % 3}", "error_text": "e"})
+    _cr_health_decline = compute_chain_health(_cr_trend_decline)
+    test("CR: trend declining", _cr_health_decline.improvement_trend == "declining")
+
+    # Insufficient data for trend
+    _cr_trend_short = [{"result": "success", "strategy": "s"} for _ in range(4)]
+    _cr_health_short = compute_chain_health(_cr_trend_short)
+    test("CR: trend insufficient data",
+         _cr_health_short.improvement_trend == "insufficient_data")
+
+    # Low diversity recommendation
+    _cr_low_div = [{"result": "success", "strategy": "only_one", "error_text": f"e{i}"} for i in range(15)]
+    _cr_health_low_div = compute_chain_health(_cr_low_div)
+    test("CR: low diversity rec",
+         any("diversity" in r.lower() for r in _cr_health_low_div.recommendations))
+
+    # Chronic failures recommendation
+    _cr_chronic_many = [
+        {"error_text": "persistent error", "strategy": "s", "result": "failure"}
+        for _ in range(5)
+    ]
+    _cr_health_chronic = compute_chain_health(_cr_chronic_many)
+    test("CR: chronic count tracked", _cr_health_chronic.chronic_failures >= 0)
+
+    # ── analyze_outcomes ──
+    _cr_analysis = analyze_outcomes(_cr_outcomes_eff)
+    test("CR: analysis has strategy_effectiveness", "strategy_effectiveness" in _cr_analysis)
+    test("CR: analysis has recurring_failures", "recurring_failures" in _cr_analysis)
+    test("CR: analysis has chain_health", "chain_health" in _cr_analysis)
+    test("CR: analysis has summary", "summary" in _cr_analysis)
+    test("CR: analysis summary is string", isinstance(_cr_analysis["summary"], str))
+    test("CR: analysis summary has chain count", "6 chains" in _cr_analysis["summary"])
+    test("CR: analysis summary has success rate", "success rate" in _cr_analysis["summary"])
+    test("CR: analysis summary has strategies", "strategies" in _cr_analysis["summary"])
+    test("CR: analysis summary has trend", "trend:" in _cr_analysis["summary"])
+
+    # Analysis with empty data
+    _cr_analysis_empty = analyze_outcomes([])
+    test("CR: analysis empty has all keys",
+         all(k in _cr_analysis_empty for k in ["strategy_effectiveness", "recurring_failures", "chain_health", "summary"]))
+    test("CR: analysis empty summary", "0 chains" in _cr_analysis_empty["summary"])
+
+    # Large analysis
+    _cr_large_outcomes = []
+    import random as _cr_rand
+    _cr_rand.seed(42)
+    for _cr_i in range(50):
+        _cr_large_outcomes.append({
+            "error_text": f"error type {_cr_i % 5}",
+            "strategy": f"strategy_{_cr_i % 4}",
+            "result": _cr_rand.choice(["success", "failure", "resolved"]),
+            "chain_id": f"chain_{_cr_i}",
+        })
+    _cr_large = analyze_outcomes(_cr_large_outcomes)
+    test("CR: large analysis strategies", len(_cr_large["strategy_effectiveness"]) == 4)
+    test("CR: large analysis health total", _cr_large["chain_health"].total_chains == 50)
+    test("CR: large analysis health score range",
+         0 <= _cr_large["chain_health"].health_score <= 100)
+    test("CR: large analysis recurring patterns", isinstance(_cr_large["recurring_failures"], list))
+
+except Exception as _cr_exc:
+    test("Chain Refinement Deep Tests: import and tests", False, str(_cr_exc))
+
+
+# ─────────────────────────────────────────────────
+# Health Correlation Deep Tests (health_correlation.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.health_correlation import (
+        _pearson_correlation,
+        build_fire_vectors,
+        compute_correlation_matrix,
+        detect_redundant_pairs,
+        detect_synergistic_pairs,
+        suggest_optimizations,
+        generate_health_report,
+        _short,
+        _redundancy_recommendation,
+        REDUNDANCY_THRESHOLD,
+        SYNERGY_THRESHOLD,
+        MIN_BLOCKS_FOR_ANALYSIS,
+        PROTECTED_GATES,
+    )
+
+    # ── Constants ──
+    test("HC: REDUNDANCY_THRESHOLD", REDUNDANCY_THRESHOLD == 0.80)
+    test("HC: SYNERGY_THRESHOLD", SYNERGY_THRESHOLD == -0.50)
+    test("HC: MIN_BLOCKS_FOR_ANALYSIS", MIN_BLOCKS_FOR_ANALYSIS == 3)
+    test("HC: PROTECTED_GATES has 3 gates", len(PROTECTED_GATES) == 3)
+    test("HC: gate_01 protected", "gate_01_read_before_edit" in PROTECTED_GATES)
+
+    # ── _short ──
+    test("HC: short gate_01", _short("gate_01_read_before_edit") == "G01")
+    test("HC: short gate_12", _short("gate_12_something") == "G12")
+    test("HC: short non-gate", _short("my_custom_check") == "my_custom_check")
+
+    # ── _pearson_correlation ──
+    test("HC: pearson identical", abs(_pearson_correlation([1, 2, 3], [1, 2, 3]) - 1.0) < 0.01)
+    test("HC: pearson opposite", abs(_pearson_correlation([1, 2, 3], [3, 2, 1]) - (-1.0)) < 0.01)
+    test("HC: pearson uncorrelated",
+         abs(_pearson_correlation([1, 0, 1, 0], [0, 1, 0, 1]) - (-1.0)) < 0.01)
+    test("HC: pearson diff lengths", _pearson_correlation([1, 2], [1, 2, 3]) == 0.0)
+    test("HC: pearson too short", _pearson_correlation([1], [1]) == 0.0)
+    test("HC: pearson zero variance", _pearson_correlation([5, 5, 5], [1, 2, 3]) == 0.0)
+
+    # ── build_fire_vectors ──
+    _hc_eff_data = {
+        "gate_01_test": {"blocks": 10, "overrides": 2, "prevented": 3},
+        "gate_02_test": {"blocks": 20, "overrides": 5, "prevented": 8},
+        "gate_03_low": {"blocks": 1, "overrides": 0, "prevented": 0},  # below MIN_BLOCKS
+    }
+    _hc_vectors = build_fire_vectors(_hc_eff_data)
+    test("HC: vectors includes high-block gates", "gate_01_test" in _hc_vectors)
+    test("HC: vectors includes gate_02", "gate_02_test" in _hc_vectors)
+    test("HC: vectors excludes low-block", "gate_03_low" not in _hc_vectors)
+    test("HC: vector length default 10", len(_hc_vectors["gate_01_test"]) == 10)
+    test("HC: vector values non-negative",
+         all(v >= 0 for v in _hc_vectors["gate_01_test"]))
+    test("HC: custom time_windows",
+         len(build_fire_vectors(_hc_eff_data, time_windows=5)["gate_01_test"]) == 5)
+
+    # Empty data
+    test("HC: vectors empty data", build_fire_vectors({}) == {})
+    # Non-dict entry
+    test("HC: vectors non-dict entry", build_fire_vectors({"g": "not a dict"}) == {})
+
+    # ── compute_correlation_matrix ──
+    _hc_matrix = compute_correlation_matrix(_hc_vectors)
+    test("HC: matrix has pairs", len(_hc_matrix) > 0)
+    test("HC: matrix keys are tuples", all(isinstance(k, tuple) for k in _hc_matrix))
+    test("HC: matrix values in [-1, 1]",
+         all(-1.01 <= v <= 1.01 for v in _hc_matrix.values()))
+    test("HC: matrix no self-correlation",
+         all(k[0] != k[1] for k in _hc_matrix))
+    test("HC: matrix lexicographic order",
+         all(k[0] < k[1] for k in _hc_matrix))
+    test("HC: empty matrix", compute_correlation_matrix({}) == {})
+
+    # ── detect_redundant_pairs ──
+    _hc_high_corr_matrix = {("a", "b"): 0.95, ("a", "c"): 0.5, ("b", "c"): 0.85}
+    _hc_redundant = detect_redundant_pairs(_hc_high_corr_matrix, threshold=0.80)
+    test("HC: redundant finds high corr", len(_hc_redundant) == 2)
+    test("HC: redundant sorted desc",
+         _hc_redundant[0]["correlation"] >= _hc_redundant[1]["correlation"])
+    test("HC: redundant has recommendation", "recommendation" in _hc_redundant[0])
+    test("HC: no redundant below threshold",
+         len(detect_redundant_pairs(_hc_high_corr_matrix, threshold=0.99)) == 0)
+
+    # ── detect_synergistic_pairs ──
+    _hc_neg_matrix = {("x", "y"): -0.7, ("x", "z"): -0.3, ("y", "z"): 0.1}
+    _hc_synergistic = detect_synergistic_pairs(_hc_neg_matrix, threshold=-0.50)
+    test("HC: synergistic finds negative corr", len(_hc_synergistic) == 1)
+    test("HC: synergistic pair correct",
+         _hc_synergistic[0]["gate_a"] == "x" and _hc_synergistic[0]["gate_b"] == "y")
+    test("HC: synergistic recommendation mentions complementary",
+         "complementary" in _hc_synergistic[0]["recommendation"])
+
+    # ── _redundancy_recommendation ──
+    _hc_rec_protected = _redundancy_recommendation("gate_01_read_before_edit", "gate_99_custom", 0.9)
+    test("HC: rec protected gate mentions Tier-1", "Tier-1" in _hc_rec_protected)
+    _hc_rec_both_unprotected = _redundancy_recommendation("gate_05_a", "gate_06_b", 0.85)
+    test("HC: rec unprotected mentions merging", "merging" in _hc_rec_both_unprotected.lower() or "merg" in _hc_rec_both_unprotected.lower())
+
+    # ── suggest_optimizations ──
+    _hc_opt_data = {
+        "gate_05_test": {"blocks": 10, "overrides": 3, "prevented": 5},
+        "gate_06_test": {"blocks": 10, "overrides": 3, "prevented": 5},  # Same profile -> redundant
+        "gate_07_low": {"blocks": 1, "overrides": 0, "prevented": 0},   # Low value
+    }
+    _hc_opts = suggest_optimizations(_hc_opt_data)
+    test("HC: optimizations is list", isinstance(_hc_opts, list))
+    test("HC: optimization types valid",
+         all(o["type"] in ("redundancy", "low_value", "reorder") for o in _hc_opts))
+    test("HC: optimization has priority", all("priority" in o for o in _hc_opts))
+    test("HC: optimization has confidence", all("confidence" in o for o in _hc_opts))
+    test("HC: optimizations sorted by priority",
+         all(_hc_opts[i]["priority"] <= _hc_opts[i+1]["priority"]
+             for i in range(len(_hc_opts)-1)) if len(_hc_opts) > 1 else True)
+
+    # Protected gates not suggested for removal
+    _hc_opt_protected = {
+        "gate_01_read_before_edit": {"blocks": 1, "overrides": 0, "prevented": 0},
+    }
+    _hc_opts_protected = suggest_optimizations(_hc_opt_protected)
+    test("HC: protected gate not low-value",
+         not any(o["type"] == "low_value" and "gate_01_read_before_edit" in o["gates_affected"]
+                 for o in _hc_opts_protected))
+
+    # ── generate_health_report ──
+    _hc_report = generate_health_report(_hc_opt_data)
+    test("HC: report has gates_analyzed", "gates_analyzed" in _hc_report)
+    test("HC: report has correlation_pairs", "correlation_pairs" in _hc_report)
+    test("HC: report has redundant_pairs", "redundant_pairs" in _hc_report)
+    test("HC: report has synergistic_pairs", "synergistic_pairs" in _hc_report)
+    test("HC: report has optimizations", "optimizations" in _hc_report)
+    test("HC: report has overall_diversity", "overall_diversity" in _hc_report)
+    test("HC: report diversity in [0,1]",
+         0.0 <= _hc_report["overall_diversity"] <= 1.0)
+    test("HC: report gates_analyzed count", _hc_report["gates_analyzed"] == 2)  # gate_05 and gate_06 (gate_07 below threshold)
+
+    # Empty report
+    _hc_empty_report = generate_health_report({})
+    test("HC: empty report gates 0", _hc_empty_report["gates_analyzed"] == 0)
+    test("HC: empty report diversity 1.0", _hc_empty_report["overall_diversity"] == 1.0)
+
+except Exception as _hc_exc:
+    test("Health Correlation Deep Tests: import and tests", False, str(_hc_exc))
+
+
+# ─────────────────────────────────────────────────
+# Tool Recommendation Deep Tests (tool_recommendation.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.tool_recommendation import (
+        build_tool_profile,
+        should_recommend,
+        recommend_alternative,
+        get_recommendation_stats,
+        ToolProfile,
+        Recommendation,
+        MIN_CALLS_FOR_STATS,
+        BLOCK_RATE_THRESHOLD,
+        MIN_IMPROVEMENT,
+        TOOL_EQUIVALENCES,
+        ALWAYS_OK_TOOLS,
+        SEQUENCE_FIXES,
+    )
+
+    # ── Constants ──
+    test("TR: MIN_CALLS_FOR_STATS", MIN_CALLS_FOR_STATS == 5)
+    test("TR: BLOCK_RATE_THRESHOLD", BLOCK_RATE_THRESHOLD == 0.3)
+    test("TR: MIN_IMPROVEMENT", MIN_IMPROVEMENT == 0.15)
+    test("TR: Edit equiv Write", "Write" in TOOL_EQUIVALENCES["Edit"])
+    test("TR: Write equiv Edit", "Edit" in TOOL_EQUIVALENCES["Write"])
+    test("TR: Read always ok", "Read" in ALWAYS_OK_TOOLS)
+    test("TR: Glob always ok", "Glob" in ALWAYS_OK_TOOLS)
+    test("TR: sequence fixes exist", len(SEQUENCE_FIXES) > 0)
+
+    # ── ToolProfile dataclass ──
+    _tr_tp = ToolProfile(tool_name="Edit")
+    test("TR: profile defaults", _tr_tp.call_count == 0 and _tr_tp.success_rate == 1.0)
+    test("TR: profile block_rate default", _tr_tp.block_rate == 0.0)
+
+    # ── Recommendation dataclass ──
+    _tr_rec = Recommendation(
+        original_tool="Edit", suggested_tool="Write",
+        reason="better", confidence=0.7,
+        original_success=0.5, suggested_success=0.8
+    )
+    test("TR: recommendation fields", _tr_rec.confidence == 0.7)
+
+    # ── build_tool_profile ──
+    test("TR: profile empty state", build_tool_profile({}) == {})
+
+    _tr_state = {
+        "tool_call_counts": {"Edit": 10, "Read": 5, "Write": 3},
+        "gate_block_outcomes": [
+            {"tool": "Edit"}, {"tool": "Edit"}, {"tool": "Edit"},
+            {"tool": "Write"},
+        ],
+        "tool_errors": {"Edit": 1},
+    }
+    _tr_profiles = build_tool_profile(_tr_state)
+    test("TR: profiles has Edit", "Edit" in _tr_profiles)
+    test("TR: profiles has Read", "Read" in _tr_profiles)
+    test("TR: Edit call_count", _tr_profiles["Edit"].call_count == 10)
+    test("TR: Edit block_count", _tr_profiles["Edit"].block_count == 3)
+    test("TR: Edit error_count", _tr_profiles["Edit"].error_count == 1)
+    test("TR: Edit block_rate", abs(_tr_profiles["Edit"].block_rate - 0.3) < 0.01)
+    test("TR: Edit success_rate",
+         abs(_tr_profiles["Edit"].success_rate - 0.6) < 0.01)  # (10-3-1)/10 = 0.6
+    test("TR: Read no blocks", _tr_profiles["Read"].block_count == 0)
+    test("TR: Read success_rate 1.0", _tr_profiles["Read"].success_rate == 1.0)
+
+    # Tool from blocks but not in counts
+    _tr_state_orphan = {
+        "tool_call_counts": {},
+        "gate_block_outcomes": [{"tool": "Bash"}],
+    }
+    _tr_orphan = build_tool_profile(_tr_state_orphan)
+    test("TR: orphan tool from blocks", "Bash" in _tr_orphan)
+    test("TR: orphan 0 calls", _tr_orphan["Bash"].call_count == 0)
+
+    # ── should_recommend ──
+    test("TR: should_recommend Read always false", not should_recommend("Read", _tr_state))
+    test("TR: should_recommend Glob always false", not should_recommend("Glob", _tr_state))
+
+    # Edit has 30% block rate, >= threshold, and >= 5 calls
+    _tr_state_high_block = {
+        "tool_call_counts": {"Edit": 10},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 4,
+    }
+    test("TR: should_recommend high block Edit",
+         should_recommend("Edit", _tr_state_high_block))
+
+    # Not enough data
+    _tr_state_few = {
+        "tool_call_counts": {"Edit": 2},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 2,
+    }
+    test("TR: should_recommend few calls false",
+         not should_recommend("Edit", _tr_state_few))
+
+    # ── recommend_alternative ──
+    test("TR: recommend Read returns None", recommend_alternative("Read", {}) is None)
+
+    # Sequence-based recommendation: Glob then Edit -> suggest Read
+    _tr_state_seq = {
+        "tool_call_counts": {"Edit": 10, "Glob": 5},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 4,
+    }
+    _tr_seq_rec = recommend_alternative("Edit", _tr_state_seq, recent_tools=["Glob"])
+    test("TR: sequence rec suggests Read",
+         _tr_seq_rec is not None and _tr_seq_rec.suggested_tool == "Read")
+    test("TR: sequence rec confidence 0.8",
+         _tr_seq_rec is not None and _tr_seq_rec.confidence == 0.8)
+    test("TR: sequence rec reason mentions read",
+         _tr_seq_rec is not None and "read" in _tr_seq_rec.reason.lower())
+
+    # Equivalence-based: Write has better success than Edit
+    _tr_state_equiv = {
+        "tool_call_counts": {"Edit": 10, "Write": 10},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 5,  # 50% block rate
+        "tool_errors": {},
+    }
+    _tr_equiv_rec = recommend_alternative("Edit", _tr_state_equiv)
+    test("TR: equiv rec suggests Write",
+         _tr_equiv_rec is not None and _tr_equiv_rec.suggested_tool == "Write")
+
+    # No recommendation when both tools similar
+    _tr_state_similar = {
+        "tool_call_counts": {"Edit": 10, "Write": 10},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 3 + [{"tool": "Write"}] * 2,
+        "tool_errors": {},
+    }
+    _tr_similar_rec = recommend_alternative("Edit", _tr_state_similar)
+    # Improvement is small, may or may not recommend
+    test("TR: similar tools handled",
+         _tr_similar_rec is None or isinstance(_tr_similar_rec, Recommendation))
+
+    # ── get_recommendation_stats ──
+    _tr_stats = get_recommendation_stats(_tr_state)
+    test("TR: stats has tools_analyzed", "tools_analyzed" in _tr_stats)
+    test("TR: stats has tools_at_risk", "tools_at_risk" in _tr_stats)
+    test("TR: stats has top_blockers", "top_blockers" in _tr_stats)
+    test("TR: stats has healthiest", "healthiest" in _tr_stats)
+    test("TR: stats tools_analyzed count", _tr_stats["tools_analyzed"] == 3)
+
+    # Empty state
+    _tr_empty_stats = get_recommendation_stats({})
+    test("TR: empty stats zero tools", _tr_empty_stats["tools_analyzed"] == 0)
+    test("TR: empty stats no risk", _tr_empty_stats["tools_at_risk"] == [])
+
+    # Stats with enough data for reliable filtering
+    _tr_state_reliable = {
+        "tool_call_counts": {"Edit": 10, "Write": 8, "Read": 20},
+        "gate_block_outcomes": [{"tool": "Edit"}] * 5,
+        "tool_errors": {},
+    }
+    _tr_reliable = get_recommendation_stats(_tr_state_reliable)
+    test("TR: reliable stats has risk tools",
+         "Edit" in _tr_reliable["tools_at_risk"])
+    test("TR: reliable healthiest sorted",
+         len(_tr_reliable["healthiest"]) > 0 and _tr_reliable["healthiest"][0][1] >= _tr_reliable["healthiest"][-1][1])
+
+except Exception as _tr_exc:
+    test("Tool Recommendation Deep Tests: import and tests", False, str(_tr_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
