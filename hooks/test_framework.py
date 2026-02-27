@@ -21834,6 +21834,216 @@ except Exception as _rv_exc:
     test("Rules Validator Deep Tests: import and tests", False, str(_rv_exc))
 
 
+# ── Code Hotspot Deep Tests ─────────────────────────────────────────────
+print("\n--- Code Hotspot Deep Tests ---")
+try:
+    from shared.code_hotspot import extract_file_path
+
+    # extract_file_path: Edit tool
+    test("CH: extract Edit file_path",
+         extract_file_path({"file_path": "/home/user/code.py"}, "Edit") == "/home/user/code.py")
+    test("CH: extract Write file_path",
+         extract_file_path({"file_path": "/tmp/test.py"}, "Write") == "/tmp/test.py")
+    test("CH: extract Read path field",
+         extract_file_path({"path": "/etc/config.json"}, "Glob") == "/etc/config.json")
+    test("CH: extract NotebookEdit notebook_path",
+         extract_file_path({"notebook_path": "/nb/test.ipynb"}, "NotebookEdit") == "/nb/test.ipynb")
+
+    # extract_file_path: Bash command
+    test("CH: extract Bash command path",
+         extract_file_path({"command": "python3 /home/user/script.py"}, "Bash") == "/home/user/script.py")
+    test("CH: extract Bash no path",
+         extract_file_path({"command": "echo hello"}, "Bash") == "")
+
+    # extract_file_path: edge cases
+    test("CH: extract non-dict", extract_file_path("not a dict", "Read") == "")
+    test("CH: extract empty dict", extract_file_path({}, "Read") == "")
+    test("CH: extract whitespace path",
+         extract_file_path({"file_path": "  /a/b.py  "}, "Edit") == "/a/b.py")
+
+    # Priority: file_path > path > notebook_path
+    test("CH: extract priority file_path over path",
+         extract_file_path({"file_path": "/first.py", "path": "/second.py"}, "Edit") == "/first.py")
+
+except Exception as _ch_exc:
+    test("Code Hotspot Deep Tests: import and tests", False, str(_ch_exc))
+
+
+# ── Gate Correlation Deep Tests ─────────────────────────────────────────
+print("\n--- Gate Correlation Deep Tests ---")
+try:
+    from shared.gate_correlation import analyze_correlations, format_correlation_report
+
+    # format_correlation_report with synthetic data
+    _gc_data = {
+        "pairs": [
+            {"gate_a": "gate_01", "gate_b": "gate_04", "co_occurrence_pct": 75.0, "count": 12},
+            {"gate_a": "gate_01", "gate_b": "gate_06", "co_occurrence_pct": 30.0, "count": 5},
+        ],
+        "gate_block_counts": {"gate_01": 50, "gate_04": 16, "gate_06": 20},
+        "total_events": 200,
+        "days_analyzed": 7,
+    }
+    _gc_report = format_correlation_report(_gc_data)
+    test("GC: report has title", "Gate Block Correlation Report" in _gc_report)
+    test("GC: report has period", "7 days" in _gc_report)
+    test("GC: report has block counts", "gate_01" in _gc_report)
+    test("GC: report has pairs", "co-occurrence" in _gc_report.lower())
+
+    # format_correlation_report empty
+    _gc_empty = format_correlation_report({"pairs": [], "gate_block_counts": {}, "total_events": 0, "days_analyzed": 1})
+    test("GC: empty report no blocks", "No block events" in _gc_empty)
+
+    # analyze_correlations returns valid structure
+    _gc_result = analyze_correlations(days=1)
+    test("GC: analyze returns pairs", isinstance(_gc_result.get("pairs"), list))
+    test("GC: analyze returns gate_block_counts", isinstance(_gc_result.get("gate_block_counts"), dict))
+    test("GC: analyze returns total_events", isinstance(_gc_result.get("total_events"), int))
+    test("GC: analyze returns days_analyzed", _gc_result.get("days_analyzed") == 1)
+
+except Exception as _gc_exc:
+    test("Gate Correlation Deep Tests: import and tests", False, str(_gc_exc))
+
+
+# ── Consensus Validator Deep Tests ──────────────────────────────────────
+print("\n--- Consensus Validator Deep Tests ---")
+try:
+    from shared.consensus_validator import (
+        check_memory_consensus, check_edit_consensus,
+        compute_confidence, recommend_action,
+        _normalise, _similarity, _is_critical_file,
+        _detect_broad_except, _detect_hardcoded_secret,
+        _detect_debug_prints, _removed_public_functions,
+        _import_drift, _extract_imports,
+        CRITICAL_FILES, _THRESHOLD_BLOCK, _THRESHOLD_ASK,
+        _DUPLICATE_RATIO, _NEAR_MATCH_RATIO,
+    )
+
+    # Constants
+    test("CV2: THRESHOLD_BLOCK is 0.3", _THRESHOLD_BLOCK == 0.3)
+    test("CV2: THRESHOLD_ASK is 0.6", _THRESHOLD_ASK == 0.6)
+    test("CV2: DUPLICATE_RATIO is 0.85", _DUPLICATE_RATIO == 0.85)
+    test("CV2: NEAR_MATCH_RATIO is 0.55", _NEAR_MATCH_RATIO == 0.55)
+    test("CV2: CRITICAL_FILES has enforcer.py", "enforcer.py" in CRITICAL_FILES)
+    test("CV2: CRITICAL_FILES has settings.json", "settings.json" in CRITICAL_FILES)
+
+    # _normalise
+    test("CV2: normalise lowercase", _normalise("Hello World") == "hello world")
+    test("CV2: normalise collapse whitespace", _normalise("a  b   c") == "a b c")
+    test("CV2: normalise strip", _normalise("  test  ") == "test")
+
+    # _similarity
+    test("CV2: similarity identical", _similarity("hello", "hello") == 1.0)
+    test("CV2: similarity different", _similarity("hello", "world") < 0.5)
+    test("CV2: similarity similar", _similarity("hello world", "hello world!") > 0.8)
+
+    # _is_critical_file
+    test("CV2: is_critical enforcer.py", _is_critical_file("/path/to/enforcer.py"))
+    test("CV2: is_critical settings.json", _is_critical_file("settings.json"))
+    test("CV2: not critical random.py", not _is_critical_file("random_file.py"))
+
+    # _detect_broad_except
+    test("CV2: detect bare except", _detect_broad_except("try:\n  pass\nexcept:\n  pass"))
+    test("CV2: detect except Exception", _detect_broad_except("except Exception:\n  pass"))
+    test("CV2: no broad except", not _detect_broad_except("except ValueError:\n  pass"))
+
+    # _detect_hardcoded_secret
+    test("CV2: detect password", _detect_hardcoded_secret('password = "mysecretpassword"'))
+    test("CV2: detect api_key", _detect_hardcoded_secret("api_key = 'abcdefgh'"))
+    test("CV2: no secret", not _detect_hardcoded_secret("name = 'John'"))
+
+    # _detect_debug_prints
+    test("CV2: detect print()", _detect_debug_prints("print('debug')"))
+    test("CV2: no print", not _detect_debug_prints("logging.info('msg')"))
+
+    # _extract_imports
+    _cv2_imports = _extract_imports("import os\nfrom pathlib import Path\nimport json\n")
+    test("CV2: extract_imports os", "os" in _cv2_imports)
+    test("CV2: extract_imports pathlib", "pathlib" in _cv2_imports)
+    test("CV2: extract_imports json", "json" in _cv2_imports)
+
+    # _removed_public_functions
+    _cv2_old = "def foo():\n  pass\ndef bar():\n  pass\ndef _private():\n  pass\n"
+    _cv2_new = "def foo():\n  pass\ndef _private():\n  pass\n"
+    _cv2_removed = _removed_public_functions(_cv2_old, _cv2_new)
+    test("CV2: removed_public finds bar", "bar" in _cv2_removed)
+    test("CV2: removed_public ignores private", "_private" not in _cv2_removed)
+
+    # _import_drift
+    _cv2_drift = _import_drift("import os\nimport json\n", "import os\n")
+    test("CV2: import_drift finds json", "json" in _cv2_drift)
+    test("CV2: import_drift keeps os", "os" not in _cv2_drift)
+
+    # compute_confidence
+    test("CV2: confidence empty", compute_confidence({}) == 0.5)
+    test("CV2: confidence all 1.0", compute_confidence({"memory_coverage": 1.0, "test_coverage": 1.0}) > 0.8)
+    test("CV2: confidence all 0.0", compute_confidence({"memory_coverage": 0.0, "test_coverage": 0.0}) < 0.2)
+    test("CV2: confidence clamped values",
+         compute_confidence({"custom": 2.0}) <= 1.0)
+
+    # recommend_action
+    test("CV2: recommend allow", recommend_action(0.8) == "allow")
+    test("CV2: recommend ask", recommend_action(0.5) == "ask")
+    test("CV2: recommend block", recommend_action(0.1) == "block")
+    test("CV2: recommend boundary allow", recommend_action(0.6) == "allow")
+    test("CV2: recommend boundary ask", recommend_action(0.3) == "ask")
+    test("CV2: recommend boundary block", recommend_action(0.29) == "block")
+
+    # check_memory_consensus: novel content
+    _cv2_mc_novel = check_memory_consensus("entirely new content about quantum computing", ["old memory about Python"])
+    test("CV2: mc novel verdict", _cv2_mc_novel["verdict"] == "novel")
+    test("CV2: mc novel confidence", _cv2_mc_novel["confidence"] > 0)
+    test("CV2: mc novel has reason", len(_cv2_mc_novel["reason"]) > 0)
+
+    # check_memory_consensus: duplicate
+    _cv2_mc_dupe = check_memory_consensus("the quick brown fox jumps over the lazy dog",
+                                         ["the quick brown fox jumps over the lazy dog"])
+    test("CV2: mc duplicate verdict", _cv2_mc_dupe["verdict"] == "duplicate")
+    test("CV2: mc duplicate high match", _cv2_mc_dupe["top_match"] >= 0.85)
+
+    # check_memory_consensus: conflict (negation)
+    _cv2_mc_conflict = check_memory_consensus(
+        "gate 4 should never block on subagent tasks",
+        ["gate 4 should always block on subagent tasks"],
+    )
+    test("CV2: mc conflict or novel", _cv2_mc_conflict["verdict"] in ("conflict", "novel"))
+
+    # check_memory_consensus: empty content
+    _cv2_mc_empty = check_memory_consensus("", ["some memory"])
+    test("CV2: mc empty = novel", _cv2_mc_empty["verdict"] == "novel")
+
+    # check_edit_consensus: safe edit
+    _cv2_ec_safe = check_edit_consensus(
+        "random_file.py",
+        "def foo():\n    return 1\n",
+        "def foo():\n    return 2\n",
+    )
+    test("CV2: ec safe edit", _cv2_ec_safe["safe"] is True)
+    test("CV2: ec safe high confidence", _cv2_ec_safe["confidence"] > 0.7)
+    test("CV2: ec not critical", _cv2_ec_safe["is_critical"] is False)
+
+    # check_edit_consensus: critical file
+    _cv2_ec_crit = check_edit_consensus(
+        "enforcer.py",
+        "def check():\n    return True\n",
+        "def check():\n    return False\n",
+    )
+    test("CV2: ec critical file detected", _cv2_ec_crit["is_critical"] is True)
+    test("CV2: ec critical lower confidence", _cv2_ec_crit["confidence"] < 1.0)
+
+    # check_edit_consensus: risky edit (secret + API removal)
+    _cv2_ec_risky = check_edit_consensus(
+        "config.py",
+        "def setup():\n    pass\n",
+        "password = 'supersecret123'\ndef _internal():\n    pass\n",
+    )
+    test("CV2: ec risky has risks", len(_cv2_ec_risky["risks"]) > 0)
+    test("CV2: ec risky lower confidence", _cv2_ec_risky["confidence"] < 0.8)
+
+except Exception as _cv2_exc:
+    test("Consensus Validator Deep Tests: import and tests", False, str(_cv2_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
