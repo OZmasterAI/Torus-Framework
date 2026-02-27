@@ -25168,6 +25168,902 @@ except Exception as _gp_exc:
     test("GP: import and tests", False, str(_gp_exc))
 
 
+# =============================================================================
+# TP: tool_patterns (shared/tool_patterns.py)
+# =============================================================================
+try:
+    import math as _tp_math
+    import tempfile as _tp_tempfile
+    import json as _tp_json
+    from collections import defaultdict as _tp_defaultdict
+    from shared.tool_patterns import (
+        _invalidate_cache,
+        _queue_mtime,
+        _needs_refresh,
+        MarkovChain,
+        build_markov_chain,
+        _transition_probability,
+        _sequence_log_probability,
+        _score_all_sequences,
+        _std,
+        _extract_ngrams,
+        _label_for_template,
+        WorkflowTemplate,
+        AnomalyReport,
+        load_sequences,
+        _MIN_TRANSITION_COUNT,
+        _MIN_WORKFLOW_LEN,
+        _MAX_WORKFLOW_LEN,
+        _ANOMALY_SIGMA_THRESHOLD,
+        _LAPLACE_ALPHA,
+        _SESSION_BREAK_SECONDS,
+    )
+
+    # --- Constants ---
+    test("TP: _MIN_TRANSITION_COUNT == 2",
+         _MIN_TRANSITION_COUNT == 2, str(_MIN_TRANSITION_COUNT))
+    test("TP: _MIN_WORKFLOW_LEN == 3",
+         _MIN_WORKFLOW_LEN == 3, str(_MIN_WORKFLOW_LEN))
+    test("TP: _MAX_WORKFLOW_LEN == 8",
+         _MAX_WORKFLOW_LEN == 8, str(_MAX_WORKFLOW_LEN))
+    test("TP: _ANOMALY_SIGMA_THRESHOLD == 2.0",
+         _ANOMALY_SIGMA_THRESHOLD == 2.0, str(_ANOMALY_SIGMA_THRESHOLD))
+    test("TP: _LAPLACE_ALPHA == 0.1",
+         _LAPLACE_ALPHA == 0.1, str(_LAPLACE_ALPHA))
+    test("TP: _SESSION_BREAK_SECONDS == 300.0",
+         _SESSION_BREAK_SECONDS == 300.0, str(_SESSION_BREAK_SECONDS))
+
+    # --- _queue_mtime ---
+    test("TP: _queue_mtime('/nonexistent/file.jsonl') returns 0.0",
+         _queue_mtime("/nonexistent/file.jsonl") == 0.0)
+    with _tp_tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as _tp_qf:
+        _tp_qf_path = _tp_qf.name
+    _tp_mtime = _queue_mtime(_tp_qf_path)
+    test("TP: _queue_mtime existing file returns positive float",
+         isinstance(_tp_mtime, float) and _tp_mtime > 0.0, str(_tp_mtime))
+
+    # --- _invalidate_cache ---
+    _invalidate_cache()
+    import shared.tool_patterns as _tp_mod
+    test("TP: _invalidate_cache sets _chain_cache to None",
+         _tp_mod._chain_cache is None)
+    test("TP: _invalidate_cache sets _sequences_cache to None",
+         _tp_mod._sequences_cache is None)
+    test("TP: _invalidate_cache sets _cache_mtime to 0.0",
+         _tp_mod._cache_mtime == 0.0)
+
+    # --- _needs_refresh ---
+    _invalidate_cache()
+    test("TP: _needs_refresh nonexistent path returns False (mtime 0 == cache 0)",
+         not _needs_refresh("/nonexistent/x.jsonl"))
+    test("TP: _needs_refresh existing file with 0 cache mtime returns True",
+         _needs_refresh(_tp_qf_path))
+
+    # --- MarkovChain dataclass ---
+    _tp_chain_empty = MarkovChain()
+    test("TP: MarkovChain default total_starts == 0",
+         _tp_chain_empty.total_starts == 0)
+    test("TP: MarkovChain default sequence_count == 0",
+         _tp_chain_empty.sequence_count == 0)
+    test("TP: MarkovChain default vocabulary is empty set",
+         isinstance(_tp_chain_empty.vocabulary, set) and len(_tp_chain_empty.vocabulary) == 0)
+
+    # --- build_markov_chain ---
+    _tp_seqs = [
+        ["Read", "Edit", "Bash"],
+        ["Read", "Edit", "Bash"],
+        ["Read", "Write", "Bash"],
+        ["Glob", "Read", "Edit"],
+    ]
+    _tp_chain = build_markov_chain(_tp_seqs)
+    test("TP: build_markov_chain returns MarkovChain",
+         isinstance(_tp_chain, MarkovChain))
+    test("TP: build_markov_chain sequence_count == 4",
+         _tp_chain.sequence_count == 4, str(_tp_chain.sequence_count))
+    test("TP: build_markov_chain total_starts == 4",
+         _tp_chain.total_starts == 4, str(_tp_chain.total_starts))
+    test("TP: build_markov_chain vocabulary contains Read",
+         "Read" in _tp_chain.vocabulary)
+    test("TP: build_markov_chain vocabulary contains Bash",
+         "Bash" in _tp_chain.vocabulary)
+    test("TP: build_markov_chain start_counts[Read] == 3",
+         _tp_chain.start_counts["Read"] == 3, str(_tp_chain.start_counts.get("Read")))
+    test("TP: build_markov_chain start_counts[Glob] == 1",
+         _tp_chain.start_counts["Glob"] == 1, str(_tp_chain.start_counts.get("Glob")))
+    test("TP: build_markov_chain transitions[Read][Edit] == 3",
+         _tp_chain.transitions["Read"]["Edit"] == 3,
+         str(_tp_chain.transitions["Read"]["Edit"]))
+    test("TP: build_markov_chain transitions[Edit][Bash] == 2",
+         _tp_chain.transitions["Edit"]["Bash"] == 2,
+         str(_tp_chain.transitions["Edit"]["Bash"]))
+    test("TP: build_markov_chain empty sequences returns chain with 0 seqs",
+         build_markov_chain([]).sequence_count == 0)
+
+    # --- _transition_probability ---
+    _tp_prob = _transition_probability(_tp_chain, "Read", "Edit")
+    test("TP: _transition_probability returns float in (0,1]",
+         isinstance(_tp_prob, float) and 0.0 < _tp_prob <= 1.0, str(_tp_prob))
+    test("TP: _transition_probability Read->Edit > Read->Write (more transitions)",
+         _transition_probability(_tp_chain, "Read", "Edit") >
+         _transition_probability(_tp_chain, "Read", "Write"))
+    _tp_unseen_prob = _transition_probability(_tp_chain, "Read", "NonExistentTool")
+    test("TP: _transition_probability unseen transition > 0 (Laplace smoothing)",
+         _tp_unseen_prob > 0.0, str(_tp_unseen_prob))
+
+    # --- _sequence_log_probability ---
+    _tp_logp = _sequence_log_probability(_tp_chain, ["Read", "Edit", "Bash"])
+    test("TP: _sequence_log_probability returns negative float",
+         isinstance(_tp_logp, float) and _tp_logp < 0.0, str(_tp_logp))
+    _tp_logp_empty = _sequence_log_probability(_tp_chain, [])
+    test("TP: _sequence_log_probability empty sequence returns -inf",
+         _tp_logp_empty == float("-inf"))
+    _tp_chain_empty2 = MarkovChain()
+    _tp_logp_nochain = _sequence_log_probability(_tp_chain_empty2, ["Read"])
+    test("TP: _sequence_log_probability empty chain returns -inf",
+         _tp_logp_nochain == float("-inf"))
+    # Single tool sequence
+    _tp_logp_single = _sequence_log_probability(_tp_chain, ["Read"])
+    test("TP: _sequence_log_probability single tool returns finite negative",
+         _tp_math.isfinite(_tp_logp_single) and _tp_logp_single < 0.0,
+         str(_tp_logp_single))
+
+    # --- _score_all_sequences ---
+    _tp_scores = _score_all_sequences(_tp_chain, _tp_seqs)
+    test("TP: _score_all_sequences returns list of same length",
+         len(_tp_scores) == len(_tp_seqs), str(len(_tp_scores)))
+    test("TP: _score_all_sequences all values are finite floats",
+         all(_tp_math.isfinite(s) for s in _tp_scores))
+
+    # --- _std ---
+    test("TP: _std of [2,4,4,4,5,5,7,9] is 2.0",
+         abs(_std([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]) - 2.0) < 1e-9)
+    test("TP: _std single value returns 0.0",
+         _std([42.0]) == 0.0)
+    test("TP: _std empty list returns 0.0",
+         _std([]) == 0.0)
+    test("TP: _std identical values returns 0.0",
+         _std([3.0, 3.0, 3.0]) == 0.0)
+    test("TP: _std [0, 10] returns 5.0",
+         _std([0.0, 10.0]) == 5.0)
+
+    # --- _extract_ngrams ---
+    _tp_ng = _extract_ngrams(["A", "B", "C", "D"], 2)
+    test("TP: _extract_ngrams n=2 on 4 items returns 3 ngrams",
+         len(_tp_ng) == 3, str(len(_tp_ng)))
+    test("TP: _extract_ngrams first ngram is [A,B]",
+         _tp_ng[0] == ["A", "B"])
+    test("TP: _extract_ngrams last ngram is [C,D]",
+         _tp_ng[-1] == ["C", "D"])
+    _tp_ng3 = _extract_ngrams(["A", "B", "C"], 3)
+    test("TP: _extract_ngrams n=3 on 3 items returns 1 ngram",
+         len(_tp_ng3) == 1 and _tp_ng3[0] == ["A", "B", "C"])
+    _tp_ng_empty = _extract_ngrams(["A"], 2)
+    test("TP: _extract_ngrams n > len returns empty list",
+         _tp_ng_empty == [])
+
+    # --- _label_for_template ---
+    test("TP: _label_for_template ['Read','Edit','Bash'] -> 'read-edit-test'",
+         _label_for_template(["Read", "Edit", "Bash"]) == "read-edit-test")
+    test("TP: _label_for_template ['Read','Write','Bash'] -> 'read-write-test'",
+         _label_for_template(["Read", "Write", "Bash"]) == "read-write-test")
+    test("TP: _label_for_template ['Bash','Edit','Bash'] -> 'test-fix-test'",
+         _label_for_template(["Bash", "Edit", "Bash"]) == "test-fix-test")
+    test("TP: _label_for_template ['Glob','Read','Edit'] -> 'search-read-edit'",
+         _label_for_template(["Glob", "Read", "Edit"]) == "search-read-edit")
+    test("TP: _label_for_template ['Read','Edit'] -> 'read-then-edit'",
+         _label_for_template(["Read", "Edit"]) == "read-then-edit")
+    test("TP: _label_for_template unknown pattern falls back to dominant-tool label",
+         _label_for_template(["Foo", "Foo", "Bar"]).endswith("-centric workflow"))
+    test("TP: _label_for_template empty list -> 'mixed workflow'",
+         _label_for_template([]) == "mixed workflow")
+    # Pattern with memory lookup
+    test("TP: _label_for_template ['mcp__memory__search_knowledge'] -> 'memory-lookup'",
+         _label_for_template(["mcp__memory__search_knowledge"]) == "memory-lookup")
+    # Pattern with memory-guided edit
+    test("TP: _label_for_template memory-guided edit pattern matches",
+         _label_for_template(
+             ["mcp__memory__search_knowledge", "Read", "Edit"]
+         ) == "memory-guided edit")
+
+    # --- WorkflowTemplate dataclass ---
+    _tp_wt = WorkflowTemplate(tools=["Read", "Edit"], count=5, frequency=0.5, label="read-then-edit")
+    test("TP: WorkflowTemplate construction",
+         isinstance(_tp_wt, WorkflowTemplate))
+    test("TP: WorkflowTemplate tools attribute",
+         _tp_wt.tools == ["Read", "Edit"])
+    test("TP: WorkflowTemplate count attribute",
+         _tp_wt.count == 5)
+    test("TP: WorkflowTemplate frequency attribute",
+         _tp_wt.frequency == 0.5)
+
+    # --- AnomalyReport dataclass ---
+    _tp_ar = AnomalyReport(
+        tools=["A", "B"], score=-5.0, baseline_mean=-3.0, baseline_std=1.0,
+        sigma=2.0, reason="test", unusual_transitions=[("A", "B")],
+    )
+    test("TP: AnomalyReport construction",
+         isinstance(_tp_ar, AnomalyReport))
+    test("TP: AnomalyReport sigma attribute",
+         _tp_ar.sigma == 2.0)
+    test("TP: AnomalyReport unusual_transitions attribute",
+         _tp_ar.unusual_transitions == [("A", "B")])
+
+    # --- load_sequences ---
+    import os as _tp_os
+    _tp_tmp = _tp_tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", delete=False
+    )
+    _tp_entries = [
+        {"metadata": {"tool_name": "Read",  "session_id": "s1", "session_time": 1000.0}},
+        {"metadata": {"tool_name": "Edit",  "session_id": "s1", "session_time": 1001.0}},
+        {"metadata": {"tool_name": "Bash",  "session_id": "s1", "session_time": 1002.0}},
+        {"metadata": {"tool_name": "Glob",  "session_id": "s2", "session_time": 2000.0}},
+        {"metadata": {"tool_name": "Read",  "session_id": "s2", "session_time": 2001.0}},
+        # skip tool
+        {"metadata": {"tool_name": "UserPrompt", "session_id": "s2", "session_time": 2002.0}},
+        {"metadata": {"tool_name": "Write", "session_id": "s2", "session_time": 2003.0}},
+    ]
+    for _tp_e in _tp_entries:
+        _tp_tmp.write(_tp_json.dumps(_tp_e) + "\n")
+    _tp_tmp.close()
+    _tp_loaded = load_sequences(_tp_tmp.name)
+    test("TP: load_sequences returns list",
+         isinstance(_tp_loaded, list))
+    test("TP: load_sequences splits by session_id (2 sessions -> 2 seqs)",
+         len(_tp_loaded) == 2, str(len(_tp_loaded)))
+    test("TP: load_sequences session 1 has 3 tools",
+         ["Read", "Edit", "Bash"] in _tp_loaded)
+    test("TP: load_sequences skips UserPrompt by default",
+         all("UserPrompt" not in seq for seq in _tp_loaded))
+    test("TP: load_sequences nonexistent path returns []",
+         load_sequences("/nonexistent/queue.jsonl") == [])
+    # Time-gap splitting in same session
+    _tp_tmp2 = _tp_tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", delete=False
+    )
+    _tp_gap_entries = [
+        {"metadata": {"tool_name": "Read", "session_id": "s1", "session_time": 1000.0}},
+        {"metadata": {"tool_name": "Edit", "session_id": "s1", "session_time": 1001.0}},
+        # Gap of 400 seconds exceeds _SESSION_BREAK_SECONDS=300
+        {"metadata": {"tool_name": "Bash", "session_id": "s1", "session_time": 1401.0}},
+        {"metadata": {"tool_name": "Glob", "session_id": "s1", "session_time": 1402.0}},
+    ]
+    for _tp_ge in _tp_gap_entries:
+        _tp_tmp2.write(_tp_json.dumps(_tp_ge) + "\n")
+    _tp_tmp2.close()
+    _tp_gap_loaded = load_sequences(_tp_tmp2.name)
+    test("TP: load_sequences splits on time gap > 300s",
+         len(_tp_gap_loaded) == 2, str(len(_tp_gap_loaded)))
+    # Cleanup temp files
+    try:
+        _tp_os.unlink(_tp_tmp.name)
+        _tp_os.unlink(_tp_tmp2.name)
+        _tp_os.unlink(_tp_qf_path)
+    except Exception:
+        pass
+
+except Exception as _tp_exc:
+    test("TP: import and tests", False, str(_tp_exc))
+
+
+# =============================================================================
+# DR: domain_registry (shared/domain_registry.py)
+# =============================================================================
+try:
+    from shared.domain_registry import (
+        CLAUDE_DIR,
+        DOMAINS_DIR,
+        ACTIVE_FILE,
+        DEFAULT_PROFILE,
+        _short_gate_name,
+        _gate_matches_list,
+        _lookup_gate_mode,
+        load_domain_profile,
+        detect_domain_from_live_state,
+        get_domain_memory_tags,
+        get_domain_l2_keywords,
+        get_domain_token_budget,
+        get_domain_context_for_injection,
+    )
+
+    # --- Path constants ---
+    test("DR: CLAUDE_DIR is a string path",
+         isinstance(CLAUDE_DIR, str) and len(CLAUDE_DIR) > 0)
+    test("DR: DOMAINS_DIR is under CLAUDE_DIR",
+         DOMAINS_DIR.startswith(CLAUDE_DIR))
+    test("DR: ACTIVE_FILE is under DOMAINS_DIR",
+         ACTIVE_FILE.startswith(DOMAINS_DIR))
+
+    # --- DEFAULT_PROFILE keys ---
+    test("DR: DEFAULT_PROFILE has 'description' key",
+         "description" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE has 'security_profile' key",
+         "security_profile" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE has 'gate_modes' key",
+         "gate_modes" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE has 'disabled_gates' key",
+         "disabled_gates" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE has 'memory_tags' key",
+         "memory_tags" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE has 'l2_keywords' key",
+         "l2_keywords" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE has 'auto_detect' key",
+         "auto_detect" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE has 'graduation' key",
+         "graduation" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE has 'token_budget' key",
+         "token_budget" in DEFAULT_PROFILE)
+    test("DR: DEFAULT_PROFILE token_budget == 800",
+         DEFAULT_PROFILE["token_budget"] == 800, str(DEFAULT_PROFILE["token_budget"]))
+    test("DR: DEFAULT_PROFILE security_profile == 'balanced'",
+         DEFAULT_PROFILE["security_profile"] == "balanced")
+    test("DR: DEFAULT_PROFILE gate_modes is dict",
+         isinstance(DEFAULT_PROFILE["gate_modes"], dict))
+    test("DR: DEFAULT_PROFILE disabled_gates is list",
+         isinstance(DEFAULT_PROFILE["disabled_gates"], list))
+
+    # --- _short_gate_name ---
+    test("DR: _short_gate_name('gate_04_memory_first') -> 'gate_04'",
+         _short_gate_name("gate_04_memory_first") == "gate_04",
+         _short_gate_name("gate_04_memory_first"))
+    test("DR: _short_gate_name('gates.gate_04_memory_first') -> 'gate_04'",
+         _short_gate_name("gates.gate_04_memory_first") == "gate_04",
+         _short_gate_name("gates.gate_04_memory_first"))
+    test("DR: _short_gate_name('gate_01_read_before_edit') -> 'gate_01'",
+         _short_gate_name("gate_01_read_before_edit") == "gate_01",
+         _short_gate_name("gate_01_read_before_edit"))
+    test("DR: _short_gate_name('gate_13') -> 'gate_13'",
+         _short_gate_name("gate_13") == "gate_13",
+         _short_gate_name("gate_13"))
+    test("DR: _short_gate_name('foobar') -> 'foobar' (no underscore split)",
+         _short_gate_name("foobar") == "foobar",
+         _short_gate_name("foobar"))
+    test("DR: _short_gate_name('gates.gate_13_main_exempt') -> 'gate_13'",
+         _short_gate_name("gates.gate_13_main_exempt") == "gate_13",
+         _short_gate_name("gates.gate_13_main_exempt"))
+
+    # --- _gate_matches_list ---
+    test("DR: _gate_matches_list exact match returns True",
+         _gate_matches_list("gate_04_memory_first", ["gate_04_memory_first"]))
+    test("DR: _gate_matches_list short-name match returns True",
+         _gate_matches_list("gate_04_memory_first", ["gate_04"]))
+    test("DR: _gate_matches_list different gate returns False",
+         not _gate_matches_list("gate_04_memory_first", ["gate_05"]))
+    test("DR: _gate_matches_list empty list returns False",
+         not _gate_matches_list("gate_04", []))
+    test("DR: _gate_matches_list gates. prefix stripped for matching",
+         _gate_matches_list("gates.gate_04_memory_first", ["gate_04"]))
+    test("DR: _gate_matches_list multiple entries matches correctly",
+         _gate_matches_list("gate_07", ["gate_01", "gate_07", "gate_13"]))
+
+    # --- _lookup_gate_mode ---
+    _dr_modes = {
+        "gate_04_memory_first": "warn",
+        "gate_07": "block",
+    }
+    test("DR: _lookup_gate_mode exact match",
+         _lookup_gate_mode("gate_04_memory_first", _dr_modes) == "warn",
+         str(_lookup_gate_mode("gate_04_memory_first", _dr_modes)))
+    test("DR: _lookup_gate_mode short name match",
+         _lookup_gate_mode("gate_04", _dr_modes) == "warn",
+         str(_lookup_gate_mode("gate_04", _dr_modes)))
+    test("DR: _lookup_gate_mode returns None when not found",
+         _lookup_gate_mode("gate_99", _dr_modes) is None)
+    test("DR: _lookup_gate_mode empty dict returns None",
+         _lookup_gate_mode("gate_04", {}) is None)
+
+    # --- load_domain_profile with non-existent domain ---
+    _dr_profile = load_domain_profile("__nonexistent_domain_xyz__")
+    test("DR: load_domain_profile nonexistent domain returns DEFAULT_PROFILE",
+         isinstance(_dr_profile, dict))
+    test("DR: load_domain_profile nonexistent has 'description' key",
+         "description" in _dr_profile)
+    test("DR: load_domain_profile nonexistent has 'graduation' key",
+         "graduation" in _dr_profile)
+    test("DR: load_domain_profile nonexistent has 'auto_detect' key",
+         "auto_detect" in _dr_profile)
+    test("DR: load_domain_profile nonexistent token_budget == 800",
+         _dr_profile.get("token_budget") == 800, str(_dr_profile.get("token_budget")))
+
+    # --- detect_domain_from_live_state ---
+    test("DR: detect_domain_from_live_state None returns None",
+         detect_domain_from_live_state(None) is None)
+    test("DR: detect_domain_from_live_state empty dict returns None",
+         detect_domain_from_live_state({}) is None)
+    test("DR: detect_domain_from_live_state non-matching state returns None or str",
+         detect_domain_from_live_state({"project": "__no_match_xyz__", "feature": ""}) in (None, str(detect_domain_from_live_state({"project": "__no_match_xyz__"}))))
+
+    # --- get_domain_memory_tags ---
+    _dr_tags = get_domain_memory_tags("__nonexistent_domain_xyz__")
+    test("DR: get_domain_memory_tags nonexistent domain returns list",
+         isinstance(_dr_tags, list))
+
+    # --- get_domain_l2_keywords ---
+    _dr_kw = get_domain_l2_keywords("__nonexistent_domain_xyz__")
+    test("DR: get_domain_l2_keywords nonexistent domain returns list",
+         isinstance(_dr_kw, list))
+
+    # --- get_domain_token_budget ---
+    _dr_budget = get_domain_token_budget("__nonexistent_domain_xyz__")
+    test("DR: get_domain_token_budget nonexistent domain returns 800",
+         _dr_budget == 800, str(_dr_budget))
+
+    # --- get_domain_context_for_injection ---
+    _dr_ctx = get_domain_context_for_injection("__nonexistent_domain_xyz__")
+    test("DR: get_domain_context_for_injection returns 2-tuple",
+         isinstance(_dr_ctx, tuple) and len(_dr_ctx) == 2)
+    test("DR: get_domain_context_for_injection mastery is string",
+         isinstance(_dr_ctx[0], str))
+    test("DR: get_domain_context_for_injection behavior is string",
+         isinstance(_dr_ctx[1], str))
+    _dr_ctx_none = get_domain_context_for_injection(None)
+    test("DR: get_domain_context_for_injection None arg returns ('','') or active domain",
+         isinstance(_dr_ctx_none, tuple) and len(_dr_ctx_none) == 2)
+
+except Exception as _dr_exc:
+    test("DR: import and tests", False, str(_dr_exc))
+
+
+# =============================================================================
+# MT: mutation_tester (shared/mutation_tester.py)
+# =============================================================================
+try:
+    import ast as _mt_ast
+    import copy as _mt_copy
+    from shared.mutation_tester import (
+        MutantResult,
+        MutationReport,
+        _BoolFlipVisitor,
+        _CmpOpSwapVisitor,
+        _CondRemoveVisitor,
+        _ReturnFlipVisitor,
+        _LogicNegateVisitor,
+        _StrSwapVisitor,
+        _count_targets,
+        _apply_mutation,
+        generate_mutants,
+        _find_test_framework,
+        _find_hooks_dir,
+    )
+
+    # --- MutantResult dataclass ---
+    _mt_mr = MutantResult(
+        operator="BOOL_FLIP",
+        description="line 5: True -> False",
+        lineno=5,
+        killed=True,
+        test_output="FAIL",
+        mutant_source="x = False",
+    )
+    test("MT: MutantResult construction",
+         isinstance(_mt_mr, MutantResult))
+    test("MT: MutantResult operator attribute",
+         _mt_mr.operator == "BOOL_FLIP")
+    test("MT: MutantResult killed attribute",
+         _mt_mr.killed is True)
+    test("MT: MutantResult lineno attribute",
+         _mt_mr.lineno == 5)
+
+    # --- MutationReport dataclass ---
+    _mt_rep = MutationReport(gate_path="/fake/gate.py")
+    test("MT: MutationReport construction",
+         isinstance(_mt_rep, MutationReport))
+    test("MT: MutationReport kill_rate with zero totals returns 0.0",
+         _mt_rep.kill_rate == 0.0)
+    test("MT: MutationReport test_gaps empty when no survived",
+         _mt_rep.test_gaps == [])
+    _mt_rep2 = MutationReport(
+        gate_path="/fake/gate.py",
+        total_mutants=4,
+        killed_count=3,
+        survived=[_mt_mr],
+    )
+    test("MT: MutationReport kill_rate 3/4 == 0.75",
+         abs(_mt_rep2.kill_rate - 0.75) < 1e-9, str(_mt_rep2.kill_rate))
+    test("MT: MutationReport test_gaps returns descriptions of survived",
+         len(_mt_rep2.test_gaps) == 1)
+    test("MT: MutationReport test_gaps contains operator prefix",
+         "[BOOL_FLIP]" in _mt_rep2.test_gaps[0],
+         str(_mt_rep2.test_gaps))
+    _mt_rep3 = MutationReport(gate_path="/fake/gate.py", total_mutants=0)
+    test("MT: MutationReport kill_rate zero total returns 0.0",
+         _mt_rep3.kill_rate == 0.0)
+
+    # --- _BoolFlipVisitor ---
+    _mt_src_bool = "x = True\ny = False\n"
+    _mt_tree_bool = _mt_ast.parse(_mt_src_bool)
+    _mt_v0 = _BoolFlipVisitor(0)
+    _mt_new_tree = _mt_v0.visit(_mt_copy.deepcopy(_mt_tree_bool))
+    test("MT: _BoolFlipVisitor idx=0 applied is True",
+         _mt_v0.applied)
+    test("MT: _BoolFlipVisitor idx=0 description contains True->False",
+         "True" in _mt_v0.description and "False" in _mt_v0.description,
+         _mt_v0.description)
+    _mt_v1 = _BoolFlipVisitor(1)
+    _mt_v1.visit(_mt_copy.deepcopy(_mt_tree_bool))
+    test("MT: _BoolFlipVisitor idx=1 applied is True (flips second bool)",
+         _mt_v1.applied)
+    _mt_v_oor = _BoolFlipVisitor(99)
+    _mt_v_oor.visit(_mt_copy.deepcopy(_mt_tree_bool))
+    test("MT: _BoolFlipVisitor out-of-range idx applied is False",
+         not _mt_v_oor.applied)
+
+    # --- _CmpOpSwapVisitor ---
+    _mt_src_cmp = "a == b\n"
+    _mt_tree_cmp = _mt_ast.parse(_mt_src_cmp)
+    _mt_vc0 = _CmpOpSwapVisitor(0)
+    _mt_new_cmp = _mt_vc0.visit(_mt_copy.deepcopy(_mt_tree_cmp))
+    test("MT: _CmpOpSwapVisitor idx=0 applied is True",
+         _mt_vc0.applied)
+    test("MT: _CmpOpSwapVisitor description contains Eq -> NotEq",
+         "Eq" in _mt_vc0.description and "NotEq" in _mt_vc0.description,
+         _mt_vc0.description)
+    _mt_src_lt = "a < b\n"
+    _mt_tree_lt = _mt_ast.parse(_mt_src_lt)
+    _mt_vc_lt = _CmpOpSwapVisitor(0)
+    _mt_vc_lt.visit(_mt_copy.deepcopy(_mt_tree_lt))
+    test("MT: _CmpOpSwapVisitor Lt -> LtE",
+         "LtE" in _mt_vc_lt.description, _mt_vc_lt.description)
+
+    # --- _CondRemoveVisitor ---
+    _mt_src_if = "if x > 0:\n    pass\n"
+    _mt_tree_if = _mt_ast.parse(_mt_src_if)
+    _mt_vcr = _CondRemoveVisitor(0, replace_with=True)
+    _mt_vcr.visit(_mt_copy.deepcopy(_mt_tree_if))
+    test("MT: _CondRemoveVisitor idx=0 applied is True",
+         _mt_vcr.applied)
+    test("MT: _CondRemoveVisitor description contains replace_with True",
+         "True" in _mt_vcr.description, _mt_vcr.description)
+    _mt_vcrf = _CondRemoveVisitor(0, replace_with=False)
+    _mt_vcrf.visit(_mt_copy.deepcopy(_mt_tree_if))
+    test("MT: _CondRemoveVisitor replace_with=False description contains False",
+         "False" in _mt_vcrf.description, _mt_vcrf.description)
+
+    # --- _ReturnFlipVisitor ---
+    _mt_src_gr = "GateResult(blocked=True, message='x', gate_name='g', severity='warn')\n"
+    _mt_tree_gr = _mt_ast.parse(_mt_src_gr)
+    _mt_vrf = _ReturnFlipVisitor(0)
+    _mt_vrf.visit(_mt_copy.deepcopy(_mt_tree_gr))
+    test("MT: _ReturnFlipVisitor idx=0 applied is True",
+         _mt_vrf.applied)
+    test("MT: _ReturnFlipVisitor description contains blocked=True -> blocked=False",
+         "True" in _mt_vrf.description and "False" in _mt_vrf.description,
+         _mt_vrf.description)
+    _mt_src_grF = "GateResult(blocked=False, message='x', gate_name='g', severity='info')\n"
+    _mt_tree_grF = _mt_ast.parse(_mt_src_grF)
+    _mt_vrfF = _ReturnFlipVisitor(0)
+    _mt_vrfF.visit(_mt_copy.deepcopy(_mt_tree_grF))
+    test("MT: _ReturnFlipVisitor flips False -> True",
+         "False" in _mt_vrfF.description and "True" in _mt_vrfF.description,
+         _mt_vrfF.description)
+
+    # --- _LogicNegateVisitor ---
+    _mt_src_and = "result = a and b\n"
+    _mt_tree_and = _mt_ast.parse(_mt_src_and)
+    _mt_vln = _LogicNegateVisitor(0)
+    _mt_vln.visit(_mt_copy.deepcopy(_mt_tree_and))
+    test("MT: _LogicNegateVisitor idx=0 applied is True",
+         _mt_vln.applied)
+    test("MT: _LogicNegateVisitor description contains 'negate'",
+         "negate" in _mt_vln.description.lower(), _mt_vln.description)
+
+    # --- _StrSwapVisitor ---
+    _mt_src_in = "if x in 'hello':\n    pass\n"
+    _mt_tree_in = _mt_ast.parse(_mt_src_in)
+    _mt_vss = _StrSwapVisitor(0)
+    _mt_vss.visit(_mt_copy.deepcopy(_mt_tree_in))
+    test("MT: _StrSwapVisitor idx=0 applied is True",
+         _mt_vss.applied)
+    test("MT: _StrSwapVisitor description contains __MUTANT__ prefix",
+         "__MUTANT__" in _mt_vss.description, _mt_vss.description)
+
+    # --- _count_targets ---
+    _mt_src_multi = "x = True\ny = False\nz = True\n"
+    _mt_tree_multi = _mt_ast.parse(_mt_src_multi)
+    _mt_count_bools = _count_targets(_mt_tree_multi, _BoolFlipVisitor)
+    test("MT: _count_targets finds 3 bool literals",
+         _mt_count_bools == 3, str(_mt_count_bools))
+    _mt_src_nocmp = "x = 1\n"
+    _mt_tree_nocmp = _mt_ast.parse(_mt_src_nocmp)
+    _mt_count_cmps = _count_targets(_mt_tree_nocmp, _CmpOpSwapVisitor)
+    test("MT: _count_targets finds 0 comparisons in 'x=1'",
+         _mt_count_cmps == 0, str(_mt_count_cmps))
+
+    # --- generate_mutants ---
+    _mt_gate_src = """
+from shared.gate_result import GateResult
+def check(tool_name, tool_input, state, event_type="PreToolUse"):
+    if tool_name == "Bash":
+        return GateResult(blocked=True, message="blocked", gate_name="g", severity="warn")
+    return GateResult(blocked=False, message="ok", gate_name="g", severity="info")
+"""
+    _mt_mutants = generate_mutants(_mt_gate_src)
+    test("MT: generate_mutants returns a list",
+         isinstance(_mt_mutants, list))
+    test("MT: generate_mutants generates at least 1 mutant for gate-like source",
+         len(_mt_mutants) >= 1, str(len(_mt_mutants)))
+    test("MT: generate_mutants returns (MutantResult, str) tuples",
+         all(isinstance(m, tuple) and len(m) == 2 for m in _mt_mutants))
+    test("MT: generate_mutants MutantResult killed starts False",
+         all(not m[0].killed for m in _mt_mutants))
+
+    # --- _find_test_framework ---
+    _mt_hooks_dir = "/home/crab/.claude/hooks"
+    _mt_gate_path = "/home/crab/.claude/hooks/gates/gate_01_read_before_edit.py"
+    _mt_tf = _find_test_framework(_mt_gate_path)
+    test("MT: _find_test_framework finds test_framework.py from gate path",
+         _mt_tf is not None and _mt_tf.endswith("test_framework.py"),
+         str(_mt_tf))
+
+    # --- _find_hooks_dir ---
+    _mt_hd = _find_hooks_dir(_mt_gate_path)
+    test("MT: _find_hooks_dir finds hooks/ from gate path",
+         _mt_hd is not None and _mt_hd.endswith("hooks"),
+         str(_mt_hd))
+    _mt_hd_nonexist = _find_hooks_dir("/tmp/nonexistent/gates/gate.py")
+    test("MT: _find_hooks_dir returns None for nonexistent path",
+         _mt_hd_nonexist is None)
+
+except Exception as _mt_exc:
+    test("MT: import and tests", False, str(_mt_exc))
+
+
+# =============================================================================
+# CV: consensus_validator (shared/consensus_validator.py)
+# =============================================================================
+try:
+    from shared.consensus_validator import (
+        CRITICAL_FILES,
+        _THRESHOLD_BLOCK,
+        _THRESHOLD_ASK,
+        _DUPLICATE_RATIO,
+        _NEAR_MATCH_RATIO,
+        _normalise,
+        _similarity,
+        _extract_imports,
+        _is_critical_file,
+        _detect_broad_except,
+        _detect_hardcoded_secret,
+        _detect_debug_prints,
+        _removed_public_functions,
+        _import_drift,
+        check_memory_consensus,
+        check_edit_consensus,
+        compute_confidence,
+        recommend_action,
+    )
+
+    # --- Constants ---
+    test("CV: CRITICAL_FILES is frozenset",
+         isinstance(CRITICAL_FILES, frozenset))
+    test("CV: CRITICAL_FILES contains enforcer.py",
+         "enforcer.py" in CRITICAL_FILES)
+    test("CV: CRITICAL_FILES contains memory_server.py",
+         "memory_server.py" in CRITICAL_FILES)
+    test("CV: CRITICAL_FILES contains settings.json",
+         "settings.json" in CRITICAL_FILES)
+    test("CV: _THRESHOLD_BLOCK == 0.3",
+         _THRESHOLD_BLOCK == 0.3, str(_THRESHOLD_BLOCK))
+    test("CV: _THRESHOLD_ASK == 0.6",
+         _THRESHOLD_ASK == 0.6, str(_THRESHOLD_ASK))
+    test("CV: _DUPLICATE_RATIO == 0.85",
+         _DUPLICATE_RATIO == 0.85, str(_DUPLICATE_RATIO))
+    test("CV: _NEAR_MATCH_RATIO == 0.55",
+         _NEAR_MATCH_RATIO == 0.55, str(_NEAR_MATCH_RATIO))
+
+    # --- _normalise ---
+    test("CV: _normalise lowercases text",
+         _normalise("Hello World") == "hello world")
+    test("CV: _normalise collapses multiple spaces",
+         _normalise("a  b   c") == "a b c")
+    test("CV: _normalise strips leading/trailing whitespace",
+         _normalise("  hello  ") == "hello")
+    test("CV: _normalise handles tabs and newlines",
+         _normalise("a\tb\nc") == "a b c")
+    test("CV: _normalise empty string",
+         _normalise("") == "")
+
+    # --- _similarity ---
+    test("CV: _similarity identical strings returns 1.0",
+         _similarity("hello", "hello") == 1.0)
+    test("CV: _similarity completely different returns < 0.2",
+         _similarity("abcdef", "xyz123") < 0.2)
+    test("CV: _similarity partial match returns value in (0,1)",
+         0.0 < _similarity("hello world", "hello there") < 1.0)
+    test("CV: _similarity is symmetric",
+         abs(_similarity("abc", "xyz") - _similarity("xyz", "abc")) < 1e-9)
+    test("CV: _similarity empty vs non-empty returns 0.0",
+         _similarity("", "hello") == 0.0)
+
+    # --- _extract_imports ---
+    _cv_src_imports = "import os\nimport json\nfrom typing import List\nfrom shared.state import load_state\n"
+    _cv_imports = _extract_imports(_cv_src_imports)
+    test("CV: _extract_imports finds 'os'",
+         "os" in _cv_imports)
+    test("CV: _extract_imports finds 'json'",
+         "json" in _cv_imports)
+    test("CV: _extract_imports finds 'typing'",
+         "typing" in _cv_imports)
+    test("CV: _extract_imports finds 'shared' (from shared.x import y)",
+         "shared" in _cv_imports)
+    test("CV: _extract_imports empty source returns []",
+         _extract_imports("") == [])
+    test("CV: _extract_imports no imports returns []",
+         _extract_imports("x = 1\ny = 2\n") == [])
+
+    # --- _is_critical_file ---
+    test("CV: _is_critical_file('/path/to/enforcer.py') is True",
+         _is_critical_file("/path/to/enforcer.py"))
+    test("CV: _is_critical_file('enforcer.py') is True",
+         _is_critical_file("enforcer.py"))
+    test("CV: _is_critical_file('memory_server.py') is True",
+         _is_critical_file("memory_server.py"))
+    test("CV: _is_critical_file('settings.json') is True",
+         _is_critical_file("settings.json"))
+    test("CV: _is_critical_file('regular_file.py') is False",
+         not _is_critical_file("regular_file.py"))
+    test("CV: _is_critical_file('/some/path/normal.py') is False",
+         not _is_critical_file("/some/path/normal.py"))
+
+    # --- _detect_broad_except ---
+    test("CV: _detect_broad_except bare except: returns True",
+         _detect_broad_except("try:\n    pass\nexcept:\n    pass"))
+    test("CV: _detect_broad_except except Exception: returns True",
+         _detect_broad_except("try:\n    pass\nexcept Exception:\n    pass"))
+    test("CV: _detect_broad_except specific except returns False",
+         not _detect_broad_except("try:\n    pass\nexcept ValueError:\n    pass"))
+    test("CV: _detect_broad_except no except returns False",
+         not _detect_broad_except("x = 1"))
+
+    # --- _detect_hardcoded_secret ---
+    test("CV: _detect_hardcoded_secret password= returns True",
+         _detect_hardcoded_secret('password = "mysecret123"'))
+    test("CV: _detect_hardcoded_secret api_key= returns True",
+         _detect_hardcoded_secret('api_key = "sk-abcdef123456"'))
+    test("CV: _detect_hardcoded_secret token= returns True",
+         _detect_hardcoded_secret('token = "bearer_xyzabc"'))
+    test("CV: _detect_hardcoded_secret no secret returns False",
+         not _detect_hardcoded_secret("x = 1\ny = 'hello'\n"))
+    test("CV: _detect_hardcoded_secret short value not flagged (<4 chars)",
+         not _detect_hardcoded_secret('password = "ab"'))
+
+    # --- _detect_debug_prints ---
+    test("CV: _detect_debug_prints with print() returns True",
+         _detect_debug_prints("print('debug info')"))
+    test("CV: _detect_debug_prints with print( variant returns True",
+         _detect_debug_prints("  print  ( x )"))
+    test("CV: _detect_debug_prints no print returns False",
+         not _detect_debug_prints("x = 1\nlogging.info('msg')\n"))
+
+    # --- _removed_public_functions ---
+    _cv_old_src = "def foo():\n    pass\ndef bar():\n    pass\ndef _private():\n    pass\n"
+    _cv_new_src = "def foo():\n    pass\n"
+    _cv_removed = _removed_public_functions(_cv_old_src, _cv_new_src)
+    test("CV: _removed_public_functions finds removed 'bar'",
+         "bar" in _cv_removed, str(_cv_removed))
+    test("CV: _removed_public_functions does not report '_private'",
+         "_private" not in _cv_removed, str(_cv_removed))
+    test("CV: _removed_public_functions does not report 'foo' (still present)",
+         "foo" not in _cv_removed, str(_cv_removed))
+    test("CV: _removed_public_functions no removals returns []",
+         _removed_public_functions("def foo(): pass", "def foo(): pass\ndef bar(): pass") == [])
+    test("CV: _removed_public_functions both empty returns []",
+         _removed_public_functions("", "") == [])
+
+    # --- _import_drift ---
+    _cv_old_imp = "import os\nimport json\nimport sys\n"
+    _cv_new_imp = "import os\nimport json\n"
+    _cv_drift = _import_drift(_cv_old_imp, _cv_new_imp)
+    test("CV: _import_drift detects removed 'sys'",
+         "sys" in _cv_drift, str(_cv_drift))
+    test("CV: _import_drift does not report 'os' (still present)",
+         "os" not in _cv_drift, str(_cv_drift))
+    test("CV: _import_drift no drift returns []",
+         _import_drift("import os\n", "import os\nimport sys\n") == [])
+
+    # --- check_memory_consensus ---
+    _cv_mem_novel = check_memory_consensus(
+        "LanceDB uses flat scan below 50K rows for better relevance",
+        ["ChromaDB is the primary database", "Redis is used for caching"]
+    )
+    test("CV: check_memory_consensus novel content -> verdict='novel'",
+         _cv_mem_novel["verdict"] == "novel", str(_cv_mem_novel["verdict"]))
+    test("CV: check_memory_consensus novel has top_match float",
+         isinstance(_cv_mem_novel["top_match"], float))
+
+    _cv_dup_text = "LanceDB uses flat scan for better relevance at small scale"
+    _cv_mem_dup = check_memory_consensus(
+        _cv_dup_text,
+        [_cv_dup_text]
+    )
+    test("CV: check_memory_consensus identical -> verdict='duplicate'",
+         _cv_mem_dup["verdict"] == "duplicate", str(_cv_mem_dup["verdict"]))
+    test("CV: check_memory_consensus duplicate top_match >= 0.85",
+         _cv_mem_dup["top_match"] >= 0.85, str(_cv_mem_dup["top_match"]))
+
+    _cv_mem_empty = check_memory_consensus("", [])
+    test("CV: check_memory_consensus empty content -> verdict='novel'",
+         _cv_mem_empty["verdict"] == "novel")
+
+    _cv_mem_conflict = check_memory_consensus(
+        "LanceDB is not broken and works correctly",
+        ["LanceDB is broken and does not work correctly"]
+    )
+    test("CV: check_memory_consensus negation conflict -> verdict='conflict' or 'novel'",
+         _cv_mem_conflict["verdict"] in ("conflict", "novel"),
+         str(_cv_mem_conflict["verdict"]))
+
+    # --- check_edit_consensus ---
+    _cv_old_code = "import os\ndef foo():\n    pass\n"
+    _cv_new_code_safe = "import os\ndef foo():\n    return 1\n"
+    _cv_edit_safe = check_edit_consensus("utils.py", _cv_old_code, _cv_new_code_safe)
+    test("CV: check_edit_consensus safe edit returns dict with required keys",
+         all(k in _cv_edit_safe for k in ("safe", "confidence", "risks", "is_critical")))
+    test("CV: check_edit_consensus non-critical file is_critical=False",
+         not _cv_edit_safe["is_critical"])
+    test("CV: check_edit_consensus safe edit confidence > 0.5",
+         _cv_edit_safe["confidence"] > 0.5, str(_cv_edit_safe["confidence"]))
+
+    _cv_edit_critical = check_edit_consensus("enforcer.py", _cv_old_code, _cv_new_code_safe)
+    test("CV: check_edit_consensus critical file is_critical=True",
+         _cv_edit_critical["is_critical"])
+    test("CV: check_edit_consensus critical file has lower confidence",
+         _cv_edit_critical["confidence"] < _cv_edit_safe["confidence"])
+
+    _cv_old_with_fn = "import os\ndef public_api():\n    pass\ndef helper():\n    pass\n"
+    _cv_new_removed_fn = "import os\ndef helper():\n    pass\n"
+    _cv_edit_api = check_edit_consensus("lib.py", _cv_old_with_fn, _cv_new_removed_fn)
+    test("CV: check_edit_consensus API removal adds a risk",
+         len(_cv_edit_api["risks"]) > 0)
+
+    _cv_secret_new = "import os\ndef foo():\n    api_key = 'mytoken12345'\n    pass\n"
+    _cv_edit_secret = check_edit_consensus("config.py", _cv_old_code, _cv_secret_new)
+    test("CV: check_edit_consensus hardcoded secret introduces risk",
+         any("secret" in r.lower() or "credential" in r.lower() or "token" in r.lower()
+             for r in _cv_edit_secret["risks"]))
+
+    # --- compute_confidence ---
+    test("CV: compute_confidence empty dict returns 0.5",
+         compute_confidence({}) == 0.5)
+    _cv_conf_known = compute_confidence({"memory_coverage": 1.0, "test_coverage": 1.0,
+                                         "pattern_match": 1.0, "prior_success": 1.0})
+    test("CV: compute_confidence all 1.0 signals returns 1.0",
+         abs(_cv_conf_known - 1.0) < 1e-9, str(_cv_conf_known))
+    _cv_conf_zero = compute_confidence({"memory_coverage": 0.0, "test_coverage": 0.0,
+                                        "pattern_match": 0.0, "prior_success": 0.0})
+    test("CV: compute_confidence all 0.0 signals returns 0.0",
+         abs(_cv_conf_zero - 0.0) < 1e-9, str(_cv_conf_zero))
+    _cv_conf_mixed = compute_confidence({"memory_coverage": 0.8, "test_coverage": 0.6})
+    test("CV: compute_confidence mixed known signals returns float in (0,1)",
+         0.0 < _cv_conf_mixed < 1.0, str(_cv_conf_mixed))
+    _cv_conf_custom = compute_confidence({"custom_signal": 0.9})
+    test("CV: compute_confidence unknown signal uses equal weight",
+         isinstance(_cv_conf_custom, float) and 0.0 <= _cv_conf_custom <= 1.0,
+         str(_cv_conf_custom))
+    _cv_conf_clamp = compute_confidence({"memory_coverage": 1.5})
+    test("CV: compute_confidence clamps values > 1.0 to 1.0",
+         abs(_cv_conf_clamp - 1.0) < 1e-9, str(_cv_conf_clamp))
+
+    # --- recommend_action ---
+    test("CV: recommend_action(1.0) -> 'allow'",
+         recommend_action(1.0) == "allow")
+    test("CV: recommend_action(0.6) -> 'allow' (at threshold)",
+         recommend_action(0.6) == "allow")
+    test("CV: recommend_action(0.59) -> 'ask'",
+         recommend_action(0.59) == "ask")
+    test("CV: recommend_action(0.45) -> 'ask'",
+         recommend_action(0.45) == "ask")
+    test("CV: recommend_action(0.3) -> 'ask' (at lower threshold)",
+         recommend_action(0.3) == "ask")
+    test("CV: recommend_action(0.29) -> 'block'",
+         recommend_action(0.29) == "block")
+    test("CV: recommend_action(0.0) -> 'block'",
+         recommend_action(0.0) == "block")
+
+except Exception as _cv_exc:
+    test("CV: import and tests", False, str(_cv_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
