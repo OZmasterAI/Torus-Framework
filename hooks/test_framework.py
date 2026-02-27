@@ -20421,6 +20421,218 @@ except Exception as _hc_exc:
     test("Health Correlation Analyzer Tests: import and tests", False, str(_hc_exc))
 
 
+# ── Search Cache Deep Tests ─────────────────────────────────────────────────
+# Tests for search_cache.py: SearchCache class methods
+
+try:
+    from shared.search_cache import SearchCache
+
+    _sc = SearchCache(ttl_seconds=60, max_entries=10)
+    test("SC: constructor", isinstance(_sc, SearchCache))
+    test("SC: empty len = 0", len(_sc) == 0)
+
+    _sc_k1 = _sc.make_key("test query")
+    test("SC: make_key returns string", isinstance(_sc_k1, str))
+    test("SC: make_key is 16 hex chars", len(_sc_k1) == 16)
+    _sc_k2 = _sc.make_key("test query")
+    test("SC: make_key deterministic", _sc_k1 == _sc_k2)
+    _sc_k3 = _sc.make_key("  TEST QUERY  ")
+    test("SC: make_key case insensitive", _sc_k1 == _sc_k3)
+    _sc_k4 = _sc.make_key("different query")
+    test("SC: different query = different key", _sc_k1 != _sc_k4)
+    _sc_k5 = _sc.make_key("test query", top_k=10)
+    test("SC: kwargs change key", _sc_k1 != _sc_k5)
+    _sc_k6 = _sc.make_key("test query", top_k=10, mode="semantic")
+    _sc_k7 = _sc.make_key("test query", mode="semantic", top_k=10)
+    test("SC: kwargs order independent", _sc_k6 == _sc_k7)
+
+    _sc2 = SearchCache(ttl_seconds=60, max_entries=10)
+    _sc2.put("key1", {"results": [1, 2, 3]})
+    test("SC: put increases len", len(_sc2) == 1)
+    _sc2_hit = _sc2.get("key1")
+    test("SC: get returns value", _sc2_hit == {"results": [1, 2, 3]})
+    _sc2_miss = _sc2.get("nonexistent")
+    test("SC: get miss = None", _sc2_miss is None)
+
+    _sc3 = SearchCache(ttl_seconds=0.001, max_entries=10)
+    _sc3.put("k", "value")
+    import time as _sc_time
+    _sc_time.sleep(0.01)
+    test("SC: expired entry = None", _sc3.get("k") is None)
+
+    _sc4 = SearchCache(ttl_seconds=60, max_entries=10)
+    _sc4.put("a", 1)
+    _sc4.put("b", 2)
+    test("SC: pre-invalidate len = 2", len(_sc4) == 2)
+    _sc4.invalidate()
+    test("SC: post-invalidate len = 0", len(_sc4) == 0)
+    test("SC: invalidated entry = None", _sc4.get("a") is None)
+
+    _sc5 = SearchCache(ttl_seconds=60, max_entries=4)
+    for _i in range(5):
+        _sc5.put(f"k{_i}", _i)
+    test("SC: eviction keeps <= max", len(_sc5) <= 4)
+    test("SC: newest entry kept", _sc5.get("k4") == 4)
+
+    _sc6 = SearchCache(ttl_seconds=60, max_entries=100)
+    _sc6.put("x", "val")
+    _sc6.get("x")
+    _sc6.get("y")
+    _sc6.invalidate()
+    _sc6_stats = _sc6.stats()
+    test("SC: stats has hits", _sc6_stats["hits"] == 1)
+    test("SC: stats has misses", _sc6_stats["misses"] == 1)
+    test("SC: stats hit_rate = 0.5", abs(_sc6_stats["hit_rate"] - 0.5) < 0.01)
+    test("SC: stats cached = 0", _sc6_stats["cached"] == 0)
+    test("SC: stats max_entries", _sc6_stats["max_entries"] == 100)
+    test("SC: stats ttl_seconds", _sc6_stats["ttl_seconds"] == 60)
+    test("SC: stats invalidations = 1", _sc6_stats["invalidations"] == 1)
+
+    _sc7 = SearchCache()
+    test("SC: zero stats hit_rate = 0", _sc7.stats()["hit_rate"] == 0.0)
+
+    _sc8 = SearchCache(ttl_seconds=60, max_entries=10)
+    _sc8.put("k", "old")
+    _sc8.put("k", "new")
+    test("SC: overwrite works", _sc8.get("k") == "new")
+
+except Exception as _sc_exc:
+    test("Search Cache Deep Tests: import and tests", False, str(_sc_exc))
+
+
+# ── Error Pattern Analyzer Deep Tests ───────────────────────────────────────
+
+try:
+    from shared.error_pattern_analyzer import (
+        extract_pattern, analyze_errors, top_patterns,
+        correlate_errors, suggest_prevention, frequency_from_strings,
+        _classify, _FALLBACK_PATTERN, _PATTERN_TABLE,
+    )
+
+    test("EPA: gate1 read-before-edit",
+         extract_pattern("must Read file.py before edit") == "gate1:read-before-edit")
+    test("EPA: gate2 rm -rf",
+         extract_pattern("rm -rf /important") == "gate2:destructive-command")
+    test("EPA: gate2 DROP TABLE",
+         extract_pattern("DROP TABLE users") == "gate2:destructive-command")
+    test("EPA: gate2 force push",
+         extract_pattern("force push to main") == "gate2:destructive-command")
+    test("EPA: gate3 deploy no tests",
+         extract_pattern("run test before deploy") == "gate3:deploy-without-tests")
+    test("EPA: gate4 memory not queried",
+         extract_pattern("memory not queried yet") == "gate4:memory-not-queried")
+    test("EPA: gate9 strategy banned",
+         extract_pattern("strategy banned: sleep_retry") == "gate9:banned-strategy")
+    test("EPA: gate11 rate limit",
+         extract_pattern("rate limit exceeded for Edit") == "gate11:rate-limit")
+
+    test("EPA: import error",
+         extract_pattern("ModuleNotFoundError: No module named 'foo'") == "python:import-error")
+    test("EPA: syntax error",
+         extract_pattern("SyntaxError: invalid syntax") == "python:syntax-error")
+    test("EPA: attribute error",
+         extract_pattern("AttributeError: 'dict' has no attr") == "python:attribute-error")
+    test("EPA: type error",
+         extract_pattern("TypeError: expected str, got int") == "python:type-error")
+    test("EPA: key error",
+         extract_pattern("KeyError: 'missing_key'") == "python:key-error")
+
+    test("EPA: file not found",
+         extract_pattern("FileNotFoundError: No such file") == "fs:file-not-found")
+    test("EPA: permission denied",
+         extract_pattern("Permission denied: /etc/passwd") == "fs:permission-denied")
+    test("EPA: timeout",
+         extract_pattern("Connection timed out after 30s") == "net:timeout")
+    test("EPA: connection refused",
+         extract_pattern("ConnectionRefused: localhost:8080") == "net:connection-refused")
+
+    test("EPA: unclassified",
+         extract_pattern("Something went terribly wrong") == _FALLBACK_PATTERN)
+    test("EPA: empty string = fallback", extract_pattern("") == _FALLBACK_PATTERN)
+    test("EPA: None = fallback", extract_pattern(None) == _FALLBACK_PATTERN)
+    test("EPA: non-string = fallback", extract_pattern(42) == _FALLBACK_PATTERN)
+
+    _epa_cat, _epa_rc = _classify("gate1:read-before-edit")
+    test("EPA: classify gate1 category", _epa_cat == "gate-block")
+    test("EPA: classify gate1 root_cause", _epa_rc == "user-error")
+    _epa_cat2, _epa_rc2 = _classify("fs:file-not-found")
+    test("EPA: classify fs category", _epa_cat2 == "filesystem")
+    _epa_cat3, _epa_rc3 = _classify("unknown:pattern")
+    test("EPA: classify unknown = fallback", _epa_cat3 == "other")
+
+    _epa_tip1 = suggest_prevention("gate1:read-before-edit")
+    test("EPA: gate1 tip mentions Read", "Read" in _epa_tip1)
+    _epa_tip2 = suggest_prevention("python:import-error")
+    test("EPA: import tip useful", len(_epa_tip2) > 20)
+    _epa_tip3 = suggest_prevention("nonexistent:pattern")
+    test("EPA: unknown tip returns fallback", isinstance(_epa_tip3, str) and len(_epa_tip3) > 0)
+
+    _epa_entries = [
+        {"decision": "block", "reason": "must Read file.py before edit", "session_id": "s1"},
+        {"decision": "block", "reason": "must Read other.py before edit", "session_id": "s1"},
+        {"decision": "warn", "reason": "memory not queried yet", "session_id": "s1"},
+        {"decision": "pass", "reason": "all good", "session_id": "s1"},
+        {"decision": "block", "reason": "FileNotFoundError: missing", "session_id": "s2"},
+    ]
+    _epa_analysis = analyze_errors(_epa_entries)
+    test("EPA: total_errors = 4", _epa_analysis["total_errors"] == 4)
+    test("EPA: pattern_counts is dict", isinstance(_epa_analysis["pattern_counts"], dict))
+    test("EPA: gate1 count = 2", _epa_analysis["pattern_counts"].get("gate1:read-before-edit") == 2)
+    test("EPA: category has gate-block", "gate-block" in _epa_analysis["category_breakdown"])
+    test("EPA: root_cause has user-error", "user-error" in _epa_analysis["root_cause_breakdown"])
+    test("EPA: top_patterns is list", isinstance(_epa_analysis["top_patterns"], list))
+    test("EPA: suggestions is dict", isinstance(_epa_analysis["suggestions"], dict))
+    test("EPA: session s1 in breakdown", "s1" in _epa_analysis["session_breakdown"])
+    test("EPA: session s2 in breakdown", "s2" in _epa_analysis["session_breakdown"])
+
+    _epa_empty = analyze_errors([])
+    test("EPA: empty analysis total = 0", _epa_empty["total_errors"] == 0)
+
+    _epa_top = top_patterns(_epa_entries, n=2)
+    test("EPA: top_patterns returns list", isinstance(_epa_top, list))
+    test("EPA: top_patterns max 2", len(_epa_top) <= 2)
+    test("EPA: top sorted", _epa_top[0][1] >= _epa_top[-1][1])
+
+    _epa_corr_entries = [
+        {"decision": "block", "reason": "must Read before edit", "session_id": "s1"},
+        {"decision": "block", "reason": "must Read before edit", "session_id": "s1"},
+        {"decision": "block", "reason": "memory not queried", "session_id": "s1"},
+        {"decision": "block", "reason": "must Read before edit", "session_id": "s1"},
+    ]
+    _epa_corr = correlate_errors(_epa_corr_entries)
+    test("EPA: correlate returns list", isinstance(_epa_corr, list))
+    if _epa_corr:
+        test("EPA: corr has pattern_a", "pattern_a" in _epa_corr[0])
+        test("EPA: corr has count", "count" in _epa_corr[0])
+        test("EPA: corr sorted", _epa_corr[0]["count"] >= _epa_corr[-1]["count"])
+
+    _epa_corr_one = correlate_errors([{"decision": "block", "reason": "test"}])
+    test("EPA: correlate 1 = empty", len(_epa_corr_one) == 0)
+
+    _epa_cross = [
+        {"decision": "block", "reason": "must Read before edit", "session_id": "s1"},
+        {"decision": "block", "reason": "memory not queried", "session_id": "s2"},
+    ]
+    _epa_cross_corr = correlate_errors(_epa_cross)
+    test("EPA: cross-session not correlated", len(_epa_cross_corr) == 0)
+
+    _epa_freq = frequency_from_strings([
+        "must Read file before edit",
+        "must Read other before edit",
+        "FileNotFoundError: missing",
+    ])
+    test("EPA: freq returns dict", isinstance(_epa_freq, dict))
+    test("EPA: freq gate1 = 2", _epa_freq.get("gate1:read-before-edit") == 2)
+    test("EPA: freq fs = 1", _epa_freq.get("fs:file-not-found") == 1)
+    test("EPA: freq empty = empty", frequency_from_strings([]) == {})
+
+    test("EPA: pattern table > 20 entries", len(_PATTERN_TABLE) > 20)
+    test("EPA: all patterns have 4 fields", all(len(p) == 4 for p in _PATTERN_TABLE))
+
+except Exception as _epa_exc:
+    test("Error Pattern Analyzer Deep Tests: import and tests", False, str(_epa_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)

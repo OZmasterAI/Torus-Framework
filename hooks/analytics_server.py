@@ -2322,6 +2322,44 @@ def tool_recommendations(tool_name: str = "") -> dict:
     return result
 
 
+# ── Health Correlation ────────────────────────────────────────────────────────
+
+@mcp.tool()
+@crash_proof
+def gate_correlation_report() -> dict:
+    """Analyze gate fire patterns to detect redundancy and synergy.
+
+    Builds a Pearson correlation matrix of gate block patterns, identifies
+    redundant gate pairs (r>0.8) and synergistic pairs (r<-0.5), then
+    generates optimization recommendations.
+
+    Returns:
+        Dict with gates_analyzed, redundant_pairs, synergistic_pairs,
+        optimizations, and overall_diversity score.
+    """
+    _ensure_initialized()
+    import json as _json
+
+    # Load gate effectiveness data
+    eff_path = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
+    effectiveness = {}
+    try:
+        if os.path.exists(eff_path):
+            with open(eff_path) as f:
+                effectiveness = _json.load(f)
+    except Exception:
+        pass
+
+    if not effectiveness:
+        return {
+            "gates_analyzed": 0,
+            "message": "No gate effectiveness data available",
+        }
+
+    from shared.health_correlation import generate_health_report
+    return generate_health_report(effectiveness)
+
+
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
 # DORMANT: uncomment @mcp.tool() to reactivate
