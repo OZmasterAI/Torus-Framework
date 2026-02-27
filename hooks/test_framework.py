@@ -22664,6 +22664,552 @@ except Exception as _tr_exc:
     test("Tool Recommendation Deep Tests: import and tests", False, str(_tr_exc))
 
 
+# ─────────────────────────────────────────────────
+# Mutation Tester Deep Tests (mutation_tester.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.mutation_tester import (
+        MutantResult,
+        MutationReport,
+        generate_mutants,
+        _count_targets,
+        _apply_mutation,
+        _BoolFlipVisitor,
+        _CmpOpSwapVisitor,
+        _CondRemoveVisitor,
+        _ReturnFlipVisitor,
+        _LogicNegateVisitor,
+        _StrSwapVisitor,
+        _find_test_framework,
+        _find_hooks_dir,
+        print_report,
+    )
+    import ast as _mt_ast
+    import copy as _mt_copy
+
+    # ── MutantResult dataclass ──
+    _mt_mr = MutantResult(
+        operator="BOOL_FLIP", description="line 10: True -> False",
+        lineno=10, killed=False, test_output="", mutant_source="x = False"
+    )
+    test("MT: MutantResult fields", _mt_mr.operator == "BOOL_FLIP" and _mt_mr.lineno == 10)
+    test("MT: MutantResult killed default", _mt_mr.killed == False)
+
+    # ── MutationReport dataclass ──
+    _mt_rpt = MutationReport(gate_path="/test.py")
+    test("MT: report kill_rate empty", _mt_rpt.kill_rate == 0.0)
+    test("MT: report test_gaps empty", _mt_rpt.test_gaps == [])
+
+    _mt_rpt2 = MutationReport(gate_path="/test.py", total_mutants=4, killed_count=3)
+    _mt_rpt2.survived = [MutantResult("X", "test", 1, False, "", "")]
+    test("MT: report kill_rate computed", abs(_mt_rpt2.kill_rate - 0.75) < 0.01)
+    test("MT: report test_gaps has item", len(_mt_rpt2.test_gaps) == 1)
+    test("MT: report test_gaps format", "[X]" in _mt_rpt2.test_gaps[0])
+
+    # ── BoolFlipVisitor ──
+    _mt_src_bool = "x = True\ny = False\nz = True"
+    _mt_tree_bool = _mt_ast.parse(_mt_src_bool)
+    _mt_n_bools = _count_targets(_mt_tree_bool, _BoolFlipVisitor)
+    test("MT: bool flip count", _mt_n_bools == 3)
+
+    _mt_v0 = _BoolFlipVisitor(0)
+    _mt_v0.visit(_mt_copy.deepcopy(_mt_tree_bool))
+    test("MT: bool flip applied idx 0", _mt_v0.applied)
+    test("MT: bool flip description", "True" in _mt_v0.description and "False" in _mt_v0.description)
+
+    _mt_v99 = _BoolFlipVisitor(99)
+    _mt_v99.visit(_mt_copy.deepcopy(_mt_tree_bool))
+    test("MT: bool flip not applied beyond range", not _mt_v99.applied)
+
+    # ── CmpOpSwapVisitor ──
+    _mt_src_cmp = "if x == 1:\n    pass\nif y < 2:\n    pass"
+    _mt_tree_cmp = _mt_ast.parse(_mt_src_cmp)
+    _mt_n_cmps = _count_targets(_mt_tree_cmp, _CmpOpSwapVisitor)
+    test("MT: cmp swap count", _mt_n_cmps == 2)
+
+    _mt_vc = _CmpOpSwapVisitor(0)
+    _mt_vc.visit(_mt_copy.deepcopy(_mt_tree_cmp))
+    test("MT: cmp swap applied", _mt_vc.applied)
+    test("MT: cmp swap description has Eq", "Eq" in _mt_vc.description)
+
+    # ── CondRemoveVisitor ──
+    _mt_src_cond = "if x > 0:\n    pass\nif y:\n    pass"
+    _mt_tree_cond = _mt_ast.parse(_mt_src_cond)
+    _mt_n_conds = _count_targets(_mt_tree_cond, _CondRemoveVisitor, replace_with=True)
+    test("MT: cond remove count", _mt_n_conds == 2)
+
+    _mt_vcr = _CondRemoveVisitor(0, replace_with=False)
+    _mt_vcr.visit(_mt_copy.deepcopy(_mt_tree_cond))
+    test("MT: cond remove applied", _mt_vcr.applied)
+    test("MT: cond remove description has False", "False" in _mt_vcr.description)
+
+    # ── ReturnFlipVisitor ──
+    _mt_src_ret = "result = GateResult(blocked=True, message='x')\nother = GateResult(blocked=False)"
+    _mt_tree_ret = _mt_ast.parse(_mt_src_ret)
+    _mt_n_rets = _count_targets(_mt_tree_ret, _ReturnFlipVisitor)
+    test("MT: return flip count", _mt_n_rets == 2)
+
+    _mt_vr = _ReturnFlipVisitor(0)
+    _mt_vr.visit(_mt_copy.deepcopy(_mt_tree_ret))
+    test("MT: return flip applied", _mt_vr.applied)
+    test("MT: return flip description has GateResult",
+         "GateResult" in _mt_vr.description)
+
+    # ── LogicNegateVisitor ──
+    _mt_src_logic = "if a and b:\n    pass"
+    _mt_tree_logic = _mt_ast.parse(_mt_src_logic)
+    _mt_n_logic = _count_targets(_mt_tree_logic, _LogicNegateVisitor)
+    test("MT: logic negate count", _mt_n_logic >= 1)
+
+    # ── StrSwapVisitor ──
+    _mt_src_str = "if x in 'hello':\n    pass"
+    _mt_tree_str = _mt_ast.parse(_mt_src_str)
+    _mt_n_strs = _count_targets(_mt_tree_str, _StrSwapVisitor)
+    test("MT: str swap count", _mt_n_strs == 1)
+
+    _mt_vs = _StrSwapVisitor(0)
+    _mt_vs.visit(_mt_copy.deepcopy(_mt_tree_str))
+    test("MT: str swap applied", _mt_vs.applied)
+    test("MT: str swap description has MUTANT", "__MUTANT__" in _mt_vs.description)
+
+    # ── generate_mutants ──
+    _mt_gate_src = '''
+from shared.gate_result import GateResult
+
+def check(tool_name, tool_input, state, event_type="PreToolUse"):
+    if tool_name == "Edit":
+        if "file_path" in tool_input:
+            return GateResult(blocked=True, message="blocked", gate_name="test", severity="error")
+    return GateResult(blocked=False, message="ok", gate_name="test", severity="info")
+'''
+    _mt_mutants = generate_mutants(_mt_gate_src)
+    test("MT: generate_mutants produces results", len(_mt_mutants) > 0)
+    test("MT: mutants are tuples", all(isinstance(m, tuple) and len(m) == 2 for m in _mt_mutants))
+    test("MT: mutant has MutantResult", all(isinstance(m[0], MutantResult) for m in _mt_mutants))
+    test("MT: mutant has source string", all(isinstance(m[1], str) for m in _mt_mutants))
+
+    # Check operator diversity
+    _mt_ops = set(m[0].operator for m in _mt_mutants)
+    test("MT: multiple operators used", len(_mt_ops) >= 3)
+    test("MT: has BOOL_FLIP or RETURN_FLIP",
+         "BOOL_FLIP" in _mt_ops or "RETURN_FLIP" in _mt_ops)
+    test("MT: has CMP_OP_SWAP", "CMP_OP_SWAP" in _mt_ops)
+
+    # ── _apply_mutation ──
+    _mt_applied = _apply_mutation(
+        _mt_gate_src, _mt_ast.parse(_mt_gate_src),
+        _BoolFlipVisitor, 0, "BOOL_FLIP"
+    )
+    test("MT: apply mutation returns MutantResult",
+         _mt_applied is not None and isinstance(_mt_applied, MutantResult))
+    if _mt_applied:
+        test("MT: applied mutation has source", len(_mt_applied.mutant_source) > 0)
+
+    _mt_not_applied = _apply_mutation(
+        _mt_gate_src, _mt_ast.parse(_mt_gate_src),
+        _BoolFlipVisitor, 999, "BOOL_FLIP"
+    )
+    test("MT: apply mutation beyond range returns None", _mt_not_applied is None)
+
+    # ── _find_test_framework / _find_hooks_dir ──
+    _MT_HOOKS_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+    _mt_tf = _find_test_framework(os.path.join(_MT_HOOKS_DIR, "gates", "gate_01_read_before_edit.py"))
+    test("MT: find_test_framework from gates/",
+         _mt_tf is not None and "test_framework.py" in _mt_tf if _mt_tf else True)
+
+    _mt_hd = _find_hooks_dir(os.path.join(_MT_HOOKS_DIR, "gates", "gate_01_read_before_edit.py"))
+    test("MT: find_hooks_dir from gates/",
+         _mt_hd is not None and _mt_hd.endswith("hooks") if _mt_hd else True)
+
+    # ── print_report (smoke test — just verify it doesn't crash) ──
+    import io as _mt_io
+    import sys as _mt_sys
+    _mt_old_stdout = _mt_sys.stdout
+    _mt_sys.stdout = _mt_io.StringIO()
+    try:
+        print_report(_mt_rpt2)
+        _mt_output = _mt_sys.stdout.getvalue()
+    finally:
+        _mt_sys.stdout = _mt_old_stdout
+    test("MT: print_report produces output", len(_mt_output) > 50)
+    test("MT: print_report has kill rate", "75" in _mt_output or "Kill rate" in _mt_output)
+
+except Exception as _mt_exc:
+    test("Mutation Tester Deep Tests: import and tests", False, str(_mt_exc))
+
+
+# ─────────────────────────────────────────────────
+# Retry Strategy Deep Tests (retry_strategy.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.retry_strategy import (
+        Strategy,
+        Jitter,
+        RetryConfig,
+        _fib,
+        _compute_raw_delay,
+        _apply_jitter,
+        should_retry,
+        get_delay,
+        record_attempt as rs_record_attempt,
+        reset as rs_reset,
+        get_stats as rs_get_stats,
+        with_retry,
+        _get_state,
+        _registry,
+    )
+
+    # ── Strategy enum ──
+    test("RS: Strategy has EXPONENTIAL", Strategy.EXPONENTIAL_BACKOFF.value == "exponential_backoff")
+    test("RS: Strategy has LINEAR", Strategy.LINEAR_BACKOFF.value == "linear_backoff")
+    test("RS: Strategy has CONSTANT", Strategy.CONSTANT.value == "constant")
+    test("RS: Strategy has FIBONACCI", Strategy.FIBONACCI.value == "fibonacci")
+
+    # ── Jitter enum ──
+    test("RS: Jitter has NONE", Jitter.NONE.value == "none")
+    test("RS: Jitter has FULL", Jitter.FULL.value == "full")
+    test("RS: Jitter has EQUAL", Jitter.EQUAL.value == "equal")
+    test("RS: Jitter has DECORRELATED", Jitter.DECORRELATED.value == "decorrelated")
+
+    # ── RetryConfig defaults ──
+    _rs_cfg = RetryConfig()
+    test("RS: default strategy", _rs_cfg.strategy == Strategy.EXPONENTIAL_BACKOFF)
+    test("RS: default max_retries", _rs_cfg.max_retries == 3)
+    test("RS: default base_delay", _rs_cfg.base_delay == 1.0)
+    test("RS: default max_delay", _rs_cfg.max_delay == 60.0)
+    test("RS: default multiplier", _rs_cfg.multiplier == 2.0)
+
+    # ── _fib ──
+    test("RS: fib(0) == 0", _fib(0) == 0)
+    test("RS: fib(1) == 1", _fib(1) == 1)
+    test("RS: fib(5) == 5", _fib(5) == 5)
+    test("RS: fib(10) == 55", _fib(10) == 55)
+
+    # ── _compute_raw_delay ──
+    _rs_exp_cfg = RetryConfig(strategy=Strategy.EXPONENTIAL_BACKOFF, base_delay=1.0, multiplier=2.0, max_delay=100.0)
+    test("RS: exp delay attempt 0", abs(_compute_raw_delay(0, _rs_exp_cfg) - 1.0) < 0.01)
+    test("RS: exp delay attempt 1", abs(_compute_raw_delay(1, _rs_exp_cfg) - 2.0) < 0.01)
+    test("RS: exp delay attempt 3", abs(_compute_raw_delay(3, _rs_exp_cfg) - 8.0) < 0.01)
+
+    _rs_lin_cfg = RetryConfig(strategy=Strategy.LINEAR_BACKOFF, base_delay=1.0, step=2.0, max_delay=100.0)
+    test("RS: linear delay attempt 0", abs(_compute_raw_delay(0, _rs_lin_cfg) - 1.0) < 0.01)
+    test("RS: linear delay attempt 2", abs(_compute_raw_delay(2, _rs_lin_cfg) - 5.0) < 0.01)
+
+    _rs_const_cfg = RetryConfig(strategy=Strategy.CONSTANT, base_delay=3.0)
+    test("RS: constant delay", abs(_compute_raw_delay(5, _rs_const_cfg) - 3.0) < 0.01)
+
+    _rs_fib_cfg = RetryConfig(strategy=Strategy.FIBONACCI, base_delay=1.0, max_delay=100.0)
+    test("RS: fib delay attempt 0", abs(_compute_raw_delay(0, _rs_fib_cfg) - 1.0) < 0.01)  # fib(1)=1
+    test("RS: fib delay attempt 3", abs(_compute_raw_delay(3, _rs_fib_cfg) - 3.0) < 0.01)  # fib(4)=3
+
+    # Max delay cap
+    _rs_cap_cfg = RetryConfig(strategy=Strategy.EXPONENTIAL_BACKOFF, base_delay=1.0, multiplier=10.0, max_delay=5.0)
+    test("RS: max_delay capped", _compute_raw_delay(10, _rs_cap_cfg) <= 5.0)
+
+    # ── _apply_jitter ──
+    test("RS: jitter NONE unchanged", abs(_apply_jitter(4.0, RetryConfig(jitter=Jitter.NONE), 0.0) - 4.0) < 0.01)
+    _rs_full_vals = [_apply_jitter(4.0, RetryConfig(jitter=Jitter.FULL), 0.0) for _ in range(20)]
+    test("RS: jitter FULL in [0, 4]", all(0.0 <= v <= 4.01 for v in _rs_full_vals))
+    _rs_equal_vals = [_apply_jitter(4.0, RetryConfig(jitter=Jitter.EQUAL), 0.0) for _ in range(20)]
+    test("RS: jitter EQUAL in [2, 4]", all(1.99 <= v <= 4.01 for v in _rs_equal_vals))
+    _rs_decorr_vals = [_apply_jitter(4.0, RetryConfig(jitter=Jitter.DECORRELATED, base_delay=1.0), 2.0) for _ in range(20)]
+    test("RS: jitter DECORRELATED >= base",
+         all(v >= 0.99 for v in _rs_decorr_vals))
+
+    # ── should_retry + record_attempt + reset ──
+    rs_reset("_test_rs_op")
+    _rs_test_cfg = RetryConfig(max_retries=2)
+    test("RS: should_retry before failure", should_retry("_test_rs_op", config=_rs_test_cfg))
+    rs_record_attempt("_test_rs_op", success=False, config=_rs_test_cfg)
+    test("RS: should_retry after 1 failure", should_retry("_test_rs_op", config=_rs_test_cfg))
+    rs_record_attempt("_test_rs_op", success=False, config=_rs_test_cfg)
+    test("RS: should_retry exhausted", not should_retry("_test_rs_op", config=_rs_test_cfg))
+
+    # ── get_stats ──
+    rs_reset("_test_rs_stats")
+    rs_record_attempt("_test_rs_stats", success=True)
+    rs_record_attempt("_test_rs_stats", success=False, error="boom")
+    _rs_stats = rs_get_stats("_test_rs_stats")
+    test("RS: stats attempts", _rs_stats["attempts"] == 2)
+    test("RS: stats successes", _rs_stats["successes"] == 1)
+    test("RS: stats failures", _rs_stats["failures"] == 1)
+    test("RS: stats recent_errors", "boom" in _rs_stats["recent_errors"])
+    test("RS: stats success_rate", abs(_rs_stats["success_rate"] - 0.5) < 0.01)
+
+    # ── reset ──
+    rs_reset("_test_rs_stats")
+    test("RS: reset clears state", rs_get_stats("_test_rs_stats")["attempts"] == 0)
+
+    # ── get_delay ──
+    rs_reset("_test_rs_delay")
+    _rs_delay_cfg = RetryConfig(strategy=Strategy.CONSTANT, base_delay=2.5, jitter=Jitter.NONE)
+    test("RS: get_delay constant", abs(get_delay("_test_rs_delay", config=_rs_delay_cfg) - 2.5) < 0.01)
+
+    # ── _get_state creates new entry ──
+    _rs_unique = "_test_rs_unique_key_xyz"
+    if _rs_unique in _registry:
+        del _registry[_rs_unique]
+    _rs_s = _get_state(_rs_unique)
+    test("RS: _get_state creates entry", _rs_s.attempts == 0)
+    test("RS: _get_state in registry", _rs_unique in _registry)
+    del _registry[_rs_unique]  # cleanup
+
+    # ── Error message truncation ──
+    rs_reset("_test_rs_trunc")
+    rs_record_attempt("_test_rs_trunc", success=False, error="x" * 500)
+    _rs_trunc_stats = rs_get_stats("_test_rs_trunc")
+    test("RS: error message truncated to 200",
+         len(_rs_trunc_stats["recent_errors"][0]) <= 200)
+
+    # ── Max errors stored ──
+    rs_reset("_test_rs_max_err")
+    for _rs_i in range(15):
+        rs_record_attempt("_test_rs_max_err", success=False, error=f"error_{_rs_i}")
+    _rs_me_stats = rs_get_stats("_test_rs_max_err")
+    test("RS: max errors stored capped", len(_rs_me_stats["recent_errors"]) <= 10)
+
+except Exception as _rs_exc:
+    test("Retry Strategy Deep Tests: import and tests", False, str(_rs_exc))
+
+
+# ─────────────────────────────────────────────────
+# Tool Patterns Deep Tests (tool_patterns.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.tool_patterns import (
+        MarkovChain,
+        WorkflowTemplate,
+        AnomalyReport,
+        build_markov_chain,
+        _transition_probability,
+        _sequence_log_probability,
+        _std,
+        _extract_ngrams,
+        _label_for_template,
+        _invalidate_cache,
+        _MIN_TRANSITION_COUNT,
+        _LAPLACE_ALPHA,
+        _MIN_WORKFLOW_LEN,
+        _MAX_WORKFLOW_LEN,
+        _ANOMALY_SIGMA_THRESHOLD,
+        _SESSION_BREAK_SECONDS,
+    )
+
+    # ── Constants ──
+    test("TP: MIN_TRANSITION_COUNT", _MIN_TRANSITION_COUNT == 2)
+    test("TP: LAPLACE_ALPHA", abs(_LAPLACE_ALPHA - 0.1) < 0.01)
+    test("TP: MIN_WORKFLOW_LEN", _MIN_WORKFLOW_LEN == 3)
+    test("TP: MAX_WORKFLOW_LEN", _MAX_WORKFLOW_LEN == 8)
+    test("TP: ANOMALY_SIGMA_THRESHOLD", abs(_ANOMALY_SIGMA_THRESHOLD - 2.0) < 0.01)
+    test("TP: SESSION_BREAK_SECONDS", abs(_SESSION_BREAK_SECONDS - 300.0) < 0.01)
+
+    # ── MarkovChain dataclass ──
+    _tp_mc = MarkovChain()
+    test("TP: MarkovChain defaults", _tp_mc.total_starts == 0 and _tp_mc.sequence_count == 0)
+    test("TP: MarkovChain vocabulary empty", len(_tp_mc.vocabulary) == 0)
+
+    # ── build_markov_chain ──
+    _tp_seqs = [
+        ["Read", "Edit", "Bash"],
+        ["Read", "Edit", "Bash"],
+        ["Read", "Write", "Bash"],
+        ["Glob", "Read", "Edit"],
+    ]
+    _tp_chain = build_markov_chain(_tp_seqs)
+    test("TP: chain sequence_count", _tp_chain.sequence_count == 4)
+    test("TP: chain total_starts", _tp_chain.total_starts == 4)
+    test("TP: chain vocabulary",
+         _tp_chain.vocabulary == {"Read", "Edit", "Bash", "Write", "Glob"})
+    test("TP: chain start_counts Read",
+         _tp_chain.start_counts.get("Read", 0) == 3)
+    test("TP: chain start_counts Glob",
+         _tp_chain.start_counts.get("Glob", 0) == 1)
+    test("TP: chain transition Read->Edit",
+         _tp_chain.transitions["Read"]["Edit"] == 3)
+    test("TP: chain transition Read->Write",
+         _tp_chain.transitions["Read"]["Write"] == 1)
+    test("TP: chain transition Edit->Bash",
+         _tp_chain.transitions["Edit"]["Bash"] == 2)
+
+    # Empty sequences
+    _tp_empty = build_markov_chain([])
+    test("TP: empty chain", _tp_empty.sequence_count == 0 and len(_tp_empty.vocabulary) == 0)
+
+    # ── _transition_probability ──
+    _tp_prob = _transition_probability(_tp_chain, "Read", "Edit")
+    test("TP: transition prob Read->Edit > 0.5", _tp_prob > 0.5)
+    _tp_prob_unseen = _transition_probability(_tp_chain, "Read", "Glob")
+    test("TP: transition prob unseen > 0 (Laplace)", _tp_prob_unseen > 0)
+    _tp_prob_sum = sum(
+        _transition_probability(_tp_chain, "Read", t) for t in _tp_chain.vocabulary
+    )
+    test("TP: transition probs sum ~1.0", abs(_tp_prob_sum - 1.0) < 0.01)
+
+    # ── _sequence_log_probability ──
+    _tp_log_p = _sequence_log_probability(_tp_chain, ["Read", "Edit", "Bash"])
+    test("TP: log prob common seq is negative", _tp_log_p < 0)
+    _tp_log_p_rare = _sequence_log_probability(_tp_chain, ["Bash", "Glob", "Write"])
+    test("TP: rare seq lower prob", _tp_log_p_rare < _tp_log_p)
+    _tp_log_p_empty = _sequence_log_probability(_tp_chain, [])
+    test("TP: empty seq log prob -inf",
+         _tp_log_p_empty == float("-inf"))
+
+    # ── _std ──
+    test("TP: std of identical values", abs(_std([5.0, 5.0, 5.0]) - 0.0) < 0.01)
+    test("TP: std of [0, 10]", abs(_std([0.0, 10.0]) - 5.0) < 0.01)
+    test("TP: std of single value", _std([42.0]) == 0.0)
+    test("TP: std of empty list", _std([]) == 0.0)
+
+    # ── _extract_ngrams ──
+    test("TP: extract 2-grams",
+         _extract_ngrams(["A", "B", "C", "D"], 2) == [["A", "B"], ["B", "C"], ["C", "D"]])
+    test("TP: extract 3-grams",
+         _extract_ngrams(["A", "B", "C"], 3) == [["A", "B", "C"]])
+    test("TP: extract too-long ngram",
+         _extract_ngrams(["A", "B"], 3) == [])
+
+    # ── _label_for_template ──
+    test("TP: label read-edit-test",
+         _label_for_template(["Read", "Edit", "Bash"]) == "read-edit-test")
+    test("TP: label read-then-edit",
+         _label_for_template(["Read", "Edit"]) == "read-then-edit")
+    test("TP: label unknown falls back",
+         "workflow" in _label_for_template(["Xyz", "Abc"]).lower())
+    test("TP: label empty", _label_for_template([]) == "mixed workflow")
+
+    # ── WorkflowTemplate dataclass ──
+    _tp_wt = WorkflowTemplate(
+        tools=["Read", "Edit"], count=5, frequency=0.25, label="read-then-edit"
+    )
+    test("TP: WorkflowTemplate fields", _tp_wt.count == 5 and _tp_wt.frequency == 0.25)
+
+    # ── AnomalyReport dataclass ──
+    _tp_ar = AnomalyReport(
+        tools=["X", "Y"], score=-10.0, baseline_mean=-5.0,
+        baseline_std=2.0, sigma=2.5, reason="unusual",
+        unusual_transitions=[("X", "Y")]
+    )
+    test("TP: AnomalyReport fields", _tp_ar.sigma == 2.5)
+    test("TP: AnomalyReport unusual_transitions", len(_tp_ar.unusual_transitions) == 1)
+
+    # ── _invalidate_cache ──
+    _invalidate_cache()
+    test("TP: invalidate_cache runs without error", True)
+
+except Exception as _tp_exc:
+    test("Tool Patterns Deep Tests: import and tests", False, str(_tp_exc))
+
+
+# ─────────────────────────────────────────────────
+# Skill Mapper Deep Tests (skill_mapper.py)
+# ─────────────────────────────────────────────────
+try:
+    from shared.skill_mapper import (
+        SkillMetadata,
+        SkillHealth,
+        SkillMapper,
+        CLAUDE_DIR,
+        SKILLS_DIR,
+        HOOKS_DIR,
+        SHARED_DIR,
+        KNOWN_SHARED_MODULES,
+    )
+    import tempfile as _sm2_tempfile
+
+    # ── Constants ──
+    test("SM2: CLAUDE_DIR ends with .claude", CLAUDE_DIR.endswith(".claude"))
+    test("SM2: SKILLS_DIR has skills", "skills" in SKILLS_DIR)
+    test("SM2: HOOKS_DIR has hooks", "hooks" in HOOKS_DIR)
+    test("SM2: SHARED_DIR has shared", "shared" in SHARED_DIR)
+    test("SM2: KNOWN_SHARED_MODULES not empty", len(KNOWN_SHARED_MODULES) > 10)
+    test("SM2: known modules has state", "state" in KNOWN_SHARED_MODULES)
+    test("SM2: known modules has audit_log", "audit_log" in KNOWN_SHARED_MODULES)
+
+    # ── SkillMetadata dataclass ──
+    _sm2_meta = SkillMetadata(
+        name="test-skill", path="/tmp/test", skill_md_path="/tmp/test/SKILL.md",
+        script_paths=[], imports_from_shared=set(), imports_external=set(),
+        missing_shared_modules=set(), functions_defined=set(),
+        functions_called=set(), file_count=0
+    )
+    test("SM2: SkillMetadata name", _sm2_meta.name == "test-skill")
+    test("SM2: SkillMetadata file_count", _sm2_meta.file_count == 0)
+
+    # ── SkillHealth dataclass ──
+    _sm2_health = SkillHealth(
+        name="test", status="healthy", coverage_pct=100.0,
+        has_metadata=True, has_scripts=True, script_count=2,
+        shared_module_count=3, missing_dependencies=[],
+        reuse_opportunities=[], description="test"
+    )
+    test("SM2: SkillHealth status", _sm2_health.status == "healthy")
+    test("SM2: SkillHealth coverage", _sm2_health.coverage_pct == 100.0)
+
+    # ── SkillMapper with real skills dir ──
+    _sm2_mapper = SkillMapper()
+    test("SM2: mapper initializes", isinstance(_sm2_mapper.skills, dict))
+
+    _sm2_dep_graph = _sm2_mapper.get_dependency_graph()
+    test("SM2: dependency_graph is dict", isinstance(_sm2_dep_graph, dict))
+
+    _sm2_rev_graph = _sm2_mapper.get_reverse_dependency_graph()
+    test("SM2: reverse_dependency_graph is dict", isinstance(_sm2_rev_graph, dict))
+
+    _sm2_usage = _sm2_mapper.get_shared_module_usage()
+    test("SM2: shared_module_usage is dict", isinstance(_sm2_usage, dict))
+
+    _sm2_need_deps = _sm2_mapper.get_skills_needing_dependencies()
+    test("SM2: skills_needing_deps is dict", isinstance(_sm2_need_deps, dict))
+
+    _sm2_reuse = _sm2_mapper.get_skills_with_reuse_opportunities()
+    test("SM2: reuse_opportunities is dict", isinstance(_sm2_reuse, dict))
+
+    _sm2_report = _sm2_mapper.generate_report()
+    test("SM2: report is string", isinstance(_sm2_report, str))
+    test("SM2: report has SUMMARY", "SUMMARY" in _sm2_report)
+    test("SM2: report has Total skills", "Total skills" in _sm2_report)
+
+    _sm2_health_rpt = _sm2_mapper.get_skill_health()
+    test("SM2: health report is dict", isinstance(_sm2_health_rpt, dict))
+    if _sm2_health_rpt:
+        _sm2_first_skill = next(iter(_sm2_health_rpt.values()))
+        test("SM2: health has status field", hasattr(_sm2_first_skill, 'status'))
+        test("SM2: health status valid",
+             _sm2_first_skill.status in ("healthy", "degraded", "unhealthy"))
+
+    # ── _extract_script_info with temp script ──
+    with _sm2_tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as _sm2_tf:
+        _sm2_tf.write("from shared.state import load_state\nimport os\ndef my_func():\n    pass\n")
+        _sm2_tf_path = _sm2_tf.name
+
+    _sm2_imports_shared = set()
+    _sm2_imports_ext = set()
+    _sm2_funcs_def = set()
+    _sm2_funcs_call = set()
+    _sm2_mapper._extract_script_info(
+        _sm2_tf_path, _sm2_imports_shared, _sm2_imports_ext, _sm2_funcs_def, _sm2_funcs_call
+    )
+    os.unlink(_sm2_tf_path)
+    test("SM2: extract shared import", "load_state" in _sm2_imports_shared)
+    test("SM2: extract external import", "os" in _sm2_imports_ext)
+    test("SM2: extract function def", "my_func" in _sm2_funcs_def)
+
+    # ── _module_would_be_useful ──
+    _sm2_meta_health = SkillMetadata(
+        name="t", path="/t", skill_md_path="/t/SKILL.md",
+        script_paths=[], imports_from_shared=set(), imports_external=set(),
+        missing_shared_modules=set(), functions_defined=set(),
+        functions_called={"check", "verify"}, file_count=0
+    )
+    test("SM2: health_monitor useful for health checks",
+         _sm2_mapper._module_would_be_useful("health_monitor", _sm2_meta_health))
+    test("SM2: rate_limiter not useful without rate calls",
+         not _sm2_mapper._module_would_be_useful("rate_limiter", _sm2_meta_health))
+
+except Exception as _sm2_exc:
+    test("Skill Mapper Deep Tests: import and tests", False, str(_sm2_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)

@@ -2360,6 +2360,58 @@ def gate_correlation_report() -> dict:
     return generate_health_report(effectiveness)
 
 
+@mcp.tool()
+@crash_proof
+def causal_chain_analysis() -> dict:
+    """Analyze causal chain fix outcomes to detect patterns and suggest improvements.
+
+    Cross-references fix_outcomes data from memory to identify recurring failures,
+    ineffective strategies, and suggest better approaches. Reports overall chain
+    health with a composite score (0-100).
+
+    Returns:
+        Dict with strategy_effectiveness, recurring_failures, chain_health
+        (score, trend, recommendations), and a one-line summary.
+    """
+    _ensure_initialized()
+    from shared.chain_refinement import analyze_outcomes
+
+    # Load fix outcomes from memory's LanceDB table
+    outcomes = []
+    try:
+        import lancedb
+        db_path = os.path.join(os.path.expanduser("~"), "data", "memory", "lancedb")
+        db = lancedb.connect(db_path)
+        if "fix_outcomes" in db.table_names():
+            tbl = db.open_table("fix_outcomes")
+            rows = tbl.to_pandas().to_dict("records")
+            outcomes = rows
+    except Exception:
+        pass
+
+    if not outcomes:
+        return {
+            "total_outcomes": 0,
+            "message": "No fix_outcomes data available in LanceDB",
+            "chain_health": {"health_score": 50.0, "recommendations": ["Start tracking fix outcomes"]},
+        }
+
+    result = analyze_outcomes(outcomes)
+    # Serialize dataclasses for JSON transport
+    from dataclasses import asdict
+    health = asdict(result["chain_health"])
+    effectiveness = {k: asdict(v) for k, v in result["strategy_effectiveness"].items()}
+    recurring = [asdict(p) for p in result["recurring_failures"]]
+
+    return {
+        "total_outcomes": len(outcomes),
+        "strategy_effectiveness": effectiveness,
+        "recurring_failures": recurring,
+        "chain_health": health,
+        "summary": result["summary"],
+    }
+
+
 # ── Search Tools ──────────────────────────────────────────────────────────────
 
 # DORMANT: uncomment @mcp.tool() to reactivate
