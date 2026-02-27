@@ -1080,6 +1080,28 @@ def _apply_tier_boost(results):
     return results
 
 
+_ACCESS_BOOST_CAP = 0.03
+
+
+def _apply_access_boost(results):
+    """Tiebreaker boost for frequently-retrieved memories (max +0.03).
+
+    Log-scaled so diminishing returns: 1 retrieval ≈ +0.01, 10 ≈ +0.02, 50+ ≈ +0.03.
+    """
+    if not results:
+        return results
+    import math
+    for entry in results:
+        raw = entry.get("relevance", 0) or 0
+        rc = int(entry.get("retrieval_count", 0))
+        boost = min(_ACCESS_BOOST_CAP, 0.008 * math.log1p(rc)) if rc > 0 else 0.0
+        entry["_access_adjusted"] = raw + boost
+    results.sort(key=lambda x: x.get("_access_adjusted", 0), reverse=True)
+    for entry in results:
+        entry.pop("_access_adjusted", None)
+    return results
+
+
 _STOPWORDS = {"the", "a", "an", "is", "it", "to", "in", "of", "and", "for"}
 
 
@@ -1496,6 +1518,7 @@ def format_summaries(results) -> list[dict]:
             entry["tags"] = meta.get("tags", "")
             entry["timestamp"] = meta.get("timestamp", "")
             entry["tier"] = meta.get("tier", 2)
+            entry["retrieval_count"] = int(meta.get("retrieval_count", 0))
             if meta.get("primary_source"):
                 entry["url"] = meta["primary_source"]
         formatted.append(entry)
@@ -2123,6 +2146,12 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         formatted = _apply_tier_boost(formatted)
     except Exception:
         pass  # Tier boost failure must not break search
+
+    # Apply access-count boost: tiebreaker for frequently-retrieved memories (max +0.03)
+    try:
+        formatted = _apply_access_boost(formatted)
+    except Exception:
+        pass  # Access boost failure must not break search
 
     # Trim to requested top_k after expansion
     formatted = formatted[:top_k]
