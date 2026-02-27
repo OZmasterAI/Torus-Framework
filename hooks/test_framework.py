@@ -16492,6 +16492,332 @@ except Exception as _ere_exc:
     test("EventReplayExt: import and basic tests", False, str(_ere_exc))
 
 
+# ─── Gate Helpers Tests ─────────────────────────────────────────────
+print("\n--- Gate Helpers ---")
+from shared.gate_helpers import (
+    extract_file_path as gh_extract_file_path,
+    is_test_file as gh_is_test_file,
+    stem_normalize as gh_stem_normalize,
+    is_related_file as gh_is_related_file,
+    safe_tool_input as gh_safe_tool_input,
+    extract_command as gh_extract_command,
+    is_edit_tool as gh_is_edit_tool,
+    file_extension as gh_file_extension,
+    elapsed_since as gh_elapsed_since,
+    is_stale as gh_is_stale,
+)
+import time as _gh_time
+
+try:
+    # --- extract_file_path ---
+    test("GateHelpers: extract_file_path from Edit input",
+         gh_extract_file_path({"file_path": "/tmp/foo.py"}) == "/tmp/foo.py",
+         f"got {gh_extract_file_path({'file_path': '/tmp/foo.py'})}")
+
+    test("GateHelpers: extract_file_path from NotebookEdit input",
+         gh_extract_file_path({"notebook_path": "/tmp/nb.ipynb"}) == "/tmp/nb.ipynb",
+         f"got {gh_extract_file_path({'notebook_path': '/tmp/nb.ipynb'})}")
+
+    test("GateHelpers: extract_file_path from Glob path",
+         gh_extract_file_path({"path": "/tmp/dir"}) == "/tmp/dir",
+         f"got {gh_extract_file_path({'path': '/tmp/dir'})}")
+
+    test("GateHelpers: extract_file_path empty dict returns ''",
+         gh_extract_file_path({}) == "", f"got '{gh_extract_file_path({})}'")
+
+    test("GateHelpers: extract_file_path non-dict returns ''",
+         gh_extract_file_path("not a dict") == "", "")
+
+    test("GateHelpers: extract_file_path prefers file_path over path",
+         gh_extract_file_path({"file_path": "/a.py", "path": "/b"}) == "/a.py", "")
+
+    # --- is_test_file ---
+    test("GateHelpers: is_test_file('test_foo.py') = True",
+         gh_is_test_file("test_foo.py") is True, "")
+
+    test("GateHelpers: is_test_file('foo_test.py') = True",
+         gh_is_test_file("foo_test.py") is True, "")
+
+    test("GateHelpers: is_test_file('foo_spec.py') = True",
+         gh_is_test_file("foo_spec.py") is True, "")
+
+    test("GateHelpers: is_test_file('foo.test.js') = True",
+         gh_is_test_file("foo.test.js") is True, "")
+
+    test("GateHelpers: is_test_file('foo.py') = False",
+         gh_is_test_file("foo.py") is False, "")
+
+    test("GateHelpers: is_test_file('') = False",
+         gh_is_test_file("") is False, "")
+
+    # --- stem_normalize ---
+    test("GateHelpers: stem_normalize('test_foo.py') = 'foo'",
+         gh_stem_normalize("test_foo.py") == "foo",
+         f"got '{gh_stem_normalize('test_foo.py')}'")
+
+    test("GateHelpers: stem_normalize('foo_test.py') = 'foo'",
+         gh_stem_normalize("foo_test.py") == "foo",
+         f"got '{gh_stem_normalize('foo_test.py')}'")
+
+    test("GateHelpers: stem_normalize('foo.py') = 'foo'",
+         gh_stem_normalize("foo.py") == "foo",
+         f"got '{gh_stem_normalize('foo.py')}'")
+
+    test("GateHelpers: stem_normalize('') = ''",
+         gh_stem_normalize("") == "", "")
+
+    test("GateHelpers: stem_normalize preserves non-test stems",
+         gh_stem_normalize("enforcer.py") == "enforcer", "")
+
+    # --- is_related_file ---
+    test("GateHelpers: foo.py related to test_foo.py",
+         gh_is_related_file("foo.py", "test_foo.py") is True, "")
+
+    test("GateHelpers: same basename in different dir is related",
+         gh_is_related_file("/a/b/foo.py", "/c/d/foo.py") is True, "")
+
+    test("GateHelpers: unrelated files are not related",
+         gh_is_related_file("foo.py", "bar.py") is False, "")
+
+    test("GateHelpers: empty paths are not related",
+         gh_is_related_file("", "foo.py") is False, "")
+
+    # --- safe_tool_input ---
+    test("GateHelpers: safe_tool_input(dict) returns same dict",
+         gh_safe_tool_input({"a": 1}) == {"a": 1}, "")
+
+    test("GateHelpers: safe_tool_input(None) returns {}",
+         gh_safe_tool_input(None) == {}, "")
+
+    test("GateHelpers: safe_tool_input('str') returns {}",
+         gh_safe_tool_input("str") == {}, "")
+
+    # --- extract_command ---
+    test("GateHelpers: extract_command from Bash input",
+         gh_extract_command({"command": "ls -la"}) == "ls -la", "")
+
+    test("GateHelpers: extract_command empty dict returns ''",
+         gh_extract_command({}) == "", "")
+
+    test("GateHelpers: extract_command non-dict returns ''",
+         gh_extract_command(None) == "", "")
+
+    # --- is_edit_tool ---
+    test("GateHelpers: is_edit_tool('Edit') = True",
+         gh_is_edit_tool("Edit") is True, "")
+
+    test("GateHelpers: is_edit_tool('Write') = True",
+         gh_is_edit_tool("Write") is True, "")
+
+    test("GateHelpers: is_edit_tool('Bash') = False",
+         gh_is_edit_tool("Bash") is False, "")
+
+    # --- file_extension ---
+    test("GateHelpers: file_extension('foo.py') = '.py'",
+         gh_file_extension("foo.py") == ".py", "")
+
+    test("GateHelpers: file_extension('FOO.JSON') = '.json'",
+         gh_file_extension("FOO.JSON") == ".json", "")
+
+    test("GateHelpers: file_extension('noext') = ''",
+         gh_file_extension("noext") == "", "")
+
+    test("GateHelpers: file_extension('') = ''",
+         gh_file_extension("") == "", "")
+
+    # --- elapsed_since ---
+    _gh_recent = _gh_time.time() - 5.0
+    _gh_elapsed = gh_elapsed_since(_gh_recent)
+    test("GateHelpers: elapsed_since 5s ago is ~5s",
+         4.0 < _gh_elapsed < 10.0,
+         f"got {_gh_elapsed}")
+
+    test("GateHelpers: elapsed_since(0) returns 0.0",
+         gh_elapsed_since(0) == 0.0, "")
+
+    test("GateHelpers: elapsed_since(None) returns 0.0",
+         gh_elapsed_since(None) == 0.0, "")
+
+    # --- is_stale ---
+    test("GateHelpers: is_stale(recent, 60) = False",
+         gh_is_stale(_gh_time.time() - 5, 60) is False, "")
+
+    test("GateHelpers: is_stale(old, 10) = True",
+         gh_is_stale(_gh_time.time() - 30, 10) is True, "")
+
+    test("GateHelpers: is_stale(0, 60) = True (missing timestamp)",
+         gh_is_stale(0, 60) is True, "")
+
+except Exception as _gh_exc:
+    test("GateHelpers: import and basic tests", False, str(_gh_exc))
+
+
+# ─── Hot Reload Tests ───────────────────────────────────────────────
+print("\n--- Hot Reload ---")
+from shared.hot_reload import (
+    discover_gate_modules, check_for_changes, seed_mtimes,
+    get_reload_history, reload_gate, reset_state as hr_reset_state,
+    auto_reload, _module_to_filepath, _get_mtime, _validate_module,
+)
+import tempfile as _hr_tempfile
+
+try:
+    hr_reset_state()
+
+    # Test 1: discover_gate_modules returns list of gate modules
+    _hr_gates = discover_gate_modules()
+    test("HotReload: discover_gate_modules returns list",
+         isinstance(_hr_gates, list) and len(_hr_gates) > 0,
+         f"len={len(_hr_gates)}")
+
+    # Test 2: all discovered modules start with "gates."
+    _hr_all_prefixed = all(g.startswith("gates.") for g in _hr_gates)
+    test("HotReload: all modules start with 'gates.'",
+         _hr_all_prefixed, f"first non-prefixed: {[g for g in _hr_gates if not g.startswith('gates.')][:1]}")
+
+    # Test 3: _module_to_filepath converts dotted name to .py path
+    _hr_path = _module_to_filepath("gates.gate_01_read_before_edit")
+    test("HotReload: _module_to_filepath resolves to .py file",
+         _hr_path.endswith("gate_01_read_before_edit.py") and os.path.isfile(_hr_path),
+         f"path={_hr_path}")
+
+    # Test 4: _get_mtime returns float for existing file
+    _hr_mtime = _get_mtime(_hr_path)
+    test("HotReload: _get_mtime returns float for existing file",
+         isinstance(_hr_mtime, float) and _hr_mtime > 0,
+         f"mtime={_hr_mtime}")
+
+    # Test 5: _get_mtime returns None for missing file
+    test("HotReload: _get_mtime returns None for missing file",
+         _get_mtime("/tmp/__nonexistent_gate_xyz__.py") is None, "")
+
+    # Test 6: _validate_module succeeds for module with check()
+    import types as _hr_types
+    _hr_fake_mod = _hr_types.ModuleType("fake_valid")
+    _hr_fake_mod.check = lambda *a, **kw: None
+    test("HotReload: _validate_module True for module with check()",
+         _validate_module(_hr_fake_mod) is True, "")
+
+    # Test 7: _validate_module fails for module without check()
+    _hr_fake_nocheck = _hr_types.ModuleType("fake_invalid")
+    test("HotReload: _validate_module False for module without check()",
+         _validate_module(_hr_fake_nocheck) is False, "")
+
+    # Test 8: seed_mtimes records mtimes
+    hr_reset_state()
+    seed_mtimes(_hr_gates)
+    _hr_hist_seed = get_reload_history()
+    test("HotReload: seed_mtimes runs without error",
+         isinstance(_hr_hist_seed, list),
+         f"history len={len(_hr_hist_seed)}")
+
+    # Test 9: check_for_changes returns {} after seeding
+    hr_reset_state()
+    seed_mtimes(_hr_gates)
+    _hr_changes = check_for_changes(_hr_gates)
+    test("HotReload: check_for_changes {} after seeding",
+         isinstance(_hr_changes, dict) and len(_hr_changes) == 0,
+         f"changes={len(_hr_changes)}")
+
+    # Test 10: check_for_changes reports all as changed when cache empty
+    hr_reset_state()
+    _hr_changes_all = check_for_changes(_hr_gates)
+    test("HotReload: all modules changed when cache empty",
+         len(_hr_changes_all) == len(_hr_gates),
+         f"changed={len(_hr_changes_all)}, total={len(_hr_gates)}")
+
+    # Test 11: reload_gate succeeds for real gate
+    hr_reset_state()
+    if _hr_gates:
+        _hr_reload_ok = reload_gate(_hr_gates[0])
+        test("HotReload: reload_gate returns True for real gate",
+             _hr_reload_ok is True,
+             f"got {_hr_reload_ok}")
+    else:
+        skip("HotReload: reload_gate (no gates discovered)", "No gate files found")
+
+    # Test 12: reload_gate returns False for non-existent module
+    _hr_bad = reload_gate("gates.__nonexistent_test_gate_xyz__")
+    test("HotReload: reload_gate False for missing gate",
+         _hr_bad is False, f"got {_hr_bad}")
+
+    # Test 13: get_reload_history returns list
+    _hr_hist = get_reload_history()
+    test("HotReload: get_reload_history returns list",
+         isinstance(_hr_hist, list), f"type={type(_hr_hist).__name__}")
+
+    # Test 14: history entries have expected keys
+    if _hr_hist:
+        _hr_entry = _hr_hist[0]
+        _hr_has_keys = all(k in _hr_entry for k in ("module", "success", "timestamp", "reason"))
+        test("HotReload: history entry has expected keys",
+             _hr_has_keys,
+             f"keys={set(_hr_entry.keys())}")
+    else:
+        skip("HotReload: history entry keys (no entries)", "Empty history")
+
+    # Test 15: get_reload_history returns a copy
+    _hr_hist1 = get_reload_history()
+    _hr_hist1.append({"fake": True})
+    _hr_hist2 = get_reload_history()
+    test("HotReload: get_reload_history returns independent copy",
+         {"fake": True} not in _hr_hist2,
+         "List mutation leaked through")
+
+    # Test 16: reset_state clears everything
+    hr_reset_state()
+    _hr_after_reset = get_reload_history()
+    test("HotReload: reset_state clears history",
+         len(_hr_after_reset) == 0,
+         f"len={len(_hr_after_reset)}")
+
+    # Test 17: auto_reload returns [] when nothing changed
+    hr_reset_state()
+    seed_mtimes(_hr_gates)
+    # Force interval to expire
+    import shared.hot_reload as _hr_mod
+    _hr_mod._last_check_time = 0.0
+    _hr_auto = auto_reload(_hr_gates)
+    test("HotReload: auto_reload returns [] when nothing changed",
+         isinstance(_hr_auto, list) and len(_hr_auto) == 0,
+         f"reloaded={_hr_auto}")
+
+    # Test 18: auto_reload returns [] before interval elapses
+    _hr_mod._last_check_time = _gh_time.time()
+    _hr_auto2 = auto_reload(_hr_gates)
+    test("HotReload: auto_reload [] before interval elapses",
+         isinstance(_hr_auto2, list) and len(_hr_auto2) == 0,
+         f"reloaded={_hr_auto2}")
+
+    # Test 19: discover_gate_modules with custom dir
+    _hr_tmpdir = _hr_tempfile.mkdtemp()
+    # Write a fake gate file
+    with open(os.path.join(_hr_tmpdir, "gate_99_test.py"), "w") as _f:
+        _f.write("def check(*a, **kw): pass\n")
+    with open(os.path.join(_hr_tmpdir, "utils.py"), "w") as _f:
+        _f.write("# not a gate\n")
+    _hr_custom = discover_gate_modules(gates_dir=_hr_tmpdir)
+    test("HotReload: discover_gate_modules custom dir finds gate_99_test",
+         _hr_custom == ["gates.gate_99_test"],
+         f"got {_hr_custom}")
+    try:
+        os.unlink(os.path.join(_hr_tmpdir, "gate_99_test.py"))
+        os.unlink(os.path.join(_hr_tmpdir, "utils.py"))
+        os.rmdir(_hr_tmpdir)
+    except OSError:
+        pass
+
+    # Test 20: discover_gate_modules on non-existent dir returns []
+    _hr_bad_dir = discover_gate_modules(gates_dir="/tmp/__nonexistent_gates_dir__")
+    test("HotReload: discover_gate_modules missing dir returns []",
+         _hr_bad_dir == [], f"got {_hr_bad_dir}")
+
+    hr_reset_state()  # Clean up
+
+except Exception as _hr_exc:
+    test("HotReload: import and basic tests", False, str(_hr_exc))
+
+
 # SUMMARY (must be at very end of file)
 # ─────────────────────────────────────────────────
 print("\n" + "=" * 70)
