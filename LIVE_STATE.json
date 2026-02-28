@@ -1,21 +1,19 @@
 {
-  "session_count": 301,
+  "session_count": 302,
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.8",
-  "what_was_done": "Synced github/main, deleted github-branch remote, updated install.sh. Full 8-framework comparison (Torus 84, Enforcer 65, GSD/Hive 63). Wired mentor signals into observation persistence. Separated Hindsight toggle in statusline.",
+  "what_was_done": "Updated rules/hooks.md (GateResult full signature, escalation levels, test locations) and rules/framework.md (shared modules ~66, categorized). Renamed Hindsight toggle to 'Hindsight-Gate 19' on statusline.",
   "next_steps": [
     "Collect mentor longitudinal data (few sessions), then enable Gate 19 (hindsight)",
-    "Update rules/hooks.md and rules/framework.md — GateResult signature and test locations outdated",
-    "Run memory maintenance(action='stale') — 1669 entries, pruning nudge active",
+    "Run memory maintenance(action='stale') — 1670 entries, pruning nudge active",
     "Update test_shared_core.py Slack token test on refactor-test to match github fix",
     "Causal chain auto-refinement — start read-only analysis mode first"
   ],
   "known_issues": [
     "github-branch sync: NEVER delete hook files during bulk operations — causes tool deadlock",
     "GitHub push protection scans ALL commits, not just tip — squash secrets out before pushing",
-    "Mentor observation data starts this session — no longitudinal data before session 301",
-    "rules/hooks.md outdated: GateResult signature incomplete, test locations wrong",
+    "Mentor observation data starts session 301 — no longitudinal data before that",
     "Pyright type-narrowing warnings on importlib.util in search_server.py and web_search_server.py (pre-existing)",
     "domain system wired but inactive",
     "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache",
