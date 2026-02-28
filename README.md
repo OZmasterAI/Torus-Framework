@@ -50,7 +50,7 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
 | Feature | Description |
 |---------|-------------|
 | **19 Quality Gates** | Mechanical enforcement — read before edit, test before deploy, memory-first, no-destroy, injection defense, and more |
-| **Persistent Memory** | LanceDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations (~1,692 memories) |
+| **Persistent Memory** | LanceDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations |
 | **Hook Pipeline** | 12 lifecycle events — SessionStart, PreToolUse, PostToolUse, Stop, SubagentStart, PreCompact, and more |
 | **36 Skills** | Slash commands — `/commit`, `/benchmark`, `/security-scan`, `/brainstorm`, `/writing-plans`, `/domain`, and more |
 | **6 Agents** | builder, debugger, researcher, security, perf-analyzer, stress-tester — with delegation rules |

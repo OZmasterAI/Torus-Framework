@@ -596,7 +596,7 @@ Plugin directory cleared. No plugins currently installed.
 | External orchestrators | 2 |
 | Integrations | 2 |
 | Session state files | 43 |
-| Total memories | ~1,692 |
+| Total memories | — |
 | Largest file | hooks/tests/ (13 files, 29,417 lines) |
 
 ---

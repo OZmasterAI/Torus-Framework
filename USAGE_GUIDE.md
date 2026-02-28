@@ -164,7 +164,7 @@ L1: LanceDB (curated, semantic)
 
 ### L1 — LanceDB (Primary Curated Memory)
 
-The main memory store. ~1,692 entries across 5 tables. Accessed via MCP tools (`search_knowledge`, `remember_this`, etc.).
+The main memory store. 5 tables. Accessed via MCP tools (`search_knowledge`, `remember_this`, etc.).
 
 - **Embedding model:** nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 token context)
 - **Storage:** `~/data/memory/lancedb/` (LanceDB); backup at `~/data/memory/chroma.sqlite3`
