@@ -1048,9 +1048,9 @@ def main():
         f"Mentor: "
         f"{_tog('mentor_all', 'All')} "
         f"{_tog('mentor_tracker', 'Tracker')} "
-        f"{_tog('mentor_hindsight_gate', 'Hindsight')} "
         f"{_tog('mentor_outcome_chains', 'Chains')} "
         f"{_tog('mentor_memory', 'Memory')}"
+        f" | {_tog('mentor_hindsight_gate', 'Hindsight')}"
     )
     print(line5)
 
