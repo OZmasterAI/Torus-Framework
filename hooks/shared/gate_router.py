@@ -290,6 +290,149 @@ def route_gates(
     return results
 
 
+# ---------------------------------------------------------------------------
+# Intra-tier parallel gate execution
+# ---------------------------------------------------------------------------
+
+
+def _run_gate_checked(module_name, tool_name, tool_input, state, event_type):
+    """Run a single gate with error handling. Returns (module_name, GateResult) or (module_name, None)."""
+    mod = _load_gate(module_name)
+    if mod is None:
+        return (module_name, None)
+    try:
+        t_gate = time.time()
+        result = mod.check(tool_name, tool_input, state, event_type=event_type)
+        result.duration_ms = (time.time() - t_gate) * 1000
+        return (module_name, result)
+    except Exception as exc:
+        tier = _tier_of(module_name)
+        if tier == 1:
+            return (module_name, GateResult(blocked=True, message=f"[gate_router] Tier 1 gate '{module_name}' crashed: {exc}", gate_name=module_name, severity="critical"))
+        return (module_name, GateResult(blocked=False, message=f"[gate_router] Gate '{module_name}' crashed (non-fatal): {exc}", gate_name=module_name, severity="warn"))
+
+
+def _run_tier_parallel(gate_names, tool_name, tool_input, state, event_type, max_workers=4):
+    """Run a tier's gates in parallel using ThreadPoolExecutor.
+
+    Falls back to sequential execution for < 3 gates (thread pool
+    overhead exceeds savings for small batches).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    if len(gate_names) < 3:
+        results = []
+        for gn in gate_names:
+            _, r = _run_gate_checked(gn, tool_name, tool_input, state, event_type)
+            if r is not None:
+                results.append(r)
+        return results
+
+    results = []
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(gate_names))) as executor:
+        futures = {executor.submit(_run_gate_checked, gn, tool_name, tool_input, state, event_type): gn for gn in gate_names}
+        for future in as_completed(futures):
+            name, result = future.result()
+            if result is not None:
+                results.append(result)
+    return results
+
+
+def route_gates_parallel(
+    tool_name: str,
+    tool_input: dict,
+    state: dict,
+    event_type: str = "PreToolUse",
+    max_workers: int = 4,
+) -> List[GateResult]:
+    """Run applicable gates with intra-tier parallelism.
+
+    Same contract as ``route_gates()`` but executes Tier 2 and Tier 3
+    gates concurrently within their respective tiers.  Tier 1 remains
+    strictly sequential for safety (fail-closed, short-circuit on block).
+
+    Gate 11 (rate_limit) always runs last, after all other tiers,
+    regardless of tier membership.
+
+    Parameters
+    ----------
+    tool_name : str
+        Claude Code tool name.
+    tool_input : dict
+        The tool_input dict from the hook payload.
+    state : dict
+        Per-session state dict (may be mutated by gates).
+    event_type : str
+        Hook event type forwarded to each gate.
+    max_workers : int
+        Maximum parallel threads per tier (default 4).
+
+    Returns
+    -------
+    list[GateResult]
+        Results for every gate that was actually run.
+    """
+    t_start = time.time()
+    _set_stat_int("calls", _get_stat_int("calls") + 1)
+
+    applicable = get_applicable_gates(tool_name)
+
+    # Partition by tier
+    t1 = [g for g in applicable if g in TIER1]
+    t2 = [g for g in applicable if g in TIER2]
+    t3 = [g for g in applicable if g in TIER3]
+
+    # Gate 11 must run last — extract from its tier
+    RATE_LIMIT = "gates.gate_11_rate_limit"
+    has_rate_limit = RATE_LIMIT in t3
+    if has_rate_limit:
+        t3.remove(RATE_LIMIT)
+
+    results: List[GateResult] = []
+
+    # ── Phase 1: Tier 1 — sequential, short-circuit on block/ask ──
+    for module_name in t1:
+        _, result = _run_gate_checked(module_name, tool_name, tool_input, state, event_type)
+        if result is None:
+            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + 1)
+            continue
+        _set_stat_int("gates_run", _get_stat_int("gates_run") + 1)
+        results.append(result)
+        if result.blocked or result.is_ask:
+            _set_stat_int("tier1_blocks", _get_stat_int("tier1_blocks") + 1)
+            remaining = len(t2) + len(t3) + (1 if has_rate_limit else 0)
+            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + remaining)
+            elapsed_ms = (time.time() - t_start) * 1000
+            _get_stat_list("timing_ms").append(elapsed_ms)
+            return results
+
+    # ── Phase 2: Tier 2 — parallel ──
+    if t2:
+        t2_results = _run_tier_parallel(t2, tool_name, tool_input, state, event_type, max_workers)
+        _set_stat_int("gates_run", _get_stat_int("gates_run") + len(t2_results))
+        results.extend(t2_results)
+
+    # ── Phase 3: Tier 3 — parallel (excluding rate limit) ──
+    if t3:
+        t3_results = _run_tier_parallel(t3, tool_name, tool_input, state, event_type, max_workers)
+        _set_stat_int("gates_run", _get_stat_int("gates_run") + len(t3_results))
+        results.extend(t3_results)
+
+    # ── Phase 4: Rate limit — always last, sequential ──
+    if has_rate_limit:
+        _, rl_result = _run_gate_checked(RATE_LIMIT, tool_name, tool_input, state, event_type)
+        if rl_result is not None:
+            _set_stat_int("gates_run", _get_stat_int("gates_run") + 1)
+            results.append(rl_result)
+        else:
+            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + 1)
+
+    elapsed_ms = (time.time() - t_start) * 1000
+    _get_stat_list("timing_ms").append(elapsed_ms)
+
+    return results
+
+
 def get_routing_stats() -> dict:
     """Return a snapshot of cumulative routing statistics.
 

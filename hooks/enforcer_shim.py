@@ -18,6 +18,27 @@ import sys
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 SOCKET_PATH = os.path.join(HOOKS_DIR, ".enforcer.sock")
 
+# ── Circuit-breaker integration ────────────────────────────────────────────────
+# Tracks enforcer daemon failures so a dead daemon is skipped early and the
+# inline fallback is used instead of waiting for connection timeouts.
+if HOOKS_DIR not in sys.path:
+    sys.path.insert(0, HOOKS_DIR)
+try:
+    from shared.circuit_breaker import (
+        is_open        as _cb_is_open,
+        record_success as _cb_record_success,
+        record_failure as _cb_record_failure,
+        get_state      as _cb_get_state,
+    )
+except ImportError:
+    def _cb_is_open(s):              return False       # noqa: E704
+    def _cb_record_success(s, **kw): pass               # noqa: E704
+    def _cb_record_failure(s, **kw): pass               # noqa: E704
+    def _cb_get_state(s):            return "CLOSED"    # noqa: E704
+
+_CB_SVC    = "enforcer_daemon"
+_CB_KWARGS = {"failure_threshold": 3, "recovery_timeout": 30, "success_threshold": 1}
+
 
 def _try_daemon(raw_input: bytes) -> bool:
     """Try to send request to daemon via UDS. Returns True if handled."""
@@ -51,6 +72,7 @@ def _try_daemon(raw_input: bytes) -> bool:
         if stdout_text:
             sys.stdout.write(stdout_text)
 
+        _cb_record_success(_CB_SVC, **_CB_KWARGS)
         sys.exit(exit_code)
 
     except (ConnectionRefusedError, FileNotFoundError, BrokenPipeError,
@@ -70,10 +92,18 @@ def _run_inline(raw_input: bytes):
 def main():
     raw = sys.stdin.buffer.read()
 
-    # Fast path: try daemon socket
+    # Fast path: try daemon socket (skipped when circuit breaker is OPEN)
     if os.path.exists(SOCKET_PATH):
-        if _try_daemon(raw):
-            return  # Handled (won't reach here — _try_daemon calls sys.exit)
+        if _cb_is_open(_CB_SVC):
+            sys.stderr.write(f"[CB] {_CB_SVC} circuit OPEN – using inline fallback\n")
+        else:
+            if not _try_daemon(raw):
+                # Daemon unreachable or returned empty response — record failure
+                _cb_record_failure(_CB_SVC, **_CB_KWARGS)
+                _state = _cb_get_state(_CB_SVC)
+                if _state != "CLOSED":
+                    sys.stderr.write(f"[CB] {_CB_SVC} → {_state}\n")
+            # _try_daemon calls sys.exit() on success, so reaching here means failure
 
     # Slow path: inline execution (same as calling enforcer.py directly)
     _run_inline(raw)

@@ -11,7 +11,7 @@ knowledge retention.
 Run standalone: python3 memory_server.py
 Used via MCP: configured in .claude/mcp.json
 
-Phase 1 migration: ChromaDB → LanceDB (Session 232).
+Migrated from ChromaDB → LanceDB in Session 232.
 LanceDB provides optimistic concurrency control (no more segfaults),
 native TS bindings, and built-in BM25 FTS.
 """
@@ -109,7 +109,7 @@ TAGS_DB_PATH = os.path.join(MEMORY_DIR, "tags.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
 SOCKET_PATH = os.path.join(
-    os.path.expanduser("~"), ".claude", "hooks", ".chromadb.sock"
+    os.path.expanduser("~"), ".claude", "hooks", ".memory.sock"
 )
 _socket_server = None  # threading server reference for cleanup
 _uds_shutting_down = False  # prevents rebind during intentional shutdown
@@ -121,7 +121,7 @@ fix_outcomes = None  # LanceCollection wrapper for fix_outcomes table
 observations = None  # LanceCollection wrapper for observations table
 web_pages = None  # LanceCollection wrapper for web_pages table
 quarantine = None  # LanceCollection wrapper for quarantine table
-_chromadb_degraded = False  # kept for backward compat (now means "lance degraded")
+_lance_degraded = False  # kept for backward compat (now means "lance degraded")
 
 
 # ── Arrow Schemas for LanceDB Tables ───────────────────────────────────────
@@ -230,10 +230,9 @@ def _embed_text(text):
 
 
 class LanceCollection:
-    """LanceDB wrapper with ChromaDB-compatible API around a LanceDB table.
+    """LanceDB table wrapper with a familiar API surface.
 
-    Provides the same API surface as the old chromadb.Collection (query, get, upsert, update,
-    delete, count) so existing code works with minimal changes.
+    Provides query, get, upsert, update, delete, count methods.
 
     LanceDB cosine distance: 0 = identical, 2 = opposite (range 0-2).
     LanceDB cosine distance: 0 = identical, 2 = opposite (same range).
@@ -443,7 +442,7 @@ class LanceCollection:
 
     @staticmethod
     def _translate_where(where):
-        """Translate where-clause dict (ChromaDB filter syntax) to LanceDB SQL string.
+        """Translate where-clause dict to a LanceDB SQL filter string.
 
         Examples:
             {"session_time": {"$lt": 123.4}} → "session_time < 123.4"
@@ -499,7 +498,7 @@ def _init_lancedb():
     Safe to call multiple times — idempotent after first run.
     Uses nomic-ai/nomic-embed-text-v2-moe embedding model (768-dim, 8192 tokens).
     """
-    global _lance_db, collection, fix_outcomes, observations, web_pages, quarantine, _chromadb_degraded, _embedding_fn
+    global _lance_db, collection, fix_outcomes, observations, web_pages, quarantine, _lance_degraded, _embedding_fn
     if _lance_db is not None:
         return
     try:
@@ -532,7 +531,7 @@ def _init_lancedb():
     except Exception as e:
         import traceback
         print(f"[MCP] LanceDB init failed: {e}\n{traceback.format_exc()}", file=_sys.stderr)
-        _chromadb_degraded = True
+        _lance_degraded = True
 
 # Progressive disclosure: preview length for search summaries
 SUMMARY_LENGTH = 120
@@ -674,7 +673,7 @@ def _normalize_tags(tags: str) -> str:
 
 
 def _migrate_previews():
-    """LEGACY: Preview backfill no longer needed — handled by ChromaDB→LanceDB migration.
+    """LEGACY: Preview backfill no longer needed — handled during LanceDB migration.
     Returns 0 (no-op).
     """
     return 0
@@ -684,7 +683,7 @@ _TIER_BACKFILL_MARKER = os.path.join(os.path.dirname(__file__), ".tier_backfill_
 
 
 def _backfill_tiers():
-    """LEGACY: Tier backfill no longer needed — handled by ChromaDB→LanceDB migration.
+    """LEGACY: Tier backfill no longer needed — handled during LanceDB migration.
     Returns 0 (no-op).
     """
     return 0
@@ -695,8 +694,7 @@ _COLLECTION_NAMES = ["knowledge", "fix_outcomes", "observations", "web_pages", "
 
 
 def _migrate_embeddings():
-    """LEGACY: Embedding migration no longer needed — LanceDB stores vectors directly.
-    ChromaDB→LanceDB migration script handles embedding transfer.
+    """LEGACY: Embedding migration no longer needed — LanceDB stores vectors natively.
     Returns 0 (no-op).
     """
     return 0
@@ -919,8 +917,6 @@ class TagIndex:
             self._update_sync_count(len(ids))
         return len(ids)
 
-    # Legacy alias for backward compatibility (used by test_framework.py mock tests)
-    build_from_chromadb = build_from_lance
 
     def add_tags(self, memory_id, tags_str):
         """Add/update tags for a single memory (called on remember_this)."""
@@ -1080,6 +1076,28 @@ def _apply_tier_boost(results):
     return results
 
 
+_ACCESS_BOOST_CAP = 0.03
+
+
+def _apply_access_boost(results):
+    """Tiebreaker boost for frequently-retrieved memories (max +0.03).
+
+    Log-scaled so diminishing returns: 1 retrieval ≈ +0.01, 10 ≈ +0.02, 50+ ≈ +0.03.
+    """
+    if not results:
+        return results
+    import math
+    for entry in results:
+        raw = entry.get("relevance", 0) or 0
+        rc = int(entry.get("retrieval_count", 0))
+        boost = min(_ACCESS_BOOST_CAP, 0.008 * math.log1p(rc)) if rc > 0 else 0.0
+        entry["_access_adjusted"] = raw + boost
+    results.sort(key=lambda x: x.get("_access_adjusted", 0), reverse=True)
+    for entry in results:
+        entry.pop("_access_adjusted", None)
+    return results
+
+
 _STOPWORDS = {"the", "a", "an", "is", "it", "to", "in", "of", "and", "for"}
 
 
@@ -1104,7 +1122,7 @@ def _rerank_keyword_overlap(results, query, boost_weight=0.05):
     return results
 
 
-def _merge_results(fts_results, chroma_summaries, top_k=15):
+def _merge_results(fts_results, lance_summaries, top_k=15):
     """Merge FTS5 and LanceDB results using Reciprocal Rank Fusion (RRF).
 
     RRF gives each engine equal weight: score = sum(1/(k+rank)) across engines.
@@ -1117,7 +1135,7 @@ def _merge_results(fts_results, chroma_summaries, top_k=15):
     sources = {}  # memory_id -> set of source names
 
     # Score vector results by rank
-    for rank, entry in enumerate(chroma_summaries, start=1):
+    for rank, entry in enumerate(lance_summaries, start=1):
         mid = entry.get("id", "")
         if not mid:
             continue
@@ -1153,6 +1171,7 @@ tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
 _lance_fts_ready = False  # True once LanceDB FTS index is built
+_SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
 def _lance_fts_to_summary(row):
@@ -1177,6 +1196,92 @@ def _lance_keyword_search(query, top_k=15):
     try:
         rows = collection._table.search(query).limit(top_k).to_list()
         return [_lance_fts_to_summary(r) for r in rows]
+    except Exception:
+        return []
+
+
+def _generate_fuzzy_variants(term: str, max_distance: int = 1) -> list:
+    """Generate spelling variants within edit distance for fuzzy matching."""
+    if len(term) <= 2:
+        return [term]
+
+    variants = {term}
+    alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789_'
+
+    # Deletions (remove one char)
+    for i in range(len(term)):
+        variants.add(term[:i] + term[i+1:])
+
+    # Substitutions (replace one char)
+    for i in range(len(term)):
+        for c in alphabet:
+            if c != term[i]:
+                variants.add(term[:i] + c + term[i+1:])
+
+    # Transpositions (swap adjacent chars)
+    for i in range(len(term) - 1):
+        variants.add(term[:i] + term[i+1] + term[i] + term[i+2:])
+
+    return list(variants)
+
+
+def _fuzzy_keyword_search(query: str, table_name: str = "knowledge", top_k: int = 10):
+    """Search with fuzzy term expansion for typo tolerance.
+
+    Splits query into terms, generates edit-distance-1 variants,
+    queries LanceDB FTS with expanded terms, boosts exact matches 2x.
+    """
+    if not _lance_fts_ready:
+        return []
+
+    global collection, observations, fix_outcomes, web_pages
+    tbl_map = {
+        "knowledge": collection,
+        "observations": observations,
+        "fix_outcomes": fix_outcomes,
+        "web_pages": web_pages,
+    }
+    tbl_coll = tbl_map.get(table_name, collection)
+    if tbl_coll is None:
+        return []
+
+    terms = query.lower().split()
+    if not terms:
+        return []
+
+    # Generate fuzzy variants for each term
+    all_variants = []
+    exact_terms = set(terms)
+    for term in terms:
+        all_variants.extend(_generate_fuzzy_variants(term))
+
+    # Build OR query with all variants (LanceDB FTS supports OR)
+    expanded_query = " OR ".join(set(all_variants))
+
+    try:
+        rows = tbl_coll._table.search(expanded_query, query_type="fts").limit(top_k * 2).to_list()
+        if not rows:
+            return []
+
+        # Boost exact matches 2x
+        scored_results = []
+        for row in rows:
+            text_lower = str(row.get("text", "")).lower()
+            boost = 1.0
+            for term in exact_terms:
+                if term in text_lower:
+                    boost = 2.0
+                    break
+            scored_results.append({
+                "id": str(row.get("id", "")),
+                "text": str(row.get("text", ""))[:500],
+                "relevance": float(row.get("_score", 0.5)) * boost,
+                "tags": str(row.get("tags", "")),
+                "match_type": "exact" if boost > 1.0 else "fuzzy",
+            })
+
+        scored_results.sort(key=lambda x: x["relevance"], reverse=True)
+        return scored_results[:top_k]
     except Exception:
         return []
 
@@ -1409,6 +1514,7 @@ def format_summaries(results) -> list[dict]:
             entry["tags"] = meta.get("tags", "")
             entry["timestamp"] = meta.get("timestamp", "")
             entry["tier"] = meta.get("tier", 2)
+            entry["retrieval_count"] = int(meta.get("retrieval_count", 0))
             if meta.get("primary_source"):
                 entry["url"] = meta["primary_source"]
         formatted.append(entry)
@@ -1752,7 +1858,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         match_all: For tag mode only — if true, all tags must be present (default false).
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     recency_weight = max(0.0, min(1.0, recency_weight))
     top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
@@ -1865,12 +1971,12 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     elif mode == "hybrid":
         # Both engines, merged via RRF
         fts_results = _lance_keyword_search(query, top_k=actual_k)
-        chroma_results = collection.query(
+        lance_results = collection.query(
             query_texts=[query], n_results=actual_k,
             include=["metadatas", "distances"],
         )
-        chroma_summaries = format_summaries(chroma_results)
-        formatted = _merge_results(fts_results, chroma_summaries, top_k=actual_k)
+        lance_summaries = format_summaries(lance_results)
+        formatted = _merge_results(fts_results, lance_summaries, top_k=actual_k)
     else:
         # Semantic (default)
         results = collection.query(
@@ -2036,6 +2142,12 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         formatted = _apply_tier_boost(formatted)
     except Exception:
         pass  # Tier boost failure must not break search
+
+    # Apply access-count boost: tiebreaker for frequently-retrieved memories (max +0.03)
+    try:
+        formatted = _apply_access_boost(formatted)
+    except Exception:
+        pass  # Access boost failure must not break search
 
     # Trim to requested top_k after expansion
     formatted = formatted[:top_k]
@@ -2346,6 +2458,35 @@ def _check_dedup(content, tags=""):
 
 @mcp.tool()
 @crash_proof
+def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
+    """Search memory with typo tolerance and boosted relevance.
+
+    Like search_knowledge but handles misspellings and typos by expanding
+    search terms with edit-distance variants. Exact matches get 2x boost.
+
+    Args:
+        query: Search query (typos OK)
+        top_k: Max results (default 10)
+        table: Table to search (knowledge, observations, fix_outcomes)
+    """
+    _ensure_initialized()
+    if _lance_degraded:
+        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+
+    if not query or not query.strip():
+        return {"error": "Empty query"}
+
+    valid_tables = {"knowledge", "observations", "fix_outcomes", "web_pages"}
+    if table not in valid_tables:
+        table = "knowledge"
+
+    top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
+    results = _fuzzy_keyword_search(query.strip(), table, top_k)
+    return {"query": query, "table": table, "results": results, "count": len(results)}
+
+
+@mcp.tool()
+@crash_proof
 def remember_this(content: str, context: str = "", tags: str = "", force: bool = False) -> dict:
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
@@ -2356,7 +2497,7 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
         force: Skip dedup check entirely (escape hatch if threshold is wrong)
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     # Cap metadata strings to 500 chars
     if len(context) > 500:
@@ -2542,7 +2683,7 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
         threshold: Cosine distance threshold for duplicate detection (default 0.15)
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode"}
     threshold = _validate_distance_threshold(threshold, default=0.15, min_val=0.03, max_val=0.5)
 
@@ -2645,7 +2786,7 @@ def get_memory(id: str) -> dict:
         id: The memory ID (from search results)
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     try:
         # Support batch fetch: comma-separated IDs return multiple memories
@@ -2709,7 +2850,7 @@ def delete_memory(id: str) -> dict:
     Args:
         id: The memory ID to delete (from search results). Comma-separated for batch delete.
     """
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     try:
         ids = [i.strip() for i in id.split(",") if i.strip()]
@@ -2836,7 +2977,7 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
         strategy_id: A short name for the fix strategy (e.g., "fix-type-cast")
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     normalized, error_hash = error_signature(error_text)
     strategy_hash = fnv1a_hash(strategy_id)
@@ -2892,7 +3033,7 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
         outcome: "success" or "failure"
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     if outcome not in ("success", "failure"):
         return {"error": "outcome must be 'success' or 'failure'"}
@@ -2950,7 +3091,7 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
         top_k: Maximum number of results (default 10)
     """
     _ensure_initialized()
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
     normalized, error_hash = error_signature(error_text)
@@ -3052,6 +3193,77 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
             pass
 
     return result
+
+
+@mcp.tool()
+@crash_proof
+def health_check() -> dict:
+    """Return lightweight server health metrics.
+
+    Returns server uptime, table row counts, last write timestamp,
+    embedding model status, LanceDB connection status, Tags DB status,
+    total memory count, and disk usage of ~/data/memory/lancedb/.
+
+    No heavy queries — reads only cached globals and filesystem metadata.
+    """
+    now = time.time()
+    uptime_s = int(now - _SERVER_START_TIME)
+    uptime_str = f"{uptime_s // 3600}h {(uptime_s % 3600) // 60}m {uptime_s % 60}s"
+
+    # Table counts — cheap .count() calls on cached LanceCollection wrappers
+    table_counts = {}
+    for name, col in [
+        ("knowledge", collection),
+        ("observations", observations),
+        ("fix_outcomes", fix_outcomes),
+        ("web_pages", web_pages),
+        ("quarantine", quarantine),
+    ]:
+        try:
+            table_counts[name] = col.count() if col is not None else -1
+        except Exception:
+            table_counts[name] = -1
+
+    total_count = sum(v for v in table_counts.values() if v >= 0)
+
+    # Last write timestamp from sideband file
+    last_write = None
+    try:
+        if os.path.exists(MEMORY_TIMESTAMP_FILE):
+            with open(MEMORY_TIMESTAMP_FILE) as f:
+                data = json.load(f)
+                ts = data.get("timestamp")
+                if ts:
+                    last_write = datetime.fromtimestamp(float(ts)).isoformat()
+    except Exception:
+        pass
+
+    # Disk usage of lancedb directory
+    disk_bytes = 0
+    try:
+        if os.path.isdir(LANCE_DIR):
+            for dirpath, _dirs, files in os.walk(LANCE_DIR):
+                for fname in files:
+                    try:
+                        disk_bytes += os.path.getsize(os.path.join(dirpath, fname))
+                    except OSError:
+                        pass
+    except Exception:
+        disk_bytes = -1
+
+    return {
+        "status": "ok" if not _lance_degraded else "degraded",
+        "uptime": uptime_str,
+        "uptime_seconds": uptime_s,
+        "table_counts": table_counts,
+        "total_memories": total_count,
+        "last_write": last_write,
+        "embedding_model": "loaded" if _embedding_fn is not None else "not_loaded",
+        "lancedb": "connected" if (_lance_db is not None and not _lance_degraded) else ("degraded" if _lance_degraded else "not_connected"),
+        "tags_db": "ok" if os.path.exists(TAGS_DB_PATH) else "missing",
+        "disk_usage_mb": round(disk_bytes / (1024 * 1024), 2) if disk_bytes >= 0 else -1,
+        "initialized": _initialized,
+    }
 
 
 def suggest_promotions(top_k: int = 5) -> dict:
@@ -3845,7 +4057,7 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
         min_cluster_size: Min memories per cluster (used by cluster).
         distance_threshold: Max cosine distance for clustering (used by cluster).
     """
-    if _chromadb_degraded:
+    if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
     if action == "promotions":
         return suggest_promotions(top_k=top_k if top_k is not None else 5)

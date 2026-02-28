@@ -1,15 +1,15 @@
 """Gate 6: SAVE TO MEMORY (Tier 2 — Quality)
 
-Unified "save to memory" reminder gate. Nudges (does not hard-block)
-to save knowledge before continuing with new work.
+Blocks edits when verified fixes haven't been saved to memory.
+Advisory warnings (stderr) for other conditions.
 
 Checks:
-  1. Verified fixes not saved (tests passed after edits)
-  2. Unlogged errors
-  3. Repair loops (same error 3+ times)
-  4. Edit streak churn (high-churn files)
-  5. Pending causal chain outcomes
-  6. Plan mode exited without saving (absorbed from former Gate 12)
+  1. Verified fixes not saved → BLOCKS at threshold (no warn phase)
+  2. Unlogged errors → advisory stderr
+  3. Repair loops (same error 3+ times) → advisory stderr
+  4. Edit streak churn (high-churn files) → advisory stderr
+  5. Pending causal chain outcomes → advisory stderr
+  6. Plan mode exited without saving → advisory stderr
 
 The verified_fixes list is populated by the PostToolUse handler
 when tests pass after edits were made.
@@ -25,20 +25,8 @@ from shared.state import get_memory_last_queried
 
 GATE_NAME = "GATE 6: SAVE TO MEMORY"
 
-# How many unsaved verified fixes before we warn (not block)
-WARN_THRESHOLD = 2
-
-# Escalation: after this many warnings, Gate 6 becomes blocking
-# Set to 5 (not 2) to give adequate room for remember_this() resets
-# and avoid premature deadlocks where blocking prevents clearing
-ESCALATION_THRESHOLD = 5
-
-# Analytics awareness (Upgrade F): SEPARATE counter, loose threshold.
-# Only fires for framework file edits without recent analytics query.
-# Never cross-contaminates with gate6_warn_count.
-ANALYTICS_ESCALATION_THRESHOLD = 15
-ANALYTICS_STALE_SECONDS = 1800  # 30 min since last analytics call
-FRAMEWORK_PATHS = ("/gates/", "/shared/", "enforcer", "tracker", "/skills/")
+# Block immediately at this many unsaved verified fixes (no warn phase)
+BLOCK_THRESHOLD = 2
 
 # Verified fixes older than this are considered stale (expired)
 STALE_FIX_SECONDS = 1200  # 20 minutes
@@ -54,7 +42,7 @@ EXCLUDED_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/")
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
-    """Advisory gate that escalates to blocking after repeated ignored warnings."""
+    """Blocks edits when verified fixes are unsaved. Advisory warnings for other conditions."""
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
@@ -67,7 +55,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         if subagent_type in READ_ONLY_AGENTS:
             return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    warn_count = state.get("gate6_warn_count", 0)
     issued_warning = False
 
     verified_fixes = state.get("verified_fixes", [])
@@ -80,21 +67,26 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if len(fresh_fixes) < len(verified_fixes):
         state["verified_fixes"] = fresh_fixes
         verified_fixes = fresh_fixes
-    if len(verified_fixes) >= WARN_THRESHOLD:
-        fix_list = ", ".join(os.path.basename(f) for f in verified_fixes[:3])
-        print(
-            f"[{GATE_NAME}] WARNING: {len(verified_fixes)} verified fixes not saved to memory ({fix_list}). "
-            f"Consider using remember_this() with outcome:success tag to save what worked.",
-            file=sys.stderr,
-        )
-        issued_warning = True
-        # Smart batching suggestion when multiple fixes unsaved
-        if len(verified_fixes) >= 3:
+
+    # Block immediately when unsaved verified fixes reach threshold
+    if len(verified_fixes) >= BLOCK_THRESHOLD:
+        # Exempt Bash — tests must still run to satisfy Gate 5/15
+        if tool_name == "Bash":
+            fix_list = ", ".join(os.path.basename(f) for f in verified_fixes[:3])
             print(
-                f"[{GATE_NAME}] TIP: Save all {len(verified_fixes)} fixes at once with a single "
-                f"remember_this() call summarizing the changes.",
+                f"[{GATE_NAME}] WARNING: {len(verified_fixes)} verified fixes unsaved ({fix_list}). "
+                f"Bash allowed for test verification. Call remember_this() soon.",
                 file=sys.stderr,
             )
+            return GateResult(blocked=False, gate_name=GATE_NAME, severity="warn")
+        fix_list = ", ".join(os.path.basename(f) for f in verified_fixes[:3])
+        return GateResult(
+            blocked=True,
+            message=f"[{GATE_NAME}] BLOCKED: {len(verified_fixes)} verified fixes unsaved ({fix_list}). "
+                    f"Call remember_this() to continue.",
+            gate_name=GATE_NAME,
+            severity="error",
+        )
 
     # Also warn about unlogged errors
     unlogged_errors = state.get("unlogged_errors", [])
@@ -177,63 +169,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             )
             issued_warning = True
 
-    # ── Analytics awareness (Upgrade F) — separate counter, loose threshold ──
-    # Only checks Edit/Write on framework paths. Never increments gate6_warn_count.
-    analytics_warned = False
-    if tool_name in ("Edit", "Write"):
-        file_path = tool_input.get("file_path", "") if isinstance(tool_input, dict) else ""
-        if any(p in file_path for p in FRAMEWORK_PATHS):
-            last_analytics = state.get("analytics_last_queried", 0)
-            elapsed = time.time() - last_analytics if last_analytics else float("inf")
-            if elapsed > ANALYTICS_STALE_SECONDS:
-                analytics_count = state.get("analytics_warn_count", 0) + 1
-                state["analytics_warn_count"] = analytics_count
-                print(
-                    f"[{GATE_NAME}] ANALYTICS: Editing framework file without recent analytics check "
-                    f"({analytics_count}/{ANALYTICS_ESCALATION_THRESHOLD}). "
-                    f"Consider: gate_dashboard(), gate_timing(), or skill_health()",
-                    file=sys.stderr,
-                )
-                analytics_warned = True
-                if analytics_count >= ANALYTICS_ESCALATION_THRESHOLD:
-                    if tool_name == "Bash":
-                        return GateResult(blocked=False, gate_name=GATE_NAME, severity="warn")
-                    return GateResult(
-                        blocked=True,
-                        message=f"[{GATE_NAME}] BLOCKED: {analytics_count} framework edits without analytics check. "
-                                f"Call any mcp__analytics__*() tool to continue.",
-                        gate_name=GATE_NAME,
-                        severity="error",
-                    )
-
-    # Escalation: only verified_fixes warnings count toward blocking.
-    # Other warning types (unlogged errors, edit streaks, repair loops) stay
-    # advisory-only — they should not accumulate toward blocking because
-    # false positives from test output and crash logs inflate the counter.
-    fixes_warning = len(verified_fixes) >= WARN_THRESHOLD
-    if fixes_warning:
-        warn_count += 1
-        state["gate6_warn_count"] = warn_count
-
-    escalation_threshold = state.get("gate_tune_overrides", {}).get("gate_06_save_fix", {}).get("escalation_threshold", ESCALATION_THRESHOLD)
-    if fixes_warning and warn_count >= escalation_threshold:
-            # Exempt Bash from escalation blocking — tests must still run
-            # to satisfy Gate 5/15, and blocking Bash creates a deadlock
-            if tool_name == "Bash":
-                print(
-                    f"[{GATE_NAME}] WARNING (escalated): {warn_count} unsaved fixes. "
-                    f"Bash allowed for test verification. Call remember_this() soon.",
-                    file=sys.stderr,
-                )
-                return GateResult(blocked=False, gate_name=GATE_NAME, severity="warn")
-            return GateResult(
-                blocked=True,
-                message=f"[{GATE_NAME}] BLOCKED: {warn_count} verified fixes unsaved. "
-                        f"Call remember_this() to continue.",
-                gate_name=GATE_NAME,
-                severity="error",
-            )
-
     # If warnings were issued but not blocking, mark as advisory
-    severity = "warn" if (issued_warning or analytics_warned) else "info"
+    severity = "warn" if issued_warning else "info"
     return GateResult(blocked=False, gate_name=GATE_NAME, severity=severity)

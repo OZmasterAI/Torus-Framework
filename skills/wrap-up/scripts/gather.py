@@ -18,7 +18,7 @@ LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 # Make shared modules importable
 sys.path.insert(0, HOOKS_DIR)
 
-from shared.chromadb_socket import (
+from shared.memory_socket import (
     WorkerUnavailable,
     backup as socket_backup,
     count as socket_count,

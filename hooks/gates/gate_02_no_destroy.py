@@ -67,9 +67,8 @@ DANGEROUS_PATTERNS = [
     (r"\brsync\b.*--delete\b", "rsync --delete (can remove target files)"),
     # Shell wrapping / indirection (can hide any destructive command)
     (r"\beval\s+", "eval (shell command indirection)"),
-    (r"\bbash\s+-c\s+", "bash -c (shell command wrapping)"),
-    (r"\bsh\s+-c\s+", "sh -c (shell command wrapping)"),
-    (r"\|\s*(ba)?sh\b", "pipe to shell (command indirection)"),
+    # NOTE: bash -c, sh -c, pipe-to-shell removed (false positive rate
+    # too high; destructive payloads still caught by their own patterns e.g. rm -rf, git push --force).
     (r"<<<\s*", "heredoc execution (<<<)"),
     (r"(?<!<)<<(?!<)\s*", "heredoc input (<<)"),
     (r"\bexec\s+", "exec (replace current process)"),
@@ -84,7 +83,8 @@ DANGEROUS_PATTERNS = [
 # Safe exceptions: when a dangerous pattern matches, these overrides are checked.
 # If the command also matches a safe exception for that pattern, it is allowed through.
 # Format: (exact_description_from_DANGEROUS_PATTERNS, safe_regex_pattern)
-# NOTE: Bypass vectors (eval, bash -c, sh -c, pipe-to-shell) have NO exceptions.
+# NOTE: eval has NO exceptions. bash -c, sh -c, pipe-to-shell removed (false positive rate
+# too high; destructive payloads still caught by their own patterns e.g. rm -rf, git push --force).
 SAFE_EXCEPTIONS = [
     # source: handled by _source_is_safe() below (path validation with realpath)
     # exec: handled by _exec_is_safe() below (shlex-based, not regex)

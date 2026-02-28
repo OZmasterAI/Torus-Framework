@@ -17,6 +17,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
+from shared.gate_helpers import extract_file_path, safe_tool_input
 
 GATE_NAME = "GATE 13: WORKSPACE ISOLATION"
 CLAIMS_FILE = os.path.join(os.path.dirname(__file__), "..", ".file_claims.json")
@@ -66,7 +67,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Get the target file path
-    file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    file_path = extract_file_path(safe_tool_input(tool_input))
     if not file_path:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 

@@ -27,6 +27,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
+from shared.gate_helpers import extract_file_path, safe_tool_input
 
 GATE_NAME = "GATE 15: CAUSAL CHAIN ENFORCEMENT"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
@@ -53,7 +54,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Exempt files (test files, config files)
-    file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    tool_input = safe_tool_input(tool_input)
+    file_path = extract_file_path(tool_input)
     if _is_exempt(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 

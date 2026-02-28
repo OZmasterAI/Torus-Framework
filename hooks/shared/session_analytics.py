@@ -232,6 +232,57 @@ def _state_session_metrics(session_id: str, state: Dict) -> Dict[str, Any]:
     }
 
 
+def aggregate_frustration(session_id: Optional[str] = None) -> Dict[str, Any]:
+    """Aggregate frustration scores from capture queue. Display as bands not decimals."""
+    queue = _load_capture_queue()
+    if session_id:
+        queue = [e for e in queue if e.get("metadata", {}).get("session_id") == session_id]
+
+    scores = []
+    for entry in queue:
+        meta = entry.get("metadata", {})
+        if meta.get("tool_name") == "UserPrompt":
+            s = meta.get("frustration_score")
+            if s is not None:
+                scores.append(float(s))
+
+    if not scores:
+        return {"band": "calm", "avg": 0.0, "trend": "stable", "count": 0}
+
+    avg = round(sum(scores) / len(scores), 2)
+    band = "frustrated" if avg >= 0.6 else ("friction" if avg >= 0.3 else "calm")
+
+    # Trend: compare first half vs second half
+    trend = "stable"
+    if len(scores) >= 4:
+        mid = len(scores) // 2
+        first_half = sum(scores[:mid]) / mid
+        second_half = sum(scores[mid:]) / (len(scores) - mid)
+        if second_half - first_half > 0.15:
+            trend = "rising"
+        elif first_half - second_half > 0.15:
+            trend = "falling"
+
+    return {"band": band, "avg": avg, "trend": trend, "count": len(scores)}
+
+
+def compute_rw_ratio(state: Dict) -> Dict[str, Any]:
+    """Compute read:write ratio from session state.
+
+    OBSERVABILITY ONLY — not used as gate input.
+    """
+    reads = len(state.get("files_read", []))
+    writes = len(state.get("files_edited", []))
+    ratio = round(reads / max(writes, 1), 2)
+    if ratio >= 4.0:
+        rating = "good"
+    elif ratio >= 2.0:
+        rating = "fair"
+    else:
+        rating = "poor"
+    return {"reads": reads, "writes": writes, "ratio": ratio, "rating": rating}
+
+
 # ── get_session_summary ──────────────────────────────────────────────────────
 
 

@@ -8,7 +8,7 @@ when no index exists.
 
 import lancedb
 
-LANCE_PATH = "~/data/memory/lancedb"
+LANCE_PATH = "/home/user/data/memory/lancedb"
 
 def main():
     db = lancedb.connect(LANCE_PATH)

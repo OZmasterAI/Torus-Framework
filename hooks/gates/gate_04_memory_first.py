@@ -14,6 +14,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
+from shared.gate_helpers import extract_file_path, safe_tool_input
 from shared.state import get_memory_last_queried
 
 GATE_NAME = "GATE 4: MEMORY FIRST"
@@ -38,8 +39,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in GATED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if not isinstance(tool_input, dict):
-        tool_input = {}
+    tool_input = safe_tool_input(tool_input)
 
     # Read-only subagents don't edit files — skip memory freshness check
     if tool_name == "Task":
@@ -48,7 +48,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check file exemptions (only when a file_path is present — Task calls have none)
-    file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    file_path = extract_file_path(tool_input)
     if file_path and is_exempt(file_path):
         # Track exemption for observability
         exempt_stats = state.setdefault("gate4_exemptions", {})

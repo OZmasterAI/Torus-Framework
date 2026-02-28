@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 ITERATIONS = 1000
-TMPFS_DIR = "/run/user/$UID/claude-hooks"
+TMPFS_DIR = "/run/user/1000/claude-hooks"
 DISK_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 
 

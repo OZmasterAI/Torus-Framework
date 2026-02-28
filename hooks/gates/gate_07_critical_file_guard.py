@@ -13,6 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
+from shared.gate_helpers import extract_file_path, safe_tool_input
 from shared.state import get_memory_last_queried
 
 GATE_NAME = "GATE 7: CRITICAL FILE GUARD"
@@ -66,10 +67,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in ("Edit", "Write", "NotebookEdit"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if not isinstance(tool_input, dict):
-        tool_input = {}
+    tool_input = safe_tool_input(tool_input)
 
-    file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    file_path = extract_file_path(tool_input)
     basename = os.path.basename(file_path)
 
     # Check if file matches critical patterns

@@ -1,7 +1,7 @@
 """Gate 14: PRE-IMPLEMENTATION CONFIDENCE (Tier 2 — Quality)
 
 Checks confidence signals before allowing new file creation via Edit/Write/NotebookEdit.
-Progressive enforcement: warns once per signal per session, blocks on 3rd per-file attempt.
+Blocks immediately on first confidence failure (no warn phase).
 
 Confidence signals checked:
   1. session_test_baseline — has a test been run this session? (code files only)
@@ -20,10 +20,10 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
+from shared.gate_helpers import extract_file_path, safe_tool_input
 
 GATE_NAME = "GATE 14: CONFIDENCE CHECK"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
-MAX_WARNINGS = 2  # Block on per-file attempt MAX_WARNINGS + 1
 
 from shared.exemptions import is_exempt_full as _is_exempt
 
@@ -65,10 +65,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in WATCHED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if not isinstance(tool_input, dict):
-        tool_input = {}
-
-    file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    tool_input = safe_tool_input(tool_input)
+    file_path = extract_file_path(tool_input)
 
     # Exempt files
     if _is_exempt(file_path):
@@ -78,44 +76,14 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if _is_re_edit(file_path, state):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # Check confidence signals
+    # Check confidence signals — block immediately on failure
     failures = _check_signals(state)
     if not failures:
-        # All signals pass — reset per-file warning counter
-        per_file = state.get("confidence_warnings_per_file", {})
-        per_file.pop(file_path, None)
-        state["confidence_warnings_per_file"] = per_file
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # Per-file progressive enforcement
-    per_file = state.get("confidence_warnings_per_file", {})
-    file_warnings = per_file.get(file_path, 0) + 1
-    per_file[file_path] = file_warnings
-    state["confidence_warnings_per_file"] = per_file
     failure_str = "; ".join(failures)
-
-    if file_warnings > MAX_WARNINGS:
-        msg = (
-            f"[{GATE_NAME}] BLOCKED: Low confidence ({failure_str}). "
-            f"Run a Bash command (e.g. pytest) to set test baseline and clear pending verification. "
-            f"({file_warnings} attempts on {os.path.basename(file_path)} — exceeded {MAX_WARNINGS} warning limit)"
-        )
-        return GateResult(blocked=True, gate_name=GATE_NAME, message=msg, severity="warn")
-
-    # Suppress repeated warnings — only warn once per signal per session
-    warned_signals = state.get("confidence_warned_signals", set())
-    if isinstance(warned_signals, list):
-        warned_signals = set(warned_signals)
-    new_failures = [f for f in failures if f not in warned_signals]
-    if not new_failures:
-        # Already warned about these signals — pass silently
-        return GateResult(blocked=False, gate_name=GATE_NAME)
-
-    warned_signals.update(failures)
-    state["confidence_warned_signals"] = list(warned_signals)
     msg = (
-        f"[{GATE_NAME}] WARNING ({file_warnings}/{MAX_WARNINGS}): Low confidence ({failure_str}). "
-        f"Consider running tests or verifying pending edits first."
+        f"[{GATE_NAME}] BLOCKED: Low confidence ({failure_str}). "
+        f"Run a Bash command (e.g. pytest) to set test baseline and clear pending verification."
     )
-    print(msg, file=sys.stderr)
-    return GateResult(blocked=False, gate_name=GATE_NAME, message=msg, severity="warn")
+    return GateResult(blocked=True, gate_name=GATE_NAME, message=msg, severity="warn")

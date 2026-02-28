@@ -5,7 +5,7 @@
 
 ## Overview
 
-Torus is a self-improving quality framework for Claude Code. It wraps every tool call with gate enforcement (PreToolUse blocking), tracks outcomes via a mentor system (PostToolUse), persists knowledge via ChromaDB memory, and orchestrates multi-agent work via teams and external scripts. The framework runs entirely through Claude Code's hook system — no modifications to Claude Code itself.
+Torus is a self-improving quality framework for Claude Code. It wraps every tool call with gate enforcement (PreToolUse blocking), tracks outcomes via a mentor system (PostToolUse), persists knowledge via LanceDB memory, and orchestrates multi-agent work via teams and external scripts. The framework runs entirely through Claude Code's hook system — no modifications to Claude Code itself.
 
 **Design principles:**
 1. Mechanical enforcement over behavioral instruction (sys.exit(2) blocks, not just rules)
@@ -31,7 +31,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
               ┌────────────────▼─────────┐     ┌─────▼──────┐  ┌───▼──────────┐
               │  Context Injection        │     │  Gate      │  │  Mentor      │
               │  - LIVE_STATE.json        │     │  System    │  │  System      │
-              │  - Memory L1 (ChromaDB)   │     │  (T1/T2/T3)│  │  (Module A)  │
+              │  - Memory L1 (LanceDB)    │     │  (T1/T2/T3)│  │  (Module A)  │
               │  - Terminal History L2    │     └─────┬──────┘  └───┬──────────┘
               │  - Telegram L3            │           │             │
               │  - Gate auto-tune         │           │             │
@@ -42,7 +42,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
                                                      │              │
                             ┌────────────────────────▼──────────────▼──────┐
                             │              MCP Servers                      │
-                            │  memory_server.py (6 tools, ChromaDB)        │
+                            │  memory_server.py (6 tools, LanceDB)         │
                             │  analytics_server.py (10 tools, read-only)   │
                             └──────────────────────────────────────────────┘
 ```
@@ -106,7 +106,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 │   ├── .integrity_hashes.json       # SHA256 framework verification
 │   ├── .memory_last_queried         # Gate 4 sideband timestamp
 │   ├── .enforcer.sock               # Enforcer daemon UDS socket
-│   ├── .chromadb.sock               # ChromaDB UDS socket
+│   ├── .chromadb.sock               # Memory server UDS socket (legacy name, talks to LanceDB)
 │   ├── .enforcer.pid                # Daemon process ID
 │   └── state_*.json                 # Per-agent session state (43 files)
 │
@@ -204,7 +204,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | Module | Lines | Purpose |
 |--------|-------|---------|
 | audit_log.py | 537 | JSONL trail with rotation (5MB), compaction, cleanup, block summaries |
-| observation.py | 284 | Compress tool calls for ChromaDB auto-capture. Priority scoring. Sentiment detection |
+| observation.py | 284 | Compress tool calls for LanceDB auto-capture. Priority scoring. Sentiment detection |
 | secrets_filter.py | 81 | Scrub API keys/tokens/connection strings before storage (12 patterns) |
 
 ### Error Handling (2 modules, ~546 lines)
@@ -260,7 +260,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | Module | Lines | Purpose |
 |--------|-------|---------|
 | memory_maintenance.py | 847 | Health analysis, age scoring, cleanup candidates (read-only) |
-| chromadb_socket.py | 153 | UDS client for ChromaDB (avoids Rust segfaults). 5s timeout |
+| chromadb_socket.py | 153 | UDS client for memory server / LanceDB (legacy name, avoids segfaults). 5s timeout |
 | experience_archive.py | 393 | CSV-based fix pattern learning, success rates |
 
 ### Inter-Agent Communication (3 modules, ~1,312 lines)
@@ -309,7 +309,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 ```
 SessionStart ─→ boot.py ─→ boot_pkg/orchestrator.py (378 lines)
                             ├── maintenance.py: audit rotation, state reset
-                            ├── memory.py: ChromaDB injection via UDS, sideband write
+                            ├── memory.py: LanceDB injection via UDS, sideband write
                             └── context.py: error/test/verification/duration extraction
 
 UserPromptSubmit ─→ user_prompt_capture.py (capture to queues)
@@ -353,7 +353,7 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 ```
 
 ### Boot Flow (22 steps)
-1. Bot session check → 2. Ramdisk init → 3. Audit rotation → 4. Load LIVE_STATE → 5. Time warnings → 6. Gate count → 7. UDS check/daemon start → 8. ChromaDB watchdog → 9. Memory injection (ChromaDB socket) → 10. Telegram L3 search → 11. Gate auto-tuning → 12. Error extraction → 13. Tool activity → 14. Test status → 15. Verification quality → 16. Session duration → 17. Gate block stats → 18. Dashboard (stderr) → 19. Context injection (stdout) → 20. State reset → 21. Capture queue flush → 22. Auto-remember ingestion + sideband write
+1. Bot session check → 2. Ramdisk init → 3. Audit rotation → 4. Load LIVE_STATE → 5. Time warnings → 6. Gate count → 7. UDS check/daemon start → 8. LanceDB watchdog → 9. Memory injection (LanceDB socket) → 10. Telegram L3 search → 11. Gate auto-tuning → 12. Error extraction → 13. Tool activity → 14. Test status → 15. Verification quality → 16. Session duration → 17. Gate block stats → 18. Dashboard (stderr) → 19. Context injection (stdout) → 20. State reset → 21. Capture queue flush → 22. Auto-remember ingestion + sideband write
 
 ### PostToolUse Flow (17 steps)
 1. Increment tool_call_count → 2. Token estimation → 3. Resolve gate blocks → 4. Auto-expire fixing_error → 5. Track reads → 6. Track edits → 7. Write file claims → 8. Track memory queries → 9. Error detection → 10. Observation capture → 11. Verification scoring → 12. Auto-remember → 13. Outcome chains → 14. Mentor evaluation → 15. Generate verdict → 16. Gate effectiveness → 17. Save state
@@ -365,15 +365,16 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 ### Memory Server (memory_server.py — 4,188 lines)
 
 - **Embedding:** nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens)
-- **Storage:** ~/data/memory/ (ChromaDB SQLite)
-- **Collections:** "knowledge" (curated, from remember_this) + "observations" (auto-captured) + "fix_outcomes" (causal chains) + "web_pages" (indexed URLs) + "quarantine" (dedup victims)
+- **Storage:** ~/data/memory/lancedb/ (LanceDB, flat scan; ChromaDB backup at ~/data/memory/chroma.sqlite3)
+- **Tables:** "knowledge" (1,402, curated, from remember_this) + "observations" (4,579, auto-captured) + "fix_outcomes" (264, causal chains) + "web_pages" (indexed URLs) + "quarantine" (2, dedup victims)
+- **Search:** BM25 FTS (~19ms keyword), semantic (~30ms flat scan), hybrid; tags in separate SQLite tags.db
 - **3-tier memory classification:** Tier 1 (high-value, boosted in search), Tier 2 (standard), Tier 3 (low-priority, penalized)
-- **UDS gateway:** .chromadb.sock (serializes all hook-side access)
+- **UDS gateway:** .chromadb.sock (legacy name, serializes all hook-side LanceDB access)
 
 | Tool | Parameters | Purpose |
 |------|-----------|---------|
 | search_knowledge | query, top_k=15, mode, recency_weight=0.15, match_all | Modes: keyword, semantic, hybrid, tags, observations, all. Tag co-occurrence expansion. Keyword reranker. Recency boost (365-day decay) |
-| remember_this | content, context, tags, force | Dedup cosine > 0.85. FNV1a hash IDs. Noise filter (12 patterns). 3-way write: ChromaDB + FTS5 + fix_outcomes bridge |
+| remember_this | content, context, tags, force | Dedup cosine > 0.85. FNV1a hash IDs. Noise filter (12 patterns). 3-way write: LanceDB + tags.db (SQLite BM25 FTS) + fix_outcomes bridge |
 | get_memory | id | Full memory retrieval. Supports comma-separated batch |
 | record_attempt | error_text, strategy_id | Start causal chain → returns chain_id |
 | record_outcome | chain_id, outcome | Complete chain (success/failure) |
@@ -383,7 +384,7 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 
 ### Analytics Server (analytics_server.py — 379 lines)
 
-Lightweight, read-only, lazy-loaded. No ChromaDB dependency.
+Lightweight, read-only, lazy-loaded. No LanceDB dependency.
 
 | Tool | Parameters | Purpose |
 |------|-----------|---------|
@@ -396,7 +397,7 @@ Lightweight, read-only, lazy-loaded. No ChromaDB dependency.
 | all_metrics | — | Counters/gauges/histograms + 1m/5m rollups |
 | telegram_search | query, limit | FTS5 search over Telegram message history |
 | terminal_history_search | query, limit | FTS5 search over terminal/conversation history |
-| web_search | query, n_results | ChromaDB semantic search over indexed web pages |
+| web_search | query, n_results | LanceDB semantic search over indexed web pages |
 
 ---
 
@@ -479,7 +480,7 @@ Cross-session            → Sub-agents + memory
 |--------|----------|----------|
 | Telegram Bot | integrations/telegram-bot/ | Bot API, SQLite msg_log.db (532KB) |
 | Terminal History | integrations/terminal-history/ | FTS5, SQLite terminal_history.db (19.8MB) |
-| ChromaDB | ~/data/memory/ | UDS socket (.chromadb.sock) |
+| LanceDB | ~/data/memory/lancedb/ | UDS socket (.chromadb.sock, legacy name) |
 | Enforcer Daemon | hooks/.enforcer.sock | UDS socket (JSON-over-newline) |
 | Ramdisk | /run/user/{uid}/claude-hooks/ | tmpfs + async disk mirror backup |
 | Git Auto-Commit | hooks/auto_commit.py | Two-phase: stage (PostToolUse) → commit (UserPromptSubmit) |
@@ -496,7 +497,6 @@ Cross-session            → Sub-agents + memory
 | budget_degradation | false | 4-tier model downgrade based on budget |
 | model_profile | "efficient" | Role-based model selection |
 | security_profile | "balanced" | Gate strictness posture |
-| chain_memory | true | Persist causal chains to memory |
 | mentor_all | true | Enable all mentor system modules |
 | mentor_tracker | false | Mentor Module A tracker verdicts |
 | mentor_hindsight_gate | false | Gate 19 mentor-driven blocking |

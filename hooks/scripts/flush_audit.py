@@ -15,7 +15,7 @@ import gzip
 import shutil
 from datetime import date, timedelta
 
-RAMDISK = "/run/user/$UID/claude-hooks/audit"
+RAMDISK = "/run/user/1000/claude-hooks/audit"
 DISK = os.path.expanduser("~/.claude/hooks/audit")
 KEEP_DAYS = 2
 

@@ -1,6 +1,6 @@
 """Memory Maintenance — Health Analysis for the Torus Memory System.
 
-Provides ongoing health monitoring for the ChromaDB knowledge collection
+Provides ongoing health monitoring for the LanceDB knowledge collection
 (currently ~929 memories). All functions are read-only; nothing is deleted
 or modified. Results are pure recommendations.
 
@@ -8,7 +8,7 @@ Design constraints:
 - Analysis only — no writes, no deletes, no quarantine moves
 - Fail-open — every public function swallows exceptions and returns a
   degraded-but-valid result dict rather than raising
-- Uses the UDS socket client (chromadb_socket.py) so it never creates a
+- Uses the UDS socket client (memory_socket.py) so it never creates a
   direct PersistentClient (avoids the Rust-backend segfault risk)
 - Dedup quarantine was implemented in Session 120; this module treats
   quarantine as an informational counter only
@@ -107,13 +107,13 @@ _POSSIBLE_DUPE_TAG_PREFIX = "possible-dupe:"
 
 
 def _safe_fetch_all(collection_name="knowledge"):
-    """Fetch all entries from a ChromaDB collection via the UDS socket.
+    """Fetch all entries from a LanceDB collection via the UDS socket.
 
     Returns a list of dicts with keys: id, document, tags, timestamp, preview.
     Returns an empty list on any failure (fail-open).
     """
     try:
-        from shared.chromadb_socket import get, count, WorkerUnavailable
+        from shared.memory_socket import get, count, WorkerUnavailable
         total = count(collection_name)
         if total == 0:
             return []
@@ -251,7 +251,7 @@ def _count_stats(entries, now):
     # Try to get quarantine count separately
     quarantine_count = None
     try:
-        from shared.chromadb_socket import count as uds_count
+        from shared.memory_socket import count as uds_count
         quarantine_count = uds_count("quarantine")
     except Exception:
         pass
@@ -338,7 +338,7 @@ def _similarity_groups(entries):
     """Group memories by tag overlap to identify clusters and gaps.
 
     Uses a lightweight tag-intersection approach rather than embedding
-    similarity (keeps this module dependency-free from chromadb).
+    similarity (keeps this module dependency-free from lancedb).
 
     Returns:
         {

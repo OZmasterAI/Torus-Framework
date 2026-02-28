@@ -172,6 +172,20 @@ def main():
     verified_ratio = round(verified_count / max(verified_total, 1), 2)
     document_parts.append(f"Verified ratio: {verified_ratio:.2f}")
 
+    # R:W ratio
+    rw = files_read_count / max(len(state.get("files_edited", [])), 1)
+    rw_rating = "good" if rw >= 4.0 else ("fair" if rw >= 2.0 else "poor")
+    document_parts.append(f"R:W ratio: {rw:.1f} [{rw_rating}]")
+
+    # Skill usage (only surface in long sessions to avoid noise)
+    skill_usage = state.get("skill_usage", {})
+    if session_elapsed > 1800 and skill_usage:  # 30+ min AND skills were used
+        skills_summary = ", ".join(f"/{k} ({v}x)" for k, v in sorted(skill_usage.items(), key=lambda x: x[1], reverse=True)[:5])
+        document_parts.append(f"Skills used: {skills_summary}")
+    elif session_elapsed > 1800 and not skill_usage:
+        document_parts.append("NOTE: Long session with no skill invocations")
+    # Short sessions: say nothing about skills (no noise)
+
     # Session trajectory classification
     if verified_total > 0:
         success_rate = verified_count / verified_total
@@ -210,6 +224,10 @@ def main():
         "high_churn_count": len(high_churn),
         "verified_ratio": verified_ratio,
         "trajectory": trajectory,
+        "rw_ratio": round(rw, 2),
+        "rw_rating": rw_rating,
+        "skill_count": len(skill_usage),
+        "skills_used": list(skill_usage.keys())[:10],
     }
 
     observation = {
@@ -225,7 +243,7 @@ def main():
     # Save to memory via UDS socket so post-compaction context is richer
     try:
         import socket as _socket
-        sock_path = os.path.join(os.path.dirname(__file__), ".chromadb_socket")
+        sock_path = os.path.join(os.path.dirname(__file__), ".memory.sock")
         if os.path.exists(sock_path):
             sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
             sock.settimeout(2)

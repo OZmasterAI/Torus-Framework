@@ -7,7 +7,7 @@ from tracker_pkg import _log_debug
 
 # Auto-remember imports (fail-open: if UDS unavailable, queue to disk)
 try:
-    from shared.chromadb_socket import remember as socket_remember, is_worker_available as _uds_available
+    from shared.memory_socket import remember as socket_remember, is_worker_available as _uds_available
 except ImportError:
     socket_remember = None
     _uds_available = lambda: False

@@ -3,7 +3,7 @@
 
 Fires on SessionEnd to:
 1. Update LIVE_STATE.json with session metrics and auto-summary if /wrap-up didn't run
-2. Flush the capture queue to ChromaDB (observations collection)
+2. Flush the capture queue to LanceDB (observations collection)
 3. Increment session_count in LIVE_STATE.json
 
 Fail-open: always exits 0.
@@ -18,7 +18,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shared.chromadb_socket import is_worker_available, flush_queue as socket_flush, backup as socket_backup, WorkerUnavailable
+from shared.memory_socket import is_worker_available, flush_queue as socket_flush, backup as socket_backup, WorkerUnavailable
 
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
@@ -71,6 +71,36 @@ def _load_live_state():
             return json.load(f)
     except (json.JSONDecodeError, OSError, FileNotFoundError):
         return {}
+
+
+def _read_last_assistant_message():
+    """Read the last_assistant_message captured by stop_cleanup.py.
+
+    Returns the message string (up to 1000 chars) or empty string.
+    Cleans up the temp file after reading.
+    """
+    candidates = []
+    try:
+        from shared.ramdisk import TMPFS_STATE_DIR
+        candidates.append(os.path.join(TMPFS_STATE_DIR, ".last_assistant_message"))
+    except ImportError:
+        pass
+    candidates.append(os.path.join(HOOKS_DIR, ".last_assistant_message"))
+
+    for path in candidates:
+        try:
+            if os.path.isfile(path):
+                with open(path, "r") as f:
+                    msg = f.read().strip()
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+                if msg:
+                    return msg
+        except OSError:
+            continue
+    return ""
 
 
 def _parse_handoff_sections(content):
@@ -348,6 +378,12 @@ def generate_handoff(state, transcript_path=""):
 
             _update_config("session_metrics", metrics_section)
 
+        # Capture last_assistant_message from Stop hook for session continuity
+        last_msg = _read_last_assistant_message()
+        if last_msg:
+            live_state["last_response_preview"] = last_msg[:500]
+            print(f"[SESSION_END] Captured last_assistant_message ({len(last_msg)} chars)", file=sys.stderr)
+
         # Atomic write back to LIVE_STATE.json (session state only, no toggles/metrics)
         tmp = LIVE_STATE_FILE + ".tmp"
         with open(tmp, "w") as f:
@@ -408,7 +444,7 @@ def flush_capture_queue():
     with open(capture_queue, "r") as f:
         line_count = sum(1 for _ in f)
 
-    # Try UDS socket flush (memory_server.py handles the actual ChromaDB upsert)
+    # Try UDS socket flush (memory_server.py handles the actual LanceDB upsert)
     try:
         if is_worker_available(retries=2, delay=0.3):
             flushed = socket_flush()
@@ -423,13 +459,13 @@ def flush_capture_queue():
 
 
 def backup_database():
-    """Backup ChromaDB if DB changed since last backup. Fail-open."""
-    db_path = os.path.join(MEMORY_DIR, "chroma.sqlite3")
-    bak_path = os.path.join(MEMORY_DIR, "chroma.sqlite3.backup")
+    """Backup database if DB changed since last backup. Fail-open."""
+    lance_dir = os.path.join(MEMORY_DIR, "lancedb")
+    bak_path = os.path.join(MEMORY_DIR, "lancedb.backup.tar.gz")
     try:
         # Mtime skip: don't re-backup if DB hasn't changed
-        if os.path.exists(db_path) and os.path.exists(bak_path):
-            db_mtime = os.path.getmtime(db_path)
+        if os.path.isdir(lance_dir) and os.path.exists(bak_path):
+            db_mtime = os.path.getmtime(lance_dir)
             bak_mtime = os.path.getmtime(bak_path)
             if bak_mtime >= db_mtime:
                 print("[SESSION_END] Backup skipped (DB unchanged)", file=sys.stderr)

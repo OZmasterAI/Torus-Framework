@@ -144,7 +144,7 @@ def async_mirror_append(tmpfs_path, content):
     The disk mirror is fire-and-forget via a daemon thread.
 
     Args:
-        tmpfs_path: Full path on tmpfs (e.g., /run/user/$UID/claude-hooks/audit/2026-02-14.jsonl)
+        tmpfs_path: Full path on tmpfs (e.g., /run/user/1000/claude-hooks/audit/2026-02-14.jsonl)
         content: String content to append (should include trailing newline)
     """
     # Synchronous tmpfs write
