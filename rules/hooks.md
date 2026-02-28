@@ -6,8 +6,10 @@ globs: .claude/hooks/**, .claude/hooks/gates/**
 
 ## Gate Contract
 - Export `check(tool_name, tool_input, state, event_type="PreToolUse")` → `GateResult`
-- `from shared.gate_result import GateResult(blocked, message, gate_name, severity)` — never dicts
+- `from shared.gate_result import GateResult(blocked, message, gate_name, severity, duration_ms, metadata, escalation)` — never dicts
 - severity: "info" | "warn" | "error" | "critical"
+- escalation: "block" | "ask" | "warn" | "allow" (inferred from `blocked` if omitted)
+- Properties: `is_ask` (escalation=="ask"), `is_warning` (severity=="warn" and not blocked)
 
 ## Exit Codes
 - `0` = allow | `2` = block (PreToolUse only, stderr shown to Claude) | `1` = non-blocking error (proceeds)
@@ -18,4 +20,7 @@ globs: .claude/hooks/**, .claude/hooks/gates/**
 
 ## Gate 13: Main session always exempt. See `docs/gate13-reference.md`
 
-## Testing: All gates must have tests in `hooks/test_framework.py`
+## Testing
+- `hooks/test_framework.py` — main suite (all gates + shared modules)
+- `hooks/tests/` — 11 focused test files (safety, quality, operational, integration, etc.)
+- All gates must have coverage in at least one location
