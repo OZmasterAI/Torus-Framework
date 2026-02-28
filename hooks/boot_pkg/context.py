@@ -237,6 +237,47 @@ def _extract_gate_effectiveness_suggestions():
         return [], {}
 
 
+def _extract_git_context():
+    """Extract current git state for session context priming.
+
+    Returns dict with: branch, uncommitted_count, recent_commits (list of oneline strings).
+    Returns None if not in a git repo or on error.
+    """
+    import subprocess
+    try:
+        cwd = os.path.dirname(os.path.dirname(__file__))
+
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=5, cwd=cwd,
+        )
+        if branch_result.returncode != 0:
+            return None
+        branch = branch_result.stdout.strip()
+
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, timeout=5, cwd=cwd,
+        )
+        uncommitted = len([l for l in status_result.stdout.strip().splitlines() if l.strip()]) if status_result.returncode == 0 else 0
+
+        log_result = subprocess.run(
+            ["git", "log", "--oneline", "-5", "--no-decorate"],
+            capture_output=True, text=True, timeout=5, cwd=cwd,
+        )
+        commits = []
+        if log_result.returncode == 0:
+            commits = [l.strip() for l in log_result.stdout.strip().splitlines() if l.strip()]
+
+        return {
+            "branch": branch,
+            "uncommitted_count": uncommitted,
+            "recent_commits": commits[:5],
+        }
+    except Exception:
+        return None
+
+
 def _extract_gate_blocks():
     """Extract total gate blocks from recent audit logs.
 

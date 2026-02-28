@@ -31,7 +31,7 @@ This workspace is referenced by framework validation tasks and test suites. Do n
 
 Test that workspace is properly initialized:
 ```bash
-test -f ~/.claude/PRPs/test-workspace/README.md
+test -f /home/crab/.claude/PRPs/test-workspace/README.md
 ```
 
 ## Notes

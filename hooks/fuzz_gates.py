@@ -100,7 +100,7 @@ def _path_traversal(rng):
         "/dev/null",
         "\x00/etc/passwd",
         "C:\\Windows\\System32\\drivers\\etc\\hosts",
-        "~/.claude/hooks/../../../etc/passwd",
+        "/home/crab/.claude/hooks/../../../etc/passwd",
     ]
     return rng.choice(traversals)
 
@@ -160,7 +160,7 @@ _FIELD_GENERATORS = {
         _null_byte_string(rng),
         "",
         None,
-        "~/.claude/hooks/enforcer.py",
+        "/home/crab/.claude/hooks/enforcer.py",
         "/etc/passwd",
     ]),
     "notebook_path": lambda rng: rng.choice([

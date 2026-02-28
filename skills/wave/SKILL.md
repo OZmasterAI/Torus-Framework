@@ -118,7 +118,7 @@ Launch one `Task(subagent_type="builder")` per wave task, **all in parallel** (s
    5. If validation passes, save to memory: remember_this("Completed task {task_id}: {task_name}", "wave execution", "type:fix,area:framework")
    6. If validation fails, describe what went wrong clearly
    7. Post discoveries to agent channel:
-      python3 -c "import sys; sys.path.insert(0, '~/.claude/hooks'); from shared.agent_channel import post_message; post_message('task-{task_id}', 'discovery', 'what you found')"
+      python3 -c "import sys; sys.path.insert(0, '/home/crab/.claude/hooks'); from shared.agent_channel import post_message; post_message('task-{task_id}', 'discovery', 'what you found')"
    ```
 
 Set subagent model to match `--model` flag (default sonnet).

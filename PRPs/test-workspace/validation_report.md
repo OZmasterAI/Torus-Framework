@@ -27,7 +27,7 @@ The framework-validation PRP successfully validated core Torus Framework capabil
 - **Status**: PASSED ✅
 - **Commit**: `054c547`
 - **Deliverables**:
-  - Created `~/.claude/PRPs/test-workspace/` directory
+  - Created `/home/crab/.claude/PRPs/test-workspace/` directory
   - Generated comprehensive README.md documenting workspace purpose
   - Seeded memory with framework-validation context
 - **Validation**: Directory structure created and documented
@@ -91,7 +91,7 @@ The framework-validation PRP successfully validated core Torus Framework capabil
 ```
 ============================= test session starts ==============================
 platform linux -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0
-rootdir: ~/.claude/PRPs/test-workspace
+rootdir: /home/crab/.claude/PRPs/test-workspace
 collected 11 items
 
 test_utils.py::TestAdd::test_add_positive_numbers PASSED                 [  9%]

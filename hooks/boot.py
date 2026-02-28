@@ -10,7 +10,7 @@ import sys
 # Ensure hooks dir is on sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
-from shared.chromadb_socket import (  # noqa: E402, F401
+from shared.memory_socket import (  # noqa: E402, F401
     count as socket_count,
     query as socket_query,
 )

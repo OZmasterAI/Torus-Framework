@@ -25,8 +25,8 @@ Collect a complete inventory. Run ALL of the following:
 
 **Gates:**
 ```bash
-ls ~/.claude/hooks/gates/gate_*.py 2>/dev/null | sort
-ls ~/.claude/hooks/gates/gate_*.py 2>/dev/null | wc -l
+ls /home/crab/.claude/hooks/gates/gate_*.py 2>/dev/null | sort
+ls /home/crab/.claude/hooks/gates/gate_*.py 2>/dev/null | wc -l
 ```
 For each gate file, extract its gate number and name:
 ```bash
@@ -50,8 +50,8 @@ for g in gates:
 
 **Skills:**
 ```bash
-ls ~/.claude/skills/*/SKILL.md 2>/dev/null
-ls ~/.claude/skills/*/SKILL.md 2>/dev/null | wc -l
+ls /home/crab/.claude/skills/*/SKILL.md 2>/dev/null
+ls /home/crab/.claude/skills/*/SKILL.md 2>/dev/null | wc -l
 ```
 For each skill, extract name and description:
 ```bash
@@ -74,8 +74,8 @@ for skill in sorted(os.listdir(skills_dir)):
 
 **Agents:**
 ```bash
-ls ~/.claude/agents/*.md 2>/dev/null | sort
-ls ~/.claude/agents/*.md 2>/dev/null | wc -l
+ls /home/crab/.claude/agents/*.md 2>/dev/null | sort
+ls /home/crab/.claude/agents/*.md 2>/dev/null | wc -l
 ```
 For each agent, extract its name:
 ```bash
@@ -97,7 +97,7 @@ else:
 ```bash
 python3 -c "
 import json
-with open('~/.claude/settings.json') as f:
+with open('/home/crab/.claude/settings.json') as f:
     d = json.load(f)
 hooks = d.get('hooks', {})
 total = 0
@@ -111,7 +111,7 @@ print(f'  Total hook entries: {total}')
 
 **Shared modules:**
 ```bash
-ls ~/.claude/hooks/shared/*.py 2>/dev/null | sort
+ls /home/crab/.claude/hooks/shared/*.py 2>/dev/null | sort
 ```
 For each shared module, count lines and list exported functions:
 ```bash
@@ -167,7 +167,7 @@ Record all counts: `gate_count`, `skill_count`, `agent_count`, `hook_entry_count
 
 **Test suite:**
 ```bash
-python3 ~/.claude/hooks/test_framework.py 2>&1 | tail -20
+python3 /home/crab/.claude/hooks/test_framework.py 2>&1 | tail -20
 ```
 Extract: `total_tests`, `passed`, `failed`, `pass_rate_pct`.
 
@@ -188,7 +188,7 @@ List which gate numbers have NO test functions — these are untested gates.
 
 **Memory system:**
 ```bash
-cat ~/.claude/stats-cache.json 2>/dev/null || echo '{}'
+cat /home/crab/.claude/stats-cache.json 2>/dev/null || echo '{}'
 ```
 Extract `mem_count`. Also run `search_knowledge("introspect framework analysis", top_k=1)` for the total_memories field.
 
@@ -228,7 +228,7 @@ else:
 ```bash
 python3 -c "
 import json
-with open('~/.claude/LIVE_STATE.json') as f:
+with open('/home/crab/.claude/LIVE_STATE.json') as f:
     s = json.load(f)
 print(json.dumps({k: s.get(k) for k in ['session_count','framework_version','feature']}, indent=2))
 "
@@ -236,8 +236,8 @@ print(json.dumps({k: s.get(k) for k in ['session_count','framework_version','fea
 
 **Git branch and recent commits:**
 ```bash
-git -C ~/.claude log --oneline -5
-git -C ~/.claude branch --show-current
+git -C /home/crab/.claude log --oneline -5
+git -C /home/crab/.claude branch --show-current
 ```
 
 ---

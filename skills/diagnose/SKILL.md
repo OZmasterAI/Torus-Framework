@@ -18,7 +18,7 @@ Determine today's date and read the audit log:
 ```python
 from datetime import date
 today = date.today().isoformat()  # e.g., "2026-02-20"
-audit_path = f"~/.claude/hooks/audit/{today}.jsonl"
+audit_path = f"/home/crab/.claude/hooks/audit/{today}.jsonl"
 ```
 
 Read the file line by line (it is newline-delimited JSON). If the file does not exist,
@@ -26,7 +26,7 @@ report "No audit log found for {today}" and stop.
 
 Also read the gate effectiveness tracker:
 ```
-~/.claude/hooks/.gate_effectiveness.json
+/home/crab/.claude/hooks/.gate_effectiveness.json
 ```
 
 For each audit log entry, extract:

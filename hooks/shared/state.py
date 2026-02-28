@@ -63,6 +63,50 @@ def state_file_for(session_id="main"):
     return os.path.join(STATE_DIR, f"state_{safe_id}.json")
 
 
+def _sideband_path_for(session_id="main"):
+    """Sideband file path for enforcer mutations (ramdisk, same dir as state)."""
+    safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
+    if not safe_id:
+        safe_id = "main"
+    return os.path.join(STATE_DIR, f".enforcer_sideband_{safe_id}.json")
+
+
+def write_enforcer_sideband(state, session_id="main"):
+    """Write enforcer state to sideband file (ramdisk, atomic)."""
+    sideband_file = _sideband_path_for(session_id)
+    os.makedirs(os.path.dirname(sideband_file), exist_ok=True)
+    tmp = sideband_file + f".tmp.{os.getpid()}"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(state, f)
+        os.replace(tmp, sideband_file)
+    except OSError:
+        # Fail-open: if sideband write fails, mutations are lost but framework continues
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def read_enforcer_sideband(session_id="main"):
+    """Read sideband file. Returns dict or None if no sideband exists."""
+    sideband_file = _sideband_path_for(session_id)
+    try:
+        with open(sideband_file) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+
+
+def delete_enforcer_sideband(session_id="main"):
+    """Delete sideband file after tracker promotes to disk state."""
+    sideband_file = _sideband_path_for(session_id)
+    try:
+        os.unlink(sideband_file)
+    except OSError:
+        pass  # Already deleted or never existed
+
+
 def default_state():
     return {
         "_version": STATE_VERSION,

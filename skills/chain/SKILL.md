@@ -26,7 +26,6 @@ Examples:
 ### 2. MEMORY CHECK
 - `search_knowledge("chain execution")` — find prior chain runs and lessons learned
 - `search_knowledge("[first skill in chain]")` — check for known issues with lead skill
-- **Chain memory** (when `chain_memory` toggle is ON in LIVE_STATE.json): `search_knowledge("[user goal text]", mode="semantic")` — if a matching chain+outcome is found with >0.7 relevance, suggest reusing it: "Found prior chain for similar goal: [chain]. Reuse? (Y/N)"
 - Note any past chain failures or gotchas to watch for during execution
 
 ### 3. EXECUTE SEQUENTIALLY

@@ -1,6 +1,6 @@
 """Verification script for shared/memory_maintenance.py.
 
-Run with: python3 ~/.claude/hooks/shared/verify_memory_maintenance.py
+Run with: python3 /home/crab/.claude/hooks/shared/verify_memory_maintenance.py
 Uses sentinel pattern for ts parameter to correctly test empty-string timestamp.
 """
 import sys

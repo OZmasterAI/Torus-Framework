@@ -1,6 +1,6 @@
 """Unit tests for shared/memory_maintenance.py.
 
-Run with: python3 ~/.claude/hooks/shared/_test_memory_maintenance.py
+Run with: python3 /home/crab/.claude/hooks/shared/_test_memory_maintenance.py
 """
 import sys
 import os

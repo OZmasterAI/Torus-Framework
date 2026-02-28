@@ -1,7 +1,7 @@
 """Observation compression for auto-capture system.
 
 Compresses tool call data into compact text summaries suitable for
-ChromaDB storage. Applies secrets scrubbing before any content is stored.
+LanceDB storage. Applies secrets scrubbing before any content is stored.
 
 Each observation gets a deterministic ID (obs_{hash}) for dedup.
 """
@@ -150,7 +150,7 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
     """Compress a tool call into a compact observation dict.
 
     Returns dict with 'document', 'metadata', and 'id' keys,
-    ready for queue append or ChromaDB upsert.
+    ready for queue append or LanceDB upsert.
     Includes tool-specific context metadata and priority scoring.
     """
     now = time.time()

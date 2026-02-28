@@ -48,22 +48,22 @@ Collect the full component map. Run ALL of these:
 
 ```bash
 # Gates
-ls ~/.claude/hooks/gates/
+ls /home/crab/.claude/hooks/gates/
 
 # Hook scripts (registered in settings.json)
-python3 -c "import json; d=json.load(open('~/.claude/settings.json')); [print(h) for h in d.get('hooks', {})]"
+python3 -c "import json; d=json.load(open('/home/crab/.claude/settings.json')); [print(h) for h in d.get('hooks', {})]"
 
 # Skills
-ls ~/.claude/skills/
+ls /home/crab/.claude/skills/
 
 # MCP tools (registered servers)
-python3 -c "import json; d=json.load(open('~/.claude/settings.json')); [print(s) for s in d.get('mcpServers', {}).keys()]"
+python3 -c "import json; d=json.load(open('/home/crab/.claude/settings.json')); [print(s) for s in d.get('mcpServers', {}).keys()]"
 
 # Scripts
-ls ~/.claude/scripts/ 2>/dev/null || echo "(no scripts dir)"
+ls /home/crab/.claude/scripts/ 2>/dev/null || echo "(no scripts dir)"
 
 # Plugins
-ls ~/.claude/plugins/ 2>/dev/null || echo "(no plugins dir)"
+ls /home/crab/.claude/plugins/ 2>/dev/null || echo "(no plugins dir)"
 ```
 
 Also read current state:
@@ -92,14 +92,14 @@ Build a component inventory table:
 ### 2a. Age check
 ```bash
 # Last modified date for all gate files
-stat -c "%n %y" ~/.claude/hooks/gates/gate_*.py | sort -k2
+stat -c "%n %y" /home/crab/.claude/hooks/gates/gate_*.py | sort -k2
 ```
 
 ### 2b. Test coverage check
 ```bash
 # Count test cases per gate in test_framework.py
-grep -c "gate_0[0-9]" ~/.claude/hooks/test_framework.py 2>/dev/null || \
-grep -c "gate_1[0-9]" ~/.claude/hooks/test_framework.py 2>/dev/null || \
+grep -c "gate_0[0-9]" /home/crab/.claude/hooks/test_framework.py 2>/dev/null || \
+grep -c "gate_1[0-9]" /home/crab/.claude/hooks/test_framework.py 2>/dev/null || \
 echo "test_framework.py not found or no gate tests"
 ```
 
@@ -149,7 +149,7 @@ for gate, count in results.most_common():
 ```
 
 ### 2d. Skills audit
-For each skill in `~/.claude/skills/`:
+For each skill in `/home/crab/.claude/skills/`:
 - Does it have a valid SKILL.md?
 - Does it reference tools or scripts that still exist?
 - Is it invokable (check for broken paths or commands)?
@@ -261,7 +261,7 @@ For EACH approved improvement, run this full sub-loop:
 
 ### 5a. Pre-change baseline
 ```bash
-python3 ~/.claude/hooks/test_framework.py 2>&1 | tail -5
+python3 /home/crab/.claude/hooks/test_framework.py 2>&1 | tail -5
 ```
 Record: `N tests passed, M failed` as the baseline.
 
@@ -293,7 +293,7 @@ Document before touching any file:
 
 ### 5f. Test after change
 ```bash
-python3 ~/.claude/hooks/test_framework.py 2>&1 | tail -10
+python3 /home/crab/.claude/hooks/test_framework.py 2>&1 | tail -10
 ```
 
 Compare to baseline from 5a:
@@ -337,7 +337,7 @@ After all improvements are executed and verified:
 
 ### 6a. Update ARCHITECTURE.md (if it exists)
 ```bash
-ls ~/.claude/ARCHITECTURE.md 2>/dev/null
+ls /home/crab/.claude/ARCHITECTURE.md 2>/dev/null
 ```
 If present, append a dated entry to the changelog section:
 ```markdown
@@ -359,7 +359,7 @@ Read the current state, then update:
 
 Run the complete test suite one final time:
 ```bash
-python3 ~/.claude/hooks/test_framework.py 2>&1
+python3 /home/crab/.claude/hooks/test_framework.py 2>&1
 ```
 
 Report the final gate-by-gate status:

@@ -6,7 +6,7 @@ This script moves it back before the SUMMARY.
 """
 import sys
 
-fpath = '~/.claude/hooks/test_framework.py'
+fpath = '/home/crab/.claude/hooks/test_framework.py'
 with open(fpath, 'r') as f:
     lines = f.readlines()
 

@@ -6,7 +6,7 @@ Standalone migration script: exports all 5 ChromaDB collections and imports
 them into LanceDB tables.
 
 Run with MCP server STOPPED:
-    python3 ~/.claude/hooks/scripts/migrate_chromadb_to_lance.py
+    python3 /home/crab/.claude/hooks/scripts/migrate_chromadb_to_lance.py
 
 ChromaDB source : ~/data/memory/          (PersistentClient)
 LanceDB target  : ~/data/memory/lancedb/  (subdirectory)

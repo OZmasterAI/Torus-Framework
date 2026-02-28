@@ -6,9 +6,7 @@ previous edit has been verified (by running a command, test, or check).
 This prevents the pattern where Claude says "fixed" and moves on
 without ever verifying the fix actually works.
 
-Graduated escalation:
-- WARN_THRESHOLD (3) unverified files → warning, edit proceeds
-- BLOCK_THRESHOLD (5) unverified files → hard block
+Blocks immediately at BLOCK_THRESHOLD unverified files (no warn phase).
 
 The pending_verification list is cleared when:
 - A Bash command is run (tests, running scripts, curl, etc.)
@@ -20,28 +18,14 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
+from shared.gate_helpers import extract_file_path, is_test_file, safe_tool_input
 
 GATE_NAME = "GATE 5: PROOF BEFORE FIXED"
 
-# Graduated thresholds for unverified files
-WARN_THRESHOLD = 3
-BLOCK_THRESHOLD = 5
+# Block immediately at this many unverified files (no warn phase)
+BLOCK_THRESHOLD = 3
 
 from shared.exemptions import is_exempt_base as is_exempt
-
-
-def _is_test_file(file_path):
-    """Check if file is a test file (editing tests IS verification)."""
-    basename = os.path.basename(file_path)
-    stem = os.path.splitext(basename)[0]
-    return (
-        stem.startswith("test_") or
-        stem.endswith("_test") or
-        stem.endswith("_spec") or
-        stem.endswith(".test") or
-        stem.endswith(".spec") or
-        basename.startswith("test_")
-    )
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
@@ -51,17 +35,16 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in ("Edit", "Write", "NotebookEdit"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    if not isinstance(tool_input, dict):
-        tool_input = {}
+    tool_input = safe_tool_input(tool_input)
 
-    file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    file_path = extract_file_path(tool_input)
 
     # Check exemptions
     if is_exempt(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Test files are inherently verification — exempt from proof requirements
-    if _is_test_file(file_path):
+    if is_test_file(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check pending verifications with progressive scoring
@@ -104,7 +87,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             effective_unverified += 1.0
 
     tune = state.get("gate_tune_overrides", {}).get("gate_05_proof_before_fixed", {})
-    warn_at = tune.get("warn_threshold", WARN_THRESHOLD)
     block_at = tune.get("block_threshold", BLOCK_THRESHOLD)
 
     if effective_unverified >= block_at:
@@ -113,16 +95,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             blocked=True,
             message=f"[{GATE_NAME}] BLOCKED: {len(pending_other)} files with unverified edits ({file_list}). Run any Bash command (pytest, python script, etc.) to verify and clear pending files.",
             gate_name=GATE_NAME,
-        )
-
-    if effective_unverified >= warn_at:
-        file_list = ", ".join(os.path.basename(p) for p in pending_other[:3])
-        return GateResult(
-            blocked=False,
-            message=f"[{GATE_NAME}] WARNING: {len(pending_other)} unverified files ({file_list}). Verify soon — blocks at {block_at}.",
-            gate_name=GATE_NAME,
-            severity="warn",
-            escalation="warn",
         )
 
     return GateResult(blocked=False, gate_name=GATE_NAME)

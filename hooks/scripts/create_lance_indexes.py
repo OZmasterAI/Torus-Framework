@@ -5,7 +5,7 @@ import lancedb
 import math
 import time
 
-LANCE_PATH = "~/data/memory/lancedb"
+LANCE_PATH = "/home/crab/data/memory/lancedb"
 
 def main():
     db = lancedb.connect(LANCE_PATH)

@@ -15,6 +15,7 @@ from boot_pkg.context import (
     _extract_recent_errors, _extract_test_status, _extract_verification_quality,
     _extract_session_duration, _extract_tool_activity,
     _extract_gate_effectiveness_suggestions, _extract_gate_blocks,
+    _extract_git_context,
 )
 from boot_pkg.maintenance import (
     reset_enforcement_state, _rotate_audit_logs,
@@ -25,6 +26,12 @@ try:
     _HAS_RAMDISK_MODULE = True
 except ImportError:
     _HAS_RAMDISK_MODULE = False
+
+try:
+    from shared.gate_health import get_gate_health_report as _get_gate_health_report
+    _HAS_GATE_HEALTH = True
+except ImportError:
+    _HAS_GATE_HEALTH = False
 
 
 def main():
@@ -88,7 +95,7 @@ def main():
     if os.path.isdir(gates_dir):
         gate_count = len([f for f in os.listdir(gates_dir) if f.startswith("gate_") and f.endswith(".py")])
 
-    # Check if UDS worker (memory_server.py) is available for ChromaDB access
+    # Check if UDS worker (memory_server.py) is available
     _worker_available = False
     try:
         _worker_available = socket_available(retries=1, delay=0.1)
@@ -132,22 +139,13 @@ def main():
     except Exception:
         pass  # Daemon startup is optional, never block boot
 
-    # Watchdog: detect ChromaDB truncation/shrinkage early
+    # Watchdog: verify LanceDB directory exists
     db_size_warning = None
     _mem_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
-    _db_path = os.path.join(_mem_dir, "chroma.sqlite3")
-    _bak_path = os.path.join(_mem_dir, "chroma.sqlite3.backup")
+    _lance_dir = os.path.join(_mem_dir, "lancedb")
     try:
-        if os.path.exists(_db_path):
-            _db_size = os.path.getsize(_db_path)
-            if _db_size < 1024:  # < 1 KB = near-total truncation
-                db_size_warning = f"chroma.sqlite3 is {_db_size} bytes — likely truncated"
-            elif os.path.exists(_bak_path):
-                _bak_size = os.path.getsize(_bak_path)
-                if _bak_size > 0 and _db_size < _bak_size * 0.8:  # < 80% of backup
-                    _db_mb = round(_db_size / (1024 * 1024), 1)
-                    _bak_mb = round(_bak_size / (1024 * 1024), 1)
-                    db_size_warning = f"chroma.sqlite3 shrunk: {_db_mb} MB vs {_bak_mb} MB backup — possible data loss"
+        if not os.path.isdir(_lance_dir):
+            db_size_warning = "LanceDB directory missing — memory database may not be initialized"
     except OSError:
         pass
 
@@ -191,6 +189,9 @@ def main():
     # Extract gate blocks from audit log
     gate_blocks = _extract_gate_blocks()
 
+    # Extract git context for session priming
+    git_context = _extract_git_context()
+
     # Build dashboard
     dashboard = f"""
 +====================================================================+
@@ -200,6 +201,15 @@ def main():
 |--------------------------------------------------------------------|
 |  GATES ACTIVE: {gate_count:<3} | MEMORY: ~/data/memory/                     |
 |--------------------------------------------------------------------|"""
+
+    if git_context:
+        branch = git_context["branch"]
+        uncommitted = git_context["uncommitted_count"]
+        git_line = f"GIT: {branch}"
+        if uncommitted > 0:
+            git_line += f" ({uncommitted} uncommitted)"
+        dashboard += f"\n|  {git_line:<66}|"
+        dashboard += "\n|--------------------------------------------------------------------|"
 
     if time_warning:
         dashboard += f"\n|  {time_warning:<67}|"
@@ -294,6 +304,18 @@ def main():
     # Print to stderr (displayed in user's terminal)
     print(dashboard, file=sys.stderr)
 
+    # Gate health summary line
+    if _HAS_GATE_HEALTH:
+        try:
+            _health = _get_gate_health_report()
+            _gate_count = _health.get("gate_count", 0)
+            _degraded = len(_health.get("degraded_gates", []))
+            _score = _health.get("health_score", 100)
+            _avg_ms = _health.get("routing_stats", {}).get("avg_routing_ms", 0)
+            print(f"[BOOT] Gates: {_gate_count} tracked, {_degraded} degraded, health {_score}/100, avg {_avg_ms:.1f}ms", file=sys.stderr)
+        except Exception:
+            pass  # Gate health is non-critical
+
     # Print to stdout (INJECTED INTO CLAUDE'S CONVERSATION CONTEXT)
     context_parts = [f"<session-start-context>"]
     context_parts.append(f"Session {session_num} | Project: {project_name}")
@@ -317,6 +339,13 @@ def main():
         if "known_issues" in filtered:
             filtered["known_issues"] = filtered["known_issues"][:3]
         context_parts.append(f"LIVE_STATE.json: {json.dumps(filtered, indent=2)}")
+    if git_context:
+        git_info = f"Git: branch={git_context['branch']}"
+        if git_context["uncommitted_count"] > 0:
+            git_info += f", {git_context['uncommitted_count']} uncommitted files"
+        if git_context["recent_commits"]:
+            git_info += f"\nRecent commits: {'; '.join(git_context['recent_commits'][:3])}"
+        context_parts.append(git_info)
     if active_tasks:
         context_parts.append(f"Active tasks: {', '.join(active_tasks[:5])}")
     if injected:

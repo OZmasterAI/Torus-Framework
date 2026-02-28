@@ -219,3 +219,101 @@ def get_timing_report():
         )
     lines.append("=" * 60)
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Adaptive Gate SLA — per-gate timeout enforcement
+# ---------------------------------------------------------------------------
+
+# SLA tiers: gates exceeding these thresholds get flagged or auto-skipped
+SLA_WARN_MS = 50       # Flag as slow (informational)
+SLA_DEGRADE_MS = 200   # Auto-skip with warning (non-Tier-1 only)
+SLA_MIN_SAMPLES = 10   # Need at least this many samples before enforcing SLA
+
+# Tier 1 safety gates are NEVER skipped by SLA (fail-closed)
+_TIER1_GATES = {
+    "gate_01_read_before_edit",
+    "gate_02_no_destroy",
+    "gate_03_test_before_deploy",
+}
+
+
+def check_gate_sla(gate_name):
+    """Check if a gate meets its performance SLA.
+
+    Returns a dict with SLA status:
+        status: "ok" | "warn" | "degrade" | "unknown"
+        skip: bool — True if gate should be auto-skipped (degrade + non-Tier-1)
+        reason: str — human-readable explanation
+        avg_ms: float — current average latency
+        p95_ms: float — current p95 latency
+    """
+    stats = get_gate_stats(gate_name)
+    if stats is None or stats["count"] < SLA_MIN_SAMPLES:
+        return {
+            "status": "unknown",
+            "skip": False,
+            "reason": f"Insufficient data ({stats['count'] if stats else 0}/{SLA_MIN_SAMPLES} samples)",
+            "avg_ms": stats["avg_ms"] if stats else 0.0,
+            "p95_ms": stats["p95_ms"] if stats else 0.0,
+        }
+
+    # Strip prefix for Tier 1 check
+    short_name = gate_name.split(".")[-1] if "." in gate_name else gate_name
+    is_tier1 = short_name in _TIER1_GATES
+
+    avg = stats["avg_ms"]
+    p95 = stats["p95_ms"]
+
+    if p95 > SLA_DEGRADE_MS or avg > SLA_DEGRADE_MS:
+        return {
+            "status": "degrade",
+            "skip": not is_tier1,  # Never skip Tier 1
+            "reason": f"SLA breach: avg={avg:.1f}ms p95={p95:.1f}ms (threshold={SLA_DEGRADE_MS}ms)"
+                      + (" [Tier 1: cannot skip]" if is_tier1 else " [auto-skipping]"),
+            "avg_ms": avg,
+            "p95_ms": p95,
+        }
+
+    if p95 > SLA_WARN_MS or avg > SLA_WARN_MS:
+        return {
+            "status": "warn",
+            "skip": False,
+            "reason": f"Slow: avg={avg:.1f}ms p95={p95:.1f}ms (warn threshold={SLA_WARN_MS}ms)",
+            "avg_ms": avg,
+            "p95_ms": p95,
+        }
+
+    return {
+        "status": "ok",
+        "skip": False,
+        "reason": f"Healthy: avg={avg:.1f}ms p95={p95:.1f}ms",
+        "avg_ms": avg,
+        "p95_ms": p95,
+    }
+
+
+def get_sla_report():
+    """Get SLA status for all tracked gates.
+
+    Returns dict mapping gate_name -> SLA status dict (from check_gate_sla).
+    Gates are sorted by avg_ms descending (slowest first).
+    """
+    all_stats = get_gate_stats()
+    if not all_stats:
+        return {}
+
+    report = {}
+    for gate_name in all_stats:
+        report[gate_name] = check_gate_sla(gate_name)
+
+    return dict(sorted(report.items(), key=lambda kv: kv[1]["avg_ms"], reverse=True))
+
+
+def get_degraded_gates():
+    """Return gate names that should be auto-skipped due to SLA breach.
+
+    Only non-Tier-1 gates with sufficient samples and avg/p95 > SLA_DEGRADE_MS.
+    """
+    report = get_sla_report()
+    return [name for name, sla in report.items() if sla["skip"]]

@@ -12,9 +12,9 @@ All analysis is read-only. This module never modifies gate configuration.
 
 Data sources
 ------------
-- ~/.claude/hooks/.gate_effectiveness.json  (lifetime block counts)
-- ~/.claude/hooks/audit/YYYY-MM-DD.jsonl    (per-decision audit trail)
-- ~/.claude/hooks/.audit_trail.jsonl         (persistent append trail)
+- /home/crab/.claude/hooks/.gate_effectiveness.json  (lifetime block counts)
+- /home/crab/.claude/hooks/audit/YYYY-MM-DD.jsonl    (per-decision audit trail)
+- /home/crab/.claude/hooks/.audit_trail.jsonl         (persistent append trail)
 
 Typical usage
 -------------

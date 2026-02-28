@@ -6,19 +6,19 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
-from shared import chromadb_socket
+from shared import memory_socket
 
 
 def search_pages(query: str, n_results: int = 5) -> list[dict]:
     """Semantic search against web_pages collection."""
     try:
-        result = chromadb_socket.query(
+        result = memory_socket.query(
             "web_pages",
             query_texts=[query],
             n_results=n_results,
             include=["metadatas", "documents", "distances"],
         )
-    except chromadb_socket.WorkerUnavailable:
+    except memory_socket.WorkerUnavailable:
         print("Error: Memory worker not available. Is memory_server running?", file=sys.stderr)
         sys.exit(1)
     except RuntimeError as e:

@@ -121,11 +121,11 @@ def check_gates_health() -> dict:
 
 
 def check_memory_health() -> dict:
-    """Check whether the ChromaDB UDS worker (memory_server.py) is reachable.
+    """Check whether the UDS worker (memory_server.py) is reachable.
 
     Returns:
         {
-            "socket_path": "~/.claude/hooks/.chromadb.sock",
+            "socket_path": "/home/crab/.claude/hooks/.memory.sock",
             "socket_exists": True | False,
             "worker_reachable": True | False,
             "ping_response": "pong" | None,
@@ -145,7 +145,7 @@ def check_memory_health() -> dict:
     }
 
     try:
-        from shared.chromadb_socket import (
+        from shared.memory_socket import (
             SOCKET_PATH,
             is_worker_available,
             ping,
@@ -177,7 +177,7 @@ def check_memory_health() -> dict:
 
     except ImportError as imp_err:
         result["status"] = "error"
-        result["error"] = f"chromadb_socket import failed: {imp_err}"
+        result["error"] = f"memory_socket import failed: {imp_err}"
 
     return result
 

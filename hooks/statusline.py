@@ -23,7 +23,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.chromadb_socket import is_worker_available, count as socket_count, WorkerUnavailable
+from shared.memory_socket import is_worker_available, count as socket_count, WorkerUnavailable
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
@@ -44,7 +44,7 @@ MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 STATS_CACHE = os.path.join(CLAUDE_DIR, "stats-cache.json")
 SETTINGS_FILE = os.path.join(CLAUDE_DIR, "settings.json")
 
-# Cache memory count for 60 seconds to avoid cold-starting ChromaDB on every render
+# Cache memory count for 60 seconds to avoid cold-starting LanceDB on every render
 CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
@@ -411,7 +411,7 @@ def calculate_health(gate_count, mem_count, session_state=None):
     Dimensions (all lightweight filesystem checks):
       Gates present     (25%) — gate files vs expected
       Hooks registered  (20%) — hook events in settings vs expected
-      Memory accessible (15%) — ChromaDB has memories
+      Memory accessible (15%) — LanceDB has memories
       Skills present    (15%) — skill directories vs expected
       Core files exist  (15%) — CLAUDE.md, LIVE_STATE.json, enforcer.py
       Error pressure    (10%) — low errors in session state
@@ -996,7 +996,6 @@ def main():
         f"{_tog('tg_enrichment', 'TGe')} "
         f"{_tog('tg_bot_tmux', 'Bot')} "
         f"{_tog('gate_auto_tune', 'Tune')} "
-        f"{_tog('chain_memory', 'Chain')} "
         f"{_tog('tg_session_notify', 'Notify')} "
         f"{_tog('tg_mirror_messages', 'Mirror')} "
         f"{_tog('budget_degradation', 'Budget')} "

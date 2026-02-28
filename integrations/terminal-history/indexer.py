@@ -24,7 +24,7 @@ sys.path.insert(0, _PLUGIN_DIR)
 from db import init_db, log_entry, is_session_indexed, mark_session_indexed, update_session_tags
 
 SESSIONS_DIR = os.path.join(
-    os.path.expanduser("~"), ".claude", "projects", "-home-$USER--claude"
+    os.path.expanduser("~"), ".claude", "projects", "-home-crab--claude"
 )
 DB_PATH = os.path.join(_PLUGIN_DIR, "terminal_history.db")
 FTS5_MIRROR_PATH = os.path.join(os.path.expanduser("~"), "data", "memory", "fts5_index.db")

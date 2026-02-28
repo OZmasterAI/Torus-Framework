@@ -365,7 +365,7 @@ def get_raw_transcript_window(session_id, around_timestamp="", window_minutes=10
     import glob as _glob
 
     transcript_dir = os.path.join(
-        os.path.expanduser("~"), ".claude", "projects", "-home-$USER--claude"
+        os.path.expanduser("~"), ".claude", "projects", "-home-crab--claude"
     )
     jsonl_path = os.path.join(transcript_dir, f"{session_id}.jsonl")
 

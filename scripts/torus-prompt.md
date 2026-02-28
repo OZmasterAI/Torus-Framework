@@ -20,7 +20,7 @@ Run this command to verify: `{validate_command}`
 ## Agent Channel
 If you discover something other agents should know (API patterns, gotchas, interface changes), broadcast it:
 ```python
-import sys; sys.path.insert(0, '~/.claude/hooks')
+import sys; sys.path.insert(0, '/home/crab/.claude/hooks')
 from shared.agent_channel import post_message
 post_message('task-{task_id}', 'discovery', 'what you found')
 ```

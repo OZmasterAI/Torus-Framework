@@ -1,0 +1,23 @@
+{
+  "session_count": 300,
+  "project": "torus-framework",
+  "feature": "none",
+  "framework_version": "v2.5.8",
+  "what_was_done": "Compared Plugin-test vs refactor-test across 14 categories. Found 10 real test regressions on Plugin-test (0 on refactor-test). Switched model_profile to balanced. Switched back to refactor-test.",
+  "next_steps": [
+    "Merge refactor-test branch to main (4 commits, all tests passing)",
+    "Run memory maintenance(action='stale') — 1655 entries, pruning nudge active",
+    "Wire identify_stale_memories() for pruning workflow (when >2500 entries)",
+    "Causal chain auto-refinement — start read-only analysis mode first",
+    "Wire search_cache into memory_server (needs careful invalidation on writes)"
+  ],
+  "known_issues": [
+    "github-branch is orphan by design -- never merge, always scrub ALL files on sync",
+    "Pyright type-narrowing warnings on importlib.util in search_server.py and web_search_server.py (pre-existing)",
+    "domain system wired (enforcer/orchestrator/statusline/state) but inactive",
+    "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache",
+    "GateRouter Q-table test is flaky (execution order dependent) — pre-existing",
+    "Plugin-test branch preserved but not merged — extension pack system has 10 test regressions (G10 path x2, G13 x7, G17 reg x1)"
+  ],
+  "model_profile": "balanced"
+}

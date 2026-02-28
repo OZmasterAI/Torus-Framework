@@ -6,6 +6,9 @@ on PreToolUse events. Checks gates BEFORE a tool executes and can block
 via sys.exit(2) (Claude Code's mechanical block exit code).
 
 PostToolUse tracking has been moved to tracker.py (fail-open, always exit 0).
+State persistence: enforcer writes to a ramdisk sideband file (never to disk state).
+Tracker is the single writer to the disk state file, preventing the enforcer/tracker
+race condition where concurrent state saves could overwrite each other's mutations.
 
 Each agent (main or team member) gets its own state file, keyed by the session_id
 that Claude Code passes in the hook data. This prevents parallel agents from
@@ -24,7 +27,7 @@ import time
 
 # Add parent to path for shared imports
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.state import load_state, save_state, update_gate_effectiveness, get_live_toggle
+from shared.state import load_state, update_gate_effectiveness, get_live_toggle, write_enforcer_sideband, read_enforcer_sideband
 from shared.gate_result import GateResult
 from shared.audit_log import log_gate_decision
 from shared.circuit_breaker import should_skip_gate, record_gate_result
@@ -349,6 +352,8 @@ def _check_and_reload_gates():
                         "",
                         severity="info",
                     )
+                    short_name = module_name.split(".")[-1]
+                    print(f"[ENFORCER] Hot-reloaded: {short_name}", file=sys.stderr)
 
             _gate_mtimes[module_name] = current_mtime
         except Exception:
@@ -495,7 +500,7 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 print(json.dumps(hook_decision), file=sys.stdout)
                 flush_qtable()
                 _flush_timings()
-                save_state(state, session_id=state.get("_session_id", "main"))
+                write_enforcer_sideband(state, session_id=state.get("_session_id", "main"))
                 sys.exit(0)
             elif result.blocked:
                 # Domain + security profile: downgrade block to warn if mode says "warn"
@@ -533,7 +538,7 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 print(result.message, file=sys.stderr)
                 flush_qtable()
                 _flush_timings()
-                save_state(state, session_id=state.get("_session_id", "main"))
+                write_enforcer_sideband(state, session_id=state.get("_session_id", "main"))
                 sys.exit(2)
             elif result.message:
                 log_gate_decision(gate_label, tool_name, "warn", result.message, session_id, state_keys_read,
@@ -562,7 +567,7 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate_label}' crashed: {e}", file=sys.stderr)
                 flush_qtable()
                 _flush_timings()
-                save_state(state, session_id=state.get("_session_id", "main"))
+                write_enforcer_sideband(state, session_id=state.get("_session_id", "main"))
                 sys.exit(2)
             log_gate_decision(gate_label, tool_name, "crash", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
                               severity="warn")
@@ -576,8 +581,8 @@ def handle_pre_tool_use(tool_name, tool_input, state):
     flush_qtable()
     _flush_timings()
 
-    # Save timing stats after all gates complete (normal path)
-    save_state(state, session_id=state.get("_session_id", "main"))
+    # Write enforcer mutations to sideband (tracker promotes to disk on next PostToolUse)
+    write_enforcer_sideband(state, session_id=state.get("_session_id", "main"))
 
 
 def main():
@@ -608,6 +613,16 @@ def main():
     state = load_state(session_id=session_id)
     state["_session_id"] = session_id
 
+    # Merge any pending enforcer sideband (mutations from previous enforcer calls
+    # that tracker hasn't promoted to disk yet — e.g., after blocks)
+    _pending = read_enforcer_sideband(session_id)
+    if _pending is not None:
+        # Sideband values override disk state for enforcer-managed fields
+        for _k, _v in _pending.items():
+            if _k.startswith("_") and _k != "_sideband_refreshed":
+                continue  # Skip internal keys like _session_id, _version
+            state[_k] = _v
+
     # F4: Subagent mini-boot — refresh sideband timestamp on first encounter
     # of a new session_id. Gives subagents a fresh Gate 4 window at startup
     # without requiring a full SessionStart boot sequence.
@@ -622,7 +637,7 @@ def main():
         except Exception:
             pass  # Best-effort — subagent can still query memory to refresh
         state["_sideband_refreshed"] = True
-        save_state(state, session_id=session_id)
+        write_enforcer_sideband(state, session_id=session_id)
 
     # Sync security_profile from LIVE_STATE.json (source of truth for profile toggle)
     live_profile = get_live_toggle("security_profile")

@@ -9,7 +9,7 @@
 #   X_CLEANUP_MAX_AGE_HOURS=48   — Warn threshold for old-but-alive sessions
 #
 # Usage: cleanup-x-sessions.sh
-# Cron:  0 */6 * * * ~/.claude/scripts/cleanup-x-sessions.sh
+# Cron:  0 */6 * * * /home/crab/.claude/scripts/cleanup-x-sessions.sh
 
 set -euo pipefail
 

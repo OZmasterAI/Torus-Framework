@@ -21,7 +21,7 @@ Run a comprehensive security scan of the Torus framework's gates, hooks, state f
 ## Usage
 Use this skill to run a security audit of the framework before deploying changes or after adding new components.
 
-Run `python3 ~/.claude/skills/security-scan/scripts/scan.py` for a programmatic scan report.
+Run `python3 /home/crab/.claude/skills/security-scan/scripts/scan.py` for a programmatic scan report.
 
 ---
 
@@ -42,7 +42,7 @@ Read the following files to build the component inventory:
 
 **MCP Servers** — from `settings.json`:
 ```
-~/.claude/settings.json
+/home/crab/.claude/settings.json
 ```
 Extract the `mcpServers` block. For each server record:
 - Name, command, args, env vars (flag any with secrets/tokens in env)
@@ -50,24 +50,24 @@ Extract the `mcpServers` block. For each server record:
 
 **Skills** — glob all SKILL.md files:
 ```
-~/.claude/skills/*/SKILL.md
+/home/crab/.claude/skills/*/SKILL.md
 ```
 For each skill record: name, trigger phrases, what commands it runs.
 
 **Hooks** — from `settings.json`:
 ```
-~/.claude/settings.json  →  hooks block
+/home/crab/.claude/settings.json  →  hooks block
 ```
 For each hook record: event type, matcher, command string.
 
 Also read gate files:
 ```
-~/.claude/hooks/gates/gate_*.py   (glob)
+/home/crab/.claude/hooks/gates/gate_*.py   (glob)
 ```
 
 **Agents** — glob all agent definitions:
 ```
-~/.claude/agents/*.md
+/home/crab/.claude/agents/*.md
 ```
 For each agent record: name, tools list, any capability overrides.
 
@@ -143,7 +143,7 @@ For each SKILL.md file:
 - Flag: **High** if user input flows unvalidated into shell commands
 
 **Overly broad file access:**
-- Does the skill read files outside `~/.claude/` without justification?
+- Does the skill read files outside `/home/crab/.claude/` without justification?
 - Flag: **Medium** if reads system files (`/etc/`, `/proc/`), **Low** for home dir
 
 **Secrets in skill scripts:**
@@ -233,13 +233,13 @@ For each Critical or High finding, provide specific remediation:
 Format:
 ```
 [CRITICAL] mcp/memory — Hardcoded token
-  File:   ~/.claude/settings.json:42
+  File:   /home/crab/.claude/settings.json:42
   Fix:    Replace literal "sk-abc123" with environment variable reference
   Code:   "env": { "MEMORY_TOKEN": "$MEMORY_TOKEN" }
   Verify: grep -r "sk-" ~/.claude/settings.json → should return 0 lines
 
 [HIGH] hooks/gate_02.py — Broad except swallows blocking exit
-  File:   ~/.claude/hooks/gates/gate_02.py:87
+  File:   /home/crab/.claude/hooks/gates/gate_02.py:87
   Fix:    Replace `except: pass` with `except Exception as e: raise`
           Or ensure sys.exit(2) is called inside the except block
   Verify: Run test_framework.py gate_02 tests → all should pass
@@ -248,7 +248,7 @@ Format:
 For Medium findings, provide brief guidance:
 ```
 [MEDIUM] agents/builder.md — Unrestricted Bash tool
-  Suggestion: Add note to agent instructions restricting Bash to ~/.claude/ paths
+  Suggestion: Add note to agent instructions restricting Bash to /home/crab/.claude/ paths
   Priority: Next sprint
 ```
 
@@ -269,7 +269,7 @@ For Medium findings, provide brief guidance:
   ```
 - If a previous scan exists in memory, note any **regressions** (issues that were fixed but reappeared)
 - If **zero findings**: still save to memory with `"Security scan {DATE}: clean — no findings"`
-- Do not scan files outside `~/.claude/` unless the user explicitly requests it
+- Do not scan files outside `/home/crab/.claude/` unless the user explicitly requests it
 
 ---
 
