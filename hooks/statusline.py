@@ -1050,7 +1050,7 @@ def main():
         f"{_tog('mentor_tracker', 'Tracker')} "
         f"{_tog('mentor_outcome_chains', 'Chains')} "
         f"{_tog('mentor_memory', 'Memory')}"
-        f" | {_tog('mentor_hindsight_gate', 'Hindsight')}"
+        f" | {_tog('mentor_hindsight_gate', 'Hindsight-Gate 19')}"
     )
     print(line5)
 
