@@ -1,14 +1,14 @@
 {
-  "session_count": 297,
+  "session_count": 298,
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.8",
-  "what_was_done": "Removed stale ChromaDB refs from 9 files. Fixed broken backup_database() — was silently skipping every session due to stale chroma.sqlite3 mtime check.",
+  "what_was_done": "Removed stale ChromaDB refs from 9 files. Fixed broken backup_database() \u2014 was silently skipping every session due to stale chroma.sqlite3 mtime check.",
   "next_steps": [
     "Merge refactor-test branch to main (4 commits now, all tests passing)",
-    "Run memory maintenance(action='stale') — 1639 entries, pruning nudge active",
+    "Run memory maintenance(action='stale') \u2014 1639 entries, pruning nudge active",
     "Wire identify_stale_memories() for pruning workflow (when >2500 entries)",
-    "Causal chain auto-refinement — start read-only analysis mode first",
+    "Causal chain auto-refinement \u2014 start read-only analysis mode first",
     "Wire search_cache into memory_server (needs careful invalidation on writes)"
   ],
   "known_issues": [
@@ -16,7 +16,7 @@
     "Pyright type-narrowing warnings on importlib.util in search_server.py and web_search_server.py (pre-existing)",
     "domain system wired (enforcer/orchestrator/statusline/state) but inactive",
     "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache",
-    "GateRouter Q-table test is flaky (execution order dependent) — pre-existing"
+    "GateRouter Q-table test is flaky (execution order dependent) \u2014 pre-existing"
   ],
-  "last_response_preview": "Committed ab84895: refactor: remove stale ChromaDB references, fix broken backup_database(). 9 files, 23 ins, 34 del."
+  "last_response_preview": "## Session 297 Summary\n\n**What was done:**\n- Removed all stale ChromaDB references from 9 files across the codebase\n- **Fixed broken `backup_database()`** \u2014 was silently skipping every session because it checked `chroma.sqlite3` mtime (never changes post-migration). Now checks `lancedb/` dir mtime. Confirmed working: 119.81 MB backup created.\n- Replaced orchestrator watchdog (chroma size check \u2192 LanceDB dir existence)\n- Deleted `build_from_chromadb` alias, updated docstrings/comments/tests\n\n**Co"
 }
