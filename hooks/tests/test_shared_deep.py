@@ -9343,7 +9343,7 @@ try:
     # --- check_memory_consensus ---
     _cv_mem_novel = check_memory_consensus(
         "LanceDB uses flat scan below 50K rows for better relevance",
-        ["ChromaDB is the primary database", "Redis is used for caching"]
+        ["LanceDB is the primary database", "Redis is used for caching"]
     )
     test("CV: check_memory_consensus novel content -> verdict='novel'",
          _cv_mem_novel["verdict"] == "novel", str(_cv_mem_novel["verdict"]))

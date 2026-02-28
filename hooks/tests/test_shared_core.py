@@ -677,11 +677,11 @@ if not MEMORY_SERVER_RUNNING:
 
         # Test: RRF hybrid merge deduplicates and ranks both-engine items higher
         _fts_res = [{"id": "a1", "preview": "P1", "tags": "t1", "timestamp": "2026-01-01", "fts_score": 5.0}]
-        _chroma_res = [
+        _lance_res = [
             {"id": "a1", "preview": "P1", "tags": "t1", "timestamp": "2026-01-01", "relevance": 0.8},
             {"id": "b2", "preview": "P2", "tags": "t2", "timestamp": "2026-01-02", "relevance": 0.7},
         ]
-        _merged = _merge_results(_fts_res, _chroma_res, top_k=10)
+        _merged = _merge_results(_fts_res, _lance_res, top_k=10)
         _a1 = [m for m in _merged if m["id"] == "a1"][0]
         _b2 = [m for m in _merged if m["id"] == "b2"][0]
         test("RRF merge: both-engine item ranks higher",
@@ -2482,7 +2482,7 @@ _tags_found = _sidx4.tag_search(["type:fix"], top_k=5)
 test("TagIndex add_tags stores and finds tags",
      "mem1" in _tags_found)
 
-# build_from_chromadb alias works (backward compat)
+# build_from_lance populates tags from LanceDB table
 class _MockLanceCol:
     def count(self):
         return 3
@@ -2497,8 +2497,8 @@ class _MockLanceCol:
         }
 
 _sidx5 = TagIndex()
-_count5 = _sidx5.build_from_chromadb(_MockLanceCol())
-test("TagIndex build_from_chromadb sets sync_count",
+_count5 = _sidx5.build_from_lance(_MockLanceCol())
+test("TagIndex build_from_lance sets sync_count",
      _count5 == 3 and _sidx5.is_synced(3))
 
 # reset_and_rebuild clears old data
@@ -2666,7 +2666,7 @@ if _uds_server_live:
              f"got: {_uds_count_k!r}")
     except (RuntimeError, TimeoutError, OSError) as _uds_rt_err:
         skip("count(knowledge) returns int >= 0",
-             f"ChromaDB collection unavailable: {_uds_rt_err}")
+             f"Memory collection unavailable: {_uds_rt_err}")
 
     try:
         _uds_count_o = count("observations")
@@ -2674,7 +2674,7 @@ if _uds_server_live:
              isinstance(_uds_count_o, int) and _uds_count_o >= 0,
              f"got: {_uds_count_o!r}")
     except (RuntimeError, TimeoutError, OSError):
-        skip("count(observations) returns int >= 0", "ChromaDB collection unavailable")
+        skip("count(observations) returns int >= 0", "Memory collection unavailable")
 
     try:
         _uds_query_res = query("knowledge", query_texts=["test"], n_results=1)
@@ -2682,7 +2682,7 @@ if _uds_server_live:
              isinstance(_uds_query_res, dict) and "ids" in _uds_query_res,
              f"got keys: {list(_uds_query_res.keys()) if isinstance(_uds_query_res, dict) else type(_uds_query_res)}")
     except (RuntimeError, TimeoutError, OSError):
-        skip("query returns dict with ids key", "ChromaDB collection unavailable or timeout")
+        skip("query returns dict with ids key", "Memory collection unavailable or timeout")
 
     try:
         _uds_get_res = get("knowledge", limit=2)
@@ -2690,7 +2690,7 @@ if _uds_server_live:
              isinstance(_uds_get_res, dict) and "ids" in _uds_get_res,
              f"got keys: {list(_uds_get_res.keys()) if isinstance(_uds_get_res, dict) else type(_uds_get_res)}")
     except (RuntimeError, TimeoutError, OSError):
-        skip("get with limit returns dict with ids key", "ChromaDB collection unavailable")
+        skip("get with limit returns dict with ids key", "Memory collection unavailable")
 
     _uds_avail_live = is_worker_available(retries=1)
     test("is_worker_available returns True when server running",

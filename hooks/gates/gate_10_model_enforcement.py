@@ -61,7 +61,7 @@ AGENT_ROLE_MAP = {
     # Verification role: tests, audits, reviews (read + run, no code changes)
     "stress-tester":     "verification", # Runs test suites, reports pass/fail (Bash for tests + memory)
     "security":          "verification", # Security audit: OWASP, gate bypass, secrets (Bash for analysis only)
-    "perf-analyzer":     "verification", # Profiles bottlenecks: hooks, gates, ChromaDB (Bash for timing only)
+    "perf-analyzer":     "verification", # Profiles bottlenecks: hooks, gates, LanceDB (Bash for timing only)
 }
 
 # Profile → role → model

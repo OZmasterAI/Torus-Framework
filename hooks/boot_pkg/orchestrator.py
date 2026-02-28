@@ -139,22 +139,13 @@ def main():
     except Exception:
         pass  # Daemon startup is optional, never block boot
 
-    # Watchdog: detect database truncation/shrinkage early
+    # Watchdog: verify LanceDB directory exists
     db_size_warning = None
     _mem_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
-    _db_path = os.path.join(_mem_dir, "chroma.sqlite3")
-    _bak_path = os.path.join(_mem_dir, "chroma.sqlite3.backup")
+    _lance_dir = os.path.join(_mem_dir, "lancedb")
     try:
-        if os.path.exists(_db_path):
-            _db_size = os.path.getsize(_db_path)
-            if _db_size < 1024:  # < 1 KB = near-total truncation
-                db_size_warning = f"chroma.sqlite3 is {_db_size} bytes — likely truncated"
-            elif os.path.exists(_bak_path):
-                _bak_size = os.path.getsize(_bak_path)
-                if _bak_size > 0 and _db_size < _bak_size * 0.8:  # < 80% of backup
-                    _db_mb = round(_db_size / (1024 * 1024), 1)
-                    _bak_mb = round(_bak_size / (1024 * 1024), 1)
-                    db_size_warning = f"chroma.sqlite3 shrunk: {_db_mb} MB vs {_bak_mb} MB backup — possible data loss"
+        if not os.path.isdir(_lance_dir):
+            db_size_warning = "LanceDB directory missing — memory database may not be initialized"
     except OSError:
         pass
 

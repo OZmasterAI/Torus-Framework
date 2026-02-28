@@ -460,12 +460,12 @@ def flush_capture_queue():
 
 def backup_database():
     """Backup database if DB changed since last backup. Fail-open."""
-    db_path = os.path.join(MEMORY_DIR, "chroma.sqlite3")
-    bak_path = os.path.join(MEMORY_DIR, "chroma.sqlite3.backup")
+    lance_dir = os.path.join(MEMORY_DIR, "lancedb")
+    bak_path = os.path.join(MEMORY_DIR, "lancedb.backup.tar.gz")
     try:
         # Mtime skip: don't re-backup if DB hasn't changed
-        if os.path.exists(db_path) and os.path.exists(bak_path):
-            db_mtime = os.path.getmtime(db_path)
+        if os.path.isdir(lance_dir) and os.path.exists(bak_path):
+            db_mtime = os.path.getmtime(lance_dir)
             bak_mtime = os.path.getmtime(bak_path)
             if bak_mtime >= db_mtime:
                 print("[SESSION_END] Backup skipped (DB unchanged)", file=sys.stderr)

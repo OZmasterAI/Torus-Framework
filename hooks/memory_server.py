@@ -917,8 +917,6 @@ class TagIndex:
             self._update_sync_count(len(ids))
         return len(ids)
 
-    # Legacy alias for backward compatibility (used by test_framework.py mock tests)
-    build_from_chromadb = build_from_lance
 
     def add_tags(self, memory_id, tags_str):
         """Add/update tags for a single memory (called on remember_this)."""

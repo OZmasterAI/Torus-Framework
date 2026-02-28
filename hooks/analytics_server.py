@@ -6,7 +6,7 @@ Wraps shared analytics modules (health_monitor, session_analytics, gate_dashboar
 gate_timing, anomaly_detector, metrics_collector, skill_health) so Claude and
 subagents can query them directly instead of multi-line Bash Python scripts.
 
-No ChromaDB, no embedding models — near-instant startup.
+No embedding models — near-instant startup.
 
 Run standalone: python3 analytics_server.py
 Used via MCP: configured in .claude/mcp.json
