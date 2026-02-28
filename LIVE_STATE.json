@@ -3,22 +3,23 @@
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.8",
-  "what_was_done": "Replaced inline bridge regex with 3 cascade helpers (_extract_error_text, _extract_strategy, _normalize_strategy) in memory_server.py. Verified 5386/5391 tests pass, tested against 8 real content patterns, live-verified bridge produces clean strategy_ids.",
+  "what_was_done": "Fixed recurring XRDP login-then-disconnect on VPS — recreated missing ~/.xsessionrc DBUS fix (3rd time). Cleared stale xfce4 session cache. Saved recurring pattern to memory.",
   "next_steps": [
     "Collect mentor longitudinal data (few sessions), then enable Gate 19 (hindsight)",
-    "Run memory maintenance(action='stale') \u2014 1689 entries, pruning nudge active",
+    "Run memory maintenance(action='stale') — 1690 entries, pruning nudge active",
     "Update test_shared_core.py Slack token test on refactor-test to match github fix",
-    "Add unit tests for bridge helpers (_extract_error_text, _extract_strategy, _normalize_strategy)"
+    "Add unit tests for bridge helpers (_extract_error_text, _extract_strategy, _normalize_strategy)",
+    "Consider chattr +i on VPS ~/.xsessionrc to prevent recurring deletion"
   ],
   "known_issues": [
-    "github-branch sync: NEVER delete hook files during bulk operations \u2014 causes tool deadlock",
-    "GitHub push protection scans ALL commits, not just tip \u2014 squash secrets out before pushing",
-    "Mentor observation data starts session 301 \u2014 no longitudinal data before that",
+    "github-branch sync: NEVER delete hook files during bulk operations — causes tool deadlock",
+    "GitHub push protection scans ALL commits, not just tip — squash secrets out before pushing",
+    "Mentor observation data starts session 301 — no longitudinal data before that",
     "Pyright type-narrowing warnings on importlib.util in search_server.py and web_search_server.py (pre-existing)",
     "domain system wired but inactive",
     "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache",
-    "GateRouter Q-table test is flaky (execution order dependent) \u2014 pre-existing",
-    "LanceDB fix_outcomes schema has no bridge_version column \u2014 use strategy_id != 'auto-bridged' to distinguish v2 entries"
-  ],
-  "last_response_preview": "Clean \u2014 only ephemeral sideband/cache files left untracked (as expected).\n\n---\n\n**Session 304 Summary**\n\n**Done:**\n- Replaced inline bridge regex in `memory_server.py` with 3 cascade helpers\n- `_extract_error_text`: 7-level cascade (ErrorName \u2192 bug/issue \u2192 Gate N \u2192 BUG FIX: \u2192 broad catch \u2192 context \u2192 content[:100])\n- `_extract_strategy`: 4-level cascade (by/via+verb \u2192 Solution: \u2192 Added/Changed \u2192 X\u2192Y)\n- `_normalize_strategy`: strips fillers, hyphenates, caps at 5 words\n- Verified: 5386/5391 tests "
+    "GateRouter Q-table test is flaky (execution order dependent) — pre-existing",
+    "LanceDB fix_outcomes schema has no bridge_version column — use strategy_id != 'auto-bridged' to distinguish v2 entries",
+    "VPS ~/.xsessionrc keeps disappearing — needed 3 times now (sessions ~113, ~114, 305)"
+  ]
 }
