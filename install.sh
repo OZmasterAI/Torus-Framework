@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Torus Framework Installer"
-echo "========================="
+echo "Torus Framework Installer (v2.5.8)"
+echo "===================================="
 echo ""
 
 # Check prerequisites
