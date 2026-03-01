@@ -113,6 +113,7 @@ SOCKET_PATH = os.path.join(
 )
 _socket_server = None  # threading server reference for cleanup
 _uds_shutting_down = False  # prevents rebind during intentional shutdown
+_socket_owner_pid = None  # PID that successfully bound the socket
 
 # Lazy LanceDB initialization
 _lance_db = None  # lancedb.DBConnection
@@ -227,6 +228,23 @@ def _embed_texts(texts):
 def _embed_text(text):
     """Embed a single text string. Returns list of floats (768-dim)."""
     return _embed_texts([text])[0]
+
+
+def _lance_retry(fn, retries=3, base_delay=0.1):
+    """Retry a LanceDB write operation on OSError (file lock contention).
+
+    Exponential backoff: 0.1s, 0.3s, 0.9s (1.3s max total).
+    Only catches OSError — other exceptions propagate immediately.
+    """
+    for attempt in range(retries):
+        try:
+            return fn()
+        except OSError:
+            if attempt < retries - 1:
+                delay = base_delay * (3 ** attempt)
+                time.sleep(delay)
+            else:
+                raise
 
 
 class LanceCollection:
@@ -345,10 +363,10 @@ class LanceCollection:
             records.append(record)
 
         try:
-            self._table.merge_insert("id") \
-                .when_matched_update_all() \
-                .when_not_matched_insert_all() \
-                .execute(records)
+            _lance_retry(lambda: self._table.merge_insert("id")
+                .when_matched_update_all()
+                .when_not_matched_insert_all()
+                .execute(records))
         except Exception as e:
             # Fallback: try add (for new tables or if merge_insert fails)
             try:
@@ -389,10 +407,10 @@ class LanceCollection:
                 records.append(record)
 
             if records:
-                self._table.merge_insert("id") \
-                    .when_matched_update_all() \
-                    .when_not_matched_insert_all() \
-                    .execute(records)
+                _lance_retry(lambda: self._table.merge_insert("id")
+                    .when_matched_update_all()
+                    .when_not_matched_insert_all()
+                    .execute(records))
         except Exception as e:
             print(f"[Lance] update failed for {self._name}: {e}", file=_sys.stderr)
 
@@ -402,7 +420,7 @@ class LanceCollection:
             return
         try:
             escaped = ", ".join(f"'{i}'" for i in ids)
-            self._table.delete(f"id IN ({escaped})")
+            _lance_retry(lambda: self._table.delete(f"id IN ({escaped})"))
         except Exception as e:
             print(f"[Lance] delete failed for {self._name}: {e}", file=_sys.stderr)
 
@@ -4532,13 +4550,35 @@ def _serialize_result(result):
 
 
 def _bind_uds_socket():
-    """Create, bind, and return a new UDS server socket."""
+    """Create, bind, and return a new UDS server socket.
+
+    Probe-connects before unlinking to avoid stealing a live server's socket.
+    Returns None if another server is already listening.
+    """
+    global _socket_owner_pid
     if os.path.exists(SOCKET_PATH):
-        os.unlink(SOCKET_PATH)
+        # Probe: is another server already listening?
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            probe.settimeout(1.0)
+            probe.connect(SOCKET_PATH)
+            # Connection succeeded — another server is live
+            probe.close()
+            print("[UDS] Another server is live on socket, skipping UDS bind", file=_sys.stderr)
+            return None
+        except (ConnectionRefusedError, FileNotFoundError, OSError):
+            # Stale socket — safe to unlink
+            probe.close()
+            try:
+                os.unlink(SOCKET_PATH)
+            except FileNotFoundError:
+                pass
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     srv.bind(SOCKET_PATH)
     srv.listen(8)
     srv.settimeout(1.0)
+    _socket_owner_pid = os.getpid()
+    print(f"[UDS] Bound socket (pid={_socket_owner_pid})", file=_sys.stderr)
     return srv
 
 
@@ -4548,6 +4588,9 @@ def _start_socket_server():
 
     try:
         srv = _bind_uds_socket()
+        if srv is None:
+            print("[UDS] Skipping UDS server (another instance owns the socket)", file=_sys.stderr)
+            return
         _socket_server = srv
     except OSError as e:
         # Non-fatal: MCP tools still work, just no external gateway
@@ -4569,8 +4612,12 @@ def _start_socket_server():
                         srv.close()
                     except Exception:
                         pass
+                    new_srv = _bind_uds_socket()
+                    if new_srv is None:
+                        print("[UDS] Another server took the socket, exiting accept loop", file=_sys.stderr)
+                        return
                     try:
-                        srv = _bind_uds_socket()
+                        srv = new_srv
                         _socket_server = srv
                     except OSError as e:
                         print(f"[UDS] Watchdog rebind failed: {e}", file=_sys.stderr)
@@ -4585,19 +4632,23 @@ def _start_socket_server():
                 except Exception:
                     pass
                 time.sleep(1)
-                try:
-                    srv = _bind_uds_socket()
-                    _socket_server = srv
-                except OSError as rebind_err:
-                    print(f"[UDS] Rebind failed, retrying in 5s: {rebind_err}", file=_sys.stderr)
-                    time.sleep(5)
+                new_srv = _bind_uds_socket()
+                if new_srv is None:
+                    print("[UDS] Another server took the socket, exiting accept loop", file=_sys.stderr)
+                    return
+                srv = new_srv
+                _socket_server = srv
 
     t = threading.Thread(target=_accept_loop, daemon=True, name="uds-gateway")
     t.start()
 
 
 def _cleanup_socket():
-    """Close server socket and remove socket file on exit."""
+    """Close server socket and remove socket file on exit.
+
+    Only unlinks the socket file if this process is the one that bound it,
+    preventing session 2's exit from killing session 1's connection.
+    """
     global _socket_server, _uds_shutting_down
     _uds_shutting_down = True
     if _socket_server is not None:
@@ -4606,11 +4657,13 @@ def _cleanup_socket():
         except Exception:
             pass
         _socket_server = None
-    try:
-        if os.path.exists(SOCKET_PATH):
-            os.unlink(SOCKET_PATH)
-    except OSError:
-        pass
+    # Only unlink if we own the socket
+    if _socket_owner_pid == os.getpid():
+        try:
+            if os.path.exists(SOCKET_PATH):
+                os.unlink(SOCKET_PATH)
+        except OSError:
+            pass
 
 
 atexit.register(_cleanup_socket)

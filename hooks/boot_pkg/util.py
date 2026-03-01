@@ -1,4 +1,5 @@
 """Shared utilities for boot sequence."""
+import fcntl
 import json
 import os
 
@@ -28,3 +29,26 @@ def load_live_state():
         except json.JSONDecodeError:
             return {}
     return {}
+
+
+def increment_session_count():
+    """Atomically increment session_count in LIVE_STATE.json using file locking.
+
+    Returns the new session number. Concurrent calls from different processes
+    will serialize via fcntl.LOCK_EX, so each session gets a unique number.
+    """
+    os.makedirs(os.path.dirname(LIVE_STATE_FILE), exist_ok=True)
+    lock_path = LIVE_STATE_FILE + ".lock"
+    with open(lock_path, "w") as lock_fd:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            state = load_live_state()
+            state["session_count"] = state.get("session_count", 0) + 1
+            tmp = LIVE_STATE_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(state, f, indent=2)
+                f.write("\n")
+            os.replace(tmp, LIVE_STATE_FILE)
+            return state["session_count"]
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)

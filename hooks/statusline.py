@@ -1048,13 +1048,22 @@ def main():
     print(line6)
 
     # ── LINE 7: Mentor system toggles ──
+    # Gate 19 effective state: active if its own toggle OR mentor_all is on
+    _hindsight_own = ls.get("mentor_hindsight_gate", False)
+    _mentor_all = ls.get("mentor_all", False)
+    if _hindsight_own:
+        _g19_display = f"{COLOR_GREEN}\u25c9 Hindsight-Gate 19{COLOR_RESET}"
+    elif _mentor_all:
+        _g19_display = f"{COLOR_GREEN}\u25c9 Hindsight-Gate 19{COLOR_RESET} (via All)"
+    else:
+        _g19_display = "\u25cb Hindsight-Gate 19"
     line5 = (
         f"Mentor: "
         f"{_tog('mentor_all', 'All')} "
         f"{_tog('mentor_tracker', 'Tracker')} "
         f"{_tog('mentor_outcome_chains', 'Chains')} "
         f"{_tog('mentor_memory', 'Memory')}"
-        f" | {_tog('mentor_hindsight_gate', 'Hindsight-Gate 19')}"
+        f" | {_g19_display}"
     )
     print(line5)
 

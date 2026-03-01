@@ -481,7 +481,7 @@ def backup_database():
 
 
 def increment_session_count(metrics=None):
-    """Atomically increment session_count in LIVE_STATE.json."""
+    """Save session metrics. Counter increment moved to boot (boot_pkg/util.py)."""
     state = {}
     if os.path.exists(LIVE_STATE_FILE):
         try:
@@ -489,18 +489,13 @@ def increment_session_count(metrics=None):
                 state = json.load(f)
         except (json.JSONDecodeError, OSError):
             state = {}
-    state["session_count"] = state.get("session_count", 0) + 1
 
     # Store session metrics in config.json (persists across task resets)
     if metrics:
         _update_config("last_session_metrics", metrics)
 
-    tmp = LIVE_STATE_FILE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(state, f, indent=2)
-        f.write("\n")
-    os.replace(tmp, LIVE_STATE_FILE)
-    print(f"[SESSION_END] Session {state['session_count']} complete", file=sys.stderr)
+    session_num = state.get("session_count", "?")
+    print(f"[SESSION_END] Session {session_num} complete", file=sys.stderr)
 
 
 def main():
