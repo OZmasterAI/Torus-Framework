@@ -61,7 +61,8 @@ test("SSH public key is redacted",
      f"Expected <SSH_KEY_REDACTED> in output, got: {_ssh_test}")
 
 # Test 2: Slack token is redacted (no env-var key prefix to avoid pattern #11 clobber)
-_slack_test = _scrub_239("slack " + "xoxb" + "-123456789-abcdefghijklmnop")
+# Use non-numeric segments to avoid GitHub push protection false positive
+_slack_test = _scrub_239("slack " + "xoxb" + "-FAKE-TEST-TOKEN")
 test("Slack token is redacted",
      "<SLACK_TOKEN_REDACTED>" in _slack_test,
      f"Expected <SLACK_TOKEN_REDACTED>, got: {_slack_test}")

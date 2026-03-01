@@ -2354,6 +2354,74 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     return result
 
 
+def _extract_error_text(content, context):
+    """Extract error description from fix content. Cascade, first match wins."""
+    import re
+    # A: Fixed/Resolved + ErrorName/Exception/FAILED
+    m = re.search(r'(?:Fixed|Resolved|fixed|resolved)\s+(\S+(?:Error|Exception|FAILED|error)\S*)', content)
+    if m:
+        return m.group(1)
+    # B: Fixed [thing] bug/issue/problem/failure/crash/regression/mismatch/dead code
+    m = re.search(r'(?:Fixed|Resolved|fixed|resolved)\s+(.+?\b(?:bug|issue|problem|failure|crash|regression|mismatch|dead\s*code))', content)
+    if m:
+        return m.group(1).strip()[:120]
+    # C: Fixed Gate N / Fixed component.method()
+    m = re.search(r'(?:Fixed|Resolved|fixed|resolved)\s+((?:Gate\s*\d+|[A-Za-z_]+\.[A-Za-z_]+(?:\(\))?)\S*)', content)
+    if m:
+        return m.group(1).strip()[:120]
+    # D: BUG FIX: / CRITICAL FIX: / FIX: description
+    m = re.search(r'(?:BUG\s+FIX|CRITICAL\s+FIX|FIX)\s*[:\-]\s*(.+?)(?:\.|,|\n|$)', content)
+    if m:
+        return m.group(1).strip()[:120]
+    # E: Fixed [description] — broad catch, skip noise phrases
+    m = re.search(r'(?:Fixed|Resolved|fixed|resolved)\s+(.+?)(?:\.|,|\n|$)', content)
+    if m:
+        txt = m.group(1).strip()
+        noise = {'the test', 'the bug', 'the issue', 'the code', 'the file', 'the error', 'it', 'this'}
+        if len(txt) > 5 and txt.lower() not in noise:
+            return txt[:120]
+    # F: Context field as fallback
+    if context and len(context.strip()) > 5:
+        return context.strip()[:120]
+    # G: First 100 chars of content
+    return content[:100]
+
+
+def _extract_strategy(content):
+    """Extract fix strategy from content. Cascade, first match wins."""
+    import re
+    # S1: by/via + action phrase (verb-oriented)
+    m = re.search(r'\b(?:by|via)\s+((?:adding|removing|changing|replacing|setting|updating|patching|using|wrapping|moving|renaming|splitting|merging|importing|exporting|converting|switching|reverting)\b.+?)(?:\.|,|\n|$)', content, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    # S2: Solution:/Resolution:/Workaround: + description (not BUG FIX: or CRITICAL FIX:)
+    m = re.search(r'(?<!\bBUG\s)(?<!\bCRITICAL\s)(?<!\bM-\d\s)(?:Fix|Solution|Resolution|Workaround)\s*[:\-]\s*(.+?)(?:\.|,|\n|$)', content, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    # S3: Added/Changed/Replaced/Removed/Set/Updated/Patched + description
+    m = re.search(r'\b((?:Added|Changed|Replaced|Removed|Set|Updated|Patched|Renamed|Wrapped|Moved|Reverted|Converted|Switched)\s+.+?)(?:\.|,|\n|$)', content)
+    if m:
+        return m.group(1).strip()
+    # S4: X → Y / X changed to Y / replaced X with Y
+    m = re.search(r'(\S+\s*(?:→|->|changed\s+to|replaced\s+with)\s+\S+)', content)
+    if m:
+        return m.group(1).strip()
+    return None
+
+
+def _normalize_strategy(raw):
+    """Normalize raw strategy text into a short hyphenated strategy_id."""
+    if not raw:
+        return "auto-bridged"
+    fillers = {'the', 'a', 'an', 'in', 'to', 'for', 'of', 'on', 'at', 'is', 'was', 'and', 'or', 'that', 'this', 'it'}
+    words = raw.lower().split()
+    words = [w for w in words if w not in fillers and len(w) > 1]
+    if not words:
+        return "auto-bridged"
+    result = '-'.join(words[:5])
+    return result[:60] if len(result) > 60 else result
+
+
 def _bridge_to_fix_outcomes(content, context, tags):
     """Bridge remember_this to fix_outcomes when type:fix tag is detected.
 
@@ -2365,21 +2433,9 @@ def _bridge_to_fix_outcomes(content, context, tags):
         if fix_outcomes is None:
             return None
 
-        # Try to extract error pattern from content
-        # Common patterns: "Fixed KeyError ...", "Fixed ImportError ..."
-        import re
-        error_match = re.search(
-            r'(?:Fixed|Resolved|fixed|resolved)\s+(\S+(?:Error|Exception|FAILED|error)\S*)',
-            content
-        )
-        error_text = error_match.group(1) if error_match else content[:100]
-
-        # Extract strategy from content if possible
-        strategy_match = re.search(
-            r'(?:using|via|by|with)\s+(.+?)(?:\.|,|$)',
-            content
-        )
-        strategy_id = strategy_match.group(1).strip()[:80] if strategy_match else "auto-bridged"
+        error_text = _extract_error_text(content, context)
+        raw_strategy = _extract_strategy(content)
+        strategy_id = _normalize_strategy(raw_strategy)
 
         normalized, error_hash = error_signature(error_text)
         strategy_hash = fnv1a_hash(strategy_id)

@@ -712,12 +712,16 @@ def get_memory_freshness():
     try:
         with open(MEMORY_TS_FILE) as f:
             data = json.load(f)
-        ts = data.get("timestamp", 0)
+        # Handle both formats: {"timestamp": N} and raw int/float N
+        if isinstance(data, (int, float)):
+            ts = data
+        else:
+            ts = data.get("timestamp", 0)
         if ts <= 0:
             return None
         elapsed = int(time.time() - ts) // 60
         return elapsed
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError):
         return None
 
 
@@ -1048,9 +1052,9 @@ def main():
         f"Mentor: "
         f"{_tog('mentor_all', 'All')} "
         f"{_tog('mentor_tracker', 'Tracker')} "
-        f"{_tog('mentor_hindsight_gate', 'Hindsight')} "
         f"{_tog('mentor_outcome_chains', 'Chains')} "
         f"{_tog('mentor_memory', 'Memory')}"
+        f" | {_tog('mentor_hindsight_gate', 'Hindsight-Gate 19')}"
     )
     print(line5)
 

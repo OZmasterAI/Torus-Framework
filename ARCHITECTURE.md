@@ -1,7 +1,7 @@
 # Torus Framework — Architecture Map
 
-> **Version:** v2.5.3 | **Updated:** 2026-02-24 (Session 223)
-> **Stats:** 113 Python files | ~48,552 lines | 17 active gates | 50 shared modules | 33 skills
+> **Version:** v2.5.8 | **Updated:** 2026-03-01 (Session 306)
+> **Stats:** 151 Python files | ~75,939 lines | 17 active gates | 67 shared modules | 36 skills
 
 ## Overview
 
@@ -37,13 +37,13 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
               │  - Gate auto-tune         │           │             │
               └──────────────────────────┘     ┌─────▼──────┐  ┌───▼──────────┐
                                                │  Shared/   │  │  Observation │
-                                               │  (50 mods) │  │  Capture     │
+                                               │  (67 mods) │  │  Capture     │
                                                └─────┬──────┘  └───┬──────────┘
                                                      │              │
                             ┌────────────────────────▼──────────────▼──────┐
                             │              MCP Servers                      │
-                            │  memory_server.py (6 tools, LanceDB)         │
-                            │  analytics_server.py (10 tools, read-only)   │
+                            │  memory_server.py (8 tools, LanceDB)         │
+                            │  analytics_server.py (50 tools, read-only)   │
                             └──────────────────────────────────────────────┘
 ```
 
@@ -60,18 +60,19 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 ├── mcp.json                         # MCP server config
 │
 ├── hooks/                           # Core framework (83 MB total)
-│   ├── enforcer.py                  #   PreToolUse gate dispatcher (632 lines)
-│   ├── enforcer_shim.py             #   Fast UDS proxy ~43ms (83 lines)
+│   ├── enforcer.py                  #   PreToolUse gate dispatcher (651 lines)
+│   ├── enforcer_shim.py             #   Fast UDS proxy ~43ms (113 lines)
 │   ├── enforcer_daemon.py           #   Persistent gate server (232 lines)
 │   ├── boot.py                      #   SessionStart shim (42 lines)
 │   ├── tracker.py                   #   PostToolUse shim (47 lines)
-│   ├── session_end.py               #   SessionEnd handler (554 lines)
-│   ├── statusline.py                #   2-line status display (1,061 lines)
-│   ├── memory_server.py             #   Memory MCP server (4,188 lines)
-│   ├── analytics_server.py          #   Analytics MCP server (379 lines)
-│   ├── test_framework.py            #   Gate test suite (11,904 lines)
+│   ├── session_end.py               #   SessionEnd handler (599 lines)
+│   ├── statusline.py                #   2-line status display (1,107 lines)
+│   ├── memory_server.py             #   Memory MCP server (4,627 lines)
+│   ├── analytics_server.py          #   Analytics MCP server (2,481 lines)
+│   ├── test_framework.py            #   Gate test suite (53 lines, orchestrator)
+│   ├── tests/                       # 13 focused test files (29,417 lines)
 │   ├── fuzz_gates.py                #   Gate fuzzer (562 lines)
-│   ├── subagent_context.py          #   SubagentStart context injection (336 lines)
+│   ├── subagent_context.py          #   SubagentStart context injection (380 lines)
 │   ├── user_prompt_capture.py       #   UserPromptSubmit capture (160 lines)
 │   ├── event_logger.py              #   Supplementary event logging (298 lines)
 │   ├── auto_commit.py               #   Two-phase git auto-commit (148 lines)
@@ -86,9 +87,9 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 │   ├── setup_ramdisk.sh             #   One-time tmpfs setup (116 lines)
 │   │
 │   ├── gates/                       # Quality gates (17 active, 348 KB)
-│   ├── shared/                      # Infrastructure modules (50 files, 1.7 MB, ~19,458 lines)
-│   ├── boot_pkg/                    # Boot pipeline (6 files, 848 lines)
-│   ├── tracker_pkg/                 # Tracker pipeline (10 files, 1,537 lines)
+│   ├── shared/                      # Infrastructure modules (67 files, ~25K lines)
+│   ├── boot_pkg/                    # Boot pipeline (6 files, 977 lines)
+│   ├── tracker_pkg/                 # Tracker pipeline (10 files, 1,552 lines)
 │   ├── benchmarks/                  # Performance benchmarks
 │   │   ├── benchmark_gates.py       #   Gate latency benchmarks (458 lines)
 │   │   └── benchmark_io.py          #   I/O latency benchmarks (162 lines)
@@ -110,10 +111,10 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 │   ├── .enforcer.pid                # Daemon process ID
 │   └── state_*.json                 # Per-agent session state (43 files)
 │
-├── skills/                          # 33 skill definitions
+├── skills/                          # 36 skill definitions
 ├── agents/                          # 6 agent definitions
-├── teams/                           # 4 team definitions
-├── plugins/                         # 9 installed plugins
+├── teams/                           # 5 team definitions
+├── plugins/                         # 0 installed (cleared)
 ├── scripts/                         # External orchestrators
 │   ├── torus-loop.sh                #   Sequential task executor (261 lines)
 │   └── torus-wave.py                #   Parallel wave orchestrator (477 lines)
@@ -180,7 +181,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 
 ---
 
-## Shared Modules (50 files, ~19,458 lines)
+## Shared Modules (67 files, ~24,979 lines)
 
 ### State Management (3 modules, ~1,277 lines)
 
@@ -190,7 +191,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | state_migrator.py | 347 | Schema migration/validation, get_schema_diff |
 | ramdisk.py | 230 | Hybrid tmpfs for hot I/O. Async disk mirror. Graceful fallback |
 
-### Gate Execution (4 modules, ~775 lines)
+### Gate Execution (5 modules, ~1,008 lines)
 
 | Module | Lines | Purpose |
 |--------|-------|---------|
@@ -198,6 +199,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | gate_registry.py | 28 | GATE_MODULES canonical list (single source of truth) |
 | gate_router.py | 456 | Priority routing, Q-learning, short-circuit, tool-type filtering |
 | gate_timing.py | 221 | Per-gate latency stats, percentile analysis |
+| gate_helpers.py | 233 | Gate evaluation helper utilities |
 
 ### Audit & Logging (3 modules, ~902 lines)
 
@@ -260,7 +262,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | Module | Lines | Purpose |
 |--------|-------|---------|
 | memory_maintenance.py | 847 | Health analysis, age scoring, cleanup candidates (read-only) |
-| chromadb_socket.py | 153 | UDS client for memory server / LanceDB (legacy name, avoids segfaults). 5s timeout |
+| memory_socket.py | 195 | UDS client for memory server / LanceDB (avoids segfaults). 5s timeout |
 | experience_archive.py | 393 | CSV-based fix pattern learning, success rates |
 
 ### Inter-Agent Communication (3 modules, ~1,312 lines)
@@ -271,7 +273,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | event_bus.py | 479 | Pub/sub with ramdisk ring buffer persistence |
 | event_replay.py | 708 | Replay hook events through gates for regression testing |
 
-### Registry & Catalog (4 modules, ~2,047 lines)
+### Registry & Catalog (5 modules, ~2,371 lines)
 
 | Module | Lines | Purpose |
 |--------|-------|---------|
@@ -279,6 +281,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | capability_registry.py | 475 | Agent capability mapping, ACL enforcement, model recommendation |
 | skill_mapper.py | 483 | Skill dependency graph, health analysis, reuse detection |
 | skill_health.py | 433 | Validate skill structure (SKILL.md, metadata, scripts) |
+| domain_registry.py | 324 | Domain-specific knowledge registry and routing |
 
 ### Visualization & Reporting (3 modules, ~1,448 lines)
 
@@ -301,6 +304,48 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 |--------|-------|---------|
 | tool_fingerprint.py | 174 | SHA256 MCP tool supply chain verification |
 | chain_sdk.py | 79 | Skill chain monitoring wrapper (elapsed, tokens, tool calls) |
+
+### Gate Analysis (6 modules, ~1,228 lines)
+
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| gate_trend.py | 237 | Gate block rate trend analysis over time |
+| gate_health.py | 160 | Per-gate health scoring and degradation detection |
+| gate_correlation.py | 132 | Gate co-firing correlation analysis |
+| gate_dependency_graph.py | 387 | Gate dependency DAG, topological sort, impact analysis |
+| gate_pruner.py | 312 | Identify redundant or low-value gates for removal |
+| health_correlation.py | 354 | Cross-component health correlation and root cause analysis |
+
+### Memory Analysis (3 modules, ~478 lines)
+
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| memory_decay.py | 166 | Time-based memory relevance decay scoring |
+| search_cache.py | 119 | LRU search result caching with TTL |
+| verify_memory_maintenance.py | 193 | Memory health verification and maintenance checks |
+
+### Session Analysis (2 modules, ~573 lines)
+
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| session_replay.py | 418 | Replay past sessions for debugging and analysis |
+| session_compressor.py | 155 | Session transcript compression for storage efficiency |
+
+### Code Quality Analysis (2 modules, ~657 lines)
+
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| code_hotspot.py | 344 | Identify frequently-edited code regions and churn patterns |
+| tool_recommendation.py | 313 | Suggest optimal tools based on task context and history |
+
+### Infrastructure Extensions (4 modules, ~1,462 lines)
+
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| hot_reload.py | 571 | Live config/module reload without restart |
+| rules_validator.py | 144 | Validate rules/*.md files for correctness |
+| chain_refinement.py | 548 | Causal chain strategy refinement and learning |
+| metrics_exporter.py | 199 | Export metrics in Prometheus/JSON format |
 
 ---
 
@@ -362,7 +407,7 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 
 ## MCP Servers
 
-### Memory Server (memory_server.py — 4,188 lines)
+### Memory Server (memory_server.py — 4,627 lines)
 
 - **Embedding:** nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens)
 - **Storage:** ~/data/memory/lancedb/ (LanceDB, flat scan; ChromaDB backup at ~/data/memory/chroma.sqlite3)
@@ -370,6 +415,8 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 - **Search:** BM25 FTS (~19ms keyword), semantic (~30ms flat scan), hybrid; tags in separate SQLite tags.db
 - **3-tier memory classification:** Tier 1 (high-value, boosted in search), Tier 2 (standard), Tier 3 (low-priority, penalized)
 - **UDS gateway:** .chromadb.sock (legacy name, serializes all hook-side LanceDB access)
+
+**8 active tools, 5 dormant.**
 
 | Tool | Parameters | Purpose |
 |------|-----------|---------|
@@ -379,29 +426,30 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 | record_attempt | error_text, strategy_id | Start causal chain → returns chain_id |
 | record_outcome | chain_id, outcome | Complete chain (success/failure) |
 | query_fix_history | error_text, top_k=10 | Strategy success/failure lookup. Resets Gate 15 state |
+| fuzzy_search | query, top_k=10, table | Typo-tolerant search with edit-distance expansion. Exact match 2x boost |
+| health_check | — | Server uptime, table counts, last write, embedding status, disk usage |
 
 **Dormant:** deduplicate_sweep, delete_memory, timeline, maintenance, get_teammate_transcripts
 
-### Analytics Server (analytics_server.py — 379 lines)
+### Analytics Server (analytics_server.py — 2,481 lines)
 
-Lightweight, read-only, lazy-loaded. No LanceDB dependency.
+Comprehensive framework analytics — lazy-loaded, no LanceDB dependency. **50 active tools, 1 dormant.**
 
-| Tool | Parameters | Purpose |
-|------|-----------|---------|
-| framework_health | session_id | 0-100 health score, per-component status, suggestions |
-| session_summary | session_id | Tool distribution, gate effectiveness, error rates |
-| gate_dashboard | — | Ranked gates by block rate, coverage, recommendations |
-| gate_timing | gate_name | Per-gate latency stats, slow gate detection |
-| detect_anomalies | session_id | Bursts, high block rates, error spikes, memory gaps |
-| skill_health | — | Total/healthy/broken counts, script issues |
-| all_metrics | — | Counters/gauges/histograms + 1m/5m rollups |
-| telegram_search | query, limit | FTS5 search over Telegram message history |
-| terminal_history_search | query, limit | FTS5 search over terminal/conversation history |
-| web_search | query, n_results | LanceDB semantic search over indexed web pages |
+| Category | Tools |
+|----------|-------|
+| **Framework Health (5)** | framework_health, framework_summary, framework_pulse, framework_health_score, all_metrics |
+| **Gate Analysis (13)** | gate_dashboard, gate_timing, gate_health, gate_sla, gate_sla_status, gate_trends, gate_correlations, gate_dependencies, gate_drift, gate_pruning, gate_correlation_report, preview_gates, pipeline_analysis |
+| **Session (4)** | session_summary, session_metrics, session_replay, session_context_snapshot |
+| **Audit & Errors (4)** | audit_status, audit_trail, error_clusters, fix_effectiveness |
+| **Anomaly & Behavioral (7)** | detect_anomalies, anomaly_summary, event_stats, replay_events, routing_stats, frustration_report, rw_ratio |
+| **Memory & Infra (5)** | memory_health, memory_dedup_report, stale_memory_report, circuit_states, cache_health |
+| **Domain & Skills (5)** | skill_health, skill_dependencies, skill_invocation_report, domain_info, inspect_domain |
+| **Dev & Code (6)** | tool_predictions, tool_recommendations, code_hotspots, generate_test_stubs, causal_chain_analysis, query_observations |
+| **Search (1)** | telegram_search |
 
 ---
 
-## Skills Catalog (33 skills)
+## Skills Catalog (36 skills)
 
 | Category | Skills |
 |----------|--------|
@@ -412,6 +460,7 @@ Lightweight, read-only, lazy-loaded. No LanceDB dependency.
 | Build/Deploy (3) | build, deploy, report |
 | Orchestration (5) | prp, wave, loop, chain, sprint |
 | Advanced (5) | web, browser, ralph, super-evolve, super-prof-optimize |
+| Creative (3) | brainstorm, writing-plans, domain |
 
 Skills with scripts/: security-scan, status, super-health, web, wrap-up
 User-invocable: benchmark, learn, introspect, security-scan, super-evolve, keybindings-help
@@ -446,19 +495,15 @@ Cross-session            → Sub-agents + memory
 | Team | Purpose | Members |
 |------|---------|---------|
 | default | Inactive legacy | 2 (shutdown) |
-| eclipse-rebase | Rebase ProjectDawn to Eclipse L2 | 5 (lead + 4 specialized) |
 | framework-v2-4-1 | v2.4.1 sprint: dashboard, statusline | 1 builder |
 | sprint-team | Self-improvement sprint | 10 (builders + researchers) |
+| evolution-swarm-268 | Self-evolution swarm | — |
 
 ---
 
-## Plugins (9 installed)
+## Plugins (0 installed)
 
-| Category | Plugins |
-|----------|---------|
-| LSP (3) | pyright-lsp, rust-analyzer-lsp, typescript-lsp |
-| Dev (5) | feature-dev, pr-review-toolkit, code-review, hookify, skill-creator |
-| Quality (1) | code-simplifier |
+Plugin directory cleared. No plugins currently installed.
 
 ---
 
@@ -535,24 +580,24 @@ Cross-session            → Sub-agents + memory
 
 | Metric | Value |
 |--------|-------|
-| Python files (hooks/) | 113 |
-| Total lines (hooks/) | ~48,552 |
+| Python files (hooks/) | 151 |
+| Total lines (hooks/) | ~75,939 |
 | Active gates | 17 (+ 2 dormant) |
-| Shared modules | 50 |
+| Shared modules | 67 |
 | Top-level hooks | 25 |
-| Boot pipeline files | 6 (848 lines) |
-| Tracker pipeline files | 10 (1,537 lines) |
-| Skills | 33 |
-| Plugins | 9 (3 LSP + 5 dev + 1 quality) |
+| Boot pipeline files | 6 (977 lines) |
+| Tracker pipeline files | 10 (1,552 lines) |
+| Skills | 36 |
+| Plugins | 0 |
 | Agent definitions | 6 |
 | Teams | 4 |
-| MCP servers | 2 (16 active tools) |
+| MCP servers | 2 (58 active tools) |
 | External orchestrators | 2 |
 | Integrations | 2 |
 | Session state files | 43 |
-| Total memories | ~1,345 |
-| Largest file | test_framework.py (11,904 lines) |
+| Total memories | — |
+| Largest file | hooks/tests/ (13 files, 29,417 lines) |
 
 ---
 
-*Generated by Torus Framework — Session 223 (2026-02-24)*
+*Generated by Torus Framework — Session 306 (2026-03-01)*

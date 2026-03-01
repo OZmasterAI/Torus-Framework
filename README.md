@@ -7,7 +7,7 @@
     <a href="https://github.com/OZmasterAI/Torus-Framework/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
     <img src="https://img.shields.io/badge/Python-3.10+-green.svg" alt="Python">
     <img src="https://img.shields.io/badge/Platform-Linux-lightgrey.svg" alt="Platform">
-    <img src="https://img.shields.io/badge/Framework-v2.5.3-orange.svg" alt="Version">
+    <img src="https://img.shields.io/badge/Framework-v2.5.8-orange.svg" alt="Version">
   </p>
 </p>
 
@@ -15,7 +15,7 @@
 
 Torus wraps Claude Code with persistent memory, 19 quality gates, automated hooks, and structured workflows — turning it from a stateless CLI into a disciplined, self-improving development partner.
 
-> **119 Python files** · **~50K lines** · **17 active gates** · **33 skills** · **6 specialized agents** · **2 MCP servers**
+> **151 Python files** · **~76K lines** · **17 active gates** · **36 skills** · **6 specialized agents** · **2 MCP servers**
 
 ---
 
@@ -50,11 +50,11 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
 | Feature | Description |
 |---------|-------------|
 | **19 Quality Gates** | Mechanical enforcement — read before edit, test before deploy, memory-first, no-destroy, injection defense, and more |
-| **Persistent Memory** | LanceDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations (~1,488 memories) |
+| **Persistent Memory** | LanceDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations |
 | **Hook Pipeline** | 12 lifecycle events — SessionStart, PreToolUse, PostToolUse, Stop, SubagentStart, PreCompact, and more |
-| **33 Skills** | Slash commands — `/commit`, `/benchmark`, `/security-scan`, `/super-evolve`, `/introspect`, `/prp`, and more |
+| **36 Skills** | Slash commands — `/commit`, `/benchmark`, `/security-scan`, `/brainstorm`, `/writing-plans`, `/domain`, and more |
 | **6 Agents** | builder, debugger, researcher, security, perf-analyzer, stress-tester — with delegation rules |
-| **2 MCP Servers** | Memory (6 tools) + Analytics (10 tools), accessible as native Claude tools |
+| **2 MCP Servers** | Memory (8 tools) + Analytics (50 tools), accessible as native Claude tools |
 | **Enforcer Daemon** | Persistent UDS server — gate checks in ~5ms instead of ~134ms inline |
 | **Mentor System** | Real-time quality scoring (0.0–1.0) with deterministic verdicts, no LLM calls |
 | **Session Continuity** | HANDOFF.md + LIVE_STATE.json carry context across sessions automatically |
@@ -73,18 +73,18 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
                     ┌────────────▼─┐  ┌──────▼────┐  ┌──▼──────────────┐
                     │ SessionStart  │  │PreToolUse │  │  PostToolUse    │
                     │ boot.py       │  │ enforcer  │  │  tracker.py     │
-                    │ (20 steps)    │  │(17 gates) │  │  (17 steps)     │
+                    │ (22 steps)    │  │(17 gates) │  │  (17 steps)     │
                     └──────┬───────┘  └─────┬─────┘  └──┬──────────────┘
                            │                │            │
                  ┌─────────▼──────┐  ┌──────▼──────┐  ┌─▼────────────┐
                  │  Memory MCP    │  │ Gate Tiers   │  │ Mentor       │
-                 │  6 tools       │  │ T1: Safety   │  │ System       │
+                 │  8 tools       │  │ T1: Safety   │  │ System       │
                  │  LanceDB +     │  │ T2: Quality  │  │ 0.0–1.0     │
                  │  4-tier search │  │ T3: Advanced │  │ No LLM      │
                  └───────┬────────┘  └─────────────┘  └─┬────────────┘
                          │                               │
            ┌─────────────▼───────────────────────────────▼─────────┐
-           │         Shared Infrastructure (50 modules)             │
+           │         Shared Infrastructure (67 modules)             │
            │   state · resilience · analysis · monitoring · auth    │
            └─────────────────────────┬─────────────────────────────┘
                                      │
@@ -93,11 +93,11 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
   ┌───▼────┐ ┌───▼─────┐  ┌────────▼────────┐ ┌────▼────┐ ┌────▼─────┐
   │   L1   │ │   L2    │  │   L0 Raw        │ │   L3    │ │ Ramdisk  │
   │LanceDB │ │Terminal │  │   Transcripts   │ │Telegram │ │  tmpfs   │
-  │ ~6K mem│ │  FTS5   │  │  JSONL windows  │ │  FTS5   │ │ 544 MB/s │
+  │ ~7K mem│ │  FTS5   │  │  JSONL windows  │ │  FTS5   │ │ 544 MB/s │
   └────────┘ └─────────┘  └─────────────────┘ └─────────┘ └──────────┘
 ```
 
-**245 files** · **50 shared modules** · **35 skills** · **6 agents** · **1,466 tests passing**
+**285 files** · **67 shared modules** · **36 skills** · **6 agents**
 
 For the full architecture reference, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
@@ -171,6 +171,8 @@ L0 activates when `transcript_l0: true` in config — pulls raw conversation win
 | `query_fix_history(error)` | Find what strategies worked or failed |
 | `record_attempt(error, strategy)` | Log a fix attempt → returns chain_id |
 | `record_outcome(chain_id, result)` | Log whether the fix succeeded or failed |
+| `fuzzy_search(query)` | Typo-tolerant search with boosted relevance |
+| `health_check()` | Server health metrics, table counts, disk usage |
 
 **Causal chain workflow:** `query_fix_history` → `record_attempt` → fix + test → `record_outcome` → `remember_this`
 
@@ -188,12 +190,12 @@ L0 activates when `transcript_l0: true` in config — pulls raw conversation win
 │   ├── enforcer.py          # Gate engine (17 active gates)
 │   ├── enforcer_daemon.py   # UDS daemon for low-latency gate checks (~5ms)
 │   ├── memory_server.py     # MCP server: LanceDB memory + semantic search
-│   ├── analytics_server.py  # MCP server: session analytics + gate dashboard
+│   ├── analytics_server.py  # MCP server: 50-tool analytics + gate dashboard
 │   ├── gates/               # Individual gate implementations
-│   ├── shared/              # 49 shared modules (state, audit, circuit breaker, etc.)
+│   ├── shared/              # 67 shared modules (state, audit, circuit breaker, etc.)
 │   ├── tracker.py           # PostToolUse pipeline (mentor, observations, auto-remember)
 │   └── boot.py              # SessionStart orchestrator
-├── skills/                  # 33 slash commands (/commit, /benchmark, etc.)
+├── skills/                  # 36 slash commands (/commit, /benchmark, etc.)
 ├── agents/                  # 6 specialized agent definitions
 ├── integrations/
 │   ├── telegram-bot/        # Remote Claude via Telegram

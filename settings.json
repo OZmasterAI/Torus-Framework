@@ -255,15 +255,15 @@
   },
   "contextCompactionThreshold": 0.85,
   "spinnerTips": [
-    "Memory first — search_knowledge before building or fixing",
-    "Read before edit — Gate 1 blocks edits on unread files",
-    "Prove it works — run tests before claiming fixed",
-    "Save to memory — remember_this after every fix or decision",
-    "Causal chain — record_attempt → fix → record_outcome",
-    "Protect main context — delegate heavy ops to sub-agents",
-    "Plan mode — explore + plan → ExitPlanMode → approval → implement",
-    "Model cost — haiku for search, sonnet for work, opus for complex",
-    "Gate 5 — verify changes before making more edits",
-    "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
+    "Memory first \u2014 search_knowledge before building or fixing",
+    "Read before edit \u2014 Gate 1 blocks edits on unread files",
+    "Prove it works \u2014 run tests before claiming fixed",
+    "Save to memory \u2014 remember_this after every fix or decision",
+    "Causal chain \u2014 record_attempt \u2192 fix \u2192 record_outcome",
+    "Protect main context \u2014 delegate heavy ops to sub-agents",
+    "Plan mode \u2014 explore + plan \u2192 ExitPlanMode \u2192 approval \u2192 implement",
+    "Model cost \u2014 haiku for search, sonnet for work, opus for complex",
+    "Gate 5 \u2014 verify changes before making more edits",
+    "Frustration signals \u2014 'again', 'still', 'why', ALL CAPS = stop and verify"
   ]
 }
