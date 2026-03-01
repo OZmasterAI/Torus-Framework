@@ -340,13 +340,8 @@ def generate_handoff(state, transcript_path=""):
     Otherwise, run Haiku auto-summary and write what_was_done + session_metrics.
 
     session_metrics are written to config.json (persist across task resets).
-    Uses update_live_state() for locked writes to prevent clobbering
-    session_count incremented by concurrent sessions.
     """
     try:
-        # Import locked writer to prevent race with boot's increment_session_count
-        from boot_pkg.util import update_live_state
-
         live_state = _load_live_state()
         session_num = live_state.get("session_count", "?")
 
@@ -362,9 +357,6 @@ def generate_handoff(state, transcript_path=""):
 
         metrics_section = _build_metrics_section(state)
 
-        # Build only the fields we want to update (never touch session_count)
-        updates = {}
-
         if wrapup_ran:
             # /wrap-up already wrote narrative — just update session_metrics in config.json
             _update_config("session_metrics", metrics_section)
@@ -375,10 +367,10 @@ def generate_handoff(state, transcript_path=""):
             haiku_summary = _haiku_summarize(excerpt, metrics_section, session_num) if excerpt else ""
 
             if haiku_summary:
-                updates["what_was_done"] = haiku_summary[:200]
+                live_state["what_was_done"] = haiku_summary[:200]
                 print("[SESSION_END] Haiku auto-summary generated", file=sys.stderr)
             else:
-                updates["what_was_done"] = (
+                live_state["what_was_done"] = (
                     "Auto-generated — no transcript available. "
                     "Metrics below show session activity."
                 )
@@ -388,12 +380,15 @@ def generate_handoff(state, transcript_path=""):
         # Capture last_assistant_message from Stop hook for session continuity
         last_msg = _read_last_assistant_message()
         if last_msg:
-            updates["last_response_preview"] = last_msg[:500]
+            live_state["last_response_preview"] = last_msg[:500]
             print(f"[SESSION_END] Captured last_assistant_message ({len(last_msg)} chars)", file=sys.stderr)
 
-        # Locked merge — only updates our fields, preserves session_count
-        if updates:
-            update_live_state(updates)
+        # Write back to LIVE_STATE.json
+        tmp = LIVE_STATE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(live_state, f, indent=2)
+            f.write("\n")
+        os.replace(tmp, LIVE_STATE_FILE)
 
         mode = "updated session_metrics" if wrapup_ran else "wrote what_was_done + session_metrics"
         print(f"[SESSION_END] LIVE_STATE.json updated ({mode})", file=sys.stderr)
@@ -485,7 +480,7 @@ def backup_database():
 
 
 def increment_session_count(metrics=None):
-    """Save session metrics. Counter increment moved to boot (boot_pkg/util.py)."""
+    """Increment session_count in LIVE_STATE.json and save session metrics."""
     state = {}
     if os.path.exists(LIVE_STATE_FILE):
         try:
@@ -493,13 +488,18 @@ def increment_session_count(metrics=None):
                 state = json.load(f)
         except (json.JSONDecodeError, OSError):
             state = {}
+    state["session_count"] = state.get("session_count", 0) + 1
 
     # Store session metrics in config.json (persists across task resets)
     if metrics:
         _update_config("last_session_metrics", metrics)
 
-    session_num = state.get("session_count", "?")
-    print(f"[SESSION_END] Session {session_num} complete", file=sys.stderr)
+    tmp = LIVE_STATE_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, LIVE_STATE_FILE)
+    print(f"[SESSION_END] Session {state['session_count']} complete", file=sys.stderr)
 
 
 def main():
