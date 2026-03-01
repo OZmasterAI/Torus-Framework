@@ -1,26 +1,26 @@
 {
-  "session_count": 306,
+  "session_count": 307,
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.8",
-  "what_was_done": "Fixed recurring XRDP login-then-disconnect on VPS \u2014 recreated missing ~/.xsessionrc DBUS fix (3rd time). Cleared stale xfce4 session cache. Saved recurring pattern to memory.",
+  "what_was_done": "Refreshed README, USAGE_GUIDE, ARCHITECTURE docs to v2.5.8. Synced to GitHub with clean LIVE_STATE stub. Removed leaked commits via force push.",
   "next_steps": [
     "Collect mentor longitudinal data (few sessions), then enable Gate 19 (hindsight)",
-    "Run memory maintenance(action='stale') \u2014 1690 entries, pruning nudge active",
+    "Run memory maintenance(action='stale') — 1698 entries, pruning nudge active",
     "Update test_shared_core.py Slack token test on refactor-test to match github fix",
     "Add unit tests for bridge helpers (_extract_error_text, _extract_strategy, _normalize_strategy)",
     "Consider chattr +i on VPS ~/.xsessionrc to prevent recurring deletion"
   ],
   "known_issues": [
-    "github-branch sync: NEVER delete hook files during bulk operations \u2014 causes tool deadlock",
-    "GitHub push protection scans ALL commits, not just tip \u2014 squash secrets out before pushing",
-    "Mentor observation data starts session 301 \u2014 no longitudinal data before that",
+    "github-branch sync: NEVER delete hook files during bulk operations — causes tool deadlock",
+    "GitHub push protection scans ALL commits, not just tip — squash secrets out before pushing",
+    "Mentor observation data starts session 301 — no longitudinal data before that",
     "Pyright type-narrowing warnings on importlib.util in search_server.py and web_search_server.py (pre-existing)",
     "domain system wired but inactive",
     "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache",
-    "GateRouter Q-table test is flaky (execution order dependent) \u2014 pre-existing",
-    "LanceDB fix_outcomes schema has no bridge_version column \u2014 use strategy_id != 'auto-bridged' to distinguish v2 entries",
-    "VPS ~/.xsessionrc keeps disappearing \u2014 needed 3 times now (sessions ~113, ~114, 305)"
+    "GateRouter Q-table test is flaky (execution order dependent) — pre-existing",
+    "LanceDB fix_outcomes schema has no bridge_version column — use strategy_id != 'auto-bridged' to distinguish v2 entries",
+    "VPS ~/.xsessionrc keeps disappearing — needed 3 times now (sessions ~113, ~114, 305)"
   ],
-  "last_response_preview": "---\n\n**Session 305 Summary**\n\n**Done:**\n- Fixed recurring XRDP login-then-disconnect on VPS \u2014 recreated missing `~/.xsessionrc` (DBUS fix, 3rd time)\n- Cleared stale xfce4 session cache\n- Saved recurring pattern to memory with `recurring` tag\n\n**Queued for next session:**\n1. Collect mentor longitudinal data, then enable Gate 19\n2. Run memory maintenance (`stale`) \u2014 1690 entries\n3. Update `test_shared_core.py` Slack token test\n4. Add unit tests for bridge helpers\n5. Consider `chattr +i` on VPS `~/"
+  "model_profile": "balanced"
 }
