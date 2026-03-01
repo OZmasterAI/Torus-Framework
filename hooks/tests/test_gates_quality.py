@@ -852,11 +852,15 @@ _g14_state1 = default_state()
 _g14_state1["session_test_baseline"] = False
 _g14_state1["pending_verification"] = []
 _g14_state1["memory_last_queried"] = 0  # stale
-_g14_r1 = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state1)
+_g14_r1 = _g14_check("Write", {"file_path": "/home/crab/.claude/hooks/shared/new_module.py"}, _g14_state1)
 test("Gate14: no test baseline → BLOCKED immediately",
      _g14_r1.blocked)
 test("Gate14: no test baseline → BLOCKED in message",
      "BLOCKED" in (_g14_r1.message or ""))
+# Non-framework files skip test baseline requirement
+_g14_r1b = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state1)
+test("Gate14: non-framework file without tests → allowed",
+     not _g14_r1b.blocked)
 
 # Test 2: After test run + fresh memory → allowed
 _g14_state2 = default_state()
