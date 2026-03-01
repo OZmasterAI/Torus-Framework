@@ -261,6 +261,25 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
     # Detect agent sentiment
     sentiment = _detect_sentiment(tool_name, tool_input, state)
 
+    # Extract mentor signals (persisted for longitudinal analysis)
+    mentor_score = ""
+    mentor_verdict = ""
+    mentor_escalations = ""
+    mentor_chain_score = ""
+    if state:
+        ms = state.get("mentor_last_score")
+        if ms is not None and ms != 1.0:
+            mentor_score = str(round(ms, 2))
+        mv = state.get("mentor_last_verdict", "")
+        if mv and mv != "proceed":
+            mentor_verdict = mv
+        me = state.get("mentor_escalation_count", 0)
+        if me > 0:
+            mentor_escalations = str(me)
+        mc = state.get("mentor_chain_score")
+        if mc is not None and mc != 1.0:
+            mentor_chain_score = str(round(mc, 2))
+
     # Generate deterministic ID
     id_source = f"{document}_{session_id}_{now}"
     obs_id = "obs_" + hashlib.sha256(id_source.encode()).hexdigest()[:12]
@@ -279,6 +298,10 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
             "priority": priority,
             "sentiment": sentiment if sentiment else "",
             "context": json.dumps(context) if context else "",
+            "mentor_score": mentor_score,
+            "mentor_verdict": mentor_verdict,
+            "mentor_escalations": mentor_escalations,
+            "mentor_chain_score": mentor_chain_score,
         },
         "id": obs_id,
     }

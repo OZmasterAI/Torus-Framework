@@ -6,12 +6,11 @@
 
 ```
 ┌─────────────────────────────────────────┐
-│          torus-framework v2.6           │
+│         torus-framework v2.5.8          │
 │  (hooks, gates, memory, sessions)       │
 │                                         │
 │  ┌───────────────────────────────────┐  │
-│  │       Claude Code v2.1.52        │  │
-│  │    (Anthropic CLI — the engine)   │  │
+│  │     Claude Code (Anthropic CLI)   │  │
 │  └───────────────────────────────────┘  │
 └─────────────────────────────────────────┘
 ```
@@ -51,11 +50,11 @@ Launch → boot.py runs → Handoff presented → You work → /wrap-up → sess
 ```
 
 ### Session Start (automatic)
-`boot.py` runs on every launch (20-step pipeline) and:
+`boot.py` runs on every launch (22-step pipeline) and:
 - Initializes the ramdisk for fast I/O (~544 MB/s tmpfs at `/run/user/{uid}/claude-hooks/`)
 - Rotates and compresses audit logs
 - Reads `HANDOFF.md` and `LIVE_STATE.json` from the previous session
-- Injects recent memories from ChromaDB (L1)
+- Injects recent memories from LanceDB (L1)
 - Pulls relevant Telegram message history (L2/L3 fallback)
 - Writes the Gate 4 sideband timestamp so memory-first checks pass
 - Resets per-session enforcement state
@@ -86,27 +85,29 @@ The `session_end.py` hook also runs automatically on exit to flush observations 
 | `HANDOFF.md` | Human-readable session state | Markdown |
 | `LIVE_STATE.json` | Machine-readable project state | JSON |
 
-### Boot Flow (20 steps)
+### Boot Flow (22 steps)
 1. Bot session check
 2. Ramdisk init
 3. Audit log rotation
 4. Load LIVE_STATE.json
-5. Memory injection (ChromaDB UDS socket)
-6. Telegram L2 memories
-7. Gate auto-tuning
-8. Error extraction
-9. Tool activity summary
-10. Test status
-11. Verification quality
-12. Session duration
-13. Gate block stats
-14. Dashboard generation (stderr)
-15. Context injection (stdout)
-16. State reset
-17. Auto-tune overrides
-18. Workspace claims cleanup
-19. Capture queue flush
-20. Auto-remember ingestion + sideband write
+5. Time warnings
+6. Gate count
+7. UDS check/daemon start
+8. LanceDB watchdog
+9. Memory injection (LanceDB UDS socket)
+10. Telegram L3 search
+11. Gate auto-tuning
+12. Error extraction
+13. Tool activity summary
+14. Test status
+15. Verification quality
+16. Session duration
+17. Gate block stats
+18. Dashboard generation (stderr)
+19. Context injection (stdout)
+20. State reset
+21. Capture queue flush
+22. Auto-remember ingestion + sideband write
 
 ---
 
@@ -152,25 +153,30 @@ If these gates crash, a warning is logged but the tool call **proceeds**.
 
 ## Memory System
 
-The framework has a **three-tier memory architecture**. Search cascades through tiers automatically — you do not need to manually pick a tier.
+The framework has a **four-tier memory architecture**. Search cascades through tiers automatically — you do not need to manually pick a tier.
 
 ```
-L1: ChromaDB (curated, semantic)
+L1: LanceDB (curated, semantic)
  └── L2: Terminal History (FTS5, full-text, recent sessions)
-      └── L3: Telegram (FTS5, message history fallback)
+      └── L0: Raw Transcripts (JSONL, time-windowed retrieval)
+           └── L3: Telegram (FTS5, message history fallback)
 ```
 
-### L1 — ChromaDB (Primary Curated Memory)
+### L1 — LanceDB (Primary Curated Memory)
 
-The main memory store. ~1,341 entries. Accessed via MCP tools (`search_knowledge`, `remember_this`, etc.).
+The main memory store. 5 tables. Accessed via MCP tools (`search_knowledge`, `remember_this`, etc.).
 
 - **Embedding model:** nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 token context)
-- **Storage:** `~/data/memory/` (ChromaDB SQLite)
-- **Access:** UDS socket (`.chromadb.sock`) — serializes all hook-side access to prevent segfaults
-- **Collections:**
+- **Storage:** `~/data/memory/lancedb/` (LanceDB); backup at `~/data/memory/chroma.sqlite3`
+- **Access:** UDS socket (`.chromadb.sock` — legacy name, connects to LanceDB). Serializes hook-side access
+- **Tables:**
   - `knowledge` — curated memories: fixes, decisions, discoveries
-  - `observations` — auto-captured tool call patterns (flushed from `.capture_queue.jsonl` on SessionStart/SessionEnd)
-- **Search modes:** keyword, semantic, hybrid, tags, observations, all, code
+  - `observations` — auto-captured tool call patterns
+  - `fix_outcomes` — causal chain fix tracking
+  - `web_pages` — indexed web content
+  - `quarantine` — dedup victims
+- **Search modes:** keyword (BM25 FTS ~19ms), semantic (~30ms flat scan), hybrid, tags, observations, all, code
+- **Tag index:** Separate SQLite `tags.db` for fast tag lookups (<2ms)
 - **Dedup:** cosine similarity > 0.85 blocks duplicate writes
 - **Scoring:** FNV-1a hash IDs; recency boost with 365-day decay; tag co-occurrence expansion
 
@@ -178,11 +184,14 @@ The main memory store. ~1,341 entries. Accessed via MCP tools (`search_knowledge
 
 FTS5 full-text search over all past session JSONL transcripts. Always-on — every session is indexed automatically on exit.
 
-- **Location:** `integrations/terminal-history/terminal_history.db` (19.8 MB SQLite)
-- **Access:** Analytics MCP tool `terminal_history_search(query, limit)`
-- **Index:** ~3,500+ records across all past sessions
+- **Location:** `integrations/terminal-history/terminal_history.db` (SQLite)
+- **Access:** Analytics MCP tool `terminal_history_search(query, limit)` (if still active) or via L2 cascade in `search_knowledge`
 - **Relevance weight:** 0.25 (higher than L3 — local conversations are high-value)
 - **Trigger:** Cascades in when L1 returns results below the 0.3 threshold
+
+### L0 — Raw Transcripts
+
+L0 activates when `transcript_l0: true` in config — pulls raw conversation windows from matching sessions when L1+L2 results are weak (< 0.3 relevance).
 
 ### L3 — Telegram Message History
 
@@ -193,20 +202,22 @@ FTS5 search over the Telegram bot's message log. Useful for things discussed out
 - **Relevance weight:** 0.2
 - **Trigger:** Cascades in when L1+L2 still fall short
 
-### L3 — Observations (Auto-Captured Patterns)
+### Observations (Auto-Captured Patterns)
 
-Compressed tool call patterns are auto-captured on every PostToolUse event, queued to `.capture_queue.jsonl`, and flushed into the ChromaDB `observations` collection on SessionStart and SessionEnd. No manual interaction needed.
+Compressed tool call patterns are auto-captured on every PostToolUse event, queued to `.capture_queue.jsonl`, and flushed into the LanceDB `observations` table on SessionStart and SessionEnd.
 
 ### Memory Tools (MCP — L1)
 
 | Tool | Purpose |
 |---|---|
-| `search_knowledge(query)` | Semantic search (7 modes). Triggers L2/L3 cascade if L1 results are weak |
-| `remember_this(content, context, tags)` | Save a new memory with automatic dedup check |
+| `search_knowledge(query)` | Semantic search (7 modes). Triggers L2/L0/L3 cascade if L1 results are weak |
+| `fuzzy_search(query)` | Typo-tolerant search with edit-distance variants, exact match boosting |
+| `remember_this(content, context, tags)` | Save a new memory with automatic dedup check. 3-way write: LanceDB + tags.db + fix_outcomes bridge |
 | `get_memory(id)` | Retrieve full memory by ID (supports comma-separated batch) |
 | `query_fix_history(error_text)` | Find what strategies worked or failed for a given error |
 | `record_attempt(error_text, strategy_id)` | Log a fix attempt; returns `chain_id` |
 | `record_outcome(chain_id, outcome)` | Log whether the fix succeeded or failed |
+| `health_check()` | Server health metrics, table row counts, disk usage, embedding model status |
 
 ### The Memory-First Rule
 Gate 4 enforces: **always search memory before editing code**. This prevents re-discovering things that were already learned and avoids repeating failed fix strategies. The sideband file `hooks/.memory_last_queried` is written by `boot.py` and updated by every `search_knowledge` call.
@@ -260,33 +271,33 @@ Gate 19 (Hindsight) reads these verdicts and blocks on sustained poor quality. T
 
 ## MCP Servers
 
-### Memory MCP (`memory_server.py` — 4,188 lines)
+### Memory MCP (`memory_server.py` — 4,627 lines)
 - **Purpose:** Persistent knowledge storage and retrieval
-- **Backend:** ChromaDB with UDS socket (`.chromadb.sock`)
-- **Tools:** 6 (search_knowledge, remember_this, get_memory, record_attempt, record_outcome, query_fix_history)
+- **Backend:** LanceDB with UDS socket (`.chromadb.sock`, legacy name)
+- **Tools:** 8 active (search_knowledge, fuzzy_search, remember_this, get_memory, record_attempt, record_outcome, query_fix_history, health_check), 5 dormant
+- **Tables:** 5 (knowledge, observations, fix_outcomes, web_pages, quarantine)
 
-### Analytics MCP (`analytics_server.py` — 379 lines)
-- **Purpose:** Read-only framework analytics — lazy-loaded, no ChromaDB dependency
-- **Tools:** 10
+### Analytics MCP (`analytics_server.py` — 2,481 lines)
+- **Purpose:** Comprehensive framework analytics — lazy-loaded, no LanceDB dependency
+- **Tools:** 50 active, 1 dormant
 
-| Tool | Purpose |
+| Category | Tools |
 |---|---|
-| `framework_health` | 0-100 health score, per-component status |
-| `session_summary` | Tool distribution, gate effectiveness, error rates |
-| `gate_dashboard` | Ranked gates by block rate and coverage |
-| `gate_timing` | Per-gate latency stats |
-| `detect_anomalies` | Bursts, high block rates, error spikes, memory gaps |
-| `skill_health` | Total/healthy/broken skill counts |
-| `all_metrics` | Counters, gauges, histograms + rollups |
-| `telegram_search` | FTS5 search over Telegram message history (L3) |
-| `terminal_history_search` | FTS5 search over session transcripts (L2) |
-| `web_search` | ChromaDB semantic search over indexed web pages |
+| **Framework Health** | framework_health, framework_summary, framework_pulse, framework_health_score, all_metrics |
+| **Gate Analysis** | gate_dashboard, gate_timing, gate_health, gate_sla, gate_sla_status, gate_trends, gate_correlations, gate_dependencies, gate_drift, gate_pruning, gate_correlation_report, preview_gates, pipeline_analysis |
+| **Session** | session_summary, session_metrics, session_replay, session_context_snapshot |
+| **Audit & Errors** | audit_status, audit_trail, error_clusters, fix_effectiveness |
+| **Anomaly & Behavioral** | detect_anomalies, anomaly_summary, event_stats, replay_events, routing_stats, frustration_report, rw_ratio |
+| **Memory & Infra** | memory_health, memory_dedup_report, stale_memory_report, circuit_states, cache_health |
+| **Domain & Skills** | skill_health, skill_dependencies, skill_invocation_report, domain_info, inspect_domain |
+| **Dev & Code** | tool_predictions, tool_recommendations, code_hotspots, generate_test_stubs, causal_chain_analysis, query_observations |
+| **Search** | telegram_search |
 
 ---
 
 ## Slash Commands (Skills)
 
-Type these during a session to trigger specialized workflows. **34 skills** available:
+Type these during a session to trigger specialized workflows. **36 skills** available:
 
 | Category | Commands |
 |---|---|
@@ -297,6 +308,7 @@ Type these during a session to trigger specialized workflows. **34 skills** avai
 | **Build/Deploy** | `/build`, `/deploy`, `/report` |
 | **Orchestration** | `/prp`, `/wave`, `/loop`, `/chain`, `/sprint` |
 | **Advanced** | `/web`, `/browser`, `/ralph`, `/super-evolve`, `/super-prof-optimize` |
+| **Creative** | `/brainstorm`, `/writing-plans`, `/domain` |
 
 Skills with associated scripts: `health-report`, `security-scan`, `status`, `super-health`, `web`, `wrap-up`.
 
@@ -308,7 +320,7 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 
 | Event | Hook | What It Does |
 |---|---|---|
-| **SessionStart** | `boot.py` | 20-step boot: ramdisk init, memory inject, context extraction, state reset |
+| **SessionStart** | `boot.py` | 22-step boot: ramdisk init, memory inject, context extraction, state reset |
 | **SessionStart** | `integrity_check.py` | SHA256 integrity verification of framework files |
 | **PreToolUse** | `enforcer_shim.py` | Run 17 quality gates via daemon (~5ms UDS) |
 | **PostToolUse** | `tracker.py` | 17-step pipeline: errors, observations, mentor verdicts |
@@ -319,7 +331,7 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 | **PermissionRequest** | `auto_approve.py` | Auto-approve safe operations |
 | **SubagentStart** | `subagent_context.py` | Inject LIVE_STATE + session context into sub-agents |
 | **PreCompact** | `pre_compact.py` | Snapshot gate state before context compression |
-| **SessionEnd** | `session_end.py` | Flush observations, update LIVE_STATE, backup ChromaDB |
+| **SessionEnd** | `session_end.py` | Flush observations, update LIVE_STATE, backup LanceDB |
 | **Stop** | `tg_mirror.py` | Mirror response to Telegram |
 | **Stop** | `stop_cleanup.py` | Flush I/O, close handles, shutdown daemons |
 | **PostToolUseFailure** | `failure_recovery.py` | Error recovery triage |
@@ -341,29 +353,31 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 ├── rules/                 # Domain-specific rules (scoped, not always-injected)
 │   ├── framework.md       # Shared module and state rules
 │   ├── hooks.md           # Gate contract and exit codes
-│   └── memory.md          # ChromaDB and MCP rules
-├── hooks/                 # All hook scripts and gates (113 Python files, ~48K lines)
-│   ├── enforcer_shim.py   # Gate dispatcher (UDS to daemon, ~5ms)
+│   └── memory.md          # LanceDB and MCP memory rules
+├── hooks/                 # All hook scripts and gates (151 Python files, ~76K lines)
+│   ├── enforcer_shim.py   # Gate dispatcher (UDS to daemon, ~5ms) (113 lines)
 │   ├── enforcer_daemon.py # Persistent gate executor
-│   ├── enforcer.py        # Inline fallback (632 lines, ~134ms)
+│   ├── enforcer.py        # Inline fallback (651 lines, ~134ms)
 │   ├── boot.py            # SessionStart shim → boot_pkg/
-│   ├── boot_pkg/          # Boot pipeline (6 files, 848 lines)
+│   ├── boot_pkg/          # Boot pipeline (6 files, 977 lines)
 │   ├── tracker.py         # PostToolUse shim → tracker_pkg/
-│   ├── tracker_pkg/       # Tracker pipeline + Mentor System (10 files, 1,537 lines)
-│   ├── session_end.py     # Session end handler (554 lines)
-│   ├── memory_server.py   # Memory MCP server (4,188 lines)
-│   ├── analytics_server.py# Analytics MCP server (379 lines)
-│   ├── test_framework.py  # Gate test suite (11,904 lines)
+│   ├── tracker_pkg/       # Tracker pipeline + Mentor System (10 files, 1,552 lines)
+│   ├── session_end.py     # Session end handler (599 lines)
+│   ├── memory_server.py   # Memory MCP server (4,627 lines)
+│   ├── analytics_server.py# Analytics MCP server (2,481 lines)
+│   ├── test_framework.py  # Gate test suite entry point (53 lines)
+│   ├── tests/             # 13 focused test files (29,417 lines)
 │   ├── gates/             # 17 gate modules
-│   ├── shared/            # 50 shared utility modules (~19,458 lines)
+│   ├── shared/            # 67 shared modules (~25K lines)
 │   ├── .audit_trail.jsonl # Full tool call audit trail (46.3 MB)
 │   ├── .capture_queue.jsonl # Observation queue (flushed each session)
-│   ├── .chromadb.sock     # ChromaDB UDS socket
+│   ├── .chromadb.sock     # Memory UDS socket (legacy name, connects to LanceDB)
 │   └── .enforcer.sock     # Enforcer daemon UDS socket
-├── skills/                # 34 slash command definitions
+├── skills/                # 36 slash command definitions
 ├── agents/                # 6 agent type definitions
-├── teams/                 # 4 team configurations
-├── plugins/               # 9 plugins (3 LSP, 5 dev, 1 quality)
+├── teams/                 # 5 team configurations
+├── plugins/               # 0 installed (cleared)
+├── subagent_context.py    # SubagentStart hook (380 lines)
 ├── scripts/
 │   ├── torus-loop.sh      # Sequential task executor (261 lines)
 │   └── torus-wave.py      # Parallel wave orchestrator (477 lines)
@@ -374,7 +388,7 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 
 ---
 
-## Agent Types (6) and Teams (4)
+## Agent Types (6) and Teams (5)
 
 ### Agent Definitions
 
@@ -403,6 +417,7 @@ Cross-session            → Sub-agents + memory
 |---|---|
 | `default` | Inactive legacy |
 | `eclipse-rebase` | Rebase ProjectDawn to Eclipse L2 (5 members) |
+| `evolution-swarm-268` | Self-evolution swarm |
 | `framework-v2-4-1` | v2.4.1 sprint: dashboard, statusline |
 | `sprint-team` | Self-improvement sprint (10 builders + researchers) |
 
@@ -448,7 +463,7 @@ The enforcer runs as a persistent UDS server so gate evaluation costs ~5ms inste
 4. Fix is verified with tests before being marked done
 
 ### Searching memory across tiers
-- **L1 (ChromaDB):** `search_knowledge("your query")` — semantic search, 7 modes
+- **L1 (LanceDB):** `search_knowledge("your query")` — semantic search, 7 modes
 - **L2 (Terminal history):** `terminal_history_search("query")` via Analytics MCP — FTS5 over past sessions
 - **L3 (Telegram):** `telegram_search("query")` via Analytics MCP — FTS5 over message history
 - The cascade triggers automatically in `search_knowledge` when L1 results fall below the 0.3 relevance threshold
@@ -456,7 +471,7 @@ The enforcer runs as a persistent UDS server so gate evaluation costs ~5ms inste
 ### Ending a session cleanly
 1. Type `/wrap-up` before ending
 2. Review the generated handoff
-3. Exit — `session_end.py` saves metrics, flushes observations, and backs up ChromaDB
+3. Exit — `session_end.py` saves metrics, flushes observations, and backs up LanceDB
 4. Next session picks up right where you left off
 
 ---
@@ -472,8 +487,8 @@ The enforcer runs as a persistent UDS server so gate evaluation costs ~5ms inste
 **Session handoff is stale**
 → Run `/wrap-up` before ending sessions. If you forgot, `session_end.py` writes basic metrics automatically.
 
-**ChromaDB segfault in tests**
-→ Known issue — ChromaDB cannot handle concurrent access. Tests skip automatically when the MCP server is running.
+**LanceDB connection issues**
+→ The UDS socket `.chromadb.sock` (legacy name) must be running. Restart the Memory MCP server if searches fail.
 
 **Plan mode exit loop**
 → Known issue — if `ExitPlanMode` is rejected twice, you can get stuck. Ask Claude to stop and adjust the plan before trying again.
