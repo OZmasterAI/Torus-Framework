@@ -6,7 +6,7 @@ import sys
 
 from datetime import datetime
 
-from boot_pkg.util import CLAUDE_DIR, read_file, load_live_state, increment_session_count
+from boot_pkg.util import CLAUDE_DIR, read_file, load_live_state
 from boot_pkg.memory import (
     inject_memories_via_socket, _write_sideband_timestamp,
     socket_available, socket_flush, socket_remember,
@@ -59,9 +59,9 @@ def main():
     except Exception:
         pass  # Rotation failure is non-fatal
 
-    # Load context — atomically increment session counter at boot
-    session_num = increment_session_count()
+    # Load context
     live_state = load_live_state()
+    session_num = live_state.get("session_count", "?")
     summary = (live_state.get("what_was_done", "") or "No prior session data")[:100]
 
     # Domain mastery: load active domain (only if explicitly activated by user)
