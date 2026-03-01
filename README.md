@@ -73,7 +73,7 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
                     ┌────────────▼─┐  ┌──────▼────┐  ┌──▼──────────────┐
                     │ SessionStart  │  │PreToolUse │  │  PostToolUse    │
                     │ boot.py       │  │ enforcer  │  │  tracker.py     │
-                    │ (20 steps)    │  │(17 gates) │  │  (17 steps)     │
+                    │ (22 steps)    │  │(17 gates) │  │  (17 steps)     │
                     └──────┬───────┘  └─────┬─────┘  └──┬──────────────┘
                            │                │            │
                  ┌─────────▼──────┐  ┌──────▼──────┐  ┌─▼────────────┐
