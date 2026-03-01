@@ -1,25 +1,25 @@
 {
-  "session_count": 309,
+  "session_count": 313,
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.8",
-  "what_was_done": "Researched Claude Code v2.1.63 changelog, analyzed overlaps with framework. Disabled built-in auto-memory (autoMemoryEnabled:false) to avoid token waste and duplicate writes.",
+  "what_was_done": "torus-web: confirmed MCP memory works globally (stdio in mcp.json), verified Vercel deploys on v0-new-design, diagnosed Gate 4 sideband bug (HTTP check vs stdio transport)",
   "next_steps": [
+    "torus-web: user picks font \u2192 set as default, remove font switcher",
+    "torus-web: consider merging v0-new-design into master for production deploy",
+    "torus-web: fix 16 Dependabot vulnerabilities (1 critical Next.js RCE)",
+    "Fix Gate 4 sideband protocol \u2014 uses HTTP check but MCP is stdio, always fails outside framework",
     "Collect mentor longitudinal data (few sessions), then enable Gate 19 (hindsight)",
-    "Run memory maintenance(action='stale') — 1699 entries, pruning nudge active",
-    "Update test_shared_core.py Slack token test on refactor-test to match github fix",
-    "Add unit tests for bridge helpers (_extract_error_text, _extract_strategy, _normalize_strategy)",
-    "Consider chattr +i on VPS ~/.xsessionrc to prevent recurring deletion"
+    "Run memory maintenance(action='stale') \u2014 1703 entries, pruning nudge active"
   ],
   "known_issues": [
-    "github-branch sync: NEVER delete hook files during bulk operations — causes tool deadlock",
-    "GitHub push protection scans ALL commits, not just tip — squash secrets out before pushing",
-    "Mentor observation data starts session 301 — no longitudinal data before that",
-    "Pyright type-narrowing warnings on importlib.util in search_server.py and web_search_server.py (pre-existing)",
-    "domain system wired but inactive",
-    "5 shared modules built+tested but not wired: hot_reload, memory_decay, metrics_exporter, rules_validator, search_cache",
-    "GateRouter Q-table test is flaky (execution order dependent) — pre-existing",
-    "LanceDB fix_outcomes schema has no bridge_version column — use strategy_id != 'auto-bridged' to distinguish v2 entries",
-    "VPS ~/.xsessionrc keeps disappearing — needed 3 times now (sessions ~113, ~114, 305)"
-  ]
+    "github-branch sync: NEVER delete hook files during bulk operations \u2014 causes tool deadlock",
+    "GitHub push protection scans ALL commits, not just tip \u2014 squash secrets out before pushing",
+    "Mentor observation data starts session 301 \u2014 no longitudinal data before that",
+    "Gate 4 sideband HTTP check fails for stdio MCP \u2014 memory works fine, health check is wrong",
+    "torus-web: Vercel has no env vars \u2014 API routes fail, frontend-only preview",
+    "torus-web: no production deploy yet \u2014 all deploys are Preview (v0-new-design branch)",
+    "torus-web: Lexie Readable font not tested \u2014 not on Google Fonts, needs self-hosting"
+  ],
+  "last_response_preview": "---\n\n**Session 311 \u2014 Summary**\n\n**Done this session:**\n- Confirmed MCP memory server is working globally (`~/.claude/mcp.json`, stdio transport)\n- Diagnosed why Gate 4 blocked edits last session \u2014 sideband uses HTTP health check, but MCP runs over stdio. The server is fine, the health check is wrong.\n- Verified all previous torus-web work is committed and deployed on Vercel\n\n**Saved to memory:** `185baacee8ce41d2` (1703 total)\n\n**Risk: YELLOW** \u2014 Gate 4 sideband bug means gates will keep complai"
 }
