@@ -1,25 +1,23 @@
 {
-  "session_count": 315,
+  "session_count": 317,
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.8",
-  "what_was_done": "moved Memory MCP from local scope to global ~/.claude/mcp.json \u2014 now available in all projects, verified no other components need fixing",
+  "what_was_done": "Deep research on 5 chain repos in ~/Desktop/chainovi — mapped TRv1, TRv1-clean, agave, eclipse-agave, trv1-chain. Compared architectures, found all share same tokenomics at different stages. Moved chainovi to ~/projects/. Identified exposed GitHub token in trv1-chain remote.",
   "next_steps": [
-    "torus-web: user picks font \u2192 set as default, remove font switcher",
-    "torus-web: consider merging v0-new-design into master for production deploy",
-    "torus-web: fix 16 Dependabot vulnerabilities (1 critical Next.js RCE)",
-    "Fix Gate 4 sideband protocol \u2014 uses HTTP check but MCP is stdio, always fails outside framework",
-    "Collect mentor longitudinal data (few sessions), then enable Gate 19 (hindsight)",
-    "Run memory maintenance(action='stale') \u2014 1704 entries, pruning nudge active"
+    "chainovi: relaunch from ~/projects/chainovi/ to continue chain work",
+    "chainovi: rotate exposed GitHub token (ghp_UKBd...) in trv1-chain remote",
+    "chainovi: decide which chain path to pursue (L1 vs L2, TRv1 vs eclipse-agave)",
+    "chainovi: archive agave2_ and agave (stepping stones, superseded)",
+    "torus-web: user picks font, set as default, remove font switcher",
+    "torus-web: fix 16 Dependabot vulnerabilities (1 critical Next.js RCE)"
   ],
   "known_issues": [
-    "github-branch sync: NEVER delete hook files during bulk operations \u2014 causes tool deadlock",
-    "GitHub push protection scans ALL commits, not just tip \u2014 squash secrets out before pushing",
-    "Mentor observation data starts session 301 \u2014 no longitudinal data before that",
-    "Gate 4 sideband HTTP check fails for stdio MCP \u2014 memory works fine, health check is wrong",
-    "torus-web: Vercel has no env vars \u2014 API routes fail, frontend-only preview",
-    "torus-web: no production deploy yet \u2014 all deploys are Preview (v0-new-design branch)",
-    "torus-web: Lexie Readable font not tested \u2014 not on Google Fonts, needs self-hosting"
-  ],
-  "last_response_preview": "---\n\n**Session 311 \u2014 Wrap-up**\n\n**Done this session:**\n- Moved Memory MCP from local scope to global `~/.claude/mcp.json` \u2014 now loads in all projects\n- Verified no other components need the same fix (hooks, rules, skills, permissions all already global)\n- Confirmed all 1,704 memories preserved (data at `~/data/memory/lancedb/` is independent)\n\n**Saved to memory:** `5ac4d1ae85542618` (1,704 total)\n\n**Risk: GREEN** \u2014 clean commit, config verified\n\n**Next session:**\n1. torus-web: pick font \u2192 set as"
+    "github-branch sync: NEVER delete hook files during bulk operations — causes tool deadlock",
+    "GitHub push protection scans ALL commits, not just tip — squash secrets out before pushing",
+    "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
+    "Mentor observation data starts session 301 — no longitudinal data before that",
+    "Gate 4 sideband HTTP check fails for stdio MCP — memory works fine, health check is wrong",
+    "torus-web: Vercel has no env vars — API routes fail, frontend-only preview"
+  ]
 }
