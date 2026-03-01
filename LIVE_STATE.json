@@ -1,12 +1,12 @@
 {
-  "session_count": 307,
+  "session_count": 309,
   "project": "torus-framework",
   "feature": "none",
   "framework_version": "v2.5.8",
-  "what_was_done": "Refreshed README, USAGE_GUIDE, ARCHITECTURE docs to v2.5.8. Synced to GitHub with clean LIVE_STATE stub. Removed leaked commits via force push.",
+  "what_was_done": "Researched Claude Code v2.1.63 changelog, analyzed overlaps with framework. Disabled built-in auto-memory (autoMemoryEnabled:false) to avoid token waste and duplicate writes.",
   "next_steps": [
     "Collect mentor longitudinal data (few sessions), then enable Gate 19 (hindsight)",
-    "Run memory maintenance(action='stale') — 1698 entries, pruning nudge active",
+    "Run memory maintenance(action='stale') — 1699 entries, pruning nudge active",
     "Update test_shared_core.py Slack token test on refactor-test to match github fix",
     "Add unit tests for bridge helpers (_extract_error_text, _extract_strategy, _normalize_strategy)",
     "Consider chattr +i on VPS ~/.xsessionrc to prevent recurring deletion"
@@ -21,6 +21,5 @@
     "GateRouter Q-table test is flaky (execution order dependent) — pre-existing",
     "LanceDB fix_outcomes schema has no bridge_version column — use strategy_id != 'auto-bridged' to distinguish v2 entries",
     "VPS ~/.xsessionrc keeps disappearing — needed 3 times now (sessions ~113, ~114, 305)"
-  ],
-  "model_profile": "balanced"
+  ]
 }
