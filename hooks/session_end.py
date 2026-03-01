@@ -340,9 +340,13 @@ def generate_handoff(state, transcript_path=""):
     Otherwise, run Haiku auto-summary and write what_was_done + session_metrics.
 
     session_metrics are written to config.json (persist across task resets).
-    HANDOFF.md is no longer written by this function.
+    Uses update_live_state() for locked writes to prevent clobbering
+    session_count incremented by concurrent sessions.
     """
     try:
+        # Import locked writer to prevent race with boot's increment_session_count
+        from boot_pkg.util import update_live_state
+
         live_state = _load_live_state()
         session_num = live_state.get("session_count", "?")
 
@@ -358,6 +362,9 @@ def generate_handoff(state, transcript_path=""):
 
         metrics_section = _build_metrics_section(state)
 
+        # Build only the fields we want to update (never touch session_count)
+        updates = {}
+
         if wrapup_ran:
             # /wrap-up already wrote narrative — just update session_metrics in config.json
             _update_config("session_metrics", metrics_section)
@@ -368,10 +375,10 @@ def generate_handoff(state, transcript_path=""):
             haiku_summary = _haiku_summarize(excerpt, metrics_section, session_num) if excerpt else ""
 
             if haiku_summary:
-                live_state["what_was_done"] = haiku_summary[:200]
+                updates["what_was_done"] = haiku_summary[:200]
                 print("[SESSION_END] Haiku auto-summary generated", file=sys.stderr)
             else:
-                live_state["what_was_done"] = (
+                updates["what_was_done"] = (
                     "Auto-generated — no transcript available. "
                     "Metrics below show session activity."
                 )
@@ -381,15 +388,12 @@ def generate_handoff(state, transcript_path=""):
         # Capture last_assistant_message from Stop hook for session continuity
         last_msg = _read_last_assistant_message()
         if last_msg:
-            live_state["last_response_preview"] = last_msg[:500]
+            updates["last_response_preview"] = last_msg[:500]
             print(f"[SESSION_END] Captured last_assistant_message ({len(last_msg)} chars)", file=sys.stderr)
 
-        # Atomic write back to LIVE_STATE.json (session state only, no toggles/metrics)
-        tmp = LIVE_STATE_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(live_state, f, indent=2)
-            f.write("\n")
-        os.replace(tmp, LIVE_STATE_FILE)
+        # Locked merge — only updates our fields, preserves session_count
+        if updates:
+            update_live_state(updates)
 
         mode = "updated session_metrics" if wrapup_ran else "wrote what_was_done + session_metrics"
         print(f"[SESSION_END] LIVE_STATE.json updated ({mode})", file=sys.stderr)
