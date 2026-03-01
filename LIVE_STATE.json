@@ -1,16 +1,16 @@
 {
-  "session_count": 317,
+  "session_count": 318,
   "project": "torus-framework",
-  "feature": "none",
+  "feature": "ai-api-gateway",
   "framework_version": "v2.5.8",
-  "what_was_done": "Deep research on 5 chain repos in ~/Desktop/chainovi — mapped TRv1, TRv1-clean, agave, eclipse-agave, trv1-chain. Compared architectures, found all share same tokenomics at different stages. Moved chainovi to ~/projects/. Identified exposed GitHub token in trv1-chain remote.",
+  "what_was_done": "Implemented full AI API Gateway for torus-web — 11 new files, 4 modified. BYOK OpenRouter proxy with AES-256-GCM encryption, streaming SSE support, usage logging, weekly TRS rewards calculator, admin config, public page, profile dashboard. Pushed feat/ai-api-gateway branch.",
   "next_steps": [
-    "chainovi: relaunch from ~/projects/chainovi/ to continue chain work",
+    "torus-web: add API_KEY_ENCRYPTION_KEY env var in Vercel for AI gateway to work",
+    "torus-web: create PR from feat/ai-api-gateway to master, review and merge",
+    "torus-web: user picks font → set as default, remove font switcher",
+    "torus-web: fix 16 Dependabot vulnerabilities (1 critical Next.js RCE)",
     "chainovi: rotate exposed GitHub token (ghp_UKBd...) in trv1-chain remote",
-    "chainovi: decide which chain path to pursue (L1 vs L2, TRv1 vs eclipse-agave)",
-    "chainovi: archive agave2_ and agave (stepping stones, superseded)",
-    "torus-web: user picks font, set as default, remove font switcher",
-    "torus-web: fix 16 Dependabot vulnerabilities (1 critical Next.js RCE)"
+    "chainovi: decide which chain path to pursue (L1 vs L2, TRv1 vs eclipse-agave)"
   ],
   "known_issues": [
     "github-branch sync: NEVER delete hook files during bulk operations — causes tool deadlock",
@@ -18,6 +18,6 @@
     "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
     "Mentor observation data starts session 301 — no longitudinal data before that",
     "Gate 4 sideband HTTP check fails for stdio MCP — memory works fine, health check is wrong",
-    "torus-web: Vercel has no env vars — API routes fail, frontend-only preview"
+    "torus-web: Vercel needs API_KEY_ENCRYPTION_KEY env var for AI gateway encryption"
   ]
 }
