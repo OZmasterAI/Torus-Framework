@@ -1,23 +1,23 @@
 {
-  "session_count": 318,
+  "session_count": 325,
   "project": "torus-framework",
   "feature": "ai-api-gateway",
   "framework_version": "v2.5.8",
-  "what_was_done": "Implemented full AI API Gateway for torus-web — 11 new files, 4 modified. BYOK OpenRouter proxy with AES-256-GCM encryption, streaming SSE support, usage logging, weekly TRS rewards calculator, admin config, public page, profile dashboard. Pushed feat/ai-api-gateway branch.",
+  "what_was_done": "Fixed concurrent session safety: UDS socket probe-connect, LanceDB write retries, atomic session counter with file locking, Gate 19 statusline display fix",
   "next_steps": [
     "torus-web: add API_KEY_ENCRYPTION_KEY env var in Vercel for AI gateway to work",
     "torus-web: create PR from feat/ai-api-gateway to master, review and merge",
-    "torus-web: user picks font → set as default, remove font switcher",
+    "torus-web: user picks font \u2192 set as default, remove font switcher",
     "torus-web: fix 16 Dependabot vulnerabilities (1 critical Next.js RCE)",
     "chainovi: rotate exposed GitHub token (ghp_UKBd...) in trv1-chain remote",
     "chainovi: decide which chain path to pursue (L1 vs L2, TRv1 vs eclipse-agave)"
   ],
   "known_issues": [
-    "github-branch sync: NEVER delete hook files during bulk operations — causes tool deadlock",
-    "GitHub push protection scans ALL commits, not just tip — squash secrets out before pushing",
-    "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
-    "Mentor observation data starts session 301 — no longitudinal data before that",
-    "Gate 4 sideband HTTP check fails for stdio MCP — memory works fine, health check is wrong",
+    "github-branch sync: NEVER delete hook files during bulk operations \u2014 causes tool deadlock",
+    "GitHub push protection scans ALL commits, not just tip \u2014 squash secrets out before pushing",
+    "trv1-chain remote URL contains plaintext GitHub token \u2014 rotate ASAP",
+    "Mentor observation data starts session 301 \u2014 no longitudinal data before that",
+    "Gate 4 sideband HTTP check fails for stdio MCP \u2014 memory works fine, health check is wrong",
     "torus-web: Vercel needs API_KEY_ENCRYPTION_KEY env var for AI gateway encryption"
   ]
 }
