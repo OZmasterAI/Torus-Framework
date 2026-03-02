@@ -39,7 +39,7 @@ Returns: `{"ts": <epoch>, "mem_count": <N>}`. Also note memory count from `searc
 ```bash
 python3 -c "
 import json
-with open(os.path.expanduser('~/.claude/LIVE_STATE.json')) as f:
+with open('~/.claude/LIVE_STATE.json') as f:
     s = json.load(f)
 print(json.dumps({
     'session_count': s.get('session_count'),
@@ -136,7 +136,7 @@ latencies = []
 for _ in range(N):
     t0 = time.perf_counter_ns()
     subprocess.run(
-        ['python3', os.path.expanduser('~/.claude/hooks/enforcer.py'), '--event', 'PreToolUse'],
+        ['python3', '~/.claude/hooks/enforcer.py', '--event', 'PreToolUse'],
         input='{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"echo hi\"}}',
         capture_output=True, text=True
     )

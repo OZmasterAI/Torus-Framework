@@ -97,10 +97,13 @@ def crash_proof(fn):
 
 # Auto project-tagging: detect if MCP server was launched from a project directory
 _SERVER_PROJECT = None
+_SERVER_PROJECT_DIR = None
+_SERVER_SUBPROJECT = None
+_SERVER_SUBPROJECT_DIR = None
 try:
     _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
     from boot_pkg.util import detect_project
-    _SERVER_PROJECT, _ = detect_project()
+    _SERVER_PROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT, _SERVER_SUBPROJECT_DIR = detect_project()
 except Exception:
     pass
 
@@ -700,13 +703,35 @@ def _normalize_tags(tags: str) -> str:
 
 
 def _inject_project_tag(tags):
-    """Auto-append project:<name> tag if server is in a project session."""
+    """Auto-append project:<name> and subproject:<name> tags if applicable."""
     if not _SERVER_PROJECT:
         return tags
     proj_tag = f"project:{_SERVER_PROJECT}"
-    if proj_tag in (tags or ""):
-        return tags
-    return f"{tags},{proj_tag}" if tags else proj_tag
+    if proj_tag not in (tags or ""):
+        tags = f"{tags},{proj_tag}" if tags else proj_tag
+    if _SERVER_SUBPROJECT:
+        sub_tag = f"subproject:{_SERVER_SUBPROJECT}"
+        if sub_tag not in (tags or ""):
+            tags = f"{tags},{sub_tag}" if tags else sub_tag
+    return tags
+
+
+def _build_project_prefix():
+    """Build '[project #N]' or '[project/sub #N]' prefix from project state."""
+    if not _SERVER_PROJECT:
+        return ""
+    eff_dir = _SERVER_SUBPROJECT_DIR or _SERVER_PROJECT_DIR
+    eff_name = f"{_SERVER_PROJECT}/{_SERVER_SUBPROJECT}" if _SERVER_SUBPROJECT else _SERVER_PROJECT
+    session_num = "?"
+    if eff_dir:
+        state_file = os.path.join(eff_dir, ".claude-state.json")
+        try:
+            with open(state_file) as f:
+                state = json.load(f)
+            session_num = state.get("session_count", "?")
+        except Exception:
+            pass
+    return f"[{eff_name} #{session_num}] "
 
 
 def _migrate_previews():
@@ -2368,11 +2393,16 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         pass  # TG enrichment is optional, never break search
 
     # Project boost: 2x relevance for memories tagged with current project
+    # Subproject boost: additional 1.5x for matching subproject
     if _SERVER_PROJECT and formatted:
         proj_tag = f"project:{_SERVER_PROJECT}"
+        sub_tag = f"subproject:{_SERVER_SUBPROJECT}" if _SERVER_SUBPROJECT else None
         for r in formatted:
-            if proj_tag in (r.get("tags") or ""):
+            tags_str = r.get("tags") or ""
+            if proj_tag in tags_str:
                 r["relevance"] = r.get("relevance", 0) * 2.0
+            if sub_tag and sub_tag in tags_str:
+                r["relevance"] = r.get("relevance", 0) * 1.5
         formatted.sort(key=lambda r: r.get("relevance", 0), reverse=True)
 
     result = {
@@ -2608,6 +2638,10 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     # --- Tag normalization: bare tags → dimensioned tags ---
     tags = _normalize_tags(tags)
     tags = _inject_project_tag(tags)
+    # --- Auto-prefix: prepend [project #N] to content ---
+    _prefix = _build_project_prefix()
+    if _prefix and not content.startswith("["):
+        content = _prefix + content
     # --- Ingestion filter: reject noise ---
     # force=True skips both noise filter AND dedup (escape hatch for false positives)
     if len(content.strip()) < MIN_CONTENT_LENGTH:

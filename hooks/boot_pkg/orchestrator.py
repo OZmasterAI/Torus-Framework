@@ -9,6 +9,7 @@ from datetime import datetime
 from boot_pkg.util import (
     CLAUDE_DIR, read_file, load_live_state,
     detect_project, load_project_state, scan_all_project_states,
+    scan_subproject_states,
 )
 from boot_pkg.memory import (
     inject_memories_via_socket, _write_sideband_timestamp,
@@ -54,8 +55,10 @@ def main():
         pass
 
     # Detect if we're in a project under ~/projects/
-    _project_name, _project_dir = detect_project(_boot_cwd)
+    _project_name, _project_dir, _subproject_name, _subproject_dir = detect_project(_boot_cwd)
     _is_project_session = _project_name is not None
+    _effective_dir = _subproject_dir or _project_dir
+    _effective_name = f"{_project_name}/{_subproject_name}" if _subproject_name else _project_name
 
     now = datetime.now()
     hour = now.hour
@@ -84,7 +87,7 @@ def main():
     # Override with project-specific state if in a project session
     _project_state = {}
     if _is_project_session:
-        _project_state = load_project_state(_project_dir)
+        _project_state = load_project_state(_effective_dir)
         if _project_state:
             summary = (_project_state.get("what_was_done", "") or summary)[:100]
             session_num = _project_state.get("session_count", session_num)
@@ -112,7 +115,7 @@ def main():
 
     # Project name from live state (or project state if in a project session)
     if _is_project_session:
-        project_name = _project_state.get("project_name", _project_name)
+        project_name = _project_state.get("project_name", _effective_name)
         active_tasks = _project_state.get("active_tasks", [])
     else:
         project_name = live_state.get("project", "Self-Healing Claude")
@@ -178,8 +181,13 @@ def main():
     except OSError:
         pass
 
-    # Inject relevant memories
-    injected = inject_memories_via_socket(None, live_state) if _worker_available else []
+    # Inject relevant memories (timeout-safe — socket may accept but worker stall)
+    injected = []
+    if _worker_available:
+        try:
+            injected = inject_memories_via_socket(None, live_state)
+        except Exception:
+            pass  # Memory injection failure must never crash boot
 
     # Telegram L2 memory: search Saved Messages for relevant context
     tg_memories = []
@@ -327,6 +335,17 @@ def main():
                 dashboard += f"\n|    {pname}: {pwhat:<{63 - len(pname)}}|"
             dashboard += "\n|--------------------------------------------------------------------|"
 
+    # Project-hub mode: show subproject states when at project level (no subproject)
+    if _is_project_session and not _subproject_name:
+        _sub_states = scan_subproject_states(_project_dir)
+        if _sub_states:
+            dashboard += "\n|  SUBPROJECT STATES:                                                |"
+            for ss in _sub_states:
+                sname = ss.get("project_name", "?")
+                swhat = (ss.get("what_was_done", "") or "no data")[:50]
+                dashboard += f"\n|    {sname}: {swhat:<{63 - len(sname)}}|"
+            dashboard += "\n|--------------------------------------------------------------------|"
+
     if _domain_name:
         dom_label = f"DOMAIN: {_domain_name}"
         if _domain_mastery:
@@ -373,7 +392,7 @@ def main():
             for k in ("what_was_done", "next_steps"):
                 if k in _project_state:
                     filtered[k] = _project_state[k]
-            filtered["project"] = _project_name
+            filtered["project"] = _effective_name
 
         # Truncate variable-length fields to cap token cost.
         # Full versions stay in LIVE_STATE.json for dashboard/gather.py.
@@ -479,5 +498,5 @@ def main():
         pass  # Boot must never crash
 
     # Sideband timestamp removed — Gate 4 should only pass when Claude
-    # actually queries memory, not auto-satisfied at boot (Session 262 fix)
+    # actually queries memory, not auto-satisfied at boot
 

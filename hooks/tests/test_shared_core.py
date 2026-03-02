@@ -16,7 +16,6 @@ import subprocess
 import sys
 import time
 import tests.harness as _h
-
 _HOME = os.path.expanduser("~")
 
 print("\n--- Auto-Capture: Secrets Filter ---")
@@ -2223,6 +2222,68 @@ _ttc_result = _gttc({"total_tool_calls": 42})
 test("get_total_tool_calls returns int",
      isinstance(_ttc_result, int) and _ttc_result == 42,
      f"Expected 42, got {_ttc_result!r}")
+
+# ─────────────────────────────────────────────────
+# Session Isolation
+# ─────────────────────────────────────────────────
+print("\n--- Session Isolation ---")
+
+from statusline import _load_session_state, get_git_branch, STATE_FILE_DIR
+
+# Test 1: _load_session_state picks correct file by session_id
+_iso_file_a = os.path.join(STATE_FILE_DIR, "state_test_iso_A.json")
+_iso_file_b = os.path.join(STATE_FILE_DIR, "state_test_iso_B.json")
+try:
+    with open(_iso_file_a, "w") as f:
+        json.dump({"total_tool_calls": 111}, f)
+    with open(_iso_file_b, "w") as f:
+        json.dump({"total_tool_calls": 222}, f)
+    _iso_a = _load_session_state("test_iso_A")
+    _iso_b = _load_session_state("test_iso_B")
+    test("_load_session_state picks correct file for session A",
+         _iso_a.get("total_tool_calls") == 111,
+         f"Expected 111, got {_iso_a.get('total_tool_calls')!r}")
+    test("_load_session_state picks correct file for session B",
+         _iso_b.get("total_tool_calls") == 222,
+         f"Expected 222, got {_iso_b.get('total_tool_calls')!r}")
+finally:
+    for _f in (_iso_file_a, _iso_file_b):
+        try:
+            os.remove(_f)
+        except OSError:
+            pass
+
+# Test 2: _load_session_state(None) falls back to mtime-based (no crash)
+_iso_none = _load_session_state(None)
+test("_load_session_state(None) returns dict (mtime fallback)",
+     isinstance(_iso_none, dict),
+     f"Expected dict, got {type(_iso_none).__name__}")
+
+# Test 3: _load_session_state with nonexistent session_id falls back
+_iso_missing = _load_session_state("nonexistent_xyz")
+test("_load_session_state nonexistent session_id returns dict (fallback)",
+     isinstance(_iso_missing, dict),
+     f"Expected dict, got {type(_iso_missing).__name__}")
+
+# Test 4: get_git_branch(session_id) creates session-specific cache
+_iso_cache = "/tmp/statusline-git-cache-test_iso_cache"
+try:
+    get_git_branch("test_iso_cache")
+    test("get_git_branch(session_id) creates session-specific cache file",
+         os.path.exists(_iso_cache),
+         f"Expected {_iso_cache} to exist")
+finally:
+    try:
+        os.remove(_iso_cache)
+    except OSError:
+        pass
+
+# Test 5: get_git_branch(None) uses default cache path (no suffix)
+_iso_default_cache = "/tmp/statusline-git-cache"
+get_git_branch(None)
+test("get_git_branch(None) uses default cache path",
+     os.path.exists(_iso_default_cache),
+     f"Expected {_iso_default_cache} to exist")
 
 # ─────────────────────────────────────────────────
 # Event Logger + New Hook Events
