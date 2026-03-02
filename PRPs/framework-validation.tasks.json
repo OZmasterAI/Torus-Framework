@@ -19,7 +19,7 @@
       "files": [
         "~/.claude/PRPs/test-workspace/utils.py"
       ],
-      "validate": "python3 -c \"import os; from sys import path; path.insert(0, os.path.expanduser('~/.claude/PRPs/test-workspace')); from utils import add, multiply; assert add(2,3)==5; assert multiply(3,4)==12; print('PASS')\"",
+      "validate": "python3 -c \"from sys import path; path.insert(0, '$HOME/.claude/PRPs/test-workspace'); from utils import add, multiply; assert add(2,3)==5; assert multiply(3,4)==12; print('PASS')\"",
       "depends_on": []
     },
     {
