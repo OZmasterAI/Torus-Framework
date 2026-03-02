@@ -1,21 +1,22 @@
 {
   "session_count": 332,
   "project": "torus-framework",
-  "feature": "project-memory-tagging",
+  "feature": "github-sync",
   "framework_version": "v2.5.8",
-  "what_was_done": "Fixed project session_count isolation — statusline + orchestrator now read from .claude-state.json in project sessions. Verified search_knowledge 2x boost logic works correctly.",
+  "what_was_done": "Synced github-branch with refactor-test (sessions 301-332). Pushed 1b4ee52 to GitHub. Full /home path scrub across 30+ files on both branches. Created LIVE_STATE.example.json template.",
   "next_steps": [
     "Test from ~/projects/torus-web/ — verify remember_this adds project:torus-web tag",
     "Test hub mode from ~/.claude/ — verify PROJECT STATES dashboard section",
     "torus-web: add API_KEY_ENCRYPTION_KEY env var in Vercel for AI gateway",
     "chainovi: rotate exposed GitHub token (ghp_UKBd...) in trv1-chain remote",
-    "chainovi: decide which chain path to pursue (L1 vs L2, TRv1 vs eclipse-agave)"
+    "Memory maintenance — 1786 entries, run stale pruning"
   ],
   "known_issues": [
-    "github-branch sync: NEVER delete hook files during bulk operations — causes tool deadlock",
     "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
     "Mentor observation data starts session 301 — no longitudinal data before that",
     "Gate 4 sideband HTTP check fails for stdio MCP — memory works fine, health check is wrong",
-    "torus-web: Vercel needs API_KEY_ENCRYPTION_KEY env var for AI gateway encryption"
-  ]
+    "torus-web: Vercel needs API_KEY_ENCRYPTION_KEY env var for AI gateway encryption",
+    "Automated _HOME insertion breaks in files with late imports inside try/except blocks"
+  ],
+  "model_profile": "balanced"
 }
