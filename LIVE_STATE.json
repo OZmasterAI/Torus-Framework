@@ -1,23 +1,21 @@
 {
-  "session_count": 333,
-  "project": "torus-framework",
-  "feature": "github-sync",
+  "session_count": 335,
+  "project": "chainovi",
+  "branch": "N/A (multi-repo directory)",
   "framework_version": "v2.5.8",
-  "what_was_done": "Amended github-branch HEAD commit — scrubbed crab refs, eclipse-rebase team, session numbers. Replaced hardcoded project slugs with dynamic inference. Pushed cleaned 7c36489 to GitHub main.",
-  "next_steps": [
-    "Test from ~/projects/torus-web/ — verify remember_this adds project:torus-web tag",
-    "Test hub mode from ~/.claude/ — verify PROJECT STATES dashboard section",
-    "torus-web: add API_KEY_ENCRYPTION_KEY env var in Vercel for AI gateway",
-    "Rotate exposed GitHub token in trv1-chain remote",
-    "Memory maintenance — 1794 entries, run stale pruning"
-  ],
+  "what_was_done": "Deep comparison of 5 chainovi blockchain projects (TRv1, TRv1-clean, agave, eclipse-agave, trv1-chain). Identified eclipse-agave gaps: dead EIP-1559, no governance/treasury withdrawal/dev rewards program. All share same economics.",
   "known_issues": [
-    "trv1-chain remote URL contains plaintext GitHub token \u2014 rotate ASAP",
-    "Mentor observation data starts session 301 \u2014 no longitudinal data before that",
-    "Gate 4 sideband HTTP check fails for stdio MCP \u2014 memory works fine, health check is wrong",
-    "torus-web: Vercel needs API_KEY_ENCRYPTION_KEY env var for AI gateway encryption",
-    "Automated _HOME insertion breaks in files with late imports inside try/except blocks"
+    "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
+    "eclipse-agave EIP-1559 is dead code (CU tracking TODO stub, fees never adjust)",
+    "eclipse-agave treasury is one-way valve — no withdrawal mechanism",
+    "eclipse-agave governance is a 4-line stub returning error",
+    "eclipse-agave dev rewards: no on-chain program, auto-deposits only"
   ],
-  "model_profile": "balanced",
-  "last_response_preview": "---\n\n### Session 332 \u2014 Wrap-up Summary\n\n**What was done:**\n- Synced github-branch with refactor-test (sessions 301-332)\n- Pushed commit `1b4ee52` to GitHub main (43 files, +494/-217)\n- Full `/home/crab` path scrub \u2014 80+ refs across 30+ files on both branches\n- Created `LIVE_STATE.example.json` template, removed `LIVE_STATE.json` from GitHub tracking\n- Updated `install.sh` to auto-create LIVE_STATE on setup\n\n**Tests:** 5387 passed, 5 failed (pre-existing config toggles)\n\n**Commits this session:**"
+  "next_steps": [
+    "Decide path: port TRv1 features to eclipse-agave, or continue building TRv1 as L1",
+    "If eclipse-agave: port governance program, treasury withdrawal, dev rewards from TRv1",
+    "If TRv1: wire EIP-1559 into TX validation, add testnet scripts, operator docs",
+    "Rotate exposed GitHub token in trv1-chain remote",
+    "Consider archiving agave and TRv1-clean (stepping stones, not primary paths)"
+  ]
 }
