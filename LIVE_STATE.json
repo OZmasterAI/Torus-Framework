@@ -10,8 +10,6 @@
   ],
   "next_steps": [
     "Merge refactor-test branch into main after verification",
-    "Add test coverage for session isolation (statusline with multiple session_ids)",
-    "Decide chainovi path: port TRv1 features to eclipse-agave or continue TRv1 as L1",
-    "Rotate exposed GitHub token in trv1-chain remote"
+    "Decide chainovi path: port TRv1 features to eclipse-agave or continue TRv1 as L1"
   ]
 }
