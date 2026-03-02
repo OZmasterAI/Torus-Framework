@@ -36,6 +36,9 @@ memory check → plan → tests first → build → prove it → track → ship
 ## FRUSTRATION SIGNALS (stop and verify):
 - "again" → query memory | "still" → prove it | "why" → investigate | ALL CAPS → re-read
 
+## TESTING RULE
+When editing code outside ~/.claude/, write or update tests for changed behavior. Look for existing test runner (package.json scripts, Cargo.toml, Makefile) in the project root.
+
 ## TAGS
 type: error,learning,fix,feature-request,correction,decision,auto-captured,preference
 priority: critical,high,medium,low | area: frontend,backend,infra,framework,testing,docs,git

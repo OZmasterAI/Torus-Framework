@@ -490,7 +490,7 @@ Cross-session            → Sub-agents + memory
 
 ---
 
-## Teams (4 definitions)
+## Teams (5 definitions)
 
 | Team | Purpose | Members |
 |------|---------|---------|
@@ -590,7 +590,7 @@ Plugin directory cleared. No plugins currently installed.
 | Skills | 36 |
 | Plugins | 0 |
 | Agent definitions | 6 |
-| Teams | 4 |
+| Teams | 5 |
 | MCP servers | 2 (58 active tools) |
 | External orchestrators | 2 |
 | Integrations | 2 |

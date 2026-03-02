@@ -308,8 +308,11 @@ def _track_subagent_start(data):
 
         # Construct transcript path if not provided (SubagentStart may not have it)
         if not transcript_path and session_id and agent_id:
+            # Infer project slug from home path
+            _home = os.path.expanduser("~")
+            _slug = "-" + os.path.join(_home, ".claude").replace("/", "-").lstrip("-")
             base = os.path.join(
-                os.path.expanduser("~"), ".claude", "projects", "-home-crab",
+                _home, ".claude", "projects", _slug,
                 session_id, "subagents", f"agent-{agent_id}.jsonl"
             )
             transcript_path = base

@@ -19,6 +19,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shared.memory_socket import is_worker_available, flush_queue as socket_flush, backup as socket_backup, WorkerUnavailable
+from boot_pkg.util import detect_project, load_project_state, save_project_state
 
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
@@ -332,16 +333,16 @@ def _update_config(key, value):
     os.replace(tmp, config_path)
 
 
-def generate_handoff(state, transcript_path=""):
-    """Update LIVE_STATE.json with auto-summary and config.json with session metrics.
+def generate_handoff(state, transcript_path="", project_name=None, project_dir=None):
+    """Update state with auto-summary and config.json with session metrics.
 
-    If /wrap-up ran recently (LIVE_STATE.json has a non-empty what_was_done
-    and was modified within the last 30 minutes), just update session_metrics.
-    Otherwise, run Haiku auto-summary and write what_was_done + session_metrics.
+    If project_dir is set, all state goes to the project's .claude-state.json.
+    LIVE_STATE.json is not touched at all for project sessions.
+    Framework sessions (project_dir=None) write to LIVE_STATE.json as before.
 
     session_metrics are written to config.json (persist across task resets).
-    HANDOFF.md is no longer written by this function.
     """
+    _is_project = project_dir is not None
     try:
         live_state = _load_live_state()
         session_num = live_state.get("session_count", "?")
@@ -358,6 +359,8 @@ def generate_handoff(state, transcript_path=""):
 
         metrics_section = _build_metrics_section(state)
 
+        # Determine what_was_done content
+        what_was_done = None
         if wrapup_ran:
             # /wrap-up already wrote narrative — just update session_metrics in config.json
             _update_config("session_metrics", metrics_section)
@@ -368,10 +371,10 @@ def generate_handoff(state, transcript_path=""):
             haiku_summary = _haiku_summarize(excerpt, metrics_section, session_num) if excerpt else ""
 
             if haiku_summary:
-                live_state["what_was_done"] = haiku_summary[:200]
+                what_was_done = haiku_summary[:200]
                 print("[SESSION_END] Haiku auto-summary generated", file=sys.stderr)
             else:
-                live_state["what_was_done"] = (
+                what_was_done = (
                     "Auto-generated — no transcript available. "
                     "Metrics below show session activity."
                 )
@@ -380,18 +383,36 @@ def generate_handoff(state, transcript_path=""):
 
         # Capture last_assistant_message from Stop hook for session continuity
         last_msg = _read_last_assistant_message()
+        last_response_preview = last_msg[:500] if last_msg else None
         if last_msg:
-            live_state["last_response_preview"] = last_msg[:500]
             print(f"[SESSION_END] Captured last_assistant_message ({len(last_msg)} chars)", file=sys.stderr)
 
-        # Atomic write back to LIVE_STATE.json (session state only, no toggles/metrics)
-        tmp = LIVE_STATE_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(live_state, f, indent=2)
-            f.write("\n")
-        os.replace(tmp, LIVE_STATE_FILE)
+        if _is_project:
+            # Project session: write everything to .claude-state.json, don't touch LIVE_STATE.json
+            proj_state = load_project_state(project_dir)
+            proj_state["project_name"] = project_name
+            proj_state["session_count"] = proj_state.get("session_count", 0) + 1
+            proj_state["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            if what_was_done is not None:
+                proj_state["what_was_done"] = what_was_done
+            if last_response_preview is not None:
+                proj_state["last_response_preview"] = last_response_preview
+            save_project_state(project_dir, proj_state)
+            print(f"[SESSION_END] Project state written: {project_dir}/.claude-state.json (session {proj_state['session_count']})", file=sys.stderr)
+        else:
+            # Framework/hub session: write everything to LIVE_STATE.json (original behavior)
+            if what_was_done is not None:
+                live_state["what_was_done"] = what_was_done
+            if last_response_preview is not None:
+                live_state["last_response_preview"] = last_response_preview
 
-        mode = "updated session_metrics" if wrapup_ran else "wrote what_was_done + session_metrics"
+            tmp = LIVE_STATE_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(live_state, f, indent=2)
+                f.write("\n")
+            os.replace(tmp, LIVE_STATE_FILE)
+
+        mode = "project state" if _is_project else ("updated session_metrics" if wrapup_ran else "wrote what_was_done + session_metrics")
         print(f"[SESSION_END] LIVE_STATE.json updated ({mode})", file=sys.stderr)
 
     except Exception as e:
@@ -481,7 +502,7 @@ def backup_database():
 
 
 def increment_session_count(metrics=None):
-    """Atomically increment session_count in LIVE_STATE.json."""
+    """Increment session_count in LIVE_STATE.json and save session metrics."""
     state = {}
     if os.path.exists(LIVE_STATE_FILE):
         try:
@@ -517,6 +538,10 @@ def main():
             _session_data = {}
         transcript_path = _session_data.get("transcript_path", "")
 
+        # Detect project from session cwd
+        _cwd = _session_data.get("cwd")
+        _project_name, _project_dir = detect_project(_cwd)
+
         # Load state once, share across functions
         state = _load_latest_state()
 
@@ -529,7 +554,8 @@ def main():
 
         # Update LIVE_STATE.json with metrics and auto-summary (before flush, while state is fresh)
         try:
-            generate_handoff(state, transcript_path=transcript_path)
+            generate_handoff(state, transcript_path=transcript_path,
+                             project_name=_project_name, project_dir=_project_dir)
         except Exception as e:
             print(f"[SESSION_END] Handoff error (non-fatal): {e}", file=sys.stderr)
 
@@ -589,7 +615,11 @@ def main():
             except OSError:
                 pass
 
-        increment_session_count(metrics)
+        # Only bump global session_count for framework sessions
+        if _project_dir is None:
+            increment_session_count(metrics)
+        elif metrics:
+            _update_config("last_session_metrics", metrics)
     except Exception as e:
         print(f"[SESSION_END] Error (non-fatal): {e}", file=sys.stderr)
     sys.exit(0)
