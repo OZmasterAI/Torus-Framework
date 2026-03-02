@@ -364,20 +364,27 @@ def get_raw_transcript_window(session_id, around_timestamp="", window_minutes=10
     import json as _json
     import glob as _glob
 
-    transcript_dir = os.path.join(
-        os.path.expanduser("~"), ".claude", "projects",
-        "-" + os.path.join(os.path.expanduser("~"), ".claude").replace("/", "-").lstrip("-")
-    )
-    jsonl_path = os.path.join(transcript_dir, f"{session_id}.jsonl")
+    _projects_base = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+    jsonl_path = None
 
-    if not os.path.isfile(jsonl_path):
-        # Try glob for partial match
-        matches = _glob.glob(os.path.join(transcript_dir, f"{session_id}*.jsonl"))
-        if matches:
-            jsonl_path = matches[0]
-        else:
-            return {"error": f"No transcript found for session {session_id}",
-                    "session_id": session_id, "source": "transcript_l0"}
+    # Search all project slug dirs for the session transcript
+    if os.path.isdir(_projects_base):
+        for d in os.listdir(_projects_base):
+            candidate = os.path.join(_projects_base, d, f"{session_id}.jsonl")
+            if os.path.isfile(candidate):
+                jsonl_path = candidate
+                break
+        # Partial match fallback
+        if not jsonl_path:
+            for d in os.listdir(_projects_base):
+                matches = _glob.glob(os.path.join(_projects_base, d, f"{session_id}*.jsonl"))
+                if matches:
+                    jsonl_path = matches[0]
+                    break
+
+    if not jsonl_path:
+        return {"error": f"No transcript found for session {session_id}",
+                "session_id": session_id, "source": "transcript_l0"}
 
     # Read and parse all records
     all_records = []
