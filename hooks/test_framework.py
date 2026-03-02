@@ -24,6 +24,7 @@ from tests import test_shared_core
 from tests import test_integration
 from tests import test_analytics
 from tests import test_shared_deep
+from tests import test_project_detection
 
 # Restore sideband backup
 if harness._SIDEBAND_BACKUP is not None:

@@ -17,10 +17,9 @@ import sys
 import time
 from datetime import datetime, timedelta
 
-_HOME = os.path.expanduser("~")
-
 current_hour = datetime.now().hour
 hooks_dir = os.path.expanduser("~/.claude/hooks")
+_HOME = os.path.expanduser("~")
 
 # Test: Gate 4 — Memory First
 # ─────────────────────────────────────────────────

@@ -17,7 +17,6 @@ import sys
 import time
 from shared.state import get_state_schema
 import tests.harness as _h
-
 _HOME = os.path.expanduser("~")
 
 def _read_pkg_source(pkg_dir):

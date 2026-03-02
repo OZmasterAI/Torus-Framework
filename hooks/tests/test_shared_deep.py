@@ -16,7 +16,6 @@ import subprocess
 import sys
 import time
 import tests.harness as _h
-
 _HOME = os.path.expanduser("~")
 
 # ─── Mutation Tester Tests ───────────────────────────────────────────
@@ -506,10 +505,13 @@ try:
          f"original={len(_gr_all)}, ordered={len(_gr_ordered)}")
 
     # update_qtable + get_optimal_gate_order interaction
-    _gr_test_gate = list(TIER2)[0]
-    update_qtable(_gr_test_gate, "Edit", True)
-    update_qtable(_gr_test_gate, "Edit", True)
-    _gr_ordered2 = get_optimal_gate_order("Edit", list(TIER2))
+    # Use a unique tool name per run so persisted Q-values don't interfere
+    import uuid as _gr_uuid
+    _gr_test_tool = f"__test_qlearn_{_gr_uuid.uuid4().hex[:8]}__"
+    _gr_test_gate = sorted(TIER2)[0]  # deterministic pick from set
+    update_qtable(_gr_test_gate, _gr_test_tool, True)
+    update_qtable(_gr_test_gate, _gr_test_tool, True)
+    _gr_ordered2 = get_optimal_gate_order(_gr_test_tool, sorted(TIER2))
     test("GateRouter: blocked gate ranks first after Q-update",
          _gr_ordered2[0] == _gr_test_gate,
          f"first={_gr_ordered2[0]}, expected={_gr_test_gate}")
