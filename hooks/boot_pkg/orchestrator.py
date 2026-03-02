@@ -6,7 +6,10 @@ import sys
 
 from datetime import datetime
 
-from boot_pkg.util import CLAUDE_DIR, read_file, load_live_state
+from boot_pkg.util import (
+    CLAUDE_DIR, read_file, load_live_state,
+    detect_project, load_project_state, scan_all_project_states,
+)
 from boot_pkg.memory import (
     inject_memories_via_socket, _write_sideband_timestamp,
     socket_available, socket_flush, socket_remember,
@@ -40,6 +43,20 @@ def main():
         print("[BOOT] Bot session — skipping full boot", file=sys.stderr)
         sys.exit(0)
 
+    # Read stdin for cwd (Claude Code passes JSON with cwd on SessionStart)
+    _boot_cwd = None
+    try:
+        import select
+        if select.select([sys.stdin], [], [], 0)[0]:
+            _stdin_data = json.loads(sys.stdin.read())
+            _boot_cwd = _stdin_data.get("cwd")
+    except Exception:
+        pass
+
+    # Detect if we're in a project under ~/projects/
+    _project_name, _project_dir = detect_project(_boot_cwd)
+    _is_project_session = _project_name is not None
+
     now = datetime.now()
     hour = now.hour
     day = now.strftime("%A")
@@ -64,6 +81,13 @@ def main():
     session_num = live_state.get("session_count", "?")
     summary = (live_state.get("what_was_done", "") or "No prior session data")[:100]
 
+    # Override with project-specific state if in a project session
+    _project_state = {}
+    if _is_project_session:
+        _project_state = load_project_state(_project_dir)
+        if _project_state:
+            summary = (_project_state.get("what_was_done", "") or summary)[:100]
+
     # Domain mastery: load active domain (only if explicitly activated by user)
     _domain_name = None
     _domain_mastery = ""
@@ -85,9 +109,13 @@ def main():
     elif hour >= 22:
         time_warning = "  -- Late evening session --"
 
-    # Project name from live state
-    project_name = live_state.get("project", "Self-Healing Claude")
-    active_tasks = live_state.get("active_tasks", [])
+    # Project name from live state (or project state if in a project session)
+    if _is_project_session:
+        project_name = _project_state.get("project_name", _project_name)
+        active_tasks = _project_state.get("active_tasks", [])
+    else:
+        project_name = live_state.get("project", "Self-Healing Claude")
+        active_tasks = live_state.get("active_tasks", [])
 
     # Gate count
     gates_dir = os.path.join(CLAUDE_DIR, "hooks", "gates")
@@ -287,6 +315,17 @@ def main():
             dashboard += f"\n|    {gs_display:<64}|"
         dashboard += "\n|--------------------------------------------------------------------|"
 
+    # Hub mode: show all project states when launched from ~/.claude/
+    if not _is_project_session:
+        _all_project_states = scan_all_project_states()
+        if _all_project_states:
+            dashboard += "\n|  PROJECT STATES:                                                   |"
+            for ps in _all_project_states:
+                pname = ps.get("project_name", "?")
+                pwhat = (ps.get("what_was_done", "") or "no data")[:50]
+                dashboard += f"\n|    {pname}: {pwhat:<{63 - len(pname)}}|"
+            dashboard += "\n|--------------------------------------------------------------------|"
+
     if _domain_name:
         dom_label = f"DOMAIN: {_domain_name}"
         if _domain_mastery:
@@ -328,6 +367,13 @@ def main():
             "next_steps", "known_issues",
         }
         filtered = {k: v for k, v in live_state.items() if k in CONTEXT_KEYS}
+        # Overlay project-specific fields when in a project session
+        if _is_project_session and _project_state:
+            for k in ("what_was_done", "next_steps"):
+                if k in _project_state:
+                    filtered[k] = _project_state[k]
+            filtered["project"] = _project_name
+
         # Truncate variable-length fields to cap token cost.
         # Full versions stay in LIVE_STATE.json for dashboard/gather.py.
         if "what_was_done" in filtered:
