@@ -2,12 +2,11 @@
   "session_count": 339,
   "project": "self-healing-framework",
   "feature": "subproject-support",
-  "branch": "refactor-test",
   "framework_version": "v2.5.8",
-  "what_was_done": "Implemented subproject support (.claude-project marker, 4-tuple detect_project, scan_subproject_states). Fixed boot crash (TimeoutError). Added memory auto-prefix [project #N]. Discussed and skipped project filter toggle (YAGNI).",
+  "what_was_done": "Implemented subproject support (.claude-project marker, 4-tuple detect_project). Fixed terminal-history and subagent_context for multi-project sessions. Synced all changes to GitHub main. Fixed accidental remote branch creation.",
   "known_issues": [
     "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
-    "Memory DB at 1825 entries — run maintenance(action='stale') for cleanup",
+    "Memory DB at 1829 entries — run maintenance(action='stale') for cleanup",
     "Boot hook circuit breaker spam ([CB] memory_socket OPEN) — cosmetic, non-blocking"
   ],
   "next_steps": [
