@@ -23,8 +23,21 @@ sys.path.insert(0, _PLUGIN_DIR)
 
 from db import init_db, log_entry, is_session_indexed, mark_session_indexed, update_session_tags
 
+_PROJECTS_BASE = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+
+def _all_session_dirs():
+    """Return all Claude Code transcript directories (all project slugs)."""
+    if not os.path.isdir(_PROJECTS_BASE):
+        return []
+    return [
+        os.path.join(_PROJECTS_BASE, d)
+        for d in os.listdir(_PROJECTS_BASE)
+        if os.path.isdir(os.path.join(_PROJECTS_BASE, d))
+    ]
+
+# Legacy single-dir constant (kept for --session lookups)
 SESSIONS_DIR = os.path.join(
-    os.path.expanduser("~"), ".claude", "projects",
+    _PROJECTS_BASE,
     "-" + os.path.join(os.path.expanduser("~"), ".claude").replace("/", "-").lstrip("-")
 )
 DB_PATH = os.path.join(_PLUGIN_DIR, "terminal_history.db")
@@ -199,8 +212,10 @@ def _apply_tags(db_path, session_id, all_text, all_timestamps):
 
 def retag_all(db_path):
     """Re-tag all already-indexed sessions (inherit + derive)."""
-    pattern = os.path.join(SESSIONS_DIR, "*.jsonl")
-    files = sorted(glob.glob(pattern))
+    files = []
+    for session_dir in _all_session_dirs():
+        files.extend(glob.glob(os.path.join(session_dir, "*.jsonl")))
+    files.sort()
 
     retagged = 0
     for filepath in files:
@@ -238,12 +253,14 @@ def retag_all(db_path):
 
 
 def bulk_index(db_path):
-    """Index all session JSONL files. Skips already-indexed sessions."""
-    pattern = os.path.join(SESSIONS_DIR, "*.jsonl")
-    files = sorted(glob.glob(pattern))
+    """Index all session JSONL files from all project dirs. Skips already-indexed."""
+    files = []
+    for session_dir in _all_session_dirs():
+        files.extend(glob.glob(os.path.join(session_dir, "*.jsonl")))
+    files.sort()
 
     if not files:
-        print(f"No JSONL files found in {SESSIONS_DIR}")
+        print(f"No JSONL files found in {_PROJECTS_BASE}/*/")
         return
 
     total_sessions = 0
@@ -278,9 +295,14 @@ def main():
     if args.retag:
         retag_all(args.db)
     elif args.session:
-        jsonl_path = os.path.join(SESSIONS_DIR, f"{args.session}.jsonl")
-        if not os.path.isfile(jsonl_path):
-            print(f"Session file not found: {jsonl_path}", file=sys.stderr)
+        jsonl_path = None
+        for session_dir in _all_session_dirs():
+            candidate = os.path.join(session_dir, f"{args.session}.jsonl")
+            if os.path.isfile(candidate):
+                jsonl_path = candidate
+                break
+        if not jsonl_path:
+            print(f"Session file not found in any project dir: {args.session}", file=sys.stderr)
             sys.exit(1)
         count = index_session(args.db, jsonl_path)
         print(f"Indexed {count} records from session {args.session[:12]}...")
