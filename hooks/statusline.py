@@ -125,11 +125,21 @@ def fmt_tokens(n):
 
 
 def get_session_number():
-    """Read current session number from LIVE_STATE.json.
+    """Read current session number, project-aware.
 
-    session_count is set to N by session_end.py at the end of session N-1,
-    so it already represents the current session number.
+    Project sessions (cwd under ~/projects/) read from .claude-state.json.
+    Framework sessions read from LIVE_STATE.json.
     """
+    try:
+        from boot_pkg.util import detect_project, load_project_state
+        _proj_name, _proj_dir = detect_project()
+        if _proj_dir:
+            proj_state = load_project_state(_proj_dir)
+            count = proj_state.get("session_count", 0)
+            return count if isinstance(count, int) else "?"
+    except Exception:
+        pass
+    # Fallback: global LIVE_STATE.json
     try:
         with open(LIVE_STATE_FILE) as f:
             state = json.load(f)
@@ -140,12 +150,22 @@ def get_session_number():
 
 
 def get_project_name():
-    """Read project name from LIVE_STATE.json."""
+    """Read project name, project-aware.
+
+    Project sessions use detect_project() name. Framework sessions use LIVE_STATE.json.
+    """
+    try:
+        from boot_pkg.util import detect_project
+        _proj_name, _proj_dir = detect_project()
+        if _proj_name:
+            aliases = {"self-healing-framework": "shf"}
+            return (aliases.get(_proj_name, _proj_name) or "claude")[:12]
+    except Exception:
+        pass
     try:
         with open(LIVE_STATE_FILE) as f:
             state = json.load(f)
         name = state.get("project") or "claude"
-        # Use short alias for known long names
         aliases = {
             "self-healing-framework": "shf",
         }
@@ -1048,13 +1068,22 @@ def main():
     print(line6)
 
     # ── LINE 7: Mentor system toggles ──
+    # Gate 19 effective state: active if its own toggle OR mentor_all is on
+    _hindsight_own = ls.get("mentor_hindsight_gate", False)
+    _mentor_all = ls.get("mentor_all", False)
+    if _hindsight_own:
+        _g19_display = f"{COLOR_GREEN}\u25c9 Hindsight-Gate 19{COLOR_RESET}"
+    elif _mentor_all:
+        _g19_display = f"{COLOR_GREEN}\u25c9 Hindsight-Gate 19{COLOR_RESET} (via All)"
+    else:
+        _g19_display = "\u25cb Hindsight-Gate 19"
     line5 = (
         f"Mentor: "
         f"{_tog('mentor_all', 'All')} "
         f"{_tog('mentor_tracker', 'Tracker')} "
         f"{_tog('mentor_outcome_chains', 'Chains')} "
         f"{_tog('mentor_memory', 'Memory')}"
-        f" | {_tog('mentor_hindsight_gate', 'Hindsight-Gate 19')}"
+        f" | {_g19_display}"
     )
     print(line5)
 

@@ -17,6 +17,8 @@ import sys
 import time
 import tests.harness as _h
 
+_HOME = os.path.expanduser("~")
+
 print("\n--- Auto-Capture: Secrets Filter ---")
 
 from shared.secrets_filter import scrub
@@ -1553,7 +1555,7 @@ if not MEMORY_SERVER_RUNNING:
              f"result keys={list(_if_reading.keys())}")
 
         # 12. Tool echo with absolute path IS rejected
-        _if_toolecho = _rt_filter("Reading file /home/crab/.claude/hooks/test.py and checking output", "test", "test")
+        _if_toolecho = _rt_filter(f"Reading file {_HOME}/.claude/hooks/test.py and checking output", "test", "test")
         test("Ingestion: tool echo with /path rejected",
              _if_toolecho.get("rejected") is True, f"result={_if_toolecho}")
 

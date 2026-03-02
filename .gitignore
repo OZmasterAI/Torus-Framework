@@ -89,3 +89,4 @@ diagram.html
 plugins/installed_plugins.json
 plugins/known_marketplaces.json
 plugins/marketplaces/
+hooks/.experience_archive.csv

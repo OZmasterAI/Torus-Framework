@@ -125,7 +125,7 @@ def check_memory_health() -> dict:
 
     Returns:
         {
-            "socket_path": "/home/crab/.claude/hooks/.memory.sock",
+            "socket_path": os.path.expanduser("~/.claude/hooks/.memory.sock"),
             "socket_exists": True | False,
             "worker_reachable": True | False,
             "ping_response": "pong" | None,

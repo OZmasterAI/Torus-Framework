@@ -17,6 +17,18 @@ import sys
 import time
 import tests.harness as _h
 
+_HOME = os.path.expanduser("~")
+
+
+def _infer_project_slug():
+    """Infer the Claude project slug from the home directory path."""
+    home = os.path.expanduser("~")
+    claude_dir = os.path.join(home, ".claude")
+    # Claude uses path-based slug: /home/user/.claude -> -home-user--claude
+    slug = claude_dir.replace("/", "-").lstrip("-")
+    return "-" + slug
+
+
 print('\n--- Mentor System: Tracker Mentor (A) ---')
 
 try:
@@ -488,26 +500,26 @@ try:
 
     # 1. Gate file edit triggers gate_dashboard nudge
     _ma_state1 = {"total_tool_calls": 10, "analytics_last_used": {}}
-    _ma_msgs1 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, {}, _ma_state1)
+    _ma_msgs1 = _ma_eval("Edit", {"file_path": f"{_HOME}/.claude/hooks/gates/gate_04.py"}, {}, _ma_state1)
     test("UpgradeC: gate edit triggers gate_dashboard nudge",
          any("gate_dashboard" in m for m in _ma_msgs1),
          f"msgs={_ma_msgs1}")
 
     # 2. Skill file edit triggers skill_health nudge
-    _ma_msgs2 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/skills/benchmark/SKILL.md"}, {}, _ma_state1)
+    _ma_msgs2 = _ma_eval("Edit", {"file_path": f"{_HOME}/.claude/skills/benchmark/SKILL.md"}, {}, _ma_state1)
     test("UpgradeC: skill edit triggers skill_health nudge",
          any("skill_health" in m for m in _ma_msgs2),
          f"msgs={_ma_msgs2}")
 
     # 3. Enforcer edit triggers gate_timing nudge
-    _ma_msgs3 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/hooks/enforcer.py"}, {}, _ma_state1)
+    _ma_msgs3 = _ma_eval("Edit", {"file_path": f"{_HOME}/.claude/hooks/enforcer.py"}, {}, _ma_state1)
     test("UpgradeC: enforcer edit triggers gate_timing nudge",
          any("gate_timing" in m for m in _ma_msgs3),
          f"msgs={_ma_msgs3}")
 
     # 4. Non-framework file → no nudge (except periodic)
     _ma_state4 = {"total_tool_calls": 10, "analytics_last_used": {}}
-    _ma_msgs4 = _ma_eval("Edit", {"file_path": "/home/crab/Desktop/app.py"}, {}, _ma_state4)
+    _ma_msgs4 = _ma_eval("Edit", {"file_path": f"{_HOME}/Desktop/app.py"}, {}, _ma_state4)
     test("UpgradeC: non-framework edit → no path-based nudge",
          not any("gate_dashboard" in m or "skill_health" in m or "gate_timing" in m for m in _ma_msgs4),
          f"msgs={_ma_msgs4}")
@@ -515,7 +527,7 @@ try:
     # 5. Cooldown: recent analytics call suppresses nudge
     import time as _ma_time
     _ma_state5 = {"total_tool_calls": 10, "analytics_last_used": {"gate_dashboard": _ma_time.time()}}
-    _ma_msgs5 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, {}, _ma_state5)
+    _ma_msgs5 = _ma_eval("Edit", {"file_path": f"{_HOME}/.claude/hooks/gates/gate_04.py"}, {}, _ma_state5)
     test("UpgradeC: cooldown suppresses nudge after recent analytics call",
          not any("gate_dashboard" in m for m in _ma_msgs5),
          f"msgs={_ma_msgs5}")
@@ -529,7 +541,7 @@ try:
 
     # 7. Read tool → no path-based nudge (only Edit/Write trigger)
     _ma_state7 = {"total_tool_calls": 10, "analytics_last_used": {}}
-    _ma_msgs7 = _ma_eval("Read", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, {}, _ma_state7)
+    _ma_msgs7 = _ma_eval("Read", {"file_path": f"{_HOME}/.claude/hooks/gates/gate_04.py"}, {}, _ma_state7)
     test("UpgradeC: Read tool → no nudge",
          not any("gate_dashboard" in m for m in _ma_msgs7),
          f"msgs={_ma_msgs7}")
@@ -691,7 +703,7 @@ try:
     # transcript_context: real session → records list or disabled
     import glob as _tc_glob
     _tc_jsonls = _tc_glob.glob(os.path.join(
-        os.path.expanduser("~"), ".claude", "projects", "-home-crab--claude", "*.jsonl"))
+        os.path.expanduser("~"), ".claude", "projects", _infer_project_slug(), "*.jsonl"))
     if _tc_jsonls:
         _tc_sid = os.path.basename(_tc_jsonls[0]).replace(".jsonl", "")
         _tc_real = transcript_context(_tc_sid, max_records=5)
@@ -788,7 +800,7 @@ try:
     # get_raw_transcript_window: real session
     import glob as _grw_glob
     _grw_jsonls = _grw_glob.glob(os.path.join(
-        os.path.expanduser("~"), ".claude", "projects", "-home-crab--claude", "*.jsonl"))
+        os.path.expanduser("~"), ".claude", "projects", _infer_project_slug(), "*.jsonl"))
     if _grw_jsonls:
         _grw_sid = os.path.basename(_grw_jsonls[0]).replace(".jsonl", "")
         _grw_real = get_raw_transcript_window(_grw_sid, max_records=5)

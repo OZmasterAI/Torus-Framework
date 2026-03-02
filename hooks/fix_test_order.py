@@ -5,8 +5,9 @@ The Self-Evolution section ended up after sys.exit() due to a previous restructu
 This script moves it back before the SUMMARY.
 """
 import sys
+import os
 
-fpath = '/home/crab/.claude/hooks/test_framework.py'
+fpath = os.path.expanduser("~/.claude/hooks/test_framework.py")
 with open(fpath, 'r') as f:
     lines = f.readlines()
 

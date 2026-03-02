@@ -25,13 +25,13 @@ Gather the following metrics from live framework state:
 
 **Test suite:**
 ```bash
-python3 /home/crab/.claude/hooks/test_framework.py 2>&1 | tail -10
+python3 ~/.claude/hooks/test_framework.py 2>&1 | tail -10
 ```
 Extract: total tests, pass count, fail count, pass rate %.
 
 **Memory system:**
 ```bash
-cat /home/crab/.claude/stats-cache.json
+cat ~/.claude/stats-cache.json
 ```
 Returns: `{"ts": <epoch>, "mem_count": <N>}`. Also note memory count from `search_knowledge("*", top_k=1)` result header (`total_memories` field).
 
@@ -39,7 +39,7 @@ Returns: `{"ts": <epoch>, "mem_count": <N>}`. Also note memory count from `searc
 ```bash
 python3 -c "
 import json
-with open('/home/crab/.claude/LIVE_STATE.json') as f:
+with open(os.path.expanduser('~/.claude/LIVE_STATE.json')) as f:
     s = json.load(f)
 print(json.dumps({
     'session_count': s.get('session_count'),
@@ -80,7 +80,7 @@ Parse duration, tool call counts, error count, subagent count from the session_m
 
 **Gate file count:**
 ```bash
-ls /home/crab/.claude/hooks/gates/gate_*.py 2>/dev/null | wc -l
+ls ~/.claude/hooks/gates/gate_*.py 2>/dev/null | wc -l
 ```
 
 **Memory MCP status:**
@@ -136,7 +136,7 @@ latencies = []
 for _ in range(N):
     t0 = time.perf_counter_ns()
     subprocess.run(
-        ['python3', '/home/crab/.claude/hooks/enforcer.py', '--event', 'PreToolUse'],
+        ['python3', os.path.expanduser('~/.claude/hooks/enforcer.py'), '--event', 'PreToolUse'],
         input='{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"echo hi\"}}',
         capture_output=True, text=True
     )
@@ -188,7 +188,7 @@ Use this alongside (not instead of) the enforcer subprocess timing above — MCP
 
 **I/O benchmark** (if ramdisk is mounted):
 ```bash
-python3 /home/crab/.claude/hooks/benchmarks/benchmark_io.py 2>&1 | grep -E "(Mean|p50|p95|p99|Speedup|Total|SUMMARY)" | head -20
+python3 ~/.claude/hooks/benchmarks/benchmark_io.py 2>&1 | grep -E "(Mean|p50|p95|p99|Speedup|Total|SUMMARY)" | head -20
 ```
 Extract: tmpfs mean latency, disk mean latency, speedup factor.
 

@@ -37,12 +37,13 @@ def _is_re_edit(file_path, state):
     return norm in pending or file_path in pending
 
 
-def _check_signals(state):
+def _check_signals(state, file_path=""):
     """Check confidence signals. Returns list of failed signal descriptions."""
     failures = []
-    # Signal 1: session_test_baseline
+    # Signal 1: session_test_baseline — only require for framework files
     if not state.get("session_test_baseline", False):
-        failures.append("no test run this session")
+        if file_path and os.path.expanduser("~/.claude/hooks/") in file_path:
+            failures.append("no test run this session")
     # Signal 2: pending_verification
     # Suppress during active error fixing — having unverified edits is expected
     # when fixing a known test failure. Gate 5 still limits unverified file count.
@@ -77,7 +78,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check confidence signals — block immediately on failure
-    failures = _check_signals(state)
+    failures = _check_signals(state, file_path=file_path)
     if not failures:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 

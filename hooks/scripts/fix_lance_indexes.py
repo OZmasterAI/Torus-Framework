@@ -7,8 +7,9 @@ when no index exists.
 """
 
 import lancedb
+import os
 
-LANCE_PATH = "/home/crab/data/memory/lancedb"
+LANCE_PATH = os.path.expanduser("~/data/memory/lancedb")
 
 def main():
     db = lancedb.connect(LANCE_PATH)

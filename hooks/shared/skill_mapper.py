@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Skill dependency and health analyzer for the Torus framework.
 
-This module scans all skills in /home/crab/.claude/skills/, parses their
+This module scans all skills in ~/.claude/skills/, parses their
 metadata and scripts, and builds a comprehensive dependency graph to identify
 missing dependencies, code reuse opportunities, and overall skill health.
 
