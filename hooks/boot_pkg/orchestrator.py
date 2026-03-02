@@ -87,6 +87,7 @@ def main():
         _project_state = load_project_state(_project_dir)
         if _project_state:
             summary = (_project_state.get("what_was_done", "") or summary)[:100]
+            session_num = _project_state.get("session_count", session_num)
 
     # Domain mastery: load active domain (only if explicitly activated by user)
     _domain_name = None
