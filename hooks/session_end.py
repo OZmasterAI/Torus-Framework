@@ -540,7 +540,9 @@ def main():
 
         # Detect project from session cwd
         _cwd = _session_data.get("cwd")
-        _project_name, _project_dir = detect_project(_cwd)
+        _project_name, _project_dir, _subproject_name, _subproject_dir = detect_project(_cwd)
+        _effective_name = _subproject_name or _project_name
+        _effective_dir = _subproject_dir or _project_dir
 
         # Load state once, share across functions
         state = _load_latest_state()
@@ -555,7 +557,7 @@ def main():
         # Update LIVE_STATE.json with metrics and auto-summary (before flush, while state is fresh)
         try:
             generate_handoff(state, transcript_path=transcript_path,
-                             project_name=_project_name, project_dir=_project_dir)
+                             project_name=_effective_name, project_dir=_effective_dir)
         except Exception as e:
             print(f"[SESSION_END] Handoff error (non-fatal): {e}", file=sys.stderr)
 

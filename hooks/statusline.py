@@ -128,13 +128,15 @@ def get_session_number():
     """Read current session number, project-aware.
 
     Project sessions (cwd under ~/projects/) read from .claude-state.json.
+    Subproject sessions read from {subproject_dir}/.claude-state.json.
     Framework sessions read from LIVE_STATE.json.
     """
     try:
         from boot_pkg.util import detect_project, load_project_state
-        _proj_name, _proj_dir = detect_project()
-        if _proj_dir:
-            proj_state = load_project_state(_proj_dir)
+        _proj_name, _proj_dir, _sub_name, _sub_dir = detect_project()
+        _eff_dir = _sub_dir or _proj_dir
+        if _eff_dir:
+            proj_state = load_project_state(_eff_dir)
             count = proj_state.get("session_count", 0)
             return count if isinstance(count, int) else "?"
     except Exception:
@@ -152,12 +154,15 @@ def get_session_number():
 def get_project_name():
     """Read project name, project-aware.
 
-    Project sessions use detect_project() name. Framework sessions use LIVE_STATE.json.
+    Project sessions use detect_project() name. Subproject sessions show
+    "{project}/{sub}" truncated to 12 chars. Framework sessions use LIVE_STATE.json.
     """
     try:
         from boot_pkg.util import detect_project
-        _proj_name, _proj_dir = detect_project()
+        _proj_name, _proj_dir, _sub_name, _sub_dir = detect_project()
         if _proj_name:
+            if _sub_name:
+                return f"{_proj_name}/{_sub_name}"[:12]
             aliases = {"self-healing-framework": "shf"}
             return (aliases.get(_proj_name, _proj_name) or "claude")[:12]
     except Exception:

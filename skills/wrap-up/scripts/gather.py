@@ -30,16 +30,18 @@ from shared.memory_socket import (
 def _get_state_file():
     """Return the appropriate state file path: project-local or global.
 
-    Project sessions (cwd under ~/projects/) use {project_dir}/.claude-state.json.
+    Subproject sessions use {subproject_dir}/.claude-state.json.
+    Project sessions use {project_dir}/.claude-state.json.
     Framework/hub sessions use ~/.claude/LIVE_STATE.json.
     """
     try:
-        from boot_pkg.util import detect_project, load_project_state
-        _proj_name, _proj_dir = detect_project()
-        if _proj_dir:
-            proj_state_file = os.path.join(_proj_dir, ".claude-state.json")
-            if os.path.exists(proj_state_file):
-                return proj_state_file
+        from boot_pkg.util import detect_project
+        _proj_name, _proj_dir, _sub_name, _sub_dir = detect_project()
+        _eff_dir = _sub_dir or _proj_dir
+        if _eff_dir:
+            state_file = os.path.join(_eff_dir, ".claude-state.json")
+            if os.path.exists(state_file):
+                return state_file
     except Exception:
         pass
     return LIVE_STATE_FILE
