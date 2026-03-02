@@ -4,7 +4,7 @@
   "feature": "test-coverage",
   "branch": "refactor-test",
   "framework_version": "v2.5.8",
-  "what_was_done": "Fixed all 7 test failures, restored feature field in subagent context and wrap-up skill, added session isolation tests",
+  "what_was_done": "Fixed all 7 test failures (5398/0), restored feature field across all consumers and wrap-up skill, added 5 session isolation tests, replaced dead feature reads with both feature+what_was_done",
   "known_issues": [
     "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
     "Memory DB at 1813 entries — run maintenance(action='stale') for cleanup"
