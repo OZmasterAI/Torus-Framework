@@ -378,8 +378,10 @@ def get_plan_mode_warns(state):
 
 def get_verification_ratio(state):
     """Return (verified, total) from session state for V:x/y display."""
-    verified = len(state.get("verified_fixes", []))
-    pending = len(state.get("pending_verification", []))
+    vf = state.get("verified_fixes", [])
+    pv = state.get("pending_verification", [])
+    verified = vf if isinstance(vf, int) else len(vf)
+    pending = pv if isinstance(pv, int) else len(pv)
     return (verified, verified + pending)
 
 
