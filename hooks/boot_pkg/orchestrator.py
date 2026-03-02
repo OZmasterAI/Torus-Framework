@@ -81,16 +81,21 @@ def main():
 
     # Load context
     live_state = load_live_state()
-    session_num = live_state.get("session_count", "?")
-    summary = (live_state.get("what_was_done", "") or "No prior session data")[:100]
 
     # Override with project-specific state if in a project session
     _project_state = {}
     if _is_project_session:
         _project_state = load_project_state(_effective_dir)
         if _project_state:
-            summary = (_project_state.get("what_was_done", "") or summary)[:100]
-            session_num = _project_state.get("session_count", session_num)
+            session_num = _project_state.get("session_count", 1)
+            summary = (_project_state.get("what_was_done", "") or "No prior session data")[:100]
+        else:
+            # First session for this project/subproject — don't inherit framework state
+            session_num = 1
+            summary = "First session for this project"
+    else:
+        session_num = live_state.get("session_count", "?")
+        summary = (live_state.get("what_was_done", "") or "No prior session data")[:100]
 
     # Domain mastery: load active domain (only if explicitly activated by user)
     _domain_name = None
@@ -378,24 +383,41 @@ def main():
     # Print to stdout (INJECTED INTO CLAUDE'S CONVERSATION CONTEXT)
     context_parts = [f"<session-start-context>"]
     context_parts.append(f"Session {session_num} | Project: {project_name}")
-    if live_state:
-        # Only inject fields Claude needs in conversation context.
-        # Config flags (booleans, profiles) are read from file by hooks — not needed in prompt.
+    # Build context state for Claude's conversation
+    if _is_project_session:
+        # Project/subproject sessions: use project state exclusively, never leak LIVE_STATE
+        if _project_state:
+            PROJECT_CONTEXT_KEYS = {
+                "session_count", "project_name", "feature",
+                "what_was_done", "next_steps", "known_issues",
+            }
+            filtered = {k: v for k, v in _project_state.items() if k in PROJECT_CONTEXT_KEYS}
+            filtered["project"] = _effective_name
+        else:
+            # First session — minimal context
+            filtered = {
+                "project": _effective_name,
+                "session_count": 1,
+                "what_was_done": "First session for this project",
+            }
+        # Truncate variable-length fields to cap token cost.
+        if "what_was_done" in filtered:
+            wd = filtered["what_was_done"]
+            if len(wd) > 200:
+                filtered["what_was_done"] = wd[:200] + "..."
+        if "next_steps" in filtered:
+            filtered["next_steps"] = filtered["next_steps"][:3]
+        if "known_issues" in filtered:
+            filtered["known_issues"] = filtered["known_issues"][:3]
+        context_parts.append(f"project_state: {json.dumps(filtered, indent=2)}")
+    elif live_state:
+        # Framework/hub sessions: use LIVE_STATE.json
         CONTEXT_KEYS = {
             "session_count", "project", "feature",
             "framework_version", "what_was_done",
             "next_steps", "known_issues",
         }
         filtered = {k: v for k, v in live_state.items() if k in CONTEXT_KEYS}
-        # Overlay project-specific fields when in a project session
-        if _is_project_session and _project_state:
-            for k in ("what_was_done", "next_steps"):
-                if k in _project_state:
-                    filtered[k] = _project_state[k]
-            filtered["project"] = _effective_name
-
-        # Truncate variable-length fields to cap token cost.
-        # Full versions stay in LIVE_STATE.json for dashboard/gather.py.
         if "what_was_done" in filtered:
             wd = filtered["what_was_done"]
             if len(wd) > 200:
