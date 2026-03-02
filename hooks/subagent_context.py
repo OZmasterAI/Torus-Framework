@@ -184,7 +184,7 @@ def build_context(agent_type, live_state, session_state=None):
         session_state = {}
 
     project = live_state.get("project", "unknown")
-    feature = live_state.get("feature", "none")
+    what_doing = live_state.get("what_was_done", "none")
 
     if not live_state:
         return FALLBACK_CONTEXT
@@ -192,7 +192,7 @@ def build_context(agent_type, live_state, session_state=None):
     if agent_type in ("Explore", "Plan"):
         parts = [
             f"You are a READ-ONLY {agent_type} agent. Do not create or edit files.",
-            f"Project: {project}. Active feature: {feature}.",
+            f"Project: {project}. Current work: {what_doing}.",
         ]
         # Add recent files so they know what's already been explored
         files_str = _format_file_list(session_state.get("files_read", []))
@@ -214,7 +214,7 @@ def build_context(agent_type, live_state, session_state=None):
 
     if agent_type == "general-purpose":
         parts = [
-            f"Project: {project}. Feature: {feature}.",
+            f"Project: {project}. Current work: {what_doing}.",
         ]
         # Rich operational context
         files_str = _format_file_list(session_state.get("files_read", []))
@@ -244,7 +244,7 @@ def build_context(agent_type, live_state, session_state=None):
 
     if agent_type == "builder":
         parts = [
-            f"Project: {project}. Feature: {feature}.",
+            f"Project: {project}. Current work: {what_doing}.",
         ]
         files_str = _format_file_list(session_state.get("files_read", []))
         if files_str:
@@ -282,7 +282,7 @@ def build_context(agent_type, live_state, session_state=None):
         return " ".join(parts)
 
     # Default / unknown agent type
-    parts = [f"Project: {project}. Active feature: {feature}."]
+    parts = [f"Project: {project}. Current work: {what_doing}."]
     files_str = _format_file_list(session_state.get("files_read", []))
     if files_str:
         parts.append(f"Recently read: {files_str}.")
