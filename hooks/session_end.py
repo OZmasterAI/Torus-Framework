@@ -334,15 +334,11 @@ def _update_config(key, value):
 
 
 def generate_handoff(state, transcript_path="", project_name=None, project_dir=None):
-    """Update LIVE_STATE.json with auto-summary and config.json with session metrics.
+    """Update state with auto-summary and config.json with session metrics.
 
-    If project_dir is set, project-specific fields (what_was_done, last_response_preview,
-    next_steps) are written to the project's .claude-state.json instead of LIVE_STATE.json.
-    Global fields (session_count, known_issues) always go to LIVE_STATE.json.
-
-    If /wrap-up ran recently (LIVE_STATE.json has a non-empty what_was_done
-    and was modified within the last 30 minutes), just update session_metrics.
-    Otherwise, run Haiku auto-summary and write what_was_done + session_metrics.
+    If project_dir is set, all state goes to the project's .claude-state.json.
+    LIVE_STATE.json is not touched at all for project sessions.
+    Framework sessions (project_dir=None) write to LIVE_STATE.json as before.
 
     session_metrics are written to config.json (persist across task resets).
     """
@@ -392,25 +388,17 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
             print(f"[SESSION_END] Captured last_assistant_message ({len(last_msg)} chars)", file=sys.stderr)
 
         if _is_project:
-            # Project session: write project-specific fields to .claude-state.json
+            # Project session: write everything to .claude-state.json, don't touch LIVE_STATE.json
             proj_state = load_project_state(project_dir)
             proj_state["project_name"] = project_name
-            proj_state["last_session"] = session_num
+            proj_state["session_count"] = proj_state.get("session_count", 0) + 1
             proj_state["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             if what_was_done is not None:
                 proj_state["what_was_done"] = what_was_done
             if last_response_preview is not None:
                 proj_state["last_response_preview"] = last_response_preview
-            # Preserve next_steps and active_tasks if already set (from /wrap-up)
             save_project_state(project_dir, proj_state)
-            print(f"[SESSION_END] Project state written: {project_dir}/.claude-state.json", file=sys.stderr)
-
-            # Global LIVE_STATE.json: only update global fields (no what_was_done clobber)
-            tmp = LIVE_STATE_FILE + ".tmp"
-            with open(tmp, "w") as f:
-                json.dump(live_state, f, indent=2)
-                f.write("\n")
-            os.replace(tmp, LIVE_STATE_FILE)
+            print(f"[SESSION_END] Project state written: {project_dir}/.claude-state.json (session {proj_state['session_count']})", file=sys.stderr)
         else:
             # Framework/hub session: write everything to LIVE_STATE.json (original behavior)
             if what_was_done is not None:
@@ -627,7 +615,11 @@ def main():
             except OSError:
                 pass
 
-        increment_session_count(metrics)
+        # Only bump global session_count for framework sessions
+        if _project_dir is None:
+            increment_session_count(metrics)
+        elif metrics:
+            _update_config("last_session_metrics", metrics)
     except Exception as e:
         print(f"[SESSION_END] Error (non-fatal): {e}", file=sys.stderr)
     sys.exit(0)
