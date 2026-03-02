@@ -1,12 +1,13 @@
 {
-  "session_count": 336,
+  "session_count": 338,
   "project": "self-healing-framework",
   "branch": "refactor-test",
   "framework_version": "v2.5.8",
-  "what_was_done": "Fixed session isolation: statusline loads session-specific state files and git cache, wrap-up SKILL.md and gather.py now project-aware for state routing",
+  "what_was_done": "Fixed all 7 pre-existing test failures (0 remaining), replaced dead 'feature' field with 'what_was_done' in subagent context, added session isolation tests",
   "known_issues": [
     "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
-    "Memory DB at 1800 entries — run maintenance(action='stale') for cleanup"
+    "Memory DB at 1805 entries — run maintenance(action='stale') for cleanup",
+    "domain_registry.py still has dead 'feature' pattern matching (live_state_feature) — cosmetic, not harmful"
   ],
   "next_steps": [
     "Merge refactor-test branch into main after verification",

@@ -76,9 +76,6 @@ def inject_memories_via_socket(handoff_content, live_state, _socket_count=None, 
     project = live_state.get("project", "")
     if project:
         query_parts.append(project)
-    feature = live_state.get("feature", "")
-    if feature:
-        query_parts.append(feature)
     what_was_done = live_state.get("what_was_done", "")
     if what_was_done:
         query_parts.append(what_was_done[:200])
