@@ -97,11 +97,13 @@ def crash_proof(fn):
 
 # Auto project-tagging: detect if MCP server was launched from a project directory
 _SERVER_PROJECT = None
+_SERVER_PROJECT_DIR = None
 _SERVER_SUBPROJECT = None
+_SERVER_SUBPROJECT_DIR = None
 try:
     _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
     from boot_pkg.util import detect_project
-    _SERVER_PROJECT, _, _SERVER_SUBPROJECT, _ = detect_project()
+    _SERVER_PROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT, _SERVER_SUBPROJECT_DIR = detect_project()
 except Exception:
     pass
 
@@ -712,6 +714,24 @@ def _inject_project_tag(tags):
         if sub_tag not in (tags or ""):
             tags = f"{tags},{sub_tag}" if tags else sub_tag
     return tags
+
+
+def _build_project_prefix():
+    """Build '[project #N]' or '[project/sub #N]' prefix from project state."""
+    if not _SERVER_PROJECT:
+        return ""
+    eff_dir = _SERVER_SUBPROJECT_DIR or _SERVER_PROJECT_DIR
+    eff_name = f"{_SERVER_PROJECT}/{_SERVER_SUBPROJECT}" if _SERVER_SUBPROJECT else _SERVER_PROJECT
+    session_num = "?"
+    if eff_dir:
+        state_file = os.path.join(eff_dir, ".claude-state.json")
+        try:
+            with open(state_file) as f:
+                state = json.load(f)
+            session_num = state.get("session_count", "?")
+        except Exception:
+            pass
+    return f"[{eff_name} #{session_num}] "
 
 
 def _migrate_previews():
@@ -2618,6 +2638,10 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     # --- Tag normalization: bare tags → dimensioned tags ---
     tags = _normalize_tags(tags)
     tags = _inject_project_tag(tags)
+    # --- Auto-prefix: prepend [project #N] to content ---
+    _prefix = _build_project_prefix()
+    if _prefix and not content.startswith("["):
+        content = _prefix + content
     # --- Ingestion filter: reject noise ---
     # force=True skips both noise filter AND dedup (escape hatch for false positives)
     if len(content.strip()) < MIN_CONTENT_LENGTH:
