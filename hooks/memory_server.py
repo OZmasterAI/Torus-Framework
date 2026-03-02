@@ -95,6 +95,15 @@ def crash_proof(fn):
     return wrapper
 
 
+# Auto project-tagging: detect if MCP server was launched from a project directory
+_SERVER_PROJECT = None
+try:
+    _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+    from boot_pkg.util import detect_project
+    _SERVER_PROJECT, _ = detect_project()
+except Exception:
+    pass
+
 # Persistent LanceDB storage
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 LANCE_DIR = os.path.join(MEMORY_DIR, "lancedb")
@@ -688,6 +697,16 @@ def _normalize_tags(tags: str) -> str:
         else:
             normalized.append(tag)
     return ",".join(normalized)
+
+
+def _inject_project_tag(tags):
+    """Auto-append project:<name> tag if server is in a project session."""
+    if not _SERVER_PROJECT:
+        return tags
+    proj_tag = f"project:{_SERVER_PROJECT}"
+    if proj_tag in (tags or ""):
+        return tags
+    return f"{tags},{proj_tag}" if tags else proj_tag
 
 
 def _migrate_previews():
@@ -2348,6 +2367,14 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     except Exception:
         pass  # TG enrichment is optional, never break search
 
+    # Project boost: 2x relevance for memories tagged with current project
+    if _SERVER_PROJECT and formatted:
+        proj_tag = f"project:{_SERVER_PROJECT}"
+        for r in formatted:
+            if proj_tag in (r.get("tags") or ""):
+                r["relevance"] = r.get("relevance", 0) * 2.0
+        formatted.sort(key=lambda r: r.get("relevance", 0), reverse=True)
+
     result = {
         "results": formatted,
         "total_memories": count,
@@ -2580,6 +2607,7 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
         tags = tags[:497] + "..."
     # --- Tag normalization: bare tags → dimensioned tags ---
     tags = _normalize_tags(tags)
+    tags = _inject_project_tag(tags)
     # --- Ingestion filter: reject noise ---
     # force=True skips both noise filter AND dedup (escape hatch for false positives)
     if len(content.strip()) < MIN_CONTENT_LENGTH:
@@ -4442,6 +4470,8 @@ def _dispatch_request(req):
             content = params.get("content", "")
             context = params.get("context", "")
             tags = params.get("tags", "")
+            tags = _normalize_tags(tags)
+            tags = _inject_project_tag(tags)
             if not content or len(content.strip()) < MIN_CONTENT_LENGTH:
                 return {"ok": True, "result": {"saved": False, "reason": "content too short"}}
             # Dedup check
