@@ -309,8 +309,10 @@ def _track_subagent_start(data):
 
         # Construct transcript path if not provided (SubagentStart may not have it)
         if not transcript_path and session_id and agent_id:
+            # Claude Code stores transcripts under ~/.claude/projects/-home-{user}/
+            _user = os.path.basename(os.path.expanduser("~"))
             base = os.path.join(
-                os.path.expanduser("~"), ".claude", "projects", "-home-crab",
+                os.path.expanduser("~"), ".claude", "projects", f"-home-{_user}",
                 session_id, "subagents", f"agent-{agent_id}.jsonl"
             )
             transcript_path = base

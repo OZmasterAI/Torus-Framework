@@ -498,5 +498,5 @@ def main():
         pass  # Boot must never crash
 
     # Sideband timestamp removed — Gate 4 should only pass when Claude
-    # actually queries memory, not auto-satisfied at boot (Session 262 fix)
+    # actually queries memory, not auto-satisfied at boot
 
