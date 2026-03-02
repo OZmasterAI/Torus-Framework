@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import tests.harness as _h
+_HOME = os.path.expanduser("~")
 
 # ─── Mutation Tester Tests ───────────────────────────────────────────
 print("\n--- Mutation Tester ---")
@@ -9168,8 +9169,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
          all(not m[0].killed for m in _mt_mutants))
 
     # --- _find_test_framework ---
-    _mt_hooks_dir = "/home/crab/.claude/hooks"
-    _mt_gate_path = "/home/crab/.claude/hooks/gates/gate_01_read_before_edit.py"
+    _mt_hooks_dir = f"{_HOME}/.claude/hooks"
+    _mt_gate_path = f"{_HOME}/.claude/hooks/gates/gate_01_read_before_edit.py"
     _mt_tf = _find_test_framework(_mt_gate_path)
     test("MT: _find_test_framework finds test_framework.py from gate path",
          _mt_tf is not None and _mt_tf.endswith("test_framework.py"),
@@ -9857,7 +9858,7 @@ try:
     test("CR: MIN_IMPROVEMENT_DELTA == 0.15", abs(MIN_IMPROVEMENT_DELTA - 0.15) < 1e-9)
 
     # _normalize_error — removes file paths
-    _cr_ne_path = _normalize_error("Error in /home/crab/.claude/hooks/gate_01.py something")
+    _cr_ne_path = _normalize_error(f"Error in {_HOME}/.claude/hooks/gate_01.py something")
     test("CR: _normalize_error removes file paths",
          "/home" not in _cr_ne_path and "<file>" in _cr_ne_path,
          f"got: {_cr_ne_path!r}")

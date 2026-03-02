@@ -8,12 +8,13 @@ a JSON summary to stdout.
 Gates exceeding 1ms p95 are flagged as "needs_optimization".
 
 Usage:
-    python /home/crab/.claude/hooks/benchmarks/benchmark_gates.py
+    python ~/.claude/hooks/benchmarks/benchmark_gates.py
 """
 
 import importlib
 import json
 import os
+_HOME = os.path.expanduser("~")
 import sys
 import time
 
@@ -55,10 +56,10 @@ _NOW = time.time()
 BASE_STATE = {
     "_session_id": "benchmark-session",
     "files_read": [
-        "/home/crab/.claude/hooks/enforcer.py",
-        "/home/crab/.claude/hooks/gates/gate_01_read_before_edit.py",
-        "/home/crab/.claude/hooks/shared/state.py",
-        "/home/crab/.claude/hooks/test_framework.py",
+        f"{_HOME}/.claude/hooks/enforcer.py",
+        f"{_HOME}/.claude/hooks/gates/gate_01_read_before_edit.py",
+        f"{_HOME}/.claude/hooks/shared/state.py",
+        f"{_HOME}/.claude/hooks/test_framework.py",
     ],
     "last_test_run": _NOW - 60,          # 1 min ago (fresh enough for Gate 3)
     "last_test_exit_code": 0,
@@ -101,7 +102,7 @@ GATE_SCENARIOS = {
     # Gate 1: file already read → fast allow path
     "gates.gate_01_read_before_edit": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/enforcer.py",
+            "file_path": f"{_HOME}/.claude/hooks/enforcer.py",
             "old_string": "import json",
             "new_string": "import json  # benchmark",
         },
@@ -124,7 +125,7 @@ GATE_SCENARIOS = {
     # Gate 4: memory queried 30s ago → fast allow (uses state; sideband file is separate)
     "gates.gate_04_memory_first": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/enforcer.py",
+            "file_path": f"{_HOME}/.claude/hooks/enforcer.py",
             "old_string": "# old",
             "new_string": "# new",
         },
@@ -135,7 +136,7 @@ GATE_SCENARIOS = {
     # Gate 5: no pending verifications → fast allow
     "gates.gate_05_proof_before_fixed": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/enforcer.py",
+            "file_path": f"{_HOME}/.claude/hooks/enforcer.py",
             "old_string": "# old",
             "new_string": "# new",
         },
@@ -148,7 +149,7 @@ GATE_SCENARIOS = {
     # Gate 6: nothing to warn about → fast path (minimal state fields)
     "gates.gate_06_save_fix": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/enforcer.py",
+            "file_path": f"{_HOME}/.claude/hooks/enforcer.py",
             "old_string": "# old",
             "new_string": "# new",
         },
@@ -165,7 +166,7 @@ GATE_SCENARIOS = {
     # Gate 7: critical file + memory fresh → allow (exercises regex matching + time check)
     "gates.gate_07_critical_file_guard": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/gates/gate_01_read_before_edit.py",
+            "file_path": f"{_HOME}/.claude/hooks/gates/gate_01_read_before_edit.py",
             "old_string": "# old",
             "new_string": "# new",
         },
@@ -176,7 +177,7 @@ GATE_SCENARIOS = {
     # Gate 9: no active strategy → inert early return
     "gates.gate_09_strategy_ban": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/enforcer.py",
+            "file_path": f"{_HOME}/.claude/hooks/enforcer.py",
             "old_string": "# old",
             "new_string": "# new",
         },
@@ -200,7 +201,7 @@ GATE_SCENARIOS = {
     # Gate 11: low rate (5 calls in 120s window) → fast allow; exercises list filter
     "gates.gate_11_rate_limit": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/enforcer.py",
+            "file_path": f"{_HOME}/.claude/hooks/enforcer.py",
             "old_string": "# old",
             "new_string": "# new",
         },
@@ -211,7 +212,7 @@ GATE_SCENARIOS = {
     # Gate 13: session_id == "main" → exempt, immediate return
     "gates.gate_13_workspace_isolation": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/enforcer.py",
+            "file_path": f"{_HOME}/.claude/hooks/enforcer.py",
             "old_string": "# old",
             "new_string": "# new",
         },
@@ -222,7 +223,7 @@ GATE_SCENARIOS = {
     # Gate 14: HANDOFF.md → exempt file, immediate return
     "gates.gate_14_confidence_check": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/HANDOFF.md",
+            "file_path": f"{_HOME}/.claude/HANDOFF.md",
             "content": "# Handoff\n",
         },
         "state_overrides": {},
@@ -230,7 +231,7 @@ GATE_SCENARIOS = {
     # Gate 15: no recent failure → immediate return
     "gates.gate_15_causal_chain": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/enforcer.py",
+            "file_path": f"{_HOME}/.claude/hooks/enforcer.py",
             "old_string": "# old",
             "new_string": "# new",
         },
@@ -242,7 +243,7 @@ GATE_SCENARIOS = {
     # Gate 16: clean code → no violations, reset path
     "gates.gate_16_code_quality": {
         "tool_input": {
-            "file_path": "/home/crab/.claude/hooks/gates/gate_01_read_before_edit.py",
+            "file_path": f"{_HOME}/.claude/hooks/gates/gate_01_read_before_edit.py",
             "content": (
                 "def helper(x):\n"
                 "    \"\"\"Return x squared.\"\"\"\n"

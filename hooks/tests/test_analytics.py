@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import tests.harness as _h
+_HOME = os.path.expanduser("~")
 
 print('\n--- Mentor System: Tracker Mentor (A) ---')
 
@@ -488,26 +489,26 @@ try:
 
     # 1. Gate file edit triggers gate_dashboard nudge
     _ma_state1 = {"total_tool_calls": 10, "analytics_last_used": {}}
-    _ma_msgs1 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, {}, _ma_state1)
+    _ma_msgs1 = _ma_eval("Edit", {"file_path": f"{_HOME}/.claude/hooks/gates/gate_04.py"}, {}, _ma_state1)
     test("UpgradeC: gate edit triggers gate_dashboard nudge",
          any("gate_dashboard" in m for m in _ma_msgs1),
          f"msgs={_ma_msgs1}")
 
     # 2. Skill file edit triggers skill_health nudge
-    _ma_msgs2 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/skills/benchmark/SKILL.md"}, {}, _ma_state1)
+    _ma_msgs2 = _ma_eval("Edit", {"file_path": f"{_HOME}/.claude/skills/benchmark/SKILL.md"}, {}, _ma_state1)
     test("UpgradeC: skill edit triggers skill_health nudge",
          any("skill_health" in m for m in _ma_msgs2),
          f"msgs={_ma_msgs2}")
 
     # 3. Enforcer edit triggers gate_timing nudge
-    _ma_msgs3 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/hooks/enforcer.py"}, {}, _ma_state1)
+    _ma_msgs3 = _ma_eval("Edit", {"file_path": f"{_HOME}/.claude/hooks/enforcer.py"}, {}, _ma_state1)
     test("UpgradeC: enforcer edit triggers gate_timing nudge",
          any("gate_timing" in m for m in _ma_msgs3),
          f"msgs={_ma_msgs3}")
 
     # 4. Non-framework file → no nudge (except periodic)
     _ma_state4 = {"total_tool_calls": 10, "analytics_last_used": {}}
-    _ma_msgs4 = _ma_eval("Edit", {"file_path": "/home/crab/Desktop/app.py"}, {}, _ma_state4)
+    _ma_msgs4 = _ma_eval("Edit", {"file_path": f"{_HOME}/Desktop/app.py"}, {}, _ma_state4)
     test("UpgradeC: non-framework edit → no path-based nudge",
          not any("gate_dashboard" in m or "skill_health" in m or "gate_timing" in m for m in _ma_msgs4),
          f"msgs={_ma_msgs4}")
@@ -515,7 +516,7 @@ try:
     # 5. Cooldown: recent analytics call suppresses nudge
     import time as _ma_time
     _ma_state5 = {"total_tool_calls": 10, "analytics_last_used": {"gate_dashboard": _ma_time.time()}}
-    _ma_msgs5 = _ma_eval("Edit", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, {}, _ma_state5)
+    _ma_msgs5 = _ma_eval("Edit", {"file_path": f"{_HOME}/.claude/hooks/gates/gate_04.py"}, {}, _ma_state5)
     test("UpgradeC: cooldown suppresses nudge after recent analytics call",
          not any("gate_dashboard" in m for m in _ma_msgs5),
          f"msgs={_ma_msgs5}")
@@ -529,7 +530,7 @@ try:
 
     # 7. Read tool → no path-based nudge (only Edit/Write trigger)
     _ma_state7 = {"total_tool_calls": 10, "analytics_last_used": {}}
-    _ma_msgs7 = _ma_eval("Read", {"file_path": "/home/crab/.claude/hooks/gates/gate_04.py"}, {}, _ma_state7)
+    _ma_msgs7 = _ma_eval("Read", {"file_path": f"{_HOME}/.claude/hooks/gates/gate_04.py"}, {}, _ma_state7)
     test("UpgradeC: Read tool → no nudge",
          not any("gate_dashboard" in m for m in _ma_msgs7),
          f"msgs={_ma_msgs7}")

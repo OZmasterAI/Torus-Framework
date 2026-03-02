@@ -17,6 +17,7 @@ import sys
 import time
 from shared.state import get_state_schema
 import tests.harness as _h
+_HOME = os.path.expanduser("~")
 
 def _read_pkg_source(pkg_dir):
     """Read and concatenate all .py files in a _pkg/ directory."""
@@ -557,7 +558,7 @@ test("auto-commit: stage() stages file inside ~/.claude/",
      f"calls: {_ac_staged_calls}")
 
 # Test: stage() skips files outside ~/.claude/
-_ac_test_path_ext = "/home/crab/other_project/foo.py"
+_ac_test_path_ext = f"{_HOME}/other_project/foo.py"
 _ac_payload_ext = json.dumps({"tool_input": {"file_path": _ac_test_path_ext}})
 sys.stdin = _io.StringIO(_ac_payload_ext)
 _ac_staged_calls.clear()
@@ -593,7 +594,7 @@ auto_commit.git = _mock_git_with_diff
 _ac_commit_calls.clear()
 # Populate the staged tracker so commit() processes files
 with open(auto_commit.STAGED_TRACKER, "w") as _ac_f:
-    _ac_f.write("/home/crab/.claude/hooks/auto_commit.py\n/home/crab/.claude/hooks/test_framework.py\n")
+    _ac_f.write(f"{_HOME}/.claude/hooks/auto_commit.py\n{_HOME}/.claude/hooks/test_framework.py\n")
 auto_commit.commit()
 test("auto-commit: commit() commits when changes staged",
      any(a[0] == "commit" for a in _ac_commit_calls),
@@ -636,7 +637,7 @@ auto_commit.git = _mock_git_capture_msg
 _ac_msg_calls.clear()
 # Populate the staged tracker so commit() doesn't exit early
 with open(auto_commit.STAGED_TRACKER, "w") as _ac_f:
-    _ac_f.write("/home/crab/.claude/hooks/boot.py\n/home/crab/.claude/hooks/enforcer.py\n")
+    _ac_f.write(f"{_HOME}/.claude/hooks/boot.py\n{_HOME}/.claude/hooks/enforcer.py\n")
 auto_commit.commit()
 _ac_commit_args = [a for a in _ac_msg_calls if a[0] == "commit"]
 _ac_msg_ok = False
@@ -1138,9 +1139,9 @@ def _assistant_text_msg(text):
 
 # Test 1: _parse_transcript_actions — happy path
 _t1_lines = [
-    _assistant_tool_msg("Read", {"file_path": "/home/crab/hooks/gate_01.py"}),
-    _assistant_tool_msg("Grep", {"pattern": "file_claims", "path": "/home/crab/hooks/"}),
-    _assistant_tool_msg("Edit", {"file_path": "/home/crab/hooks/gate_13.py", "old_string": "x", "new_string": "y"}),
+    _assistant_tool_msg("Read", {"file_path": f"{_HOME}/hooks/gate_01.py"}),
+    _assistant_tool_msg("Grep", {"pattern": "file_claims", "path": f"{_HOME}/hooks/"}),
+    _assistant_tool_msg("Edit", {"file_path": f"{_HOME}/hooks/gate_13.py", "old_string": "x", "new_string": "y"}),
 ]
 _t1_path = _make_transcript(_t1_lines)
 _t1_result = _parse_transcript_actions(_t1_path, max_actions=5)
@@ -1189,7 +1190,7 @@ os.remove(_t6_path)
 
 # Test 7: _format_teammate_summary — formats correctly
 _t7_actions = [
-    {"action": "Read: /home/crab/hooks/gate_01.py", "outcome": ""},
+    {"action": f"Read: {_HOME}/hooks/gate_01.py", "outcome": ""},
     {"action": "Grep: file_claims in hooks/", "outcome": ""},
     {"action": "Edit: gate_13.py", "outcome": ""},
 ]
@@ -1199,7 +1200,7 @@ test("FormatSummary: contains Recent actions", "Recent actions:" in _t7_summary)
 test("FormatSummary: has numbered list", "  1." in _t7_summary and "  2." in _t7_summary)
 
 # Test 8: _format_teammate_summary — respects char budget
-_t8_actions = [{"action": f"Read: /home/crab/some/very/long/path/file_{i}.py with extra detail padding", "outcome": ""} for i in range(20)]
+_t8_actions = [{"action": f"Read: {_HOME}/some/very/long/path/file_{i}.py with extra detail padding", "outcome": ""} for i in range(20)]
 _t8_summary = _format_teammate_summary("researcher", _t8_actions, False)
 test("FormatSummary: output under 1200 chars", len(_t8_summary) <= 1200)
 
@@ -1563,7 +1564,7 @@ _g16_r = _g16("Edit", {"file_path": "/tmp/config.json", "new_string": '"password
 test("G16: .json file exempt", _g16_r.blocked is False and (not _g16_r.message))
 
 # 10. Skills dir exempt
-_g16_r = _g16("Edit", {"file_path": "/home/crab/.claude/skills/foo.py", "new_string": 'print("debug")'})
+_g16_r = _g16("Edit", {"file_path": f"{_HOME}/.claude/skills/foo.py", "new_string": 'print("debug")'})
 test("G16: skills dir exempt", _g16_r.blocked is False and (not _g16_r.message))
 
 # 11. Empty content exempt
@@ -2227,7 +2228,7 @@ try:
     _sl_state3["_session_id"] = "test_staleness_no_sideband"
     _sl_state3["memory_last_queried"] = time.time() - 700  # stale beyond even 600s Write window
     # Use a file that definitely exists
-    _sl_r3 = _sl_g04("Write", {"file_path": "/home/crab/.claude/hooks/test_framework.py"}, _sl_state3)
+    _sl_r3 = _sl_g04("Write", {"file_path": f"{_HOME}/.claude/hooks/test_framework.py"}, _sl_state3)
     assert _sl_r3.blocked, "Write to existing file with stale memory should block"
     _h.PASS += 1
     _h.RESULTS.append("  PASS: F2e — Write existing file with stale memory → blocks")
@@ -2242,7 +2243,7 @@ try:
     _sl_state4 = default_state()
     _sl_state4["_session_id"] = "test_staleness_no_sideband"
     _sl_state4["memory_last_queried"] = time.time() - 400  # 400s ago: >300 Edit window, <600 Write window
-    _sl_r4 = _sl_g04("Write", {"file_path": "/home/crab/.claude/hooks/test_framework.py"}, _sl_state4)
+    _sl_r4 = _sl_g04("Write", {"file_path": f"{_HOME}/.claude/hooks/test_framework.py"}, _sl_state4)
     assert not _sl_r4.blocked, f"Write with 400s-old memory should pass (600s window), got: {_sl_r4.message}"
     _h.PASS += 1
     _h.RESULTS.append("  PASS: F3 — Write 400s ago → passes (600s window)")
@@ -2257,7 +2258,7 @@ try:
     _sl_state5 = default_state()
     _sl_state5["_session_id"] = "test_staleness_no_sideband"
     _sl_state5["memory_last_queried"] = time.time() - 400  # 400s ago: >300 Edit window
-    _sl_r5 = _sl_g04("Edit", {"file_path": "/home/crab/.claude/hooks/test_framework.py"}, _sl_state5)
+    _sl_r5 = _sl_g04("Edit", {"file_path": f"{_HOME}/.claude/hooks/test_framework.py"}, _sl_state5)
     assert _sl_r5.blocked, "Edit with 400s-old memory should block (300s window)"
     _h.PASS += 1
     _h.RESULTS.append("  PASS: F3 — Edit 400s ago → blocks (300s window)")

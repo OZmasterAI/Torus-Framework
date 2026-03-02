@@ -18,6 +18,7 @@ import argparse
 import importlib
 import json
 import os
+_HOME = os.path.expanduser("~")
 import random
 import string
 import sys
@@ -100,7 +101,7 @@ def _path_traversal(rng):
         "/dev/null",
         "\x00/etc/passwd",
         "C:\\Windows\\System32\\drivers\\etc\\hosts",
-        "/home/crab/.claude/hooks/../../../etc/passwd",
+        f"{_HOME}/.claude/hooks/../../../etc/passwd",
     ]
     return rng.choice(traversals)
 
@@ -160,7 +161,7 @@ _FIELD_GENERATORS = {
         _null_byte_string(rng),
         "",
         None,
-        "/home/crab/.claude/hooks/enforcer.py",
+        f"{_HOME}/.claude/hooks/enforcer.py",
         "/etc/passwd",
     ]),
     "notebook_path": lambda rng: rng.choice([

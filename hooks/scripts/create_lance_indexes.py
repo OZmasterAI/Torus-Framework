@@ -2,10 +2,11 @@
 """Create vector indexes on LanceDB tables for fast ANN search."""
 
 import lancedb
+import os
 import math
 import time
 
-LANCE_PATH = "/home/crab/data/memory/lancedb"
+LANCE_PATH = os.path.expanduser("~/data/memory/lancedb")
 
 def main():
     db = lancedb.connect(LANCE_PATH)

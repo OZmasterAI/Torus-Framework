@@ -42,7 +42,7 @@ def _check_signals(state, file_path=""):
     failures = []
     # Signal 1: session_test_baseline — only require for framework files
     if not state.get("session_test_baseline", False):
-        if file_path and "/home/crab/.claude/hooks/" in file_path:
+        if file_path and os.path.expanduser("~/.claude/hooks/") in file_path:
             failures.append("no test run this session")
     # Signal 2: pending_verification
     # Suppress during active error fixing — having unverified edits is expected

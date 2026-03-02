@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 
 current_hour = datetime.now().hour
 hooks_dir = os.path.expanduser("~/.claude/hooks")
+_HOME = os.path.expanduser("~")
 
 # Test: Gate 4 — Memory First
 # ─────────────────────────────────────────────────
@@ -42,7 +43,7 @@ code, msg = _direct(_g04_check("Edit", {"file_path": "/tmp/app.py"},
 test("Edit after memory query → allowed", code == 0, msg)
 
 # Exempt files should pass without memory
-code, msg = _direct(_g04_check("Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"},
+code, msg = _direct(_g04_check("Edit", {"file_path": f"{_HOME}/.claude/HANDOFF.md"},
                      {"memory_last_queried": 0, "files_read": []}))
 test("Edit HANDOFF.md without memory → allowed", code == 0, msg)
 
@@ -71,14 +72,14 @@ try:
 except FileNotFoundError:
     pass
 _st_g4ex = {"memory_last_queried": time.time(), "files_read": [], "gate4_exemptions": {}}
-_direct(_g04_check("Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"}, _st_g4ex))
+_direct(_g04_check("Edit", {"file_path": f"{_HOME}/.claude/HANDOFF.md"}, _st_g4ex))
 _g4_exemptions = _st_g4ex.get("gate4_exemptions", {})
 test("Gate 4 tracks exemption for HANDOFF.md",
      "HANDOFF.md" in _g4_exemptions,
      f"Expected HANDOFF.md in exemptions, got keys={list(_g4_exemptions.keys())}")
 
 # Test 10: Gate 4 exemption count increments
-_direct(_g04_check("Edit", {"file_path": "/home/crab/.claude/HANDOFF.md"}, _st_g4ex))
+_direct(_g04_check("Edit", {"file_path": f"{_HOME}/.claude/HANDOFF.md"}, _st_g4ex))
 _g4_exemptions2 = _st_g4ex.get("gate4_exemptions", {})
 _g4_handoff_count = _g4_exemptions2.get("HANDOFF.md", 0)
 test("Gate 4 exemption count increments",
@@ -476,8 +477,8 @@ test("Gate 7 CRITICAL_PATTERNS are (regex, category) tuples",
      "Expected all entries to be 2-tuples")
 
 # Test 2: Gate 7 block message includes category
-code_g7, msg_g7 = _direct(_g07_check("Write", {"file_path": "/home/crab/.claude/hooks/enforcer.py", "content": "test"},
-                            {"memory_last_queried": time.time() - 350, "files_read": ["/home/crab/.claude/hooks/enforcer.py"]}))
+code_g7, msg_g7 = _direct(_g07_check("Write", {"file_path": f"{_HOME}/.claude/hooks/enforcer.py", "content": "test"},
+                            {"memory_last_queried": time.time() - 350, "files_read": [f"{_HOME}/.claude/hooks/enforcer.py"]}))
 test("Gate 7 block message includes category",
      code_g7 != 0 and "Framework core" in msg_g7,
      f"Expected block with 'Framework core', got code={code_g7}, msg={msg_g7}")
@@ -852,7 +853,7 @@ _g14_state1 = default_state()
 _g14_state1["session_test_baseline"] = False
 _g14_state1["pending_verification"] = []
 _g14_state1["memory_last_queried"] = 0  # stale
-_g14_r1 = _g14_check("Write", {"file_path": "/home/crab/.claude/hooks/shared/new_module.py"}, _g14_state1)
+_g14_r1 = _g14_check("Write", {"file_path": f"{_HOME}/.claude/hooks/shared/new_module.py"}, _g14_state1)
 test("Gate14: no test baseline → BLOCKED immediately",
      _g14_r1.blocked)
 test("Gate14: no test baseline → BLOCKED in message",
