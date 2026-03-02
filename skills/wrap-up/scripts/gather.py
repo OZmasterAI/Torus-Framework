@@ -27,10 +27,29 @@ from shared.memory_socket import (
 )
 
 
-def gather_live_state(warnings):
-    """Load LIVE_STATE.json content."""
+def _get_state_file():
+    """Return the appropriate state file path: project-local or global.
+
+    Project sessions (cwd under ~/projects/) use {project_dir}/.claude-state.json.
+    Framework/hub sessions use ~/.claude/LIVE_STATE.json.
+    """
     try:
-        with open(LIVE_STATE_FILE, "r") as f:
+        from boot_pkg.util import detect_project, load_project_state
+        _proj_name, _proj_dir = detect_project()
+        if _proj_dir:
+            proj_state_file = os.path.join(_proj_dir, ".claude-state.json")
+            if os.path.exists(proj_state_file):
+                return proj_state_file
+    except Exception:
+        pass
+    return LIVE_STATE_FILE
+
+
+def gather_live_state(warnings):
+    """Load live state content, project-aware."""
+    state_file = _get_state_file()
+    try:
+        with open(state_file, "r") as f:
             return json.load(f)
     except Exception as e:
         warnings.append(f"live_state: {e}")
@@ -38,13 +57,14 @@ def gather_live_state(warnings):
 
 
 def gather_handoff(warnings):
-    """Load last session summary and staleness info from LIVE_STATE.json."""
+    """Load last session summary and staleness info, project-aware."""
+    state_file = _get_state_file()
     result = {"content": "", "age_hours": 999.0, "stale": True}
     try:
-        age_hours = (time.time() - os.path.getmtime(LIVE_STATE_FILE)) / 3600
+        age_hours = (time.time() - os.path.getmtime(state_file)) / 3600
         result["age_hours"] = round(age_hours, 2)
         result["stale"] = age_hours > 4
-        with open(LIVE_STATE_FILE, "r") as f:
+        with open(state_file, "r") as f:
             live = json.load(f)
         result["content"] = live.get("what_was_done", "")
     except Exception as e:

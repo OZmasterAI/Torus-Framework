@@ -196,9 +196,18 @@ def count_hook_events():
         return 0
 
 
-def _load_session_state():
-    """Load the most recent session state file once. All state readers use this."""
+def _load_session_state(session_id=None):
+    """Load session state file. Uses session_id if provided, else most recent."""
     import glob as globmod
+    if session_id:
+        specific = os.path.join(STATE_FILE_DIR, f"state_{session_id}.json")
+        if os.path.exists(specific):
+            try:
+                with open(specific) as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+    # Fallback: most recent
     pattern = os.path.join(STATE_FILE_DIR, "state_*.json")
     files = globmod.glob(pattern)
     if not files:
@@ -515,9 +524,10 @@ def health_color(pct):
     return COLOR_RED
 
 
-def get_git_branch():
+def get_git_branch(session_id=None):
     """Get current git branch name, cached for 10 seconds via /tmp file."""
-    cache_file = "/tmp/statusline-git-cache"
+    suffix = f"-{session_id}" if session_id else ""
+    cache_file = f"/tmp/statusline-git-cache{suffix}"
     try:
         if os.path.exists(cache_file):
             age = time.time() - os.path.getmtime(cache_file)
@@ -819,8 +829,11 @@ def main():
     last_in_tok = cur_usage.get("input_tokens", 0) or 0
     last_out_tok = cur_usage.get("output_tokens", 0) or 0
 
+    # Extract session_id early (needed by _load_session_state and get_git_branch)
+    session_id = data.get("session_id", "")
+
     # Load session state once (used by all state-reading functions)
-    sess_state = _load_session_state()
+    sess_state = _load_session_state(session_id)
 
     # Calculate display values
     project = get_project_name()
@@ -877,8 +890,8 @@ def main():
     workspace_data = data.get("workspace", {}) or {}
     added_dirs = workspace_data.get("added_dirs", []) or []
 
-    # Git branch
-    git_branch = get_git_branch()
+    # Git branch (session-specific cache)
+    git_branch = get_git_branch(session_id)
 
     # Skill count
     skill_count = count_skills()
@@ -939,7 +952,6 @@ def main():
 
     # ── LINE 2: Health bar + context bar + session metrics ──
     ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
-    session_id = data.get("session_id", "")
     cmp_count = get_compression_count(ctx_pct_val, session_id)
     ctx_bar = format_context_bar(ctx_pct_val, cmp_count)
 
