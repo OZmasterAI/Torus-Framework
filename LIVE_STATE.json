@@ -1,9 +1,9 @@
 {
-  "session_count": 329,
+  "session_count": 330,
   "project": "torus-framework",
   "feature": "ai-api-gateway",
   "framework_version": "v2.5.8",
-  "what_was_done": "Reverted session counter locking (48 lines). Gate 14 now project-aware — skips test requirement for non-framework files. Added CLAUDE.md testing rule for external projects.",
+  "what_was_done": "Implemented AI Gateway pool page (Dashboard/My AI tabs, news, leaderboard, stats). Added 5th pool card to community-pools. Pushed to origin/feat/ai-api-gateway.",
   "next_steps": [
     "torus-web: add API_KEY_ENCRYPTION_KEY env var in Vercel for AI gateway to work",
     "torus-web: create PR from feat/ai-api-gateway to master, review and merge",
@@ -18,6 +18,5 @@
     "Mentor observation data starts session 301 \u2014 no longitudinal data before that",
     "Gate 4 sideband HTTP check fails for stdio MCP \u2014 memory works fine, health check is wrong",
     "torus-web: Vercel needs API_KEY_ENCRYPTION_KEY env var for AI gateway encryption"
-  ],
-  "last_response_preview": "Done. Every Claude session will now see that rule. When you start editing torus-web or chain code, it'll look for the test runner and write tests alongside changes."
+  ]
 }
