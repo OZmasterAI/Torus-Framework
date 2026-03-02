@@ -1,14 +1,14 @@
 {
   "session_count": 330,
   "project": "torus-framework",
-  "feature": "per-project-state",
+  "feature": "project-memory-tagging",
   "framework_version": "v2.5.8",
-  "what_was_done": "Implemented per-project state files. Projects under ~/projects/ get own .claude-state.json. Hub mode shows all project states. No more cross-session clobbering.",
+  "what_was_done": "Implemented auto project-tagging for memories. MCP server detects project via detect_project(), injects project:<name> tags on save, boosts 2x on search. Framework sessions unaffected.",
   "next_steps": [
-    "Test from ~/projects/torus-web/ — verify .claude-state.json created on session end",
+    "Test from ~/projects/torus-web/ — verify remember_this adds project:torus-web tag",
+    "Test search_knowledge boost — project-tagged results should rank higher",
     "Test hub mode from ~/.claude/ — verify PROJECT STATES dashboard section",
     "torus-web: add API_KEY_ENCRYPTION_KEY env var in Vercel for AI gateway",
-    "torus-web: create PR from feat/ai-api-gateway to master",
     "chainovi: rotate exposed GitHub token (ghp_UKBd...) in trv1-chain remote",
     "chainovi: decide which chain path to pursue (L1 vs L2, TRv1 vs eclipse-agave)"
   ],
