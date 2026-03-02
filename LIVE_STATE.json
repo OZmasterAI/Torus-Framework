@@ -1,22 +1,23 @@
 {
-  "session_count": 332,
+  "session_count": 333,
   "project": "torus-framework",
   "feature": "github-sync",
   "framework_version": "v2.5.8",
-  "what_was_done": "Synced github-branch with refactor-test (sessions 301-332). Pushed 1b4ee52 to GitHub. Full /home path scrub across 30+ files on both branches. Created LIVE_STATE.example.json template.",
+  "what_was_done": "Amended github-branch HEAD commit — scrubbed crab refs, eclipse-rebase team, session numbers. Replaced hardcoded project slugs with dynamic inference. Pushed cleaned 7c36489 to GitHub main.",
   "next_steps": [
     "Test from ~/projects/torus-web/ — verify remember_this adds project:torus-web tag",
     "Test hub mode from ~/.claude/ — verify PROJECT STATES dashboard section",
     "torus-web: add API_KEY_ENCRYPTION_KEY env var in Vercel for AI gateway",
-    "chainovi: rotate exposed GitHub token (ghp_UKBd...) in trv1-chain remote",
-    "Memory maintenance — 1786 entries, run stale pruning"
+    "Rotate exposed GitHub token in trv1-chain remote",
+    "Memory maintenance — 1794 entries, run stale pruning"
   ],
   "known_issues": [
-    "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
-    "Mentor observation data starts session 301 — no longitudinal data before that",
-    "Gate 4 sideband HTTP check fails for stdio MCP — memory works fine, health check is wrong",
+    "trv1-chain remote URL contains plaintext GitHub token \u2014 rotate ASAP",
+    "Mentor observation data starts session 301 \u2014 no longitudinal data before that",
+    "Gate 4 sideband HTTP check fails for stdio MCP \u2014 memory works fine, health check is wrong",
     "torus-web: Vercel needs API_KEY_ENCRYPTION_KEY env var for AI gateway encryption",
     "Automated _HOME insertion breaks in files with late imports inside try/except blocks"
   ],
-  "model_profile": "balanced"
+  "model_profile": "balanced",
+  "last_response_preview": "---\n\n### Session 332 \u2014 Wrap-up Summary\n\n**What was done:**\n- Synced github-branch with refactor-test (sessions 301-332)\n- Pushed commit `1b4ee52` to GitHub main (43 files, +494/-217)\n- Full `/home/crab` path scrub \u2014 80+ refs across 30+ files on both branches\n- Created `LIVE_STATE.example.json` template, removed `LIVE_STATE.json` from GitHub tracking\n- Updated `install.sh` to auto-create LIVE_STATE on setup\n\n**Tests:** 5387 passed, 5 failed (pre-existing config toggles)\n\n**Commits this session:**"
 }
