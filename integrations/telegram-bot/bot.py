@@ -47,10 +47,20 @@ CFG = {}
 
 
 def _is_tmux_mode():
-    """Check if tg_bot_tmux toggle is enabled in LIVE_STATE.json."""
+    """Check if tg_bot_tmux toggle is enabled in config.json or LIVE_STATE.json."""
+    import json as _json
+    # config.json is canonical for toggles
+    try:
+        _cfg_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
+        with open(_cfg_path) as f:
+            cfg = _json.load(f)
+            if cfg.get("tg_bot_tmux", False):
+                return True
+    except (FileNotFoundError, ValueError):
+        pass
+    # Fallback: LIVE_STATE.json
     try:
         with open(LIVE_STATE_PATH) as f:
-            import json as _json
             state = _json.load(f)
             return state.get("tg_bot_tmux", False)
     except (FileNotFoundError, ValueError):
