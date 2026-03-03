@@ -1,12 +1,12 @@
 {
   "session_count": 341,
   "project": "self-healing-framework",
-  "feature": "session-isolation",
+  "feature": "telegram-bot-tmux",
   "framework_version": "v2.5.8",
-  "what_was_done": "Fixed subproject session isolation and statusline crash. Reviewed GitHub repo security (clean). Synced to GitHub main (4533fcb). Created full and framework-only backups to Desktop.",
+  "what_was_done": "Fixed subproject session isolation and statusline crash. Synced to GitHub main. Set up TG bot persistent tmux mode — fixed toggle detection, routed voice through bot pane. Tested cross-instance tmux communication. Created full+framework backups.",
   "known_issues": [
     "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
-    "Memory DB at 1911 entries — run maintenance(action='stale') for cleanup",
+    "Memory DB at 1923 entries — run maintenance(action='stale') for cleanup",
     "Boot hook circuit breaker spam ([CB] memory_socket OPEN) — cosmetic, non-blocking",
     "test_analytics.py on GitHub has 'crab' username in path slug — cosmetic"
   ],
