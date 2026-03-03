@@ -108,8 +108,16 @@
       }
     };
 
-    ws.onclose = function () {
+    ws.onclose = function (evt) {
       setStatus("error");
+      // 1008 = policy violation (auth failed) — don't reconnect
+      if (evt.code === 1008) {
+        localStorage.removeItem(TOKEN_KEY);
+        authError.textContent = "Invalid token";
+        authError.hidden = false;
+        showAuth();
+        return;
+      }
       var storedToken = getStoredToken();
       if (storedToken && !chatScreen.hidden) {
         setTimeout(function () { connectWS(storedToken); }, 3000);
