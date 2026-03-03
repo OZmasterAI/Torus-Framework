@@ -12,16 +12,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _VOICE_WEB = os.path.dirname(_HERE)
 sys.path.insert(0, _VOICE_WEB)
 
-# Mock tmux_runner before importing server
-sys.modules["tmux_runner"] = MagicMock()
-import tmux_runner
-
-tmux_runner.TmuxError = type("TmuxError", (Exception,), {})
-tmux_runner.run_claude_tmux = AsyncMock(return_value=("Hello from Claude!", None))
-tmux_runner.is_tmux_session_alive = AsyncMock(return_value=True)
-
-# Now import server
 import server
+from server import TmuxError
 
 
 def _run(coro):
@@ -78,12 +70,15 @@ class TestHealth(unittest.TestCase):
     def setUp(self):
         self._patcher = patch.dict(server.CONFIG, TEST_CONFIG, clear=True)
         self._patcher.start()
+        self._tmux_patch = patch("server.is_tmux_session_alive", new_callable=AsyncMock)
+        self.mock_alive = self._tmux_patch.start()
 
     def tearDown(self):
+        self._tmux_patch.stop()
         self._patcher.stop()
 
     def test_health_returns_ok(self):
-        tmux_runner.is_tmux_session_alive.return_value = True
+        self.mock_alive.return_value = True
         request = MagicMock()
         resp = _run(server.health(request))
         body = json.loads(resp.body)
@@ -92,7 +87,7 @@ class TestHealth(unittest.TestCase):
         assert body["tmux_target"] == "claude-bot"
 
     def test_health_tmux_dead(self):
-        tmux_runner.is_tmux_session_alive.return_value = False
+        self.mock_alive.return_value = False
         request = MagicMock()
         resp = _run(server.health(request))
         body = json.loads(resp.body)
@@ -103,8 +98,12 @@ class TestWSAuth(unittest.TestCase):
     def setUp(self):
         self._patcher = patch.dict(server.CONFIG, TEST_CONFIG, clear=True)
         self._patcher.start()
+        self._tmux_patch = patch("server.run_claude_tmux", new_callable=AsyncMock)
+        self.mock_tmux = self._tmux_patch.start()
+        self.mock_tmux.return_value = ("OK", None)
 
     def tearDown(self):
+        self._tmux_patch.stop()
         self._patcher.stop()
 
     def test_auth_via_query_param(self):
@@ -136,14 +135,16 @@ class TestWSMessages(unittest.TestCase):
     def setUp(self):
         self._patcher = patch.dict(server.CONFIG, TEST_CONFIG, clear=True)
         self._patcher.start()
-        tmux_runner.run_claude_tmux.side_effect = None
-        tmux_runner.run_claude_tmux.return_value = ("Hello from Claude!", None)
+        self._tmux_patch = patch("server.run_claude_tmux", new_callable=AsyncMock)
+        self.mock_tmux = self._tmux_patch.start()
+        self.mock_tmux.return_value = ("Hello from Claude!", None)
 
     def tearDown(self):
+        self._tmux_patch.stop()
         self._patcher.stop()
 
     def test_send_message_gets_response(self):
-        tmux_runner.run_claude_tmux.return_value = ("Test response", None)
+        self.mock_tmux.return_value = ("Test response", None)
 
         ws = MockWebSocket(query_params={"token": "test-token-123"})
         ws.enqueue({"type": "message", "text": "Hello Claude"})
@@ -157,7 +158,7 @@ class TestWSMessages(unittest.TestCase):
         assert resp["text"] == "Test response"
 
     def test_thinking_status_sent(self):
-        tmux_runner.run_claude_tmux.return_value = ("Response", None)
+        self.mock_tmux.return_value = ("Response", None)
 
         ws = MockWebSocket(query_params={"token": "test-token-123"})
         ws.enqueue({"type": "message", "text": "test"})
@@ -186,7 +187,7 @@ class TestWSMessages(unittest.TestCase):
         assert any("too long" in e["text"] for e in errors)
 
     def test_tmux_error_sent_to_client(self):
-        tmux_runner.run_claude_tmux.side_effect = tmux_runner.TmuxError("tmux target not found")
+        self.mock_tmux.side_effect = TmuxError("tmux target not found")
 
         ws = MockWebSocket(query_params={"token": "test-token-123"})
         ws.enqueue({"type": "message", "text": "Hello"})
@@ -226,10 +227,12 @@ class TestTmuxRunnerIntegration(unittest.TestCase):
     def setUp(self):
         self._patcher = patch.dict(server.CONFIG, TEST_CONFIG, clear=True)
         self._patcher.start()
-        tmux_runner.run_claude_tmux.side_effect = None
-        tmux_runner.run_claude_tmux.return_value = ("OK", None)
+        self._tmux_patch = patch("server.run_claude_tmux", new_callable=AsyncMock)
+        self.mock_tmux = self._tmux_patch.start()
+        self.mock_tmux.return_value = ("OK", None)
 
     def tearDown(self):
+        self._tmux_patch.stop()
         self._patcher.stop()
 
     def test_run_claude_tmux_called_with_correct_args(self):
@@ -238,11 +241,54 @@ class TestTmuxRunnerIntegration(unittest.TestCase):
         ws.enqueue_disconnect()
         _run(server.ws_endpoint(ws))
 
-        tmux_runner.run_claude_tmux.assert_called_with(
+        self.mock_tmux.assert_called_with(
             "test message",
             tmux_target="claude-bot",
             timeout=120,
         )
+
+
+class TestPromptDetection(unittest.TestCase):
+    """Test the prompt-detection response extraction."""
+
+    def test_extracts_response(self):
+        pane = (
+            "❯ [TORUS_MSG_123] hello\n"
+            "\n"
+            "● Hi there! How can I help?\n"
+            "\n"
+            "❯ \n"
+        )
+        result = server._extract_response_by_prompt(pane, "TORUS_MSG_123")
+        assert result == "Hi there! How can I help?"
+
+    def test_returns_none_when_still_responding(self):
+        pane = (
+            "❯ [TORUS_MSG_123] hello\n"
+            "\n"
+            "● I'm still typing...\n"
+        )
+        result = server._extract_response_by_prompt(pane, "TORUS_MSG_123")
+        assert result is None
+
+    def test_returns_none_no_marker(self):
+        pane = "❯ some other stuff\n● response\n❯ \n"
+        result = server._extract_response_by_prompt(pane, "TORUS_MSG_999")
+        assert result is None
+
+    def test_multiline_response(self):
+        pane = (
+            "❯ [TORUS_MSG_456] explain\n"
+            "\n"
+            "● First line.\n"
+            "  Second line.\n"
+            "  Third line.\n"
+            "\n"
+            "❯ \n"
+        )
+        result = server._extract_response_by_prompt(pane, "TORUS_MSG_456")
+        assert "First line." in result
+        assert "Third line." in result
 
 
 if __name__ == "__main__":

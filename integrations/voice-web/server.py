@@ -10,7 +10,9 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
+import time
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
@@ -20,12 +22,98 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 import uvicorn
 
-# Import tmux_runner from telegram-bot (zero duplication)
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_TG_BOT_DIR = os.path.join(os.path.dirname(_HERE), "telegram-bot")
-sys.path.insert(0, _TG_BOT_DIR)
 
-from tmux_runner import run_claude_tmux, is_tmux_session_alive, TmuxError  # noqa: E402
+
+# --- Prompt-detection tmux transport (no sentinel needed) ---
+# Detects Claude Code's idle prompt ❯ to know when a response is complete.
+
+class TmuxError(Exception):
+    pass
+
+
+async def _run(cmd):
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
+    return proc.returncode, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+
+
+async def _capture_pane(target, last_n=300):
+    rc, stdout, _ = await _run(["tmux", "capture-pane", "-p", "-S", f"-{last_n}", "-t", target])
+    if rc != 0:
+        raise TmuxError(f"capture-pane failed (rc={rc})")
+    return stdout
+
+
+async def is_tmux_session_alive(target):
+    rc, _, _ = await _run(["tmux", "has-session", "-t", target.split(":")[0]])
+    return rc == 0
+
+
+async def _send_keys(target, text):
+    rc, _, stderr = await _run(["tmux", "send-keys", "-t", target, "-l", text])
+    if rc != 0:
+        raise TmuxError(f"send-keys failed: {stderr[:200]}")
+    rc2, _, stderr2 = await _run(["tmux", "send-keys", "-t", target, "Enter"])
+    if rc2 != 0:
+        raise TmuxError(f"send-keys Enter failed: {stderr2[:200]}")
+
+
+_PROMPT_RE = re.compile(r"^❯\s*$", re.MULTILINE)
+_RESPONSE_RE = re.compile(r"^●\s", re.MULTILINE)
+_MARKER_PREFIX = "TORUS_MSG_"
+
+
+def _extract_response_by_prompt(pane_text, marker):
+    """Extract response between our marker and the next idle prompt ❯."""
+    marker_pos = pane_text.rfind(marker)
+    if marker_pos == -1:
+        return None
+
+    after_marker = pane_text[marker_pos:]
+
+    # Find ● response bullet after our marker
+    resp_match = _RESPONSE_RE.search(after_marker)
+    if not resp_match:
+        return None
+
+    resp_start = marker_pos + resp_match.start()
+    text_after_resp = pane_text[resp_start:]
+
+    # Find next idle prompt ❯ after response (means Claude is done)
+    prompt_match = _PROMPT_RE.search(text_after_resp)
+    if not prompt_match:
+        return None  # Still responding
+
+    response_block = text_after_resp[:prompt_match.start()]
+    # Strip leading ● bullet
+    response_block = re.sub(r"^●\s*", "", response_block).strip()
+    # Remove tmux UI chrome lines
+    lines = response_block.split("\n")
+    cleaned = [l for l in lines if not l.strip().startswith(("⎿", "╭", "│", "╰", "─"))]
+    return "\n".join(cleaned).strip()
+
+
+async def run_claude_tmux(message, tmux_target="claude-bot", timeout=120):
+    """Send message via tmux, detect response by idle prompt reappearing."""
+    if not await is_tmux_session_alive(tmux_target):
+        raise TmuxError(f"tmux target '{tmux_target}' not found")
+
+    marker = f"{_MARKER_PREFIX}{int(time.time() * 1000)}"
+    await _send_keys(tmux_target, f"[{marker}] {message}")
+
+    elapsed = 0.0
+    while elapsed < timeout:
+        await asyncio.sleep(1.0)
+        elapsed += 1.0
+        pane = await _capture_pane(tmux_target)
+        response = _extract_response_by_prompt(pane, marker)
+        if response is not None:
+            return response, None
+
+    raise TmuxError(f"Response timeout after {timeout}s")
 
 logging.basicConfig(
     level=logging.INFO,
