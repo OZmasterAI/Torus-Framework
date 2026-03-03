@@ -272,32 +272,8 @@ async def handle_voice(update: Update, context):
     # Log transcription
     log_message(DB_PATH, chat.id, user.first_name or "user", f"[voice] {text}", _now_iso())
 
-    # Inject into the active Claude Code tmux pane (voice_tmux_target in config)
-    # Falls back to normal Claude pipeline if no target configured
-    voice_target = CFG.get("voice_tmux_target", "")
-    if voice_target:
-        import subprocess as _sp
-        try:
-            # Check pane is alive
-            _check = _sp.run(
-                ["tmux", "has-session", "-t", voice_target.split(":")[0]],
-                capture_output=True, timeout=5,
-            )
-            if _check.returncode == 0:
-                # Send transcribed text into the pane (literal mode for special chars)
-                _sp.run(
-                    ["tmux", "send-keys", "-t", voice_target, "-l", text],
-                    capture_output=True, timeout=5,
-                )
-                await msg.reply_text(f"🎤 Injected: _{text}_", parse_mode=ParseMode.MARKDOWN)
-                logger.info("Voice injected into tmux %s: %d chars", voice_target, len(text))
-                return
-            else:
-                logger.warning("voice_tmux_target '%s' not alive, falling back", voice_target)
-        except Exception as e:
-            logger.warning("tmux send-keys failed: %s, falling back", e)
-
-    # Fallback: process through normal Claude pipeline
+    # Send transcription preview, then route through normal Claude pipeline
+    # (tmux mode sends to claude-bot pane and returns reply on Telegram)
     await msg.reply_text(f"🎤 _{text}_", parse_mode=ParseMode.MARKDOWN)
     await chat.send_action(ChatAction.TYPING)
 
