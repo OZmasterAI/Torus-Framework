@@ -163,7 +163,7 @@ def get_project_name():
         if _proj_name:
             if _sub_name:
                 return f"{_proj_name}/{_sub_name}"[:12]
-            aliases = {"torus-framework": "torus"}
+            aliases = {"torus-framework": "trs-frame"}
             return (aliases.get(_proj_name, _proj_name) or "claude")[:12]
     except Exception:
         pass
@@ -172,7 +172,7 @@ def get_project_name():
             state = json.load(f)
         name = state.get("project") or "claude"
         aliases = {
-            "torus-framework": "torus",
+            "torus-framework": "trs-frame",
         }
         return (aliases.get(name, name) or "claude")[:12]
     except (FileNotFoundError, json.JSONDecodeError, OSError):
