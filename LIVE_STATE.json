@@ -3,16 +3,17 @@
   "project": "self-healing-framework",
   "feature": "telegram-bot-tmux",
   "framework_version": "v2.5.8",
-  "what_was_done": "Fixed subproject session isolation and statusline crash. Synced to GitHub main. Set up TG bot persistent tmux mode — fixed toggle detection, routed voice through bot pane. Tested cross-instance tmux communication. Created full+framework backups.",
+  "what_was_done": "Fixed subproject session isolation and statusline crash. Synced to GitHub main. Set up TG bot persistent tmux mode \u2014 fixed toggle detection, routed voice through bot pane. Tested cross-instance tmux communication. Created full+framework backups.",
   "known_issues": [
-    "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
-    "Memory DB at 1923 entries — run maintenance(action='stale') for cleanup",
-    "Boot hook circuit breaker spam ([CB] memory_socket OPEN) — cosmetic, non-blocking",
-    "test_analytics.py on GitHub has 'crab' username in path slug — cosmetic"
+    "trv1-chain remote URL contains plaintext GitHub token \u2014 rotate ASAP",
+    "Memory DB at 1923 entries \u2014 run maintenance(action='stale') for cleanup",
+    "Boot hook circuit breaker spam ([CB] memory_socket OPEN) \u2014 cosmetic, non-blocking",
+    "test_analytics.py on GitHub has 'crab' username in path slug \u2014 cosmetic"
   ],
   "next_steps": [
     "Merge refactor-test branch into main after verification",
     "Test subproject sessions end-to-end from chainovi subproject dirs",
     "Decide chainovi path: port TRv1 features to eclipse-agave or continue TRv1 as L1"
-  ]
+  ],
+  "last_response_preview": "**Step 5: VERIFY**\n\nRisk level: **YELLOW** \u2014 backup timed out (cosmetic, memory accessible at 1923 entries). TG bot is still running in background (PID on claude-bot pane).\n\n**Step 6: SUMMARY**\n\n---\n\n### Session 340 \u2014 Final Wrap-up\n\n**Fixes:**\n- Subproject session isolation (orchestrator + context injection)\n- Statusline crash (verified_fixes int type)\n- Bot `_is_tmux_mode()` reading wrong config file\n\n**Features:**\n- TG bot persistent tmux mode \u2014 text + voice route through `claude-bot` pane\n- C"
 }
