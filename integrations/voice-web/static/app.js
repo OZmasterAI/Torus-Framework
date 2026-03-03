@@ -1,29 +1,26 @@
-// Torus Voice — Web Speech API + WebSocket client + chat UI
+// Torus Voice — compact Slide Over UI: toggle mic, editable transcript, send
 
 (function () {
   "use strict";
 
   // --- DOM refs ---
   var authScreen = document.getElementById("auth-screen");
-  var chatScreen = document.getElementById("chat-screen");
+  var voiceScreen = document.getElementById("voice-screen");
   var tokenInput = document.getElementById("token-input");
   var authBtn = document.getElementById("auth-btn");
   var authError = document.getElementById("auth-error");
-  var messages = document.getElementById("messages");
-  var textInput = document.getElementById("text-input");
+  var transcript = document.getElementById("transcript");
   var sendBtn = document.getElementById("send-btn");
   var micBtn = document.getElementById("mic-btn");
   var micLabel = document.getElementById("mic-label");
   var statusDot = document.getElementById("status-dot");
+  var flash = document.getElementById("flash");
 
   // --- State ---
   var ws = null;
   var recognition = null;
   var isListening = false;
-  var transcript = "";
-  var interimText = "";
-  var thinkingEl = null;
-  var pendingSend = false;
+  var flashTimer = null;
 
   var TOKEN_KEY = "torus_voice_token";
   var hasSpeechAPI = "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
@@ -36,17 +33,16 @@
 
   function showAuth() {
     authScreen.hidden = false;
-    chatScreen.hidden = true;
+    voiceScreen.hidden = true;
     tokenInput.focus();
   }
 
-  function showChat() {
+  function showVoice() {
     authScreen.hidden = true;
-    chatScreen.hidden = false;
-    textInput.focus();
+    voiceScreen.hidden = false;
     if (!hasSpeechAPI) {
       micBtn.disabled = true;
-      micLabel.textContent = "Speech not available";
+      micLabel.textContent = "No speech API";
     }
   }
 
@@ -85,26 +81,22 @@
         case "status":
           if (data.text === "authenticated") {
             setStatus("connected");
-            showChat();
-          } else if (data.text === "thinking") {
-            showThinking();
+            showVoice();
           }
           break;
 
-        case "response":
-          hideThinking();
-          addMessage(data.text, "claude");
+        case "sent":
+          showFlash("Sent!");
           break;
 
         case "error":
-          hideThinking();
           if (data.text === "Invalid token" || data.text === "Auth timeout") {
             localStorage.removeItem(TOKEN_KEY);
             authError.textContent = data.text;
             authError.hidden = false;
             showAuth();
           } else {
-            addMessage(data.text, "error");
+            showFlash(data.text, true);
           }
           break;
       }
@@ -112,7 +104,6 @@
 
     ws.onclose = function (evt) {
       setStatus("error");
-      // 1008 = policy violation (auth failed) — don't reconnect
       if (evt.code === 1008) {
         localStorage.removeItem(TOKEN_KEY);
         authError.textContent = "Invalid token";
@@ -121,7 +112,7 @@
         return;
       }
       var storedToken = getStoredToken();
-      if (storedToken && !chatScreen.hidden) {
+      if (storedToken && !voiceScreen.hidden) {
         setTimeout(function () { connectWS(storedToken); }, 3000);
       }
     };
@@ -135,52 +126,41 @@
     statusDot.className = "dot dot-" + state;
   }
 
-  // --- Messages UI ---
+  // --- Flash notification ---
 
-  function addMessage(text, type) {
-    var div = document.createElement("div");
-    div.className = "msg msg-" + type;
-    div.textContent = text;
-    messages.appendChild(div);
-    messages.scrollTop = messages.scrollHeight;
-  }
-
-  function showThinking() {
-    hideThinking();
-    thinkingEl = document.createElement("div");
-    thinkingEl.className = "msg msg-status thinking";
-    thinkingEl.textContent = "Claude is thinking";
-    messages.appendChild(thinkingEl);
-    messages.scrollTop = messages.scrollHeight;
-  }
-
-  function hideThinking() {
-    if (thinkingEl) {
-      thinkingEl.remove();
-      thinkingEl = null;
-    }
+  function showFlash(text, isError) {
+    if (flashTimer) clearTimeout(flashTimer);
+    flash.textContent = text;
+    flash.style.background = isError ? "var(--error)" : "var(--success)";
+    flash.hidden = false;
+    // Force reflow for transition
+    void flash.offsetWidth;
+    flash.classList.add("visible");
+    flashTimer = setTimeout(function () {
+      flash.classList.remove("visible");
+      setTimeout(function () { flash.hidden = true; }, 300);
+    }, 2000);
   }
 
   // --- Send message ---
 
-  function sendMessage(text) {
-    text = text.trim();
+  function sendMessage() {
+    var text = transcript.value.trim();
     if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
-    addMessage(text, "user");
     ws.send(JSON.stringify({ type: "message", text: text }));
-    textInput.value = "";
+    transcript.value = "";
   }
 
-  sendBtn.addEventListener("click", function () { sendMessage(textInput.value); });
+  sendBtn.addEventListener("click", sendMessage);
 
-  textInput.addEventListener("keydown", function (e) {
+  transcript.addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(textInput.value);
+      sendMessage();
     }
   });
 
-  // --- Web Speech API (push-to-talk) ---
+  // --- Web Speech API (toggle mode) ---
 
   function initSpeech() {
     if (!hasSpeechAPI) return;
@@ -192,9 +172,9 @@
     recognition.lang = "en-US";
 
     recognition.onresult = function (event) {
-      var interim = "";
       var final_ = "";
-      for (var i = event.resultIndex; i < event.results.length; i++) {
+      var interim = "";
+      for (var i = 0; i < event.results.length; i++) {
         var t = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
           final_ += t;
@@ -202,39 +182,32 @@
           interim += t;
         }
       }
-      transcript += final_;
-      interimText = interim;
-      micLabel.textContent = transcript + interim || "Listening...";
+      transcript.value = final_ + interim;
     };
 
     recognition.onerror = function (event) {
       console.error("Speech error:", event.error);
-      stopListening();
       if (event.error === "not-allowed") {
         micBtn.disabled = true;
-        micLabel.textContent = "Mic permission denied";
+        micLabel.textContent = "Mic denied";
+        isListening = false;
+        micBtn.classList.remove("listening");
+      } else if (event.error !== "aborted") {
+        stopListening();
       }
     };
 
     recognition.onend = function () {
       if (isListening) {
+        // Continuous mode — restart if still toggled on
         try { recognition.start(); } catch (e) { /* ignore */ }
-      } else if (pendingSend) {
-        pendingSend = false;
-        var fullText = (transcript + interimText).trim();
-        if (fullText) {
-          sendMessage(fullText);
-        }
-        transcript = "";
-        interimText = "";
-        micLabel.textContent = "Hold to speak";
       }
     };
   }
 
   function startListening() {
     if (!recognition || isListening) return;
-    transcript = "";
+    transcript.value = "";
     isListening = true;
     micBtn.classList.add("listening");
     micLabel.textContent = "Listening...";
@@ -249,55 +222,36 @@
     if (!isListening) return;
     isListening = false;
     micBtn.classList.remove("listening");
+    micLabel.textContent = "Tap to speak";
     try {
       recognition.stop();
     } catch (e) {
       // Already stopped
     }
-    // Safari often hasn't finalized results by stop() — use interim as fallback
-    var fullText = (transcript + interimText).trim();
-    if (fullText) {
-      sendMessage(fullText);
-    }
-    transcript = "";
-    interimText = "";
-    micLabel.textContent = "Hold to speak";
   }
 
-  // Push-to-talk: pointer events for cross-platform touch/mouse
-  micBtn.addEventListener("pointerdown", function (e) {
+  // Toggle mic on tap
+  micBtn.addEventListener("click", function (e) {
     e.preventDefault();
-    startListening();
-  });
-
-  micBtn.addEventListener("pointerup", function (e) {
-    e.preventDefault();
-    stopListening();
-  });
-
-  micBtn.addEventListener("pointerleave", function () {
-    if (isListening) stopListening();
-  });
-
-  micBtn.addEventListener("pointercancel", function () {
-    if (isListening) stopListening();
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
   });
 
   // Prevent context menu on long press
   micBtn.addEventListener("contextmenu", function (e) { e.preventDefault(); });
 
-  // Control key push-to-talk
+  // Control key toggle (press to start, press again to stop)
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Control" && !e.repeat && !isListening) {
+    if (e.key === "Control" && !e.repeat) {
       e.preventDefault();
-      startListening();
-    }
-  });
-
-  document.addEventListener("keyup", function (e) {
-    if (e.key === "Control" && isListening) {
-      e.preventDefault();
-      stopListening();
+      if (isListening) {
+        stopListening();
+      } else {
+        startListening();
+      }
     }
   });
 

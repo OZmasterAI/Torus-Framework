@@ -1,4 +1,4 @@
-"""Tests for Torus Voice web app — server.py WebSocket + HTTP endpoints."""
+"""Tests for Torus Voice web app — fire-and-forget server.py."""
 
 import asyncio
 import json
@@ -98,9 +98,8 @@ class TestWSAuth(unittest.TestCase):
     def setUp(self):
         self._patcher = patch.dict(server.CONFIG, TEST_CONFIG, clear=True)
         self._patcher.start()
-        self._tmux_patch = patch("server.run_claude_tmux", new_callable=AsyncMock)
+        self._tmux_patch = patch("server.send_to_tmux", new_callable=AsyncMock)
         self.mock_tmux = self._tmux_patch.start()
-        self.mock_tmux.return_value = ("OK", None)
 
     def tearDown(self):
         self._tmux_patch.stop()
@@ -135,38 +134,31 @@ class TestWSMessages(unittest.TestCase):
     def setUp(self):
         self._patcher = patch.dict(server.CONFIG, TEST_CONFIG, clear=True)
         self._patcher.start()
-        self._tmux_patch = patch("server.run_claude_tmux", new_callable=AsyncMock)
+        self._tmux_patch = patch("server.send_to_tmux", new_callable=AsyncMock)
         self.mock_tmux = self._tmux_patch.start()
-        self.mock_tmux.return_value = ("Hello from Claude!", None)
 
     def tearDown(self):
         self._tmux_patch.stop()
         self._patcher.stop()
 
-    def test_send_message_gets_response(self):
-        self.mock_tmux.return_value = ("Test response", None)
-
+    def test_send_message_gets_confirmation(self):
         ws = MockWebSocket(query_params={"token": "test-token-123"})
         ws.enqueue({"type": "message", "text": "Hello Claude"})
         ws.enqueue_disconnect()
         _run(server.ws_endpoint(ws))
 
         types = [m["type"] for m in ws.sent]
-        assert "status" in types
-        assert "response" in types
-        resp = next(m for m in ws.sent if m["type"] == "response")
-        assert resp["text"] == "Test response"
+        assert "sent" in types
+        sent_msg = next(m for m in ws.sent if m["type"] == "sent")
+        assert sent_msg["text"] == "Sent!"
 
-    def test_thinking_status_sent(self):
-        self.mock_tmux.return_value = ("Response", None)
-
+    def test_send_to_tmux_called(self):
         ws = MockWebSocket(query_params={"token": "test-token-123"})
-        ws.enqueue({"type": "message", "text": "test"})
+        ws.enqueue({"type": "message", "text": "Hello Claude"})
         ws.enqueue_disconnect()
         _run(server.ws_endpoint(ws))
 
-        statuses = [m for m in ws.sent if m.get("text") == "thinking"]
-        assert len(statuses) == 1
+        self.mock_tmux.assert_called_once_with("Hello Claude", target="claude-bot")
 
     def test_empty_message_rejected(self):
         ws = MockWebSocket(query_params={"token": "test-token-123"})
@@ -223,72 +215,22 @@ class TestConfig(unittest.TestCase):
         assert os.path.isfile(index)
 
 
-class TestTmuxRunnerIntegration(unittest.TestCase):
-    def setUp(self):
-        self._patcher = patch.dict(server.CONFIG, TEST_CONFIG, clear=True)
-        self._patcher.start()
-        self._tmux_patch = patch("server.run_claude_tmux", new_callable=AsyncMock)
-        self.mock_tmux = self._tmux_patch.start()
-        self.mock_tmux.return_value = ("OK", None)
+class TestSendToTmux(unittest.TestCase):
+    """Test the fire-and-forget send_to_tmux function."""
 
-    def tearDown(self):
-        self._tmux_patch.stop()
-        self._patcher.stop()
+    def test_send_calls_send_keys(self):
+        with patch("server.is_tmux_session_alive", new_callable=AsyncMock) as mock_alive, \
+             patch("server._send_keys", new_callable=AsyncMock) as mock_keys:
+            mock_alive.return_value = True
+            _run(server.send_to_tmux("hello world", target="claude-bot"))
+            mock_keys.assert_called_once_with("claude-bot", "hello world")
 
-    def test_run_claude_tmux_called_with_correct_args(self):
-        ws = MockWebSocket(query_params={"token": "test-token-123"})
-        ws.enqueue({"type": "message", "text": "test message"})
-        ws.enqueue_disconnect()
-        _run(server.ws_endpoint(ws))
-
-        self.mock_tmux.assert_called_with(
-            "test message",
-            tmux_target="claude-bot",
-            timeout=120,
-        )
-
-
-class TestPromptDetection(unittest.TestCase):
-    """Test the prompt-detection response extraction."""
-
-    def test_extracts_response(self):
-        pane = (
-            "❯ [TORUS_MSG_123] hello\n"
-            "\n"
-            "● Hi there! How can I help?\n"
-            "\n"
-            "❯ \n"
-        )
-        result = server._extract_response_by_prompt(pane, "TORUS_MSG_123")
-        assert result == "Hi there! How can I help?"
-
-    def test_returns_none_when_still_responding(self):
-        pane = (
-            "❯ [TORUS_MSG_123] hello\n"
-            "\n"
-            "● I'm still typing...\n"
-        )
-        result = server._extract_response_by_prompt(pane, "TORUS_MSG_123")
-        assert result is None
-
-    def test_returns_none_no_marker(self):
-        pane = "❯ some other stuff\n● response\n❯ \n"
-        result = server._extract_response_by_prompt(pane, "TORUS_MSG_999")
-        assert result is None
-
-    def test_multiline_response(self):
-        pane = (
-            "❯ [TORUS_MSG_456] explain\n"
-            "\n"
-            "● First line.\n"
-            "  Second line.\n"
-            "  Third line.\n"
-            "\n"
-            "❯ \n"
-        )
-        result = server._extract_response_by_prompt(pane, "TORUS_MSG_456")
-        assert "First line." in result
-        assert "Third line." in result
+    def test_send_raises_when_tmux_dead(self):
+        with patch("server.is_tmux_session_alive", new_callable=AsyncMock) as mock_alive:
+            mock_alive.return_value = False
+            with self.assertRaises(TmuxError) as ctx:
+                _run(server.send_to_tmux("hello", target="claude-bot"))
+            assert "not found" in str(ctx.exception)
 
 
 if __name__ == "__main__":

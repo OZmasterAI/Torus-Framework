@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """Torus Voice — WebSocket server bridging iPad speech to Claude via tmux.
 
-Serves a static web app with Web Speech API integration.
-WebSocket endpoint receives transcribed text, routes through tmux_runner,
-and streams back Claude's response.
+Fire-and-forget: sends transcribed text to tmux, confirms delivery.
+User reads Claude's response in the terminal directly.
 """
 
 import asyncio
 import json
 import logging
 import os
-import re
 import sys
-import time
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
@@ -25,9 +22,6 @@ import uvicorn
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-# --- Prompt-detection tmux transport (no sentinel needed) ---
-# Detects Claude Code's idle prompt ❯ to know when a response is complete.
-
 class TmuxError(Exception):
     pass
 
@@ -38,13 +32,6 @@ async def _run(cmd):
     )
     stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
     return proc.returncode, stdout.decode(errors="replace"), stderr.decode(errors="replace")
-
-
-async def _capture_pane(target, last_n=300):
-    rc, stdout, _ = await _run(["tmux", "capture-pane", "-p", "-S", f"-{last_n}", "-t", target])
-    if rc != 0:
-        raise TmuxError(f"capture-pane failed (rc={rc})")
-    return stdout
 
 
 async def is_tmux_session_alive(target):
@@ -61,59 +48,12 @@ async def _send_keys(target, text):
         raise TmuxError(f"send-keys Enter failed: {stderr2[:200]}")
 
 
-_PROMPT_RE = re.compile(r"^❯\s*$", re.MULTILINE)
-_RESPONSE_RE = re.compile(r"^●\s", re.MULTILINE)
-_MARKER_PREFIX = "TORUS_MSG_"
+async def send_to_tmux(message, target="claude-bot"):
+    """Send message to tmux pane — fire and forget, no response polling."""
+    if not await is_tmux_session_alive(target):
+        raise TmuxError(f"tmux target '{target}' not found")
+    await _send_keys(target, message)
 
-
-def _extract_response_by_prompt(pane_text, marker):
-    """Extract response between our marker and the next idle prompt ❯."""
-    marker_pos = pane_text.rfind(marker)
-    if marker_pos == -1:
-        return None
-
-    after_marker = pane_text[marker_pos:]
-
-    # Find ● response bullet after our marker
-    resp_match = _RESPONSE_RE.search(after_marker)
-    if not resp_match:
-        return None
-
-    resp_start = marker_pos + resp_match.start()
-    text_after_resp = pane_text[resp_start:]
-
-    # Find next idle prompt ❯ after response (means Claude is done)
-    prompt_match = _PROMPT_RE.search(text_after_resp)
-    if not prompt_match:
-        return None  # Still responding
-
-    response_block = text_after_resp[:prompt_match.start()]
-    # Strip leading ● bullet
-    response_block = re.sub(r"^●\s*", "", response_block).strip()
-    # Remove tmux UI chrome lines
-    lines = response_block.split("\n")
-    cleaned = [l for l in lines if not l.strip().startswith(("⎿", "╭", "│", "╰", "─"))]
-    return "\n".join(cleaned).strip()
-
-
-async def run_claude_tmux(message, tmux_target="claude-bot", timeout=120):
-    """Send message via tmux, detect response by idle prompt reappearing."""
-    if not await is_tmux_session_alive(tmux_target):
-        raise TmuxError(f"tmux target '{tmux_target}' not found")
-
-    marker = f"{_MARKER_PREFIX}{int(time.time() * 1000)}"
-    await _send_keys(tmux_target, f"[{marker}] {message}")
-
-    elapsed = 0.0
-    while elapsed < timeout:
-        await asyncio.sleep(1.0)
-        elapsed += 1.0
-        pane = await _capture_pane(tmux_target)
-        response = _extract_response_by_prompt(pane, marker)
-        if response is not None:
-            return response, None
-
-    raise TmuxError(f"Response timeout after {timeout}s")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -146,12 +86,12 @@ async def health(request):
 
 
 async def ws_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for voice chat.
+    """WebSocket endpoint for voice input.
 
     Protocol:
       Client sends: {"type": "auth", "token": "..."}
       Client sends: {"type": "message", "text": "..."}
-      Server sends: {"type": "response", "text": "..."}
+      Server sends: {"type": "sent", "text": "Sent!"}
       Server sends: {"type": "error", "text": "..."}
       Server sends: {"type": "status", "text": "..."}
     """
@@ -160,13 +100,11 @@ async def ws_endpoint(websocket: WebSocket):
     # --- Auth handshake ---
     authenticated = False
     try:
-        # Check query param first (for reconnect with stored token)
         token = websocket.query_params.get("token")
         if token and token == CONFIG["auth_token"]:
             authenticated = True
             await websocket.send_json({"type": "status", "text": "authenticated"})
         else:
-            # Wait for auth message
             try:
                 raw = await asyncio.wait_for(websocket.receive_json(), timeout=30)
             except asyncio.TimeoutError:
@@ -189,9 +127,8 @@ async def ws_endpoint(websocket: WebSocket):
 
     logger.info("Client authenticated via WebSocket")
 
-    # --- Message loop ---
+    # --- Message loop (fire-and-forget) ---
     tmux_target = CONFIG.get("tmux_target", "claude-bot")
-    timeout = CONFIG.get("response_timeout", 120)
     max_len = CONFIG.get("max_message_length", 4000)
 
     try:
@@ -215,16 +152,11 @@ async def ws_endpoint(websocket: WebSocket):
                 continue
 
             logger.info("Received message: %s", text[:80])
-            await websocket.send_json({"type": "status", "text": "thinking"})
 
             try:
-                response, _ = await run_claude_tmux(
-                    text,
-                    tmux_target=tmux_target,
-                    timeout=timeout,
-                )
-                await websocket.send_json({"type": "response", "text": response})
-                logger.info("Sent response (%d chars)", len(response))
+                await send_to_tmux(text, target=tmux_target)
+                await websocket.send_json({"type": "sent", "text": "Sent!"})
+                logger.info("Sent to tmux: %s", text[:80])
             except TmuxError as e:
                 logger.error("Tmux error: %s", e)
                 await websocket.send_json({"type": "error", "text": str(e)})
