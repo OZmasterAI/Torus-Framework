@@ -21,6 +21,7 @@
   var recognition = null;
   var isListening = false;
   var transcript = "";
+  var interimText = "";
   var thinkingEl = null;
 
   var TOKEN_KEY = "torus_voice_token";
@@ -201,6 +202,7 @@
         }
       }
       transcript += final_;
+      interimText = interim;
       micLabel.textContent = transcript + interim || "Listening...";
     };
 
@@ -242,10 +244,13 @@
     } catch (e) {
       // Already stopped
     }
-    if (transcript.trim()) {
-      sendMessage(transcript);
+    // Safari often hasn't finalized results by stop() — use interim as fallback
+    var fullText = (transcript + interimText).trim();
+    if (fullText) {
+      sendMessage(fullText);
     }
     transcript = "";
+    interimText = "";
     micLabel.textContent = "Hold to speak";
   }
 
@@ -270,6 +275,21 @@
 
   // Prevent context menu on long press
   micBtn.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  // Control key push-to-talk
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Control" && !e.repeat && !isListening) {
+      e.preventDefault();
+      startListening();
+    }
+  });
+
+  document.addEventListener("keyup", function (e) {
+    if (e.key === "Control" && isListening) {
+      e.preventDefault();
+      stopListening();
+    }
+  });
 
   // --- Init ---
 
