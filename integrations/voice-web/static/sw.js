@@ -1,5 +1,5 @@
 // Service worker for offline shell caching — network-first
-var CACHE_NAME = "torus-voice-v2";
+var CACHE_NAME = "torus-voice-v3";
 var SHELL_URLS = ["/", "/style.css", "/app.js", "/manifest.json"];
 
 self.addEventListener("install", function (event) {
