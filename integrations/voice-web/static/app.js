@@ -219,6 +219,15 @@
     recognition.onend = function () {
       if (isListening) {
         try { recognition.start(); } catch (e) { /* ignore */ }
+      } else if (pendingSend) {
+        pendingSend = false;
+        var fullText = (transcript + interimText).trim();
+        if (fullText) {
+          sendMessage(fullText);
+        }
+        transcript = "";
+        interimText = "";
+        micLabel.textContent = "Hold to speak";
       }
     };
   }
