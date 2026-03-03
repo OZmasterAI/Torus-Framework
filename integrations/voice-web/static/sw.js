@@ -1,5 +1,5 @@
-// Service worker for offline shell caching
-var CACHE_NAME = "torus-voice-v1";
+// Service worker for offline shell caching — network-first
+var CACHE_NAME = "torus-voice-v2";
 var SHELL_URLS = ["/", "/style.css", "/app.js", "/manifest.json"];
 
 self.addEventListener("install", function (event) {
@@ -25,13 +25,19 @@ self.addEventListener("activate", function (event) {
 });
 
 self.addEventListener("fetch", function (event) {
-  // Network-first for API calls, cache-first for shell
   if (event.request.url.includes("/ws") || event.request.url.includes("/health")) {
     return;
   }
+  // Network-first: try server, fall back to cache for offline
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      return cached || fetch(event.request);
+    fetch(event.request).then(function (resp) {
+      var clone = resp.clone();
+      caches.open(CACHE_NAME).then(function (cache) {
+        cache.put(event.request, clone);
+      });
+      return resp;
+    }).catch(function () {
+      return caches.match(event.request);
     })
   );
 });
