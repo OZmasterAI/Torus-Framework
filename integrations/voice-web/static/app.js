@@ -23,6 +23,7 @@
   var transcript = "";
   var interimText = "";
   var thinkingEl = null;
+  var pendingSend = false;
 
   var TOKEN_KEY = "torus_voice_token";
   var hasSpeechAPI = "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
