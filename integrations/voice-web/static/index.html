@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Torus Voice">
+  <meta name="theme-color" content="#0a0a0f">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="stylesheet" href="/style.css">
+  <title>Torus Voice</title>
+</head>
+<body>
+  <!-- Auth screen -->
+  <div id="auth-screen" class="screen">
+    <div class="auth-box">
+      <h1>Torus Voice</h1>
+      <p>Enter access token</p>
+      <input type="password" id="token-input" placeholder="Token" autocomplete="off">
+      <button id="auth-btn">Connect</button>
+      <div id="auth-error" class="error" hidden></div>
+    </div>
+  </div>
+
+  <!-- Chat screen -->
+  <div id="chat-screen" class="screen" hidden>
+    <header>
+      <span class="title">Torus Voice</span>
+      <span id="status-dot" class="dot dot-connecting"></span>
+    </header>
+
+    <div id="messages"></div>
+
+    <footer>
+      <div class="input-row">
+        <input type="text" id="text-input" placeholder="Type or hold mic..." autocomplete="off">
+        <button id="send-btn" aria-label="Send">&#x27A4;</button>
+      </div>
+      <button id="mic-btn" aria-label="Hold to speak">
+        <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+          <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+        </svg>
+        <span id="mic-label">Hold to speak</span>
+      </button>
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
