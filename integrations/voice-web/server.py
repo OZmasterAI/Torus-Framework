@@ -172,28 +172,31 @@ async def ws_endpoint(websocket: WebSocket):
             pass
 
 
-# --- No-cache middleware (force fresh files during dev) ---
+# --- No-cache static files ---
 
-from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
-
-class NoCacheMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
+class NoCacheStaticFiles(StaticFiles):
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            original_send = send
+            async def no_cache_send(message):
+                if message.get("type") == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    headers.append((b"cache-control", b"no-cache, no-store, must-revalidate"))
+                    message["headers"] = headers
+                await original_send(message)
+            await super().__call__(scope, receive, no_cache_send)
+        else:
+            await super().__call__(scope, receive, send)
 
 # --- App ---
 
 routes = [
     Route("/health", health),
     WebSocketRoute("/ws", ws_endpoint),
-    Mount("/", StaticFiles(directory=os.path.join(_HERE, "static"), html=True)),
+    Mount("/", NoCacheStaticFiles(directory=os.path.join(_HERE, "static"), html=True)),
 ]
 
-app = Starlette(routes=routes, middleware=[Middleware(NoCacheMiddleware)])
+app = Starlette(routes=routes)
 
 
 if __name__ == "__main__":
