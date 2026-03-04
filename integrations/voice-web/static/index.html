@@ -226,8 +226,7 @@
       ws.send(JSON.stringify({ type: "message", text: text }));
       ta.value = "";
       if (recognition && isListening) {
-        try { recognition.stop(); } catch(e) {}
-        try { recognition.start(); } catch(e) {}
+        try { recognition.abort(); } catch(e) {}
       }
     }
 
