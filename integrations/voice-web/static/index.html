@@ -36,8 +36,9 @@
     }
     .error { color: var(--error); margin-top: 0.8rem; font-size: 0.85rem; }
     .voice-panel {
-      display: flex; flex-direction: column; align-items: center; height: 100%;
-      max-width: 320px; margin: 0 auto; width: 100%; padding: 0 12px 12px;
+      display: flex; flex-direction: column; align-items: center;
+      max-width: 320px; margin: 0 auto; width: 100%; padding: 12px;
+      gap: 16px;
     }
     .status-bar {
       display: flex; align-items: center; justify-content: space-between;
@@ -50,10 +51,10 @@
     .dot-error { background: var(--error); }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
     #mic-btn {
-      width: 120px; height: 120px; border-radius: 50%; border: 3px solid var(--surface2);
-      background: var(--surface); color: var(--text-dim); display: flex;
+      width: 120px; height: 120px; border-radius: 50%; border: 3px solid var(--accent);
+      background: var(--surface); color: var(--text); display: flex;
       flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-      cursor: pointer; transition: all 0.2s; margin: auto 0; flex-shrink: 0;
+      cursor: pointer; transition: all 0.2s; flex-shrink: 0; margin-top: 20px;
       -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
     }
     #mic-btn span { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -64,10 +65,10 @@
     #mic-btn.listening svg { animation: pulse 0.8s infinite; }
     #mic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     #transcript {
-      width: 100%; padding: 10px 12px; border: 1px solid var(--surface2);
+      width: 100%; padding: 10px 12px; border: 2px solid var(--surface2);
       border-radius: var(--radius); background: var(--surface); color: var(--text);
-      font-family: inherit; font-size: 0.95rem; line-height: 1.4; resize: none;
-      outline: none; flex-shrink: 0; margin-bottom: 8px;
+      font-family: inherit; font-size: 1rem; line-height: 1.4; resize: none;
+      outline: none; flex-shrink: 0;
     }
     #transcript:focus { border-color: var(--accent); }
     #transcript::placeholder { color: var(--text-dim); }
