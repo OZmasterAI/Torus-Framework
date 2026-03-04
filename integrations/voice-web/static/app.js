@@ -109,12 +109,8 @@
         authError.textContent = "Invalid token";
         authError.hidden = false;
         showAuth();
-        return;
       }
-      var storedToken = getStoredToken();
-      if (storedToken && !voiceScreen.hidden) {
-        setTimeout(function () { connectWS(storedToken); }, 3000);
-      }
+      // No auto-reconnect — user taps Connect again if needed
     };
 
     ws.onerror = function () {
@@ -259,15 +255,17 @@
 
   initSpeech();
 
+  // Unregister any old service worker to prevent stale caching
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) { r.unregister(); });
+    });
+  }
+
   var storedToken = getStoredToken();
   if (storedToken) {
     connectWS(storedToken);
   } else {
     showAuth();
-  }
-
-  // Register service worker
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js").catch(function () {});
   }
 })();
