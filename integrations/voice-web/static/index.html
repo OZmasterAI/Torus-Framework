@@ -133,6 +133,8 @@
     var flashTimer = null;
     var TOKEN_KEY = "torus_voice_token";
     var hasSpeechAPI = "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
+    var sendOffset = 0;
+    var currentResultsLength = 0;
     var dbg = document.getElementById("debug");
 
     function log(msg) {
@@ -224,6 +226,7 @@
       if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({ type: "message", text: text }));
       ta.value = "";
+      sendOffset = currentResultsLength;
     }
 
     document.getElementById("send-btn").addEventListener("click", sendMessage);
@@ -245,8 +248,9 @@
       recognition.lang = "en-US";
 
       recognition.onresult = function(event) {
+        currentResultsLength = event.results.length;
         var f = "", interim = "";
-        for (var i = 0; i < event.results.length; i++) {
+        for (var i = sendOffset; i < event.results.length; i++) {
           var t = event.results[i][0].transcript;
           if (event.results[i].isFinal) f += t; else interim += t;
         }
