@@ -227,8 +227,12 @@
     }
 
     document.getElementById("send-btn").addEventListener("click", sendMessage);
-    document.getElementById("transcript").addEventListener("keydown", function(e) {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    // Global Enter sends — no need to focus textarea first
+    document.addEventListener("keydown", function(e) {
+      if (e.key === "Enter" && !e.shiftKey && !document.getElementById("auth-screen").contains(document.activeElement)) {
+        e.preventDefault();
+        sendMessage();
+      }
     });
 
     // Speech recognition
