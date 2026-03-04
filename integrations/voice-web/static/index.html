@@ -268,7 +268,11 @@
         }
       };
       recognition.onend = function() {
-        if (isListening) { try { recognition.start(); } catch(e) {} }
+        if (isListening) {
+          sendOffset = 0;
+          currentResultsLength = 0;
+          try { recognition.start(); } catch(e) {}
+        }
       };
     }
 
