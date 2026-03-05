@@ -6,17 +6,21 @@ Optional TTS mode: polls tmux for Claude's response and sends it back.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import re
 import sys
+import tempfile
 
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
+
+import edge_tts
 
 import uvicorn
 
@@ -247,6 +251,66 @@ async def last_response(request):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
+TTS_CACHE_DIR = os.path.join(tempfile.gettempdir(), "voice-web-tts")
+os.makedirs(TTS_CACHE_DIR, exist_ok=True)
+DEFAULT_VOICE = "en-US-GuyNeural"
+
+
+async def tts_endpoint(request):
+    """Generate TTS audio from text using edge-tts.
+
+    Query params:
+      token — auth token (required)
+      voice — edge-tts voice name (optional, default en-US-GuyNeural)
+    Body: raw text to speak
+    Returns: audio/mpeg
+    """
+    token = request.query_params.get("token", "")
+    if token != CONFIG["auth_token"]:
+        return JSONResponse({"ok": False, "error": "Invalid token"}, status_code=401)
+
+    body = await request.body()
+    text = body.decode("utf-8", errors="replace").strip()
+    if not text:
+        return JSONResponse({"ok": False, "error": "No text"}, status_code=400)
+    if len(text) > 10000:
+        return JSONResponse({"ok": False, "error": "Text too long"}, status_code=400)
+
+    voice = request.query_params.get("voice", DEFAULT_VOICE)
+
+    # Cache by text+voice hash
+    cache_key = hashlib.md5(f"{voice}:{text}".encode()).hexdigest()
+    cache_path = os.path.join(TTS_CACHE_DIR, f"{cache_key}.mp3")
+
+    if not os.path.exists(cache_path):
+        try:
+            communicate = edge_tts.Communicate(text, voice)
+            await communicate.save(cache_path)
+            logger.info("TTS generated: %d chars, voice=%s", len(text), voice)
+        except Exception as e:
+            logger.error("edge-tts error: %s", e)
+            return JSONResponse({"ok": False, "error": "TTS failed"}, status_code=500)
+
+    with open(cache_path, "rb") as f:
+        audio = f.read()
+
+    return Response(audio, media_type="audio/mpeg", headers={
+        "Cache-Control": "public, max-age=300",
+    })
+
+
+async def tts_voices(request):
+    """List available edge-tts voices."""
+    token = request.query_params.get("token", "")
+    if token != CONFIG["auth_token"]:
+        return JSONResponse({"ok": False, "error": "Invalid token"}, status_code=401)
+
+    voices = await edge_tts.list_voices()
+    # Filter to English voices
+    en_voices = [{"name": v["ShortName"], "gender": v["Gender"]} for v in voices if v["Locale"].startswith("en-")]
+    return JSONResponse({"ok": True, "voices": en_voices})
+
+
 async def ws_endpoint(websocket: WebSocket):
     """WebSocket endpoint for voice input.
 
@@ -376,6 +440,8 @@ class NoCacheStaticFiles(StaticFiles):
 routes = [
     Route("/health", health),
     Route("/last-response", last_response),
+    Route("/tts", tts_endpoint, methods=["POST"]),
+    Route("/tts/voices", tts_voices),
     WebSocketRoute("/ws", ws_endpoint),
     Mount("/", NoCacheStaticFiles(directory=os.path.join(_HERE, "static"), html=True)),
 ]
