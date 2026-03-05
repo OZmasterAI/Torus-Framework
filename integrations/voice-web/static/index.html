@@ -432,57 +432,46 @@
     function speakText(text) {
       if (!("speechSynthesis" in window) || !text) return;
       window.speechSynthesis.cancel();
-      // iOS Safari silently drops long utterances — split into sentence chunks
-      var chunks = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
-      var queue = [];
-      // Group sentences into ~200 char chunks
-      var buf = "";
-      for (var c = 0; c < chunks.length; c++) {
-        if (buf.length + chunks[c].length > 200 && buf) {
-          queue.push(buf.trim());
-          buf = "";
-        }
-        buf += chunks[c];
-      }
-      if (buf.trim()) queue.push(buf.trim());
-
+      // iOS Safari: speak one sentence at a time using timer-based polling
+      // onend callbacks are unreliable on iOS — poll instead
+      var sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
       var idx = 0;
-      var watchdog = null;
-      function clearWatchdog() { if (watchdog) { clearInterval(watchdog); watchdog = null; } }
-      function speakNext() {
-        clearWatchdog();
-        if (idx >= queue.length || !ttsEnabled) {
-          isSpeaking = false;
-          document.getElementById("speaker-btn").classList.remove("speaking");
-          document.getElementById("speaker-label").textContent = "Listen ON";
-          return;
-        }
-        var utter = new SpeechSynthesisUtterance(queue[idx]);
+      var poller = null;
+
+      function done() {
+        if (poller) { clearInterval(poller); poller = null; }
+        isSpeaking = false;
+        document.getElementById("speaker-btn").classList.remove("speaking");
+        document.getElementById("speaker-label").textContent = "Listen ON";
+      }
+
+      function speakOne() {
+        if (idx >= sentences.length || !ttsEnabled) { done(); return; }
+        var chunk = sentences[idx].trim();
+        if (!chunk) { idx++; speakOne(); return; }
+        var utter = new SpeechSynthesisUtterance(chunk);
         if (selectedVoice) utter.voice = selectedVoice;
         utter.lang = "en-US";
         utter.rate = 1.0;
-        utter.onstart = function() {
-          isSpeaking = true;
-          document.getElementById("speaker-btn").classList.add("speaking");
-          document.getElementById("speaker-label").textContent = "Speaking...";
-        };
-        utter.onend = function() { idx++; speakNext(); };
-        utter.onerror = function() { idx++; speakNext(); };
+        isSpeaking = true;
+        document.getElementById("speaker-btn").classList.add("speaking");
+        document.getElementById("speaker-label").textContent = "Speaking...";
         window.speechSynthesis.speak(utter);
-        // iOS Safari workaround: speechSynthesis pauses/stalls between chunks
-        // Resume periodically to keep it alive, force-advance if stuck
-        watchdog = setInterval(function() {
-          if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-          }
-          if (!window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-            clearWatchdog();
-            idx++;
-            speakNext();
-          }
-        }, 500);
       }
-      speakNext();
+
+      // Poll every 300ms: when current utterance finishes, start next
+      speakOne();
+      poller = setInterval(function() {
+        if (!ttsEnabled) { window.speechSynthesis.cancel(); done(); return; }
+        // Resume if iOS paused it
+        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+        // If not speaking anymore, advance to next sentence
+        if (!window.speechSynthesis.speaking) {
+          idx++;
+          if (idx >= sentences.length) { done(); return; }
+          speakOne();
+        }
+      }, 300);
     }
 
     function startTTSPoll() {
