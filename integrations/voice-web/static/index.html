@@ -83,6 +83,13 @@
       color: var(--success); box-shadow: 0 0 30px rgba(46,204,113,0.4);
     }
     #speaker-btn.speaking svg { animation: pulse 0.8s infinite; }
+    #voice-select {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--surface2);
+      border-radius: var(--radius); background: var(--surface); color: var(--text);
+      font-size: 0.85rem; outline: none; appearance: none;
+      -webkit-appearance: none;
+    }
+    #voice-select:focus { border-color: var(--accent); }
     #transcript {
       width: 100%; padding: 10px 12px; border: 2px solid var(--surface2);
       border-radius: var(--radius); background: var(--surface); color: var(--text);
@@ -132,6 +139,7 @@
           <span id="speaker-label">Listen</span>
         </button>
       </div>
+      <select id="voice-select"><option value="">Loading voices...</option></select>
       <textarea id="transcript" rows="3" placeholder="Transcript appears here..."></textarea>
       <button id="send-btn">Send</button>
       <div id="flash" class="flash" hidden></div>
@@ -169,6 +177,8 @@
     var intentionalClose = false;
     var ttsPoller = null;
     var lastSpokenText = "";
+    var selectedVoice = null;
+    var VOICE_KEY = "torus_voice_name";
 
     function log(msg) {
       dbg.textContent = msg;
@@ -380,10 +390,50 @@
 
     // --- TTS (Text-to-Speech) via fetch polling ---
 
+    function loadVoices() {
+      if (!("speechSynthesis" in window)) return;
+      var voices = window.speechSynthesis.getVoices();
+      if (!voices.length) return;
+      var sel = document.getElementById("voice-select");
+      var saved = localStorage.getItem(VOICE_KEY) || "";
+      sel.innerHTML = "";
+      // Filter to English voices, prioritize quality ones
+      var enVoices = voices.filter(function(v) { return v.lang.startsWith("en"); });
+      if (!enVoices.length) enVoices = voices;
+      enVoices.forEach(function(v) {
+        var opt = document.createElement("option");
+        opt.value = v.name;
+        opt.textContent = v.name + (v.localService ? "" : " (network)");
+        if (v.name === saved) { opt.selected = true; selectedVoice = v; }
+        sel.appendChild(opt);
+      });
+      if (!selectedVoice && enVoices.length) selectedVoice = enVoices[0];
+    }
+
+    if ("speechSynthesis" in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    document.getElementById("voice-select").addEventListener("change", function() {
+      var name = this.value;
+      localStorage.setItem(VOICE_KEY, name);
+      var voices = window.speechSynthesis.getVoices();
+      selectedVoice = voices.find(function(v) { return v.name === name; }) || null;
+      // Preview the voice
+      if (selectedVoice) {
+        window.speechSynthesis.cancel();
+        var preview = new SpeechSynthesisUtterance("Voice selected");
+        preview.voice = selectedVoice;
+        window.speechSynthesis.speak(preview);
+      }
+    });
+
     function speakText(text) {
       if (!("speechSynthesis" in window) || !text) return;
       window.speechSynthesis.cancel();
       var utter = new SpeechSynthesisUtterance(text);
+      if (selectedVoice) utter.voice = selectedVoice;
       utter.lang = "en-US";
       utter.rate = 1.0;
       utter.onstart = function() {
