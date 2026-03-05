@@ -232,15 +232,22 @@ async def health(request):
     })
 
 
-def _pane_has_idle_prompt(pane_text):
-    """Check if there's a bare ❯ prompt in the pane (Claude done and idle).
+_last_seen_brewed = ""
 
-    The ❯ prompt is NOT the last line — status bar lines appear below it.
-    Scan last 20 lines for a line that is just ❯.
+
+def _pane_is_done(pane_text):
+    """Check if Claude is done by looking for ✻ Brewed/Cogitated marker.
+
+    These markers ONLY appear when Claude has fully finished responding.
+    Track last seen marker to detect NEW completions.
     """
-    for line in pane_text.split("\n")[-20:]:
-        if line.strip() == "❯":
-            return True
+    global _last_seen_brewed
+    for line in pane_text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("✻") and ("Brewed" in stripped or "Cogitated" in stripped):
+            if stripped != _last_seen_brewed:
+                _last_seen_brewed = stripped
+                return True
     return False
 
 
@@ -261,8 +268,8 @@ async def last_response(request):
     tmux_target = CONFIG.get("tmux_target", "claude-bot")
     try:
         pane = await capture_tmux_pane(tmux_target)
-        # Only extract when Claude is idle (❯ prompt at bottom)
-        if not _pane_has_idle_prompt(pane):
+        # Only extract when Claude is done (✻ Brewed/Cogitated marker)
+        if not _pane_is_done(pane):
             return JSONResponse({"ok": True, "text": None})
         text = extract_last_response(pane)
         return JSONResponse({"ok": True, "text": text})
