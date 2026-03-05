@@ -1,15 +1,16 @@
 {
-  "session_count": 342,
+  "session_count": 343,
   "project": "torus-framework",
-  "feature": "voice-web-terminal",
+  "feature": "genesis-planning",
   "framework_version": "v2.5.8",
-  "what_was_done": "Fixed voice-web STT bugs (ghost transcript, 5s cooldown via abort()). Built torus-voice-ios terminal+voice PWA via relay to separate Claude instance. Changed voice-web tmux_target to claude session.",
+  "what_was_done": "Investigated voice_tmux_target removal (intentional, session 340). Reviewed friend's Chronicle system. Planned custom GENESIS meta-analysis skill. Explained observations pipeline and 4-layer memory architecture.",
   "known_issues": [
     "trv1-chain remote URL contains plaintext GitHub token — rotate ASAP",
-    "Memory DB at 2030 entries — run maintenance(action='stale') for cleanup",
+    "Memory DB at 2051 entries — run maintenance(action='stale') for cleanup",
     "Boot hook circuit breaker spam ([CB] memory_socket OPEN) — cosmetic, non-blocking"
   ],
   "next_steps": [
+    "Build /genesis skill (plan at plans/peppy-humming-twilight.md)",
     "Test torus-voice-ios terminal PWA end-to-end on iPad (port 8444)",
     "Merge refactor-test branch into main after verification",
     "Decide chainovi path: port TRv1 features to eclipse-agave or continue TRv1 as L1"
