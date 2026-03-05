@@ -72,7 +72,6 @@ config.json
 mcp.json
 
 # Runtime state (not for GitHub)
-HANDOFF.md
 hooks/.enforcer.pid
 hooks/.settings_snapshot.json
 hooks/*.sock

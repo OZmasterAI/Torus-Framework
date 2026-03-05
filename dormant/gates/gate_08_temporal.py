@@ -27,7 +27,7 @@ HIGH_RISK_END = 5     # 5 AM
 LONG_SESSION_THRESHOLD = 10800  # 3 hours
 
 # Files exempt by basename
-EXEMPT_BASENAMES = {"state.json", "HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md"}
+EXEMPT_BASENAMES = {"state.json", "LIVE_STATE.json", "CLAUDE.md"}
 
 # Directories exempt by normalized path prefix
 EXEMPT_DIRS = [

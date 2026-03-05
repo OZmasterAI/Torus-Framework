@@ -53,7 +53,6 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 ~/.claude/
 ├── CLAUDE.md                        # Master rules (~1,321 tokens, injected every prompt)
 ├── ARCHITECTURE.md                  # This document
-├── HANDOFF.md                       # Session handoff (what was done, what's next)
 ├── LIVE_STATE.json                  # Machine-readable project state
 ├── config.json                      # Runtime toggles
 ├── settings.json                    # Hook registration + permissions

@@ -106,7 +106,6 @@ print("\n--- Gate 1: Exempt Patterns + Edge Cases ---")
 # Exempt patterns — should be allowed without reading
 for _exempt_file, _exempt_ext in [
     ("/tmp/pkg/__init__.py", "__init__.py"),
-    ("/tmp/HANDOFF.md", "HANDOFF.md"),
     ("/tmp/LIVE_STATE.json", "LIVE_STATE.json"),
     ("/tmp/CLAUDE.md", "CLAUDE.md"),
     ("/tmp/state.json", "state.json"),
