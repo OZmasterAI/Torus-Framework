@@ -166,6 +166,7 @@
     var maxReconnectDelay = 30000;
     var ttsEnabled = false;
     var isSpeaking = false;
+    var intentionalClose = false;
 
     function log(msg) {
       dbg.textContent = msg;
@@ -185,7 +186,9 @@
     });
 
     function connectWS(token) {
-      if (ws) { try { ws.close(); } catch(e) {} }
+      // Clear any pending reconnect — we're connecting now
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      if (ws) { intentionalClose = true; try { ws.close(); } catch(e) {} }
       var proto = location.protocol === "https:" ? "wss:" : "ws:";
       var url = proto + "//" + location.host + "/ws?token=" + encodeURIComponent(token);
       log("ws: " + url);
@@ -207,6 +210,10 @@
           document.getElementById("status-dot").className = "dot dot-connected";
           document.getElementById("auth-screen").hidden = true;
           document.getElementById("voice-screen").hidden = false;
+          // Re-sync TTS state after reconnect
+          if (ttsEnabled) {
+            ws.send(JSON.stringify({ type: "tts_toggle", enabled: true }));
+          }
           if (!hasSpeechAPI) {
             document.getElementById("mic-btn").disabled = true;
             document.getElementById("mic-label").textContent = "No speech API";
@@ -233,6 +240,8 @@
       ws.onclose = function(evt) {
         log("ws closed: " + evt.code);
         document.getElementById("status-dot").className = "dot dot-error";
+        // Intentional close (reconnecting) — don't schedule another
+        if (intentionalClose) { intentionalClose = false; return; }
         // Auth rejection — don't reconnect
         if (evt.code === 1008) {
           localStorage.removeItem(TOKEN_KEY);
