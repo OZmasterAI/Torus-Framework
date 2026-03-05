@@ -308,7 +308,6 @@
       }
       // Start TTS poll if enabled — uses fetch, survives WS reconnects
       if (ttsEnabled) {
-        unlockAudio(); // re-unlock on each send (user gesture context)
         stopTTSPoll();
         startTTSPoll();
       }
@@ -491,13 +490,6 @@
 
     function stopTTSPoll() {
       if (ttsPoller) { clearInterval(ttsPoller); ttsPoller = null; }
-    }
-
-    function unlockAudio() {
-      // iOS Safari requires audio.play() from user gesture to unlock playback
-      // Play silent data URI to unlock, then future plays from async callbacks work
-      ttsAudio.src = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwBHAAAAAAD/+1DEAAAFeAFX9AAAIAAADSAAAAEAAAA0gAAAAA//MQxBcAAADSAAAAAP/7EMQoAAADSAAAAAAAA0gAAAAA//sQxDUAAADSAAAAAP/7EMQ+AAADSAAAAAAAAANIAAAAAAAADSAAAAAAAADSAAAAAAAADSAAAAAAAADSAAAAAAAADSAAAAf/7UMRWAAA0gAAAAABMQxFYAAANIAAAAAExDEVgAAA0gAAAAATEMRWAAADSAAAAAA";
-      ttsAudio.play().catch(function() {});
     }
 
     function toggleTTS() {
