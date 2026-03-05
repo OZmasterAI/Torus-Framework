@@ -220,11 +220,11 @@ GATE_SCENARIOS = {
             "_session_id": "main",
         },
     },
-    # Gate 14: HANDOFF.md → exempt file, immediate return
+    # Gate 14: LIVE_STATE.json → exempt file, immediate return
     "gates.gate_14_confidence_check": {
         "tool_input": {
-            "file_path": f"{_HOME}/.claude/HANDOFF.md",
-            "content": "# Handoff\n",
+            "file_path": f"{_HOME}/.claude/LIVE_STATE.json",
+            "content": '{"session_count": 1}\n',
         },
         "state_overrides": {},
     },

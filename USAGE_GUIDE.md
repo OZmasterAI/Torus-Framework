@@ -53,7 +53,7 @@ Launch → boot.py runs → Handoff presented → You work → /wrap-up → sess
 `boot.py` runs on every launch (22-step pipeline) and:
 - Initializes the ramdisk for fast I/O (~544 MB/s tmpfs at `/run/user/{uid}/claude-hooks/`)
 - Rotates and compresses audit logs
-- Reads `HANDOFF.md` and `LIVE_STATE.json` from the previous session
+- Reads `LIVE_STATE.json` from the previous session
 - Injects recent memories from LanceDB (L1)
 - Pulls relevant Telegram message history (L2/L3 fallback)
 - Writes the Gate 4 sideband timestamp so memory-first checks pass
@@ -79,11 +79,10 @@ This generates a comprehensive handoff with:
 
 The `session_end.py` hook also runs automatically on exit to flush observations and update metrics.
 
-### Handoff Files
+### State File
 | File | Purpose | Format |
 |---|---|---|
-| `HANDOFF.md` | Human-readable session state | Markdown |
-| `LIVE_STATE.json` | Machine-readable project state | JSON |
+| `LIVE_STATE.json` | Session state (what was done, what's next) | JSON |
 
 ### Boot Flow (22 steps)
 1. Bot session check
@@ -344,7 +343,6 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 ```
 ~/.claude/
 ├── CLAUDE.md              # Global instructions (injected every prompt, <2K tokens)
-├── HANDOFF.md             # Session handoff state
 ├── LIVE_STATE.json        # Machine-readable project state
 ├── ARCHITECTURE.md        # Full framework architecture reference
 ├── config.json            # Runtime toggles (mentor, ramdisk, Telegram, etc.)

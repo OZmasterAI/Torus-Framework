@@ -57,7 +57,7 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
 | **2 MCP Servers** | Memory (8 tools) + Analytics (50 tools), accessible as native Claude tools |
 | **Enforcer Daemon** | Persistent UDS server — gate checks in ~5ms instead of ~134ms inline |
 | **Mentor System** | Real-time quality scoring (0.0–1.0) with deterministic verdicts, no LLM calls |
-| **Session Continuity** | HANDOFF.md + LIVE_STATE.json carry context across sessions automatically |
+| **Session Continuity** | LIVE_STATE.json carries context across sessions automatically |
 | **Telegram Bot** | Remote Claude sessions via Telegram with message mirroring |
 
 ---

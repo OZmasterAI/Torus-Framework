@@ -26,7 +26,6 @@ GUARDED_EXTENSIONS = {
 # Files/patterns always allowed to write without reading
 EXEMPT_PATTERNS = [
     "__init__.py",
-    "HANDOFF.md",
     "LIVE_STATE.json",
     "CLAUDE.md",
     "state.json",

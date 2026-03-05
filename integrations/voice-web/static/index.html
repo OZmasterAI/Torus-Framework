@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Torus Voice</title>
+  <style>
+    :root {
+      --bg: #0a0a0f; --surface: #16161e; --surface2: #1e1e2a;
+      --text: #e0e0e8; --text-dim: #888; --accent: #6c5ce7;
+      --error: #e74c3c; --success: #2ecc71; --radius: 12px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, system-ui, sans-serif; font-size: 16px;
+      overflow: hidden;
+    }
+    .screen { display: flex; flex-direction: column; height: 100%; }
+    .screen[hidden] { display: none !important; }
+    #auth-screen { justify-content: center; align-items: center; }
+    .auth-box { text-align: center; padding: 1.5rem; width: min(90%, 300px); }
+    .auth-box h1 { font-size: 1.5rem; margin-bottom: 0.4rem; color: var(--accent); }
+    .auth-box p { color: var(--text-dim); margin-bottom: 1.2rem; font-size: 0.9rem; }
+    .auth-box input {
+      width: 100%; padding: 12px 14px; border: 1px solid var(--surface2);
+      border-radius: var(--radius); background: var(--surface); color: var(--text);
+      font-size: 1rem; margin-bottom: 0.8rem; outline: none;
+    }
+    .auth-box input:focus { border-color: var(--accent); }
+    .auth-box button, #send-btn {
+      width: 100%; padding: 12px; border: none; border-radius: var(--radius);
+      background: var(--accent); color: white; font-size: 1rem; font-weight: 600;
+      cursor: pointer; -webkit-tap-highlight-color: transparent;
+    }
+    .error { color: var(--error); margin-top: 0.8rem; font-size: 0.85rem; }
+    .voice-panel {
+      display: flex; flex-direction: column; align-items: center;
+      max-width: 320px; margin: 0 auto; width: 100%; padding: 12px;
+      gap: 16px;
+    }
+    .status-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; padding: 10px 4px;
+    }
+    .title { font-weight: 600; font-size: 1rem; color: var(--text-dim); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-connected { background: var(--success); }
+    .dot-connecting { background: #f39c12; animation: pulse 1s infinite; }
+    .dot-error { background: var(--error); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    #mic-btn {
+      width: 120px; height: 120px; border-radius: 50%; border: 3px solid var(--accent);
+      background: var(--surface); color: var(--text); display: flex;
+      flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+      cursor: pointer; transition: all 0.2s; flex-shrink: 0; margin-top: 20px;
+      -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+    }
+    #mic-btn span { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    #mic-btn.listening {
+      border-color: var(--error); background: rgba(231,76,60,0.15);
+      color: var(--error); box-shadow: 0 0 30px rgba(231,76,60,0.3);
+    }
+    #mic-btn.listening svg { animation: pulse 0.8s infinite; }
+    #mic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #transcript {
+      width: 100%; padding: 10px 12px; border: 2px solid var(--surface2);
+      border-radius: var(--radius); background: var(--surface); color: var(--text);
+      font-family: inherit; font-size: 1rem; line-height: 1.4; resize: none;
+      outline: none; flex-shrink: 0;
+    }
+    #transcript:focus { border-color: var(--accent); }
+    #transcript::placeholder { color: var(--text-dim); }
+    .flash {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      background: var(--success); color: white; padding: 10px 24px;
+      border-radius: 20px; font-weight: 600; font-size: 0.9rem;
+      pointer-events: none; opacity: 0; transition: opacity 0.3s;
+    }
+    .flash.visible { opacity: 1; }
+    #debug { position: fixed; bottom: 4px; left: 4px; font-size: 10px; color: #555; }
+  </style>
+</head>
+<body>
+  <div id="auth-screen" class="screen">
+    <div class="auth-box">
+      <h1>Torus Voice</h1>
+      <p>Enter access token</p>
+      <input type="password" id="token-input" placeholder="Token" autocomplete="off">
+      <button id="auth-btn" onclick="doConnect()">Connect</button>
+      <div id="auth-error" class="error" hidden></div>
+    </div>
+  </div>
+
+  <div id="voice-screen" class="screen" hidden>
+    <div class="voice-panel">
+      <div class="status-bar">
+        <span class="title">Torus</span>
+        <span id="status-dot" class="dot dot-connecting"></span>
+      </div>
+      <button id="mic-btn" aria-label="Tap to speak">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+          <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+        </svg>
+        <span id="mic-label">Tap to speak</span>
+      </button>
+      <textarea id="transcript" rows="3" placeholder="Transcript appears here..."></textarea>
+      <button id="send-btn">Send</button>
+      <div id="flash" class="flash" hidden></div>
+    </div>
+  </div>
+  <div id="debug"></div>
+
+  <script>
+    // Nuke old service worker immediately
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(r) { r.unregister(); });
+      });
+    }
+    // Clear old caches
+    if ("caches" in window) {
+      caches.keys().then(function(names) {
+        names.forEach(function(n) { caches.delete(n); });
+      });
+    }
+
+    var ws = null;
+    var recognition = null;
+    var isListening = false;
+    var flashTimer = null;
+    var TOKEN_KEY = "torus_voice_token";
+    var hasSpeechAPI = "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
+    var sendOffset = 0;
+    var dbg = document.getElementById("debug");
+
+    function log(msg) {
+      dbg.textContent = msg;
+      console.log("[torus]", msg);
+    }
+
+    function doConnect() {
+      var token = document.getElementById("token-input").value.trim();
+      if (!token) return;
+      localStorage.setItem(TOKEN_KEY, token);
+      log("connecting...");
+      connectWS(token);
+    }
+
+    document.getElementById("token-input").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") doConnect();
+    });
+
+    function connectWS(token) {
+      if (ws) { try { ws.close(); } catch(e) {} }
+      var proto = location.protocol === "https:" ? "wss:" : "ws:";
+      var url = proto + "//" + location.host + "/ws?token=" + encodeURIComponent(token);
+      log("ws: " + url);
+
+      ws = new WebSocket(url);
+
+      ws.onopen = function() {
+        log("ws open");
+        document.getElementById("status-dot").className = "dot dot-connecting";
+      };
+
+      ws.onmessage = function(evt) {
+        var data;
+        try { data = JSON.parse(evt.data); } catch(e) { return; }
+        log("msg: " + data.type + " " + (data.text||""));
+
+        if (data.type === "status" && data.text === "authenticated") {
+          document.getElementById("status-dot").className = "dot dot-connected";
+          document.getElementById("auth-screen").hidden = true;
+          document.getElementById("voice-screen").hidden = false;
+          if (!hasSpeechAPI) {
+            document.getElementById("mic-btn").disabled = true;
+            document.getElementById("mic-label").textContent = "No speech API";
+          }
+        } else if (data.type === "sent") {
+          showFlash("Sent!");
+        } else if (data.type === "error") {
+          if (data.text === "Invalid token" || data.text === "Auth timeout") {
+            localStorage.removeItem(TOKEN_KEY);
+            document.getElementById("auth-error").textContent = data.text;
+            document.getElementById("auth-error").hidden = false;
+            document.getElementById("auth-screen").hidden = false;
+            document.getElementById("voice-screen").hidden = true;
+          } else {
+            showFlash(data.text, true);
+          }
+        }
+      };
+
+      ws.onclose = function(evt) {
+        log("ws closed: " + evt.code);
+        document.getElementById("status-dot").className = "dot dot-error";
+      };
+
+      ws.onerror = function() {
+        log("ws error");
+        document.getElementById("status-dot").className = "dot dot-error";
+      };
+    }
+
+    function showFlash(text, isError) {
+      var f = document.getElementById("flash");
+      if (flashTimer) clearTimeout(flashTimer);
+      f.textContent = text;
+      f.style.background = isError ? "var(--error)" : "var(--success)";
+      f.hidden = false;
+      void f.offsetWidth;
+      f.classList.add("visible");
+      flashTimer = setTimeout(function() {
+        f.classList.remove("visible");
+        setTimeout(function() { f.hidden = true; }, 300);
+      }, 2000);
+    }
+
+    function sendMessage() {
+      var ta = document.getElementById("transcript");
+      var text = ta.value.trim();
+      if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: "message", text: text }));
+      ta.value = "";
+      if (recognition && isListening) {
+        try { recognition.abort(); } catch(e) {}
+      }
+    }
+
+    document.getElementById("send-btn").addEventListener("click", sendMessage);
+    // Global Enter sends — no need to focus textarea first
+    document.addEventListener("keydown", function(e) {
+      if (e.key === "Enter" && !e.shiftKey && !document.getElementById("auth-screen").contains(document.activeElement)) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Speech recognition
+    function initSpeech() {
+      if (!hasSpeechAPI) return;
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SR();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = function(event) {
+        var f = "", interim = "";
+        for (var i = sendOffset; i < event.results.length; i++) {
+          var t = event.results[i][0].transcript;
+          if (event.results[i].isFinal) f += t; else interim += t;
+        }
+        document.getElementById("transcript").value = f + interim;
+      };
+      recognition.onerror = function(event) {
+        log("speech err: " + event.error);
+        if (event.error === "not-allowed") {
+          document.getElementById("mic-btn").disabled = true;
+          document.getElementById("mic-label").textContent = "Mic denied";
+          isListening = false;
+          document.getElementById("mic-btn").classList.remove("listening");
+        } else if (event.error !== "aborted") {
+          stopListening();
+        }
+      };
+      recognition.onend = function() {
+        if (isListening) {
+          sendOffset = 0;
+          currentResultsLength = 0;
+          try { recognition.start(); } catch(e) {}
+        }
+      };
+    }
+
+    function startListening() {
+      if (!recognition || isListening) return;
+      document.getElementById("transcript").value = "";
+      isListening = true;
+      document.getElementById("mic-btn").classList.add("listening");
+      document.getElementById("mic-label").textContent = "Listening...";
+      try { recognition.start(); } catch(e) {}
+    }
+
+    function stopListening() {
+      if (!isListening) return;
+      isListening = false;
+      document.getElementById("mic-btn").classList.remove("listening");
+      document.getElementById("mic-label").textContent = "Tap to speak";
+      try { recognition.stop(); } catch(e) {}
+    }
+
+    document.getElementById("mic-btn").addEventListener("click", function(e) {
+      e.preventDefault();
+      if (isListening) stopListening(); else startListening();
+    });
+
+    document.addEventListener("keydown", function(e) {
+      if (e.key === "Control" && !e.repeat) {
+        e.preventDefault();
+        if (isListening) stopListening(); else startListening();
+      }
+    });
+
+    initSpeech();
+
+    // Auto-connect only if stored token exists — single attempt, no loop
+    var stored = localStorage.getItem(TOKEN_KEY);
+    if (stored) {
+      connectWS(stored);
+    }
+
+    log("v3 loaded");
+  </script>
+</body>
+</html>

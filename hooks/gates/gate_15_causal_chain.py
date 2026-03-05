@@ -15,7 +15,7 @@ When triggered:
 
 Exemptions:
   - Test files (*test*, *spec*) — editing tests to fix them is fine
-  - Config files (HANDOFF.md, LIVE_STATE.json, CLAUDE.md)
+  - Config files (LIVE_STATE.json, CLAUDE.md)
   - If fixing_error is False (no active error context)
 
 Tier 2 (non-safety): gate crash = warn + continue, not block.

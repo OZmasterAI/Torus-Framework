@@ -14,7 +14,7 @@ When user says "report", "summary", "what did we do", "sprint report",
 
 ### 1. GATHER
 - Read LIVE_STATE.json for current session state
-- Read HANDOFF.md for session history
+- Read LIVE_STATE.json for session history
 - Check git log for recent commits on current branch
 - Search memory for session-tagged entries: `search_knowledge("session")`
 - Count current tests: run `python3 hooks/test_framework.py 2>&1 | grep RESULTS`

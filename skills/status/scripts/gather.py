@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gather system status data and print a pre-formatted dashboard to stdout.
 
-Reads from LIVE_STATE.json, HANDOFF.md, session state files, memory MCP,
+Reads from LIVE_STATE.json, session state files, memory MCP,
 gate/skill/hook counts, and git status. Claude displays the output directly.
 """
 
@@ -18,7 +18,6 @@ GATES_DIR = os.path.join(HOOKS_DIR, "gates")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 SETTINGS_FILE = os.path.join(CLAUDE_DIR, "settings.json")
-HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 STATS_CACHE = os.path.join(CLAUDE_DIR, "stats-cache.json")
 
 sys.path.insert(0, HOOKS_DIR)
@@ -54,39 +53,6 @@ def load_live_state():
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
 
-
-def get_handoff_summary():
-    """Read first 10 lines after '## What Was Done' from HANDOFF.md."""
-    try:
-        with open(HANDOFF_FILE) as f:
-            lines = f.readlines()
-    except (FileNotFoundError, OSError):
-        return "none"
-
-    capture = False
-    collected = []
-    for line in lines:
-        if "## What Was Done" in line:
-            capture = True
-            continue
-        if capture:
-            if line.startswith("## ") and "What Was Done" not in line:
-                break
-            stripped = line.strip()
-            # Skip markdown sub-headers (### lines)
-            if stripped.startswith("#"):
-                continue
-            if stripped:
-                # Strip leading markdown list markers
-                cleaned = re.sub(r"^[-*]\s+", "", stripped)
-                collected.append(cleaned)
-            if len(collected) >= 10:
-                break
-
-    if not collected:
-        return "none"
-    # Join and truncate to fit box
-    return "; ".join(collected)
 
 
 def get_gate_metrics():
@@ -165,8 +131,8 @@ def main():
     known_issues = ls.get("known_issues", [])
     next_steps = ls.get("next_steps", [])
 
-    # 2. HANDOFF summary
-    handoff_summary = get_handoff_summary()
+    # 2. Last session summary
+    handoff_summary = ls.get("what_was_done", "none")
 
     # 3. Memory count
     try:

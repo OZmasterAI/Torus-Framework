@@ -72,13 +72,22 @@ config.json
 mcp.json
 
 # Runtime state (not for GitHub)
-HANDOFF.md
 hooks/.enforcer.pid
 hooks/.settings_snapshot.json
 hooks/*.sock
 hooks/.integrity_hashes.json
 hooks/.remediation_stats.json
 hooks/scripts/__pycache__/
+hooks/tests/__pycache__/
+hooks/.enforcer_sideband_*.json
+hooks/.plugin_registry_cache.json
+
+# Integration runtime state
+integrations/**/__pycache__/
+integrations/voice-web/certs/
+
+# MCP cache
+mcp-needs-auth-cache.json
 
 # Local-only files
 backupclaude.md
@@ -89,4 +98,3 @@ diagram.html
 plugins/installed_plugins.json
 plugins/known_marketplaces.json
 plugins/marketplaces/
-hooks/.experience_archive.csv

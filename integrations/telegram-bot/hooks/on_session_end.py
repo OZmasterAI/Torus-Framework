@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Telegram Bot — Session End Hook
 
-Posts HANDOFF.md content to FTS5 log and optionally notifies user via Bot API.
+Posts session summary from LIVE_STATE.json to FTS5 log and optionally notifies user via Bot API.
 Called by session_end.py via subprocess. Always exits 0.
 """
 
@@ -16,14 +16,13 @@ _PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _PLUGIN_DIR)
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
-HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 DB_PATH = os.path.join(_PLUGIN_DIR, "msg_log.db")
 CONFIG_PATH = os.path.join(_PLUGIN_DIR, "config.json")
 
 
 def _format_html(markdown_text: str, session_num: str = "?") -> str:
-    """Convert HANDOFF.md markdown to Telegram-compatible HTML.
+    """Convert markdown text to Telegram-compatible HTML.
 
     Telegram supports: <b>, <i>, <code>, <pre>, <a>, <s>, <u>
     """
@@ -98,33 +97,36 @@ def _send_bot_message(bot_token, chat_id, text):
 
 def main():
     try:
-        # Read HANDOFF.md
-        if not os.path.isfile(HANDOFF_FILE):
-            print("[TG_BOT_SESSION_END] No HANDOFF.md found, skipping", file=sys.stderr)
+        # Read LIVE_STATE.json
+        if not os.path.isfile(LIVE_STATE_FILE):
+            print("[TG_BOT_SESSION_END] No LIVE_STATE.json found, skipping", file=sys.stderr)
             sys.exit(0)
 
-        with open(HANDOFF_FILE) as f:
-            handoff_content = f.read()
+        with open(LIVE_STATE_FILE) as f:
+            live = json.load(f)
 
-        if not handoff_content.strip():
-            print("[TG_BOT_SESSION_END] Empty HANDOFF.md, skipping", file=sys.stderr)
-            sys.exit(0)
+        session_num = str(live.get("session_count", "?"))
+        what_was_done = live.get("what_was_done", "").strip()
+        known_issues = live.get("known_issues", [])
+        next_steps = live.get("next_steps", [])
 
-        # Get session number
-        session_num = "?"
-        try:
-            with open(LIVE_STATE_FILE) as f:
-                live = json.load(f)
-            session_num = str(live.get("session_count", "?"))
-        except Exception:
-            pass
+        # Build a simple summary text from LIVE_STATE fields
+        parts = []
+        if what_was_done:
+            parts.append(f"## What Was Done\n{what_was_done}")
+        if known_issues:
+            parts.append("## Known Issues\n" + "\n".join(f"- {i}" for i in known_issues))
+        if next_steps:
+            parts.append("## Next Steps\n" + "\n".join(f"- {s}" for s in next_steps))
+
+        summary_text = "\n\n".join(parts) if parts else f"Session {session_num} ended."
 
         # Log to FTS5 database
         from db import init_db, log_message
         init_db(DB_PATH)
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
-        log_message(DB_PATH, 0, "system", handoff_content[:4000], now)
+        log_message(DB_PATH, 0, "system", summary_text[:4000], now)
         print(f"[TG_BOT_SESSION_END] Logged session {session_num} to FTS5", file=sys.stderr)
 
         # Notify user via Bot API
@@ -134,11 +136,9 @@ def main():
             bot_token = cfg.get("bot_token", "")
             allowed_users = cfg.get("allowed_users", [])
             if bot_token and allowed_users:
-                notify = f"Session {session_num} ended.\n{handoff_content[:500]}"
-                if len(handoff_content) > 500:
-                    notify += "\n..."
+                html_text = _format_html(summary_text, session_num)
                 for uid in allowed_users:
-                    _send_bot_message(bot_token, uid, notify)
+                    _send_bot_message(bot_token, uid, html_text)
                 print(f"[TG_BOT_SESSION_END] Notified user via Bot API", file=sys.stderr)
         except Exception as e:
             print(f"[TG_BOT_SESSION_END] User notification failed (non-fatal): {e}", file=sys.stderr)
