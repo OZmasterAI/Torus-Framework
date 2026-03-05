@@ -1,21 +1,22 @@
 {
-  "session_count": 345,
+  "session_count": 346,
   "project": "torus-framework",
-  "feature": "trading-claude-fork + rule5-enforcement",
-  "framework_version": "v2.5.8",
-  "what_was_done": "Forked trading-framework to trading-claude (Claude Code-native). Created 7 CLI scripts, /trade and /market skills. Fixed Rule 5 gap: added UserPromptSubmit reminder so Claude verifies factual claims with tools before responding.",
+  "feature": "handoff-removal + rule8 + gate14-investigation",
+  "framework_version": "v2.5.9",
+  "what_was_done": "Removed all HANDOFF.md references (19 files). Added Rule 8 (ask before irreversible actions). Synced github-branch to v2.5.9. Brought analytics MCP online. Found Gate 14 stuck-state bug (2 cooperating bugs). Restarted voice-web.",
   "known_issues": [
+    "Gate 14 stuck-state: tracker adds exempt files to pending_verification + test_framework.py not in BROAD_TEST_COMMANDS",
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
-    "Memory DB at 2165 entries — run maintenance(action='stale') for cleanup",
+    "Memory DB at 2180 entries — run maintenance(action='stale') for cleanup",
     "Boot hook circuit breaker spam ([CB] memory_socket OPEN) — cosmetic, non-blocking"
   ],
   "next_steps": [
+    "Fix Gate 14 stuck-state bug (exemption check in orchestrator.py + BROAD_TEST_COMMANDS update)",
     "Add state-based warnings to UserPromptSubmit hook (unsaved fixes, unqueried memory, open causal chains)",
     "Upgrade original trading-framework for autonomous operation (Telegram alerts, paper mode testing)",
     "Post framework showcase on Claude Code GitHub discussions and X/Twitter",
-    "Build /genesis skill (plan at plans/peppy-humming-twilight.md)",
-    "Merge refactor-test branch into main after verification"
+    "Build /genesis skill (plan at plans/peppy-humming-twilight.md)"
   ],
-  "last_response_preview": "Session 344: Built trading-claude fork, fixed Rule 5 gap with UserPromptSubmit hook reminder."
+  "last_response_preview": "Session 345: HANDOFF.md full removal, Rule 8, github-branch sync v2.5.9, Gate 14 bug found (unfixed), analytics MCP online."
 }
