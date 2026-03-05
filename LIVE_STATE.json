@@ -1,21 +1,22 @@
 {
-  "session_count": 346,
+  "session_count": 347,
   "project": "torus-framework",
-  "feature": "gate14-fix + voice-web-reconnect",
+  "feature": "voice-web-tts",
   "framework_version": "v2.5.9",
-  "what_was_done": "Fixed Gate 14 stuck-state (exemption check in tracker + test_framework.py in BROAD_TEST_COMMANDS). Added voice-web auto-reconnect with exponential backoff. Removed HANDOFF.md refs, added Rule 8, synced github-branch, brought analytics MCP online.",
+  "what_was_done": "Added server-side TTS via edge-tts (neural voices, MP3 caching). Fixed iOS Safari autoplay with AudioContext (created on user gesture, stays unlocked). Added voice picker dropdown. Short responses play correctly; long response timing unsolved (poller grabs partial text).",
   "known_issues": [
+    "Voice-web TTS: long responses only read first sentence (poller captures partial text before Claude finishes generating)",
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
     "Memory DB at 2182 entries — run maintenance(action='stale') for cleanup",
     "Boot hook circuit breaker spam ([CB] memory_socket OPEN) — cosmetic, non-blocking"
   ],
   "next_steps": [
+    "Fix TTS completion detection — use ✻ Brewed/Cogitated marker from tmux pane to know when Claude is done generating",
     "Add state-based warnings to UserPromptSubmit hook (unsaved fixes, unqueried memory, open causal chains)",
     "Upgrade original trading-framework for autonomous operation (Telegram alerts, paper mode testing)",
     "Post framework showcase on Claude Code GitHub discussions and X/Twitter",
-    "Build /genesis skill (plan at plans/peppy-humming-twilight.md)",
-    "Merge refactor-test branch into main after verification"
+    "Build /genesis skill (plan at plans/peppy-humming-twilight.md)"
   ],
-  "last_response_preview": "Session 345: Fixed Gate 14 stuck-state, added voice-web auto-reconnect, HANDOFF.md removal, Rule 8, analytics MCP online."
+  "last_response_preview": "Session 346: Added voice-web TTS (edge-tts + AudioContext). Short text works on iPad Safari. Long response timing still unsolved."
 }
