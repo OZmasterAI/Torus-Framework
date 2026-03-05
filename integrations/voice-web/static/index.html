@@ -429,44 +429,32 @@
       }
     });
 
-    // Persistent array prevents iOS Safari from garbage-collecting utterances
-    var utteranceQueue = [];
+    // Persistent ref prevents iOS Safari GC
+    var currentUtterance = null;
 
     function speakText(text) {
       if (!("speechSynthesis" in window) || !text) return;
       window.speechSynthesis.cancel();
-      utteranceQueue = [];
-      // Split into sentences, queue ALL upfront via speechSynthesis queue
-      var sentences = text.match(/[^.!?\n]+[.!?]+|[^.!?\n]+$/g) || [text];
-      for (var i = 0; i < sentences.length; i++) {
-        var s = sentences[i].trim();
-        if (!s) continue;
-        var utter = new SpeechSynthesisUtterance(s);
-        if (selectedVoice) utter.voice = selectedVoice;
-        utter.lang = "en-US";
-        utter.rate = 1.0;
-        if (i === 0) {
-          utter.onstart = function() {
-            isSpeaking = true;
-            document.getElementById("speaker-btn").classList.add("speaking");
-            document.getElementById("speaker-label").textContent = "Speaking...";
-          };
-        }
-        // Persistent ref in array — prevents iOS GC
-        utteranceQueue.push(utter);
-      }
-      // Last utterance resets UI
-      if (utteranceQueue.length > 0) {
-        utteranceQueue[utteranceQueue.length - 1].onend = function() {
-          isSpeaking = false;
-          document.getElementById("speaker-btn").classList.remove("speaking");
-          document.getElementById("speaker-label").textContent = "Listen ON";
-        };
-      }
-      // Queue all at once — browser's internal queue handles ordering
-      for (var j = 0; j < utteranceQueue.length; j++) {
-        window.speechSynthesis.speak(utteranceQueue[j]);
-      }
+      currentUtterance = new SpeechSynthesisUtterance(text);
+      if (selectedVoice) currentUtterance.voice = selectedVoice;
+      currentUtterance.lang = "en-US";
+      currentUtterance.rate = 1.0;
+      currentUtterance.onstart = function() {
+        isSpeaking = true;
+        document.getElementById("speaker-btn").classList.add("speaking");
+        document.getElementById("speaker-label").textContent = "Speaking...";
+      };
+      currentUtterance.onend = function() {
+        isSpeaking = false;
+        document.getElementById("speaker-btn").classList.remove("speaking");
+        document.getElementById("speaker-label").textContent = "Listen ON";
+      };
+      currentUtterance.onerror = function() {
+        isSpeaking = false;
+        document.getElementById("speaker-btn").classList.remove("speaking");
+        document.getElementById("speaker-label").textContent = "Listen ON";
+      };
+      window.speechSynthesis.speak(currentUtterance);
     }
 
     function startTTSPoll() {
