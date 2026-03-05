@@ -167,6 +167,8 @@
     var ttsEnabled = false;
     var isSpeaking = false;
     var intentionalClose = false;
+    var ttsPoller = null;
+    var lastSpokenText = "";
 
     function log(msg) {
       dbg.textContent = msg;
@@ -210,20 +212,12 @@
           document.getElementById("status-dot").className = "dot dot-connected";
           document.getElementById("auth-screen").hidden = true;
           document.getElementById("voice-screen").hidden = false;
-          // Re-sync TTS state after reconnect
-          if (ttsEnabled) {
-            ws.send(JSON.stringify({ type: "tts_toggle", enabled: true }));
-          }
           if (!hasSpeechAPI) {
             document.getElementById("mic-btn").disabled = true;
             document.getElementById("mic-label").textContent = "No speech API";
           }
         } else if (data.type === "sent") {
           showFlash("Sent!");
-        } else if (data.type === "response") {
-          if (ttsEnabled && data.text) {
-            speakText(data.text);
-          }
         } else if (data.type === "error") {
           if (data.text === "Invalid token" || data.text === "Auth timeout") {
             localStorage.removeItem(TOKEN_KEY);
@@ -302,6 +296,11 @@
       if (recognition && isListening) {
         try { recognition.abort(); } catch(e) {}
       }
+      // Start TTS poll if enabled — uses fetch, survives WS reconnects
+      if (ttsEnabled) {
+        stopTTSPoll();
+        startTTSPoll();
+      }
     }
 
     document.getElementById("send-btn").addEventListener("click", sendMessage);
@@ -379,10 +378,10 @@
       }
     });
 
-    // --- TTS (Text-to-Speech) ---
+    // --- TTS (Text-to-Speech) via fetch polling ---
 
     function speakText(text) {
-      if (!("speechSynthesis" in window)) return;
+      if (!("speechSynthesis" in window) || !text) return;
       window.speechSynthesis.cancel();
       var utter = new SpeechSynthesisUtterance(text);
       utter.lang = "en-US";
@@ -405,6 +404,34 @@
       window.speechSynthesis.speak(utter);
     }
 
+    function startTTSPoll() {
+      if (ttsPoller) return;
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      var url = "/last-response?token=" + encodeURIComponent(token);
+      var attempts = 0;
+      var maxAttempts = 60; // 2s * 60 = 120s max
+      ttsPoller = setInterval(function() {
+        attempts++;
+        if (attempts > maxAttempts || !ttsEnabled) {
+          stopTTSPoll();
+          return;
+        }
+        fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+          if (data.ok && data.text && data.text !== lastSpokenText) {
+            lastSpokenText = data.text;
+            stopTTSPoll();
+            speakText(data.text);
+          }
+        }).catch(function() {});
+      }, 2000);
+      log("TTS polling started");
+    }
+
+    function stopTTSPoll() {
+      if (ttsPoller) { clearInterval(ttsPoller); ttsPoller = null; }
+    }
+
     function toggleTTS() {
       ttsEnabled = !ttsEnabled;
       var btn = document.getElementById("speaker-btn");
@@ -412,8 +439,7 @@
       if (ttsEnabled) {
         btn.classList.add("active");
         label.textContent = "Listen ON";
-        // Prime speechSynthesis with a silent utterance — iOS Safari requires
-        // the first speak() call to come from a user gesture (tap/click)
+        // Prime speechSynthesis — iOS Safari requires first speak() from user gesture
         if ("speechSynthesis" in window) {
           var prime = new SpeechSynthesisUtterance("");
           prime.volume = 0;
@@ -422,11 +448,9 @@
       } else {
         btn.classList.remove("active", "speaking");
         label.textContent = "Listen";
+        stopTTSPoll();
         if ("speechSynthesis" in window) window.speechSynthesis.cancel();
         isSpeaking = false;
-      }
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "tts_toggle", enabled: ttsEnabled }));
       }
       log("TTS " + (ttsEnabled ? "ON" : "OFF"));
     }

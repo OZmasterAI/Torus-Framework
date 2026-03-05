@@ -66,12 +66,27 @@ async def capture_tmux_pane(target, lines=200):
     return stdout
 
 
-def extract_last_response(pane_text):
-    """Extract Claude's last response from tmux pane output.
+def _is_tool_call(text):
+    """Check if a ● line is a tool call rather than a text response."""
+    tool_prefixes = (
+        "Bash(", "Read ", "Edit(", "Write(", "Glob(", "Grep(", "Update(",
+        "Agent(", "NotebookEdit(", "Skill(", "Search(", "WebFetch(",
+        "Reading ", "Searching ", "Running ", "Editing ",
+        "memory ", "mcp__",  # MCP tool calls
+    )
+    if any(text.startswith(p) for p in tool_prefixes):
+        return True
+    if "(MCP)" in text:
+        return True
+    return False
 
-    Claude responses start with ● (bullet). Tool calls, spinners, and
-    intermediate output use different markers (·, ⎿, etc.) and are skipped.
-    The idle prompt ❯ at the end indicates Claude is done.
+
+def extract_last_response(pane_text):
+    """Extract Claude's last text response from tmux pane output.
+
+    Claude responses start with ● (bullet). Tool calls also start with ●
+    but are filtered out. The idle prompt ❯ at the bottom means Claude is done.
+    Only the last consecutive text block (before the ❯) is returned.
     """
     lines = pane_text.split("\n")
 
@@ -86,49 +101,55 @@ def extract_last_response(pane_text):
     if last_prompt_idx < 0:
         return None  # Claude still generating
 
-    # Walk backwards from the prompt to find response blocks (● lines)
-    # Stop at the previous ❯ (user input) or start of pane
+    # Walk backwards from ❯ to collect the last text response block.
+    # Skip tool output (⎿, ·), tool calls (● Bash(...)), and empty lines.
+    # Stop at the previous ❯ or a tool call after we've found text.
     response_lines = []
-    prev_prompt_idx = -1
+    found_text = False
+
     for i in range(last_prompt_idx - 1, -1, -1):
         stripped = lines[i].strip()
+
+        # Previous user prompt — stop
         if stripped.startswith("❯") or stripped == "❯":
-            prev_prompt_idx = i
             break
 
-    if prev_prompt_idx < 0:
-        return None
-
-    # Collect ● blocks between previous prompt and current prompt
-    in_response = False
-    for i in range(prev_prompt_idx + 1, last_prompt_idx):
-        stripped = lines[i].strip()
-        # Skip empty lines between blocks
+        # Empty line
         if not stripped:
-            if in_response:
+            if found_text:
                 response_lines.append("")
             continue
-        # Claude response lines start with ● or are continuation (indented text)
+
+        # Tool output indicators — skip or stop
+        if stripped.startswith(("⎿", "·", "╭", "╰", "│")):
+            if found_text:
+                break
+            continue
+
+        # ● line — could be text or tool call
         if stripped.startswith("●"):
-            in_response = True
-            # Remove the ● prefix
-            response_lines.append(stripped[1:].strip())
-        elif in_response and not stripped.startswith(("⎿", "·", "╭", "╰", "│")):
-            # Continuation of response text (not tool output)
+            content = stripped[1:].strip()
+            if _is_tool_call(content):
+                if found_text:
+                    break
+                continue
+            found_text = True
+            response_lines.append(content)
+            continue
+
+        # Continuation line (indented text after a ● line)
+        if found_text:
+            if stripped.endswith("(ctrl+o to expand)"):
+                break
             response_lines.append(stripped)
-        else:
-            # Tool call output, skip but don't end response collection
-            # (response may continue after tool calls)
-            if stripped.startswith("●"):
-                in_response = True
-                response_lines.append(stripped[1:].strip())
-            else:
-                in_response = False
 
     if not response_lines:
         return None
 
-    # Clean up: strip trailing empty lines, join
+    # We collected backwards — reverse
+    response_lines.reverse()
+
+    # Clean up empty edges
     while response_lines and not response_lines[-1]:
         response_lines.pop()
     while response_lines and not response_lines[0]:
@@ -136,15 +157,15 @@ def extract_last_response(pane_text):
 
     text = "\n".join(response_lines).strip()
     # Remove markdown formatting that doesn't speak well
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)  # bold
-    text = re.sub(r'\*(.+?)\*', r'\1', text)  # italic
-    text = re.sub(r'`(.+?)`', r'\1', text)  # inline code
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # headers
-    text = re.sub(r'^[-*]\s+', '', text, flags=re.MULTILINE)  # bullets
-    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)  # numbered lists
-    text = re.sub(r'```[\s\S]*?```', '', text)  # code blocks
-    text = re.sub(r'---+', '', text)  # horizontal rules
-    text = re.sub(r'\n{3,}', '\n\n', text)  # collapse whitespace
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[-*]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    text = re.sub(r'---+', '', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip() if text.strip() else None
 
 
@@ -204,6 +225,26 @@ async def health(request):
         "tmux_target": tmux_target,
         "tmux_alive": tmux_alive,
     })
+
+
+async def last_response(request):
+    """Extract Claude's last response from tmux pane for TTS.
+
+    Query params:
+      token — auth token (required)
+    Returns: {"text": "...", "ok": true} or {"text": null, "ok": true} if still generating.
+    """
+    token = request.query_params.get("token", "")
+    if token != CONFIG["auth_token"]:
+        return JSONResponse({"ok": False, "error": "Invalid token"}, status_code=401)
+
+    tmux_target = CONFIG.get("tmux_target", "claude-bot")
+    try:
+        pane = await capture_tmux_pane(tmux_target)
+        text = extract_last_response(pane)
+        return JSONResponse({"ok": True, "text": text})
+    except TmuxError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 async def ws_endpoint(websocket: WebSocket):
@@ -300,10 +341,10 @@ async def ws_endpoint(websocket: WebSocket):
                 logger.error("Tmux error: %s", e)
                 await websocket.send_json({"type": "error", "text": str(e)})
 
-    except WebSocketDisconnect:
-        logger.info("Client disconnected")
+    except WebSocketDisconnect as e:
+        logger.info("Client disconnected (code=%s)", getattr(e, 'code', 'unknown'))
     except Exception as e:
-        logger.exception("WebSocket error: %s", e)
+        logger.exception("WebSocket exception: %s", e)
         try:
             await websocket.send_json({"type": "error", "text": "Internal error"})
             await websocket.close(1011)
@@ -334,6 +375,7 @@ class NoCacheStaticFiles(StaticFiles):
 
 routes = [
     Route("/health", health),
+    Route("/last-response", last_response),
     WebSocketRoute("/ws", ws_endpoint),
     Mount("/", NoCacheStaticFiles(directory=os.path.join(_HERE, "static"), html=True)),
 ]
