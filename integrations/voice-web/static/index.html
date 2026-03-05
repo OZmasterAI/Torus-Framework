@@ -471,7 +471,8 @@
       if (!token) return;
       var url = "/last-response?token=" + encodeURIComponent(token);
       var attempts = 0;
-      var maxAttempts = 60;
+      var maxAttempts = 90; // 2s * 90 = 180s max
+      var pendingText = null; // text seen on previous poll
       ttsPoller = setInterval(function() {
         attempts++;
         if (attempts > maxAttempts || !ttsEnabled) {
@@ -480,9 +481,16 @@
         }
         fetch(url).then(function(r) { return r.json(); }).then(function(data) {
           if (data.ok && data.text && data.text !== lastSpokenText) {
-            lastSpokenText = data.text;
-            stopTTSPoll();
-            speakText(data.text);
+            // Stability check: same text on 2 consecutive polls = done generating
+            if (data.text === pendingText) {
+              lastSpokenText = data.text;
+              stopTTSPoll();
+              speakText(data.text);
+            } else {
+              pendingText = data.text;
+            }
+          } else if (!data.text) {
+            pendingText = null; // reset if null (still generating)
           }
         }).catch(function() {});
       }, 2000);
