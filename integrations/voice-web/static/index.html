@@ -432,26 +432,42 @@
     function speakText(text) {
       if (!("speechSynthesis" in window) || !text) return;
       window.speechSynthesis.cancel();
-      var utter = new SpeechSynthesisUtterance(text);
-      if (selectedVoice) utter.voice = selectedVoice;
-      utter.lang = "en-US";
-      utter.rate = 1.0;
-      utter.onstart = function() {
-        isSpeaking = true;
-        document.getElementById("speaker-btn").classList.add("speaking");
-        document.getElementById("speaker-label").textContent = "Speaking...";
-      };
-      utter.onend = function() {
-        isSpeaking = false;
-        document.getElementById("speaker-btn").classList.remove("speaking");
-        document.getElementById("speaker-label").textContent = "Listen ON";
-      };
-      utter.onerror = function() {
-        isSpeaking = false;
-        document.getElementById("speaker-btn").classList.remove("speaking");
-        document.getElementById("speaker-label").textContent = "Listen ON";
-      };
-      window.speechSynthesis.speak(utter);
+      // iOS Safari silently drops long utterances — split into sentence chunks
+      var chunks = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+      var queue = [];
+      // Group sentences into ~200 char chunks
+      var buf = "";
+      for (var c = 0; c < chunks.length; c++) {
+        if (buf.length + chunks[c].length > 200 && buf) {
+          queue.push(buf.trim());
+          buf = "";
+        }
+        buf += chunks[c];
+      }
+      if (buf.trim()) queue.push(buf.trim());
+
+      var idx = 0;
+      function speakNext() {
+        if (idx >= queue.length || !ttsEnabled) {
+          isSpeaking = false;
+          document.getElementById("speaker-btn").classList.remove("speaking");
+          document.getElementById("speaker-label").textContent = "Listen ON";
+          return;
+        }
+        var utter = new SpeechSynthesisUtterance(queue[idx]);
+        if (selectedVoice) utter.voice = selectedVoice;
+        utter.lang = "en-US";
+        utter.rate = 1.0;
+        utter.onstart = function() {
+          isSpeaking = true;
+          document.getElementById("speaker-btn").classList.add("speaking");
+          document.getElementById("speaker-label").textContent = "Speaking...";
+        };
+        utter.onend = function() { idx++; speakNext(); };
+        utter.onerror = function() { idx++; speakNext(); };
+        window.speechSynthesis.speak(utter);
+      }
+      speakNext();
     }
 
     function startTTSPoll() {
