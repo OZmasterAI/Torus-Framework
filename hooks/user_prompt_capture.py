@@ -199,7 +199,9 @@ def main():
         "<user-prompt-submit-hook>RULE 5 REMINDER: Do not state counts, file paths, "
         "system state, or any factual claim from memory alone. If you have not verified "
         "it with a tool call (Glob, Grep, Read, search_knowledge, Bash) in this turn, "
-        "it is unverified. Call a tool first, then respond.</user-prompt-submit-hook>"
+        "it is unverified. Call a tool first, then respond. "
+        "RULE 8: Never push, deploy, delete, or take irreversible actions "
+        "beyond what was explicitly requested. Ask first.</user-prompt-submit-hook>"
     )
 
     # --- Auto-index URLs into LanceDB web_pages ---
