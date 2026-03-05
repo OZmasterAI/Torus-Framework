@@ -370,6 +370,56 @@
       }
     });
 
+    // --- TTS (Text-to-Speech) ---
+
+    function speakText(text) {
+      if (!("speechSynthesis" in window)) return;
+      window.speechSynthesis.cancel();
+      var utter = new SpeechSynthesisUtterance(text);
+      utter.lang = "en-US";
+      utter.rate = 1.0;
+      utter.onstart = function() {
+        isSpeaking = true;
+        document.getElementById("speaker-btn").classList.add("speaking");
+        document.getElementById("speaker-label").textContent = "Speaking...";
+      };
+      utter.onend = function() {
+        isSpeaking = false;
+        document.getElementById("speaker-btn").classList.remove("speaking");
+        document.getElementById("speaker-label").textContent = "Listen ON";
+      };
+      utter.onerror = function() {
+        isSpeaking = false;
+        document.getElementById("speaker-btn").classList.remove("speaking");
+        document.getElementById("speaker-label").textContent = "Listen ON";
+      };
+      window.speechSynthesis.speak(utter);
+    }
+
+    function toggleTTS() {
+      ttsEnabled = !ttsEnabled;
+      var btn = document.getElementById("speaker-btn");
+      var label = document.getElementById("speaker-label");
+      if (ttsEnabled) {
+        btn.classList.add("active");
+        label.textContent = "Listen ON";
+      } else {
+        btn.classList.remove("active", "speaking");
+        label.textContent = "Listen";
+        if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+        isSpeaking = false;
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "tts_toggle", enabled: ttsEnabled }));
+      }
+      log("TTS " + (ttsEnabled ? "ON" : "OFF"));
+    }
+
+    document.getElementById("speaker-btn").addEventListener("click", function(e) {
+      e.preventDefault();
+      toggleTTS();
+    });
+
     initSpeech();
 
     // Auto-connect only if stored token exists — single attempt, no loop
