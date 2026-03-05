@@ -10,7 +10,7 @@ Confidence signals checked:
 
 Exemptions:
   - Re-edits of files already in pending_verification (iteration, not new work)
-  - Test files (*test*, *spec*), config files (HANDOFF.md, LIVE_STATE.json,
+  - Test files (*test*, *spec*), config files (LIVE_STATE.json,
     CLAUDE.md, __init__.py), skills/ directory, and non-code files (.md, .json, .sh, etc.)
 
 Tier 2 (non-safety): gate crash = warn + continue, not block.

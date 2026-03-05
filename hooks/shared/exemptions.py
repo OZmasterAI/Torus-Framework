@@ -8,7 +8,7 @@ Three tiers, each building on the previous:
 
 import os
 
-BASE_EXEMPT_BASENAMES = {"state.json", "HANDOFF.md", "LIVE_STATE.json", "CLAUDE.md", "__init__.py"}
+BASE_EXEMPT_BASENAMES = {"state.json", "LIVE_STATE.json", "CLAUDE.md", "__init__.py"}
 BASE_EXEMPT_DIRS = [os.path.join(os.path.expanduser("~"), ".claude", "skills")]
 STANDARD_EXEMPT_PATTERNS = ("test_", "_test.", ".test.", "spec_", "_spec.", ".spec.")
 FULL_EXEMPT_EXTENSIONS = {

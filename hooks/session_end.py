@@ -11,8 +11,6 @@ Fail-open: always exits 0.
 import glob
 import json
 import os
-import re
-import shutil
 import subprocess
 import sys
 import time
@@ -24,7 +22,6 @@ from boot_pkg.util import detect_project, load_project_state, save_project_state
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
-HANDOFF_FILE = os.path.join(CLAUDE_DIR, "HANDOFF.md")
 ARCHIVE_DIR = os.path.join(CLAUDE_DIR, "archive")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 WRAPUP_RECENCY_SECONDS = 1800  # 30 minutes
@@ -103,29 +100,6 @@ def _read_last_assistant_message():
             continue
     return ""
 
-
-def _parse_handoff_sections(content):
-    """Parse HANDOFF.md into sections by ## headers.
-
-    Returns dict: {header_lower: content_str} e.g. {"what's next": "1. Fix..."}
-    Left as dead code — no longer called by generate_handoff.
-    """
-    sections = {}
-    current_header = None
-    current_lines = []
-    for line in content.splitlines():
-        if line.startswith("## "):
-            if current_header is not None:
-                sections[current_header] = "\n".join(current_lines).strip()
-            current_header = line[3:].strip().lower()
-            # Strip "(auto-generated)" suffix for matching
-            current_header = re.sub(r"\s*\(auto-generated\)\s*$", "", current_header)
-            current_lines = []
-        elif current_header is not None:
-            current_lines.append(line)
-    if current_header is not None:
-        sections[current_header] = "\n".join(current_lines).strip()
-    return sections
 
 
 def _format_duration(start_ts):
@@ -206,24 +180,6 @@ def _build_metrics_section(state):
 
     return "\n".join(lines)
 
-
-def _archive_handoff():
-    """Archive current HANDOFF.md if it exists.
-
-    Left as dead code — no longer called by generate_handoff.
-    """
-    if not os.path.exists(HANDOFF_FILE):
-        return
-    os.makedirs(ARCHIVE_DIR, exist_ok=True)
-    date_str = time.strftime("%Y-%m-%d")
-    archive_path = os.path.join(ARCHIVE_DIR, f"HANDOFF_{date_str}_auto.md")
-    # Avoid overwriting existing archive for today
-    if os.path.exists(archive_path):
-        archive_path = os.path.join(ARCHIVE_DIR, f"HANDOFF_{date_str}_auto_{int(time.time())}.md")
-    try:
-        shutil.copy2(HANDOFF_FILE, archive_path)
-    except OSError as e:
-        print(f"[SESSION_END] Archive failed (non-fatal): {e}", file=sys.stderr)
 
 
 def _extract_transcript_excerpt(transcript_path, max_turns=40):

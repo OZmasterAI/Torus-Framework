@@ -43,9 +43,9 @@ code, msg = _direct(_g04_check("Edit", {"file_path": "/tmp/app.py"},
 test("Edit after memory query → allowed", code == 0, msg)
 
 # Exempt files should pass without memory
-code, msg = _direct(_g04_check("Edit", {"file_path": f"{_HOME}/.claude/HANDOFF.md"},
+code, msg = _direct(_g04_check("Edit", {"file_path": f"{_HOME}/.claude/LIVE_STATE.json"},
                      {"memory_last_queried": 0, "files_read": []}))
-test("Edit HANDOFF.md without memory → allowed", code == 0, msg)
+test("Edit LIVE_STATE.json without memory → allowed", code == 0, msg)
 
 # Read-only subagent exemption: researcher/Explore skip Gate 4
 code, msg = _direct(_g04_check("Task", {"subagent_type": "researcher", "model": "sonnet", "description": "research"},
@@ -72,19 +72,19 @@ try:
 except FileNotFoundError:
     pass
 _st_g4ex = {"memory_last_queried": time.time(), "files_read": [], "gate4_exemptions": {}}
-_direct(_g04_check("Edit", {"file_path": f"{_HOME}/.claude/HANDOFF.md"}, _st_g4ex))
+_direct(_g04_check("Edit", {"file_path": f"{_HOME}/.claude/LIVE_STATE.json"}, _st_g4ex))
 _g4_exemptions = _st_g4ex.get("gate4_exemptions", {})
-test("Gate 4 tracks exemption for HANDOFF.md",
-     "HANDOFF.md" in _g4_exemptions,
-     f"Expected HANDOFF.md in exemptions, got keys={list(_g4_exemptions.keys())}")
+test("Gate 4 tracks exemption for LIVE_STATE.json",
+     "LIVE_STATE.json" in _g4_exemptions,
+     f"Expected LIVE_STATE.json in exemptions, got keys={list(_g4_exemptions.keys())}")
 
 # Test 10: Gate 4 exemption count increments
-_direct(_g04_check("Edit", {"file_path": f"{_HOME}/.claude/HANDOFF.md"}, _st_g4ex))
+_direct(_g04_check("Edit", {"file_path": f"{_HOME}/.claude/LIVE_STATE.json"}, _st_g4ex))
 _g4_exemptions2 = _st_g4ex.get("gate4_exemptions", {})
-_g4_handoff_count = _g4_exemptions2.get("HANDOFF.md", 0)
+_g4_livestate_count = _g4_exemptions2.get("LIVE_STATE.json", 0)
 test("Gate 4 exemption count increments",
-     _g4_handoff_count >= 2,
-     f"Expected >=2, got {_g4_handoff_count}")
+     _g4_livestate_count >= 2,
+     f"Expected >=2, got {_g4_livestate_count}")
 
 # Test 11: Gate 4 non-exempt file does not create exemption entry
 try:
@@ -100,9 +100,9 @@ test("Gate 4 non-exempt file has no exemption entry",
 
 # Test 12: Gate 4 exempt basenames includes expected files (via shared.exemptions)
 from shared.exemptions import BASE_EXEMPT_BASENAMES as G4_EXEMPT
-test("Gate 4 EXEMPT_BASENAMES includes HANDOFF.md and CLAUDE.md",
-     "HANDOFF.md" in G4_EXEMPT and "CLAUDE.md" in G4_EXEMPT,
-     f"Expected HANDOFF.md and CLAUDE.md in exemptions, got {G4_EXEMPT}")
+test("Gate 4 EXEMPT_BASENAMES includes LIVE_STATE.json and CLAUDE.md",
+     "LIVE_STATE.json" in G4_EXEMPT and "CLAUDE.md" in G4_EXEMPT,
+     f"Expected LIVE_STATE.json and CLAUDE.md in exemptions, got {G4_EXEMPT}")
 
 cleanup_test_states()
 
@@ -889,7 +889,7 @@ _g14_state4["session_test_baseline"] = False
 _g14_state4["memory_last_queried"] = 0
 for _exempt_file, _exempt_label in [
     ("test_something.py", "test file"),
-    ("HANDOFF.md", "HANDOFF.md"),
+    ("LIVE_STATE.json", "LIVE_STATE.json"),
     ("__init__.py", "__init__.py"),
     ("/home/user/.claude/skills/research/SKILL.md", "skills/ dir"),
 ]:

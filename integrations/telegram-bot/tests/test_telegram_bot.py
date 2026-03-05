@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(_PLUGIN_DIR, "hooks"))
 # --- TestFormatHtml ---
 
 class TestFormatHtml(unittest.TestCase):
-    """Test HANDOFF.md -> Telegram HTML conversion."""
+    """Test session summary -> Telegram HTML conversion."""
 
     def setUp(self):
         from on_session_end import _format_html

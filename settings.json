@@ -1,6 +1,6 @@
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
   },
   "permissions": {
     "allow": [
@@ -226,6 +226,7 @@
     "skill-creator@claude-plugins-official": false,
     "code-simplifier@claude-plugins-official": false
   },
+  "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "disabled_hooks": {
     "TeammateIdle": [
@@ -265,6 +266,5 @@
     "Model cost — haiku for search, sonnet for work, opus for complex",
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
-  ],
-  "autoMemoryEnabled": false
+  ]
 }

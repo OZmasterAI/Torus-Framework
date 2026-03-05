@@ -22,7 +22,7 @@ memory check → plan → tests first → build → prove it → track → ship
 7. **Gate awareness** — Gates enforce Edit/Write/Bash/Task automatically. Read/Glob/Grep are ungated — self-enforce rule 5.
 
 ## SESSION START (Non-Negotiable)
-1. Read HANDOFF.md & LIVE_STATE.json
+1. Read LIVE_STATE.json
 2. Previous state → present summary, ask "Continue" or "New task"
 3. New → archive handoff, reset state | Continue → pick up from "What's Next"
 4. User's current instructions ALWAYS override handoff state

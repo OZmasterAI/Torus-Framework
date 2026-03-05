@@ -192,6 +192,16 @@ def main():
             "before the session ends.</session_ending>"
         )
 
+    # --- Rule 5 enforcement: verify before asserting ---
+    # Always remind Claude to use tools for factual claims.
+    # This fires on every prompt — stdout tags become part of Claude's context.
+    print(
+        "<user-prompt-submit-hook>RULE 5 REMINDER: Do not state counts, file paths, "
+        "system state, or any factual claim from memory alone. If you have not verified "
+        "it with a tool call (Glob, Grep, Read, search_knowledge, Bash) in this turn, "
+        "it is unverified. Call a tool first, then respond.</user-prompt-submit-hook>"
+    )
+
     # --- Auto-index URLs into LanceDB web_pages ---
 
     try:
