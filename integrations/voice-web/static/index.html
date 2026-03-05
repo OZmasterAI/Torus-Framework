@@ -412,6 +412,13 @@
       if (ttsEnabled) {
         btn.classList.add("active");
         label.textContent = "Listen ON";
+        // Prime speechSynthesis with a silent utterance — iOS Safari requires
+        // the first speak() call to come from a user gesture (tap/click)
+        if ("speechSynthesis" in window) {
+          var prime = new SpeechSynthesisUtterance("");
+          prime.volume = 0;
+          window.speechSynthesis.speak(prime);
+        }
       } else {
         btn.classList.remove("active", "speaking");
         label.textContent = "Listen";
