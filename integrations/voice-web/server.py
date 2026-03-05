@@ -232,30 +232,8 @@ async def health(request):
     })
 
 
-_last_seen_brewed = ""
-
-
-def _pane_is_done(pane_text):
-    """Check if Claude is done by looking for ✻ Brewed/Cogitated marker.
-
-    These markers ONLY appear when Claude has fully finished responding.
-    Track last seen marker to detect NEW completions.
-    """
-    global _last_seen_brewed
-    for line in pane_text.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("✻") and ("Brewed" in stripped or "Cogitated" in stripped):
-            if stripped != _last_seen_brewed:
-                _last_seen_brewed = stripped
-                return True
-    return False
-
-
 async def last_response(request):
     """Extract Claude's last response from tmux pane for TTS.
-
-    Only returns text when the tmux pane shows an idle ❯ prompt at the bottom,
-    meaning Claude is completely done generating.
 
     Query params:
       token — auth token (required)
@@ -268,9 +246,6 @@ async def last_response(request):
     tmux_target = CONFIG.get("tmux_target", "claude-bot")
     try:
         pane = await capture_tmux_pane(tmux_target)
-        # Only extract when Claude is done (✻ Brewed/Cogitated marker)
-        if not _pane_is_done(pane):
-            return JSONResponse({"ok": True, "text": None})
         text = extract_last_response(pane)
         return JSONResponse({"ok": True, "text": text})
     except TmuxError as e:
