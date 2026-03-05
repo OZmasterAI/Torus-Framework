@@ -232,13 +232,22 @@ async def health(request):
     })
 
 
+# Stability tracking: only return text when tmux pane unchanged for 4s
+_last_pane = ""
+_last_pane_ts = 0.0
+
+
 async def last_response(request):
     """Extract Claude's last response from tmux pane for TTS.
+
+    Only returns text when tmux pane has been stable for 4+ seconds.
 
     Query params:
       token — auth token (required)
     Returns: {"text": "...", "ok": true} or {"text": null, "ok": true} if still generating.
     """
+    global _last_pane, _last_pane_ts
+
     token = request.query_params.get("token", "")
     if token != CONFIG["auth_token"]:
         return JSONResponse({"ok": False, "error": "Invalid token"}, status_code=401)
@@ -246,8 +255,18 @@ async def last_response(request):
     tmux_target = CONFIG.get("tmux_target", "claude-bot")
     try:
         pane = await capture_tmux_pane(tmux_target)
-        text = extract_last_response(pane)
-        return JSONResponse({"ok": True, "text": text})
+        now = time.time()
+
+        if pane != _last_pane:
+            _last_pane = pane
+            _last_pane_ts = now
+            return JSONResponse({"ok": True, "text": None})
+
+        if (now - _last_pane_ts) >= 4.0:
+            text = extract_last_response(pane)
+            return JSONResponse({"ok": True, "text": text})
+
+        return JSONResponse({"ok": True, "text": None})
     except TmuxError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
