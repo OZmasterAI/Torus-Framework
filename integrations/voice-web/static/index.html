@@ -388,70 +388,80 @@
       }
     });
 
-    // --- TTS (Text-to-Speech) via speechSynthesis ---
+    // --- TTS (Text-to-Speech) via server-side edge-tts ---
+
+    var ttsAudio = new Audio();
 
     function loadVoices() {
-      if (!("speechSynthesis" in window)) return;
-      var voices = window.speechSynthesis.getVoices();
-      if (!voices.length) return;
-      var sel = document.getElementById("voice-select");
-      var saved = localStorage.getItem(VOICE_KEY) || "";
-      sel.innerHTML = "";
-      var enVoices = voices.filter(function(v) { return v.lang.startsWith("en"); });
-      if (!enVoices.length) enVoices = voices;
-      enVoices.forEach(function(v) {
-        var opt = document.createElement("option");
-        opt.value = v.name;
-        opt.textContent = v.name + (v.localService ? "" : " (network)");
-        if (v.name === saved) { opt.selected = true; selectedVoice = v; }
-        sel.appendChild(opt);
-      });
-      if (!selectedVoice && enVoices.length) selectedVoice = enVoices[0];
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      fetch("/tts/voices?token=" + encodeURIComponent(token))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.ok || !data.voices) return;
+          var sel = document.getElementById("voice-select");
+          var saved = localStorage.getItem(VOICE_KEY) || "en-US-GuyNeural";
+          sel.innerHTML = "";
+          data.voices.forEach(function(v) {
+            var opt = document.createElement("option");
+            opt.value = v.name;
+            opt.textContent = v.name + " (" + v.gender + ")";
+            if (v.name === saved) opt.selected = true;
+            sel.appendChild(opt);
+          });
+          selectedVoice = saved;
+        }).catch(function() {});
     }
 
-    if ("speechSynthesis" in window) {
-      loadVoices();
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-    }
+    loadVoices();
 
     document.getElementById("voice-select").addEventListener("change", function() {
-      var name = this.value;
-      localStorage.setItem(VOICE_KEY, name);
-      var voices = window.speechSynthesis.getVoices();
-      selectedVoice = voices.find(function(v) { return v.name === name; }) || null;
-      if (selectedVoice) {
-        window.speechSynthesis.cancel();
-        var preview = new SpeechSynthesisUtterance("Voice selected");
-        preview.voice = selectedVoice;
-        window.speechSynthesis.speak(preview);
-      }
+      selectedVoice = this.value;
+      localStorage.setItem(VOICE_KEY, selectedVoice);
+      speakText("Voice selected");
     });
 
-    var currentUtterance = null;
-
     function speakText(text) {
-      if (!("speechSynthesis" in window) || !text) return;
-      window.speechSynthesis.cancel();
-      currentUtterance = new SpeechSynthesisUtterance(text);
-      if (selectedVoice) currentUtterance.voice = selectedVoice;
-      currentUtterance.lang = "en-US";
-      currentUtterance.rate = 1.0;
-      currentUtterance.onstart = function() {
-        isSpeaking = true;
-        document.getElementById("speaker-btn").classList.add("speaking");
-        document.getElementById("speaker-label").textContent = "Speaking...";
-      };
-      currentUtterance.onend = function() {
+      if (!text) return;
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      ttsAudio.pause();
+      isSpeaking = true;
+      document.getElementById("speaker-btn").classList.add("speaking");
+      document.getElementById("speaker-label").textContent = "Generating...";
+
+      var voice = selectedVoice || "en-US-GuyNeural";
+      fetch("/tts?token=" + encodeURIComponent(token) + "&voice=" + encodeURIComponent(voice), {
+        method: "POST",
+        body: text,
+      }).then(function(r) {
+        if (!r.ok) throw new Error("TTS failed");
+        return r.blob();
+      }).then(function(blob) {
+        var url = URL.createObjectURL(blob);
+        ttsAudio.src = url;
+        ttsAudio.onplay = function() {
+          document.getElementById("speaker-label").textContent = "Speaking...";
+        };
+        ttsAudio.onended = function() {
+          isSpeaking = false;
+          document.getElementById("speaker-btn").classList.remove("speaking");
+          document.getElementById("speaker-label").textContent = "Listen ON";
+          URL.revokeObjectURL(url);
+        };
+        ttsAudio.onerror = function() {
+          isSpeaking = false;
+          document.getElementById("speaker-btn").classList.remove("speaking");
+          document.getElementById("speaker-label").textContent = "Listen ON";
+          URL.revokeObjectURL(url);
+        };
+        ttsAudio.play();
+      }).catch(function(err) {
+        log("TTS error: " + err);
         isSpeaking = false;
         document.getElementById("speaker-btn").classList.remove("speaking");
         document.getElementById("speaker-label").textContent = "Listen ON";
-      };
-      currentUtterance.onerror = function() {
-        isSpeaking = false;
-        document.getElementById("speaker-btn").classList.remove("speaking");
-        document.getElementById("speaker-label").textContent = "Listen ON";
-      };
-      window.speechSynthesis.speak(currentUtterance);
+      });
     }
 
     function startTTSPoll() {
@@ -489,16 +499,11 @@
       if (ttsEnabled) {
         btn.classList.add("active");
         label.textContent = "Listen ON";
-        if ("speechSynthesis" in window) {
-          var prime = new SpeechSynthesisUtterance("");
-          prime.volume = 0;
-          window.speechSynthesis.speak(prime);
-        }
       } else {
         btn.classList.remove("active", "speaking");
         label.textContent = "Listen";
         stopTTSPoll();
-        if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+        ttsAudio.pause();
         isSpeaking = false;
       }
       log("TTS " + (ttsEnabled ? "ON" : "OFF"));
