@@ -388,9 +388,9 @@
       }
     });
 
-    // --- TTS (Text-to-Speech) via server-side edge-tts ---
+    // --- TTS (Text-to-Speech) via server-side edge-tts + Web Audio API ---
 
-    var ttsAudio = new Audio();
+    var audioCtx = null; // created on user gesture, stays unlocked forever
 
     function loadVoices() {
       var token = localStorage.getItem(TOKEN_KEY);
@@ -421,11 +421,14 @@
       speakText("Voice selected");
     });
 
+    var currentSource = null;
+
     function speakText(text) {
-      if (!text) return;
+      if (!text || !audioCtx) return;
       var token = localStorage.getItem(TOKEN_KEY);
       if (!token) return;
-      ttsAudio.pause();
+      // Stop any current playback
+      if (currentSource) { try { currentSource.stop(); } catch(e) {} }
       isSpeaking = true;
       document.getElementById("speaker-btn").classList.add("speaking");
       document.getElementById("speaker-label").textContent = "Generating...";
@@ -436,26 +439,22 @@
         body: text,
       }).then(function(r) {
         if (!r.ok) throw new Error("TTS failed");
-        return r.blob();
-      }).then(function(blob) {
-        var url = URL.createObjectURL(blob);
-        ttsAudio.src = url;
-        ttsAudio.onplay = function() {
-          document.getElementById("speaker-label").textContent = "Speaking...";
-        };
-        ttsAudio.onended = function() {
+        return r.arrayBuffer();
+      }).then(function(data) {
+        return audioCtx.decodeAudioData(data);
+      }).then(function(buffer) {
+        var source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.onended = function() {
           isSpeaking = false;
+          currentSource = null;
           document.getElementById("speaker-btn").classList.remove("speaking");
           document.getElementById("speaker-label").textContent = "Listen ON";
-          URL.revokeObjectURL(url);
         };
-        ttsAudio.onerror = function() {
-          isSpeaking = false;
-          document.getElementById("speaker-btn").classList.remove("speaking");
-          document.getElementById("speaker-label").textContent = "Listen ON";
-          URL.revokeObjectURL(url);
-        };
-        ttsAudio.play();
+        currentSource = source;
+        document.getElementById("speaker-label").textContent = "Speaking...";
+        source.start(0);
       }).catch(function(err) {
         log("TTS error: " + err);
         isSpeaking = false;
@@ -499,12 +498,16 @@
       if (ttsEnabled) {
         btn.classList.add("active");
         label.textContent = "Listen ON";
-        unlockAudio(); // unlock audio playback from user gesture
+        // Create AudioContext from user gesture — unlocked forever on iOS
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === "suspended") audioCtx.resume();
       } else {
         btn.classList.remove("active", "speaking");
         label.textContent = "Listen";
         stopTTSPoll();
-        ttsAudio.pause();
+        if (currentSource) { try { currentSource.stop(); } catch(e) {} }
         isSpeaking = false;
       }
       log("TTS " + (ttsEnabled ? "ON" : "OFF"));
