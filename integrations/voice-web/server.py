@@ -233,12 +233,14 @@ async def health(request):
 
 
 def _pane_has_idle_prompt(pane_text):
-    """Check if the last non-empty line is an idle ❯ prompt (Claude done)."""
-    lines = pane_text.strip().split("\n")
-    for i in range(len(lines) - 1, -1, -1):
-        stripped = lines[i].strip()
-        if stripped:
-            return stripped == "❯" or (stripped.startswith("❯") and len(stripped) <= 2)
+    """Check if there's a bare ❯ prompt in the pane (Claude done and idle).
+
+    The ❯ prompt is NOT the last line — status bar lines appear below it.
+    Scan last 20 lines for a line that is just ❯.
+    """
+    for line in pane_text.split("\n")[-20:]:
+        if line.strip() == "❯":
+            return True
     return False
 
 
