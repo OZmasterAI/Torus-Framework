@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, Response
@@ -231,13 +232,24 @@ async def health(request):
     })
 
 
+# Server-side stability tracking for /last-response
+_last_pane_content = ""
+_last_pane_time = 0.0
+_stable_text = None  # only set when pane content unchanged for 4+ seconds
+
+
 async def last_response(request):
     """Extract Claude's last response from tmux pane for TTS.
+
+    Returns text only when tmux pane has been stable (unchanged) for 4+ seconds,
+    meaning Claude is done generating.
 
     Query params:
       token — auth token (required)
     Returns: {"text": "...", "ok": true} or {"text": null, "ok": true} if still generating.
     """
+    global _last_pane_content, _last_pane_time, _stable_text
+
     token = request.query_params.get("token", "")
     if token != CONFIG["auth_token"]:
         return JSONResponse({"ok": False, "error": "Invalid token"}, status_code=401)
@@ -245,8 +257,22 @@ async def last_response(request):
     tmux_target = CONFIG.get("tmux_target", "claude-bot")
     try:
         pane = await capture_tmux_pane(tmux_target)
-        text = extract_last_response(pane)
-        return JSONResponse({"ok": True, "text": text})
+        now = time.time()
+
+        if pane != _last_pane_content:
+            # Content changed — reset stability timer
+            _last_pane_content = pane
+            _last_pane_time = now
+            _stable_text = None
+            return JSONResponse({"ok": True, "text": None})
+
+        # Content unchanged — check if stable for 4+ seconds
+        if (now - _last_pane_time) >= 4.0:
+            if _stable_text is None:
+                _stable_text = extract_last_response(pane)
+            return JSONResponse({"ok": True, "text": _stable_text})
+
+        return JSONResponse({"ok": True, "text": None})
     except TmuxError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
