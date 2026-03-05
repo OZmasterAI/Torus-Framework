@@ -55,7 +55,7 @@
       width: 120px; height: 120px; border-radius: 50%; border: 3px solid var(--accent);
       background: var(--surface); color: var(--text); display: flex;
       flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-      cursor: pointer; transition: all 0.2s; flex-shrink: 0; margin-top: 20px;
+      cursor: pointer; transition: all 0.2s; flex-shrink: 0;
       -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
     }
     #mic-btn span { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -65,6 +65,24 @@
     }
     #mic-btn.listening svg { animation: pulse 0.8s infinite; }
     #mic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-row { display: flex; gap: 24px; align-items: center; margin-top: 20px; }
+    #speaker-btn {
+      width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--accent);
+      background: var(--surface); color: var(--text); display: flex;
+      flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+      cursor: pointer; transition: all 0.2s; flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+    }
+    #speaker-btn span { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    #speaker-btn.active {
+      border-color: var(--success); background: rgba(46,204,113,0.15);
+      color: var(--success); box-shadow: 0 0 20px rgba(46,204,113,0.3);
+    }
+    #speaker-btn.speaking {
+      border-color: var(--success); background: rgba(46,204,113,0.25);
+      color: var(--success); box-shadow: 0 0 30px rgba(46,204,113,0.4);
+    }
+    #speaker-btn.speaking svg { animation: pulse 0.8s infinite; }
     #transcript {
       width: 100%; padding: 10px 12px; border: 2px solid var(--surface2);
       border-radius: var(--radius); background: var(--surface); color: var(--text);
@@ -100,12 +118,20 @@
         <span class="title">Torus</span>
         <span id="status-dot" class="dot dot-connecting"></span>
       </div>
-      <button id="mic-btn" aria-label="Tap to speak">
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
-          <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
-        </svg>
-        <span id="mic-label">Tap to speak</span>
-      </button>
+      <div class="btn-row">
+        <button id="mic-btn" aria-label="Tap to speak">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+            <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+          </svg>
+          <span id="mic-label">Tap to speak</span>
+        </button>
+        <button id="speaker-btn" aria-label="Toggle listen mode">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+          </svg>
+          <span id="speaker-label">Listen</span>
+        </button>
+      </div>
       <textarea id="transcript" rows="3" placeholder="Transcript appears here..."></textarea>
       <button id="send-btn">Send</button>
       <div id="flash" class="flash" hidden></div>
@@ -138,6 +164,8 @@
     var reconnectDelay = 1000;
     var reconnectTimer = null;
     var maxReconnectDelay = 30000;
+    var ttsEnabled = false;
+    var isSpeaking = false;
 
     function log(msg) {
       dbg.textContent = msg;
@@ -185,6 +213,10 @@
           }
         } else if (data.type === "sent") {
           showFlash("Sent!");
+        } else if (data.type === "response") {
+          if (ttsEnabled && data.text) {
+            speakText(data.text);
+          }
         } else if (data.type === "error") {
           if (data.text === "Invalid token" || data.text === "Auth timeout") {
             localStorage.removeItem(TOKEN_KEY);

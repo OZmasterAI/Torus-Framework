@@ -2,13 +2,14 @@
 """Torus Voice — WebSocket server bridging iPad speech to Claude via tmux.
 
 Fire-and-forget: sends transcribed text to tmux, confirms delivery.
-User reads Claude's response in the terminal directly.
+Optional TTS mode: polls tmux for Claude's response and sends it back.
 """
 
 import asyncio
 import json
 import logging
 import os
+import re
 import sys
 
 from starlette.applications import Starlette
@@ -53,6 +54,126 @@ async def send_to_tmux(message, target="claude-bot"):
     if not await is_tmux_session_alive(target):
         raise TmuxError(f"tmux target '{target}' not found")
     await _send_keys(target, message)
+
+
+async def capture_tmux_pane(target, lines=200):
+    """Capture tmux pane content."""
+    rc, stdout, stderr = await _run([
+        "tmux", "capture-pane", "-t", target, "-p", "-S", f"-{lines}",
+    ])
+    if rc != 0:
+        raise TmuxError(f"capture-pane failed: {stderr[:200]}")
+    return stdout
+
+
+def extract_last_response(pane_text):
+    """Extract Claude's last response from tmux pane output.
+
+    Claude responses start with ● (bullet). Tool calls, spinners, and
+    intermediate output use different markers (·, ⎿, etc.) and are skipped.
+    The idle prompt ❯ at the end indicates Claude is done.
+    """
+    lines = pane_text.split("\n")
+
+    # Find the last idle prompt (❯) — means Claude is done
+    last_prompt_idx = -1
+    for i in range(len(lines) - 1, -1, -1):
+        stripped = lines[i].strip()
+        if stripped.startswith("❯") or stripped == "❯":
+            last_prompt_idx = i
+            break
+
+    if last_prompt_idx < 0:
+        return None  # Claude still generating
+
+    # Walk backwards from the prompt to find response blocks (● lines)
+    # Stop at the previous ❯ (user input) or start of pane
+    response_lines = []
+    prev_prompt_idx = -1
+    for i in range(last_prompt_idx - 1, -1, -1):
+        stripped = lines[i].strip()
+        if stripped.startswith("❯") or stripped == "❯":
+            prev_prompt_idx = i
+            break
+
+    if prev_prompt_idx < 0:
+        return None
+
+    # Collect ● blocks between previous prompt and current prompt
+    in_response = False
+    for i in range(prev_prompt_idx + 1, last_prompt_idx):
+        stripped = lines[i].strip()
+        # Skip empty lines between blocks
+        if not stripped:
+            if in_response:
+                response_lines.append("")
+            continue
+        # Claude response lines start with ● or are continuation (indented text)
+        if stripped.startswith("●"):
+            in_response = True
+            # Remove the ● prefix
+            response_lines.append(stripped[1:].strip())
+        elif in_response and not stripped.startswith(("⎿", "·", "╭", "╰", "│")):
+            # Continuation of response text (not tool output)
+            response_lines.append(stripped)
+        else:
+            # Tool call output, skip but don't end response collection
+            # (response may continue after tool calls)
+            if stripped.startswith("●"):
+                in_response = True
+                response_lines.append(stripped[1:].strip())
+            else:
+                in_response = False
+
+    if not response_lines:
+        return None
+
+    # Clean up: strip trailing empty lines, join
+    while response_lines and not response_lines[-1]:
+        response_lines.pop()
+    while response_lines and not response_lines[0]:
+        response_lines.pop(0)
+
+    text = "\n".join(response_lines).strip()
+    # Remove markdown formatting that doesn't speak well
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)  # bold
+    text = re.sub(r'\*(.+?)\*', r'\1', text)  # italic
+    text = re.sub(r'`(.+?)`', r'\1', text)  # inline code
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # headers
+    text = re.sub(r'^[-*]\s+', '', text, flags=re.MULTILINE)  # bullets
+    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)  # numbered lists
+    text = re.sub(r'```[\s\S]*?```', '', text)  # code blocks
+    text = re.sub(r'---+', '', text)  # horizontal rules
+    text = re.sub(r'\n{3,}', '\n\n', text)  # collapse whitespace
+    return text.strip() if text.strip() else None
+
+
+async def poll_for_response(websocket, target, timeout=120):
+    """Poll tmux until Claude finishes responding, then send the response back."""
+    poll_interval = 2.0  # seconds between polls
+    elapsed = 0.0
+    last_content = ""
+
+    while elapsed < timeout:
+        await asyncio.sleep(poll_interval)
+        elapsed += poll_interval
+
+        try:
+            pane = await capture_tmux_pane(target)
+        except TmuxError:
+            break
+
+        # Check if content is still changing (Claude still generating)
+        if pane == last_content and last_content:
+            # Content stabilized — try to extract response
+            response = extract_last_response(pane)
+            if response:
+                await websocket.send_json({"type": "response", "text": response})
+                logger.info("TTS response sent (%d chars)", len(response))
+                return
+        last_content = pane
+
+    logger.warning("TTS poll timed out after %.0fs", elapsed)
 
 
 logging.basicConfig(
@@ -127,14 +248,22 @@ async def ws_endpoint(websocket: WebSocket):
 
     logger.info("Client authenticated via WebSocket")
 
-    # --- Message loop (fire-and-forget) ---
+    # --- Message loop ---
     tmux_target = CONFIG.get("tmux_target", "claude-bot")
     max_len = CONFIG.get("max_message_length", 4000)
+    response_timeout = CONFIG.get("response_timeout", 120)
+    tts_enabled = False
+    poll_task = None
 
     try:
         while True:
             raw = await websocket.receive_json()
             msg_type = raw.get("type")
+
+            if msg_type == "tts_toggle":
+                tts_enabled = bool(raw.get("enabled", False))
+                logger.info("TTS %s", "enabled" if tts_enabled else "disabled")
+                continue
 
             if msg_type != "message":
                 continue
@@ -153,10 +282,20 @@ async def ws_endpoint(websocket: WebSocket):
 
             logger.info("Received message: %s", text[:80])
 
+            # Cancel any in-flight TTS poll
+            if poll_task and not poll_task.done():
+                poll_task.cancel()
+
             try:
                 await send_to_tmux(text, target=tmux_target)
                 await websocket.send_json({"type": "sent", "text": "Sent!"})
                 logger.info("Sent to tmux: %s", text[:80])
+
+                # Start polling for response if TTS is enabled
+                if tts_enabled:
+                    poll_task = asyncio.create_task(
+                        poll_for_response(websocket, tmux_target, timeout=response_timeout)
+                    )
             except TmuxError as e:
                 logger.error("Tmux error: %s", e)
                 await websocket.send_json({"type": "error", "text": str(e)})
@@ -170,6 +309,9 @@ async def ws_endpoint(websocket: WebSocket):
             await websocket.close(1011)
         except Exception:
             pass
+    finally:
+        if poll_task and not poll_task.done():
+            poll_task.cancel()
 
 
 # --- No-cache static files ---
