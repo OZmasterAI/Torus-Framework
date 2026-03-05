@@ -135,6 +135,9 @@
     var hasSpeechAPI = "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
     var sendOffset = 0;
     var dbg = document.getElementById("debug");
+    var reconnectDelay = 1000;
+    var reconnectTimer = null;
+    var maxReconnectDelay = 30000;
 
     function log(msg) {
       dbg.textContent = msg;
@@ -172,6 +175,7 @@
         log("msg: " + data.type + " " + (data.text||""));
 
         if (data.type === "status" && data.text === "authenticated") {
+          reconnectDelay = 1000; // reset backoff on success
           document.getElementById("status-dot").className = "dot dot-connected";
           document.getElementById("auth-screen").hidden = true;
           document.getElementById("voice-screen").hidden = false;
@@ -197,12 +201,41 @@
       ws.onclose = function(evt) {
         log("ws closed: " + evt.code);
         document.getElementById("status-dot").className = "dot dot-error";
+        // Auth rejection — don't reconnect
+        if (evt.code === 1008) {
+          localStorage.removeItem(TOKEN_KEY);
+          document.getElementById("auth-error").textContent = "Invalid token";
+          document.getElementById("auth-error").hidden = false;
+          document.getElementById("auth-screen").hidden = false;
+          document.getElementById("voice-screen").hidden = true;
+          return;
+        }
+        // Auto-reconnect with exponential backoff
+        scheduleReconnect();
       };
 
       ws.onerror = function() {
         log("ws error");
         document.getElementById("status-dot").className = "dot dot-error";
       };
+    }
+
+    function scheduleReconnect() {
+      if (reconnectTimer) return;
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      log("reconnect in " + (reconnectDelay/1000) + "s");
+      document.getElementById("status-dot").className = "dot dot-connecting";
+      reconnectTimer = setTimeout(function() {
+        reconnectTimer = null;
+        var token = localStorage.getItem(TOKEN_KEY);
+        if (token) {
+          log("reconnecting...");
+          connectWS(token);
+        }
+        // Exponential backoff: 1s, 2s, 4s, 8s... max 30s
+        reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
+      }, reconnectDelay);
     }
 
     function showFlash(text, isError) {
