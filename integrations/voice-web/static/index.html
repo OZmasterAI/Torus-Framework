@@ -447,7 +447,10 @@
       if (buf.trim()) queue.push(buf.trim());
 
       var idx = 0;
+      var watchdog = null;
+      function clearWatchdog() { if (watchdog) { clearInterval(watchdog); watchdog = null; } }
       function speakNext() {
+        clearWatchdog();
         if (idx >= queue.length || !ttsEnabled) {
           isSpeaking = false;
           document.getElementById("speaker-btn").classList.remove("speaking");
@@ -466,6 +469,18 @@
         utter.onend = function() { idx++; speakNext(); };
         utter.onerror = function() { idx++; speakNext(); };
         window.speechSynthesis.speak(utter);
+        // iOS Safari workaround: speechSynthesis pauses/stalls between chunks
+        // Resume periodically to keep it alive, force-advance if stuck
+        watchdog = setInterval(function() {
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
+          if (!window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+            clearWatchdog();
+            idx++;
+            speakNext();
+          }
+        }, 500);
       }
       speakNext();
     }
