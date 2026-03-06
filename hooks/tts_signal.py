@@ -24,6 +24,7 @@ import sys
 import time
 
 SIGNAL_FILE = "/tmp/voice-tts-signal.json"
+PENDING_FILE = "/tmp/voice-tts-pending"
 
 
 def _strip_markdown(text):
@@ -54,9 +55,19 @@ def main():
     except (json.JSONDecodeError, ValueError):
         data = {}
 
+    # Only write signal if voice-web sent a message (pending marker exists)
+    if not os.path.exists(PENDING_FILE):
+        sys.exit(0)
+
     message = (data.get("last_assistant_message") or "").strip()
     if not message:
         sys.exit(0)
+
+    # Consume the pending marker
+    try:
+        os.unlink(PENDING_FILE)
+    except OSError:
+        pass
 
     cleaned = _strip_markdown(message)
     if not cleaned:

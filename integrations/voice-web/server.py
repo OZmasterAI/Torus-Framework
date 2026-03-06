@@ -52,10 +52,19 @@ async def _send_keys(target, text):
         raise TmuxError(f"send-keys Enter failed: {stderr2[:200]}")
 
 
+PENDING_FILE = "/tmp/voice-tts-pending"
+
+
 async def send_to_tmux(message, target="claude-bot"):
     """Send message to tmux pane — fire and forget, no response polling."""
     if not await is_tmux_session_alive(target):
         raise TmuxError(f"tmux target '{target}' not found")
+    # Signal that a voice message was sent — tts_signal.py checks for this
+    try:
+        with open(PENDING_FILE, "w") as f:
+            f.write(message[:200])
+    except OSError:
+        pass
     await _send_keys(target, message)
 
 
