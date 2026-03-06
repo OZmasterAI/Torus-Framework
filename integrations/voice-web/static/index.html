@@ -193,8 +193,12 @@
     var ttsPoller = null;
     var lastSpokenText = "";
     var selectedVoice = null;
-    var VOICE_KEY = "torus_voice_name";
+    var VOICE_KEY_PREFIX = "torus_voice_";
     var currentTarget = null;
+
+    function voiceKeyFor(target) {
+      return VOICE_KEY_PREFIX + (target || "default");
+    }
 
     function log(msg) {
       dbg.textContent = msg;
@@ -243,6 +247,15 @@
       tabs.forEach(function(t) {
         t.classList.toggle("active", t.textContent === name);
       });
+      // Load per-session voice
+      var saved = localStorage.getItem(voiceKeyFor(name)) || "en-US-GuyNeural";
+      selectedVoice = saved;
+      var sel = document.getElementById("voice-select");
+      if (sel.options.length > 0) {
+        for (var i = 0; i < sel.options.length; i++) {
+          sel.options[i].selected = (sel.options[i].value === saved);
+        }
+      }
       log("session: " + name);
     }
 
@@ -450,7 +463,7 @@
         .then(function(data) {
           if (!data.ok || !data.voices) return;
           var sel = document.getElementById("voice-select");
-          var saved = localStorage.getItem(VOICE_KEY) || "en-US-GuyNeural";
+          var saved = localStorage.getItem(voiceKeyFor(currentTarget)) || "en-US-GuyNeural";
           sel.innerHTML = "";
           data.voices.forEach(function(v) {
             var opt = document.createElement("option");
@@ -467,7 +480,7 @@
 
     document.getElementById("voice-select").addEventListener("change", function() {
       selectedVoice = this.value;
-      localStorage.setItem(VOICE_KEY, selectedVoice);
+      localStorage.setItem(voiceKeyFor(currentTarget), selectedVoice);
       speakText("Voice selected");
     });
 
