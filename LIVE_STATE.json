@@ -1,18 +1,20 @@
 {
   "session_count": 362,
   "project": "torus-framework",
-  "feature": "model-profile-enforcement",
-  "framework_version": "v2.5.9",
-  "what_was_done": "Restored model profile enforcement via agent frontmatter. Created shared/model_profiles.py, custom explore+plan agents, redesigned gate 10 for Agent tool with frontmatter patching. Fixed gate_router.py GATE_TOOL_MAP. 5407 tests pass.",
+  "feature": "token-optimization",
+  "framework_version": "v2.6",
+  "what_was_done": "Token optimization: dormanted 20 skills (39→18), created .claudeignore, renamed /loop→/prp-run /wave→/prp-wave, trimmed /learn desc, disabled agent teams. Pushed v2.6 + README to GitHub. Baseline 19885→17094 tokens.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
-    "Diagram 03 gate names slightly genericized — needs correction to match ARCHITECTURE.md"
+    "Diagram 03 gate names slightly genericized — needs correction to match ARCHITECTURE.md",
+    "/brainstorm pipeline broken: /writing-plans dormanted (restore for 13 tokens if needed)"
   ],
   "next_steps": [
+    "Post Discord + Twitter announcements for v2.6 (drafts ready)",
+    "Try /ralph on a real task — never used yet",
+    "Consider restoring /writing-plans (13 tokens) to fix brainstorm pipeline",
     "Fix diagram 03 gate names to match actual gate names from ARCHITECTURE.md",
-    "Upgrade original trading-framework for autonomous operation",
-    "Post framework showcase on Claude Code GitHub discussions and X/Twitter",
-    "Run memory maintenance(action='stale') — DB at 2254 entries"
+    "Run memory maintenance(action='stale') — DB at 2263 entries"
   ]
 }
