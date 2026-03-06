@@ -2326,7 +2326,7 @@ def tool_recommendations(tool_name: str = "") -> dict:
 
 @mcp.tool()
 @crash_proof
-def gate_correlation_report() -> dict:
+def gate_health_correlation() -> dict:
     """Analyze gate fire patterns to detect redundancy and synergy.
 
     Builds a Pearson correlation matrix of gate block patterns, identifies
