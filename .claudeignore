@@ -10,3 +10,7 @@ __pycache__/
 
 # Gate audit logs (accessed via analytics MCP server)
 hooks/audit/
+
+# Standalone integrations (accessed via their own servers, not file scanning)
+integrations/telegram-bot/
+integrations/voice-web/
