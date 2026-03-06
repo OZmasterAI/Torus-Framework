@@ -1,5 +1,5 @@
 {
-  "session_count": 353,
+  "session_count": 354,
   "project": "torus-framework",
   "feature": "mcp-analytics-trim",
   "framework_version": "v2.5.9",
@@ -14,5 +14,6 @@
     "Verify analytics/search MCP servers load after restart (15 tools + 2 tools)",
     "Upgrade original trading-framework for autonomous operation (Telegram alerts, paper mode testing)",
     "Post framework showcase on Claude Code GitHub discussions and X/Twitter"
-  ]
+  ],
+  "last_response_preview": "---\n\n## Session 353 Summary\n\n**Completed:**\n1. **Analytics MCP server**: 50 \u2192 15 tools. Root cause: Claude Code silently fails to load servers with too many tools. 35 tools commented out (functions preserved). All referenced by skills/hooks/mentor kept.\n2. **State-based UserPromptSubmit warnings**: Replaced static 100-token Rule 5/8 block with compact baseline (~15 tokens) + conditional warnings for uncommitted changes, stale memory, and open causal chains.\n3. **v2.1.70 review**: All changes pos"
 }
