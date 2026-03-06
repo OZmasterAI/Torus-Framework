@@ -451,31 +451,70 @@
       }
     });
 
-    // --- TTS (Text-to-Speech) via server-side edge-tts + Web Audio API ---
+    // --- TTS (Text-to-Speech) via server-side edge-tts + native speechSynthesis ---
 
     var audioCtx = null; // created on user gesture, stays unlocked forever
+    var nativeVoices = {}; // name -> SpeechSynthesisVoice object
+    var NATIVE_PREFIX = "native:";
+
+    function isNativeVoice(name) { return name && name.indexOf(NATIVE_PREFIX) === 0; }
+
+    function getNativeSynthVoices() {
+      if (!window.speechSynthesis) return [];
+      var voices = speechSynthesis.getVoices();
+      return voices.filter(function(v) { return v.lang.indexOf("en") === 0; });
+    }
 
     function loadVoices() {
       var token = localStorage.getItem(TOKEN_KEY);
       if (!token) return;
+      var saved = localStorage.getItem(voiceKeyFor(currentTarget)) || "en-US-GuyNeural";
+
       fetch("/tts/voices?token=" + encodeURIComponent(token))
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (!data.ok || !data.voices) return;
           var sel = document.getElementById("voice-select");
-          var saved = localStorage.getItem(voiceKeyFor(currentTarget)) || "en-US-GuyNeural";
           sel.innerHTML = "";
+
+          // Edge-TTS voices (server)
+          var grp1 = document.createElement("optgroup");
+          grp1.label = "Edge TTS (server)";
           data.voices.forEach(function(v) {
             var opt = document.createElement("option");
             opt.value = v.name;
             opt.textContent = v.name + " (" + v.gender + ")";
             if (v.name === saved) opt.selected = true;
-            sel.appendChild(opt);
+            grp1.appendChild(opt);
           });
+          sel.appendChild(grp1);
+
+          // Native browser/iOS voices
+          var native = getNativeSynthVoices();
+          if (native.length > 0) {
+            var grp2 = document.createElement("optgroup");
+            grp2.label = "Native (Safari/Browser)";
+            nativeVoices = {};
+            native.forEach(function(v) {
+              var key = NATIVE_PREFIX + v.name;
+              nativeVoices[key] = v;
+              var opt = document.createElement("option");
+              opt.value = key;
+              opt.textContent = v.name + " (" + v.lang + ")";
+              if (key === saved) opt.selected = true;
+              grp2.appendChild(opt);
+            });
+            sel.appendChild(grp2);
+          }
+
           selectedVoice = saved;
         }).catch(function() {});
     }
 
+    // iOS Safari loads voices async — reload when ready
+    if (window.speechSynthesis) {
+      speechSynthesis.addEventListener("voiceschanged", function() { loadVoices(); });
+    }
     loadVoices();
 
     document.getElementById("voice-select").addEventListener("change", function() {
@@ -487,16 +526,43 @@
     var currentSource = null;
 
     function speakText(text) {
-      if (!text || !audioCtx) return;
-      var token = localStorage.getItem(TOKEN_KEY);
-      if (!token) return;
+      if (!text) return;
+      var voice = selectedVoice || "en-US-GuyNeural";
+
       // Stop any current playback
       if (currentSource) { try { currentSource.stop(); } catch(e) {} }
+      if (window.speechSynthesis) speechSynthesis.cancel();
+
       isSpeaking = true;
       document.getElementById("speaker-btn").classList.add("speaking");
+
+      if (isNativeVoice(voice)) {
+        // Native speechSynthesis
+        document.getElementById("speaker-label").textContent = "Speaking...";
+        var utter = new SpeechSynthesisUtterance(text);
+        var nv = nativeVoices[voice];
+        if (nv) utter.voice = nv;
+        utter.onend = function() {
+          isSpeaking = false;
+          document.getElementById("speaker-btn").classList.remove("speaking");
+          document.getElementById("speaker-label").textContent = "Listen ON";
+          if (ttsEnabled) startTTSPoll();
+        };
+        utter.onerror = function() {
+          isSpeaking = false;
+          document.getElementById("speaker-btn").classList.remove("speaking");
+          document.getElementById("speaker-label").textContent = "Listen ON";
+        };
+        speechSynthesis.speak(utter);
+        return;
+      }
+
+      // Edge-TTS via server
+      if (!audioCtx) return;
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
       document.getElementById("speaker-label").textContent = "Generating...";
 
-      var voice = selectedVoice || "en-US-GuyNeural";
       fetch("/tts?token=" + encodeURIComponent(token) + "&voice=" + encodeURIComponent(voice), {
         method: "POST",
         body: text,
@@ -514,7 +580,6 @@
           currentSource = null;
           document.getElementById("speaker-btn").classList.remove("speaking");
           document.getElementById("speaker-label").textContent = "Listen ON";
-          // Resume polling to catch any response that arrived during playback
           if (ttsEnabled) startTTSPoll();
         };
         currentSource = source;
@@ -570,6 +635,7 @@
         label.textContent = "Listen";
         stopTTSPoll();
         if (currentSource) { try { currentSource.stop(); } catch(e) {} }
+        if (window.speechSynthesis) speechSynthesis.cancel();
         isSpeaking = false;
       }
       log("TTS " + (ttsEnabled ? "ON" : "OFF"));
