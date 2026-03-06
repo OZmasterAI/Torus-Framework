@@ -537,24 +537,32 @@
       document.getElementById("speaker-btn").classList.add("speaking");
 
       if (isNativeVoice(voice)) {
-        // Native speechSynthesis
-        document.getElementById("speaker-label").textContent = "Speaking...";
-        var utter = new SpeechSynthesisUtterance(text);
-        var nv = nativeVoices[voice];
-        if (nv) utter.voice = nv;
-        utter.onend = function() {
-          isSpeaking = false;
-          document.getElementById("speaker-btn").classList.remove("speaking");
-          document.getElementById("speaker-label").textContent = "Listen ON";
-          if (ttsEnabled) startTTSPoll();
-        };
-        utter.onerror = function() {
-          isSpeaking = false;
-          document.getElementById("speaker-btn").classList.remove("speaking");
-          document.getElementById("speaker-label").textContent = "Listen ON";
-        };
-        speechSynthesis.speak(utter);
-        return;
+        // Native speechSynthesis — iOS limits to ~200 chars, no chaining
+        // For long text, fall back to edge-tts server
+        if (text.length > 180) {
+          voice = "en-US-GuyNeural"; // fall back to server TTS
+        } else {
+          document.getElementById("speaker-label").textContent = "Speaking...";
+          var nv = nativeVoices[voice];
+          // Keep reference alive (iOS GC kills orphaned utterances)
+          window._activeUtter = new SpeechSynthesisUtterance(text);
+          if (nv) window._activeUtter.voice = nv;
+          // iOS watchdog — resume if silently paused
+          var iosWatchdog = setInterval(function() {
+            if (speechSynthesis.paused) speechSynthesis.resume();
+            if (!speechSynthesis.speaking) {
+              clearInterval(iosWatchdog);
+              isSpeaking = false;
+              document.getElementById("speaker-btn").classList.remove("speaking");
+              document.getElementById("speaker-label").textContent = "Listen ON";
+              if (ttsEnabled) startTTSPoll();
+            }
+          }, 250);
+          window._activeUtter.onend = function() { clearInterval(iosWatchdog); };
+          window._activeUtter.onerror = function() { clearInterval(iosWatchdog); };
+          speechSynthesis.speak(window._activeUtter);
+          return;
+        }
       }
 
       // Edge-TTS via server
