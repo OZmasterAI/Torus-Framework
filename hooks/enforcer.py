@@ -285,7 +285,7 @@ GATE_TOOL_MAP = {
     "gates.gate_06_save_fix": {"Edit", "Write", "Task", "Bash", "NotebookEdit"},
     "gates.gate_07_critical_file_guard": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_09_strategy_ban": {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_10_model_enforcement": {"Task"},
+    "gates.gate_10_model_enforcement": {"Task", "Agent"},
     "gates.gate_11_rate_limit": None,  # Universal
     # "gates.gate_12_plan_mode_save": {"Edit", "Write", "Bash", "NotebookEdit"},  # MERGED into gate_06
     "gates.gate_13_workspace_isolation": {"Edit", "Write", "NotebookEdit"},
