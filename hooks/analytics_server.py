@@ -223,7 +223,7 @@ def gate_timing(gate_name: str = "") -> dict:
     }
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_health() -> dict:
     """Unified gate health report: health score, SLA status, degraded gates, routing stats.
@@ -247,7 +247,7 @@ def gate_health() -> dict:
     }
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_sla(gate_name: str = "") -> dict:
     """Check SLA compliance for gates: latency thresholds, auto-skip status.
@@ -263,7 +263,7 @@ def gate_sla(gate_name: str = "") -> dict:
     return get_sla_report()
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_correlations(days: int = 7) -> dict:
     """Analyze gate block co-occurrence patterns from audit logs.
@@ -284,7 +284,7 @@ def gate_correlations(days: int = 7) -> dict:
         return {"error": "gate_correlation module not available"}
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def detect_anomalies(session_id: str = "") -> dict:
     """Detect behavioral anomalies: tool call bursts, high block rates, error spikes, memory gaps.
@@ -362,7 +362,7 @@ def skill_health() -> dict:
     return check_all_skills()
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_trends() -> dict:
     """Gate latency trends over time: rising, falling, stable per gate.
@@ -407,7 +407,7 @@ def all_metrics() -> dict:
     }
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_dependencies() -> dict:
     """Gate dependency graph: state conflicts, parallel-safe gates, hotspots, mermaid diagram.
@@ -498,7 +498,7 @@ def memory_health() -> dict:
     return result
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def memory_dedup_report(table: str = "knowledge", threshold: float = 0.85) -> dict:
     """Scan memory for duplicate entries without executing compaction.
@@ -531,7 +531,7 @@ def memory_dedup_report(table: str = "knowledge", threshold: float = 0.85) -> di
         return {"error": f"Scan failed: {e}"}
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def stale_memory_report(table: str = "knowledge", days: int = 90) -> dict:
     """Scan memory for stale entries that should be demoted.
@@ -589,7 +589,7 @@ def circuit_states() -> dict:
     }
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def audit_status() -> dict:
     """Audit log disk usage and rotation status.
@@ -616,7 +616,7 @@ def audit_status() -> dict:
     }
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def framework_summary() -> dict:
     """High-level framework status: health, gates, circuits, skills in one view.
@@ -946,7 +946,7 @@ def error_clusters(hours: int = 48, top_n: int = 10) -> dict:
 
 # ── Tool Pattern Predictions ─────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def tool_predictions(recent_tools: str = "", top_k: int = 5) -> dict:
     """Predict next likely tool calls and detect unusual sequences.
@@ -1011,7 +1011,7 @@ def tool_predictions(recent_tools: str = "", top_k: int = 5) -> dict:
 
 # ── Pruning Recommendations ─────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_pruning() -> dict:
     """Get gate pruning recommendations based on effectiveness analysis.
@@ -1058,7 +1058,7 @@ def gate_pruning() -> dict:
 
 # ── Domain Management ────────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def domain_info() -> dict:
     """List all knowledge domains with active domain and profile details.
@@ -1101,7 +1101,7 @@ def domain_info() -> dict:
 
 # ── Gate Drift Detection ─────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_drift(hours: int = 24) -> dict:
     """Detect drift in gate fire-rate patterns compared to a rolling baseline.
@@ -1190,7 +1190,7 @@ def gate_drift(hours: int = 24) -> dict:
 
 # ── Skill Dependency Analysis ────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def skill_dependencies() -> dict:
     """Analyze skill dependencies and shared module usage patterns.
@@ -1244,7 +1244,7 @@ def skill_dependencies() -> dict:
 
 # ── Gate Correlation Engine (Advanced) ────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_correlation_report(tool_filter: str = "", days: int = 7) -> dict:
     """Advanced gate correlation analysis: co-occurrence, chains, redundancy, ordering.
@@ -1275,7 +1275,7 @@ def gate_correlation_report(tool_filter: str = "", days: int = 7) -> dict:
 
 # ── Pipeline Performance Analysis ────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def pipeline_analysis(tool_name: str = "") -> dict:
     """Analyze gate pipeline execution efficiency and parallelization opportunities.
@@ -1302,7 +1302,7 @@ def pipeline_analysis(tool_name: str = "") -> dict:
 
 # ── Behavioral Anomaly Summary ───────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def anomaly_summary(session_id: str = "") -> dict:
     """Detect behavioral anomalies in the current or specified session.
@@ -1344,7 +1344,7 @@ def anomaly_summary(session_id: str = "") -> dict:
 
 # ── Event Bus Stats ──────────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def event_stats(event_type: str = "", limit: int = 20) -> dict:
     """Query the event bus for recent events and aggregate statistics.
@@ -1377,7 +1377,7 @@ def event_stats(event_type: str = "", limit: int = 20) -> dict:
 
 # ── Session Replay ───────────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def session_replay(lookback_hours: int = 1, gate_filter: str = "",
                    tool_filter: str = "", format: str = "text") -> dict:
@@ -1429,7 +1429,7 @@ def session_replay(lookback_hours: int = 1, gate_filter: str = "",
 
 # ── Code Hotspot Analysis ────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def code_hotspots(lookback_days: int = 7, limit: int = 20) -> dict:
     """Identify high-risk files by analyzing gate block patterns from audit logs.
@@ -1470,7 +1470,7 @@ def code_hotspots(lookback_days: int = 7, limit: int = 20) -> dict:
 
 # ── Test Stub Generator ─────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def generate_test_stubs(module_path: str) -> dict:
     """Auto-generate test stubs for a Python module using AST analysis.
@@ -1520,7 +1520,7 @@ def generate_test_stubs(module_path: str) -> dict:
 
 # ── Gate Router Stats ────────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def routing_stats() -> dict:
     """Get gate routing statistics including tier membership, tool-gate mapping,
@@ -1575,7 +1575,7 @@ def routing_stats() -> dict:
 
 # ── Framework Pulse Dashboard ────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def framework_pulse(lookback_hours: int = 1) -> dict:
     """Comprehensive framework health pulse — one call to rule them all.
@@ -1660,7 +1660,7 @@ def framework_pulse(lookback_hours: int = 1) -> dict:
 
 # ── Cache Health ─────────────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def cache_health() -> dict:
     """Hook invocation cache performance — hits, misses, evictions per layer.
@@ -1705,7 +1705,7 @@ def cache_health() -> dict:
     }
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_sla_status(threshold_ms: int = 50) -> dict:
     """Gate latency SLA compliance — identifies degraded/slow gates.
@@ -1744,7 +1744,7 @@ def gate_sla_status(threshold_ms: int = 50) -> dict:
     }
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def replay_events(
     tool_filter: str = "",
@@ -1982,7 +1982,7 @@ def query_observations(
 
 # ── Domain Context Inspector ──────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def inspect_domain() -> dict:
     """Inspect active domain context: mastery, behavior, gate overrides, token budget.
@@ -2051,7 +2051,7 @@ def inspect_domain() -> dict:
 
 # ── Framework Health Score ───────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def framework_health_score() -> dict:
     """Compute an overall framework health score (0-100) from multiple signals.
@@ -2177,7 +2177,7 @@ def framework_health_score() -> dict:
 
 # ── Session Context Snapshot ─────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def session_context_snapshot() -> dict:
     """Generate a compressed snapshot of the current session state.
@@ -2234,7 +2234,7 @@ def session_context_snapshot() -> dict:
 
 # ── Tool Recommendation ───────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def tool_recommendations(tool_name: str = "") -> dict:
     """Analyze tool call patterns and recommend alternatives for blocked tools.
@@ -2324,7 +2324,7 @@ def tool_recommendations(tool_name: str = "") -> dict:
 
 # ── Health Correlation ────────────────────────────────────────────────────────
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def gate_health_correlation() -> dict:
     """Analyze gate fire patterns to detect redundancy and synergy.
@@ -2360,7 +2360,7 @@ def gate_health_correlation() -> dict:
     return generate_health_report(effectiveness)
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def causal_chain_analysis() -> dict:
     """Analyze causal chain fix outcomes to detect patterns and suggest improvements.
@@ -2426,7 +2426,7 @@ def rw_ratio(session_id: str = "") -> dict:
     return compute_rw_ratio(state)
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def frustration_report(session_id: str = "") -> dict:
     """Session frustration: band (calm/friction/frustrated), trend (rising/falling/stable)."""
@@ -2436,7 +2436,7 @@ def frustration_report(session_id: str = "") -> dict:
     return aggregate_frustration(session_id=sid)
 
 
-@mcp.tool()
+# @mcp.tool()  # disabled — re-enable if needed
 @crash_proof
 def skill_invocation_report(session_id: str = "") -> dict:
     """Skill usage this session: which skills invoked and how many times."""
