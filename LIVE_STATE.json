@@ -1,9 +1,9 @@
 {
-  "session_count": 367,
+  "session_count": 368,
   "project": "torus-framework",
-  "feature": "skill-mcp-library",
+  "feature": "open-source-plugins",
   "framework_version": "v2.6",
-  "what_was_done": "Verified MCP skill server works (list_skills=12, invoke_skill round-trip clean). Comprehensive framework comparison: Torus 83, GSD 65, Simone 57, Agent Farm 46, Vanilla CC 57. LOC analysis: Torus 86k Python vs GSD 2.8k JS.",
+  "what_was_done": "First claude-code contributions: PR #31633 safe-edit-guard plugin (gate 1 extract). Built injection-guard plugin (gate 17 extract), committed to fork, PR deferred. Commented on #31592 (hook denial). Researched 5 frameworks. Moved OptimisticChain into chainovi.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
@@ -12,10 +12,10 @@
     "EnterPlanMode still available — consider gate 20 redirect to enforce /brainstorm"
   ],
   "next_steps": [
+    "Submit injection-guard PR to anthropics/claude-code (wait 1-2 days after safe-edit-guard)",
+    "Monitor PR #31633 for review feedback — adjust style if requested",
     "Build gate 20 (tool redirect) to block EnterPlanMode → use /brainstorm",
-    "Run memory maintenance(action='stale') — DB at 2325 entries",
-    "Post Discord + Twitter announcements for v2.6 (drafts ready)",
-    "Fix diagram 03 gate names to match actual gate names from ARCHITECTURE.md",
-    "Clean up /tmp/gsd-count clone left from LOC comparison"
+    "Run memory maintenance(action='stale') — DB at 2330 entries",
+    "Post Discord + Twitter announcements for v2.6 (drafts ready)"
   ]
 }
