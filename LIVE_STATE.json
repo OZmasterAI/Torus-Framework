@@ -1,19 +1,18 @@
 {
-  "session_count": 358,
+  "session_count": 362,
   "project": "torus-framework",
-  "feature": "framework-visualization",
+  "feature": "model-profile-enforcement",
   "framework_version": "v2.5.9",
-  "what_was_done": "Verified MCP servers load (analytics 15 tools, search 2 tools). Set up worktree at ~/.claude-visual (branch docs/visual-map) with visual-explainer + excalidraw skills. Created 19-section framework mapping prompt. Discovered Gate 10 (MODEL COST GUARD) completely bypassed since ~Mar 1 — Claude Code renamed Task→Agent tool (no model param). Gate 10 needs redesign.",
+  "what_was_done": "Restored model profile enforcement via agent frontmatter. Created shared/model_profiles.py, custom explore+plan agents, redesigned gate 10 for Agent tool with frontmatter patching. Fixed gate_router.py GATE_TOOL_MAP. 5407 tests pass.",
   "known_issues": [
-    "Gate 10 broken: Agent tool has no model param, gate never fires (since Mar 1)",
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
-    "Memory DB at 2227 entries — run maintenance(action='stale') for cleanup"
+    "Diagram 03 gate names slightly genericized — needs correction to match ARCHITECTURE.md"
   ],
   "next_steps": [
-    "Redesign Gate 10 for Agent tool (no model param — need alternative enforcement)",
-    "Continue framework visualization in worktree (excalidraw diagrams)",
+    "Fix diagram 03 gate names to match actual gate names from ARCHITECTURE.md",
     "Upgrade original trading-framework for autonomous operation",
-    "Post framework showcase on Claude Code GitHub discussions and X/Twitter"
+    "Post framework showcase on Claude Code GitHub discussions and X/Twitter",
+    "Run memory maintenance(action='stale') — DB at 2254 entries"
   ]
 }
