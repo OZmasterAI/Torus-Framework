@@ -2,7 +2,7 @@
 """Torus Voice — WebSocket server bridging iPad speech to Claude via tmux.
 
 Fire-and-forget: sends transcribed text to tmux, confirms delivery.
-Optional TTS mode: polls tmux for Claude's response and sends it back.
+TTS: reads complete response from signal file written by Stop hook (tts_signal.py).
 """
 
 import asyncio
@@ -10,10 +10,8 @@ import hashlib
 import json
 import logging
 import os
-import re
 import sys
 import tempfile
-import time
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, Response
@@ -61,146 +59,6 @@ async def send_to_tmux(message, target="claude-bot"):
     await _send_keys(target, message)
 
 
-async def capture_tmux_pane(target, lines=200):
-    """Capture tmux pane content."""
-    rc, stdout, stderr = await _run([
-        "tmux", "capture-pane", "-t", target, "-p", "-S", f"-{lines}",
-    ])
-    if rc != 0:
-        raise TmuxError(f"capture-pane failed: {stderr[:200]}")
-    return stdout
-
-
-def _is_tool_call(text):
-    """Check if a ● line is a tool call rather than a text response."""
-    tool_prefixes = (
-        "Bash(", "Read ", "Edit(", "Write(", "Glob(", "Grep(", "Update(",
-        "Agent(", "NotebookEdit(", "Skill(", "Search(", "WebFetch(",
-        "Reading ", "Searching ", "Running ", "Editing ",
-        "memory ", "mcp__",  # MCP tool calls
-    )
-    if any(text.startswith(p) for p in tool_prefixes):
-        return True
-    if "(MCP)" in text:
-        return True
-    return False
-
-
-def extract_last_response(pane_text):
-    """Extract Claude's last text response from tmux pane output.
-
-    Claude responses start with ● (bullet). Tool calls also start with ●
-    but are filtered out. The idle prompt ❯ at the bottom means Claude is done.
-    Only the last consecutive text block (before the ❯) is returned.
-    """
-    lines = pane_text.split("\n")
-
-    # Find the last idle prompt (❯) — means Claude is done
-    last_prompt_idx = -1
-    for i in range(len(lines) - 1, -1, -1):
-        stripped = lines[i].strip()
-        if stripped.startswith("❯") or stripped == "❯":
-            last_prompt_idx = i
-            break
-
-    if last_prompt_idx < 0:
-        return None  # Claude still generating
-
-    # Walk backwards from ❯ to collect the last text response block.
-    # Skip tool output (⎿, ·), tool calls (● Bash(...)), and empty lines.
-    # Stop at the previous ❯ or a tool call after we've found text.
-    response_lines = []
-    found_text = False
-
-    for i in range(last_prompt_idx - 1, -1, -1):
-        stripped = lines[i].strip()
-
-        # Previous user prompt — stop
-        if stripped.startswith("❯") or stripped == "❯":
-            break
-
-        # Empty line
-        if not stripped:
-            if found_text:
-                response_lines.append("")
-            continue
-
-        # Tool output indicators — skip or stop
-        if stripped.startswith(("⎿", "·", "╭", "╰", "│")):
-            if found_text:
-                break
-            continue
-
-        # ● line — could be text or tool call
-        if stripped.startswith("●"):
-            content = stripped[1:].strip()
-            if _is_tool_call(content):
-                if found_text:
-                    break
-                continue
-            found_text = True
-            response_lines.append(content)
-            continue
-
-        # Continuation line (indented text after a ● line)
-        if found_text:
-            if stripped.endswith("(ctrl+o to expand)"):
-                break
-            response_lines.append(stripped)
-
-    if not response_lines:
-        return None
-
-    # We collected backwards — reverse
-    response_lines.reverse()
-
-    # Clean up empty edges
-    while response_lines and not response_lines[-1]:
-        response_lines.pop()
-    while response_lines and not response_lines[0]:
-        response_lines.pop(0)
-
-    text = "\n".join(response_lines).strip()
-    # Remove markdown formatting that doesn't speak well
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    text = re.sub(r'\*(.+?)\*', r'\1', text)
-    text = re.sub(r'`(.+?)`', r'\1', text)
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^[-*]\s+', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)
-    text = re.sub(r'```[\s\S]*?```', '', text)
-    text = re.sub(r'---+', '', text)
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    return text.strip() if text.strip() else None
-
-
-async def poll_for_response(websocket, target, timeout=120):
-    """Poll tmux until Claude finishes responding, then send the response back."""
-    poll_interval = 2.0  # seconds between polls
-    elapsed = 0.0
-    last_content = ""
-
-    while elapsed < timeout:
-        await asyncio.sleep(poll_interval)
-        elapsed += poll_interval
-
-        try:
-            pane = await capture_tmux_pane(target)
-        except TmuxError:
-            break
-
-        # Check if content is still changing (Claude still generating)
-        if pane == last_content and last_content:
-            # Content stabilized — try to extract response
-            response = extract_last_response(pane)
-            if response:
-                await websocket.send_json({"type": "response", "text": response})
-                logger.info("TTS response sent (%d chars)", len(response))
-                return
-        last_content = pane
-
-    logger.warning("TTS poll timed out after %.0fs", elapsed)
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -218,6 +76,7 @@ def load_config():
 
 CONFIG = load_config()
 
+SIGNAL_FILE = "/tmp/voice-tts-signal.json"
 
 # --- Routes ---
 
@@ -233,23 +92,25 @@ async def health(request):
 
 
 async def last_response(request):
-    """Extract Claude's last response from tmux pane for TTS.
+    """Read Claude's last complete response from the TTS signal file.
+
+    The Stop hook (tts_signal.py) writes /tmp/voice-tts-signal.json after
+    every Claude response completes, ensuring we always get the full text.
 
     Query params:
       token — auth token (required)
-    Returns: {"text": "...", "ok": true} or {"text": null, "ok": true} if still generating.
+    Returns: {"text": "...", "ok": true} or {"text": null, "ok": true} if no signal.
     """
     token = request.query_params.get("token", "")
     if token != CONFIG["auth_token"]:
         return JSONResponse({"ok": False, "error": "Invalid token"}, status_code=401)
 
-    tmux_target = CONFIG.get("tmux_target", "claude-bot")
     try:
-        pane = await capture_tmux_pane(tmux_target)
-        text = extract_last_response(pane)
-        return JSONResponse({"ok": True, "text": text})
-    except TmuxError as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+        with open(SIGNAL_FILE) as f:
+            signal = json.load(f)
+        return JSONResponse({"ok": True, "text": signal.get("text")})
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return JSONResponse({"ok": True, "text": None})
 
 
 TTS_CACHE_DIR = os.path.join(tempfile.gettempdir(), "voice-web-tts")
@@ -357,19 +218,11 @@ async def ws_endpoint(websocket: WebSocket):
     # --- Message loop ---
     tmux_target = CONFIG.get("tmux_target", "claude-bot")
     max_len = CONFIG.get("max_message_length", 4000)
-    response_timeout = CONFIG.get("response_timeout", 120)
-    tts_enabled = False
-    poll_task = None
 
     try:
         while True:
             raw = await websocket.receive_json()
             msg_type = raw.get("type")
-
-            if msg_type == "tts_toggle":
-                tts_enabled = bool(raw.get("enabled", False))
-                logger.info("TTS %s", "enabled" if tts_enabled else "disabled")
-                continue
 
             if msg_type != "message":
                 continue
@@ -388,20 +241,10 @@ async def ws_endpoint(websocket: WebSocket):
 
             logger.info("Received message: %s", text[:80])
 
-            # Cancel any in-flight TTS poll
-            if poll_task and not poll_task.done():
-                poll_task.cancel()
-
             try:
                 await send_to_tmux(text, target=tmux_target)
                 await websocket.send_json({"type": "sent", "text": "Sent!"})
                 logger.info("Sent to tmux: %s", text[:80])
-
-                # Start polling for response if TTS is enabled
-                if tts_enabled:
-                    poll_task = asyncio.create_task(
-                        poll_for_response(websocket, tmux_target, timeout=response_timeout)
-                    )
             except TmuxError as e:
                 logger.error("Tmux error: %s", e)
                 await websocket.send_json({"type": "error", "text": str(e)})
@@ -415,9 +258,6 @@ async def ws_endpoint(websocket: WebSocket):
             await websocket.close(1011)
         except Exception:
             pass
-    finally:
-        if poll_task and not poll_task.done():
-            poll_task.cancel()
 
 
 # --- No-cache static files ---
