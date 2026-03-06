@@ -241,6 +241,7 @@
     }
 
     function selectSession(name) {
+      stopTTSPoll(); // kill any poll for previous session
       currentTarget = name;
       lastSpokenText = ""; // reset TTS state for new session
       var tabs = document.querySelectorAll("#session-tabs .tab");
@@ -619,12 +620,18 @@
       if (ttsPoller) return;
       var token = localStorage.getItem(TOKEN_KEY);
       if (!token) return;
-      var url = "/last-response?token=" + encodeURIComponent(token) + (currentTarget ? "&target=" + encodeURIComponent(currentTarget) : "");
+      var pollTarget = currentTarget; // capture target at poll start
       ttsPoller = setInterval(function() {
         if (!ttsEnabled) {
           stopTTSPoll();
           return;
         }
+        // Stop if user switched sessions since poll started
+        if (pollTarget !== currentTarget) {
+          stopTTSPoll();
+          return;
+        }
+        var url = "/last-response?token=" + encodeURIComponent(token) + (pollTarget ? "&target=" + encodeURIComponent(pollTarget) : "");
         fetch(url).then(function(r) { return r.json(); }).then(function(data) {
           if (data.ok && data.text && data.text !== lastSpokenText) {
             lastSpokenText = data.text;
@@ -633,7 +640,7 @@
           }
         }).catch(function() {});
       }, 2000);
-      log("TTS polling started");
+      log("TTS polling " + pollTarget);
     }
 
     function stopTTSPoll() {
