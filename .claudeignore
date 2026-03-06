@@ -1,0 +1,12 @@
+# Dormant skills (explicitly shelved)
+dormant/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Raw transcript logs (accessed via MCP, not file scanning)
+*.jsonl
+
+# Gate audit logs (accessed via analytics MCP server)
+hooks/audit/
