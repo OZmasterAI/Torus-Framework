@@ -187,11 +187,37 @@
     var reconnectDelay = 1000;
     var reconnectTimer = null;
     var maxReconnectDelay = 30000;
-    var ttsEnabled = false;
-    var isSpeaking = false;
+    var ttsState = {};  // per-session TTS state keyed by session name
+    var TTS_KEY_PREFIX = "torus_tts_enabled_";
     var intentionalClose = false;
-    var ttsPoller = null;
-    var lastSpokenText = "";
+
+    function getTTS(target) {
+      if (!ttsState[target]) {
+        ttsState[target] = {
+          enabled: false,
+          poller: null,
+          speaking: false,
+          lastSpokenText: "",
+          source: null
+        };
+      }
+      return ttsState[target];
+    }
+
+    function updateSpeakerUI() {
+      var ts = getTTS(currentTarget);
+      var btn = document.getElementById("speaker-btn");
+      var label = document.getElementById("speaker-label");
+      btn.classList.toggle("active", ts.enabled);
+      btn.classList.toggle("speaking", ts.speaking);
+      if (ts.speaking) {
+        label.textContent = "Speaking...";
+      } else if (ts.enabled) {
+        label.textContent = "Listen ON";
+      } else {
+        label.textContent = "Listen";
+      }
+    }
     var selectedVoice = null;
     var VOICE_KEY_PREFIX = "torus_voice_";
     var currentTarget = null;
@@ -241,9 +267,15 @@
     }
 
     function selectSession(name) {
-      stopTTSPoll(); // kill any poll for previous session
       currentTarget = name;
-      lastSpokenText = ""; // reset TTS state for new session
+      // Restore TTS enabled from localStorage
+      var ts = getTTS(name);
+      var savedTTS = localStorage.getItem(TTS_KEY_PREFIX + name);
+      if (savedTTS === "true" && !ts.enabled) {
+        ts.enabled = true;
+        if (!ts.poller) startTTSPoll(name);
+      }
+      updateSpeakerUI();
       var tabs = document.querySelectorAll("#session-tabs .tab");
       tabs.forEach(function(t) {
         t.classList.toggle("active", t.textContent === name);
@@ -371,9 +403,9 @@
         try { recognition.abort(); } catch(e) {}
       }
       // Start TTS poll if enabled — uses fetch, survives WS reconnects
-      if (ttsEnabled) {
-        stopTTSPoll();
-        startTTSPoll();
+      if (getTTS(currentTarget).enabled) {
+        stopTTSPoll(currentTarget);
+        startTTSPoll(currentTarget);
       }
     }
 
@@ -535,42 +567,38 @@
     document.getElementById("voice-select").addEventListener("change", function() {
       selectedVoice = this.value;
       localStorage.setItem(voiceKeyFor(currentTarget), selectedVoice);
-      speakText("Voice selected");
+      speakText("Voice selected", currentTarget);
     });
 
-    var currentSource = null;
-
-    function speakText(text) {
+    function speakText(text, target) {
       if (!text) return;
+      target = target || currentTarget;
+      var ts = getTTS(target);
       var voice = selectedVoice || "en-US-GuyNeural";
 
-      // Stop any current playback
-      if (currentSource) { try { currentSource.stop(); } catch(e) {} }
-      if (window.speechSynthesis) speechSynthesis.cancel();
+      // Stop this session's current playback only
+      if (ts.source) { try { ts.source.stop(); } catch(e) {} }
 
-      isSpeaking = true;
-      document.getElementById("speaker-btn").classList.add("speaking");
+      ts.speaking = true;
+      if (target === currentTarget) updateSpeakerUI();
 
       if (isNativeVoice(voice)) {
-        // Native speechSynthesis — iOS limits to ~200 chars, no chaining
-        // For long text, fall back to edge-tts server
         if (text.length > 180) {
-          voice = "en-US-GuyNeural"; // fall back to server TTS
+          voice = "en-US-GuyNeural";
         } else {
-          document.getElementById("speaker-label").textContent = "Speaking...";
+          if (target === currentTarget) {
+            document.getElementById("speaker-label").textContent = "Speaking...";
+          }
           var nv = nativeVoices[voice];
-          // Keep reference alive (iOS GC kills orphaned utterances)
           window._activeUtter = new SpeechSynthesisUtterance(text);
           if (nv) window._activeUtter.voice = nv;
-          // iOS watchdog — resume if silently paused
           var iosWatchdog = setInterval(function() {
             if (speechSynthesis.paused) speechSynthesis.resume();
             if (!speechSynthesis.speaking) {
               clearInterval(iosWatchdog);
-              isSpeaking = false;
-              document.getElementById("speaker-btn").classList.remove("speaking");
-              document.getElementById("speaker-label").textContent = "Listen ON";
-              if (ttsEnabled) startTTSPoll();
+              ts.speaking = false;
+              if (target === currentTarget) updateSpeakerUI();
+              if (ts.enabled) startTTSPoll(target);
             }
           }, 250);
           window._activeUtter.onend = function() { clearInterval(iosWatchdog); };
@@ -584,7 +612,9 @@
       if (!audioCtx) return;
       var token = localStorage.getItem(TOKEN_KEY);
       if (!token) return;
-      document.getElementById("speaker-label").textContent = "Generating...";
+      if (target === currentTarget) {
+        document.getElementById("speaker-label").textContent = "Generating...";
+      }
 
       fetch("/tts?token=" + encodeURIComponent(token) + "&voice=" + encodeURIComponent(voice), {
         method: "POST",
@@ -599,75 +629,70 @@
         source.buffer = buffer;
         source.connect(audioCtx.destination);
         source.onended = function() {
-          isSpeaking = false;
-          currentSource = null;
-          document.getElementById("speaker-btn").classList.remove("speaking");
-          document.getElementById("speaker-label").textContent = "Listen ON";
-          if (ttsEnabled) startTTSPoll();
+          ts.speaking = false;
+          ts.source = null;
+          if (target === currentTarget) updateSpeakerUI();
+          if (ts.enabled) startTTSPoll(target);
         };
-        currentSource = source;
-        document.getElementById("speaker-label").textContent = "Speaking...";
+        ts.source = source;
+        if (target === currentTarget) {
+          document.getElementById("speaker-label").textContent = "Speaking...";
+        }
         source.start(0);
       }).catch(function(err) {
         log("TTS error: " + err);
-        isSpeaking = false;
-        document.getElementById("speaker-btn").classList.remove("speaking");
-        document.getElementById("speaker-label").textContent = "Listen ON";
+        ts.speaking = false;
+        if (target === currentTarget) updateSpeakerUI();
       });
     }
 
-    function startTTSPoll() {
-      if (ttsPoller) return;
+    function startTTSPoll(target) {
+      target = target || currentTarget;
+      var ts = getTTS(target);
+      if (ts.poller) return;
       var token = localStorage.getItem(TOKEN_KEY);
       if (!token) return;
-      var pollTarget = currentTarget; // capture target at poll start
-      ttsPoller = setInterval(function() {
-        if (!ttsEnabled) {
-          stopTTSPoll();
+      ts.poller = setInterval(function() {
+        if (!ts.enabled) {
+          stopTTSPoll(target);
           return;
         }
-        // Stop if user switched sessions since poll started
-        if (pollTarget !== currentTarget) {
-          stopTTSPoll();
-          return;
-        }
-        var url = "/last-response?token=" + encodeURIComponent(token) + (pollTarget ? "&target=" + encodeURIComponent(pollTarget) : "");
+        var url = "/last-response?token=" + encodeURIComponent(token) + "&target=" + encodeURIComponent(target);
         fetch(url).then(function(r) { return r.json(); }).then(function(data) {
-          if (data.ok && data.text && data.text !== lastSpokenText) {
-            lastSpokenText = data.text;
-            stopTTSPoll();
-            speakText(data.text);
+          if (data.ok && data.text && data.text !== ts.lastSpokenText) {
+            ts.lastSpokenText = data.text;
+            stopTTSPoll(target);
+            speakText(data.text, target);
           }
         }).catch(function() {});
       }, 2000);
-      log("TTS polling " + pollTarget);
+      log("TTS polling " + target);
     }
 
-    function stopTTSPoll() {
-      if (ttsPoller) { clearInterval(ttsPoller); ttsPoller = null; }
+    function stopTTSPoll(target) {
+      target = target || currentTarget;
+      var ts = getTTS(target);
+      if (ts.poller) { clearInterval(ts.poller); ts.poller = null; }
     }
 
     function toggleTTS() {
-      ttsEnabled = !ttsEnabled;
-      var btn = document.getElementById("speaker-btn");
-      var label = document.getElementById("speaker-label");
-      if (ttsEnabled) {
-        btn.classList.add("active");
-        label.textContent = "Listen ON";
+      var ts = getTTS(currentTarget);
+      ts.enabled = !ts.enabled;
+      localStorage.setItem(TTS_KEY_PREFIX + currentTarget, ts.enabled);
+      if (ts.enabled) {
         // Create AudioContext from user gesture — unlocked forever on iOS
         if (!audioCtx) {
           audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
         if (audioCtx.state === "suspended") audioCtx.resume();
       } else {
-        btn.classList.remove("active", "speaking");
-        label.textContent = "Listen";
-        stopTTSPoll();
-        if (currentSource) { try { currentSource.stop(); } catch(e) {} }
+        stopTTSPoll(currentTarget);
+        if (ts.source) { try { ts.source.stop(); } catch(e) {} }
         if (window.speechSynthesis) speechSynthesis.cancel();
-        isSpeaking = false;
+        ts.speaking = false;
       }
-      log("TTS " + (ttsEnabled ? "ON" : "OFF"));
+      updateSpeakerUI();
+      log("TTS " + (ts.enabled ? "ON" : "OFF") + " [" + currentTarget + "]");
     }
 
     document.getElementById("speaker-btn").addEventListener("click", function(e) {
