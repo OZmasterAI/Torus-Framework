@@ -189,6 +189,8 @@
     var maxReconnectDelay = 30000;
     var ttsState = {};  // per-session TTS state keyed by session name
     var TTS_KEY_PREFIX = "torus_tts_enabled_";
+    var sttPreference = {};  // per-session STT on/off keyed by session name
+    var STT_KEY_PREFIX = "torus_stt_enabled_";
     var intentionalClose = false;
 
     function getTTS(target) {
@@ -267,7 +269,18 @@
     }
 
     function selectSession(name) {
+      // Save current session's STT state before switching
+      if (currentTarget) {
+        sttPreference[currentTarget] = isListening;
+      }
       currentTarget = name;
+      // Restore STT for new session
+      var sttWanted = sttPreference[name] !== undefined ? sttPreference[name] : localStorage.getItem(STT_KEY_PREFIX + name) === "true";
+      if (sttWanted && !isListening) {
+        startListening();
+      } else if (!sttWanted && isListening) {
+        stopListening();
+      }
       // Restore TTS enabled from localStorage
       var ts = getTTS(name);
       var savedTTS = localStorage.getItem(TTS_KEY_PREFIX + name);
@@ -459,6 +472,8 @@
       if (!recognition || isListening) return;
       document.getElementById("transcript").value = "";
       isListening = true;
+      sttPreference[currentTarget] = true;
+      localStorage.setItem(STT_KEY_PREFIX + currentTarget, "true");
       document.getElementById("mic-btn").classList.add("listening");
       document.getElementById("mic-label").textContent = "Listening...";
       try { recognition.start(); } catch(e) {}
@@ -467,6 +482,8 @@
     function stopListening() {
       if (!isListening) return;
       isListening = false;
+      sttPreference[currentTarget] = false;
+      localStorage.setItem(STT_KEY_PREFIX + currentTarget, "false");
       document.getElementById("mic-btn").classList.remove("listening");
       document.getElementById("mic-label").textContent = "Tap to speak";
       try { recognition.stop(); } catch(e) {}
