@@ -14,3 +14,6 @@ hooks/audit/
 # Standalone integrations (accessed via their own servers, not file scanning)
 integrations/telegram-bot/
 integrations/voice-web/
+
+# Test cache
+.pytest_cache/
