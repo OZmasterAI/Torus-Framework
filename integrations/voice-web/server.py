@@ -10,7 +10,6 @@ import hashlib
 import json
 import logging
 import os
-import sys
 import tempfile
 
 from starlette.applications import Starlette
@@ -74,56 +73,61 @@ logging.basicConfig(
 logger = logging.getLogger("voice-web")
 
 
-def load_config(path=None):
-    """Load config JSON. Accepts --config CLI arg or defaults to config.json."""
-    if path is None:
-        path = os.path.join(_HERE, "config.json")
-    with open(path) as f:
+def load_config():
+    """Load config.json from same directory as server.py."""
+    with open(os.path.join(_HERE, "config.json")) as f:
         return json.load(f)
 
 
-# Parse --config before anything else
-_config_path = None
-if "--config" in sys.argv:
-    _idx = sys.argv.index("--config")
-    if _idx + 1 < len(sys.argv):
-        _config_path = sys.argv[_idx + 1]
-
-CONFIG = load_config(_config_path)
-
-# Signal file is scoped to tmux target so multiple instances don't collide
-_tmux_target = CONFIG.get("tmux_target", "claude-bot")
-SIGNAL_FILE = f"/tmp/voice-tts-signal-{_tmux_target}.json"
+CONFIG = load_config()
 
 # --- Routes ---
 
+async def list_tmux_sessions():
+    """Get list of active tmux session names."""
+    rc, stdout, _ = await _run(["tmux", "list-sessions", "-F", "#S"])
+    if rc != 0:
+        return []
+    return [s.strip() for s in stdout.strip().splitlines() if s.strip()]
+
+
 async def health(request):
     """Health check — also reports tmux session status."""
-    tmux_target = CONFIG.get("tmux_target", "claude-bot")
-    tmux_alive = await is_tmux_session_alive(tmux_target)
+    sessions = await list_tmux_sessions()
     return JSONResponse({
         "status": "ok",
-        "tmux_target": tmux_target,
-        "tmux_alive": tmux_alive,
+        "tmux_sessions": sessions,
+        "tmux_alive": len(sessions) > 0,
     })
 
 
-async def last_response(request):
-    """Read Claude's last complete response from the TTS signal file.
+async def tmux_sessions(request):
+    """List active tmux sessions for tab bar."""
+    token = request.query_params.get("token", "")
+    if token != CONFIG["auth_token"]:
+        return JSONResponse({"ok": False, "error": "Invalid token"}, status_code=401)
 
-    The Stop hook (tts_signal.py) writes /tmp/voice-tts-signal.json after
-    every Claude response completes, ensuring we always get the full text.
+    sessions = await list_tmux_sessions()
+    return JSONResponse({"ok": True, "sessions": sessions})
+
+
+async def last_response(request):
+    """Read Claude's last complete response from a target's TTS signal file.
 
     Query params:
       token — auth token (required)
+      target — tmux session name (optional, falls back to config tmux_target)
     Returns: {"text": "...", "ok": true} or {"text": null, "ok": true} if no signal.
     """
     token = request.query_params.get("token", "")
     if token != CONFIG["auth_token"]:
         return JSONResponse({"ok": False, "error": "Invalid token"}, status_code=401)
 
+    target = request.query_params.get("target") or CONFIG.get("tmux_target", "claude")
+    signal_file = f"/tmp/voice-tts-signal-{target}.json"
+
     try:
-        with open(SIGNAL_FILE) as f:
+        with open(signal_file) as f:
             signal = json.load(f)
         return JSONResponse({"ok": True, "text": signal.get("text")})
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -233,7 +237,7 @@ async def ws_endpoint(websocket: WebSocket):
     logger.info("Client authenticated via WebSocket")
 
     # --- Message loop ---
-    tmux_target = CONFIG.get("tmux_target", "claude-bot")
+    default_target = CONFIG.get("tmux_target", "claude")
     max_len = CONFIG.get("max_message_length", 4000)
 
     try:
@@ -256,12 +260,13 @@ async def ws_endpoint(websocket: WebSocket):
                 })
                 continue
 
-            logger.info("Received message: %s", text[:80])
+            target = raw.get("target") or default_target
+            logger.info("Received message for %s: %s", target, text[:80])
 
             try:
-                await send_to_tmux(text, target=tmux_target)
+                await send_to_tmux(text, target=target)
                 await websocket.send_json({"type": "sent", "text": "Sent!"})
-                logger.info("Sent to tmux: %s", text[:80])
+                logger.info("Sent to tmux %s: %s", target, text[:80])
             except TmuxError as e:
                 logger.error("Tmux error: %s", e)
                 await websocket.send_json({"type": "error", "text": str(e)})
@@ -297,6 +302,7 @@ class NoCacheStaticFiles(StaticFiles):
 
 routes = [
     Route("/health", health),
+    Route("/tmux-sessions", tmux_sessions),
     Route("/last-response", last_response),
     Route("/tts", tts_endpoint, methods=["POST"]),
     Route("/tts/voices", tts_voices),

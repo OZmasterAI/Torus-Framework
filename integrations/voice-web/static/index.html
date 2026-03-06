@@ -105,6 +105,20 @@
       pointer-events: none; opacity: 0; transition: opacity 0.3s;
     }
     .flash.visible { opacity: 1; }
+    .tab-bar {
+      display: flex; gap: 6px; width: 100%; overflow-x: auto; padding: 4px 0;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    .tab {
+      padding: 6px 14px; border-radius: 16px; border: 1px solid var(--surface2);
+      background: var(--surface); color: var(--text-dim); font-size: 0.8rem;
+      font-weight: 500; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+    }
+    .tab.active {
+      background: var(--accent); color: white; border-color: var(--accent);
+    }
     #debug { position: fixed; bottom: 4px; left: 4px; font-size: 10px; color: #555; }
   </style>
 </head>
@@ -125,6 +139,7 @@
         <span class="title">Torus</span>
         <span id="status-dot" class="dot dot-connecting"></span>
       </div>
+      <div id="session-tabs" class="tab-bar"></div>
       <div class="btn-row">
         <button id="mic-btn" aria-label="Tap to speak">
           <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
@@ -179,6 +194,7 @@
     var lastSpokenText = "";
     var selectedVoice = null;
     var VOICE_KEY = "torus_voice_name";
+    var currentTarget = null;
 
     function log(msg) {
       dbg.textContent = msg;
@@ -196,6 +212,39 @@
     document.getElementById("token-input").addEventListener("keydown", function(e) {
       if (e.key === "Enter") doConnect();
     });
+
+    function loadSessions() {
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      fetch("/tmux-sessions?token=" + encodeURIComponent(token))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.ok || !data.sessions) return;
+          var bar = document.getElementById("session-tabs");
+          bar.innerHTML = "";
+          data.sessions.forEach(function(name) {
+            var tab = document.createElement("button");
+            tab.className = "tab" + (name === currentTarget ? " active" : "");
+            tab.textContent = name;
+            tab.addEventListener("click", function() { selectSession(name); });
+            bar.appendChild(tab);
+          });
+          // Auto-select first if no current target or current no longer exists
+          if (!currentTarget || data.sessions.indexOf(currentTarget) === -1) {
+            if (data.sessions.length > 0) selectSession(data.sessions[0]);
+          }
+        }).catch(function() {});
+    }
+
+    function selectSession(name) {
+      currentTarget = name;
+      lastSpokenText = ""; // reset TTS state for new session
+      var tabs = document.querySelectorAll("#session-tabs .tab");
+      tabs.forEach(function(t) {
+        t.classList.toggle("active", t.textContent === name);
+      });
+      log("session: " + name);
+    }
 
     function connectWS(token) {
       // Clear any pending reconnect — we're connecting now
@@ -222,6 +271,7 @@
           document.getElementById("status-dot").className = "dot dot-connected";
           document.getElementById("auth-screen").hidden = true;
           document.getElementById("voice-screen").hidden = false;
+          loadSessions();
           if (!hasSpeechAPI) {
             document.getElementById("mic-btn").disabled = true;
             document.getElementById("mic-label").textContent = "No speech API";
@@ -301,7 +351,7 @@
       var ta = document.getElementById("transcript");
       var text = ta.value.trim();
       if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify({ type: "message", text: text }));
+      ws.send(JSON.stringify({ type: "message", text: text, target: currentTarget }));
       ta.value = "";
       if (recognition && isListening) {
         try { recognition.abort(); } catch(e) {}
@@ -469,7 +519,7 @@
       if (ttsPoller) return;
       var token = localStorage.getItem(TOKEN_KEY);
       if (!token) return;
-      var url = "/last-response?token=" + encodeURIComponent(token);
+      var url = "/last-response?token=" + encodeURIComponent(token) + (currentTarget ? "&target=" + encodeURIComponent(currentTarget) : "");
       ttsPoller = setInterval(function() {
         if (!ttsEnabled) {
           stopTTSPoll();
