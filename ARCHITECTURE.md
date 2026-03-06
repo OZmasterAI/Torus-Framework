@@ -1,7 +1,7 @@
 # Torus Framework — Architecture Map
 
-> **Version:** v2.5.8 | **Updated:** 2026-03-01 (Session 306)
-> **Stats:** 151 Python files | ~75,939 lines | 17 active gates | 67 shared modules | 36 skills
+> **Version:** v2.6 | **Updated:** 2026-03-06 (Session 363)
+> **Stats:** 154 Python files | ~76,942 lines | 17 active gates | 68 shared modules | 37 skills
 
 ## Overview
 
@@ -43,7 +43,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
                             ┌────────────────────────▼──────────────▼──────┐
                             │              MCP Servers                      │
                             │  memory_server.py (8 tools, LanceDB)         │
-                            │  analytics_server.py (50 tools, read-only)   │
+                            │  analytics_server.py (15 tools, read-only)   │
                             └──────────────────────────────────────────────┘
 ```
 
@@ -67,12 +67,12 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 │   ├── session_end.py               #   SessionEnd handler (599 lines)
 │   ├── statusline.py                #   2-line status display (1,107 lines)
 │   ├── memory_server.py             #   Memory MCP server (4,627 lines)
-│   ├── analytics_server.py          #   Analytics MCP server (2,481 lines)
+│   ├── analytics_server.py          #   Analytics MCP server (2,481 lines, 15 active tools)
 │   ├── test_framework.py            #   Gate test suite (53 lines, orchestrator)
 │   ├── tests/                       # 13 focused test files (29,417 lines)
 │   ├── fuzz_gates.py                #   Gate fuzzer (562 lines)
 │   ├── subagent_context.py          #   SubagentStart context injection (380 lines)
-│   ├── user_prompt_capture.py       #   UserPromptSubmit capture (160 lines)
+│   ├── user_prompt_capture.py       #   UserPromptSubmit capture + state warnings (286 lines)
 │   ├── event_logger.py              #   Supplementary event logging (298 lines)
 │   ├── auto_commit.py               #   Two-phase git auto-commit (148 lines)
 │   ├── auto_approve.py              #   Benign tool auto-approval (136 lines)
@@ -82,12 +82,13 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 │   ├── integrity_check.py           #   SHA256 file verification (97 lines)
 │   ├── failure_recovery.py          #   Tool failure triage (59 lines)
 │   ├── tg_mirror.py                 #   Telegram mirror (127 lines)
+│   ├── tts_signal.py                #   Stop hook: TTS signal for voice-web (101 lines)
 │   ├── stop_cleanup.py              #   Stop event cleanup (46 lines)
 │   ├── setup_ramdisk.sh             #   One-time tmpfs setup (116 lines)
 │   │
 │   ├── gates/                       # Quality gates (17 active, 348 KB)
 │   ├── shared/                      # Infrastructure modules (67 files, ~25K lines)
-│   ├── boot_pkg/                    # Boot pipeline (6 files, 977 lines)
+│   ├── boot_pkg/                    # Boot pipeline (6 files, 1,241 lines)
 │   ├── tracker_pkg/                 # Tracker pipeline (10 files, 1,552 lines)
 │   ├── benchmarks/                  # Performance benchmarks
 │   │   ├── benchmark_gates.py       #   Gate latency benchmarks (458 lines)
@@ -147,7 +148,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | 6 | SAVE TO MEMORY | 238 | Edit, Write, Task, Bash | Advisory → blocking. Warns unsaved fixes (threshold: 2). Escalates after 5 warnings. Merged old Gate 12. 20-min stale decay |
 | 7 | CRITICAL FILE GUARD | 100 | Edit, Write, NotebookEdit | Extra checks for high-risk files (settings.json, CLAUDE.md, enforcer.py, etc.). Requires explicit confirmation for critical modifications |
 | 9 | STRATEGY BAN | 175 | Edit, Write, NotebookEdit | Blocks strategies that failed 3+ times (4 if prior success). Auto-defers to PRP |
-| 10 | MODEL COST GUARD | 267 | Task | Enforces explicit model param. 4-tier budget degradation (NORMAL/LOW_COMPUTE/CRITICAL/DEAD). Role-based profiles |
+| 10 | MODEL PROFILE ENFORCEMENT | 326 | Task, Agent | Enforces model profiles via agent frontmatter patching. 5 profiles (quality/balanced/efficient/lean/budget) map roles to models. Auto-patches .md frontmatter at spawn time. Atomic writes (tempfile + os.rename) |
 | 11 | RATE LIMIT | 82 | All (except analytics) | Blocks >60 calls/min, warns >40/min. 120s rolling window. MAX_WINDOW_ENTRIES=200 |
 | 13 | WORKSPACE ISOLATION | 112 | Edit, Write, NotebookEdit | Prevents concurrent file edits across agents. fcntl.flock on .file_claims.json. Main session exempt |
 | 14 | CONFIDENCE CHECK | 121 | Edit, Write, NotebookEdit | Progressive: warn 2x per file → block on 3rd. Checks test baseline, pending verification |
@@ -263,6 +264,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 | memory_maintenance.py | 847 | Health analysis, age scoring, cleanup candidates (read-only) |
 | memory_socket.py | 195 | UDS client for memory server / LanceDB (avoids segfaults). 5s timeout |
 | experience_archive.py | 393 | CSV-based fix pattern learning, success rates |
+| model_profiles.py | 101 | 5 model profiles (quality/balanced/efficient/lean/budget), role→model mappings, get_model_for_agent() API |
 
 ### Inter-Agent Communication (3 modules, ~1,312 lines)
 
@@ -352,7 +354,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 
 ```
 SessionStart ─→ boot.py ─→ boot_pkg/orchestrator.py (378 lines)
-                            ├── maintenance.py: audit rotation, state reset
+                            ├── maintenance.py: audit rotation, state reset, agent model sync
                             ├── memory.py: LanceDB injection via UDS, sideband write
                             └── context.py: error/test/verification/duration extraction
 
@@ -386,6 +388,7 @@ PreCompact ─→ pre_compact.py (snapshot gate state before context compression
 SessionEnd ─→ session_end.py (flush queues, update LIVE_STATE, increment session_count)
 
 Stop ─→ tg_mirror.py (mirror final response to Telegram)
+     ─→ tts_signal.py (strip markdown, write TTS signal for voice-web)
      ─→ stop_cleanup.py (flush I/O, close handles, shutdown daemons)
 
 PostToolUseFailure ─→ event_logger.py (log failure)
@@ -432,19 +435,17 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 
 ### Analytics Server (analytics_server.py — 2,481 lines)
 
-Comprehensive framework analytics — lazy-loaded, no LanceDB dependency. **50 active tools, 1 dormant.**
+Comprehensive framework analytics — lazy-loaded, no LanceDB dependency. **15 active tools** (trimmed from 50 to reduce context overhead).
 
 | Category | Tools |
 |----------|-------|
-| **Framework Health (5)** | framework_health, framework_summary, framework_pulse, framework_health_score, all_metrics |
-| **Gate Analysis (13)** | gate_dashboard, gate_timing, gate_health, gate_sla, gate_sla_status, gate_trends, gate_correlations, gate_dependencies, gate_drift, gate_pruning, gate_correlation_report, preview_gates, pipeline_analysis |
-| **Session (4)** | session_summary, session_metrics, session_replay, session_context_snapshot |
-| **Audit & Errors (4)** | audit_status, audit_trail, error_clusters, fix_effectiveness |
-| **Anomaly & Behavioral (7)** | detect_anomalies, anomaly_summary, event_stats, replay_events, routing_stats, frustration_report, rw_ratio |
-| **Memory & Infra (5)** | memory_health, memory_dedup_report, stale_memory_report, circuit_states, cache_health |
-| **Domain & Skills (5)** | skill_health, skill_dependencies, skill_invocation_report, domain_info, inspect_domain |
-| **Dev & Code (6)** | tool_predictions, tool_recommendations, code_hotspots, generate_test_stubs, causal_chain_analysis, query_observations |
-| **Search (1)** | telegram_search |
+| **Framework Health (2)** | framework_health, all_metrics |
+| **Gate Analysis (3)** | gate_dashboard, gate_timing, preview_gates |
+| **Session (2)** | session_summary, session_metrics |
+| **Audit & Errors (3)** | audit_trail, error_clusters, fix_effectiveness |
+| **Memory & Infra (2)** | memory_health, circuit_states |
+| **Skills & Observations (2)** | skill_health, query_observations |
+| **Behavioral (1)** | rw_ratio |
 
 ---
 
@@ -466,13 +467,15 @@ User-invocable: benchmark, learn, introspect, security-scan, super-evolve, keybi
 
 ---
 
-## Agent Definitions (6 agents)
+## Agent Definitions (8 agents)
 
-| Agent | Model | Capabilities |
+| Agent | Model (balanced profile) | Capabilities |
 |-------|-------|-------------|
-| researcher | haiku | Read-only exploration: Glob, Grep, Read, WebFetch, WebSearch, memory |
+| researcher | sonnet | Read-only exploration: Glob, Grep, Read, WebFetch, WebSearch, memory |
 | builder | sonnet | Full implementation: Edit, Write, Bash, NotebookEdit, memory, causal chain |
 | debugger | sonnet | Diagnosis + fix: Edit, Write, Bash, causal chain tracking, log analysis |
+| explore | sonnet | Fast codebase exploration: Read, Glob, Grep, memory (custom, gate 10 controlled) |
+| plan | opus | Software architect: Read, Glob, Grep, Bash, memory (custom, gate 10 controlled) |
 | stress-tester | sonnet | Test execution + verification: Bash, memory |
 | perf-analyzer | sonnet | Performance profiling: Read-only + Bash for benchmarks |
 | security | sonnet | Security audit: Read-only + Bash for scanning |
@@ -523,6 +526,7 @@ Plugin directory cleared. No plugins currently installed.
 
 | System | Location | Protocol |
 |--------|----------|----------|
+| Voice-Web | integrations/voice-web/ | WebSocket, Piper/edge-tts, multi-session tabs |
 | Telegram Bot | integrations/telegram-bot/ | Bot API, SQLite msg_log.db (532KB) |
 | Terminal History | integrations/terminal-history/ | FTS5, SQLite terminal_history.db (19.8MB) |
 | LanceDB | ~/data/memory/lancedb/ | UDS socket (.chromadb.sock, legacy name) |
@@ -580,24 +584,24 @@ Plugin directory cleared. No plugins currently installed.
 
 | Metric | Value |
 |--------|-------|
-| Python files (hooks/) | 151 |
-| Total lines (hooks/) | ~75,939 |
+| Python files (hooks/) | 154 |
+| Total lines (hooks/) | ~76,942 |
 | Active gates | 17 (+ 2 dormant) |
-| Shared modules | 67 |
+| Shared modules | 68 |
 | Top-level hooks | 25 |
-| Boot pipeline files | 6 (977 lines) |
+| Boot pipeline files | 6 (1,241 lines) |
 | Tracker pipeline files | 10 (1,552 lines) |
-| Skills | 36 |
+| Skills | 37 |
 | Plugins | 0 |
-| Agent definitions | 6 |
+| Agent definitions | 8 |
 | Teams | 5 |
-| MCP servers | 2 (58 active tools) |
+| MCP servers | 3 (25 active tools: 8 memory, 15 analytics, 2 search) |
 | External orchestrators | 2 |
-| Integrations | 2 |
+| Integrations | 3 |
 | Session state files | 43 |
 | Total memories | — |
 | Largest file | hooks/tests/ (13 files, 29,417 lines) |
 
 ---
 
-*Generated by Torus Framework — Session 306 (2026-03-01)*
+*Generated by Torus Framework — Session 363 (2026-03-06)*
