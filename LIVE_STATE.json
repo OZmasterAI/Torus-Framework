@@ -1,9 +1,9 @@
 {
-  "session_count": 364,
+  "session_count": 365,
   "project": "torus-framework",
   "feature": "skill-mcp-library",
   "framework_version": "v2.6",
-  "what_was_done": "Built MCP Skill Library Server. Rewrote The Loop with formal skill calls. Created /implement (replaces /build). 7 skills in system prompt (~3,812 tokens), 12 on-demand via MCP (0 idle). Saved ~8,424 tokens/message vs original. Updated CLAUDE.md routing table + rule 4 (no plan mode).",
+  "what_was_done": "Deep comparison of MCP vs Hybrid vs Hook skill delivery. Scored 8 categories. MCP and Hybrid tied at 81, Hook rejected at 57. Decided: test MCP first, add hybrid nudge only if consistency is proven weak.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
@@ -12,10 +12,10 @@
     "EnterPlanMode still available — consider gate 20 redirect to enforce /brainstorm"
   ],
   "next_steps": [
-    "Test MCP skill server in next session (restart required) — verify invoke_skill works",
+    "Test MCP skill server (restart required) — verify invoke_skill works",
     "Build gate 20 (tool redirect) to block EnterPlanMode → use /brainstorm",
+    "Run memory maintenance(action='stale') — DB at 2324 entries",
     "Post Discord + Twitter announcements for v2.6 (drafts ready)",
-    "Fix diagram 03 gate names to match actual gate names from ARCHITECTURE.md",
-    "Run memory maintenance(action='stale') — DB at 2321 entries"
+    "Fix diagram 03 gate names to match actual gate names from ARCHITECTURE.md"
   ]
 }
