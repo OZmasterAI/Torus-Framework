@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gate Pipeline — Torus Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME — editorial: deep navy + gold, parchment bg ============ */
+  :root {
+    --font-body: 'Instrument Serif', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #faf8f3;
+    --surface: #ffffff;
+    --surface2: #f5f2ea;
+    --surface3: #fffdf8;
+    --border: rgba(0, 0, 0, 0.07);
+    --border-bright: rgba(0, 0, 0, 0.14);
+    --text: #1a1612;
+    --text-dim: #7a6e5e;
+
+    --navy: #1e3a5f;
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.10);
+    --primary: var(--navy);
+    --primary-dim: rgba(30, 58, 95, 0.08);
+    --accent: var(--gold);
+    --accent-dim: var(--gold-dim);
+
+    --red: #b91c1c;
+    --red-dim: rgba(185, 28, 28, 0.09);
+    --amber: #92400e;
+    --amber-dim: rgba(146, 64, 14, 0.09);
+    --blue: #1d4ed8;
+    --blue-dim: rgba(29, 78, 216, 0.09);
+    --grey: #6b7280;
+    --grey-dim: rgba(107, 114, 128, 0.09);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1218;
+      --surface: #141a24;
+      --surface2: #1a2230;
+      --surface3: #111820;
+      --border: rgba(255,255,255,0.08);
+      --border-bright: rgba(255,255,255,0.15);
+      --text: #e8dfc8;
+      --text-dim: #8a7e6e;
+
+      --navy: #93c5fd;
+      --gold: #fcd34d;
+      --gold-dim: rgba(252, 211, 77, 0.12);
+      --primary: var(--navy);
+      --primary-dim: rgba(147, 197, 253, 0.10);
+      --accent: var(--gold);
+      --accent-dim: var(--gold-dim);
+
+      --red: #f87171;
+      --red-dim: rgba(248, 113, 113, 0.13);
+      --amber: #fb923c;
+      --amber-dim: rgba(251, 146, 60, 0.12);
+      --blue: #60a5fa;
+      --blue-dim: rgba(96, 165, 250, 0.12);
+      --grey: #9ca3af;
+      --grey-dim: rgba(156, 163, 175, 0.12);
+    }
+  }
+
+  /* ============ RESET ============ */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 15% 0%, var(--gold-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 85% 100%, var(--primary-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 56px 48px;
+    min-height: 100vh;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.45s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.05s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .container { max-width: 1120px; margin: 0 auto; }
+
+  h1 {
+    font-size: 42px;
+    font-weight: 400;
+    font-style: italic;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+  }
+
+  .description {
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--text-dim);
+    max-width: 760px;
+    margin-bottom: 40px;
+    font-style: italic;
+  }
+
+  .description code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-style: normal;
+    background: var(--gold-dim);
+    color: var(--gold);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ============ SECTION HEADING ============ */
+  .section-heading {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    color: var(--text-dim);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-heading::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, var(--border-bright), transparent);
+  }
+
+  /* ============ MERMAID CONTAINER ============ */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 36px 28px;
+    overflow: auto;
+    margin-bottom: 48px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 380px;
+    cursor: grab;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .mermaid-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .zoom-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+
+  /* ============ MERMAID SVG OVERRIDES ============ */
+  .mermaid .nodeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 13px !important;
+    color: var(--text) !important;
+  }
+  .mermaid .edgeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+    color: var(--text-dim) !important;
+    background-color: var(--bg) !important;
+  }
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+  .mermaid .node rect,
+  .mermaid .node circle,
+  .mermaid .node polygon { stroke-width: 1.5px !important; }
+  .mermaid .edge-pattern-solid { stroke-width: 1.5px !important; }
+
+  /* ============ GATE RESULT TABLE ============ */
+  .gate-result-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--gold);
+    border-radius: 0 0 12px 12px;
+    overflow: hidden;
+    margin-bottom: 48px;
+  }
+
+  .gate-result-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .gate-result-wrap th {
+    background: var(--surface2);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  .gate-result-wrap td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+
+  .gate-result-wrap tr:last-child td { border-bottom: none; }
+
+  .gate-result-wrap td:first-child {
+    color: var(--gold);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .gate-result-wrap td:nth-child(2) {
+    color: var(--text-dim);
+    white-space: nowrap;
+    padding-right: 24px;
+  }
+
+  /* ============ TIER SECTION ============ */
+  .tier-section {
+    margin-bottom: 48px;
+  }
+
+  .tier-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  .tier-header--red    { background: var(--red-dim);   border-left: 4px solid var(--red); }
+  .tier-header--amber  { background: var(--amber-dim); border-left: 4px solid var(--amber); }
+  .tier-header--blue   { background: var(--blue-dim);  border-left: 4px solid var(--blue); }
+  .tier-header--grey   { background: var(--grey-dim);  border-left: 4px solid var(--grey); }
+
+  .tier-num {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    opacity: 0.7;
+  }
+
+  .tier-name {
+    font-size: 16px;
+    font-weight: 400;
+    font-style: italic;
+    flex: 1;
+  }
+
+  .tier-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+
+  .tier-badge--red   { color: var(--red);   background: var(--red-dim);   border-color: var(--red); }
+  .tier-badge--amber { color: var(--amber); background: var(--amber-dim); border-color: var(--amber); }
+  .tier-badge--blue  { color: var(--blue);  background: var(--blue-dim);  border-color: var(--blue); }
+  .tier-badge--grey  { color: var(--grey);  background: var(--grey-dim);  border-color: var(--grey); }
+
+  /* ============ GATE GRID ============ */
+  .gate-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+  }
+
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border-bright);
+    border-radius: 10px;
+    padding: 16px 18px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .ve-card:hover { box-shadow: 0 2px 14px rgba(0,0,0,0.06); }
+
+  .ve-card--red   { border-left-color: var(--red); }
+  .ve-card--amber { border-left-color: var(--amber); }
+  .ve-card--blue  { border-left-color: var(--blue); }
+  .ve-card--grey  { border-left-color: var(--grey); }
+  .ve-card--gold  { border-left-color: var(--gold); }
+
+  .ve-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .ve-card-num {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .ve-card-title {
+    font-size: 14px;
+    font-style: italic;
+    line-height: 1.3;
+  }
+
+  .ve-card-lines {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-self: flex-start;
+  }
+
+  .ve-card-flow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-dim);
+  }
+
+  .ve-card-flow strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .ve-card-flow code {
+    font-size: 10.5px;
+    background: var(--gold-dim);
+    color: var(--gold);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  /* ============ DISPATCH SECTION ============ */
+  .dispatch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .dispatch-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+
+  .dispatch-card-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gold);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .dispatch-card-desc {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
+  /* ============ CALLOUT ============ */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 10px 10px 0;
+    padding: 16px 20px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    margin-bottom: 40px;
+  }
+
+  .callout strong { color: var(--text); }
+
+  .callout code {
+    font-size: 11px;
+    background: var(--gold-dim);
+    color: var(--gold);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 768px) {
+    body { padding: 24px 18px; }
+    h1 { font-size: 28px; }
+    .gate-grid { grid-template-columns: 1fr; }
+    .mermaid-wrap { padding: 18px 12px; }
+    .gate-result-wrap { overflow-x: auto; }
+    .dispatch-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1 class="animate" style="--i:0">Gate Pipeline</h1>
+  <p class="subtitle animate" style="--i:1">torus-framework &mdash; all 17 gates in execution order &mdash; 2026-03-06</p>
+  <p class="description animate" style="--i:2">
+    Every tool call flows through <code>enforcer.py</code> which routes to <code>gate_router.py</code>.
+    Gates are grouped into three tiers. Tier 1 is fail-closed &mdash; any exception blocks.
+    Tiers 2 and 3 are fail-open. Always-allowed tools bypass the pipeline entirely.
+  </p>
+
+  <!-- MERMAID OVERVIEW -->
+  <p class="section-heading animate" style="--i:3">Execution Flow</p>
+
+  <div class="mermaid-wrap animate" style="--i:4">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset">&#8634;</button>
+      <button onclick="openDiagramFullscreen(this)" title="Fullscreen">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+graph TD
+  TC["Tool Call"] --> CHK{"Always-allowed<br/>bypass?"}
+  CHK -->|"yes"| AL["Allow directly"]
+  CHK -->|"no"| ENF["enforcer.py<br/>enforcer_shim.py &rarr; daemon"]
+  ENF --> GR["gate_router.py<br/>Q-learning reorder &middot; tool-scoped dispatch"]
+  GR --> T1["Tier 1 &mdash; Safety<br/>Gates 1-3 &middot; fail-closed"]
+  T1 --> T2["Tier 2 &mdash; Quality<br/>Gates 4-16 &middot; fail-open"]
+  T2 --> T3["Tier 3 &mdash; Advanced<br/>Gates 17-19 &middot; fail-open"]
+  T3 --> GATE["GateResult<br/>blocked &middot; severity &middot; escalation"]
+  GATE -->|"blocked=false"| OK["Allow"]
+  GATE -->|"blocked=true"| BLK["Block / Warn / Ask"]
+
+  classDef tier1 fill:#b91c1c18,stroke:#b91c1c,stroke-width:2px
+  classDef tier2 fill:#92400e18,stroke:#92400e,stroke-width:1.5px
+  classDef tier3 fill:#1d4ed818,stroke:#1d4ed8,stroke-width:1.5px
+  classDef ok    fill:#16a34a18,stroke:#16a34a,stroke-width:1.5px
+  classDef block fill:#b91c1c18,stroke:#b91c1c,stroke-width:1.5px
+  classDef gold  fill:#d4a73a18,stroke:#d4a73a,stroke-width:1.5px
+  classDef neutral fill:#6b728018,stroke:#6b7280,stroke-width:1px
+
+  class T1 tier1
+  class T2 tier2
+  class T3 tier3
+  class OK ok
+  class BLK block
+  class GATE gold
+  class TC,CHK,ENF,GR,AL neutral
+    </pre>
+  </div>
+
+  <!-- GATE RESULT STRUCTURE -->
+  <p class="section-heading animate" style="--i:5">GateResult Structure</p>
+
+  <div class="gate-result-wrap animate" style="--i:6">
+    <table>
+      <thead>
+        <tr>
+          <th>field</th>
+          <th>type</th>
+          <th>description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>blocked</td><td>bool</td><td>True halts the tool call (exit 2). False proceeds regardless of severity.</td></tr>
+        <tr><td>message</td><td>str</td><td>Human-readable explanation shown to Claude in stderr when blocked.</td></tr>
+        <tr><td>gate_name</td><td>str</td><td>Identifier of the gate that produced this result (e.g. "read_before_edit").</td></tr>
+        <tr><td>severity</td><td>info | warn | error | critical</td><td>Descriptive level. Does not control blocking — only blocked=True blocks.</td></tr>
+        <tr><td>escalation</td><td>block | ask | warn | allow</td><td>Inferred from blocked if omitted. "ask" triggers interactive confirmation.</td></tr>
+        <tr><td>duration_ms</td><td>float</td><td>Gate execution time in milliseconds. Used for performance monitoring.</td></tr>
+        <tr><td>metadata</td><td>dict</td><td>Arbitrary additional data for audit log and downstream gates.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- TIER 1 -->
+  <div class="tier-section animate" style="--i:7">
+    <div class="tier-header tier-header--red">
+      <span class="tier-num">Tier 1</span>
+      <span class="tier-name">Safety Gates</span>
+      <span class="tier-badge tier-badge--red">fail-closed</span>
+    </div>
+    <div class="gate-grid">
+
+      <div class="ve-card ve-card--red">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 01</span>
+            <div class="ve-card-title">read_before_edit</div>
+          </div>
+          <span class="ve-card-lines">118 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Must Read before Edit/Write/NotebookEdit.</strong><br>
+          Guards <code>.py</code> <code>.js</code> <code>.ts</code> and other source files via stem matching.<br>
+          Checks session read log for the target path. Blocks if file not in read set.<br>
+          <em>T1 — exception blocks.</em>
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--red">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 02</span>
+            <div class="ve-card-title">no_destroy</div>
+          </div>
+          <span class="ve-card-lines">312 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Blocks destructive operations.</strong><br>
+          47 patterns including: <code>rm -rf</code> <code>DROP TABLE</code> <code>force push</code> <code>reset --hard</code>.<br>
+          Uses shlex tokenization for accurate shell parsing. Checks both command text and tool input fields.<br>
+          <em>T1 — exception blocks.</em>
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--red">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 03</span>
+            <div class="ve-card-title">test_before_deploy</div>
+          </div>
+          <span class="ve-card-lines">131 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Blocks deploy without recent tests.</strong><br>
+          Triggers on <code>scp</code> <code>docker push</code> <code>kubectl apply</code> and similar deployment commands.<br>
+          Requires tests ran within the last 30 minutes (session state timestamp check).<br>
+          <em>T1 — exception blocks.</em>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TIER 2 -->
+  <div class="tier-section animate" style="--i:8">
+    <div class="tier-header tier-header--amber">
+      <span class="tier-num">Tier 2</span>
+      <span class="tier-name">Quality Gates</span>
+      <span class="tier-badge tier-badge--amber">fail-open</span>
+    </div>
+    <div class="gate-grid">
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 04</span>
+            <div class="ve-card-title">memory_first</div>
+          </div>
+          <span class="ve-card-lines">82 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Enforces memory-before-action habit.</strong><br>
+          Sideband protocol: reads <code>.memory_last_queried</code> (atomic write from MCP). 5-minute window.<br>
+          Warns if memory not queried recently before writing.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 05</span>
+            <div class="ve-card-title">proof_before_fixed</div>
+          </div>
+          <span class="ve-card-lines">110 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Prevents false "fixed" claims.</strong><br>
+          Blocks at 3+ unverified files modified. Warns on 4th access to the same file. Hard blocks on 6th.<br>
+          Escalation: warn &rarr; warn &rarr; block.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 06</span>
+            <div class="ve-card-title">save_fix</div>
+          </div>
+          <span class="ve-card-lines">238 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Enforces remember_this after fixes.</strong><br>
+          Advisory &rarr; blocking escalation. Threshold of 2 unrecorded fixes before first warn. Hard blocks after 5 warnings.<br>
+          Tracks fix patterns per session.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 07</span>
+            <div class="ve-card-title">critical_file_guard</div>
+          </div>
+          <span class="ve-card-lines">100 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Extra checks for sensitive files.</strong><br>
+          Applies heightened scrutiny to <code>settings.json</code> <code>CLAUDE.md</code> <code>enforcer.py</code> and similar critical config/code files.<br>
+          Requires explicit confirmation pattern.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 09</span>
+            <div class="ve-card-title">strategy_ban</div>
+          </div>
+          <span class="ve-card-lines">175 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Blocks repeatedly-failed strategies.</strong><br>
+          Queries fix history via causal chain. Blocks strategies with 3+ recorded failures. Auto-defers to PRP (Problem Resolution Protocol) after ban.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 10</span>
+            <div class="ve-card-title">model_enforcement</div>
+          </div>
+          <span class="ve-card-lines">326 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Model profile enforcement via agent frontmatter.</strong><br>
+          5 profiles: <code>quality</code> <code>balanced</code> <code>efficient</code> <code>lean</code> <code>budget</code>.<br>
+          Intercepts <code>Task</code> + <code>Agent</code> spawns. Reads agent <code>.md</code> frontmatter, auto-patches <code>model:</code> field to match active profile. Atomic writes (tempfile + os.rename).
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 11</span>
+            <div class="ve-card-title">rate_limit</div>
+          </div>
+          <span class="ve-card-lines">82 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Tool call rate limiting.</strong><br>
+          &gt;60/min &rarr; block. &gt;40/min &rarr; warn. 120-second sliding window.<br>
+          Separate counters per tool type. Ramdisk-backed for speed.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 13</span>
+            <div class="ve-card-title">workspace_isolation</div>
+          </div>
+          <span class="ve-card-lines">112 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>File locking for concurrent agents.</strong><br>
+          Uses <code>fcntl.flock</code> to prevent two agents writing the same file simultaneously.<br>
+          Main session is always exempt (Gate 13 reference doc).
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 14</span>
+            <div class="ve-card-title">confidence_check</div>
+          </div>
+          <span class="ve-card-lines">121 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Progressive confidence enforcement.</strong><br>
+          Warns on 2nd low-confidence access to the same target. Blocks on 3rd. Resets on successful test run.<br>
+          Escalation: warn &rarr; warn &rarr; block.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 15</span>
+            <div class="ve-card-title">causal_chain</div>
+          </div>
+          <span class="ve-card-lines">79 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Blocks editing after test failure.</strong><br>
+          If a test failed this session and <code>query_fix_history</code> has not been called, blocks Edit until the causal chain is queried. Prevents blind retry loops.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--amber">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 16</span>
+            <div class="ve-card-title">code_quality</div>
+          </div>
+          <span class="ve-card-lines">154 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Static quality pattern scanning.</strong><br>
+          Detects: secrets/keys in code, debug print statements, broad <code>except:</code> clauses, unresolved TODOs in critical paths.<br>
+          Advisory severity, non-blocking by default.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TIER 3 -->
+  <div class="tier-section animate" style="--i:9">
+    <div class="tier-header tier-header--blue">
+      <span class="tier-num">Tier 3</span>
+      <span class="tier-name">Advanced Gates</span>
+      <span class="tier-badge tier-badge--blue">fail-open</span>
+    </div>
+    <div class="gate-grid">
+
+      <div class="ve-card ve-card--blue">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 17</span>
+            <div class="ve-card-title">injection_defense</div>
+          </div>
+          <span class="ve-card-lines">771 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Prompt injection detection.</strong><br>
+          6 categories: direct injection, base64-encoded payloads, ROT13/hex obfuscation, homoglyph substitution, zero-width character hiding, nested instruction patterns.<br>
+          Largest gate by line count.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--blue">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 18</span>
+            <div class="ve-card-title">canary</div>
+          </div>
+          <span class="ve-card-lines">216 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Statistical anomaly detection.</strong><br>
+          Never blocks. Uses Welford online statistics algorithm for rolling mean/variance. Detects burst patterns and behavioral drift across the session.<br>
+          Output is observational only &mdash; feeds analytics.
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--blue">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 19</span>
+            <div class="ve-card-title">hindsight</div>
+          </div>
+          <span class="ve-card-lines">92 lines</span>
+        </div>
+        <div class="ve-card-flow">
+          <strong>Mentor signal enforcement.</strong><br>
+          Reads mentor score from tracker pipeline. Blocks when score &lt; 0.3 with persistent consecutive escalations. Signals when approach quality drops below threshold.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- DORMANT -->
+  <div class="tier-section animate" style="--i:10">
+    <div class="tier-header tier-header--grey">
+      <span class="tier-num">Dormant</span>
+      <span class="tier-name">Inactive Gates</span>
+      <span class="tier-badge tier-badge--grey">disabled</span>
+    </div>
+    <div class="gate-grid">
+
+      <div class="ve-card ve-card--grey">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 08</span>
+            <div class="ve-card-title">temporal</div>
+          </div>
+        </div>
+        <div class="ve-card-flow">
+          Time-based access controls. Disabled &mdash; functionality covered by rate_limit (Gate 11).
+        </div>
+      </div>
+
+      <div class="ve-card ve-card--grey">
+        <div class="ve-card-header">
+          <div>
+            <span class="ve-card-num">Gate 12</span>
+            <div class="ve-card-title">merged into save_fix</div>
+          </div>
+        </div>
+        <div class="ve-card-flow">
+          Originally a separate advisory layer. Logic merged into Gate 06 (save_fix) during consolidation.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- DISPATCH DETAILS -->
+  <p class="section-heading animate" style="--i:11">Dispatch Details</p>
+
+  <div class="dispatch-grid animate" style="--i:12">
+
+    <div class="dispatch-card">
+      <div class="dispatch-card-title">Q-Learning Reorder</div>
+      <div class="dispatch-card-desc">
+        Gate execution order adapts at runtime using Q-learning. Gates that block more often get promoted higher in the dispatch queue to fail fast.
+      </div>
+    </div>
+
+    <div class="dispatch-card">
+      <div class="dispatch-card-title">Tool-Scoped Dispatch</div>
+      <div class="dispatch-card-desc">
+        Each gate declares which tool types it cares about. gate_router.py only dispatches gates relevant to the current tool call, reducing unnecessary work.
+      </div>
+    </div>
+
+    <div class="dispatch-card">
+      <div class="dispatch-card-title">Result Caching</div>
+      <div class="dispatch-card-desc">
+        Gate results are cached with a 60-second TTL keyed by (gate, tool, input hash). Identical repeated calls skip recomputation.
+      </div>
+    </div>
+
+    <div class="dispatch-card">
+      <div class="dispatch-card-title">Always-Allowed Bypass</div>
+      <div class="dispatch-card-desc">
+        Read, Glob, Grep, and other read-only tools are in the always-allowed list. They skip the gate pipeline entirely for zero overhead on safe operations.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CALLOUT -->
+  <div class="callout animate" style="--i:13">
+    <strong>Tier contract:</strong> Tier 1 gates are fail-closed &mdash; any Python exception within the gate code is treated as a block (enforcer.py catches and returns blocked=True). This ensures safety gates can never silently pass due to a bug. Tiers 2 and 3 are fail-open &mdash; exceptions produce a warning result and execution continues. The tier assignment is set in <code>enforcer.py:TIER1_SAFETY_GATES</code>.
+  </div>
+
+</div>
+
+<!-- ============ MERMAID ============ -->
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      primaryColor:         isDark ? '#1a2230' : '#f0f4ff',
+      primaryBorderColor:   isDark ? '#93c5fd' : '#1e3a5f',
+      primaryTextColor:     isDark ? '#e8dfc8' : '#1a1612',
+      secondaryColor:       isDark ? '#2a1e10' : '#fef9e7',
+      secondaryBorderColor: isDark ? '#fcd34d' : '#d4a73a',
+      secondaryTextColor:   isDark ? '#e8dfc8' : '#1a1612',
+      tertiaryColor:        isDark ? '#1a0e0e' : '#fff1f0',
+      tertiaryBorderColor:  isDark ? '#f87171' : '#b91c1c',
+      tertiaryTextColor:    isDark ? '#e8dfc8' : '#1a1612',
+      lineColor:            isDark ? '#8a7e6e' : '#7a6e5e',
+      fontSize: '13px',
+      fontFamily: "'JetBrains Mono', 'SF Mono', Consolas, monospace",
+      noteBkgColor:    isDark ? '#1a2230' : '#fef9e7',
+      noteTextColor:   isDark ? '#e8dfc8' : '#1a1612',
+      noteBorderColor: isDark ? '#fcd34d' : '#d4a73a',
+    }
+  });
+</script>
+
+<!-- ============ ZOOM + PAN ============ -->
+<script>
+  var INITIAL_ZOOM = 1;
+
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+    var next = Math.min(Math.max(current * factor, 0.4), 6);
+    target.dataset.zoom = next;
+    target.style.zoom = next;
+  }
+
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = INITIAL_ZOOM;
+    target.style.zoom = INITIAL_ZOOM;
+  }
+
+  function openDiagramFullscreen(btn) {
+    openMermaidInNewTab(btn.closest('.mermaid-wrap'));
+  }
+
+  function openMermaidInNewTab(wrap) {
+    var svg = wrap.querySelector('.mermaid svg');
+    if (!svg) return;
+    var clone = svg.cloneNode(true);
+    clone.style.zoom = '';
+    clone.style.transform = '';
+    var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#faf8f3';
+    var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1.0">' +
+      '<title>Gate Pipeline</title>' +
+      '<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:' + bg + ';padding:40px;box-sizing:border-box;}' +
+      'svg{max-width:100%;max-height:90vh;height:auto;}</style>' +
+      '</head><body>' + clone.outerHTML + '</body></html>';
+    window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+  }
+
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      var next = Math.min(Math.max(current * factor, 0.4), 6);
+      target.dataset.zoom = next;
+      target.style.zoom = next;
+    }, { passive: false });
+
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX; startY = e.clientY;
+      scrollL = wrap.scrollLeft; scrollT = wrap.scrollTop;
+      startTime = Date.now(); didPan = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      wrap.scrollLeft = scrollL - dx;
+      wrap.scrollTop  = scrollT - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      if (!didPan && Date.now() - startTime < 300) openMermaidInNewTab(wrap);
+    });
+  });
+</script>
+
+</body>
+</html>

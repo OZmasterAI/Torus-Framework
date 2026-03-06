@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Torus Skills Catalog — 37 Skills</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME ============ */
+  :root {
+    --font-body: 'Instrument Serif', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --font-sans: system-ui, -apple-system, sans-serif;
+
+    --bg: #fff5f5;
+    --surface: #ffffff;
+    --surface2: #fef0ee;
+    --surface-elevated: #fff8f7;
+    --border: rgba(0,0,0,0.07);
+    --border-bright: rgba(0,0,0,0.14);
+    --text: #1c1917;
+    --text-dim: #78716c;
+    --accent: #be123c;
+    --accent-dim: rgba(190,18,60,0.06);
+    --green: #16a34a;
+    --green-dim: rgba(22,163,74,0.08);
+    --red: #dc2626;
+    --red-dim: rgba(220,38,38,0.08);
+    --orange: #d97706;
+    --orange-dim: rgba(217,119,6,0.08);
+    --blue: #0369a1;
+    --blue-dim: rgba(3,105,161,0.08);
+    --teal: #0f766e;
+    --teal-dim: rgba(15,118,110,0.08);
+    --pine: #4d7c0f;
+    --pine-dim: rgba(77,124,15,0.08);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a0a0a;
+      --surface: #231414;
+      --surface2: #2e1b1b;
+      --surface-elevated: #351f1f;
+      --border: rgba(255,255,255,0.06);
+      --border-bright: rgba(255,255,255,0.12);
+      --text: #fde2e2;
+      --text-dim: #c9a3a3;
+      --accent: #fb7185;
+      --accent-dim: rgba(251,113,133,0.12);
+      --green: #4ade80;
+      --green-dim: rgba(74,222,128,0.1);
+      --red: #f87171;
+      --red-dim: rgba(248,113,113,0.1);
+      --orange: #fbbf24;
+      --orange-dim: rgba(251,191,36,0.1);
+      --blue: #38bdf8;
+      --blue-dim: rgba(56,189,248,0.1);
+      --teal: #5eead4;
+      --teal-dim: rgba(94,234,212,0.1);
+      --pine: #a3e635;
+      --pine-dim: rgba(163,230,53,0.1);
+    }
+  }
+
+  /* ============ RESET ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 30% 0%, var(--accent-dim) 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 100%, var(--green-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-sans);
+    padding: 48px 40px;
+    min-height: 100vh;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.35s ease-out both;
+    animation-delay: calc(var(--i,0) * 0.04s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .container { max-width: 1160px; margin: 0 auto; }
+
+  /* ============ HEADER ============ */
+  .page-header { margin-bottom: 36px; }
+
+  h1 {
+    font-family: var(--font-body);
+    font-size: 38px;
+    font-weight: 400;
+    letter-spacing: -0.5px;
+    line-height: 1.15;
+    margin-bottom: 6px;
+    font-style: italic;
+  }
+
+  .subtitle {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.3px;
+  }
+
+  /* ============ KPI ROW ============ */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .kpi-card {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+
+  .kpi-card__value {
+    font-family: var(--font-body);
+    font-size: 30px;
+    font-weight: 400;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+  }
+
+  .kpi-card__value.green  { color: var(--green); }
+  .kpi-card__value.orange { color: var(--orange); }
+  .kpi-card__value.blue   { color: var(--blue); }
+  .kpi-card__value.teal   { color: var(--teal); }
+  .kpi-card__value.pine   { color: var(--pine); }
+
+  .kpi-card__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* ============ TOOLBAR ============ */
+  .toolbar {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .search-wrap {
+    position: relative;
+    flex: 1 1 200px;
+    min-width: 160px;
+  }
+
+  .search-wrap input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 8px;
+    padding: 9px 14px 9px 36px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .search-wrap input::placeholder { color: var(--text-dim); }
+  .search-wrap input:focus { border-color: var(--accent); }
+
+  .search-icon {
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: var(--text-dim);
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .filter-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-bright);
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .pill:hover { border-color: var(--accent); color: var(--accent); }
+  .pill.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .result-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    padding: 5px 0;
+  }
+
+  /* ============ TABLE WRAPPER ============ */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ============ TABLE ============ */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .data-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .data-table th {
+    background: var(--surface2);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-dim);
+    text-align: left;
+    padding: 13px 16px;
+    border-bottom: 2px solid var(--border-bright);
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+
+  .data-table th:hover { color: var(--accent); }
+
+  .data-table th.sorted-asc::after  { content: ' ↑'; color: var(--accent); }
+  .data-table th.sorted-desc::after { content: ' ↓'; color: var(--accent); }
+  .data-table th:last-child  { cursor: default; }
+
+  .data-table td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .data-table tbody tr:last-child td { border-bottom: none; }
+
+  .data-table tbody tr:nth-child(even) { background: var(--accent-dim); }
+
+  .data-table tbody tr {
+    transition: background 0.12s;
+  }
+
+  .data-table tbody tr:hover { background: var(--surface2); }
+
+  .data-table tbody tr.hidden { display: none; }
+
+  .col-name  { width: 140px; min-width: 120px; }
+  .col-desc  { min-width: 260px; }
+  .col-cat   { width: 140px; }
+  .col-inv   { width: 110px; text-align: center; }
+  .col-scr   { width: 100px; text-align: center; }
+
+  /* ============ SKILL NAME ============ */
+  .skill-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-dim);
+    padding: 2px 7px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+
+  /* ============ CATEGORY BADGE ============ */
+  .cat-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+
+  .cat-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .cat--dev          { background: var(--blue-dim);   color: var(--blue); }
+  .cat--research     { background: var(--teal-dim);   color: var(--teal); }
+  .cat--ops          { background: var(--orange-dim); color: var(--orange); }
+  .cat--quality      { background: var(--red-dim);    color: var(--red); }
+  .cat--build        { background: var(--pine-dim);   color: var(--pine); }
+  .cat--orchestration{ background: var(--accent-dim); color: var(--accent); }
+  .cat--advanced     { background: rgba(120,80,200,0.08); color: #7c40c8; }
+  .cat--creative     { background: rgba(236,100,120,0.08); color: #c03060; }
+
+  @media (prefers-color-scheme: dark) {
+    .cat--advanced { background: rgba(180,140,255,0.12); color: #b49cff; }
+    .cat--creative { background: rgba(255,130,160,0.12); color: #ff9ab0; }
+  }
+
+  /* ============ STATUS BADGES ============ */
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 6px;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+  }
+
+  .status::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .status--yes { background: var(--green-dim); color: var(--green); }
+  .status--no  { background: var(--border); color: var(--text-dim); }
+
+  /* ============ DESC TEXT ============ */
+  .desc-text {
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+
+  /* ============ FOOTER ============ */
+  .data-table tfoot td {
+    background: var(--surface2);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    border-top: 2px solid var(--border-bright);
+    border-bottom: none;
+    padding: 13px 16px;
+  }
+
+  /* ============ COLLAPSIBLES ============ */
+  .collapsibles { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+
+  details.collapsible {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  details.collapsible summary {
+    padding: 13px 18px;
+    background: var(--surface);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+    transition: background 0.12s;
+  }
+
+  details.collapsible summary:hover { background: var(--surface2); }
+  details.collapsible summary::-webkit-details-marker { display: none; }
+
+  details.collapsible summary::before {
+    content: '▸';
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform 0.12s;
+  }
+
+  details.collapsible[open] summary::before { transform: rotate(90deg); }
+
+  .collapsible__body {
+    padding: 18px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  .collapsible__body p { color: var(--text-dim); margin-bottom: 10px; }
+  .collapsible__body p:last-child { margin-bottom: 0; }
+  .collapsible__body strong { color: var(--text); font-weight: 600; }
+
+  .collapsible__body code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .skill-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .ve-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+
+  .ve-card .card-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .ve-card .card-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ============ NO RESULTS ============ */
+  .no-results {
+    display: none;
+    text-align: center;
+    padding: 40px 20px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 768px) {
+    body { padding: 20px 16px; }
+    h1 { font-size: 28px; }
+    .data-table th, .data-table td { padding: 10px 12px; }
+    .col-inv, .col-scr { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="page-header animate" style="--i:0">
+    <h1>Torus Skills Catalog</h1>
+    <p class="subtitle">36 skills &mdash; all invocation commands, categories, and capabilities</p>
+  </div>
+
+  <!-- KPI ROW -->
+  <div class="kpi-row animate" style="--i:1">
+    <div class="kpi-card">
+      <div class="kpi-card__value">36</div>
+      <div class="kpi-card__label">Total Skills</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value blue">6</div>
+      <div class="kpi-card__label">Dev</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value teal">6</div>
+      <div class="kpi-card__label">Research</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value orange">6</div>
+      <div class="kpi-card__label">Ops</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value pine">3</div>
+      <div class="kpi-card__label">Build</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value">5</div>
+      <div class="kpi-card__label">Orchestration</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value green">5</div>
+      <div class="kpi-card__label">User-Invocable</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value" style="color:var(--pine)">5</div>
+      <div class="kpi-card__label">Has Scripts</div>
+    </div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar animate" style="--i:2">
+    <div class="search-wrap">
+      <svg class="search-icon" viewBox="0 0 16 16">
+        <circle cx="6.5" cy="6.5" r="4"/>
+        <line x1="10" y1="10" x2="14" y2="14"/>
+      </svg>
+      <input type="text" id="search-input" placeholder="Search skills…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="filter-pills">
+      <button class="pill active" data-cat="all">All</button>
+      <button class="pill" data-cat="dev">Dev</button>
+      <button class="pill" data-cat="research">Research</button>
+      <button class="pill" data-cat="ops">Ops</button>
+      <button class="pill" data-cat="orchestration">Orchestration</button>
+      <button class="pill" data-cat="advanced">Advanced</button>
+      <button class="pill" data-cat="creative">Creative</button>
+      <button class="pill" data-cat="quality">Quality</button>
+      <button class="pill" data-cat="build">Build</button>
+    </div>
+    <span class="result-count" id="result-count">36 skills</span>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-wrap animate" style="--i:3">
+    <div class="table-scroll">
+      <table class="data-table" id="skills-table">
+        <thead>
+          <tr>
+            <th class="col-name" data-col="name">Name</th>
+            <th class="col-desc">Description</th>
+            <th class="col-cat" data-col="category">Category</th>
+            <th class="col-inv" title="User-Invocable skill">User-Invocable</th>
+            <th class="col-scr" title="Has companion scripts">Has Scripts</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+
+          <!-- DEV -->
+          <tr data-cat="dev" data-name="fix" style="--i:4">
+            <td class="col-name"><span class="skill-name">/fix</span></td>
+            <td class="col-desc"><span class="desc-text">Auto-diagnose and fix issues. Triggered by "fix", "debug", "broken", or any error encounter. Runs causal chain analysis, queries fix history, and applies targeted patches.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--dev">Dev</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="dev" data-name="commit" style="--i:5">
+            <td class="col-name"><span class="skill-name">/commit</span></td>
+            <td class="col-desc"><span class="desc-text">Quick git commit with auto-generated message. Stages changes, drafts a concise commit summary, enforces Co-Authored-By, and verifies with post-commit git status.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--dev">Dev</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="dev" data-name="test" style="--i:6">
+            <td class="col-name"><span class="skill-name">/test</span></td>
+            <td class="col-desc"><span class="desc-text">Run, write, and debug tests. Finds the test runner (package.json, Cargo.toml, Makefile), executes the suite, diagnoses failures, writes new coverage for changed behavior.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--dev">Dev</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="dev" data-name="review" style="--i:7">
+            <td class="col-name"><span class="skill-name">/review</span></td>
+            <td class="col-desc"><span class="desc-text">Code quality and convention check. Inspects code for style, correctness, lint issues, and adherence to project conventions before committing or merging.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--dev">Dev</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="dev" data-name="refactor" style="--i:8">
+            <td class="col-name"><span class="skill-name">/refactor</span></td>
+            <td class="col-desc"><span class="desc-text">Safe, incremental code refactoring. Extract, rename, simplify, remove dead code, or restructure — without changing observable behavior. Tests run before and after.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--dev">Dev</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="dev" data-name="document" style="--i:9">
+            <td class="col-name"><span class="skill-name">/document</span></td>
+            <td class="col-desc"><span class="desc-text">Auto-generate and maintain documentation. Creates or updates docstrings, README files, API docs, architecture notes, and changelogs from the current codebase state.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--dev">Dev</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+
+          <!-- RESEARCH -->
+          <tr data-cat="research" data-name="research" style="--i:10">
+            <td class="col-name"><span class="skill-name">/research</span></td>
+            <td class="col-desc"><span class="desc-text">Structured research with memory integration. Investigates topics, gathers information from code and memory, synthesizes findings, and saves results before decision-making.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--research">Research</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="research" data-name="explore" style="--i:11">
+            <td class="col-name"><span class="skill-name">/explore</span></td>
+            <td class="col-desc"><span class="desc-text">Interactive codebase deep-dive. Traces function flows, maps module relationships, follows data paths, and explains how a codebase, module, or system works end-to-end.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--research">Research</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="research" data-name="deep-dive" style="--i:12">
+            <td class="col-name"><span class="skill-name">/deep-dive</span></td>
+            <td class="col-desc"><span class="desc-text">Comprehensive memory context retrieval. Pulls all institutional knowledge on a topic from memory, synthesizes historical context, and surfaces related decisions and fixes.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--research">Research</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="research" data-name="analyze-errors" style="--i:13">
+            <td class="col-name"><span class="skill-name">/analyze-errors</span></td>
+            <td class="col-desc"><span class="desc-text">Recurring error deep analysis. Finds patterns in failures, queries fix history, identifies root causes, and builds a prevention strategy for errors that keep recurring.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--research">Research</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="research" data-name="learn" style="--i:14">
+            <td class="col-name"><span class="skill-name">/learn</span></td>
+            <td class="col-desc"><span class="desc-text">Learn from external sources (URLs, topics, questions). Researches, analyzes, cross-references memory, synthesizes actionable findings, and optionally applies code improvements.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--research">Research</span></td>
+            <td class="col-inv"><span class="status status--yes">Yes</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="research" data-name="teach" style="--i:15">
+            <td class="col-name"><span class="skill-name">/teach</span></td>
+            <td class="col-desc"><span class="desc-text">Framework knowledge transfer. Provides structured overviews of Torus components, explains how gates and skills work, and onboards new users to the framework.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--research">Research</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+
+          <!-- OPS -->
+          <tr data-cat="ops" data-name="diagnose" style="--i:16">
+            <td class="col-name"><span class="skill-name">/diagnose</span></td>
+            <td class="col-desc"><span class="desc-text">Gate effectiveness analysis. Reports which gates fire most, block rates, latency percentiles, and circuit breaker status. Surfaces optimization opportunities.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--ops">Ops</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="ops" data-name="super-health" style="--i:17">
+            <td class="col-name"><span class="skill-name">/super-health</span></td>
+            <td class="col-desc"><span class="desc-text">Comprehensive framework health diagnostic. Merges quick diagnostics, gate analysis, memory health, hook coverage, and system metrics into a single thorough report.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--ops">Ops</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--yes">Yes</span></td>
+          </tr>
+          <tr data-cat="ops" data-name="introspect" style="--i:18">
+            <td class="col-name"><span class="skill-name">/introspect</span></td>
+            <td class="col-desc"><span class="desc-text">Deep framework self-analysis. Enumerates all components, collects health metrics, compares against prior results in memory, identifies gaps, and produces a prioritized improvement roadmap. Read-only.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--ops">Ops</span></td>
+            <td class="col-inv"><span class="status status--yes">Yes</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="ops" data-name="status" style="--i:19">
+            <td class="col-name"><span class="skill-name">/status</span></td>
+            <td class="col-desc"><span class="desc-text">Quick system health check. Returns a compact overview of memory server, gate states, recent session activity, and any active circuit breakers.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--ops">Ops</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--yes">Yes</span></td>
+          </tr>
+          <tr data-cat="ops" data-name="wrap-up" style="--i:20">
+            <td class="col-name"><span class="skill-name">/wrap-up</span></td>
+            <td class="col-desc"><span class="desc-text">Session end protocol. Archives handoff state, saves session summary to memory, updates LIVE_STATE.json, and prepares the framework for the next session.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--ops">Ops</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--yes">Yes</span></td>
+          </tr>
+          <tr data-cat="ops" data-name="audit" style="--i:21">
+            <td class="col-name"><span class="skill-name">/audit</span></td>
+            <td class="col-desc"><span class="desc-text">Full project audit. Comprehensive review of code quality, security posture, test coverage, documentation gaps, and framework compliance across the entire codebase.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--ops">Ops</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+
+          <!-- QUALITY -->
+          <tr data-cat="quality" data-name="security-scan" style="--i:22">
+            <td class="col-name"><span class="skill-name">/security-scan</span></td>
+            <td class="col-desc"><span class="desc-text">Comprehensive security scan of the framework. Checks for credential exposure, unsafe patterns, injection vectors, and known vulnerabilities across hooks and shared modules.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--quality">Quality</span></td>
+            <td class="col-inv"><span class="status status--yes">Yes</span></td>
+            <td class="col-scr"><span class="status status--yes">Yes</span></td>
+          </tr>
+          <tr data-cat="quality" data-name="benchmark" style="--i:23">
+            <td class="col-name"><span class="skill-name">/benchmark</span></td>
+            <td class="col-desc"><span class="desc-text">Measure and track framework performance metrics over time. Collects test pass rates, memory counts, gate fire rates, hook latencies, and compares against previous baselines for regression detection.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--quality">Quality</span></td>
+            <td class="col-inv"><span class="status status--yes">Yes</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+
+          <!-- BUILD -->
+          <tr data-cat="build" data-name="build" style="--i:24">
+            <td class="col-name"><span class="skill-name">/build</span></td>
+            <td class="col-desc"><span class="desc-text">Full factory loop for non-trivial features. Runs the complete quality workflow: plan, implement, test, review, fix, and commit. Enforces The Loop discipline end-to-end.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--build">Build</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="build" data-name="deploy" style="--i:25">
+            <td class="col-name"><span class="skill-name">/deploy</span></td>
+            <td class="col-desc"><span class="desc-text">Safe deployment with backup and verification. Creates a backup checkpoint, deploys to the target server, runs smoke tests, and rolls back automatically on failure.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--build">Build</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="build" data-name="report" style="--i:26">
+            <td class="col-name"><span class="skill-name">/report</span></td>
+            <td class="col-desc"><span class="desc-text">Session and sprint report generator. Produces a comprehensive overview of recent work, memory saves, gate activity, and what was shipped across the current or recent sprint.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--build">Build</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+
+          <!-- ORCHESTRATION -->
+          <tr data-cat="orchestration" data-name="prp" style="--i:27">
+            <td class="col-name"><span class="skill-name">/prp</span></td>
+            <td class="col-desc"><span class="desc-text">Product Requirements Prompts. Creates a comprehensive, structured implementation blueprint for a complex feature — the canonical input format for /wave and /loop orchestrators.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--orchestration">Orchestration</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="orchestration" data-name="wave" style="--i:28">
+            <td class="col-name"><span class="skill-name">/wave</span></td>
+            <td class="col-desc"><span class="desc-text">Torus Wave orchestrator. Executes a PRP's tasks via parallel subagents for maximum throughput. Two modes: in-Claude (Task tool, gates active) or external (torus-wave.py, zero-gate batch).</span></td>
+            <td class="col-cat"><span class="cat-badge cat--orchestration">Orchestration</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="orchestration" data-name="loop" style="--i:29">
+            <td class="col-name"><span class="skill-name">/loop</span></td>
+            <td class="col-desc"><span class="desc-text">Torus Loop orchestrator. Executes PRP tasks via fresh Claude instances for maximum reasoning quality. Supports start, status, and stop commands with configurable iteration limits.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--orchestration">Orchestration</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="orchestration" data-name="chain" style="--i:30">
+            <td class="col-name"><span class="skill-name">/chain</span></td>
+            <td class="col-desc"><span class="desc-text">Skill composition pipeline. Sequences multiple skills into a linear execution chain. Example: <code>explore → refactor → test → commit</code>. Each skill's output feeds the next.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--orchestration">Orchestration</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="orchestration" data-name="sprint" style="--i:31">
+            <td class="col-name"><span class="skill-name">/sprint</span></td>
+            <td class="col-desc"><span class="desc-text">Multi-agent self-improvement sprint. Launches a coordinated swarm of agents for autonomous framework improvement with research, build, and test phases running in parallel.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--orchestration">Orchestration</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+
+          <!-- ADVANCED -->
+          <tr data-cat="advanced" data-name="web" style="--i:32">
+            <td class="col-name"><span class="skill-name">/web</span></td>
+            <td class="col-desc"><span class="desc-text">Web page indexing and search. Indexes external URLs into the memory system and enables semantic search across stored web content. Persists pages for future retrieval.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--advanced">Advanced</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--yes">Yes</span></td>
+          </tr>
+          <tr data-cat="advanced" data-name="browser" style="--i:33">
+            <td class="col-name"><span class="skill-name">/browser</span></td>
+            <td class="col-desc"><span class="desc-text">Visual verification via agent-browser. Takes screenshots of UI, verifies visual correctness after implementing UI features, and provides proof-of-work for visual changes.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--advanced">Advanced</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="advanced" data-name="ralph" style="--i:34">
+            <td class="col-name"><span class="skill-name">/ralph</span></td>
+            <td class="col-desc"><span class="desc-text">Autonomous execution loop. Extended unattended execution on a well-defined task. Enforces safety circuit breakers: 10-iteration max, 3-failure ceiling, no destructive commands.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--advanced">Advanced</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="advanced" data-name="super-evolve" style="--i:35">
+            <td class="col-name"><span class="skill-name">/super-evolve</span></td>
+            <td class="col-desc"><span class="desc-text">Ultimate self-evolution skill. Merges evolve + self-improve into one meta-skill with external research, area focus, dry-run mode, and expanded memory mining. Protected: max 5 changes, gates 1–3 locked.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--advanced">Advanced</span></td>
+            <td class="col-inv"><span class="status status--yes">Yes</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="advanced" data-name="super-prof-optimize" style="--i:36">
+            <td class="col-name"><span class="skill-name">/super-prof-optimize</span></td>
+            <td class="col-desc"><span class="desc-text">Performance profiling and optimization. Merges profiling and optimization into one workflow: profiles hotspots, identifies bottlenecks, applies targeted fixes, and verifies improvements with benchmarks.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--advanced">Advanced</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+
+          <!-- CREATIVE -->
+          <tr data-cat="creative" data-name="brainstorm" style="--i:37">
+            <td class="col-name"><span class="skill-name">/brainstorm</span></td>
+            <td class="col-desc"><span class="desc-text">Design exploration and option generation. Produces multiple distinct approaches for a design problem, weighs tradeoffs, and prepares a decision for /writing-plans to execute.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--creative">Creative</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="creative" data-name="writing-plans" style="--i:38">
+            <td class="col-name"><span class="skill-name">/writing-plans</span></td>
+            <td class="col-desc"><span class="desc-text">TDD implementation plan generator. Takes a chosen design option from /brainstorm and produces a concrete plan with exact code, failing tests first, and step-by-step implementation sequence.</span></td>
+            <td class="col-cat"><span class="cat-badge cat--creative">Creative</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+          <tr data-cat="creative" data-name="domain" style="--i:39">
+            <td class="col-name"><span class="skill-name">/domain</span></td>
+            <td class="col-desc"><span class="desc-text">Domain modeling and analysis skill. Maps business domains, defines bounded contexts, identifies aggregates and entities, and creates structured domain documentation. (Currently dormant.)</span></td>
+            <td class="col-cat"><span class="cat-badge cat--creative">Creative</span></td>
+            <td class="col-inv"><span class="status status--no">No</span></td>
+            <td class="col-scr"><span class="status status--no">No</span></td>
+          </tr>
+
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" id="footer-count">36 skills across 8 categories</td>
+            <td></td>
+            <td>5 user-invocable</td>
+            <td>5 with scripts</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="no-results" id="no-results">No skills match your filter.</div>
+  </div>
+
+  <!-- COLLAPSIBLE SECTIONS -->
+  <div class="collapsibles animate" style="--i:43">
+
+    <details class="collapsible">
+      <summary>User-Invocable Skills (5) — direct slash-command access</summary>
+      <div class="collapsible__body">
+        <p>These skills expose a slash command that users can invoke directly in a conversation. All other skills are triggered by Claude based on context keywords.</p>
+        <div class="skill-grid">
+          <div class="ve-card">
+            <div class="card-name">/learn</div>
+            <div class="card-desc">Feed a URL or topic; integrates knowledge from external sources into memory.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-name">/introspect</div>
+            <div class="card-desc">Read-only framework self-analysis with improvement roadmap output.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-name">/benchmark</div>
+            <div class="card-desc">Run performance baselines and compare against stored history.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-name">/security-scan</div>
+            <div class="card-desc">Full credential and vulnerability sweep of hooks and shared modules.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-name">/super-evolve</div>
+            <div class="card-desc">Meta-evolution with external research, dry-run mode, and memory mining.</div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="collapsible">
+      <summary>Skills with Companion Scripts (5) — filesystem tooling</summary>
+      <div class="collapsible__body">
+        <p>These skills ship with one or more scripts in their <code>scripts/</code> subdirectory — typically Python or shell utilities that the skill invokes via Bash tool calls.</p>
+        <div class="skill-grid">
+          <div class="ve-card">
+            <div class="card-name">/security-scan</div>
+            <div class="card-desc">Dedicated scanner script for credential and pattern detection.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-name">/status</div>
+            <div class="card-desc">Script to query gate stats, memory server health, and session state.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-name">/super-health</div>
+            <div class="card-desc">Aggregator script combining multiple diagnostic probes into one report.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-name">/web</div>
+            <div class="card-desc">Web indexer and search script backed by the memory MCP server.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-name">/wrap-up</div>
+            <div class="card-desc">Session archiver script that writes LIVE_STATE.json and handoff files.</div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+  </div>
+
+</div><!-- /container -->
+
+<script>
+  (function () {
+    const rows        = Array.from(document.querySelectorAll('#table-body tr'));
+    const searchInput = document.getElementById('search-input');
+    const pills       = document.querySelectorAll('.pill');
+    const countEl     = document.getElementById('result-count');
+    const footerCount = document.getElementById('footer-count');
+    const noResults   = document.getElementById('no-results');
+    const headers     = document.querySelectorAll('.data-table th[data-col]');
+
+    let activeCat  = 'all';
+    let searchTerm = '';
+    let sortCol    = null;
+    const TOTAL    = rows.length;
+    let sortDir    = 1; // 1 = asc, -1 = desc
+
+    function applyFilters() {
+      let visible = 0;
+
+      rows.forEach(row => {
+        const cat   = row.dataset.cat;
+        const name  = row.dataset.name;
+        const desc  = row.querySelector('.desc-text')?.textContent.toLowerCase() || '';
+
+        const catMatch  = activeCat === 'all' || cat === activeCat;
+        const termMatch = searchTerm === '' ||
+          name.includes(searchTerm) ||
+          desc.includes(searchTerm) ||
+          cat.includes(searchTerm);
+
+        if (catMatch && termMatch) {
+          row.classList.remove('hidden');
+          visible++;
+        } else {
+          row.classList.add('hidden');
+        }
+      });
+
+      countEl.textContent     = visible === TOTAL ? `${TOTAL} skills` : `${visible} of ${TOTAL}`;
+      footerCount.textContent = `${visible} skill${visible !== 1 ? 's' : ''} shown`;
+      noResults.style.display = visible === 0 ? 'block' : 'none';
+    }
+
+    // Category pills
+    pills.forEach(pill => {
+      pill.addEventListener('click', () => {
+        pills.forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        activeCat = pill.dataset.cat;
+        applyFilters();
+      });
+    });
+
+    // Search
+    searchInput.addEventListener('input', () => {
+      searchTerm = searchInput.value.toLowerCase().trim();
+      applyFilters();
+    });
+
+    // Sorting
+    headers.forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (sortCol === col) {
+          sortDir *= -1;
+        } else {
+          sortCol = col;
+          sortDir = 1;
+        }
+
+        headers.forEach(h => {
+          h.classList.remove('sorted-asc', 'sorted-desc');
+        });
+        th.classList.add(sortDir === 1 ? 'sorted-asc' : 'sorted-desc');
+
+        const tbody = document.getElementById('table-body');
+        const sorted = [...rows].sort((a, b) => {
+          let av, bv;
+          if (col === 'name') {
+            av = a.dataset.name;
+            bv = b.dataset.name;
+          } else if (col === 'category') {
+            av = a.dataset.cat;
+            bv = b.dataset.cat;
+          }
+          return av.localeCompare(bv) * sortDir;
+        });
+        sorted.forEach(row => tbody.appendChild(row));
+        applyFilters();
+      });
+    });
+
+  })();
+</script>
+
+</body>
+</html>

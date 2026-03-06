@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Torus Framework — Architecture Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME: Blueprint ============ */
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+    /* Light — deep slate/blue palette */
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface2: #e8eef5;
+    --surface3: #dde5ef;
+    --surface-elevated: #f8fafc;
+    --border: rgba(30, 41, 59, 0.1);
+    --border-bright: rgba(30, 41, 59, 0.2);
+    --text: #0f172a;
+    --text-dim: #475569;
+
+    --blue: #1d4ed8;
+    --blue-dim: rgba(29, 78, 216, 0.08);
+    --sky: #0284c7;
+    --sky-dim: rgba(2, 132, 199, 0.08);
+    --teal: #0f766e;
+    --teal-dim: rgba(15, 118, 110, 0.08);
+    --amber: #b45309;
+    --amber-dim: rgba(180, 83, 9, 0.08);
+    --green: #15803d;
+    --green-dim: rgba(21, 128, 61, 0.08);
+    --rose: #be123c;
+    --rose-dim: rgba(190, 18, 60, 0.08);
+    --slate: #334155;
+    --slate-dim: rgba(51, 65, 85, 0.08);
+    --purple: #7e22ce;
+    --purple-dim: rgba(126, 34, 206, 0.08);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1b2e;
+      --surface: #112035;
+      --surface2: #162840;
+      --surface3: #1c3050;
+      --surface-elevated: #0a1628;
+      --border: rgba(148, 163, 184, 0.1);
+      --border-bright: rgba(148, 163, 184, 0.2);
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+
+      --blue: #60a5fa;
+      --blue-dim: rgba(96, 165, 250, 0.12);
+      --sky: #38bdf8;
+      --sky-dim: rgba(56, 189, 248, 0.12);
+      --teal: #2dd4bf;
+      --teal-dim: rgba(45, 212, 191, 0.12);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.12);
+      --green: #4ade80;
+      --green-dim: rgba(74, 222, 128, 0.12);
+      --rose: #fb7185;
+      --rose-dim: rgba(251, 113, 133, 0.12);
+      --slate: #94a3b8;
+      --slate-dim: rgba(148, 163, 184, 0.1);
+      --purple: #c084fc;
+      --purple-dim: rgba(192, 132, 252, 0.12);
+    }
+  }
+
+  /* ============ RESET + BASE ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    /* Blueprint grid pattern */
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px),
+      linear-gradient(var(--border) 0.5px, transparent 0.5px),
+      linear-gradient(90deg, var(--border) 0.5px, transparent 0.5px);
+    background-size: 60px 60px, 60px 60px, 12px 12px, 12px 12px;
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.45s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.055s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .container {
+    max-width: 1160px;
+    margin: 0 auto;
+  }
+
+  /* ============ HEADER ============ */
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 4px;
+    font-family: var(--font-body);
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    margin-bottom: 32px;
+    letter-spacing: 0.5px;
+  }
+
+  /* ============ KPI STRIP ============ */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    margin-bottom: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    padding: 16px;
+  }
+
+  .kpi-item {
+    text-align: center;
+    padding: 8px 4px;
+    border-right: 1px solid var(--border);
+  }
+
+  .kpi-item:last-child {
+    border-right: none;
+  }
+
+  .kpi-value {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--blue);
+    line-height: 1.1;
+    margin-bottom: 4px;
+  }
+
+  .kpi-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.3;
+    font-family: var(--font-mono);
+    letter-spacing: 0.3px;
+  }
+
+  /* ============ MERMAID CONTAINER ============ */
+  .mermaid-section {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 28px;
+  }
+
+  .section-header {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 20px;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 380px;
+    cursor: grab;
+  }
+
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .zoom-controls button:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  .mermaid-wrap { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .mermaid-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+  /* ============ MERMAID SVG OVERRIDES ============ */
+  .mermaid .nodeLabel {
+    font-family: var(--font-body) !important;
+    font-size: 14px !important;
+    color: var(--text) !important;
+  }
+
+  .mermaid .edgeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+    color: var(--text-dim) !important;
+    background-color: var(--bg) !important;
+  }
+
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+
+  .mermaid .node rect,
+  .mermaid .node circle,
+  .mermaid .node polygon { stroke-width: 1.5px !important; }
+
+  .mermaid .edge-pattern-solid { stroke-width: 1.5px !important; }
+
+  /* ============ CARDS GRID ============ */
+  .cards-section {
+    margin-bottom: 28px;
+  }
+
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .cards-grid--2 { grid-template-columns: repeat(2, 1fr); }
+  .cards-grid--4 { grid-template-columns: repeat(4, 1fr); }
+
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    animation: fadeUp 0.45s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.045s);
+  }
+
+  .ve-card--blue { border-left: 3px solid var(--blue); }
+  .ve-card--sky { border-left: 3px solid var(--sky); }
+  .ve-card--teal { border-left: 3px solid var(--teal); }
+  .ve-card--amber { border-left: 3px solid var(--amber); }
+  .ve-card--green { border-left: 3px solid var(--green); }
+  .ve-card--rose { border-left: 3px solid var(--rose); }
+  .ve-card--slate { border-left: 3px solid var(--slate); }
+  .ve-card--purple { border-left: 3px solid var(--purple); }
+
+  .ve-card-title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ve-card-title .badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .badge-blue { background: var(--blue-dim); color: var(--blue); }
+  .badge-sky { background: var(--sky-dim); color: var(--sky); }
+  .badge-teal { background: var(--teal-dim); color: var(--teal); }
+  .badge-amber { background: var(--amber-dim); color: var(--amber); }
+  .badge-green { background: var(--green-dim); color: var(--green); }
+  .badge-rose { background: var(--rose-dim); color: var(--rose); }
+  .badge-slate { background: var(--slate-dim); color: var(--slate); }
+  .badge-purple { background: var(--purple-dim); color: var(--purple); }
+
+  /* ============ FILE LIST ============ */
+  .file-list {
+    list-style: none;
+    font-size: 12px;
+    line-height: 1.85;
+    font-family: var(--font-mono);
+  }
+
+  .file-list li {
+    padding-left: 12px;
+    position: relative;
+    color: var(--text-dim);
+  }
+
+  .file-list li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    color: var(--border-bright);
+  }
+
+  .file-list .fname {
+    color: var(--text);
+  }
+
+  .file-list .fcount {
+    color: var(--text-dim);
+    font-size: 10px;
+    margin-left: 3px;
+  }
+
+  .file-list .fgroup {
+    color: var(--blue);
+    font-size: 10px;
+    font-weight: 500;
+    margin-top: 6px;
+    margin-bottom: 2px;
+    padding-left: 0;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .file-list .fgroup::before { display: none; }
+
+  /* ============ CHIP LIST ============ */
+  .chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 4px;
+  }
+
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .chip-blue { border-color: var(--blue-dim); background: var(--blue-dim); color: var(--blue); }
+  .chip-sky { border-color: var(--sky-dim); background: var(--sky-dim); color: var(--sky); }
+  .chip-teal { border-color: var(--teal-dim); background: var(--teal-dim); color: var(--teal); }
+  .chip-amber { border-color: var(--amber-dim); background: var(--amber-dim); color: var(--amber); }
+  .chip-green { border-color: var(--green-dim); background: var(--green-dim); color: var(--green); }
+  .chip-rose { border-color: var(--rose-dim); background: var(--rose-dim); color: var(--rose); }
+  .chip-slate { border-color: var(--slate-dim); background: var(--slate-dim); color: var(--slate); }
+  .chip-purple { border-color: var(--purple-dim); background: var(--purple-dim); color: var(--purple); }
+
+  /* ============ DETAILS/SUMMARY (collapsible) ============ */
+  details {
+    margin-top: 8px;
+  }
+
+  summary {
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    user-select: none;
+  }
+
+  summary::-webkit-details-marker { display: none; }
+
+  summary::before {
+    content: '▶';
+    font-size: 9px;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  details[open] summary::before {
+    transform: rotate(90deg);
+  }
+
+  /* ============ MINI CARDS inside cards ============ */
+  .mini-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .mini-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+
+  .mini-card .mt { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  .mini-card .md { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
+
+  /* ============ SECTION ROW HEADING ============ */
+  .row-heading {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    margin-top: 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 900px) {
+    body { padding: 20px; }
+    .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+    .cards-grid { grid-template-columns: 1fr 1fr; }
+    .cards-grid--4 { grid-template-columns: 1fr 1fr; }
+  }
+
+  @media (max-width: 600px) {
+    body { padding: 12px; }
+    h1 { font-size: 24px; }
+    .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    .cards-grid, .cards-grid--2, .cards-grid--4 { grid-template-columns: 1fr; }
+    .mini-cards { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1 class="animate" style="--i:0">Torus Framework</h1>
+  <p class="subtitle animate" style="--i:1">architecture overview — full system map</p>
+
+  <!-- KPI Strip -->
+  <div class="kpi-strip animate" style="--i:2">
+    <div class="kpi-item">
+      <div class="kpi-value">151</div>
+      <div class="kpi-label">Python files</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-value">~76K</div>
+      <div class="kpi-label">lines of code</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-value">17</div>
+      <div class="kpi-label">gates</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-value">67</div>
+      <div class="kpi-label">shared modules</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-value">37</div>
+      <div class="kpi-label">skills</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-value">4</div>
+      <div class="kpi-label">MCP servers</div>
+    </div>
+  </div>
+
+  <!-- Mermaid Overview -->
+  <div class="mermaid-section animate" style="--i:3">
+    <div class="section-header">
+      <span class="dot" style="background:var(--blue)"></span>
+      system overview — high-level architecture
+    </div>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+        <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+        <button onclick="openDiagramFullscreen(this)" title="Open full size in new tab">&#x26F6;</button>
+      </div>
+      <pre class="mermaid">
+flowchart TD
+  A["Claude Code<br/>Session"]:::entry
+  B["Hook System<br/>14 events"]:::hooks
+  C["Gate System<br/>17 gates"]:::gates
+  D["Shared Modules<br/>67 modules"]:::shared
+  E["MCP Servers<br/>4 servers"]:::mcp
+  F["Memory<br/>LanceDB"]:::mem
+  G["Skills<br/>37 skills"]:::skills
+  H["Agents + Teams<br/>6 + 6"]:::agents
+  I["Config Layer<br/>settings + mcp.json"]:::config
+
+  A -->|"PreToolUse<br/>PostToolUse"| B
+  B -->|"enforcer.py"| C
+  C -->|"imports"| D
+  B -->|"tool calls"| E
+  E -->|"read/write"| F
+  B -->|"delegated tasks"| H
+  H -->|"invoke"| G
+  I -.->|"configures"| B
+  I -.->|"configures"| C
+  D -.->|"state, audit"| F
+
+  classDef entry fill:#1d4ed822,stroke:#1d4ed8,stroke-width:2px
+  classDef hooks fill:#0284c722,stroke:#0284c7,stroke-width:1.5px
+  classDef gates fill:#0f766e22,stroke:#0f766e,stroke-width:1.5px
+  classDef shared fill:#15803d22,stroke:#15803d,stroke-width:1.5px
+  classDef mcp fill:#b4530922,stroke:#b45309,stroke-width:1.5px
+  classDef mem fill:#7e22ce22,stroke:#7e22ce,stroke-width:1.5px
+  classDef skills fill:#be123c22,stroke:#be123c,stroke-width:1.5px
+  classDef agents fill:#33415522,stroke:#334155,stroke-width:1.5px
+  classDef config fill:#94a3b822,stroke:#94a3b8,stroke-width:1px,stroke-dasharray:5 5
+      </pre>
+    </div>
+  </div>
+
+  <!-- Section: Core Hook Files -->
+  <div class="row-heading animate" style="--i:4">
+    <span class="dot" style="background:var(--sky)"></span>
+    hooks/ directory — 27 Python files
+  </div>
+
+  <div class="cards-grid animate" style="--i:5">
+
+    <div class="ve-card ve-card--blue">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--blue)"></span>
+        Enforcer Core
+        <span class="badge badge-blue">3 files</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">enforcer.py</span><span class="fcount">651 lines</span></li>
+        <li><span class="fname">enforcer_daemon.py</span><span class="fcount">232 lines</span></li>
+        <li><span class="fname">enforcer_shim.py</span><span class="fcount">113 lines</span></li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--amber">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--amber)"></span>
+        MCP Servers
+        <span class="badge badge-amber">4 files</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">analytics_server.py</span><span class="fcount">15 tools</span></li>
+        <li><span class="fname">memory_server.py</span><span class="fcount">8 tools</span></li>
+        <li><span class="fname">search_server.py</span><span class="fcount">2 tools</span></li>
+        <li><span class="fname">web_search_server.py</span></li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--teal">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--teal)"></span>
+        Session Lifecycle
+        <span class="badge badge-teal">5 files</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">boot.py</span><span class="fcount">→ boot_pkg/ (5)</span></li>
+        <li><span class="fname">session_end.py</span><span class="fcount">599 lines</span></li>
+        <li><span class="fname">stop_cleanup.py</span><span class="fcount">46 lines</span></li>
+        <li><span class="fname">pre_compact.py</span><span class="fcount">264 lines</span></li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--green">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--green)"></span>
+        Post-Tool Events
+        <span class="badge badge-green">4 files</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">event_logger.py</span><span class="fcount">298 lines</span></li>
+        <li><span class="fname">auto_format.py</span><span class="fcount">92 lines</span></li>
+        <li><span class="fname">tracker.py</span><span class="fcount">→ tracker_pkg/ (9)</span></li>
+        <li><span class="fname">auto_commit.py</span><span class="fcount">148 lines</span></li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--sky">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--sky)"></span>
+        User Prompt + Status
+        <span class="badge badge-sky">2 files</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">user_prompt_capture.py</span><span class="fcount">160 lines</span></li>
+        <li><span class="fname">statusline.py</span><span class="fcount">1,107 lines</span></li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--purple">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--purple)"></span>
+        Agents + Integrations
+        <span class="badge badge-purple">5 files</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">subagent_context.py</span><span class="fcount">380 lines</span></li>
+        <li><span class="fname">auto_approve.py</span><span class="fcount">136 lines</span></li>
+        <li><span class="fname">tg_mirror.py</span><span class="fcount">127 lines</span></li>
+        <li><span class="fname">tts_signal.py</span></li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--rose">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--rose)"></span>
+        Maintenance + Testing
+        <span class="badge badge-rose">6 files</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">failure_recovery.py</span><span class="fcount">59 lines</span></li>
+        <li><span class="fname">integrity_check.py</span><span class="fcount">97 lines</span></li>
+        <li><span class="fname">config_change.py</span><span class="fcount">137 lines</span></li>
+        <li><span class="fname">test_framework.py</span><span class="fcount">53 lines</span></li>
+        <li><span class="fname">fuzz_gates.py</span><span class="fcount">562 lines</span></li>
+        <li><span class="fname">fix_test_order.py</span></li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--slate">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--slate)"></span>
+        hooks/scripts/ — Maintenance
+        <span class="badge badge-slate">7 files</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">audit_rotation.py</span></li>
+        <li><span class="fname">backup_embeddings.py</span></li>
+        <li><span class="fname">create_lance_indexes.py</span></li>
+        <li><span class="fname">fix_lance_indexes.py</span></li>
+        <li><span class="fname">flush_audit.py</span></li>
+        <li><span class="fname">memory_compactor.py</span></li>
+        <li><span class="fname">stale_memory_archiver.py</span></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Section: Shared Modules -->
+  <div class="row-heading animate" style="--i:6">
+    <span class="dot" style="background:var(--green)"></span>
+    hooks/shared/ — 67 modules grouped by category
+  </div>
+
+  <div class="ve-card ve-card--green animate" style="--i:7">
+    <div class="ve-card-title">
+      <span class="dot" style="background:var(--green)"></span>
+      Module Categories
+      <span class="badge badge-green">67 total</span>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:8px;">
+      <div>
+        <div style="font-size:11px; color:var(--blue); font-family:var(--font-mono); margin-bottom:4px; font-weight:600;">CORE (6)</div>
+        <div class="chip-list">
+          <span class="chip chip-blue">state.py</span>
+          <span class="chip chip-blue">gate_result.py</span>
+          <span class="chip chip-blue">audit_log.py</span>
+          <span class="chip chip-blue">error_normalizer.py</span>
+          <span class="chip chip-blue">observation.py</span>
+          <span class="chip chip-blue">exemptions.py</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--teal); font-family:var(--font-mono); margin-bottom:4px; font-weight:600;">GATE EXECUTION (5)</div>
+        <div class="chip-list">
+          <span class="chip chip-teal">gate_router.py</span>
+          <span class="chip chip-teal">gate_helpers.py</span>
+          <span class="chip chip-teal">gate_registry.py</span>
+          <span class="chip chip-teal">gate_timing.py</span>
+          <span class="chip chip-teal">gate_result.py</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--sky); font-family:var(--font-mono); margin-bottom:4px; font-weight:600;">GATE ANALYSIS (6)</div>
+        <div class="chip-list">
+          <span class="chip chip-sky">gate_trend.py</span>
+          <span class="chip chip-sky">gate_health.py</span>
+          <span class="chip chip-sky">gate_correlation.py</span>
+          <span class="chip chip-sky">gate_dependency_graph.py</span>
+          <span class="chip chip-sky">gate_pruner.py</span>
+          <span class="chip chip-sky">gate_correlator.py</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--purple); font-family:var(--font-mono); margin-bottom:4px; font-weight:600;">VISUALIZATION (3)</div>
+        <div class="chip-list">
+          <span class="chip chip-purple">gate_dashboard.py</span>
+          <span class="chip chip-purple">gate_graph.py</span>
+          <span class="chip chip-purple">pipeline_optimizer.py</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--amber); font-family:var(--font-mono); margin-bottom:4px; font-weight:600;">MEMORY (4)</div>
+        <div class="chip-list">
+          <span class="chip chip-amber">memory_socket.py</span>
+          <span class="chip chip-amber">memory_decay.py</span>
+          <span class="chip chip-amber">memory_maintenance.py</span>
+          <span class="chip chip-amber">search_cache.py</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--rose); font-family:var(--font-mono); margin-bottom:4px; font-weight:600;">INFRASTRUCTURE (10)</div>
+        <div class="chip-list">
+          <span class="chip chip-rose">circuit_breaker.py</span>
+          <span class="chip chip-rose">ramdisk.py</span>
+          <span class="chip chip-rose">hook_cache.py</span>
+          <span class="chip chip-rose">hook_profiler.py</span>
+          <span class="chip chip-rose">hot_reload.py</span>
+          <span class="chip chip-rose">rate_limiter.py</span>
+          <span class="chip chip-rose">retry_strategy.py</span>
+          <span class="chip chip-rose">event_bus.py</span>
+          <span class="chip chip-rose">event_replay.py</span>
+          <span class="chip chip-rose">pipeline_optimizer.py</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--green); font-family:var(--font-mono); margin-bottom:4px; font-weight:600;">ANALYSIS (8)</div>
+        <div class="chip-list">
+          <span class="chip chip-green">domain_registry.py</span>
+          <span class="chip chip-green">security_profiles.py</span>
+          <span class="chip chip-green">health_monitor.py</span>
+          <span class="chip chip-green">health_correlation.py</span>
+          <span class="chip chip-green">anomaly_detector.py</span>
+          <span class="chip chip-green">drift_detector.py</span>
+          <span class="chip chip-green">code_hotspot.py</span>
+          <span class="chip chip-green">error_pattern_analyzer.py</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--slate); font-family:var(--font-mono); margin-bottom:4px; font-weight:600;">METRICS (5)</div>
+        <div class="chip-list">
+          <span class="chip chip-slate">metrics_collector.py</span>
+          <span class="chip chip-slate">metrics_exporter.py</span>
+          <span class="chip chip-slate">session_analytics.py</span>
+          <span class="chip chip-slate">session_compressor.py</span>
+          <span class="chip chip-slate">session_replay.py</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--blue); font-family:var(--font-mono); margin-bottom:4px; font-weight:600;">TOOLS/SKILLS (7) + CHAIN/SDK (4) + CONFIG (5)</div>
+        <div class="chip-list">
+          <span class="chip chip-blue">tool_fingerprint.py</span>
+          <span class="chip chip-blue">tool_patterns.py</span>
+          <span class="chip chip-blue">skill_health.py</span>
+          <span class="chip chip-blue">skill_mapper.py</span>
+          <span class="chip chip-blue">chain_sdk.py</span>
+          <span class="chip chip-blue">chain_refinement.py</span>
+          <span class="chip chip-blue">config_validator.py</span>
+          <span class="chip chip-blue">state_migrator.py</span>
+          <span class="chip chip-blue">secrets_filter.py</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section: Gates + Tests -->
+  <div class="row-heading animate" style="--i:8">
+    <span class="dot" style="background:var(--teal)"></span>
+    gates, tests, boot &amp; tracker packages
+  </div>
+
+  <div class="cards-grid animate" style="--i:9">
+
+    <div class="ve-card ve-card--teal">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--teal)"></span>
+        hooks/gates/ — 17 gate files
+        <span class="badge badge-teal">T1: gates 1-3</span>
+      </div>
+      <div class="chip-list">
+        <span class="chip chip-teal">gate1.py</span>
+        <span class="chip chip-teal">gate2.py</span>
+        <span class="chip chip-teal">gate3.py</span>
+        <span class="chip">gate4.py</span>
+        <span class="chip">gate5.py</span>
+        <span class="chip">gate6.py</span>
+        <span class="chip">gate7.py</span>
+        <span class="chip">gate8.py</span>
+        <span class="chip">gate9.py</span>
+        <span class="chip">gate10.py</span>
+        <span class="chip">gate11.py</span>
+        <span class="chip">gate12.py</span>
+        <span class="chip">gate13.py</span>
+        <span class="chip">gate14.py</span>
+        <span class="chip">gate15.py</span>
+        <span class="chip">gate16.py</span>
+        <span class="chip">gate17.py</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--sky">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--sky)"></span>
+        hooks/tests/ — 13 focused test files + harness
+        <span class="badge badge-sky">14 files</span>
+      </div>
+      <div class="chip-list">
+        <span class="chip chip-sky">harness.py</span>
+        <span class="chip">test_safety.py</span>
+        <span class="chip">test_quality.py</span>
+        <span class="chip">test_operational.py</span>
+        <span class="chip">test_integration.py</span>
+        <span class="chip">test_memory.py</span>
+        <span class="chip">test_gate_infra.py</span>
+        <span class="chip">test_analysis.py</span>
+        <span class="chip">test_metrics.py</span>
+        <span class="chip">test_circuit.py</span>
+        <span class="chip">test_config.py</span>
+        <span class="chip">test_chain.py</span>
+        <span class="chip">test_skills.py</span>
+        <span class="chip">test_shared.py</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--blue">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--blue)"></span>
+        boot_pkg/ — 5 files
+        <span class="badge badge-blue">boot sequence</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">orchestrator.py</span></li>
+        <li><span class="fname">context.py</span></li>
+        <li><span class="fname">maintenance.py</span></li>
+        <li><span class="fname">memory.py</span></li>
+        <li><span class="fname">util.py</span></li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--green">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--green)"></span>
+        tracker_pkg/ — 9 files
+        <span class="badge badge-green">post-tool tracking</span>
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">orchestrator.py</span></li>
+        <li><span class="fname">auto_remember.py</span></li>
+        <li><span class="fname">errors.py</span></li>
+        <li><span class="fname">mentor.py</span></li>
+        <li><span class="fname">mentor_analytics.py</span></li>
+        <li><span class="fname">mentor_memory.py</span></li>
+        <li><span class="fname">observations.py</span></li>
+        <li><span class="fname">outcome_chains.py</span></li>
+        <li><span class="fname">verification.py</span></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Section: MCP + Skills + Agents -->
+  <div class="row-heading animate" style="--i:10">
+    <span class="dot" style="background:var(--amber)"></span>
+    MCP servers, skills, agents &amp; teams
+  </div>
+
+  <div class="cards-grid animate" style="--i:11">
+
+    <div class="ve-card ve-card--amber">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--amber)"></span>
+        MCP Servers — 4 total
+        <span class="badge badge-amber">25+ tools</span>
+      </div>
+      <div class="mini-cards">
+        <div class="mini-card">
+          <div class="mt">analytics</div>
+          <div class="md">15 tools</div>
+        </div>
+        <div class="mini-card">
+          <div class="mt">memory</div>
+          <div class="md">8 tools</div>
+        </div>
+        <div class="mini-card">
+          <div class="mt">search</div>
+          <div class="md">2 tools</div>
+        </div>
+        <div class="mini-card">
+          <div class="mt">web_search</div>
+          <div class="md">external</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--rose">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--rose)"></span>
+        agents/ — 6 agents
+      </div>
+      <div class="chip-list">
+        <span class="chip chip-rose">builder</span>
+        <span class="chip chip-rose">debugger</span>
+        <span class="chip chip-rose">perf-analyzer</span>
+        <span class="chip chip-rose">researcher</span>
+        <span class="chip chip-rose">security</span>
+        <span class="chip chip-rose">stress-tester</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--slate">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--slate)"></span>
+        teams/ — 4 teams
+      </div>
+      <div class="chip-list">
+        <span class="chip chip-slate">default</span>
+        <span class="chip chip-slate">evolution-swarm-268</span>
+        <span class="chip chip-slate">framework-v2-4-1</span>
+        <span class="chip chip-slate">sprint-team</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Skills full card -->
+  <div class="ve-card ve-card--rose animate" style="--i:12; margin-top:14px;">
+    <div class="ve-card-title">
+      <span class="dot" style="background:var(--rose)"></span>
+      skills/ — 37 skills
+    </div>
+    <div class="chip-list">
+      <span class="chip chip-rose">agent-bench</span>
+      <span class="chip chip-rose">api-explorer</span>
+      <span class="chip chip-rose">audit-trail</span>
+      <span class="chip chip-rose">changelog-writer</span>
+      <span class="chip chip-rose">code-reviewer</span>
+      <span class="chip chip-rose">codebase-indexer</span>
+      <span class="chip chip-rose">commit-writer</span>
+      <span class="chip chip-rose">context-compressor</span>
+      <span class="chip chip-rose">data-pipeline</span>
+      <span class="chip chip-rose">debug-tracer</span>
+      <span class="chip chip-rose">dependency-mapper</span>
+      <span class="chip chip-rose">doc-generator</span>
+      <span class="chip chip-rose">excalidraw-diagram</span>
+      <span class="chip chip-rose">feature-planner</span>
+      <span class="chip chip-rose">gate-auditor</span>
+      <span class="chip chip-rose">git-historian</span>
+      <span class="chip chip-rose">incident-responder</span>
+      <span class="chip chip-rose">knowledge-curator</span>
+      <span class="chip chip-rose">load-tester</span>
+      <span class="chip chip-rose">memory-explorer</span>
+      <span class="chip chip-rose">migration-helper</span>
+      <span class="chip chip-rose">mock-generator</span>
+      <span class="chip chip-rose">perf-profiler</span>
+      <span class="chip chip-rose">pr-reviewer</span>
+      <span class="chip chip-rose">prp-writer</span>
+      <span class="chip chip-rose">refactor-guide</span>
+      <span class="chip chip-rose">release-notes</span>
+      <span class="chip chip-rose">repo-health</span>
+      <span class="chip chip-rose">schema-validator</span>
+      <span class="chip chip-rose">security-scanner</span>
+      <span class="chip chip-rose">session-summarizer</span>
+      <span class="chip chip-rose">skill-builder</span>
+      <span class="chip chip-rose">spec-writer</span>
+      <span class="chip chip-rose">test-generator</span>
+      <span class="chip chip-rose">triage-helper</span>
+      <span class="chip chip-rose">visual-explainer</span>
+      <span class="chip chip-rose">web-researcher</span>
+    </div>
+  </div>
+
+  <!-- Section: Config + Modes + Integrations -->
+  <div class="row-heading animate" style="--i:13">
+    <span class="dot" style="background:var(--purple)"></span>
+    config, modes, integrations &amp; storage
+  </div>
+
+  <div class="cards-grid animate" style="--i:14">
+
+    <div class="ve-card ve-card--purple">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--purple)"></span>
+        modes/ — 5 modes
+        <span class="badge badge-purple">CLAUDE.md variants</span>
+      </div>
+      <div class="chip-list">
+        <span class="chip chip-purple">coding</span>
+        <span class="chip chip-purple">debug</span>
+        <span class="chip chip-purple">docs</span>
+        <span class="chip chip-purple">review</span>
+        <span class="chip chip-purple">skill/</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--blue">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--blue)"></span>
+        integrations/ — 3
+      </div>
+      <div class="chip-list">
+        <span class="chip chip-blue">telegram-bot</span>
+        <span class="chip chip-blue">terminal-history</span>
+        <span class="chip chip-blue">voice-web</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--sky">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--sky)"></span>
+        rules/ + docs/
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">framework.md</span></li>
+        <li><span class="fname">hooks.md</span></li>
+        <li><span class="fname">memory.md</span></li>
+        <li><span class="fname">gate13-reference.md</span></li>
+        <li><span class="fname">sideband-protocol.md</span></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="cards-grid animate" style="--i:15" style="margin-top:14px;">
+
+    <div class="ve-card ve-card--slate" style="margin-top:14px;">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--slate)"></span>
+        Config files
+        <span class="badge badge-slate">root level</span>
+      </div>
+      <div class="chip-list">
+        <span class="chip chip-slate">settings.json</span>
+        <span class="chip chip-slate">config.json</span>
+        <span class="chip chip-slate">mcp.json</span>
+        <span class="chip chip-slate">keybindings.json</span>
+        <span class="chip chip-slate">LIVE_STATE.json</span>
+        <span class="chip chip-slate">stats-cache.json</span>
+        <span class="chip chip-slate">settings.local.json</span>
+        <span class="chip chip-slate">.credentials.json</span>
+        <span class="chip chip-slate">install.sh</span>
+        <span class="chip chip-slate">config.example.json</span>
+        <span class="chip chip-slate">mcp.example.json</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--amber" style="margin-top:14px;">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--amber)"></span>
+        PRPs/ + scripts/ + plugins/
+      </div>
+      <details>
+        <summary>PRPs/ contents</summary>
+        <div style="margin-top:6px" class="chip-list">
+          <span class="chip chip-amber">framework-validation</span>
+          <span class="chip chip-amber">task_manager.py</span>
+          <span class="chip chip-amber">templates/</span>
+          <span class="chip chip-amber">test-workspace/</span>
+        </div>
+      </details>
+      <details>
+        <summary>scripts/ (7 top-level)</summary>
+        <div style="margin-top:6px" class="chip-list">
+          <span class="chip">cleanup-x-sessions.sh</span>
+          <span class="chip">memory-prefetch.py</span>
+          <span class="chip">prp-phase-verify.py</span>
+          <span class="chip">prp-plan-verify.py</span>
+          <span class="chip">torus-loop.sh</span>
+          <span class="chip">torus-prompt.md</span>
+          <span class="chip">torus-wave.py</span>
+        </div>
+      </details>
+      <details>
+        <summary>plugins/ structure</summary>
+        <div style="margin-top:6px" class="chip-list">
+          <span class="chip">blocklist.json</span>
+          <span class="chip">installed_plugins.json</span>
+          <span class="chip">marketplaces/</span>
+          <span class="chip">cache/</span>
+        </div>
+      </details>
+    </div>
+
+    <div class="ve-card ve-card--teal" style="margin-top:14px;">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--teal)"></span>
+        archive/ + dormant/ + projects/
+      </div>
+      <ul class="file-list">
+        <li><span class="fname">archive/</span><span class="fcount">53 handoff files</span></li>
+        <li><span class="fname">dormant/</span><span class="fcount">retired agents, gates, rules</span></li>
+        <li><span class="fname">projects/</span><span class="fcount">12 project configs</span></li>
+        <li><span class="fname">domains/</span><span class="fcount">framework/</span></li>
+      </ul>
+    </div>
+
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      primaryColor: isDark ? '#162840' : '#e0eaf5',
+      primaryBorderColor: isDark ? '#60a5fa' : '#1d4ed8',
+      primaryTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      secondaryColor: isDark ? '#112035' : '#f0f7ff',
+      secondaryBorderColor: isDark ? '#38bdf8' : '#0284c7',
+      secondaryTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      tertiaryColor: isDark ? '#1a1f2e' : '#fefce8',
+      tertiaryBorderColor: isDark ? '#fbbf24' : '#b45309',
+      tertiaryTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      lineColor: isDark ? '#475569' : '#94a3b8',
+      fontSize: '14px',
+      fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+      noteBkgColor: isDark ? '#1c2030' : '#f8fafc',
+      noteTextColor: isDark ? '#e2e8f0' : '#0f172a',
+      noteBorderColor: isDark ? '#475569' : '#94a3b8',
+    }
+  });
+</script>
+<script>
+  var INITIAL_ZOOM = 1;
+
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+    var next = Math.min(Math.max(current * factor, 0.5), 5);
+    target.dataset.zoom = next;
+    target.style.zoom = next;
+  }
+
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = INITIAL_ZOOM;
+    target.style.zoom = INITIAL_ZOOM;
+  }
+
+  function openDiagramFullscreen(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    openMermaidInNewTab(wrap);
+  }
+
+  function openMermaidInNewTab(wrap) {
+    var svg = wrap.querySelector('.mermaid svg');
+    if (!svg) return;
+
+    var clone = svg.cloneNode(true);
+    clone.style.zoom = '';
+    clone.style.transform = '';
+
+    var styles = getComputedStyle(document.documentElement);
+    var bg = styles.getPropertyValue('--bg').trim() || '#ffffff';
+
+    var html = '<!DOCTYPE html>' +
+      '<html lang="en"><head><meta charset="UTF-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+      '<title>Architecture Overview — Torus Framework</title>' +
+      '<style>' +
+      'body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: ' + bg + '; padding: 40px; box-sizing: border-box; }' +
+      'svg { max-width: 100%; max-height: 90vh; height: auto; }' +
+      '</style></head><body>' +
+      clone.outerHTML +
+      '</body></html>';
+
+    var blob = new Blob([html], { type: 'text/html' });
+    window.open(URL.createObjectURL(blob), '_blank');
+  }
+
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      var next = Math.min(Math.max(current * factor, 0.5), 5);
+      target.dataset.zoom = next;
+      target.style.zoom = next;
+    }, { passive: false });
+
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX;
+      startY = e.clientY;
+      scrollL = wrap.scrollLeft;
+      scrollT = wrap.scrollTop;
+      startTime = Date.now();
+      didPan = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      wrap.scrollLeft = scrollL - dx;
+      wrap.scrollTop = scrollT - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      var elapsed = Date.now() - startTime;
+      if (!didPan && elapsed < 300) {
+        openMermaidInNewTab(wrap);
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

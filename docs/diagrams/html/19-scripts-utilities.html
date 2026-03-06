@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scripts &amp; Utilities — Torus Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME — Tokyo Night (dark-first) ============ */
+  :root {
+    --font-body: 'Source Sans 3', system-ui, sans-serif;
+    --font-mono: 'Source Code Pro', 'SF Mono', Consolas, monospace;
+
+    --bg: #1a1b26;
+    --surface: #24283b;
+    --surface2: #2e3347;
+    --surface-elevated: #1f2335;
+    --border: rgba(169,177,214,0.10);
+    --border-bright: rgba(169,177,214,0.22);
+    --text: #a9b1d6;
+    --text-bright: #c0caf5;
+    --text-dim: #565f89;
+
+    --blue: #7aa2f7;
+    --blue-dim: rgba(122,162,247,0.12);
+    --green: #9ece6a;
+    --green-dim: rgba(158,206,106,0.12);
+    --orange: #ff9e64;
+    --orange-dim: rgba(255,158,100,0.12);
+    --red: #f7768e;
+    --red-dim: rgba(247,118,142,0.10);
+    --cyan: #7dcfff;
+    --cyan-dim: rgba(125,207,255,0.12);
+    --yellow: #e0af68;
+    --yellow-dim: rgba(224,175,104,0.12);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #e9eaf0;
+      --surface: #ffffff;
+      --surface2: #d5d7e3;
+      --surface-elevated: #f4f5f9;
+      --border: rgba(52,59,105,0.10);
+      --border-bright: rgba(52,59,105,0.22);
+      --text: #343b69;
+      --text-bright: #1a1b26;
+      --text-dim: #6b7280;
+
+      --blue: #2953a7;
+      --blue-dim: rgba(41,83,167,0.09);
+      --green: #3d6b15;
+      --green-dim: rgba(61,107,21,0.09);
+      --orange: #b54a00;
+      --orange-dim: rgba(181,74,0,0.09);
+      --red: #b8223a;
+      --red-dim: rgba(184,34,58,0.08);
+      --cyan: #0d6fa8;
+      --cyan-dim: rgba(13,111,168,0.09);
+      --yellow: #8a5c00;
+      --yellow-dim: rgba(138,92,0,0.09);
+    }
+  }
+
+  /* ============ RESET + BASE ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 5% 0%, var(--blue-dim) 0%, transparent 40%),
+      radial-gradient(ellipse at 95% 100%, var(--cyan-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 44px 40px;
+    min-height: 100vh;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.06s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+    color: var(--text-bright);
+    text-wrap: balance;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    margin-bottom: 36px;
+  }
+
+  h2 {
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin: 36px 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  h2::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ============ VE CARD ============ */
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+
+  .ve-card--elevated {
+    background: var(--surface-elevated);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  }
+
+  .ve-card--recessed {
+    background: var(--surface2);
+  }
+
+  .card-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .card--blue .card-label { color: var(--blue); }
+  .card--blue .dot { background: var(--blue); }
+  .card--blue { border-color: var(--blue-dim); }
+
+  .card--green .card-label { color: var(--green); }
+  .card--green .dot { background: var(--green); }
+  .card--green { border-color: var(--green-dim); }
+
+  .card--orange .card-label { color: var(--orange); }
+  .card--orange .dot { background: var(--orange); }
+  .card--orange { border-color: var(--orange-dim); }
+
+  .card--red .card-label { color: var(--red); }
+  .card--red .dot { background: var(--red); }
+  .card--red { border-color: var(--red-dim); }
+
+  .card--cyan .card-label { color: var(--cyan); }
+  .card--cyan .dot { background: var(--cyan); }
+  .card--cyan { border-color: var(--cyan-dim); }
+
+  .card--yellow .card-label { color: var(--yellow); }
+  .card--yellow .dot { background: var(--yellow); }
+  .card--yellow { border-color: var(--yellow-dim); }
+
+  /* ============ SCRIPT TABLE ============ */
+  .script-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .script-table th {
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    padding: 0 12px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .script-table td {
+    padding: 9px 12px;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .script-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .script-table tr:hover td {
+    background: var(--surface2);
+  }
+
+  .script-table .col-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: nowrap;
+    color: var(--text-bright);
+    width: 220px;
+  }
+
+  .script-table .col-lines {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    width: 60px;
+    text-align: right;
+  }
+
+  .script-table .col-when {
+    width: 100px;
+  }
+
+  .script-table .col-desc {
+    color: var(--text);
+    line-height: 1.5;
+    font-size: 13px;
+  }
+
+  /* When-badge */
+  .when-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+
+  .when--boot {
+    background: var(--blue-dim);
+    color: var(--blue);
+    border: 1px solid var(--blue);
+  }
+  .when--cron {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid var(--green);
+  }
+  .when--manual {
+    background: var(--yellow-dim);
+    color: var(--yellow);
+    border: 1px solid var(--yellow);
+  }
+  .when--ondemand {
+    background: var(--cyan-dim);
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+  }
+  .when--hook {
+    background: var(--orange-dim);
+    color: var(--orange);
+    border: 1px solid var(--orange);
+  }
+
+  /* ============ INLINE CODE ============ */
+  code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--blue-dim);
+    color: var(--blue);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .card--green code {
+    background: var(--green-dim);
+    color: var(--green);
+  }
+
+  .card--orange code {
+    background: var(--orange-dim);
+    color: var(--orange);
+  }
+
+  .card--cyan code {
+    background: var(--cyan-dim);
+    color: var(--cyan);
+  }
+
+  /* ============ LEGEND ============ */
+  .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+  }
+
+  /* ============ OTHER UTILS GRID ============ */
+  .utils-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .util-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 12px 14px;
+  }
+
+  .util-card .uc-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-bright);
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .util-card .uc-lines {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .util-card .uc-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ============ CALLOUT ============ */
+  .callout {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--blue);
+    border-radius: 0 8px 8px 0;
+    padding: 13px 17px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text);
+    margin-bottom: 0;
+  }
+
+  .callout strong { color: var(--text-bright); font-weight: 600; }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 768px) {
+    body { padding: 20px; }
+    h1 { font-size: 26px; }
+    .utils-grid { grid-template-columns: 1fr 1fr; }
+    .script-table .col-when { display: none; }
+  }
+
+  @media (max-width: 480px) {
+    .utils-grid { grid-template-columns: 1fr; }
+    .script-table .col-lines { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1 class="animate" style="--i:0">Scripts &amp; Utilities</h1>
+  <p class="subtitle animate" style="--i:1">torus-framework &mdash; orchestration, maintenance, and boot utilities</p>
+
+  <!-- Section 1: scripts/ -->
+  <h2 class="animate" style="--i:2">01 &mdash; ~/.claude/scripts/ &mdash; Orchestration</h2>
+
+  <div class="ve-card card--blue ve-card--elevated animate" style="--i:3">
+    <table class="script-table">
+      <thead>
+        <tr>
+          <th>Script</th>
+          <th style="text-align:right">Lines</th>
+          <th>When</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="col-name">torus-loop.sh</td>
+          <td class="col-lines">261</td>
+          <td class="col-when"><span class="when-badge when--manual">manual</span></td>
+          <td class="col-desc">Sequential fresh-context task executor. Spawns a fresh <code>claude -p</code> process per task from a PRP's <code>tasks.json</code>. Each spawn gets peak reasoning quality — no context degradation. Memory MCP bridges knowledge between instances.</td>
+        </tr>
+        <tr>
+          <td class="col-name">torus-wave.py</td>
+          <td class="col-lines">477</td>
+          <td class="col-when"><span class="when-badge when--manual">manual</span></td>
+          <td class="col-desc">Parallel wave orchestrator. Groups independent tasks into waves (using file-overlap guards to prevent conflicts), spawns parallel <code>claude -p</code> processes, serializes validation, and loops until all tasks pass or max iterations reached.</td>
+        </tr>
+        <tr>
+          <td class="col-name">torus-prompt.md</td>
+          <td class="col-lines">&mdash;</td>
+          <td class="col-when"><span class="when-badge when--hook">injected</span></td>
+          <td class="col-desc">Prompt template injected into each executor invocation by loop/wave scripts. Provides task context, memory prefetch output, and framework behavioral constraints.</td>
+        </tr>
+        <tr>
+          <td class="col-name">memory-prefetch.py</td>
+          <td class="col-lines">98</td>
+          <td class="col-when"><span class="when-badge when--hook">per-task</span></td>
+          <td class="col-desc">Pre-fetches relevant memories for a task executor prompt. Queries the FTS5 index (read-only, safe for concurrent access) using task name and file list. Returns top 5 relevant memories. Exit code always 0 (fail-open).</td>
+        </tr>
+        <tr>
+          <td class="col-name">prp-phase-verify.py</td>
+          <td class="col-lines">208</td>
+          <td class="col-when"><span class="when-badge when--ondemand">on-demand</span></td>
+          <td class="col-desc">Post-phase verification for <code>/prp verify-phase</code>. Runs <code>task_manager.py verify-phase</code>, analyzes failures by level, and optionally creates fix tasks. Exit 0 = all passed, exit 1 = failures found.</td>
+        </tr>
+        <tr>
+          <td class="col-name">prp-plan-verify.py</td>
+          <td class="col-lines">135</td>
+          <td class="col-when"><span class="when-badge when--ondemand">on-demand</span></td>
+          <td class="col-desc">Plan verification loop for <code>/prp plan-phase</code>. Runs <code>task_manager.py plan-check</code> against requirements, analyzes gaps, outputs revision report. Used by the <code>/prp</code> skill to decide whether to revise the plan.</td>
+        </tr>
+        <tr>
+          <td class="col-name">cleanup-x-sessions.sh</td>
+          <td class="col-lines">150</td>
+          <td class="col-when"><span class="when-badge when--manual">manual</span></td>
+          <td class="col-desc">Removes stale X session lock files and sockets. Iterates <code>/tmp/.X*-lock</code> files, checks if the owning PID is alive. Dead PIDs: remove lock + socket. Supports <code>X_CLEANUP_DRY_RUN=true</code> dry run mode.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Section 2: hooks/scripts/ -->
+  <h2 class="animate" style="--i:4">02 &mdash; ~/.claude/hooks/scripts/ &mdash; Maintenance</h2>
+
+  <div class="ve-card card--green ve-card--elevated animate" style="--i:5">
+    <table class="script-table">
+      <thead>
+        <tr>
+          <th>Script</th>
+          <th style="text-align:right">Lines</th>
+          <th>When</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="col-name">audit_rotation.py</td>
+          <td class="col-lines">160</td>
+          <td class="col-when"><span class="when-badge when--cron">cron/daily</span></td>
+          <td class="col-desc">Compresses <code>.jsonl</code> audit logs older than 7 days to <code>.jsonl.gz</code>. Deletes <code>.jsonl.gz</code> files older than 30 days. Reports disk usage before and after. Manages the framework's full audit trail.</td>
+        </tr>
+        <tr>
+          <td class="col-name">backup_embeddings.py</td>
+          <td class="col-lines">109</td>
+          <td class="col-when"><span class="when-badge when--manual">manual</span></td>
+          <td class="col-desc">Exports all 5 LanceDB tables (documents, metadata, embeddings, IDs) to JSON at <code>~/data/memory/backup_lance_YYYYMMDD.json</code>. Full backup of the knowledge, observations, fix_outcomes, quarantine, and web_pages tables.</td>
+        </tr>
+        <tr>
+          <td class="col-name">create_lance_indexes.py</td>
+          <td class="col-lines">71</td>
+          <td class="col-when"><span class="when-badge when--manual">manual</span></td>
+          <td class="col-desc">Creates IVF_PQ vector indexes on LanceDB tables for fast approximate nearest-neighbor search. Useful when tables grow beyond ~10K rows. No-op if indexes already exist.</td>
+        </tr>
+        <tr>
+          <td class="col-name">fix_lance_indexes.py</td>
+          <td class="col-lines">38</td>
+          <td class="col-when"><span class="when-badge when--manual">manual</span></td>
+          <td class="col-desc">Drops IVF_PQ indexes that hurt relevance on small tables. For datasets under ~10K rows, brute-force cosine scan is faster and more accurate. LanceDB falls back to flat scan when no index exists.</td>
+        </tr>
+        <tr>
+          <td class="col-name">flush_audit.py</td>
+          <td class="col-lines">72</td>
+          <td class="col-when"><span class="when-badge when--cron">cron</span></td>
+          <td class="col-desc">Flushes old ramdisk audit logs to disk backup (compressed). Keeps last <code>KEEP_DAYS</code> days on ramdisk, compresses older files to <code>~/.claude/hooks/audit/</code> as <code>.gz</code>, then removes originals from ramdisk.</td>
+        </tr>
+        <tr>
+          <td class="col-name">memory_compactor.py</td>
+          <td class="col-lines">315</td>
+          <td class="col-when"><span class="when-badge when--manual">manual</span></td>
+          <td class="col-desc">Smart deduplication for LanceDB knowledge table. Scans for similar memories (cosine similarity above threshold), clusters them, merges metadata into survivors, quarantines duplicates. Defaults to dry-run mode.</td>
+        </tr>
+        <tr>
+          <td class="col-name">stale_memory_archiver.py</td>
+          <td class="col-lines">247</td>
+          <td class="col-when"><span class="when-badge when--manual">manual</span></td>
+          <td class="col-desc">Identifies and demotes old low-value memories. Scans knowledge table for entries older than 90 days with low-value heuristics (short text, no tags, low tier). Demoted memories move to tier 3 so they rank lower in search.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Section 3: Other utilities -->
+  <h2 class="animate" style="--i:6">03 &mdash; Other Utilities &mdash; Boot + Install</h2>
+
+  <div class="ve-card card--cyan ve-card--elevated animate" style="--i:7">
+    <div class="utils-grid">
+      <div class="util-card">
+        <div class="uc-name">
+          setup_ramdisk.sh
+          <span class="uc-lines">116 lines</span>
+        </div>
+        <div class="uc-desc">One-time tmpfs ramdisk setup. Creates <code>/run/user/UID/claude-hooks</code> as tmpfs, installs systemd service for persistence across reboots. Run once at install time. Migrates existing files from disk to ramdisk.</div>
+        <div style="margin-top:8px;"><span class="when-badge when--boot">boot/one-time</span></div>
+      </div>
+      <div class="util-card">
+        <div class="uc-name">
+          user_prompt_check.sh
+          <span class="uc-lines">25 lines</span>
+        </div>
+        <div class="uc-desc">UserPromptSubmit hook. Fires on every prompt. Detects correction signals and feature requests in user text, outputs XML tags to stdout for Claude's context. Must complete in &lt;200ms.</div>
+        <div style="margin-top:8px;"><span class="when-badge when--hook">every prompt</span></div>
+      </div>
+      <div class="util-card">
+        <div class="uc-name">
+          install.sh
+          <span class="uc-lines">82 lines</span>
+        </div>
+        <div class="uc-desc">Framework installer (v2.5.8). Checks prerequisites (<code>python3</code>, <code>claude</code> CLI), sets up directory structure, configures hooks in settings.json. Entry point for fresh framework installs.</div>
+        <div style="margin-top:8px;"><span class="when-badge when--manual">manual/install</span></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="when-badge when--boot">boot/one-time</span> Run once at system setup</div>
+      <div class="legend-item"><span class="when-badge when--cron">cron/daily</span> Scheduled maintenance</div>
+      <div class="legend-item"><span class="when-badge when--manual">manual</span> Operator invokes directly</div>
+      <div class="legend-item"><span class="when-badge when--ondemand">on-demand</span> Triggered by /prp skill</div>
+      <div class="legend-item"><span class="when-badge when--hook">hook/injected</span> Automatic, fires during workflow</div>
+    </div>
+  </div>
+
+  <!-- Callout -->
+  <div class="ve-card ve-card--recessed card--orange animate" style="--i:8">
+    <div class="card-label"><span class="dot"></span> Design Notes</div>
+    <div class="callout" style="background:transparent;border:none;border-left:3px solid var(--orange);padding-left:16px;">
+      <strong>Fail-open by design.</strong> All maintenance scripts (hooks/scripts/) default to dry-run
+      or fail gracefully — they never crash gate enforcement. The <code>memory-prefetch.py</code> always
+      exits 0 so a failed memory lookup never blocks task execution.
+      <strong>Fresh context is the key insight</strong> behind both torus-loop and torus-wave: rather than
+      letting one long session degrade, each task gets a virgin Claude instance that queries memory
+      to re-establish context just-in-time.
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -250,12 +250,17 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
             )
 
     # Track edits for pending verification (including NotebookEdit)
+    # Only track non-exempt files — exempt files (config, tests, non-code) are
+    # already skipped by Gate 14's blocking logic, so tracking them just creates
+    # a dead counter that jams the gate.
     if tool_name in ("Edit", "Write", "NotebookEdit"):
         file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
         if file_path and file_path not in state.get("pending_verification", []):
-            pending = state.get("pending_verification", [])
-            pending.append(file_path)
-            state["pending_verification"] = pending
+            from shared.exemptions import is_exempt_full
+            if not is_exempt_full(file_path):
+                pending = state.get("pending_verification", [])
+                pending.append(file_path)
+                state["pending_verification"] = pending
 
         # Track edit streak per file
         edit_streak = state.setdefault("edit_streak", {})

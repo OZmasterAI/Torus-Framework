@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Archive &amp; Dormant — Torus Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;0,700;1,400&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME — Monochrome Warm ============ */
+  :root {
+    --font-body: 'Crimson Pro', Georgia, serif;
+    --font-mono: 'Noto Sans Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f5f3f0;
+    --surface: #ffffff;
+    --surface2: #ece9e4;
+    --surface-elevated: #faf9f7;
+    --border: rgba(45,42,38,0.09);
+    --border-bright: rgba(45,42,38,0.20);
+    --text: #2d2a26;
+    --text-dim: #8b7355;
+
+    --accent: #8b7355;
+    --accent-dim: rgba(139,115,85,0.09);
+    --accent-mid: rgba(139,115,85,0.20);
+
+    --warm-dark: #5c4a30;
+    --warm-dark-dim: rgba(92,74,48,0.09);
+    --warm-light: #b8a68a;
+    --warm-light-dim: rgba(184,166,138,0.12);
+    --warm-red: #7a3c2c;
+    --warm-red-dim: rgba(122,60,44,0.09);
+    --warm-green: #3c5c3c;
+    --warm-green-dim: rgba(60,92,60,0.09);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1b17;
+      --surface: #2a2520;
+      --surface2: #36302a;
+      --surface-elevated: #252118;
+      --border: rgba(245,243,240,0.07);
+      --border-bright: rgba(245,243,240,0.16);
+      --text: #e8e0d4;
+      --text-dim: #9c8a74;
+
+      --accent: #c4a97c;
+      --accent-dim: rgba(196,169,124,0.12);
+      --accent-mid: rgba(196,169,124,0.22);
+
+      --warm-dark: #d4b896;
+      --warm-dark-dim: rgba(212,184,150,0.12);
+      --warm-light: #8b7355;
+      --warm-light-dim: rgba(139,115,85,0.12);
+      --warm-red: #c47a5c;
+      --warm-red-dim: rgba(196,122,92,0.12);
+      --warm-green: #7ca47c;
+      --warm-green-dim: rgba(124,164,124,0.12);
+    }
+  }
+
+  /* ============ RESET + BASE ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 20% 0%, var(--accent-dim) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 100%, var(--warm-dark-dim) 0%, transparent 45%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 44px 40px;
+    min-height: 100vh;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.06s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .mermaid-wrap .mermaid { transition: none; }
+  }
+
+  /* ============ LAYOUT ============ */
+  .container {
+    max-width: 1060px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+    text-wrap: balance;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    margin-bottom: 36px;
+  }
+
+  /* ============ VE CARD ============ */
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+
+  .ve-card--elevated {
+    background: var(--surface-elevated);
+    box-shadow: 0 3px 16px rgba(45,42,38,0.06);
+  }
+
+  .ve-card--recessed {
+    background: var(--surface2);
+  }
+
+  .card-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .card--accent .card-label { color: var(--accent); }
+  .card--accent .dot { background: var(--accent); }
+  .card--accent { border-color: var(--accent-mid); }
+
+  .card--warm-dark .card-label { color: var(--warm-dark); }
+  .card--warm-dark .dot { background: var(--warm-dark); }
+  .card--warm-dark { border-color: var(--warm-dark-dim); }
+
+  .card--warm-red .card-label { color: var(--warm-red); }
+  .card--warm-red .dot { background: var(--warm-red); }
+  .card--warm-red { border-color: var(--warm-red-dim); }
+
+  .card--warm-green .card-label { color: var(--warm-green); }
+  .card--warm-green .dot { background: var(--warm-green); }
+  .card--warm-green { border-color: var(--warm-green-dim); }
+
+  /* ============ INNER GRID ============ */
+  .inner-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .inner-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .inner-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 11px 14px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .inner-card { background: var(--surface); }
+  }
+
+  .inner-card .title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+    font-family: var(--font-mono);
+    color: var(--text);
+  }
+
+  .inner-card .desc {
+    color: var(--text-dim);
+    font-size: 13px;
+    line-height: 1.55;
+    font-family: var(--font-body);
+  }
+
+  /* ============ MERMAID CONTAINER ============ */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 20px;
+    overflow: auto;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 300px;
+    cursor: grab;
+  }
+
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .zoom-controls button:hover {
+    background: var(--accent-dim);
+    color: var(--text);
+  }
+
+  .mermaid-wrap {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .mermaid-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+  /* ============ MERMAID SVG OVERRIDES ============ */
+  .mermaid .nodeLabel {
+    font-family: var(--font-body) !important;
+    font-size: 15px !important;
+  }
+  .mermaid .edgeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+  }
+
+  /* ============ NODE LIST ============ */
+  .node-list {
+    list-style: none;
+    font-size: 14px;
+    line-height: 1.85;
+    font-family: var(--font-body);
+  }
+
+  .node-list li {
+    padding-left: 16px;
+    position: relative;
+    color: var(--text-dim);
+  }
+
+  .node-list li::before {
+    content: '›';
+    color: var(--accent);
+    font-weight: 700;
+    position: absolute;
+    left: 0;
+  }
+
+  .node-list li strong { color: var(--text); }
+
+  .node-list code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ============ FILE GRID ============ */
+  .file-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  .file-entry {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .file-entry { background: var(--surface); }
+  }
+
+  .file-entry .fe-date {
+    color: var(--accent);
+    margin-right: 4px;
+  }
+
+  /* ============ CALLOUT ============ */
+  .callout {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 13px 17px;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--text-dim);
+    font-family: var(--font-body);
+    font-style: italic;
+  }
+
+  .callout strong { color: var(--text); font-style: normal; font-weight: 600; }
+
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-style: normal;
+    background: var(--accent-dim);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ============ DIVIDER ============ */
+  .section-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0 20px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .section-divider::before,
+  .section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 768px) {
+    body { padding: 20px; }
+    h1 { font-size: 26px; }
+    .inner-grid, .inner-grid-3 { grid-template-columns: 1fr; }
+    .file-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1 class="animate" style="--i:0">Archive &amp; Dormant</h1>
+  <p class="subtitle animate" style="--i:1">torus-framework &mdash; session history, retired components, and deprecation lifecycle</p>
+
+  <!-- Mermaid diagram -->
+  <div class="mermaid-wrap animate" style="--i:2">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+      <button onclick="openDiagramFullscreen(this)" title="Full size">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+      graph TD
+        A["Active Component"] --> B{"Deprecate?"}
+        B -->|"yes"| C["dormant/"]
+        B -->|"session end"| D["archive/"]
+        C --> E["dormant/agents/"]
+        C --> F["dormant/gates/"]
+        C --> G["dormant/rules/"]
+        D --> H["handoff_sessionN.md"]
+    </pre>
+  </div>
+
+  <!-- Card 1: archive/ -->
+  <div class="ve-card card--accent ve-card--elevated animate" style="--i:3">
+    <div class="card-label"><span class="dot"></span> 01 &mdash; archive/ &mdash; Session History</div>
+    <div class="callout" style="margin-bottom:14px;">
+      <strong>53 handoff files</strong> spanning 2026-02-08 through 2026-02-19.
+      Each file captures what was built, what is next, and relevant context so
+      future sessions can resume without context loss. Created by <code>/wrap-up</code>,
+      archived by <code>session_end.py</code>.
+    </div>
+    <div class="file-grid">
+      <div class="file-entry"><span class="fe-date">02-08</span>Self-Healing-Framework</div>
+      <div class="file-entry"><span class="fe-date">02-08</span>self-healing-framework</div>
+      <div class="file-entry"><span class="fe-date">02-09</span>projectdawn-hardening</div>
+      <div class="file-entry"><span class="fe-date">02-09</span>self-healing-framework</div>
+      <div class="file-entry"><span class="fe-date">02-10</span>OptimisticChain</div>
+      <div class="file-entry"><span class="fe-date">02-10</span>ProjectDawn</div>
+      <div class="file-entry"><span class="fe-date">02-10</span>self-healing-framework</div>
+      <div class="file-entry"><span class="fe-date">02-11</span>maintenance</div>
+      <div class="file-entry"><span class="fe-date">02-14</span>claude-md-optimization</div>
+      <div class="file-entry"><span class="fe-date">02-14</span>megaman-framework</div>
+      <div class="file-entry"><span class="fe-date">02-14</span>megaman-loop</div>
+      <div class="file-entry"><span class="fe-date">02-14</span>self-healing-framework</div>
+      <div class="file-entry"><span class="fe-date">02-14</span>session48_comparison</div>
+      <div class="file-entry"><span class="fe-date">02-14</span>xrdp-fix</div>
+      <div class="file-entry"><span class="fe-date">02-15</span>auto</div>
+      <div class="file-entry"><span class="fe-date">02-15</span>behavioral-modes</div>
+      <div class="file-entry"><span class="fe-date">02-15</span>dashboard-memory-graph</div>
+      <div class="file-entry"><span class="fe-date">02-15</span>megaman-framework</div>
+      <div class="file-entry"><span class="fe-date">02-16</span>auto</div>
+      <div class="file-entry"><span class="fe-date">02-19</span>auto (multiple)</div>
+    </div>
+    <div style="margin-top:12px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">
+      Format: <code>HANDOFF_YYYY-MM-DD_description.md</code> &nbsp;&middot;&nbsp; 53 total files &nbsp;&middot;&nbsp; auto files use unix timestamp suffix
+    </div>
+  </div>
+
+  <!-- Card 2: dormant/ -->
+  <div class="ve-card card--warm-dark animate" style="--i:4">
+    <div class="card-label"><span class="dot"></span> 02 &mdash; dormant/ &mdash; Retired Components</div>
+    <div class="inner-grid-3">
+      <div class="inner-card">
+        <div class="title">dormant/agents/</div>
+        <div class="desc">
+          Four retired agent definitions:<br>
+          <strong>code-reviewer.md</strong><br>
+          <strong>explorer.md</strong><br>
+          <strong>team-lead.md</strong><br>
+          <strong>test-writer.md</strong>
+        </div>
+      </div>
+      <div class="inner-card">
+        <div class="title">dormant/gates/</div>
+        <div class="desc">
+          One retired gate:<br>
+          <strong>gate_08_temporal.py</strong><br>
+          Temporal validation logic, superseded or merged into main gate pipeline.
+        </div>
+      </div>
+      <div class="inner-card">
+        <div class="title">dormant/rules/</div>
+        <div class="desc">
+          One dormant rules file:<br>
+          <strong>domains.md.dormant</strong><br>
+          Old domain routing rules, replaced by current <code>domain_registry.py</code> system.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 3: Archival Flow -->
+  <div class="ve-card card--warm-green animate" style="--i:5">
+    <div class="card-label"><span class="dot"></span> 03 &mdash; Archival &amp; Retirement Flow</div>
+    <div class="callout" style="border-left-color: var(--warm-green); margin-bottom:14px;">
+      <strong>Session archive path:</strong> At session end, <code>/wrap-up</code> invokes the wrap-up skill
+      which writes a handoff document to <code>LIVE_STATE.json</code>. The
+      <code>session_end.py</code> hook then archives completed handoffs to <code>archive/</code>.
+      New sessions read <code>LIVE_STATE.json</code> on start to resume or start fresh.
+    </div>
+    <ul class="node-list">
+      <li><strong>/wrap-up</strong> &mdash; creates handoff markdown in <code>LIVE_STATE.json</code></li>
+      <li><strong>session_end.py</strong> &mdash; moves handoff to <code>archive/HANDOFF_date_name.md</code></li>
+      <li><strong>Deprecated components</strong> &mdash; moved manually to <code>dormant/</code> subdirectory (agents/, gates/, rules/)</li>
+      <li><strong>Re-activation</strong> &mdash; move file out of <code>dormant/</code>; remove <code>.dormant</code> suffix from rules files</li>
+      <li><strong>gate_08_temporal.py</strong> &mdash; retired gate; brute-force scan found not worth the 5s overhead</li>
+    </ul>
+  </div>
+
+  <!-- Divider -->
+  <div class="section-divider animate" style="--i:6">archive ends here &mdash; 2026-02-19</div>
+
+  <!-- Callout note -->
+  <div class="ve-card ve-card--recessed card--warm-red animate" style="--i:7">
+    <div class="card-label"><span class="dot"></span> Note &mdash; Gap in Archive</div>
+    <div class="callout" style="background:transparent; border:none; border-left: 3px solid var(--warm-red); padding-left:16px; font-style:normal;">
+      Archive handoffs only cover <strong>2026-02-08 through 2026-02-19</strong>. Sessions from
+      2026-02-20 onward use the <code>LIVE_STATE.json</code> system for continuity — only
+      completed wrap-ups reach the archive directory. The current session is on branch
+      <code>docs/visual-map</code> and has not yet been wrapped up.
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor:        isDark ? '#3a3028' : '#f0ede8',
+      primaryBorderColor:  isDark ? '#c4a97c' : '#8b7355',
+      primaryTextColor:    isDark ? '#e8e0d4' : '#2d2a26',
+      secondaryColor:      isDark ? '#2e2a24' : '#ece9e4',
+      secondaryBorderColor: isDark ? '#9c8a74' : '#b8a68a',
+      secondaryTextColor:  isDark ? '#e8e0d4' : '#2d2a26',
+      tertiaryColor:       isDark ? '#28302a' : '#eaf0ea',
+      tertiaryBorderColor: isDark ? '#7ca47c' : '#3c5c3c',
+      tertiaryTextColor:   isDark ? '#e8e0d4' : '#2d2a26',
+      lineColor:           isDark ? '#9c8a74' : '#8b7355',
+      fontSize:            '15px',
+      fontFamily:          "'Crimson Pro', Georgia, serif",
+      noteBkgColor:        isDark ? '#3a3028' : '#faf7f3',
+      noteTextColor:       isDark ? '#e8e0d4' : '#2d2a26',
+      noteBorderColor:     isDark ? '#c4a97c' : '#8b7355',
+    }
+  });
+</script>
+
+<script>
+  var INITIAL_ZOOM = 1;
+
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+    var next = Math.min(Math.max(current * factor, 0.4), 5);
+    target.dataset.zoom = next;
+    target.style.zoom = next;
+  }
+
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = INITIAL_ZOOM;
+    target.style.zoom = INITIAL_ZOOM;
+  }
+
+  function openDiagramFullscreen(btn) {
+    openMermaidInNewTab(btn.closest('.mermaid-wrap'));
+  }
+
+  function openMermaidInNewTab(wrap) {
+    var svg = wrap.querySelector('.mermaid svg');
+    if (!svg) return;
+    var clone = svg.cloneNode(true);
+    clone.style.zoom = '';
+    var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#f5f3f0';
+    var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+      '<title>Archive Flow</title><style>body{margin:0;min-height:100vh;display:flex;' +
+      'align-items:center;justify-content:center;background:' + bg + ';padding:40px;box-sizing:border-box;}' +
+      'svg{max-width:100%;max-height:90vh;height:auto;}</style></head><body>' +
+      clone.outerHTML + '</body></html>';
+    window.open(URL.createObjectURL(new Blob([html], {type:'text/html'})), '_blank');
+  }
+
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var next = Math.min(Math.max(current * (e.deltaY < 0 ? 1.1 : 0.9), 0.4), 5);
+      target.dataset.zoom = next;
+      target.style.zoom = next;
+    }, { passive: false });
+
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX; startY = e.clientY;
+      scrollL = wrap.scrollLeft; scrollT = wrap.scrollTop;
+      startTime = Date.now(); didPan = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      wrap.scrollLeft = scrollL - dx;
+      wrap.scrollTop = scrollT - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      if (!didPan && Date.now() - startTime < 300) openMermaidInNewTab(wrap);
+    });
+  });
+</script>
+
+</body>
+</html>

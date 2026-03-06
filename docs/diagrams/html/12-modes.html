@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modes — Torus Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ ONE DARK THEME ============ */
+  :root {
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+    --bg: #282c34;
+    --surface: #2f333d;
+    --surface2: #353a45;
+    --surface-elevated: #3b404e;
+    --border: rgba(255,255,255,0.07);
+    --border-bright: rgba(255,255,255,0.13);
+    --text: #abb2bf;
+    --text-strong: #dde1e8;
+    --text-dim: #5c6370;
+    --red: #e06c75;
+    --red-dim: rgba(224,108,117,0.1);
+    --green: #98c379;
+    --green-dim: rgba(152,195,121,0.1);
+    --yellow: #e5c07b;
+    --yellow-dim: rgba(229,192,123,0.1);
+    --blue: #61afef;
+    --blue-dim: rgba(97,175,239,0.1);
+    --cyan: #56b6c2;
+    --cyan-dim: rgba(86,182,194,0.1);
+    --orange: #d19a66;
+    --orange-dim: rgba(209,154,102,0.1);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f0f2f5;
+      --surface: #ffffff;
+      --surface2: #e8eaed;
+      --surface-elevated: #f8f9fb;
+      --border: rgba(0,0,0,0.08);
+      --border-bright: rgba(0,0,0,0.14);
+      --text: #3b4048;
+      --text-strong: #1a1d23;
+      --text-dim: #8a8f99;
+      --red: #c0392b;
+      --red-dim: rgba(192,57,43,0.1);
+      --green: #2e7d32;
+      --green-dim: rgba(46,125,50,0.1);
+      --yellow: #b37b00;
+      --yellow-dim: rgba(179,123,0,0.1);
+      --blue: #1565c0;
+      --blue-dim: rgba(21,101,192,0.1);
+      --cyan: #00787a;
+      --cyan-dim: rgba(0,120,122,0.1);
+      --orange: #a85b00;
+      --orange-dim: rgba(168,91,0,0.1);
+    }
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 0% 20%, var(--blue-dim) 0%, transparent 50%),
+      radial-gradient(ellipse at 100% 80%, var(--green-dim) 0%, transparent 45%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(12px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+  .animate { animation: fadeUp 0.4s ease-out both; animation-delay: calc(var(--i,0) * 0.08s); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration:0.01ms !important;
+      animation-delay:0ms !important;
+      transition-duration:0.01ms !important;
+    }
+  }
+
+  .container { max-width:1100px; margin:0 auto; }
+
+  h1 { font-size:38px; font-weight:700; letter-spacing:-0.5px; margin-bottom:6px; color:var(--text-strong); }
+  .subtitle { color:var(--text-dim); font-family:var(--font-mono); font-size:12px; margin-bottom:40px; }
+
+  .section-title {
+    font-size:11px; font-weight:600; text-transform:uppercase;
+    letter-spacing:1.5px; font-family:var(--font-mono);
+    margin-bottom:18px; display:flex; align-items:center; gap:8px;
+    color:var(--text-dim);
+  }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0; }
+
+  /* ACTIVATION FLOW */
+  .activation-flow {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+  }
+  .flow-step {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    flex-shrink: 0;
+    text-align: center;
+    min-width: 130px;
+  }
+  .flow-step .fs-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .flow-step .fs-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-strong);
+    margin-bottom: 3px;
+  }
+  .flow-step .fs-detail {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    line-height: 1.4;
+  }
+  .flow-arrow {
+    color: var(--text-dim);
+    font-size: 18px;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+
+  /* MODE CARDS — main layout */
+  .modes-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 32px;
+  }
+
+  .mode-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .mode-card:hover { border-color: var(--border-bright); }
+
+  .mode-card-header {
+    padding: 16px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .mode-number {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .mode-title { font-weight: 700; font-size: 16px; color: var(--text-strong); flex: 1; }
+  .mode-subtitle { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+
+  .mode-body { padding: 16px 20px; }
+
+  .mode-tagline {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
+    margin-bottom: 14px;
+    font-style: italic;
+  }
+
+  .mode-section-head {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    margin-top: 12px;
+  }
+
+  .rule-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .rule-list li {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text);
+    padding-left: 14px;
+    position: relative;
+  }
+  .rule-list li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    color: var(--text-dim);
+    font-weight: 700;
+  }
+  .rule-list li strong { color: var(--text-strong); font-weight: 600; }
+  .rule-list li code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .pill-row { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+
+  /* color variants */
+  .mc--blue .mode-number { background:var(--blue-dim); color:var(--blue); }
+  .mc--blue .mode-section-head { color:var(--blue); }
+  .mc--blue code { background:var(--blue-dim); color:var(--blue); }
+
+  .mc--red .mode-number { background:var(--red-dim); color:var(--red); }
+  .mc--red .mode-section-head { color:var(--red); }
+  .mc--red code { background:var(--red-dim); color:var(--red); }
+
+  .mc--green .mode-number { background:var(--green-dim); color:var(--green); }
+  .mc--green .mode-section-head { color:var(--green); }
+  .mc--green code { background:var(--green-dim); color:var(--green); }
+
+  .mc--yellow .mode-number { background:var(--yellow-dim); color:var(--yellow); }
+  .mc--yellow .mode-section-head { color:var(--yellow); }
+  .mc--yellow code { background:var(--yellow-dim); color:var(--yellow); }
+
+  .mc--cyan .mode-number { background:var(--cyan-dim); color:var(--cyan); }
+  .mc--cyan .mode-section-head { color:var(--cyan); }
+  .mc--cyan code { background:var(--cyan-dim); color:var(--cyan); }
+
+  /* skill card spans full width */
+  .mode-card--wide { grid-column: 1 / -1; }
+
+  /* COMPARISON TABLE */
+  .compare-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 32px;
+  }
+  table { width:100%; border-collapse: collapse; font-size:12px; }
+  thead th {
+    background: var(--surface2);
+    padding: 10px 14px;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  td { padding: 9px 14px; color: var(--text); vertical-align: top; line-height: 1.5; }
+  td:first-child { font-family:var(--font-mono); font-size:11px; font-weight:600; white-space:nowrap; }
+  .check { color:var(--green); }
+  .cross { color:var(--red-dim); color:var(--text-dim); }
+
+  @media (max-width:760px) {
+    body { padding:20px; }
+    .modes-layout { grid-template-columns:1fr; }
+    .mode-card--wide { grid-column:1; }
+    .activation-flow { flex-wrap:wrap; gap:8px; }
+    .flow-arrow { display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1 class="animate" style="--i:0">Modes</h1>
+  <p class="subtitle animate" style="--i:1">torus framework &mdash; behavioral overlays layered on top of base instructions</p>
+
+  <!-- ACTIVATION FLOW -->
+  <div class="section-title animate" style="--i:2">
+    <span class="dot" style="background:var(--blue)"></span>Activation Flow
+  </div>
+  <div class="activation-flow animate" style="--i:3">
+    <div class="flow-step">
+      <div class="fs-label">command</div>
+      <div class="fs-name">/mode on &lt;name&gt;</div>
+      <div class="fs-detail">via skill/SKILL.md</div>
+    </div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step">
+      <div class="fs-label">check exists</div>
+      <div class="fs-name">modes/&lt;name&gt;.md</div>
+      <div class="fs-detail">list available if not found</div>
+    </div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step">
+      <div class="fs-label">copy to rules</div>
+      <div class="fs-name">_active_mode.md</div>
+      <div class="fs-detail">auto-loaded by Claude Code</div>
+    </div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step">
+      <div class="fs-label">write marker</div>
+      <div class="fs-name">modes/.active</div>
+      <div class="fs-detail">plain text, mode name only</div>
+    </div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step">
+      <div class="fs-label">layer on</div>
+      <div class="fs-name">CLAUDE.md + gates</div>
+      <div class="fs-detail">additive, one mode at a time</div>
+    </div>
+  </div>
+
+  <!-- MODE CARDS -->
+  <div class="section-title animate" style="--i:4">
+    <span class="dot" style="background:var(--green)"></span>Mode Profiles
+  </div>
+
+  <div class="modes-layout animate" style="--i:5">
+
+    <!-- 1. coding -->
+    <div class="mode-card mc--blue">
+      <div class="mode-card-header">
+        <div class="mode-number">01</div>
+        <div>
+          <div class="mode-title">coding</div>
+          <div class="mode-subtitle">default development mode &mdash; coding.md</div>
+        </div>
+      </div>
+      <div class="mode-body">
+        <p class="mode-tagline">"Smallest diff wins. Test first. Read before write."</p>
+        <div class="mode-section-head">Core discipline</div>
+        <ul class="rule-list">
+          <li><strong>Smallest diff wins</strong> &mdash; change only what is needed; no drive-by refactors</li>
+          <li><strong>Test first</strong> &mdash; identify failing test before writing the fix</li>
+          <li><strong>Read before write</strong> &mdash; understand callers, tests, types fully first</li>
+        </ul>
+        <div class="mode-section-head">Code rules</div>
+        <ul class="rule-list">
+          <li>Catch specific exceptions; never bare <code>except:</code></li>
+          <li>Never swallow errors silently &mdash; log, re-raise, or handle explicitly</li>
+          <li>Type hints on all public function signatures</li>
+          <li>Remove unused imports; no <code># TODO</code> placeholders</li>
+        </ul>
+        <div class="mode-section-head">Communication</div>
+        <ul class="rule-list">
+          <li>Skip preamble &mdash; go straight to implementation</li>
+          <li>When fixing: reproduce, fix, prove &mdash; in that order</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 2. debug -->
+    <div class="mode-card mc--red">
+      <div class="mode-card-header">
+        <div class="mode-number">02</div>
+        <div>
+          <div class="mode-title">debug</div>
+          <div class="mode-subtitle">diagnosis and root-cause analysis &mdash; debug.md</div>
+        </div>
+      </div>
+      <div class="mode-body">
+        <p class="mode-tagline">"Reproduce first. One variable at a time. Trace, don't guess."</p>
+        <div class="mode-section-head">Core discipline</div>
+        <ul class="rule-list">
+          <li><strong>Reproduce first</strong> &mdash; confirm the bug exists before theorizing</li>
+          <li><strong>One variable at a time</strong> &mdash; never shotgun multiple fixes simultaneously</li>
+          <li><strong>Trace, don't guess</strong> &mdash; read logs, add instrumentation, inspect state</li>
+        </ul>
+        <div class="mode-section-head">Investigation protocol</div>
+        <ul class="rule-list">
+          <li>Start from error/symptom, work backward to root cause</li>
+          <li>Check recent changes first (<code>git log</code>, <code>git diff</code>)</li>
+          <li>Query memory for prior encounters with same error pattern</li>
+          <li>Use binary search (bisect) for regressions with long history</li>
+        </ul>
+        <div class="mode-section-head">Prohibitions</div>
+        <ul class="rule-list">
+          <li>Don't rewrite surrounding code while debugging</li>
+          <li>Don't add defensive checks to mask symptoms</li>
+          <li>Don't abandon a theory without disproving it</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 3. docs -->
+    <div class="mode-card mc--green">
+      <div class="mode-card-header">
+        <div class="mode-number">03</div>
+        <div>
+          <div class="mode-title">docs</div>
+          <div class="mode-subtitle">documentation focus &mdash; docs.md</div>
+        </div>
+      </div>
+      <div class="mode-body">
+        <p class="mode-tagline">"Audience first. Show, don't tell. Accuracy over polish."</p>
+        <div class="mode-section-head">Core discipline</div>
+        <ul class="rule-list">
+          <li><strong>Audience first</strong> &mdash; API docs, tutorials, and architecture guides differ</li>
+          <li><strong>Show, don't tell</strong> &mdash; a code example beats a paragraph of explanation</li>
+          <li><strong>Accuracy over polish</strong> &mdash; verify claims against actual code</li>
+        </ul>
+        <div class="mode-section-head">Writing standards</div>
+        <ul class="rule-list">
+          <li>Lead with what the reader needs to do, not background history</li>
+          <li>Use concrete examples with realistic values, not <code>foo/bar</code></li>
+          <li>One idea per sentence; consistent terminology throughout</li>
+        </ul>
+        <div class="mode-section-head">Prohibitions</div>
+        <ul class="rule-list">
+          <li>Do not document implementation details that will change</li>
+          <li>Do not modify code while in docs mode &mdash; docs files only</li>
+          <li>No filler padding ("In this section we will discuss...")</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 4. review -->
+    <div class="mode-card mc--yellow">
+      <div class="mode-card-header">
+        <div class="mode-number">04</div>
+        <div>
+          <div class="mode-title">review</div>
+          <div class="mode-subtitle">code review mode &mdash; review.md</div>
+        </div>
+      </div>
+      <div class="mode-body">
+        <p class="mode-tagline">"Read everything first. Assume intent. Severity matters."</p>
+        <div class="mode-section-head">Core discipline</div>
+        <ul class="rule-list">
+          <li><strong>Read everything first</strong> &mdash; all files in diff before commenting</li>
+          <li><strong>Assume intent</strong> &mdash; if something looks wrong, ask why first</li>
+          <li><strong>Severity matters</strong> &mdash; distinguish blockers from nits clearly</li>
+        </ul>
+        <div class="mode-section-head">What to find</div>
+        <ul class="rule-list">
+          <li>Logic errors, off-by-one, unhandled edge cases</li>
+          <li>Security: injection, auth bypass, data leaks, unvalidated input</li>
+          <li>Race conditions, shared state mutations, concurrency bugs</li>
+          <li>Breaking changes to public APIs or contracts</li>
+        </ul>
+        <div class="mode-section-head">Output format</div>
+        <ul class="rule-list">
+          <li>Group by severity: blockers, warnings, nits</li>
+          <li>Provide fix suggestion alongside every flagged issue</li>
+          <li>End with clear verdict: approve / request changes / needs discussion</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 5. skill mode — full width -->
+    <div class="mode-card mc--cyan mode-card--wide">
+      <div class="mode-card-header">
+        <div class="mode-number">05</div>
+        <div>
+          <div class="mode-title">skill</div>
+          <div class="mode-subtitle">skill execution via /mode on &lt;name&gt; &mdash; skill/SKILL.md</div>
+        </div>
+      </div>
+      <div class="mode-body">
+        <p class="mode-tagline">"Skills are dormant mode overlays — activated by /mode on &lt;name&gt;, deactivated by /mode off."</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:4px">
+          <div>
+            <div class="mode-section-head">Activation commands</div>
+            <ul class="rule-list">
+              <li><code>/mode on &lt;name&gt;</code> &mdash; activate named mode</li>
+              <li><code>/mode off</code> &mdash; deactivate and delete <code>_active_mode.md</code></li>
+              <li><code>/mode list</code> &mdash; show available + currently active mode</li>
+            </ul>
+          </div>
+          <div>
+            <div class="mode-section-head">File lifecycle</div>
+            <ul class="rule-list">
+              <li>Copy <code>modes/&lt;name&gt;.md</code> to <code>rules/_active_mode.md</code></li>
+              <li>Write mode name to <code>modes/.active</code></li>
+              <li>Claude Code auto-loads any <code>*.md</code> in <code>rules/</code></li>
+              <li>On deactivate, both files are deleted</li>
+            </ul>
+          </div>
+          <div>
+            <div class="mode-section-head">Properties</div>
+            <ul class="rule-list">
+              <li>Modes are purely additive &mdash; layer on CLAUDE.md + gates</li>
+              <li>Only one mode active at a time</li>
+              <li>Skills live in <code>~/.claude/skills/&lt;name&gt;/SKILL.md</code></li>
+              <li>SKILL.md is dormant until moved to skills/ slot</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- COMPARISON TABLE -->
+  <div class="section-title animate" style="--i:6">
+    <span class="dot" style="background:var(--orange)"></span>Mode Comparison
+  </div>
+  <div class="compare-wrap animate" style="--i:7">
+    <table>
+      <thead>
+        <tr>
+          <th>Mode</th>
+          <th>Write code</th>
+          <th>Edit files</th>
+          <th>Memory queries</th>
+          <th>Key behavioral shift</th>
+          <th>Gate sensitivity</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--blue)">coding</td>
+          <td class="check">yes</td>
+          <td class="check">yes</td>
+          <td class="check">required</td>
+          <td>smallest diff, test first, type hints enforced</td>
+          <td>normal</td>
+        </tr>
+        <tr>
+          <td style="color:var(--red)">debug</td>
+          <td class="check">fix only</td>
+          <td class="check">fix only</td>
+          <td class="check">query history</td>
+          <td>reproduce before theorizing, binary search regressions</td>
+          <td>normal</td>
+        </tr>
+        <tr>
+          <td style="color:var(--green)">docs</td>
+          <td class="cross">no</td>
+          <td style="color:var(--yellow)">docs only</td>
+          <td class="check">for accuracy</td>
+          <td>audience first, code examples required, no code changes</td>
+          <td>relaxed (no code edits)</td>
+        </tr>
+        <tr>
+          <td style="color:var(--yellow)">review</td>
+          <td class="cross">no</td>
+          <td class="cross">no</td>
+          <td class="check">for context</td>
+          <td>read full diff first, severity labels, verdict required</td>
+          <td>relaxed (read-only)</td>
+        </tr>
+        <tr>
+          <td style="color:var(--cyan)">skill</td>
+          <td>varies</td>
+          <td>varies</td>
+          <td class="check">always</td>
+          <td>follows individual SKILL.md instructions precisely</td>
+          <td>varies by skill</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+</body>
+</html>

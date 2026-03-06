@@ -39,13 +39,6 @@ else
     echo "  Created mcp.json (replaced \$HOME with $HOME)"
 fi
 
-if [ -f ~/.claude/LIVE_STATE.json ]; then
-    echo "  LIVE_STATE.json already exists, skipping."
-else
-    cp ~/.claude/LIVE_STATE.example.json ~/.claude/LIVE_STATE.json
-    echo "  Created LIVE_STATE.json from template."
-fi
-
 # Create data directories
 echo ""
 echo "Setting up data directories..."

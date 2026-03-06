@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Testing Infrastructure — Torus Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=Inconsolata:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ ROSE PINE THEME (dark-first) ============ */
+  :root {
+    --font-body: 'Libre Franklin', system-ui, sans-serif;
+    --font-mono: 'Inconsolata', 'SF Mono', Consolas, monospace;
+
+    /* Rosé Pine base palette */
+    --bg:       #191724;
+    --surface:  #1f1d2e;
+    --overlay:  #26233a;
+    --text:     #e0def4;
+    --subtle:   #908caa;
+    --muted:    #6e6a86;
+    --love:     #eb6f92;
+    --gold:     #f6c177;
+    --rose:     #ebbcba;
+    --pine:     #31748f;
+    --foam:     #9ccfd8;
+
+    /* Semantic mappings */
+    --border:        rgba(144,140,170,0.15);
+    --border-bright: rgba(144,140,170,0.30);
+    --accent:        var(--love);
+    --accent-dim:    rgba(235,111,146,0.12);
+    --green:         var(--foam);
+    --green-dim:     rgba(156,207,216,0.12);
+    --orange:        var(--gold);
+    --orange-dim:    rgba(246,193,119,0.12);
+    --blue:          var(--pine);
+    --blue-dim:      rgba(49,116,143,0.15);
+    --pink:          var(--rose);
+    --pink-dim:      rgba(235,188,186,0.12);
+  }
+
+  /* Light mode override */
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:            #faf4ed;
+      --surface:       #fffaf3;
+      --overlay:       #f2e9e1;
+      --text:          #575279;
+      --subtle:        #797593;
+      --muted:         #9893a5;
+      --love:          #b4637a;
+      --gold:          #ea9d34;
+      --rose:          #d7827a;
+      --pine:          #286983;
+      --foam:          #56949f;
+      --border:        rgba(87,82,121,0.12);
+      --border-bright: rgba(87,82,121,0.24);
+      --accent:        var(--love);
+      --accent-dim:    rgba(180,99,122,0.08);
+      --green:         var(--foam);
+      --green-dim:     rgba(86,148,159,0.08);
+      --orange:        var(--gold);
+      --orange-dim:    rgba(234,157,52,0.08);
+      --blue:          var(--pine);
+      --blue-dim:      rgba(40,105,131,0.10);
+      --pink:          var(--rose);
+      --pink-dim:      rgba(215,130,122,0.10);
+    }
+  }
+
+  /* ============ RESET ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 15% 0%, var(--accent-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 85% 100%, var(--blue-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 48px 40px;
+    min-height: 100vh;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i,0) * 0.06s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .container { max-width: 1140px; margin: 0 auto; }
+
+  /* ============ HEADER ============ */
+  .page-header { margin-bottom: 40px; }
+
+  h1 {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    line-height: 1.15;
+    margin-bottom: 6px;
+  }
+
+  .subtitle {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--subtle);
+    letter-spacing: 0.4px;
+  }
+
+  /* ============ SECTION LABEL ============ */
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  /* ============ MERMAID CONTAINER ============ */
+  .mermaid-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 24px;
+    margin-bottom: 28px;
+    overflow-x: auto;
+    position: relative;
+  }
+
+  .mermaid-wrap .section-label { color: var(--foam); }
+  .mermaid-wrap .section-label .dot { background: var(--foam); }
+
+  .mermaid { display: flex; justify-content: center; }
+
+  /* Fix Mermaid SVG text colors */
+  .mermaid .nodeLabel { color: var(--text) !important; }
+  .mermaid .edgeLabel { color: var(--subtle) !important; background-color: var(--bg) !important; }
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+
+  /* ============ GRID LAYOUTS ============ */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  .three-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  .one-col { margin-bottom: 20px; }
+
+  /* ============ SECTION CARD ============ */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+
+  .section--hero {
+    background: var(--overlay);
+    border-color: var(--border-bright);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+    padding: 24px 28px;
+  }
+
+  .section--accent { border-left: 3px solid var(--love); }
+  .section--accent .section-label { color: var(--love); }
+  .section--accent .section-label .dot { background: var(--love); }
+
+  .section--gold { border-left: 3px solid var(--gold); }
+  .section--gold .section-label { color: var(--gold); }
+  .section--gold .section-label .dot { background: var(--gold); }
+
+  .section--pine { border-left: 3px solid var(--pine); }
+  .section--pine .section-label { color: var(--pine); }
+  .section--pine .section-label .dot { background: var(--pine); }
+
+  .section--foam { border-left: 3px solid var(--foam); }
+  .section--foam .section-label { color: var(--foam); }
+  .section--foam .section-label .dot { background: var(--foam); }
+
+  .section--rose { border-left: 3px solid var(--rose); }
+  .section--rose .section-label { color: var(--rose); }
+  .section--rose .section-label .dot { background: var(--rose); }
+
+  .section--muted { border-left: 3px solid var(--muted); }
+  .section--muted .section-label { color: var(--subtle); }
+  .section--muted .section-label .dot { background: var(--muted); }
+
+  /* ============ VE-CARD (inner cards) ============ */
+  .ve-card {
+    background: var(--overlay);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    transition: border-color 0.15s;
+  }
+
+  .ve-card:last-child { margin-bottom: 0; }
+  .ve-card:hover { border-color: var(--border-bright); }
+
+  .ve-card .card-title {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ve-card .card-desc {
+    font-size: 12px;
+    color: var(--subtle);
+    line-height: 1.55;
+  }
+
+  .ve-card .card-meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* File size badge */
+  .lines-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    background: var(--border);
+    color: var(--subtle);
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  /* ============ CODE INLINE ============ */
+  code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ============ NODE LIST ============ */
+  .node-list {
+    list-style: none;
+    font-size: 12.5px;
+    line-height: 1.75;
+  }
+
+  .node-list li {
+    padding-left: 14px;
+    position: relative;
+    color: var(--subtle);
+  }
+
+  .node-list li::before {
+    content: '›';
+    color: var(--muted);
+    font-weight: 700;
+    position: absolute;
+    left: 0;
+  }
+
+  .node-list .file-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--foam);
+    font-weight: 500;
+  }
+
+  /* ============ COVERAGE TABLE ============ */
+  .cov-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  .cov-table th {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-bright);
+    white-space: nowrap;
+  }
+
+  .cov-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  .cov-table tbody tr:last-child td { border-bottom: none; }
+  .cov-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.025); }
+
+  .cov-table .component {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .cov-table .test-list {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--subtle);
+    line-height: 1.6;
+  }
+
+  .check {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    text-align: center;
+    line-height: 14px;
+    font-size: 9px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+  }
+
+  .check--yes { background: var(--green-dim); color: var(--foam); }
+  .check--no  { background: var(--border); color: var(--muted); }
+
+  /* ============ CATEGORY PILLS ============ */
+  .cat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+
+  .cat-pill::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .cat--safety  { background: var(--accent-dim); color: var(--love); }
+  .cat--quality { background: var(--orange-dim); color: var(--gold); }
+  .cat--ops     { background: var(--blue-dim);   color: var(--pine); }
+  .cat--integration { background: var(--pink-dim); color: var(--rose); }
+  .cat--shared  { background: var(--green-dim);  color: var(--foam); }
+
+  /* ============ FLOW ARROW ============ */
+  .flow-arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 6px 0;
+    margin-bottom: 4px;
+  }
+
+  .flow-arrow svg {
+    width: 18px; height: 18px;
+    fill: none;
+    stroke: var(--border-bright);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ============ CALLOUT ============ */
+  .callout {
+    background: var(--overlay);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--foam);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--subtle);
+    margin-top: 16px;
+  }
+
+  .callout strong { color: var(--text); font-weight: 600; }
+
+  /* ============ KPI ROW ============ */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  }
+
+  .kpi-card__value {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .kpi-card__value.love  { color: var(--love); }
+  .kpi-card__value.gold  { color: var(--gold); }
+  .kpi-card__value.foam  { color: var(--foam); }
+  .kpi-card__value.pine  { color: var(--pine); }
+  .kpi-card__value.rose  { color: var(--rose); }
+
+  .kpi-card__label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ============ TAG STRIP ============ */
+  .tag-strip {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border-bright);
+    color: var(--subtle);
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 900px) {
+    body { padding: 24px 18px; }
+    h1 { font-size: 26px; }
+    .two-col { grid-template-columns: 1fr; }
+    .three-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="page-header animate" style="--i:0">
+    <h1>Testing Infrastructure</h1>
+    <p class="subtitle">hooks/test_framework.py &mdash; hooks/tests/ &mdash; benchmarks/ &mdash; fuzzing &mdash; mutation &mdash; generation</p>
+  </div>
+
+  <!-- KPI ROW -->
+  <div class="kpi-row animate" style="--i:1">
+    <div class="kpi-card">
+      <div class="kpi-card__value love">13</div>
+      <div class="kpi-card__label">Test Files</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value gold">2</div>
+      <div class="kpi-card__label">Benchmark Files</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value foam">562</div>
+      <div class="kpi-card__label">Fuzz Lines</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value pine">811</div>
+      <div class="kpi-card__label">Mutation Lines</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value rose">533</div>
+      <div class="kpi-card__label">Generator Lines</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__value foam">5</div>
+      <div class="kpi-card__label">Test Categories</div>
+    </div>
+  </div>
+
+  <!-- MERMAID OVERVIEW -->
+  <div class="mermaid-wrap animate" style="--i:2">
+    <div class="section-label"><span class="dot"></span> Architecture Overview</div>
+    <pre class="mermaid">
+graph TD
+  TF["test_framework.py<br/>orchestrator — 53 lines"]
+  TESTS["hooks/tests/<br/>13 test files"]
+  GATES["gates/<br/>gate_01.py … gate_17.py"]
+  SHARED["shared/<br/>~66 modules"]
+  INT["test_integration.py<br/>end-to-end"]
+  BENCH["benchmarks/<br/>benchmark_gates.py<br/>benchmark_io.py"]
+  FUZZ["fuzz_gates.py<br/>562 lines"]
+  MUT["mutation_tester.py<br/>811 lines"]
+  GEN["test_generator.py<br/>533 lines"]
+  VMEM["verify_memory_maintenance.py<br/>193 lines"]
+
+  TF --> TESTS
+  TESTS --> GATES
+  TESTS --> SHARED
+  TESTS --> INT
+  FUZZ -.->|adversarial inputs| GATES
+  BENCH -.->|perf baselines| GATES
+  MUT -.->|mutation testing| SHARED
+  GEN -.->|scaffold new tests| TESTS
+  VMEM -.->|memory health| SHARED
+
+  classDef orchestrator fill:#eb6f9222,stroke:#eb6f92,stroke-width:2px
+  classDef testfile fill:#31748f22,stroke:#31748f,stroke-width:1.5px
+  classDef target fill:#9ccfd822,stroke:#9ccfd8,stroke-width:1.5px
+  classDef tool fill:#f6c17722,stroke:#f6c177,stroke-width:1.5px
+
+  class TF orchestrator
+  class TESTS,INT testfile
+  class GATES,SHARED target
+  class FUZZ,BENCH,MUT,GEN,VMEM tool
+    </pre>
+  </div>
+
+  <!-- CARD 1: test_framework.py -->
+  <div class="one-col animate" style="--i:3">
+    <div class="section section--accent">
+      <div class="section-label"><span class="dot"></span> 01 &mdash; test_framework.py &mdash; Orchestrator</div>
+      <div class="ve-card">
+        <div class="card-title">
+          <span style="color:var(--love)">test_framework.py</span>
+          <span class="lines-badge">53 lines</span>
+        </div>
+        <div class="card-desc">Main test orchestrator. Discovers and runs all test modules in <code>hooks/tests/</code>, aggregates pass/fail counts, and exits with a non-zero code on any failure. Serves as the canonical entry point for CI and manual test runs — a single command to run all 11 focused test files plus shared module coverage.</div>
+        <div class="tag-strip">
+          <span class="tag">python</span>
+          <span class="tag">orchestrator</span>
+          <span class="tag">hooks/</span>
+          <span class="tag">exit-code</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow animate" style="--i:4">
+    <svg viewBox="0 0 18 18"><path d="M9 3 L9 15 M5 11 L9 15 L13 11"/></svg>
+    discovers and delegates to
+  </div>
+
+  <!-- CARD 2: hooks/tests/ -->
+  <div class="one-col animate" style="--i:5">
+    <div class="section section--pine">
+      <div class="section-label"><span class="dot"></span> 02 &mdash; hooks/tests/ &mdash; 13 Files</div>
+
+      <div class="two-col">
+        <div>
+          <div class="ve-card">
+            <div class="card-title">
+              <span class="file-name">test_analytics.py</span>
+            </div>
+            <div class="card-desc">Covers the analytics gate and event tracking logic. Verifies tool-use events are recorded, limits are respected, and analytics state transitions work correctly.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_edit_streak.py</span></div>
+            <div class="card-desc">Tests the edit streak tracker. Verifies consecutive edit counting, streak reset on non-edit tools, and the streak-based warning thresholds.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_gate_router.py</span></div>
+            <div class="card-desc">Tests gate routing logic in <code>shared/gate_router.py</code>. Verifies correct gate selection per tool name, PreToolUse vs PostToolUse dispatch, and fallback behavior.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_gates_operational.py</span></div>
+            <div class="card-desc">Tests operational gates (status, session, health). Verifies gate responses under normal conditions, session boundaries, and operational metrics collection.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_gates_quality.py</span></div>
+            <div class="card-desc">Tests quality gates (code review heuristics, test enforcement, documentation checks). Covers allow, warn, and block outcomes across quality scenarios.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_gates_safety.py</span></div>
+            <div class="card-desc">Tests Tier-1 safety gates (1–3). Verifies fail-closed behavior: destructive command detection, path traversal blocking, and force-push prevention. Exceptions must block.</div>
+          </div>
+        </div>
+        <div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_integration.py</span></div>
+            <div class="card-desc">End-to-end integration tests. Runs the full hook pipeline with realistic tool inputs, validates that multiple gates compose correctly, and checks cross-gate state sharing.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_project_detection.py</span></div>
+            <div class="card-desc">Tests <code>shared/domain_registry.py</code> project detection. Verifies language detection, framework identification, and domain-specific security profile selection.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_shared_core.py</span></div>
+            <div class="card-desc">Tests core shared modules: <code>state.py</code>, <code>gate_result.py</code>, <code>audit_log.py</code>, and <code>error_normalizer.py</code>. Covers GateResult construction, state persistence, and audit formatting.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_shared_deep.py</span></div>
+            <div class="card-desc">Deep coverage of infrastructure shared modules: <code>circuit_breaker.py</code>, <code>ramdisk.py</code>, <code>memory_socket.py</code>, <code>gate_timing.py</code>, and <code>health_monitor.py</code>.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_state_migrator.py</span></div>
+            <div class="card-desc">Tests the state migration system. Verifies field additions, default values, backward compatibility, and that old state files upgrade cleanly without data loss.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title"><span class="file-name">test_state_tracking.py</span></div>
+            <div class="card-desc">Tests session state tracking: tool-use counts, timing, session_id consistency, and state persistence across simulated tool calls.</div>
+          </div>
+          <div class="ve-card">
+            <div class="card-title">
+              <span class="file-name">harness.py</span>
+              <span class="lines-badge">helper</span>
+            </div>
+            <div class="card-desc">Shared test harness. Provides mock tool inputs, state fixtures, and assertion helpers used across multiple test files. Not a test runner itself.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow animate" style="--i:6">
+    <svg viewBox="0 0 18 18"><path d="M9 3 L9 15 M5 11 L9 15 L13 11"/></svg>
+    target coverage
+  </div>
+
+  <!-- CARD 3: Coverage Map -->
+  <div class="one-col animate" style="--i:7">
+    <div class="section section--foam">
+      <div class="section-label"><span class="dot"></span> 03 &mdash; Coverage Map</div>
+      <div style="overflow-x:auto">
+        <table class="cov-table">
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Primary Test File(s)</th>
+              <th>Safety</th>
+              <th>Quality</th>
+              <th>Ops</th>
+              <th>Shared</th>
+              <th>Integration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="component">gates 1–3 (safety)</td>
+              <td class="test-list">test_gates_safety.py</td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+            </tr>
+            <tr>
+              <td class="component">gates 4–8 (quality)</td>
+              <td class="test-list">test_gates_quality.py</td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+            </tr>
+            <tr>
+              <td class="component">gates 9–17 (ops)</td>
+              <td class="test-list">test_gates_operational.py</td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+            </tr>
+            <tr>
+              <td class="component">gate_router.py</td>
+              <td class="test-list">test_gate_router.py</td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--yes">Y</span></td>
+            </tr>
+            <tr>
+              <td class="component">state.py + migrator</td>
+              <td class="test-list">test_shared_core.py, test_state_migrator.py, test_state_tracking.py</td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--yes">Y</span></td>
+            </tr>
+            <tr>
+              <td class="component">circuit_breaker, ramdisk, timing</td>
+              <td class="test-list">test_shared_deep.py</td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--no">—</span></td>
+            </tr>
+            <tr>
+              <td class="component">edit_streak tracker</td>
+              <td class="test-list">test_edit_streak.py</td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--no">—</span></td>
+            </tr>
+            <tr>
+              <td class="component">analytics / tool counting</td>
+              <td class="test-list">test_analytics.py</td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--no">—</span></td>
+            </tr>
+            <tr>
+              <td class="component">domain_registry (project detection)</td>
+              <td class="test-list">test_project_detection.py</td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--no">—</span></td>
+              <td><span class="check check--yes">Y</span></td>
+              <td><span class="check check--no">—</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 4 + 5: Benchmarks and Fuzzer side by side -->
+  <div class="two-col animate" style="--i:8">
+
+    <div class="section section--gold">
+      <div class="section-label"><span class="dot"></span> 04 &mdash; hooks/benchmarks/</div>
+      <div class="ve-card">
+        <div class="card-title">
+          <span style="color:var(--gold)">benchmark_gates.py</span>
+          <span class="lines-badge">458 lines</span>
+        </div>
+        <div class="card-desc">Gate latency benchmarks. Measures p50/p95/p99 latencies for each gate under synthetic load. Detects performance regressions vs. stored baselines in memory. Produces a JSON report with per-gate timing distributions.</div>
+      </div>
+      <div class="ve-card">
+        <div class="card-title">
+          <span style="color:var(--gold)">benchmark_io.py</span>
+          <span class="lines-badge">162 lines</span>
+        </div>
+        <div class="card-desc">I/O performance benchmarks. Measures ramdisk read/write throughput, state file serialization time, and audit log append latency. Ensures framework overhead stays within acceptable bounds under concurrent load.</div>
+      </div>
+      <div class="callout" style="margin-top:12px">
+        <strong>Baseline tracking:</strong> Results saved with <code>type:benchmark</code> tags in memory for longitudinal regression detection across sessions.
+      </div>
+    </div>
+
+    <div class="section section--accent">
+      <div class="section-label"><span class="dot"></span> 05 &mdash; hooks/fuzz_gates.py</div>
+      <div class="ve-card">
+        <div class="card-title">
+          <span style="color:var(--love)">fuzz_gates.py</span>
+          <span class="lines-badge">562 lines</span>
+        </div>
+        <div class="card-desc">Adversarial gate fuzzer. Generates malformed, edge-case, and boundary inputs for all gates — empty strings, unicode edge cases, deeply nested JSON, oversized payloads, and injection attempts. Verifies that gates fail gracefully and never raise unhandled exceptions that would cause exit code 1 instead of 2.</div>
+        <div class="tag-strip">
+          <span class="tag">adversarial</span>
+          <span class="tag">boundary testing</span>
+          <span class="tag">fail-safe</span>
+          <span class="tag">exit-code validation</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CARD 6: shared/ testing tools -->
+  <div class="one-col animate" style="--i:9">
+    <div class="section section--rose">
+      <div class="section-label"><span class="dot"></span> 06 &mdash; shared/ Testing Tools</div>
+      <div class="three-col">
+        <div class="ve-card">
+          <div class="card-title">
+            <span style="color:var(--rose)">test_generator.py</span>
+            <span class="lines-badge">533 lines</span>
+          </div>
+          <div class="card-desc">Auto-generates test scaffolding for new gates and shared modules. Reads the target file, extracts function signatures, and emits a pytest file with parametrized stubs. Reduces the overhead of adding coverage for new components.</div>
+        </div>
+        <div class="ve-card">
+          <div class="card-title">
+            <span style="color:var(--rose)">mutation_tester.py</span>
+            <span class="lines-badge">811 lines</span>
+          </div>
+          <div class="card-desc">Mutation testing engine. Applies systematic mutations (boolean negations, boundary off-by-ones, operator flips) to gate and shared module source code, then runs the test suite to verify tests catch the mutations. Identifies undertested code paths where tests pass despite logic errors.</div>
+        </div>
+        <div class="ve-card">
+          <div class="card-title">
+            <span style="color:var(--rose)">verify_memory_maintenance.py</span>
+            <span class="lines-badge">193 lines</span>
+          </div>
+          <div class="card-desc">Memory health verifier. Checks LanceDB table integrity, validates memory MCP server connectivity, scans for orphaned records, and verifies the sideband protocol file (<code>hooks/.memory_last_queried</code>) is being updated correctly.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 7: Test Categories -->
+  <div class="one-col animate" style="--i:10">
+    <div class="section section--muted">
+      <div class="section-label"><span class="dot"></span> 07 &mdash; Test Categories</div>
+      <div class="two-col">
+        <div>
+          <div class="ve-card">
+            <div class="card-title">
+              <span class="cat-pill cat--safety">Safety</span>
+            </div>
+            <div class="card-desc">Tier-1 gate tests. Fail-closed: any exception during a safety gate check must produce exit code 2 (block), never exit code 1 (allow). Covers <code>gate_01.py</code> through <code>gate_03.py</code> — destructive commands, path traversal, force-push.</div>
+          </div>
+          <div class="ve-card" style="margin-top:8px">
+            <div class="card-title">
+              <span class="cat-pill cat--quality">Quality</span>
+            </div>
+            <div class="card-desc">Gate tests for code quality enforcement: read-before-edit requirement, edit streak warnings, test file enforcement, and memory query verification (Gate 4 sideband).</div>
+          </div>
+          <div class="ve-card" style="margin-top:8px">
+            <div class="card-title">
+              <span class="cat-pill cat--ops">Operational</span>
+            </div>
+            <div class="card-desc">Tests for session-management and diagnostic gates. Covers session startup/teardown, status reporting, health monitor integration, and analytics event recording.</div>
+          </div>
+        </div>
+        <div>
+          <div class="ve-card">
+            <div class="card-title">
+              <span class="cat-pill cat--integration">Integration</span>
+            </div>
+            <div class="card-desc">End-to-end tests that simulate real tool call sequences: a full Bash command flowing through the complete gate chain, state accumulating across calls, and the final exit code verified. Catches cross-gate interaction bugs that unit tests miss.</div>
+          </div>
+          <div class="ve-card" style="margin-top:8px">
+            <div class="card-title">
+              <span class="cat-pill cat--shared">Shared Core</span>
+            </div>
+            <div class="card-desc">Unit tests for the <code>shared/</code> infrastructure layer. Covers <code>state.py</code>, <code>gate_result.py</code>, <code>gate_router.py</code>, <code>circuit_breaker.py</code>, <code>ramdisk.py</code>, <code>memory_socket.py</code>, and <code>gate_timing.py</code> in isolation.</div>
+          </div>
+          <div class="callout" style="margin-top:8px">
+            <strong>Rule:</strong> All gates must have coverage in at least one location — either <code>test_framework.py</code> or a focused file in <code>hooks/tests/</code>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor:        isDark ? '#31748f33' : '#31748f22',
+      primaryBorderColor:  isDark ? '#31748f'   : '#286983',
+      primaryTextColor:    isDark ? '#e0def4'   : '#575279',
+      secondaryColor:      isDark ? '#26233a'   : '#f2e9e1',
+      secondaryBorderColor:isDark ? '#9ccfd8'   : '#56949f',
+      secondaryTextColor:  isDark ? '#e0def4'   : '#575279',
+      tertiaryColor:       isDark ? '#1f1d2e'   : '#fffaf3',
+      tertiaryBorderColor: isDark ? '#f6c177'   : '#ea9d34',
+      tertiaryTextColor:   isDark ? '#e0def4'   : '#575279',
+      lineColor:           isDark ? '#6e6a86'   : '#9893a5',
+      fontSize:            '14px',
+      fontFamily:          "'Inconsolata', 'SF Mono', Consolas, monospace",
+      noteBkgColor:        isDark ? '#26233a'   : '#f2e9e1',
+      noteTextColor:       isDark ? '#e0def4'   : '#575279',
+      noteBorderColor:     isDark ? '#908caa'   : '#797593',
+    }
+  });
+</script>
+
+</body>
+</html>

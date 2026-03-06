@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Loop — Torus Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ CATPPUCCIN MOCHA (dark-first) ============ */
+  :root {
+    --font-body: 'Sora', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #1e1e2e;
+    --surface: #313244;
+    --surface2: #181825;
+    --border: rgba(205, 214, 244, 0.08);
+    --border-bright: rgba(205, 214, 244, 0.18);
+    --text: #cdd6f4;
+    --text-dim: #6c7086;
+
+    --teal: #94e2d5;
+    --teal-dim: rgba(148, 226, 213, 0.12);
+    --green: #a6e3a1;
+    --green-dim: rgba(166, 227, 161, 0.12);
+    --peach: #fab387;
+    --peach-dim: rgba(250, 179, 135, 0.12);
+    --red: #f38ba8;
+    --red-dim: rgba(243, 139, 168, 0.12);
+    --yellow: #f9e2af;
+    --yellow-dim: rgba(249, 226, 175, 0.12);
+    --sapphire: #74c7ec;
+    --sapphire-dim: rgba(116, 199, 236, 0.12);
+    --rosewater: #f5e0dc;
+    --rosewater-dim: rgba(245, 224, 220, 0.10);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eff1f5;
+      --surface: #ffffff;
+      --surface2: #e6e9ef;
+      --border: rgba(76, 79, 105, 0.10);
+      --border-bright: rgba(76, 79, 105, 0.22);
+      --text: #4c4f69;
+      --text-dim: #8c8fa1;
+      --teal: #179299; --teal-dim: rgba(23,146,153,0.10);
+      --green: #40a02b; --green-dim: rgba(64,160,43,0.10);
+      --peach: #fe640b; --peach-dim: rgba(254,100,11,0.10);
+      --red: #d20f39; --red-dim: rgba(210,15,57,0.10);
+      --yellow: #df8e1d; --yellow-dim: rgba(223,142,29,0.10);
+      --sapphire: #209fb5; --sapphire-dim: rgba(32,159,181,0.10);
+      --rosewater: #dc8a78; --rosewater-dim: rgba(220,138,120,0.10);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 20% 5%, var(--teal-dim) 0%, transparent 40%),
+      radial-gradient(ellipse at 80% 95%, var(--green-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.08s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .mermaid-wrap .mermaid { transition: none; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  h1 {
+    font-size: 38px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    margin-bottom: 32px;
+  }
+
+  h2 {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 14px;
+    margin-top: 36px;
+    color: var(--text-dim);
+  }
+
+  /* ============ MERMAID ============ */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    overflow: auto;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 360px;
+    cursor: grab;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .mermaid-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px; right: 8px;
+    display: flex; gap: 2px; z-index: 10;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px;
+  }
+  .zoom-controls button {
+    width: 28px; height: 28px; border: none;
+    background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 14px;
+    cursor: pointer; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 14px !important; color: var(--text) !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; color: var(--text-dim) !important; background-color: var(--bg) !important; }
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+  .mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width: 1.5px !important; }
+  .mermaid .edge-pattern-solid { stroke-width: 1.5px !important; }
+
+  /* ============ STEP CARDS ============ */
+  .steps-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .step-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    position: relative;
+  }
+
+  .step-number {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .step-badge {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+
+  .step-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+
+  .step-card--teal { border-color: var(--teal-dim); }
+  .step-card--teal .step-badge { background: var(--teal-dim); color: var(--teal); }
+  .step-card--teal .step-title { color: var(--teal); }
+
+  .step-card--green { border-color: var(--green-dim); }
+  .step-card--green .step-badge { background: var(--green-dim); color: var(--green); }
+  .step-card--green .step-title { color: var(--green); }
+
+  .step-card--peach { border-color: var(--peach-dim); }
+  .step-card--peach .step-badge { background: var(--peach-dim); color: var(--peach); }
+  .step-card--peach .step-title { color: var(--peach); }
+
+  .step-card--red { border-color: var(--red-dim); }
+  .step-card--red .step-badge { background: var(--red-dim); color: var(--red); }
+  .step-card--red .step-title { color: var(--red); }
+
+  .step-card--yellow { border-color: var(--yellow-dim); }
+  .step-card--yellow .step-badge { background: var(--yellow-dim); color: var(--yellow); }
+  .step-card--yellow .step-title { color: var(--yellow); }
+
+  .step-card--sapphire { border-color: var(--sapphire-dim); }
+  .step-card--sapphire .step-badge { background: var(--sapphire-dim); color: var(--sapphire); }
+  .step-card--sapphire .step-title { color: var(--sapphire); }
+
+  .step-card--rosewater { border-color: var(--rosewater-dim); }
+  .step-card--rosewater .step-badge { background: var(--rosewater-dim); color: var(--rosewater); }
+  .step-card--rosewater .step-title { color: var(--rosewater); }
+
+  .gate-list {
+    list-style: none;
+    font-size: 12px;
+    line-height: 1.8;
+  }
+  .gate-list li { padding-left: 14px; position: relative; color: var(--text-dim); }
+  .gate-list li::before { content: '›'; color: var(--text-dim); font-weight: 700; position: absolute; left: 0; }
+  .gate-list li strong { color: var(--text); font-weight: 600; }
+
+  .gate-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 4px;
+    border: 1px solid;
+  }
+  .gate-badge--teal { color: var(--teal); border-color: var(--teal-dim); background: var(--teal-dim); }
+  .gate-badge--green { color: var(--green); border-color: var(--green-dim); background: var(--green-dim); }
+  .gate-badge--peach { color: var(--peach); border-color: var(--peach-dim); background: var(--peach-dim); }
+  .gate-badge--red { color: var(--red); border-color: var(--red-dim); background: var(--red-dim); }
+  .gate-badge--yellow { color: var(--yellow); border-color: var(--yellow-dim); background: var(--yellow-dim); }
+  .gate-badge--sapphire { color: var(--sapphire); border-color: var(--sapphire-dim); background: var(--sapphire-dim); }
+  .gate-badge--rosewater { color: var(--rosewater); border-color: var(--rosewater-dim); background: var(--rosewater-dim); }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--surface2);
+    color: var(--teal);
+    padding: 1px 5px; border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  @media (max-width: 768px) {
+    body { padding: 16px; }
+    h1 { font-size: 24px; }
+    .steps-grid { grid-template-columns: 1fr; }
+    .mermaid-wrap { padding: 16px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1 class="animate" style="--i:0">The Loop</h1>
+  <p class="subtitle animate" style="--i:1">memory check &rarr; plan &rarr; tests first &rarr; build &rarr; prove it &rarr; track &rarr; ship &rarr; repeat</p>
+
+  <h2 class="animate" style="--i:2">01 &mdash; Cycle Diagram</h2>
+
+  <div class="mermaid-wrap animate" style="--i:3">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+      <button onclick="openDiagramFullscreen(this)" title="Open full size">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+graph TD
+  MEM["01. memory check<br/>search_knowledge first"]
+  PLAN["02. plan<br/>explore + verify"]
+  TEST["03. tests first<br/>write or run tests"]
+  BUILD["04. build<br/>read files then edit"]
+  PROVE["05. prove it<br/>show test output"]
+  TRACK["06. track<br/>save fix to memory"]
+  SHIP["07. ship<br/>commit or deploy"]
+
+  MEM --> PLAN
+  PLAN --> TEST
+  TEST --> BUILD
+  BUILD --> PROVE
+  PROVE --> TRACK
+  TRACK --> SHIP
+  SHIP -.->|"next task"| MEM
+
+  classDef mem fill:#94e2d533,stroke:#94e2d5,stroke-width:2px
+  classDef plan fill:#74c7ec33,stroke:#74c7ec,stroke-width:2px
+  classDef test fill:#a6e3a133,stroke:#a6e3a1,stroke-width:1.5px
+  classDef build fill:#fab38733,stroke:#fab387,stroke-width:1.5px
+  classDef prove fill:#f9e2af33,stroke:#f9e2af,stroke-width:1.5px
+  classDef track fill:#f5e0dc33,stroke:#f5e0dc,stroke-width:1.5px
+  classDef ship fill:#f38ba833,stroke:#f38ba8,stroke-width:1.5px
+
+  class MEM mem
+  class PLAN plan
+  class TEST test
+  class BUILD build
+  class PROVE prove
+  class TRACK track
+  class SHIP ship
+    </pre>
+  </div>
+
+  <h2 class="animate" style="--i:4">02 &mdash; Gate Enforcement per Step</h2>
+
+  <div class="steps-grid animate" style="--i:5">
+
+    <div class="step-card step-card--teal">
+      <div class="step-number">
+        <span class="step-badge">1</span>
+        <span style="color:var(--text-dim)">memory check</span>
+      </div>
+      <div class="step-title">search_knowledge</div>
+      <ul class="gate-list">
+        <li>
+          <span class="gate-badge gate-badge--teal">Gate 04</span>
+          <strong>memory_first</strong>
+        </li>
+        <li>Reads <code>.memory_last_queried</code> sideband file</li>
+        <li>Blocks edits if memory not queried in 5-min window</li>
+        <li>Written atomically by <code>boot.py</code> at session start</li>
+        <li>Updated on every <code>search_knowledge</code> call</li>
+      </ul>
+    </div>
+
+    <div class="step-card step-card--sapphire">
+      <div class="step-number">
+        <span class="step-badge">2</span>
+        <span style="color:var(--text-dim)">plan</span>
+      </div>
+      <div class="step-title">explore + verify</div>
+      <ul class="gate-list">
+        <li>
+          <span class="gate-badge gate-badge--sapphire">Gate 14</span>
+          <strong>confidence_check</strong>
+        </li>
+        <li>Progressive warning on unverified file edits</li>
+        <li>Escalates when editing files not yet Read this session</li>
+        <li>Never write code in plan mode — ExitPlanMode first</li>
+        <li>Max 1 ExitPlanMode per turn</li>
+      </ul>
+    </div>
+
+    <div class="step-card step-card--green">
+      <div class="step-number">
+        <span class="step-badge">3</span>
+        <span style="color:var(--text-dim)">tests first</span>
+      </div>
+      <div class="step-title">write or run tests</div>
+      <ul class="gate-list">
+        <li>
+          <span class="gate-badge gate-badge--green">Gate 03</span>
+          <strong>test_before_deploy</strong>
+        </li>
+        <li>Must run tests before any deploy command</li>
+        <li>Checks for test runner (package.json, Makefile, etc.)</li>
+        <li>Enforced on Bash tool calls touching deploy/run scripts</li>
+      </ul>
+    </div>
+
+    <div class="step-card step-card--peach">
+      <div class="step-number">
+        <span class="step-badge">4</span>
+        <span style="color:var(--text-dim)">build</span>
+      </div>
+      <div class="step-title">read files first</div>
+      <ul class="gate-list">
+        <li>
+          <span class="gate-badge gate-badge--peach">Gate 01</span>
+          <strong>read_before_edit</strong>
+          <span style="font-size:10px;color:var(--text-dim)"> (Tier 1, fail-closed)</span>
+        </li>
+        <li>Blocks Edit/Write unless file was Read this session</li>
+        <li>
+          <span class="gate-badge gate-badge--peach">Gate 16</span>
+          <strong>code_quality</strong>
+        </li>
+        <li>Catches common quality issues in edits (large deletions, etc.)</li>
+      </ul>
+    </div>
+
+    <div class="step-card step-card--yellow">
+      <div class="step-number">
+        <span class="step-badge">5</span>
+        <span style="color:var(--text-dim)">prove it</span>
+      </div>
+      <div class="step-title">show test evidence</div>
+      <ul class="gate-list">
+        <li>
+          <span class="gate-badge gate-badge--yellow">Gate 05</span>
+          <strong>proof_before_fixed</strong>
+        </li>
+        <li>Never claim "fixed" without showing test output</li>
+        <li>Blocks final "done" claims if no verification seen</li>
+        <li>Counts unverified files per session</li>
+        <li>Blocks at threshold, not graduated warning</li>
+      </ul>
+    </div>
+
+    <div class="step-card step-card--rosewater">
+      <div class="step-number">
+        <span class="step-badge">6</span>
+        <span style="color:var(--text-dim)">track</span>
+      </div>
+      <div class="step-title">save to memory</div>
+      <ul class="gate-list">
+        <li>
+          <span class="gate-badge gate-badge--rosewater">Gate 06</span>
+          <strong>save_fix</strong>
+        </li>
+        <li>Auto-saves verified fixes to memory</li>
+        <li>
+          <span class="gate-badge gate-badge--rosewater">Gate 15</span>
+          <strong>causal_chain</strong>
+        </li>
+        <li>Enforces <code>query_fix_history</code> before <code>record_attempt</code></li>
+        <li>Tracks strategy_id &rarr; chain_id &rarr; outcome links</li>
+      </ul>
+    </div>
+
+    <div class="step-card step-card--red" style="grid-column: 1 / -1">
+      <div class="step-number">
+        <span class="step-badge">7</span>
+        <span style="color:var(--text-dim)">ship</span>
+      </div>
+      <div class="step-title">commit or deploy</div>
+      <ul class="gate-list" style="columns:2;column-gap:32px">
+        <li>
+          <span class="gate-badge gate-badge--red">Gate 02</span>
+          <strong>no_destroy</strong>
+          <span style="font-size:10px;color:var(--text-dim)"> (Tier 1)</span>
+        </li>
+        <li>Blocks <code>rm -rf</code>, <code>reset --hard</code>, <code>push --force</code> to main</li>
+        <li>Requires explicit user confirmation for destructive commands</li>
+        <li>
+          <span class="gate-badge gate-badge--red">Gate 07</span>
+          <strong>critical_file_guard</strong>
+        </li>
+        <li>Protects enforcer.py, memory_server.py, auth files</li>
+        <li>Extra confirmation required for critical path changes</li>
+      </ul>
+    </div>
+
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor: isDark ? '#94e2d533' : '#17929922',
+      primaryBorderColor: isDark ? '#94e2d5' : '#179299',
+      primaryTextColor: isDark ? '#cdd6f4' : '#4c4f69',
+      secondaryColor: isDark ? '#a6e3a133' : '#40a02b22',
+      secondaryBorderColor: isDark ? '#a6e3a1' : '#40a02b',
+      secondaryTextColor: isDark ? '#cdd6f4' : '#4c4f69',
+      tertiaryColor: isDark ? '#fab38733' : '#fe640b22',
+      tertiaryBorderColor: isDark ? '#fab387' : '#fe640b',
+      tertiaryTextColor: isDark ? '#cdd6f4' : '#4c4f69',
+      lineColor: isDark ? '#6c7086' : '#8c8fa1',
+      fontSize: '14px',
+      fontFamily: "'Sora', system-ui, sans-serif",
+      noteBkgColor: isDark ? '#181825' : '#e6e9ef',
+      noteTextColor: isDark ? '#cdd6f4' : '#4c4f69',
+      noteBorderColor: isDark ? '#f9e2af' : '#df8e1d',
+    }
+  });
+</script>
+<script>
+  var INITIAL_ZOOM = 1;
+
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+    var next = Math.min(Math.max(current * factor, 0.5), 5);
+    target.dataset.zoom = next; target.style.zoom = next;
+  }
+
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = INITIAL_ZOOM; target.style.zoom = INITIAL_ZOOM;
+  }
+
+  function openDiagramFullscreen(btn) {
+    openMermaidInNewTab(btn.closest('.mermaid-wrap'));
+  }
+
+  function openMermaidInNewTab(wrap) {
+    var svg = wrap.querySelector('.mermaid svg');
+    if (!svg) return;
+    var clone = svg.cloneNode(true);
+    clone.style.zoom = ''; clone.style.transform = '';
+    var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#1e1e2e';
+    var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Diagram</title><style>' +
+      'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:' + bg + ';padding:40px;box-sizing:border-box;}' +
+      'svg{max-width:100%;max-height:90vh;height:auto;}' +
+      '</style></head><body>' + clone.outerHTML + '</body></html>';
+    window.open(URL.createObjectURL(new Blob([html], {type:'text/html'})), '_blank');
+  }
+
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var next = Math.min(Math.max(current * (e.deltaY < 0 ? 1.1 : 0.9), 0.5), 5);
+      target.dataset.zoom = next; target.style.zoom = next;
+    }, { passive: false });
+
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX; startY = e.clientY;
+      scrollL = wrap.scrollLeft; scrollT = wrap.scrollTop;
+      startTime = Date.now(); didPan = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      wrap.scrollLeft = scrollL - dx; wrap.scrollTop = scrollT - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      if (!didPan && Date.now() - startTime < 300) openMermaidInNewTab(wrap);
+    });
+  });
+</script>
+</body>
+</html>

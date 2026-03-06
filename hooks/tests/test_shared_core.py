@@ -1839,10 +1839,11 @@ for _afile in _expected_agents:
         break
 test("Agents: YAML frontmatter has required keys", _agent_yaml_ok, _agent_yaml_detail)
 
-# 3. researcher uses haiku model (cost-effective for read-only research)
+# 3. researcher uses profile-appropriate model (synced by boot)
 with open(os.path.join(_agents_dir, "researcher.md")) as _rf:
     _r_content = _rf.read()
-test("Agents: researcher uses haiku", "haiku" in _r_content.split("---")[1])
+_r_fm = _r_content.split("---")[1] if "---" in _r_content else ""
+test("Agents: researcher uses valid model", "haiku" in _r_fm or "sonnet" in _r_fm)
 
 # 4. builder uses sonnet model (changed from opus to sonnet for cost savings)
 with open(os.path.join(_agents_dir, "builder.md")) as _bf:
@@ -1887,12 +1888,13 @@ for _nafile in _new_agents:
         break
 test("New Agents: YAML frontmatter has required keys", _new_yaml_ok, _new_yaml_detail)
 
-# 3. Model assignments: haiku for researcher
-for _haiku_agent in ["researcher.md"]:
-    with open(os.path.join(_agents_dir, _haiku_agent)) as _hf:
+# 3. Model assignments: researcher uses profile-appropriate model (haiku or sonnet)
+for _research_agent in ["researcher.md"]:
+    with open(os.path.join(_agents_dir, _research_agent)) as _hf:
         _hcontent = _hf.read()
     _hfm = _hcontent.split("---")[1] if "---" in _hcontent else ""
-    test(f"New Agents: {_haiku_agent.replace('.md','')} uses haiku", "haiku" in _hfm)
+    test(f"New Agents: {_research_agent.replace('.md','')} uses valid model",
+         "haiku" in _hfm or "sonnet" in _hfm)
 
 # 4. Model assignments: sonnet for security, perf-analyzer, debugger, stress-tester, builder
 for _sonnet_agent in ["security.md", "perf-analyzer.md", "debugger.md", "stress-tester.md", "builder.md"]:

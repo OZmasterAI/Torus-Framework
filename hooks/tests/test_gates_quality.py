@@ -583,18 +583,18 @@ test("M2: pending_verification capped at 50", len(state["pending_verification"])
 
 # M8: curl no longer counts as verification
 _st_m8a = default_state()
-_post("Edit", {"file_path": "/tmp/m8_test.py"}, _st_m8a)
+_post("Edit", {"file_path": "/tmp/m8_app.py"}, _st_m8a)
 _post("Bash", {"command": "curl http://example.com"}, _st_m8a)
 test("M8: curl does not clear pending verification",
-     "/tmp/m8_test.py" in _st_m8a.get("pending_verification", []),
+     "/tmp/m8_app.py" in _st_m8a.get("pending_verification", []),
      f"pending={_st_m8a.get('pending_verification', [])}")
 
 # M8: python still clears targeted verification
 _st_m8b = default_state()
-_post("Edit", {"file_path": "/tmp/m8_test.py"}, _st_m8b)
-_post("Bash", {"command": "python /tmp/m8_test.py"}, _st_m8b)
+_post("Edit", {"file_path": "/tmp/m8_app.py"}, _st_m8b)
+_post("Bash", {"command": "python /tmp/m8_app.py"}, _st_m8b)
 test("M8: python clears targeted pending verification",
-     "/tmp/m8_test.py" not in _st_m8b.get("pending_verification", []),
+     "/tmp/m8_app.py" not in _st_m8b.get("pending_verification", []),
      f"pending={_st_m8b.get('pending_verification', [])}")
 
 # ─────────────────────────────────────────────────

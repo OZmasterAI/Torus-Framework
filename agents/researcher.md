@@ -10,7 +10,7 @@ tools:
   - mcp__memory__search_knowledge
   - mcp__memory__get_memory
   - mcp__memory__remember_this
-model: haiku
+model: sonnet
 permissionMode: default
 ---
 
