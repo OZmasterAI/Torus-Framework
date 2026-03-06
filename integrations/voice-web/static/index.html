@@ -451,6 +451,8 @@
           currentSource = null;
           document.getElementById("speaker-btn").classList.remove("speaking");
           document.getElementById("speaker-label").textContent = "Listen ON";
+          // Resume polling to catch any response that arrived during playback
+          if (ttsEnabled) startTTSPoll();
         };
         currentSource = source;
         document.getElementById("speaker-label").textContent = "Speaking...";
@@ -468,11 +470,8 @@
       var token = localStorage.getItem(TOKEN_KEY);
       if (!token) return;
       var url = "/last-response?token=" + encodeURIComponent(token);
-      var attempts = 0;
-      var maxAttempts = 60;
       ttsPoller = setInterval(function() {
-        attempts++;
-        if (attempts > maxAttempts || !ttsEnabled) {
+        if (!ttsEnabled) {
           stopTTSPoll();
           return;
         }
