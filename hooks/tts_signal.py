@@ -11,8 +11,11 @@ full response is complete.
 Input (stdin JSON):
   {"session_id": "...", "last_assistant_message": "...", "hook_event_name": "Stop"}
 
-Output: /tmp/voice-tts-signal.json
+Output: /tmp/voice-tts-signal-{target}.json
   {"text": "cleaned response", "timestamp": 1709683200.0}
+
+Pending markers are per-target: /tmp/voice-tts-pending-{target}
+Supports multiple voice-web instances targeting different tmux sessions.
 
 Fail-open: always exits 0.
 """
@@ -23,8 +26,7 @@ import re
 import sys
 import time
 
-SIGNAL_FILE = "/tmp/voice-tts-signal.json"
-PENDING_FILE = "/tmp/voice-tts-pending"
+PENDING_PREFIX = "/tmp/voice-tts-pending-"
 
 
 def _strip_markdown(text):
@@ -55,33 +57,40 @@ def main():
     except (json.JSONDecodeError, ValueError):
         data = {}
 
-    # Only write signal if voice-web sent a message (pending marker exists)
-    if not os.path.exists(PENDING_FILE):
+    # Find any pending marker (e.g. /tmp/voice-tts-pending-claude)
+    pending_files = [f for f in os.listdir("/tmp") if f.startswith("voice-tts-pending-")]
+    if not pending_files:
         sys.exit(0)
 
     message = (data.get("last_assistant_message") or "").strip()
     if not message:
         sys.exit(0)
 
-    # Consume the pending marker
-    try:
-        os.unlink(PENDING_FILE)
-    except OSError:
-        pass
-
     cleaned = _strip_markdown(message)
     if not cleaned:
         sys.exit(0)
 
-    # Write atomically
-    signal = json.dumps({"text": cleaned, "timestamp": time.time()})
-    tmp = SIGNAL_FILE + ".tmp"
-    try:
-        with open(tmp, "w") as f:
-            f.write(signal)
-        os.replace(tmp, SIGNAL_FILE)
-    except OSError:
-        pass
+    # Write signal for each pending target and consume marker
+    for pf in pending_files:
+        pending_path = os.path.join("/tmp", pf)
+        target = pf.replace("voice-tts-pending-", "")
+        signal_file = f"/tmp/voice-tts-signal-{target}.json"
+
+        # Consume the pending marker
+        try:
+            os.unlink(pending_path)
+        except OSError:
+            continue
+
+        # Write signal atomically
+        signal = json.dumps({"text": cleaned, "timestamp": time.time()})
+        tmp = signal_file + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                f.write(signal)
+            os.replace(tmp, signal_file)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

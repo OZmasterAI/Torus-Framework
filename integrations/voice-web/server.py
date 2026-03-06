@@ -52,17 +52,15 @@ async def _send_keys(target, text):
         raise TmuxError(f"send-keys Enter failed: {stderr2[:200]}")
 
 
-PENDING_FILE = "/tmp/voice-tts-pending"
-
-
 async def send_to_tmux(message, target="claude-bot"):
     """Send message to tmux pane — fire and forget, no response polling."""
     if not await is_tmux_session_alive(target):
         raise TmuxError(f"tmux target '{target}' not found")
     # Signal that a voice message was sent — tts_signal.py checks for this
+    pending_file = f"/tmp/voice-tts-pending-{target}"
     try:
-        with open(PENDING_FILE, "w") as f:
-            f.write(message[:200])
+        with open(pending_file, "w") as f:
+            json.dump({"target": target}, f)
     except OSError:
         pass
     await _send_keys(target, message)
@@ -76,16 +74,26 @@ logging.basicConfig(
 logger = logging.getLogger("voice-web")
 
 
-def load_config():
-    """Load config.json from the same directory."""
-    config_path = os.path.join(_HERE, "config.json")
-    with open(config_path) as f:
+def load_config(path=None):
+    """Load config JSON. Accepts --config CLI arg or defaults to config.json."""
+    if path is None:
+        path = os.path.join(_HERE, "config.json")
+    with open(path) as f:
         return json.load(f)
 
 
-CONFIG = load_config()
+# Parse --config before anything else
+_config_path = None
+if "--config" in sys.argv:
+    _idx = sys.argv.index("--config")
+    if _idx + 1 < len(sys.argv):
+        _config_path = sys.argv[_idx + 1]
 
-SIGNAL_FILE = "/tmp/voice-tts-signal.json"
+CONFIG = load_config(_config_path)
+
+# Signal file is scoped to tmux target so multiple instances don't collide
+_tmux_target = CONFIG.get("tmux_target", "claude-bot")
+SIGNAL_FILE = f"/tmp/voice-tts-signal-{_tmux_target}.json"
 
 # --- Routes ---
 
