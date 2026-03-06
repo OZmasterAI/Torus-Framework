@@ -489,6 +489,20 @@
           });
           sel.appendChild(grp1);
 
+          // Piper voices (local)
+          if (data.piper_voices && data.piper_voices.length > 0) {
+            var grpP = document.createElement("optgroup");
+            grpP.label = "Piper (local)";
+            data.piper_voices.forEach(function(v) {
+              var opt = document.createElement("option");
+              opt.value = v.name;
+              opt.textContent = v.name.replace("piper:", "");
+              if (v.name === saved) opt.selected = true;
+              grpP.appendChild(opt);
+            });
+            sel.appendChild(grpP);
+          }
+
           // Native browser/iOS voices
           var native = getNativeSynthVoices();
           if (native.length > 0) {

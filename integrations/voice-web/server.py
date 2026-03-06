@@ -6,11 +6,14 @@ TTS: reads complete response from signal file written by Stop hook (tts_signal.p
 """
 
 import asyncio
+import glob as globmod
 import hashlib
+import io
 import json
 import logging
 import os
 import tempfile
+import wave
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, Response
@@ -19,10 +22,45 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 import edge_tts
+from piper import PiperVoice
 
 import uvicorn
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+
+# --- Piper TTS voice loading ---
+PIPER_VOICES_DIR = os.path.join(_HERE, "piper-voices")
+PIPER_PREFIX = "piper:"
+_piper_models = {}  # name -> onnx_path
+_piper_cache = {}   # name -> loaded PiperVoice (lazy)
+
+
+def _scan_piper_voices():
+    """Scan piper-voices/ dir for .onnx files and build name->path map."""
+    _piper_models.clear()
+    if not os.path.isdir(PIPER_VOICES_DIR):
+        return
+    for onnx_path in sorted(globmod.glob(os.path.join(PIPER_VOICES_DIR, "*.onnx"))):
+        name = os.path.basename(onnx_path).replace(".onnx", "")
+        _piper_models[name] = onnx_path
+
+
+def _get_piper_voice(name):
+    """Get or lazy-load a PiperVoice object by name."""
+    if name in _piper_cache:
+        return _piper_cache[name]
+    onnx_path = _piper_models.get(name)
+    if not onnx_path:
+        return None
+    config_path = onnx_path + ".json"
+    if not os.path.exists(config_path):
+        return None
+    voice = PiperVoice.load(onnx_path, config_path=config_path)
+    _piper_cache[name] = voice
+    return voice
+
+
+_scan_piper_voices()
 
 
 class TmuxError(Exception):
@@ -139,8 +177,14 @@ os.makedirs(TTS_CACHE_DIR, exist_ok=True)
 DEFAULT_VOICE = "en-US-GuyNeural"
 
 
+def _piper_synthesize(pv, text, out_path):
+    """Synthesize text to WAV file using Piper (runs in executor thread)."""
+    with wave.open(out_path, "wb") as wav_file:
+        pv.synthesize_wav(text, wav_file)
+
+
 async def tts_endpoint(request):
-    """Generate TTS audio from text using edge-tts.
+    """Generate TTS audio from text using edge-tts or Piper.
 
     Query params:
       token — auth token (required)
@@ -163,6 +207,31 @@ async def tts_endpoint(request):
 
     # Cache by text+voice hash
     cache_key = hashlib.md5(f"{voice}:{text}".encode()).hexdigest()
+
+    # Route: Piper (local) vs edge-tts (cloud)
+    if voice.startswith(PIPER_PREFIX):
+        piper_name = voice[len(PIPER_PREFIX):]
+        cache_path = os.path.join(TTS_CACHE_DIR, f"{cache_key}.wav")
+
+        if not os.path.exists(cache_path):
+            pv = _get_piper_voice(piper_name)
+            if not pv:
+                return JSONResponse({"ok": False, "error": f"Piper voice '{piper_name}' not found"}, status_code=404)
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, _piper_synthesize, pv, text, cache_path)
+                logger.info("Piper TTS generated: %d chars, voice=%s", len(text), piper_name)
+            except Exception as e:
+                logger.error("Piper TTS error: %s", e)
+                return JSONResponse({"ok": False, "error": "TTS failed"}, status_code=500)
+
+        with open(cache_path, "rb") as f:
+            audio = f.read()
+        return Response(audio, media_type="audio/wav", headers={
+            "Cache-Control": "public, max-age=300",
+        })
+
+    # Edge-TTS (cloud)
     cache_path = os.path.join(TTS_CACHE_DIR, f"{cache_key}.mp3")
 
     if not os.path.exists(cache_path):
@@ -191,7 +260,11 @@ async def tts_voices(request):
     voices = await edge_tts.list_voices()
     # Filter to English voices
     en_voices = [{"name": v["ShortName"], "gender": v["Gender"]} for v in voices if v["Locale"].startswith("en-")]
-    return JSONResponse({"ok": True, "voices": en_voices})
+
+    # Include Piper voices
+    piper_voices = [{"name": f"{PIPER_PREFIX}{name}"} for name in sorted(_piper_models.keys())]
+
+    return JSONResponse({"ok": True, "voices": en_voices, "piper_voices": piper_voices})
 
 
 async def ws_endpoint(websocket: WebSocket):
