@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shared Modules — hooks/shared/</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME: Paper/Ink ============ */
+  :root {
+    --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-mono: 'Azeret Mono', 'SF Mono', Consolas, monospace;
+
+    /* Light — warm cream paper */
+    --bg: #faf7f5;
+    --surface: #ffffff;
+    --surface2: #f5f0eb;
+    --surface3: #ede8e2;
+    --border: rgba(92, 55, 30, 0.1);
+    --border-bright: rgba(92, 55, 30, 0.18);
+    --text: #231a12;
+    --text-dim: #7a6657;
+
+    --terra: #c2410c;
+    --terra-dim: rgba(194, 65, 12, 0.09);
+    --sage: #65a30d;
+    --sage-dim: rgba(101, 163, 13, 0.09);
+    --sky: #0369a1;
+    --sky-dim: rgba(3, 105, 161, 0.09);
+    --amber: #b45309;
+    --amber-dim: rgba(180, 83, 9, 0.09);
+    --plum: #9f1239;
+    --plum-dim: rgba(159, 18, 57, 0.09);
+    --teal: #0f766e;
+    --teal-dim: rgba(15, 118, 110, 0.09);
+    --ink: #1e293b;
+    --ink-dim: rgba(30, 41, 59, 0.09);
+    --olive: #4d7c0f;
+    --olive-dim: rgba(77, 124, 15, 0.09);
+    --indigo-safe: #1d4ed8;
+    --indigo-safe-dim: rgba(29, 78, 216, 0.09);
+    --grape: #6b21a8;
+    --grape-dim: rgba(107, 33, 168, 0.09);
+    --rust: #9a3412;
+    --rust-dim: rgba(154, 52, 18, 0.09);
+    --moss: #166534;
+    --moss-dim: rgba(22, 101, 52, 0.09);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1410;
+      --surface: #231c17;
+      --surface2: #2d2419;
+      --surface3: #382d21;
+      --border: rgba(210, 180, 140, 0.1);
+      --border-bright: rgba(210, 180, 140, 0.18);
+      --text: #ede0d0;
+      --text-dim: #a8937e;
+
+      --terra: #fb923c;
+      --terra-dim: rgba(251, 146, 60, 0.12);
+      --sage: #a3e635;
+      --sage-dim: rgba(163, 230, 53, 0.12);
+      --sky: #38bdf8;
+      --sky-dim: rgba(56, 189, 248, 0.12);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.12);
+      --plum: #fda4af;
+      --plum-dim: rgba(253, 164, 175, 0.12);
+      --teal: #2dd4bf;
+      --teal-dim: rgba(45, 212, 191, 0.12);
+      --ink: #94a3b8;
+      --ink-dim: rgba(148, 163, 184, 0.12);
+      --olive: #bef264;
+      --olive-dim: rgba(190, 242, 100, 0.12);
+      --indigo-safe: #60a5fa;
+      --indigo-safe-dim: rgba(96, 165, 250, 0.12);
+      --grape: #c084fc;
+      --grape-dim: rgba(192, 132, 252, 0.12);
+      --rust: #f97316;
+      --rust-dim: rgba(249, 115, 22, 0.12);
+      --moss: #4ade80;
+      --moss-dim: rgba(74, 222, 128, 0.12);
+    }
+  }
+
+  /* ============ RESET + BASE ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    /* Paper texture: subtle radial atmosphere */
+    background-image:
+      radial-gradient(ellipse at 15% 10%, var(--terra-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 85% 90%, var(--sage-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.055s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .container {
+    max-width: 1160px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.8px;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    margin-bottom: 32px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ============ STAT STRIP ============ */
+  .stat-strip {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 28px;
+  }
+
+  .stat-pill {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 8px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .stat-pill .sv { font-size: 18px; font-weight: 600; }
+  .stat-pill .sl { color: var(--text-dim); font-size: 11px; }
+
+  /* ============ MERMAID CONTAINER ============ */
+  .mermaid-section {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 28px;
+  }
+
+  .section-header {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 20px;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 380px;
+    cursor: grab;
+  }
+
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .zoom-controls button:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  .mermaid-wrap { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .mermaid-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+  /* ============ MERMAID SVG OVERRIDES ============ */
+  .mermaid .nodeLabel {
+    font-family: var(--font-body) !important;
+    font-size: 14px !important;
+    color: var(--text) !important;
+  }
+
+  .mermaid .edgeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+    color: var(--text-dim) !important;
+    background-color: var(--bg) !important;
+  }
+
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+
+  .mermaid .node rect,
+  .mermaid .node circle,
+  .mermaid .node polygon { stroke-width: 1.5px !important; }
+
+  .mermaid .edge-pattern-solid { stroke-width: 1.5px !important; }
+
+  /* ============ ROW HEADING ============ */
+  .row-heading {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    margin-top: 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ============ CARDS GRID ============ */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .cards-grid--2 { grid-template-columns: repeat(2, 1fr); }
+  .cards-grid--4 { grid-template-columns: repeat(4, 1fr); }
+
+  /* ============ VE-CARD ============ */
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.05s);
+  }
+
+  .ve-card--terra { border-left: 3px solid var(--terra); }
+  .ve-card--sage { border-left: 3px solid var(--sage); }
+  .ve-card--sky { border-left: 3px solid var(--sky); }
+  .ve-card--amber { border-left: 3px solid var(--amber); }
+  .ve-card--plum { border-left: 3px solid var(--plum); }
+  .ve-card--teal { border-left: 3px solid var(--teal); }
+  .ve-card--ink { border-left: 3px solid var(--ink); }
+  .ve-card--olive { border-left: 3px solid var(--olive); }
+  .ve-card--indigo { border-left: 3px solid var(--indigo-safe); }
+  .ve-card--grape { border-left: 3px solid var(--grape); }
+  .ve-card--rust { border-left: 3px solid var(--rust); }
+  .ve-card--moss { border-left: 3px solid var(--moss); }
+
+  .ve-card-title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .badge-terra { background: var(--terra-dim); color: var(--terra); }
+  .badge-sage { background: var(--sage-dim); color: var(--sage); }
+  .badge-sky { background: var(--sky-dim); color: var(--sky); }
+  .badge-amber { background: var(--amber-dim); color: var(--amber); }
+  .badge-plum { background: var(--plum-dim); color: var(--plum); }
+  .badge-teal { background: var(--teal-dim); color: var(--teal); }
+  .badge-ink { background: var(--ink-dim); color: var(--ink); }
+  .badge-olive { background: var(--olive-dim); color: var(--olive); }
+  .badge-indigo { background: var(--indigo-safe-dim); color: var(--indigo-safe); }
+  .badge-grape { background: var(--grape-dim); color: var(--grape); }
+  .badge-rust { background: var(--rust-dim); color: var(--rust); }
+  .badge-moss { background: var(--moss-dim); color: var(--moss); }
+
+  /* ============ MODULE LIST ============ */
+  .module-list {
+    list-style: none;
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .module-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .module-entry:last-child { border-bottom: none; }
+
+  .module-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .module-lines {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  /* ============ CHIP LIST ============ */
+  .chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 4px;
+  }
+
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .chip-terra { border-color: var(--terra-dim); background: var(--terra-dim); color: var(--terra); }
+  .chip-sage { border-color: var(--sage-dim); background: var(--sage-dim); color: var(--sage); }
+  .chip-sky { border-color: var(--sky-dim); background: var(--sky-dim); color: var(--sky); }
+  .chip-amber { border-color: var(--amber-dim); background: var(--amber-dim); color: var(--amber); }
+  .chip-plum { border-color: var(--plum-dim); background: var(--plum-dim); color: var(--plum); }
+  .chip-teal { border-color: var(--teal-dim); background: var(--teal-dim); color: var(--teal); }
+  .chip-ink { border-color: var(--ink-dim); background: var(--ink-dim); color: var(--ink); }
+  .chip-olive { border-color: var(--olive-dim); background: var(--olive-dim); color: var(--olive); }
+  .chip-indigo { border-color: var(--indigo-safe-dim); background: var(--indigo-safe-dim); color: var(--indigo-safe); }
+  .chip-grape { border-color: var(--grape-dim); background: var(--grape-dim); color: var(--grape); }
+  .chip-rust { border-color: var(--rust-dim); background: var(--rust-dim); color: var(--rust); }
+  .chip-moss { border-color: var(--moss-dim); background: var(--moss-dim); color: var(--moss); }
+
+  /* ============ DEPENDENCY NOTE ============ */
+  .dep-note {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--terra);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin-top: 20px;
+    font-family: var(--font-mono);
+  }
+
+  .dep-note strong { color: var(--text); font-weight: 600; }
+
+  .dep-arrow {
+    display: inline-block;
+    color: var(--terra);
+    margin: 0 4px;
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 900px) {
+    body { padding: 20px; }
+    .cards-grid { grid-template-columns: 1fr 1fr; }
+    .cards-grid--4 { grid-template-columns: 1fr 1fr; }
+  }
+
+  @media (max-width: 600px) {
+    body { padding: 12px; }
+    h1 { font-size: 24px; }
+    .cards-grid, .cards-grid--2, .cards-grid--4 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1 class="animate" style="--i:0">Shared Modules</h1>
+  <p class="subtitle animate" style="--i:1">hooks/shared/ — 66 modules, 12 functional groups</p>
+
+  <!-- Stat strip -->
+  <div class="stat-strip animate" style="--i:2">
+    <div class="stat-pill">
+      <span class="sv" style="color:var(--terra)">66</span>
+      <span class="sl">total modules</span>
+    </div>
+    <div class="stat-pill">
+      <span class="sv" style="color:var(--sage)">12</span>
+      <span class="sl">groups</span>
+    </div>
+    <div class="stat-pill">
+      <span class="sv" style="color:var(--sky)">~35K</span>
+      <span class="sl">lines</span>
+    </div>
+    <div class="stat-pill">
+      <span class="sv" style="color:var(--amber)">1</span>
+      <span class="sl">root dependency</span>
+    </div>
+  </div>
+
+  <!-- Mermaid overview -->
+  <div class="mermaid-section animate" style="--i:3">
+    <div class="section-header">
+      <span class="dot" style="background:var(--terra)"></span>
+      group-level dependency overview
+    </div>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+        <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+        <button onclick="openDiagramFullscreen(this)" title="Open full size in new tab">&#x26F6;</button>
+      </div>
+      <pre class="mermaid">
+flowchart TD
+  CORE["Core<br/>6 modules"]:::core
+  GEXEC["Gate Execution<br/>5 modules"]:::gexec
+  GANAL["Gate Analysis<br/>6 modules"]:::ganal
+  VIZ["Visualization<br/>3 modules"]:::viz
+  MEM["Memory<br/>4 modules"]:::mem
+  INFRA["Infrastructure<br/>10 modules"]:::infra
+  ANAL["Analysis<br/>8 modules"]:::anal
+  METR["Metrics<br/>5 modules"]:::metr
+  TOOLS["Tools / Skills<br/>7 modules"]:::tools
+  TEST["Testing<br/>4 modules"]:::test
+  CHAIN["Chain / SDK<br/>4 modules"]:::chain
+  CFG["Config<br/>5 modules"]:::cfg
+
+  CORE --> GEXEC
+  CORE --> GANAL
+  CORE --> MEM
+  CORE --> INFRA
+  CORE --> ANAL
+  CORE --> METR
+  CORE --> TOOLS
+  CORE --> CHAIN
+  CORE --> CFG
+  GEXEC --> GANAL
+  GEXEC --> VIZ
+  INFRA --> MEM
+  INFRA --> ANAL
+  INFRA --> METR
+  GANAL --> VIZ
+  ANAL --> METR
+  TOOLS --> CHAIN
+  CFG --> GEXEC
+  TEST -.->|"validates"| CORE
+  TEST -.->|"validates"| MEM
+
+  classDef core fill:#c2410c22,stroke:#c2410c,stroke-width:2px
+  classDef gexec fill:#0f766e22,stroke:#0f766e,stroke-width:1.5px
+  classDef ganal fill:#0369a122,stroke:#0369a1,stroke-width:1.5px
+  classDef viz fill:#6b21a822,stroke:#6b21a8,stroke-width:1.5px
+  classDef mem fill:#b4530922,stroke:#b45309,stroke-width:1.5px
+  classDef infra fill:#9f123922,stroke:#9f1239,stroke-width:1.5px
+  classDef anal fill:#65a30d22,stroke:#65a30d,stroke-width:1.5px
+  classDef metr fill:#4d7c0f22,stroke:#4d7c0f,stroke-width:1.5px
+  classDef tools fill:#1d4ed822,stroke:#1d4ed8,stroke-width:1.5px
+  classDef test fill:#1e293b22,stroke:#1e293b,stroke-width:1.5px
+  classDef chain fill:#16653422,stroke:#166534,stroke-width:1.5px
+  classDef cfg fill:#9a341222,stroke:#9a3412,stroke-width:1.5px
+      </pre>
+    </div>
+  </div>
+
+  <!-- Group 1: Core -->
+  <div class="row-heading animate" style="--i:4">
+    <span class="dot" style="background:var(--terra)"></span>
+    group 1 — Core (6 modules) — imported by everything
+  </div>
+
+  <div class="ve-card ve-card--terra animate" style="--i:5">
+    <div class="ve-card-title">
+      <span class="dot" style="background:var(--terra)"></span>
+      Core
+      <span class="badge badge-terra">foundational</span>
+    </div>
+    <ul class="module-list">
+      <li class="module-entry">
+        <span class="module-name">state.py</span>
+        <span class="module-lines">700 lines</span>
+      </li>
+      <li class="module-entry">
+        <span class="module-name">gate_result.py</span>
+        <span class="module-lines">70 lines</span>
+      </li>
+      <li class="module-entry">
+        <span class="module-name">audit_log.py</span>
+        <span class="module-lines">537 lines</span>
+      </li>
+      <li class="module-entry">
+        <span class="module-name">error_normalizer.py</span>
+        <span class="module-lines">52 lines</span>
+      </li>
+      <li class="module-entry">
+        <span class="module-name">observation.py</span>
+        <span class="module-lines">284 lines</span>
+      </li>
+      <li class="module-entry">
+        <span class="module-name">exemptions.py</span>
+        <span class="module-lines">53 lines</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Groups 2-4: Gate Execution, Gate Analysis, Visualization -->
+  <div class="row-heading animate" style="--i:6">
+    <span class="dot" style="background:var(--teal)"></span>
+    groups 2-4 — Gate Execution, Gate Analysis, Visualization
+  </div>
+
+  <div class="cards-grid animate" style="--i:7">
+
+    <div class="ve-card ve-card--teal">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--teal)"></span>
+        Gate Execution
+        <span class="badge badge-teal">5 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">gate_router.py</span>
+          <span class="module-lines">456 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_helpers.py</span>
+          <span class="module-lines">233 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_registry.py</span>
+          <span class="module-lines">28 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_timing.py</span>
+          <span class="module-lines">221 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_result.py</span>
+          <span class="module-lines">shared w/ Core</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--sky">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--sky)"></span>
+        Gate Analysis
+        <span class="badge badge-sky">6 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">gate_trend.py</span>
+          <span class="module-lines">237 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_health.py</span>
+          <span class="module-lines">160 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_correlation.py</span>
+          <span class="module-lines">132 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_dependency_graph.py</span>
+          <span class="module-lines">387 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_pruner.py</span>
+          <span class="module-lines">312 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_correlator.py</span>
+          <span class="module-lines">822 lines</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--grape">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--grape)"></span>
+        Visualization
+        <span class="badge badge-grape">3 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">gate_dashboard.py</span>
+          <span class="module-lines">439 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">gate_graph.py</span>
+          <span class="module-lines">469 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">pipeline_optimizer.py</span>
+          <span class="module-lines">540 lines</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Groups 5-6: Memory + Infrastructure -->
+  <div class="row-heading animate" style="--i:8">
+    <span class="dot" style="background:var(--amber)"></span>
+    groups 5-6 — Memory &amp; Infrastructure
+  </div>
+
+  <div class="cards-grid--2 animate" style="--i:9; display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+
+    <div class="ve-card ve-card--amber">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--amber)"></span>
+        Memory
+        <span class="badge badge-amber">4 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">memory_socket.py</span>
+          <span class="module-lines">195 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">memory_decay.py</span>
+          <span class="module-lines">166 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">memory_maintenance.py</span>
+          <span class="module-lines">847 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">search_cache.py</span>
+          <span class="module-lines">119 lines</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--plum">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--plum)"></span>
+        Infrastructure
+        <span class="badge badge-plum">10 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">circuit_breaker.py</span>
+          <span class="module-lines">679 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">ramdisk.py</span>
+          <span class="module-lines">230 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">hook_cache.py</span>
+          <span class="module-lines">317 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">hook_profiler.py</span>
+          <span class="module-lines">306 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">hot_reload.py</span>
+          <span class="module-lines">571 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">rate_limiter.py</span>
+          <span class="module-lines">450 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">retry_strategy.py</span>
+          <span class="module-lines">605 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">event_bus.py</span>
+          <span class="module-lines">479 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">event_replay.py</span>
+          <span class="module-lines">708 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">pipeline_optimizer.py</span>
+          <span class="module-lines">540 lines</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Groups 7-8: Analysis + Metrics -->
+  <div class="row-heading animate" style="--i:10">
+    <span class="dot" style="background:var(--sage)"></span>
+    groups 7-8 — Analysis &amp; Metrics
+  </div>
+
+  <div class="cards-grid--2 animate" style="--i:11; display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+
+    <div class="ve-card ve-card--sage">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--sage)"></span>
+        Analysis
+        <span class="badge badge-sage">8 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">domain_registry.py</span>
+          <span class="module-lines">324 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">security_profiles.py</span>
+          <span class="module-lines">187 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">health_monitor.py</span>
+          <span class="module-lines">542 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">health_correlation.py</span>
+          <span class="module-lines">354 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">anomaly_detector.py</span>
+          <span class="module-lines">496 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">drift_detector.py</span>
+          <span class="module-lines">70 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">code_hotspot.py</span>
+          <span class="module-lines">344 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">error_pattern_analyzer.py</span>
+          <span class="module-lines">494 lines</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--olive">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--olive)"></span>
+        Metrics
+        <span class="badge badge-olive">5 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">metrics_collector.py</span>
+          <span class="module-lines">643 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">metrics_exporter.py</span>
+          <span class="module-lines">199 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">session_analytics.py</span>
+          <span class="module-lines">1,030 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">session_compressor.py</span>
+          <span class="module-lines">155 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">session_replay.py</span>
+          <span class="module-lines">418 lines</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Groups 9-12: Tools, Testing, Chain, Config -->
+  <div class="row-heading animate" style="--i:12">
+    <span class="dot" style="background:var(--indigo-safe)"></span>
+    groups 9-12 — Tools/Skills, Testing, Chain/SDK, Config
+  </div>
+
+  <div class="cards-grid animate" style="--i:13">
+
+    <div class="ve-card ve-card--indigo">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--indigo-safe)"></span>
+        Tools / Skills
+        <span class="badge badge-indigo">7 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">tool_fingerprint.py</span>
+          <span class="module-lines">174 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">tool_patterns.py</span>
+          <span class="module-lines">762 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">tool_recommendation.py</span>
+          <span class="module-lines">313 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">skill_health.py</span>
+          <span class="module-lines">433 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">skill_mapper.py</span>
+          <span class="module-lines">483 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">capability_registry.py</span>
+          <span class="module-lines">475 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">plugin_registry.py</span>
+          <span class="module-lines">656 lines</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--ink">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--ink)"></span>
+        Testing
+        <span class="badge badge-ink">4 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">test_generator.py</span>
+          <span class="module-lines">533 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">mutation_tester.py</span>
+          <span class="module-lines">811 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">_test_memory_maintenance.py</span>
+          <span class="module-lines">internal</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">verify_memory_maintenance.py</span>
+          <span class="module-lines">193 lines</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--moss">
+      <div class="ve-card-title">
+        <span class="dot" style="background:var(--moss)"></span>
+        Chain / SDK
+        <span class="badge badge-moss">4 modules</span>
+      </div>
+      <ul class="module-list">
+        <li class="module-entry">
+          <span class="module-name">chain_sdk.py</span>
+          <span class="module-lines">79 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">chain_refinement.py</span>
+          <span class="module-lines">548 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">consensus_validator.py</span>
+          <span class="module-lines">455 lines</span>
+        </li>
+        <li class="module-entry">
+          <span class="module-name">experience_archive.py</span>
+          <span class="module-lines">393 lines</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Config card full-width -->
+  <div class="ve-card ve-card--rust animate" style="--i:14; margin-top:14px;">
+    <div class="ve-card-title">
+      <span class="dot" style="background:var(--rust)"></span>
+      Config
+      <span class="badge badge-rust">5 modules</span>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr; gap:10px;">
+      <div>
+        <div class="module-name" style="font-size:11px;">config_validator.py</div>
+        <div style="font-size:10px; color:var(--text-dim); font-family:var(--font-mono);">320 lines</div>
+      </div>
+      <div>
+        <div class="module-name" style="font-size:11px;">rules_validator.py</div>
+        <div style="font-size:10px; color:var(--text-dim); font-family:var(--font-mono);">144 lines</div>
+      </div>
+      <div>
+        <div class="module-name" style="font-size:11px;">state_migrator.py</div>
+        <div style="font-size:10px; color:var(--text-dim); font-family:var(--font-mono);">347 lines</div>
+      </div>
+      <div>
+        <div class="module-name" style="font-size:11px;">secrets_filter.py</div>
+        <div style="font-size:10px; color:var(--text-dim); font-family:var(--font-mono);">81 lines</div>
+      </div>
+      <div>
+        <div class="module-name" style="font-size:11px;">agent_channel.py</div>
+        <div style="font-size:10px; color:var(--text-dim); font-family:var(--font-mono);">125 lines</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dependency summary -->
+  <div class="dep-note animate" style="--i:15">
+    <strong>Dependency arrows:</strong>
+    Core <span class="dep-arrow">→</span> everything
+    &nbsp;|&nbsp;
+    Gate Execution <span class="dep-arrow">→</span> Core + Config
+    &nbsp;|&nbsp;
+    Gate Analysis <span class="dep-arrow">→</span> Core + Gate Execution
+    &nbsp;|&nbsp;
+    Visualization <span class="dep-arrow">→</span> Gate Execution + Gate Analysis
+    &nbsp;|&nbsp;
+    Memory <span class="dep-arrow">→</span> Core + Infrastructure
+    &nbsp;|&nbsp;
+    Infrastructure <span class="dep-arrow">→</span> Core
+    &nbsp;|&nbsp;
+    Analysis <span class="dep-arrow">→</span> Core + Infrastructure
+    &nbsp;|&nbsp;
+    Metrics <span class="dep-arrow">→</span> Core + Infrastructure + Analysis
+    &nbsp;|&nbsp;
+    Tools/Skills <span class="dep-arrow">→</span> Core + Chain/SDK
+    &nbsp;|&nbsp;
+    Testing <span class="dep-arrow">-.→</span> Core + Memory (validates only)
+    &nbsp;|&nbsp;
+    Chain/SDK <span class="dep-arrow">→</span> Core + Memory
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      primaryColor: isDark ? '#2d2419' : '#fdf0e8',
+      primaryBorderColor: isDark ? '#fb923c' : '#c2410c',
+      primaryTextColor: isDark ? '#ede0d0' : '#231a12',
+      secondaryColor: isDark ? '#1a2610' : '#f0fde8',
+      secondaryBorderColor: isDark ? '#a3e635' : '#65a30d',
+      secondaryTextColor: isDark ? '#ede0d0' : '#231a12',
+      tertiaryColor: isDark ? '#1a1c10' : '#fefce8',
+      tertiaryBorderColor: isDark ? '#fbbf24' : '#b45309',
+      tertiaryTextColor: isDark ? '#ede0d0' : '#231a12',
+      lineColor: isDark ? '#7a6657' : '#a8937e',
+      fontSize: '14px',
+      fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      noteBkgColor: isDark ? '#2d2419' : '#fffbf5',
+      noteTextColor: isDark ? '#ede0d0' : '#231a12',
+      noteBorderColor: isDark ? '#7a6657' : '#c2410c',
+    }
+  });
+</script>
+<script>
+  var INITIAL_ZOOM = 1;
+
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+    var next = Math.min(Math.max(current * factor, 0.5), 5);
+    target.dataset.zoom = next;
+    target.style.zoom = next;
+  }
+
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = INITIAL_ZOOM;
+    target.style.zoom = INITIAL_ZOOM;
+  }
+
+  function openDiagramFullscreen(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    openMermaidInNewTab(wrap);
+  }
+
+  function openMermaidInNewTab(wrap) {
+    var svg = wrap.querySelector('.mermaid svg');
+    if (!svg) return;
+
+    var clone = svg.cloneNode(true);
+    clone.style.zoom = '';
+    clone.style.transform = '';
+
+    var styles = getComputedStyle(document.documentElement);
+    var bg = styles.getPropertyValue('--bg').trim() || '#faf7f5';
+
+    var html = '<!DOCTYPE html>' +
+      '<html lang="en"><head><meta charset="UTF-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+      '<title>Shared Modules — Torus Framework</title>' +
+      '<style>' +
+      'body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: ' + bg + '; padding: 40px; box-sizing: border-box; }' +
+      'svg { max-width: 100%; max-height: 90vh; height: auto; }' +
+      '</style></head><body>' +
+      clone.outerHTML +
+      '</body></html>';
+
+    var blob = new Blob([html], { type: 'text/html' });
+    window.open(URL.createObjectURL(blob), '_blank');
+  }
+
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      var next = Math.min(Math.max(current * factor, 0.5), 5);
+      target.dataset.zoom = next;
+      target.style.zoom = next;
+    }, { passive: false });
+
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX;
+      startY = e.clientY;
+      scrollL = wrap.scrollLeft;
+      scrollT = wrap.scrollTop;
+      startTime = Date.now();
+      didPan = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      wrap.scrollLeft = scrollL - dx;
+      wrap.scrollTop = scrollT - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      var elapsed = Date.now() - startTime;
+      if (!didPan && elapsed < 300) {
+        openMermaidInNewTab(wrap);
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

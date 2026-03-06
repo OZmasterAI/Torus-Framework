@@ -22,7 +22,7 @@ from boot_pkg.context import (
     _extract_git_context,
 )
 from boot_pkg.maintenance import (
-    reset_enforcement_state, _rotate_audit_logs,
+    reset_enforcement_state, _rotate_audit_logs, sync_agent_models,
 )
 
 try:
@@ -78,6 +78,12 @@ def main():
         _rotate_audit_logs()
     except Exception:
         pass  # Rotation failure is non-fatal
+
+    # Sync agent .md frontmatter models to active profile
+    try:
+        sync_agent_models()
+    except Exception:
+        pass  # Agent model sync is non-fatal
 
     # Load context
     live_state = load_live_state()

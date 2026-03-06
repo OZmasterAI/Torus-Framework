@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agents &amp; Teams — Torus Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700;800&family=Red+Hat+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ DRACULA THEME ============ */
+  :root {
+    --font-body: 'Red Hat Display', system-ui, sans-serif;
+    --font-mono: 'Red Hat Mono', 'SF Mono', Consolas, monospace;
+    --bg: #282a36;
+    --surface: #343746;
+    --surface2: #3d4053;
+    --border: rgba(255,255,255,0.08);
+    --border-bright: rgba(255,255,255,0.15);
+    --text: #f8f8f2;
+    --text-dim: #6272a4;
+    --cyan: #8be9fd;
+    --cyan-dim: rgba(139,233,253,0.1);
+    --green: #50fa7b;
+    --green-dim: rgba(80,250,123,0.1);
+    --orange: #ffb86c;
+    --orange-dim: rgba(255,184,108,0.1);
+    --red: #ff5555;
+    --red-dim: rgba(255,85,85,0.1);
+    --yellow: #f1fa8c;
+    --yellow-dim: rgba(241,250,140,0.08);
+    --comment: #6272a4;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f2f2f5;
+      --surface: #ffffff;
+      --surface2: #e8e8ed;
+      --border: rgba(0,0,0,0.08);
+      --border-bright: rgba(0,0,0,0.15);
+      --text: #21222c;
+      --text-dim: #5a6278;
+      --cyan: #1c9ab8;
+      --cyan-dim: rgba(28,154,184,0.1);
+      --green: #1b9a3e;
+      --green-dim: rgba(27,154,62,0.1);
+      --orange: #c47a1b;
+      --orange-dim: rgba(196,122,27,0.1);
+      --red: #c43131;
+      --red-dim: rgba(196,49,49,0.1);
+      --yellow: #8a7a00;
+      --yellow-dim: rgba(138,122,0,0.08);
+      --comment: #5a6278;
+    }
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 15% 0%, var(--cyan-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 85% 100%, var(--green-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(12px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+  .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i,0) * 0.07s);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration:0.01ms !important;
+      animation-delay:0ms !important;
+      transition-duration:0.01ms !important;
+    }
+  }
+
+  .container { max-width:1100px; margin:0 auto; }
+
+  h1 { font-size:38px; font-weight:800; letter-spacing:-1px; margin-bottom:6px; }
+  .subtitle { color:var(--comment); font-family:var(--font-mono); font-size:12px; margin-bottom:36px; }
+
+  .section-title {
+    font-size:11px; font-weight:600; text-transform:uppercase;
+    letter-spacing:1.5px; font-family:var(--font-mono);
+    margin-bottom:16px; display:flex; align-items:center; gap:8px;
+  }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0; }
+
+  /* MERMAID */
+  .mermaid-wrap {
+    position:relative; background:var(--surface);
+    border:1px solid var(--border); border-radius:12px;
+    padding:32px 24px; overflow:auto; margin-bottom:32px;
+    display:flex; justify-content:center; align-items:center;
+    min-height:420px; cursor:grab;
+  }
+  .mermaid-wrap.is-panning { cursor:grabbing; user-select:none; }
+  .mermaid-wrap::-webkit-scrollbar { width:6px; height:6px; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+  .zoom-controls {
+    position:absolute; top:8px; right:8px;
+    display:flex; gap:2px; z-index:10;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; padding:2px;
+  }
+  .zoom-controls button {
+    width:28px; height:28px; border:none; background:transparent;
+    color:var(--text-dim); font-family:var(--font-mono); font-size:14px;
+    cursor:pointer; border-radius:4px;
+    display:flex; align-items:center; justify-content:center;
+    transition:background 0.15s;
+  }
+  .zoom-controls button:hover { background:var(--border); color:var(--text); }
+  .mermaid .nodeLabel { color:var(--text) !important; font-family:var(--font-body) !important; font-size:15px !important; }
+  .mermaid .edgeLabel { color:var(--text-dim) !important; background-color:var(--bg) !important; font-family:var(--font-mono) !important; font-size:12px !important; }
+  .mermaid .edgeLabel rect { fill:var(--bg) !important; }
+  .mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width:1.5px !important; }
+
+  /* GRIDS */
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:32px; }
+  .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:32px; }
+
+  .ve-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; padding:16px 18px; transition:border-color 0.2s;
+  }
+  .ve-card:hover { border-color:var(--border-bright); }
+  .ve-card--cyan { border-left:3px solid var(--cyan); }
+  .ve-card--green { border-left:3px solid var(--green); }
+  .ve-card--orange { border-left:3px solid var(--orange); }
+  .ve-card--red { border-left:3px solid var(--red); }
+  .ve-card--yellow { border-left:3px solid var(--yellow); }
+  .ve-card--comment { border-left:3px solid var(--comment); }
+
+  .card-header { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; }
+  .card-name { font-weight:700; font-size:15px; font-family:var(--font-mono); }
+  .card-name--cyan { color:var(--cyan); }
+  .card-name--green { color:var(--green); }
+  .card-name--orange { color:var(--orange); }
+  .card-name--red { color:var(--red); }
+  .card-name--yellow { color:var(--yellow); }
+  .card-name--comment { color:var(--comment); }
+
+  .badge {
+    font-family:var(--font-mono); font-size:10px; font-weight:500;
+    padding:2px 7px; border-radius:4px;
+    background:var(--surface2); color:var(--text-dim);
+  }
+  .badge--cyan { background:var(--cyan-dim); color:var(--cyan); }
+  .badge--green { background:var(--green-dim); color:var(--green); }
+  .badge--orange { background:var(--orange-dim); color:var(--orange); }
+  .badge--yellow { background:var(--yellow-dim); color:var(--yellow); }
+
+  .card-desc { font-size:12px; color:var(--text-dim); line-height:1.55; margin-bottom:10px; }
+
+  .tag-list { display:flex; flex-wrap:wrap; gap:5px; }
+  .tag {
+    font-family:var(--font-mono); font-size:10px;
+    padding:2px 6px; border-radius:3px;
+    background:var(--surface2); color:var(--text-dim);
+    border:1px solid var(--border);
+  }
+
+  /* SECTION WRAPPER */
+  .section-wrap {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:20px 24px; margin-bottom:32px;
+  }
+
+  /* DELEGATION RULES */
+  .rules-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .rule-item {
+    display:flex; align-items:flex-start; gap:12px;
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:8px; padding:12px 14px;
+  }
+  .rule-badge { font-family:var(--font-mono); font-size:18px; font-weight:700; color:var(--cyan); flex-shrink:0; min-width:28px; line-height:1; padding-top:2px; }
+  .rule-text { font-size:12px; line-height:1.55; color:var(--text-dim); }
+  .rule-text strong { color:var(--text); font-weight:600; }
+
+  /* WIRING */
+  .wiring-flow { display:flex; flex-direction:column; gap:8px; }
+  .wiring-step {
+    display:flex; align-items:flex-start; gap:14px;
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:8px; padding:12px 14px;
+  }
+  .step-num {
+    font-family:var(--font-mono); font-size:11px; font-weight:600;
+    background:var(--cyan-dim); color:var(--cyan);
+    border-radius:4px; padding:2px 8px; flex-shrink:0; white-space:nowrap;
+  }
+  .step-body { font-size:12px; line-height:1.55; color:var(--text-dim); }
+  .step-body strong { color:var(--text); font-weight:600; }
+  .step-body code {
+    font-family:var(--font-mono); font-size:11px;
+    background:var(--cyan-dim); color:var(--cyan);
+    padding:1px 5px; border-radius:3px;
+  }
+
+  @media (max-width:800px) {
+    body { padding:20px; }
+    .grid-2, .grid-3 { grid-template-columns:1fr; }
+    .rules-grid { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1 class="animate" style="--i:0">Agents &amp; Teams</h1>
+  <p class="subtitle animate" style="--i:1">torus framework &mdash; dispatch, specialization, composition</p>
+
+  <div class="mermaid-wrap animate" style="--i:2">
+    <div class="zoom-controls">
+      <button onclick="zoomD(this,1.2)">+</button>
+      <button onclick="zoomD(this,0.8)">&minus;</button>
+      <button onclick="resetZ(this)">&#8634;</button>
+      <button onclick="openF(this)">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+graph TD
+  MS["Main Session<br/>claude-sonnet-4-6"]
+  AD["Agent Dispatch<br/>subagent_context.py"]
+  AT["Agent Types<br/>6 specializations"]
+  TC["Team Composition<br/>lead + members"]
+  MB["Memory Bridge<br/>LanceDB MCP"]
+  SC["State Injection<br/>LIVE_STATE.json"]
+  SS["Session State<br/>state_*.json"]
+
+  MS -->|"delegate"| AD
+  AD -->|"spawn"| AT
+  AD -->|"assemble"| TC
+  AT -->|"saves"| MB
+  TC -->|"cross-agent"| MB
+  SC -->|"reads"| SS
+  SC -->|"injects"| AT
+  MB -.->|"bridges sessions"| MS
+
+  classDef main fill:#8be9fd22,stroke:#8be9fd,stroke-width:2px
+  classDef bridge fill:#50fa7b22,stroke:#50fa7b,stroke-width:2px
+  classDef team fill:#ffb86c22,stroke:#ffb86c,stroke-width:1.5px
+  classDef ctx fill:#f1fa8c22,stroke:#f1fa8c,stroke-width:1.5px
+  class MS,AD main
+  class MB bridge
+  class AT,TC team
+  class SC,SS ctx
+    </pre>
+  </div>
+
+  <div class="section-title animate" style="--i:3">
+    <span class="dot" style="background:var(--cyan)"></span>Agent Profiles
+  </div>
+
+  <div class="grid-3 animate" style="--i:4">
+    <div class="ve-card ve-card--cyan">
+      <div class="card-header">
+        <span class="card-name card-name--cyan">builder</span>
+        <span class="badge badge--cyan">sonnet</span>
+      </div>
+      <p class="card-desc">Full implementation agent. Writes code, runs tests, ships features. All read/write/bash tools plus full memory MCP. Gate 1 enforced.</p>
+      <div class="tag-list">
+        <span class="tag">Read Glob Grep</span>
+        <span class="tag">Edit Write Bash</span>
+        <span class="tag">NotebookEdit</span>
+        <span class="tag">memory full</span>
+        <span class="tag">causal chain</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--red">
+      <div class="card-header">
+        <span class="card-name card-name--red">debugger</span>
+        <span class="badge badge--cyan">sonnet</span>
+      </div>
+      <p class="card-desc">Framework debugging specialist. Diagnoses gate failures, hook errors, state corruption, test regressions. Uses audit logs and causal chain.</p>
+      <div class="tag-list">
+        <span class="tag">Read Glob Grep</span>
+        <span class="tag">Bash Edit Write</span>
+        <span class="tag">memory full</span>
+        <span class="tag">audit/*.jsonl</span>
+        <span class="tag">fix confidence</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--orange">
+      <div class="card-header">
+        <span class="card-name card-name--orange">perf-analyzer</span>
+        <span class="badge badge--cyan">sonnet</span>
+      </div>
+      <p class="card-desc">Performance analyst. Measures before suggesting — profiling, hook latency, gate overhead, ChromaDB queries. Read-only. Quantifies in ms.</p>
+      <div class="tag-list">
+        <span class="tag">Read Glob Grep</span>
+        <span class="tag">Bash (analysis)</span>
+        <span class="tag">memory search+save</span>
+        <span class="tag">no edits ever</span>
+        <span class="tag">ms estimates</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--green">
+      <div class="card-header">
+        <span class="card-name card-name--green">researcher</span>
+        <span class="badge badge--green">haiku</span>
+      </div>
+      <p class="card-desc">Read-only exploration agent on Haiku. Codebase analysis, web search, structured reporting. Saves findings to memory. Never edits files.</p>
+      <div class="tag-list">
+        <span class="tag">Read Glob Grep</span>
+        <span class="tag">WebFetch WebSearch</span>
+        <span class="tag">memory search+save</span>
+        <span class="tag">read-only</span>
+        <span class="tag">haiku (cheap)</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--red">
+      <div class="card-header">
+        <span class="card-name card-name--red">security</span>
+        <span class="badge badge--cyan">sonnet</span>
+      </div>
+      <p class="card-desc">Security auditor. OWASP Top 10, injection, auth bypass, gate bypass analysis, secret detection. Evidence-based: file + line + reproduction steps.</p>
+      <div class="tag-list">
+        <span class="tag">Read Glob Grep</span>
+        <span class="tag">Bash (static only)</span>
+        <span class="tag">memory search+save</span>
+        <span class="tag">Critical/High/Med/Low</span>
+        <span class="tag">no modifications</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--yellow">
+      <div class="card-header">
+        <span class="card-name card-name--yellow">stress-tester</span>
+        <span class="badge badge--cyan">sonnet</span>
+      </div>
+      <p class="card-desc">Testing specialist. Runs full suite before analysis, finds edge and boundary conditions. Reports exact pass/fail counts with specific failure details.</p>
+      <div class="tag-list">
+        <span class="tag">Read Glob Grep</span>
+        <span class="tag">Bash (tests only)</span>
+        <span class="tag">memory full</span>
+        <span class="tag">causal chain</span>
+        <span class="tag">quantitative report</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title animate" style="--i:5">
+    <span class="dot" style="background:var(--green)"></span>Team Configurations
+  </div>
+
+  <div class="grid-2 animate" style="--i:6">
+    <div class="ve-card ve-card--comment">
+      <div class="card-header">
+        <span class="card-name card-name--comment">default</span>
+        <span class="badge">general purpose</span>
+      </div>
+      <p class="card-desc">Base team configuration. lead + builder + researcher composition for everyday tasks. Used as the fallback when no specialized team is specified.</p>
+    </div>
+
+    <div class="ve-card ve-card--orange">
+      <div class="card-header">
+        <span class="card-name card-name--orange">evolution-swarm-268</span>
+        <span class="badge badge--orange">autonomous</span>
+      </div>
+      <p class="card-desc">2-hour autonomous self-improvement marathon. Maximum parallelism: 3 researchers, 2 builders, 3 arxiv agents, all running concurrently via tmux.</p>
+      <div class="tag-list">
+        <span class="tag">researcher x3</span>
+        <span class="tag">builder x2</span>
+        <span class="tag">arxiv x3</span>
+        <span class="tag">13 members total</span>
+        <span class="tag">tmux backend</span>
+      </div>
+    </div>
+
+    <div class="ve-card ve-card--yellow">
+      <div class="card-header">
+        <span class="card-name card-name--yellow">framework-v2-4-1</span>
+        <span class="badge badge--yellow">sprint</span>
+      </div>
+      <p class="card-desc">v2.4.1 sprint: Dashboard tool-usage API, statusline tool calls, state schema update. Surgical parallel builders each owning one subsystem.</p>
+      <div class="tag-list">
+        <span class="tag">team-lead (opus)</span>
+        <span class="tag">state-fld builder</span>
+        <span class="tag">dashboard builder</span>
+        <span class="tag">statusline builder</span>
+      </div>
+    </div>
+
+
+    <div class="ve-card ve-card--green">
+      <div class="card-header">
+        <span class="card-name card-name--green">sprint-team</span>
+        <span class="badge badge--green">self-improvement</span>
+      </div>
+      <p class="card-desc">Self-improvement sprint for parallel framework enhancements. Researchers + builders working concurrently, results merged via memory bridge.</p>
+      <div class="tag-list">
+        <span class="tag">parallel builders</span>
+        <span class="tag">researchers</span>
+        <span class="tag">framework focus</span>
+        <span class="tag">memory bridge</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-wrap animate" style="--i:7">
+    <div class="section-title" style="margin-bottom:14px">
+      <span class="dot" style="background:var(--orange)"></span>Delegation Rules
+    </div>
+    <div class="rules-grid">
+      <div class="rule-item">
+        <div class="rule-badge">2-5</div>
+        <div class="rule-text"><strong>independent tasks</strong> &rarr; parallel sub-agents. All spawn simultaneously; memory MCP bridges results across instances.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-badge">2-5</div>
+        <div class="rule-text"><strong>dependent tasks</strong> &rarr; lead orchestrates sequentially. Memory MCP passes context from each step to the next.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-badge">5-7</div>
+        <div class="rule-text"><strong>medium scope</strong> &rarr; either pattern. Teams preferred for coherence &mdash; fewer context gaps between steps.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-badge">7+</div>
+        <div class="rule-text"><strong>large scope</strong> &rarr; agent teams mandatory. Structured coordination with lead + specialized member roles.</div>
+      </div>
+      <div class="rule-item" style="grid-column:1/-1">
+        <div class="rule-badge" style="color:var(--green)">&infin;</div>
+        <div class="rule-text"><strong>cross-session</strong> &rarr; agents + LanceDB memory. <code style="font-family:var(--font-mono);font-size:11px;background:var(--cyan-dim);color:var(--cyan);padding:1px 5px;border-radius:3px">search_knowledge</code> bridges all prior context automatically across any number of sessions.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-wrap animate" style="--i:8">
+    <div class="section-title" style="margin-bottom:14px">
+      <span class="dot" style="background:var(--yellow)"></span>subagent_context.py &mdash; Context Injection Wiring
+    </div>
+    <div class="wiring-flow">
+      <div class="wiring-step">
+        <span class="step-num">1. TRIGGER</span>
+        <div class="step-body"><strong>SubagentStart hook</strong> fires every time the main session spawns a sub-agent via the Task tool. Reads <code>agent_type</code> from stdin JSON.</div>
+      </div>
+      <div class="wiring-step">
+        <span class="step-num">2. LIVE STATE</span>
+        <div class="step-body">Loads <code>~/.claude/LIVE_STATE.json</code> &mdash; project name, current feature, work summary, last session outcome and status.</div>
+      </div>
+      <div class="wiring-step">
+        <span class="step-num">3. SESSION STATE</span>
+        <div class="step-body">Finds most recent <code>hooks/state_*.json</code> by mtime. Extracts files read, errors encountered, test status, bans, and active context.</div>
+      </div>
+      <div class="wiring-step">
+        <span class="step-num">4. INJECT</span>
+        <div class="step-body"><strong>Tailored context block</strong> prepended to the sub-agent system prompt. Write-capable agents also receive <code>EDIT_AGENT_RULES</code> (read-before-edit, no destructive commands).</div>
+      </div>
+      <div class="wiring-step">
+        <span class="step-num">5. FAIL-OPEN</span>
+        <div class="step-body">Always <code>exit(0)</code>. If LIVE_STATE or session state cannot be read, falls back to <code>FALLBACK_CONTEXT</code> message &mdash; never crashes the agent spawn.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+  mermaid.initialize({
+    startOnLoad: true, theme: 'base', look: 'classic',
+    themeVariables: {
+      primaryColor: isDark ? '#343746' : '#e8f4fd',
+      primaryBorderColor: isDark ? '#8be9fd' : '#1c9ab8',
+      primaryTextColor: isDark ? '#f8f8f2' : '#21222c',
+      secondaryColor: isDark ? '#3d4053' : '#e8fdf0',
+      secondaryBorderColor: isDark ? '#50fa7b' : '#1b9a3e',
+      secondaryTextColor: isDark ? '#f8f8f2' : '#21222c',
+      tertiaryColor: isDark ? '#3a3c4e' : '#fdf7e8',
+      tertiaryBorderColor: isDark ? '#f1fa8c' : '#8a7a00',
+      tertiaryTextColor: isDark ? '#f8f8f2' : '#21222c',
+      lineColor: isDark ? '#6272a4' : '#5a6278',
+      fontSize: '15px',
+      fontFamily: "'Red Hat Display', system-ui, sans-serif",
+    }
+  });
+</script>
+<script>
+  var IZ = 1;
+  function zoomD(btn, f) {
+    var w = btn.closest('.mermaid-wrap'), t = w.querySelector('.mermaid');
+    var c = parseFloat(t.dataset.zoom || IZ);
+    var n = Math.min(Math.max(c * f, 0.4), 5);
+    t.dataset.zoom = n; t.style.zoom = n;
+  }
+  function resetZ(btn) {
+    var w = btn.closest('.mermaid-wrap'), t = w.querySelector('.mermaid');
+    t.dataset.zoom = IZ; t.style.zoom = IZ;
+  }
+  function openF(btn) {
+    var w = btn.closest('.mermaid-wrap');
+    var svg = w.querySelector('.mermaid svg');
+    if (!svg) return;
+    var cl = svg.cloneNode(true); cl.style.zoom = ''; cl.style.transform = '';
+    var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#282a36';
+    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:' + bg + ';padding:40px;box-sizing:border-box;}svg{max-width:100%;height:auto;}</style></head><body>' + cl.outerHTML + '</body></html>';
+    window.open(URL.createObjectURL(new Blob([html], {type:'text/html'})), '_blank');
+  }
+  document.querySelectorAll('.mermaid-wrap').forEach(function(w) {
+    w.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var t = w.querySelector('.mermaid');
+      var c = parseFloat(t.dataset.zoom || IZ);
+      var n = Math.min(Math.max(c * (e.deltaY < 0 ? 1.1 : 0.9), 0.4), 5);
+      t.dataset.zoom = n; t.style.zoom = n;
+    }, {passive: false});
+    var sx, sy, sl, st, stime, panned;
+    w.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      w.classList.add('is-panning');
+      sx = e.clientX; sy = e.clientY; sl = w.scrollLeft; st = w.scrollTop; stime = Date.now(); panned = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!w.classList.contains('is-panning')) return;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) panned = true;
+      w.scrollLeft = sl - dx; w.scrollTop = st - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!w.classList.contains('is-panning')) return;
+      w.classList.remove('is-panning');
+    });
+  });
+</script>
+</body>
+</html>

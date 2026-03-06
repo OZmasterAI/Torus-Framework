@@ -55,7 +55,7 @@
       width: 120px; height: 120px; border-radius: 50%; border: 3px solid var(--accent);
       background: var(--surface); color: var(--text); display: flex;
       flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-      cursor: pointer; transition: all 0.2s; flex-shrink: 0; margin-top: 20px;
+      cursor: pointer; transition: all 0.2s; flex-shrink: 0;
       -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
     }
     #mic-btn span { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -65,6 +65,31 @@
     }
     #mic-btn.listening svg { animation: pulse 0.8s infinite; }
     #mic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-row { display: flex; gap: 24px; align-items: center; margin-top: 20px; }
+    #speaker-btn {
+      width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--accent);
+      background: var(--surface); color: var(--text); display: flex;
+      flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+      cursor: pointer; transition: all 0.2s; flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+    }
+    #speaker-btn span { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    #speaker-btn.active {
+      border-color: var(--success); background: rgba(46,204,113,0.15);
+      color: var(--success); box-shadow: 0 0 20px rgba(46,204,113,0.3);
+    }
+    #speaker-btn.speaking {
+      border-color: var(--success); background: rgba(46,204,113,0.25);
+      color: var(--success); box-shadow: 0 0 30px rgba(46,204,113,0.4);
+    }
+    #speaker-btn.speaking svg { animation: pulse 0.8s infinite; }
+    #voice-select {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--surface2);
+      border-radius: var(--radius); background: var(--surface); color: var(--text);
+      font-size: 0.85rem; outline: none; appearance: none;
+      -webkit-appearance: none;
+    }
+    #voice-select:focus { border-color: var(--accent); }
     #transcript {
       width: 100%; padding: 10px 12px; border: 2px solid var(--surface2);
       border-radius: var(--radius); background: var(--surface); color: var(--text);
@@ -80,6 +105,20 @@
       pointer-events: none; opacity: 0; transition: opacity 0.3s;
     }
     .flash.visible { opacity: 1; }
+    .tab-bar {
+      display: flex; gap: 6px; width: 100%; overflow-x: auto; padding: 4px 0;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    .tab {
+      padding: 6px 14px; border-radius: 16px; border: 1px solid var(--surface2);
+      background: var(--surface); color: var(--text-dim); font-size: 0.8rem;
+      font-weight: 500; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+    }
+    .tab.active {
+      background: var(--accent); color: white; border-color: var(--accent);
+    }
     #debug { position: fixed; bottom: 4px; left: 4px; font-size: 10px; color: #555; }
   </style>
 </head>
@@ -100,12 +139,22 @@
         <span class="title">Torus</span>
         <span id="status-dot" class="dot dot-connecting"></span>
       </div>
-      <button id="mic-btn" aria-label="Tap to speak">
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
-          <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
-        </svg>
-        <span id="mic-label">Tap to speak</span>
-      </button>
+      <div id="session-tabs" class="tab-bar"></div>
+      <div class="btn-row">
+        <button id="mic-btn" aria-label="Tap to speak">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+            <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+          </svg>
+          <span id="mic-label">Tap to speak</span>
+        </button>
+        <button id="speaker-btn" aria-label="Toggle listen mode">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+          </svg>
+          <span id="speaker-label">Listen</span>
+        </button>
+      </div>
+      <select id="voice-select"><option value="">Loading voices...</option></select>
       <textarea id="transcript" rows="3" placeholder="Transcript appears here..."></textarea>
       <button id="send-btn">Send</button>
       <div id="flash" class="flash" hidden></div>
@@ -135,6 +184,49 @@
     var hasSpeechAPI = "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
     var sendOffset = 0;
     var dbg = document.getElementById("debug");
+    var reconnectDelay = 1000;
+    var reconnectTimer = null;
+    var maxReconnectDelay = 30000;
+    var ttsState = {};  // per-session TTS state keyed by session name
+    var TTS_KEY_PREFIX = "torus_tts_enabled_";
+    var sttPreference = {};  // per-session STT on/off keyed by session name
+    var STT_KEY_PREFIX = "torus_stt_enabled_";
+    var intentionalClose = false;
+
+    function getTTS(target) {
+      if (!ttsState[target]) {
+        ttsState[target] = {
+          enabled: false,
+          poller: null,
+          speaking: false,
+          lastSpokenText: "",
+          source: null
+        };
+      }
+      return ttsState[target];
+    }
+
+    function updateSpeakerUI() {
+      var ts = getTTS(currentTarget);
+      var btn = document.getElementById("speaker-btn");
+      var label = document.getElementById("speaker-label");
+      btn.classList.toggle("active", ts.enabled);
+      btn.classList.toggle("speaking", ts.speaking);
+      if (ts.speaking) {
+        label.textContent = "Speaking...";
+      } else if (ts.enabled) {
+        label.textContent = "Listen ON";
+      } else {
+        label.textContent = "Listen";
+      }
+    }
+    var selectedVoice = null;
+    var VOICE_KEY_PREFIX = "torus_voice_";
+    var currentTarget = null;
+
+    function voiceKeyFor(target) {
+      return VOICE_KEY_PREFIX + (target || "default");
+    }
 
     function log(msg) {
       dbg.textContent = msg;
@@ -153,8 +245,70 @@
       if (e.key === "Enter") doConnect();
     });
 
+    function loadSessions() {
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      fetch("/tmux-sessions?token=" + encodeURIComponent(token))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.ok || !data.sessions) return;
+          var bar = document.getElementById("session-tabs");
+          bar.innerHTML = "";
+          data.sessions.forEach(function(name) {
+            var tab = document.createElement("button");
+            tab.className = "tab" + (name === currentTarget ? " active" : "");
+            tab.textContent = name;
+            tab.addEventListener("click", function() { selectSession(name); });
+            bar.appendChild(tab);
+          });
+          // Auto-select first if no current target or current no longer exists
+          if (!currentTarget || data.sessions.indexOf(currentTarget) === -1) {
+            if (data.sessions.length > 0) selectSession(data.sessions[0]);
+          }
+        }).catch(function() {});
+    }
+
+    function selectSession(name) {
+      // Save current session's STT state before switching
+      if (currentTarget) {
+        sttPreference[currentTarget] = isListening;
+      }
+      currentTarget = name;
+      // Restore STT for new session
+      var sttWanted = sttPreference[name] !== undefined ? sttPreference[name] : localStorage.getItem(STT_KEY_PREFIX + name) === "true";
+      if (sttWanted && !isListening) {
+        startListening();
+      } else if (!sttWanted && isListening) {
+        stopListening();
+      }
+      // Restore TTS enabled from localStorage
+      var ts = getTTS(name);
+      var savedTTS = localStorage.getItem(TTS_KEY_PREFIX + name);
+      if (savedTTS === "true" && !ts.enabled) {
+        ts.enabled = true;
+        if (!ts.poller) startTTSPoll(name);
+      }
+      updateSpeakerUI();
+      var tabs = document.querySelectorAll("#session-tabs .tab");
+      tabs.forEach(function(t) {
+        t.classList.toggle("active", t.textContent === name);
+      });
+      // Load per-session voice
+      var saved = localStorage.getItem(voiceKeyFor(name)) || "en-US-GuyNeural";
+      selectedVoice = saved;
+      var sel = document.getElementById("voice-select");
+      if (sel.options.length > 0) {
+        for (var i = 0; i < sel.options.length; i++) {
+          sel.options[i].selected = (sel.options[i].value === saved);
+        }
+      }
+      log("session: " + name);
+    }
+
     function connectWS(token) {
-      if (ws) { try { ws.close(); } catch(e) {} }
+      // Clear any pending reconnect — we're connecting now
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      if (ws) { intentionalClose = true; try { ws.close(); } catch(e) {} }
       var proto = location.protocol === "https:" ? "wss:" : "ws:";
       var url = proto + "//" + location.host + "/ws?token=" + encodeURIComponent(token);
       log("ws: " + url);
@@ -172,9 +326,11 @@
         log("msg: " + data.type + " " + (data.text||""));
 
         if (data.type === "status" && data.text === "authenticated") {
+          reconnectDelay = 1000; // reset backoff on success
           document.getElementById("status-dot").className = "dot dot-connected";
           document.getElementById("auth-screen").hidden = true;
           document.getElementById("voice-screen").hidden = false;
+          loadSessions();
           if (!hasSpeechAPI) {
             document.getElementById("mic-btn").disabled = true;
             document.getElementById("mic-label").textContent = "No speech API";
@@ -197,12 +353,43 @@
       ws.onclose = function(evt) {
         log("ws closed: " + evt.code);
         document.getElementById("status-dot").className = "dot dot-error";
+        // Intentional close (reconnecting) — don't schedule another
+        if (intentionalClose) { intentionalClose = false; return; }
+        // Auth rejection — don't reconnect
+        if (evt.code === 1008) {
+          localStorage.removeItem(TOKEN_KEY);
+          document.getElementById("auth-error").textContent = "Invalid token";
+          document.getElementById("auth-error").hidden = false;
+          document.getElementById("auth-screen").hidden = false;
+          document.getElementById("voice-screen").hidden = true;
+          return;
+        }
+        // Auto-reconnect with exponential backoff
+        scheduleReconnect();
       };
 
       ws.onerror = function() {
         log("ws error");
         document.getElementById("status-dot").className = "dot dot-error";
       };
+    }
+
+    function scheduleReconnect() {
+      if (reconnectTimer) return;
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      log("reconnect in " + (reconnectDelay/1000) + "s");
+      document.getElementById("status-dot").className = "dot dot-connecting";
+      reconnectTimer = setTimeout(function() {
+        reconnectTimer = null;
+        var token = localStorage.getItem(TOKEN_KEY);
+        if (token) {
+          log("reconnecting...");
+          connectWS(token);
+        }
+        // Exponential backoff: 1s, 2s, 4s, 8s... max 30s
+        reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
+      }, reconnectDelay);
     }
 
     function showFlash(text, isError) {
@@ -223,10 +410,15 @@
       var ta = document.getElementById("transcript");
       var text = ta.value.trim();
       if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify({ type: "message", text: text }));
+      ws.send(JSON.stringify({ type: "message", text: text, target: currentTarget }));
       ta.value = "";
       if (recognition && isListening) {
         try { recognition.abort(); } catch(e) {}
+      }
+      // Start TTS poll if enabled — uses fetch, survives WS reconnects
+      if (getTTS(currentTarget).enabled) {
+        stopTTSPoll(currentTarget);
+        startTTSPoll(currentTarget);
       }
     }
 
@@ -280,6 +472,8 @@
       if (!recognition || isListening) return;
       document.getElementById("transcript").value = "";
       isListening = true;
+      sttPreference[currentTarget] = true;
+      localStorage.setItem(STT_KEY_PREFIX + currentTarget, "true");
       document.getElementById("mic-btn").classList.add("listening");
       document.getElementById("mic-label").textContent = "Listening...";
       try { recognition.start(); } catch(e) {}
@@ -288,6 +482,8 @@
     function stopListening() {
       if (!isListening) return;
       isListening = false;
+      sttPreference[currentTarget] = false;
+      localStorage.setItem(STT_KEY_PREFIX + currentTarget, "false");
       document.getElementById("mic-btn").classList.remove("listening");
       document.getElementById("mic-label").textContent = "Tap to speak";
       try { recognition.stop(); } catch(e) {}
@@ -303,6 +499,222 @@
         e.preventDefault();
         if (isListening) stopListening(); else startListening();
       }
+    });
+
+    // --- TTS (Text-to-Speech) via server-side edge-tts + native speechSynthesis ---
+
+    var audioCtx = null; // created on user gesture, stays unlocked forever
+    var nativeVoices = {}; // name -> SpeechSynthesisVoice object
+    var NATIVE_PREFIX = "native:";
+
+    function isNativeVoice(name) { return name && name.indexOf(NATIVE_PREFIX) === 0; }
+
+    function getNativeSynthVoices() {
+      if (!window.speechSynthesis) return [];
+      var voices = speechSynthesis.getVoices();
+      return voices.filter(function(v) { return v.lang.indexOf("en") === 0; });
+    }
+
+    function loadVoices() {
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      var saved = localStorage.getItem(voiceKeyFor(currentTarget)) || "en-US-GuyNeural";
+
+      fetch("/tts/voices?token=" + encodeURIComponent(token))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.ok || !data.voices) return;
+          var sel = document.getElementById("voice-select");
+          sel.innerHTML = "";
+
+          // Edge-TTS voices (server)
+          var grp1 = document.createElement("optgroup");
+          grp1.label = "Edge TTS (server)";
+          data.voices.forEach(function(v) {
+            var opt = document.createElement("option");
+            opt.value = v.name;
+            opt.textContent = v.name + " (" + v.gender + ")";
+            if (v.name === saved) opt.selected = true;
+            grp1.appendChild(opt);
+          });
+          sel.appendChild(grp1);
+
+          // Piper voices (local)
+          if (data.piper_voices && data.piper_voices.length > 0) {
+            var grpP = document.createElement("optgroup");
+            grpP.label = "Piper (local)";
+            data.piper_voices.forEach(function(v) {
+              var opt = document.createElement("option");
+              opt.value = v.name;
+              opt.textContent = v.name.replace("piper:", "");
+              if (v.name === saved) opt.selected = true;
+              grpP.appendChild(opt);
+            });
+            sel.appendChild(grpP);
+          }
+
+          // Native browser/iOS voices
+          var native = getNativeSynthVoices();
+          if (native.length > 0) {
+            var grp2 = document.createElement("optgroup");
+            grp2.label = "Native (Safari/Browser)";
+            nativeVoices = {};
+            native.forEach(function(v) {
+              var key = NATIVE_PREFIX + v.name;
+              nativeVoices[key] = v;
+              var opt = document.createElement("option");
+              opt.value = key;
+              opt.textContent = v.name + " (" + v.lang + ")";
+              if (key === saved) opt.selected = true;
+              grp2.appendChild(opt);
+            });
+            sel.appendChild(grp2);
+          }
+
+          selectedVoice = saved;
+        }).catch(function() {});
+    }
+
+    // iOS Safari loads voices async — reload when ready
+    if (window.speechSynthesis) {
+      speechSynthesis.addEventListener("voiceschanged", function() { loadVoices(); });
+    }
+    loadVoices();
+
+    document.getElementById("voice-select").addEventListener("change", function() {
+      selectedVoice = this.value;
+      localStorage.setItem(voiceKeyFor(currentTarget), selectedVoice);
+      speakText("Voice selected", currentTarget);
+    });
+
+    function speakText(text, target) {
+      if (!text) return;
+      target = target || currentTarget;
+      var ts = getTTS(target);
+      var voice = selectedVoice || "en-US-GuyNeural";
+
+      // Stop this session's current playback only
+      if (ts.source) { try { ts.source.stop(); } catch(e) {} }
+
+      ts.speaking = true;
+      if (target === currentTarget) updateSpeakerUI();
+
+      if (isNativeVoice(voice)) {
+        if (text.length > 180) {
+          voice = "en-US-GuyNeural";
+        } else {
+          if (target === currentTarget) {
+            document.getElementById("speaker-label").textContent = "Speaking...";
+          }
+          var nv = nativeVoices[voice];
+          window._activeUtter = new SpeechSynthesisUtterance(text);
+          if (nv) window._activeUtter.voice = nv;
+          var iosWatchdog = setInterval(function() {
+            if (speechSynthesis.paused) speechSynthesis.resume();
+            if (!speechSynthesis.speaking) {
+              clearInterval(iosWatchdog);
+              ts.speaking = false;
+              if (target === currentTarget) updateSpeakerUI();
+              if (ts.enabled) startTTSPoll(target);
+            }
+          }, 250);
+          window._activeUtter.onend = function() { clearInterval(iosWatchdog); };
+          window._activeUtter.onerror = function() { clearInterval(iosWatchdog); };
+          speechSynthesis.speak(window._activeUtter);
+          return;
+        }
+      }
+
+      // Edge-TTS via server
+      if (!audioCtx) return;
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      if (target === currentTarget) {
+        document.getElementById("speaker-label").textContent = "Generating...";
+      }
+
+      fetch("/tts?token=" + encodeURIComponent(token) + "&voice=" + encodeURIComponent(voice), {
+        method: "POST",
+        body: text,
+      }).then(function(r) {
+        if (!r.ok) throw new Error("TTS failed");
+        return r.arrayBuffer();
+      }).then(function(data) {
+        return audioCtx.decodeAudioData(data);
+      }).then(function(buffer) {
+        var source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.onended = function() {
+          ts.speaking = false;
+          ts.source = null;
+          if (target === currentTarget) updateSpeakerUI();
+          if (ts.enabled) startTTSPoll(target);
+        };
+        ts.source = source;
+        if (target === currentTarget) {
+          document.getElementById("speaker-label").textContent = "Speaking...";
+        }
+        source.start(0);
+      }).catch(function(err) {
+        log("TTS error: " + err);
+        ts.speaking = false;
+        if (target === currentTarget) updateSpeakerUI();
+      });
+    }
+
+    function startTTSPoll(target) {
+      target = target || currentTarget;
+      var ts = getTTS(target);
+      if (ts.poller) return;
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return;
+      ts.poller = setInterval(function() {
+        if (!ts.enabled) {
+          stopTTSPoll(target);
+          return;
+        }
+        var url = "/last-response?token=" + encodeURIComponent(token) + "&target=" + encodeURIComponent(target);
+        fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+          if (data.ok && data.text && data.text !== ts.lastSpokenText) {
+            ts.lastSpokenText = data.text;
+            stopTTSPoll(target);
+            speakText(data.text, target);
+          }
+        }).catch(function() {});
+      }, 2000);
+      log("TTS polling " + target);
+    }
+
+    function stopTTSPoll(target) {
+      target = target || currentTarget;
+      var ts = getTTS(target);
+      if (ts.poller) { clearInterval(ts.poller); ts.poller = null; }
+    }
+
+    function toggleTTS() {
+      var ts = getTTS(currentTarget);
+      ts.enabled = !ts.enabled;
+      localStorage.setItem(TTS_KEY_PREFIX + currentTarget, ts.enabled);
+      if (ts.enabled) {
+        // Create AudioContext from user gesture — unlocked forever on iOS
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === "suspended") audioCtx.resume();
+      } else {
+        stopTTSPoll(currentTarget);
+        if (ts.source) { try { ts.source.stop(); } catch(e) {} }
+        if (window.speechSynthesis) speechSynthesis.cancel();
+        ts.speaking = false;
+      }
+      updateSpeakerUI();
+      log("TTS " + (ts.enabled ? "ON" : "OFF") + " [" + currentTarget + "]");
+    }
+
+    document.getElementById("speaker-btn").addEventListener("click", function(e) {
+      e.preventDefault();
+      toggleTTS();
     });
 
     initSpeech();

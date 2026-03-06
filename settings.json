@@ -1,6 +1,6 @@
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "permissions": {
     "allow": [
@@ -13,7 +13,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|NotebookEdit|Bash|Task|Skill|WebFetch|WebSearch|LSP|EnterWorktree",
+        "matcher": "Edit|Write|NotebookEdit|Bash|Task|Agent|Skill|WebFetch|WebSearch|LSP|EnterWorktree",
         "hooks": [
           {
             "type": "command",
@@ -153,6 +153,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/stop_cleanup.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/tts_signal.py\"",
+            "timeout": 3
           }
         ]
       }

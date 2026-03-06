@@ -1,3 +1,7 @@
+# Piper TTS voice models (large .onnx files)
+integrations/voice-web/piper-voices/*.onnx
+integrations/voice-web/piper-voices/*.onnx.json
+
 # Credentials & secrets
 .credentials.json
 

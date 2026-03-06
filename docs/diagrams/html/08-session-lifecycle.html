@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Lifecycle — Torus Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700&family=Red+Hat+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ NORD THEME (dark-first) ============ */
+  :root {
+    --font-body: 'Red Hat Display', system-ui, sans-serif;
+    --font-mono: 'Red Hat Mono', 'SF Mono', Consolas, monospace;
+
+    /* Nord Polar Night */
+    --bg: #2e3440;
+    --surface: #3b4252;
+    --surface2: #2e3440;
+    --surface-elevated: #434c5e;
+    --border: rgba(216, 222, 233, 0.08);
+    --border-bright: rgba(216, 222, 233, 0.20);
+    --text: #eceff4;
+    --text-dim: #7b88a1;
+
+    /* Nord Frost */
+    --frost1: #8fbcbb;
+    --frost1-dim: rgba(143, 188, 187, 0.12);
+    --frost2: #88c0d0;
+    --frost2-dim: rgba(136, 192, 208, 0.12);
+    --frost3: #81a1c1;
+    --frost3-dim: rgba(129, 161, 193, 0.12);
+    --frost4: #5e81ac;
+    --frost4-dim: rgba(94, 129, 172, 0.12);
+
+    /* Nord Aurora (no purple) */
+    --aurora-red: #bf616a;
+    --aurora-red-dim: rgba(191, 97, 106, 0.12);
+    --aurora-orange: #d08770;
+    --aurora-orange-dim: rgba(208, 135, 112, 0.12);
+    --aurora-yellow: #ebcb8b;
+    --aurora-yellow-dim: rgba(235, 203, 139, 0.12);
+    --aurora-green: #a3be8c;
+    --aurora-green-dim: rgba(163, 190, 140, 0.12);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eceff4;
+      --surface: #ffffff;
+      --surface2: #e5e9f0;
+      --surface-elevated: #ffffff;
+      --border: rgba(46, 52, 64, 0.08);
+      --border-bright: rgba(46, 52, 64, 0.20);
+      --text: #2e3440;
+      --text-dim: #667191;
+      --frost1: #5d8a88; --frost1-dim: rgba(93,138,136,0.10);
+      --frost2: #4e8fa0; --frost2-dim: rgba(78,143,160,0.10);
+      --frost3: #4d6e8c; --frost3-dim: rgba(77,110,140,0.10);
+      --frost4: #3c5f87; --frost4-dim: rgba(60,95,135,0.10);
+      --aurora-red: #bf616a; --aurora-red-dim: rgba(191,97,106,0.10);
+      --aurora-orange: #c77256; --aurora-orange-dim: rgba(199,114,86,0.10);
+      --aurora-yellow: #b58a3e; --aurora-yellow-dim: rgba(181,138,62,0.10);
+      --aurora-green: #6e8f56; --aurora-green-dim: rgba(110,143,86,0.10);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 10% 5%, var(--frost4-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 90% 95%, var(--frost1-dim) 0%, transparent 40%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.07s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .mermaid-wrap .mermaid { transition: none; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  h1 {
+    font-size: 38px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    margin-bottom: 32px;
+  }
+
+  h2 {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 14px;
+    margin-top: 36px;
+    color: var(--text-dim);
+  }
+
+  /* ============ MERMAID ============ */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    overflow: auto;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 360px;
+    cursor: grab;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .mermaid-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px; right: 8px;
+    display: flex; gap: 2px; z-index: 10;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px;
+  }
+  .zoom-controls button {
+    width: 28px; height: 28px; border: none;
+    background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 14px;
+    cursor: pointer; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 14px !important; color: var(--text) !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; color: var(--text-dim) !important; background-color: var(--bg) !important; }
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+  .mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width: 1.5px !important; }
+  .mermaid .edge-pattern-solid { stroke-width: 1.5px !important; }
+
+  /* ============ PHASE CARDS ============ */
+  .card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .card-grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+
+  .ve-card--frost1 { border-color: var(--frost1-dim); }
+  .ve-card--frost2 { border-color: var(--frost2-dim); }
+  .ve-card--frost3 { border-color: var(--frost3-dim); }
+  .ve-card--frost4 { border-color: var(--frost4-dim); }
+  .ve-card--red { border-color: var(--aurora-red-dim); }
+  .ve-card--orange { border-color: var(--aurora-orange-dim); }
+  .ve-card--yellow { border-color: var(--aurora-yellow-dim); }
+  .ve-card--green { border-color: var(--aurora-green-dim); }
+
+  .card-label {
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .card-label--frost1 { color: var(--frost1); }
+  .card-label--frost2 { color: var(--frost2); }
+  .card-label--frost3 { color: var(--frost3); }
+  .card-label--frost4 { color: var(--frost4); }
+  .card-label--red { color: var(--aurora-red); }
+  .card-label--orange { color: var(--aurora-orange); }
+  .card-label--yellow { color: var(--aurora-yellow); }
+  .card-label--green { color: var(--aurora-green); }
+
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block; flex-shrink: 0;
+  }
+  .dot--frost1 { background: var(--frost1); }
+  .dot--frost2 { background: var(--frost2); }
+  .dot--frost3 { background: var(--frost3); }
+  .dot--frost4 { background: var(--frost4); }
+  .dot--red { background: var(--aurora-red); }
+  .dot--orange { background: var(--aurora-orange); }
+  .dot--yellow { background: var(--aurora-yellow); }
+  .dot--green { background: var(--aurora-green); }
+
+  .node-list {
+    list-style: none;
+    font-size: 12px; line-height: 1.9;
+  }
+  .node-list li { padding-left: 14px; position: relative; color: var(--text-dim); }
+  .node-list li::before { content: '›'; color: var(--text-dim); font-weight: 700; position: absolute; left: 0; }
+  .node-list li strong { color: var(--text); font-weight: 600; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--surface2);
+    color: var(--frost2);
+    padding: 1px 5px; border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  .section-divider { border: none; border-top: 1px solid var(--border); margin: 32px 0 0; }
+
+  @media (max-width: 768px) {
+    body { padding: 16px; }
+    h1 { font-size: 24px; }
+    .card-grid, .card-grid--3 { grid-template-columns: 1fr; }
+    .mermaid-wrap { padding: 16px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1 class="animate" style="--i:0">Session Lifecycle</h1>
+  <p class="subtitle animate" style="--i:1">SessionStart &rarr; boot.py (22 steps) &rarr; work phase &rarr; PreCompact &rarr; /wrap-up &rarr; Stop</p>
+
+  <h2 class="animate" style="--i:2">01 &mdash; Main Lifecycle</h2>
+
+  <div class="mermaid-wrap animate" style="--i:3">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+      <button onclick="openDiagramFullscreen(this)" title="Open full size">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+graph TD
+  SS["SessionStart<br/>hook fires"]
+  BOOT["boot.py<br/>22-step orchestrator"]
+  HAND["Present Handoff<br/>LIVE_STATE.json"]
+  DEC{{"Continue or<br/>New task?"}}
+  WORK["Work Phase<br/>UserPromptSubmit"]
+  PRE["PreToolUse<br/>gates pipeline"]
+  POST["PostToolUse<br/>tracker pipeline"]
+  PC["PreCompact<br/>snapshot state"]
+  WU["/wrap-up<br/>session_end.py"]
+  STP["Stop<br/>stop_cleanup.py"]
+
+  SS --> BOOT
+  BOOT --> HAND
+  HAND --> DEC
+  DEC -->|"Continue"| WORK
+  DEC -->|"New"| WORK
+  WORK --> PRE
+  PRE --> POST
+  POST --> WORK
+  WORK --> PC
+  PC --> WU
+  WU --> STP
+
+  classDef start fill:#8fbcbb33,stroke:#8fbcbb,stroke-width:2px
+  classDef boot fill:#5e81ac33,stroke:#5e81ac,stroke-width:2px
+  classDef work fill:#81a1c133,stroke:#81a1c1,stroke-width:1.5px
+  classDef gate fill:#a3be8c33,stroke:#a3be8c,stroke-width:1.5px
+  classDef tracker fill:#ebcb8b33,stroke:#ebcb8b,stroke-width:1.5px
+  classDef end fill:#bf616a33,stroke:#bf616a,stroke-width:2px
+  classDef decision fill:#d0877033,stroke:#d08770,stroke-width:1.5px
+
+  class SS start
+  class BOOT boot
+  class HAND,WORK work
+  class DEC decision
+  class PRE gate
+  class POST tracker
+  class PC,WU end
+  class STP end
+    </pre>
+  </div>
+
+  <h2 class="animate" style="--i:4">02 &mdash; Subagent Flow</h2>
+
+  <div class="mermaid-wrap animate" style="--i:5" style="min-height:200px">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+      <button onclick="openDiagramFullscreen(this)" title="Open full size">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+graph TD
+  MAIN["Main Session<br/>lead agent"]
+  SUB_S["SubagentStart<br/>hook fires"]
+  CTX["subagent_context.py<br/>inject context + state"]
+  WORK["Subagent Work<br/>delegated tasks"]
+  SUB_STOP["SubagentStop<br/>hook fires"]
+  ELOG["event_logger.py<br/>log outcome + metrics"]
+
+  MAIN --> SUB_S
+  SUB_S --> CTX
+  CTX --> WORK
+  WORK --> SUB_STOP
+  SUB_STOP --> ELOG
+  ELOG -.->|"results back"| MAIN
+
+  classDef main fill:#5e81ac33,stroke:#5e81ac,stroke-width:2px
+  classDef hook fill:#8fbcbb33,stroke:#8fbcbb,stroke-width:1.5px
+  classDef work fill:#81a1c133,stroke:#81a1c1,stroke-width:1.5px
+  classDef log fill:#ebcb8b33,stroke:#ebcb8b,stroke-width:1.5px
+
+  class MAIN main
+  class SUB_S,SUB_STOP hook
+  class CTX,WORK work
+  class ELOG log
+    </pre>
+  </div>
+
+  <hr class="section-divider">
+
+  <h2 class="animate" style="--i:6">03 &mdash; Phase Details</h2>
+
+  <div class="card-grid animate" style="--i:7">
+
+    <div class="ve-card ve-card--frost4">
+      <div class="card-label card-label--frost4"><span class="dot dot--frost4"></span> SessionStart</div>
+      <ul class="node-list">
+        <li><strong>boot_pkg/orchestrator.py</strong> — 22-step init</li>
+        <li><code>context.py</code> — load session state, LIVE_STATE</li>
+        <li><code>maintenance.py</code> — cleanup stale data</li>
+        <li><code>memory.py</code> — connect to memory_server, write sideband</li>
+        <li><code>util.py</code> — ramdisk mount, dir setup</li>
+        <li>Presents handoff: "Continue" or "New task"</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--frost3">
+      <div class="card-label card-label--frost3"><span class="dot dot--frost3"></span> UserPromptSubmit</div>
+      <ul class="node-list">
+        <li><code>user_prompt_capture.py</code> — log prompt to session</li>
+        <li><code>statusline.py</code> — inject warnings into context</li>
+        <li>State-based warnings: unlogged errors, pending fixes</li>
+        <li>Warnings rendered inline before Claude sees the prompt</li>
+        <li>Gate 19 (Hindsight) can trigger via UserPromptSubmit path</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--frost2">
+      <div class="card-label card-label--frost2"><span class="dot dot--frost2"></span> PreToolUse</div>
+      <ul class="node-list">
+        <li><code>enforcer_shim.py</code> &rarr; daemon socket &rarr; gate_router</li>
+        <li>17 active gates (01-07, 09-11, 13-19)</li>
+        <li>Gates 08 and 12 dormant</li>
+        <li>Tier 1 (01, 02, 03): fail-closed, exceptions block</li>
+        <li>All others: fail-open</li>
+        <li>Returns <code>GateResult</code> with severity + escalation</li>
+        <li>Exit 0 = allow, Exit 2 = block (PreToolUse only)</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--yellow">
+      <div class="card-label card-label--yellow"><span class="dot dot--yellow"></span> PostToolUse</div>
+      <ul class="node-list">
+        <li><code>tracker_pkg/orchestrator.py</code> — 17-step pipeline</li>
+        <li><code>auto_remember.py</code> — candidate extraction</li>
+        <li><code>errors.py</code> — error detection + flagging</li>
+        <li><code>mentor.py</code> + <code>mentor_analytics.py</code> — quality scoring</li>
+        <li><code>mentor_memory.py</code> — persist mentor state</li>
+        <li><code>observations.py</code> — compress and store</li>
+        <li><code>outcome_chains.py</code> — link tool results to chains</li>
+        <li><code>verification.py</code> — mark steps as verified</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--orange">
+      <div class="card-label card-label--orange"><span class="dot dot--orange"></span> PreCompact</div>
+      <ul class="node-list">
+        <li><code>pre_compact.py</code> — fires before context compaction</li>
+        <li>Snapshots current gate state to ramdisk</li>
+        <li>Flushes pending observation queue</li>
+        <li>Writes partial session summary to LIVE_STATE</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--frost1">
+      <div class="card-label card-label--frost1"><span class="dot dot--frost1"></span> SessionEnd + Stop</div>
+      <ul class="node-list">
+        <li><code>session_end.py</code> — flush queues, update LIVE_STATE.json</li>
+        <li>Writes final session summary and "What's Next"</li>
+        <li><code>stop_cleanup.py</code> — daemon teardown, socket close</li>
+        <li><code>tts_signal.py</code> — optional audio notification</li>
+        <li>Ramdisk state preserved across sessions</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <h2 class="animate" style="--i:8">04 &mdash; State Persistence</h2>
+
+  <div class="card-grid--3 card-grid animate" style="--i:9">
+
+    <div class="ve-card ve-card--frost4">
+      <div class="card-label card-label--frost4"><span class="dot dot--frost4"></span> Ramdisk</div>
+      <ul class="node-list">
+        <li>Mount: <code>/run/user/1000/claude-hooks/</code></li>
+        <li><code>state/</code> — per-session JSON files</li>
+        <li><code>audit/</code> — gate audit log rotation</li>
+        <li>Keyed by session_id</li>
+        <li>Sub-agent state isolated by session</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--frost2">
+      <div class="card-label card-label--frost2"><span class="dot dot--frost2"></span> LIVE_STATE.json</div>
+      <ul class="node-list">
+        <li>Written at SessionEnd by <code>session_end.py</code></li>
+        <li>Read at SessionStart by boot orchestrator</li>
+        <li>Contains: current branch, project, "What's Next"</li>
+        <li>Session summary + handoff context</li>
+        <li>Gate counts and mentor scores</li>
+      </ul>
+    </div>
+
+    <div class="ve-card ve-card--green">
+      <div class="card-label card-label--green"><span class="dot dot--green"></span> Audit + Config</div>
+      <ul class="node-list">
+        <li><code>audit_log.py</code> — structured gate events</li>
+        <li>Rotated daily, stored on ramdisk</li>
+        <li><code>settings.json</code> — 14 hook event registrations</li>
+        <li><code>config.json</code> — 14 gate toggles + model_profile</li>
+        <li><code>~/.claude.json</code> — MCP server registrations</li>
+      </ul>
+    </div>
+
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor: isDark ? '#8fbcbb33' : '#5d8a8822',
+      primaryBorderColor: isDark ? '#8fbcbb' : '#5d8a88',
+      primaryTextColor: isDark ? '#eceff4' : '#2e3440',
+      secondaryColor: isDark ? '#5e81ac33' : '#3c5f8722',
+      secondaryBorderColor: isDark ? '#5e81ac' : '#3c5f87',
+      secondaryTextColor: isDark ? '#eceff4' : '#2e3440',
+      tertiaryColor: isDark ? '#a3be8c33' : '#6e8f5622',
+      tertiaryBorderColor: isDark ? '#a3be8c' : '#6e8f56',
+      tertiaryTextColor: isDark ? '#eceff4' : '#2e3440',
+      lineColor: isDark ? '#7b88a1' : '#667191',
+      fontSize: '14px',
+      fontFamily: "'Red Hat Display', system-ui, sans-serif",
+      noteBkgColor: isDark ? '#2e3440' : '#e5e9f0',
+      noteTextColor: isDark ? '#eceff4' : '#2e3440',
+      noteBorderColor: isDark ? '#ebcb8b' : '#b58a3e',
+    }
+  });
+</script>
+<script>
+  var INITIAL_ZOOM = 1;
+
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+    var next = Math.min(Math.max(current * factor, 0.5), 5);
+    target.dataset.zoom = next; target.style.zoom = next;
+  }
+
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = INITIAL_ZOOM; target.style.zoom = INITIAL_ZOOM;
+  }
+
+  function openDiagramFullscreen(btn) {
+    openMermaidInNewTab(btn.closest('.mermaid-wrap'));
+  }
+
+  function openMermaidInNewTab(wrap) {
+    var svg = wrap.querySelector('.mermaid svg');
+    if (!svg) return;
+    var clone = svg.cloneNode(true);
+    clone.style.zoom = ''; clone.style.transform = '';
+    var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#2e3440';
+    var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Diagram</title><style>' +
+      'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:' + bg + ';padding:40px;box-sizing:border-box;}' +
+      'svg{max-width:100%;max-height:90vh;height:auto;}' +
+      '</style></head><body>' + clone.outerHTML + '</body></html>';
+    window.open(URL.createObjectURL(new Blob([html], {type:'text/html'})), '_blank');
+  }
+
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var next = Math.min(Math.max(current * (e.deltaY < 0 ? 1.1 : 0.9), 0.5), 5);
+      target.dataset.zoom = next; target.style.zoom = next;
+    }, { passive: false });
+
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX; startY = e.clientY;
+      scrollL = wrap.scrollLeft; scrollT = wrap.scrollTop;
+      startTime = Date.now(); didPan = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      wrap.scrollLeft = scrollL - dx; wrap.scrollTop = scrollT - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      if (!didPan && Date.now() - startTime < 300) openMermaidInNewTab(wrap);
+    });
+  });
+</script>
+</body>
+</html>

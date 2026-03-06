@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04 — Hooks Directory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME: SOLARIZED LIGHT / DARK ============ */
+  :root {
+    --font-body: 'Outfit', system-ui, sans-serif;
+    --font-mono: 'Space Mono', 'SF Mono', Consolas, monospace;
+
+    /* Solarized Light */
+    --bg:       #fdf6e3;
+    --surface:  #eee8d5;
+    --surface2: #e8deca;
+    --surface-elevated: #fff9f0;
+    --border:        rgba(88, 110, 117, 0.15);
+    --border-bright: rgba(88, 110, 117, 0.30);
+    --text:     #073642;
+    --text-dim:  #657b83;
+
+    --yellow:  #b58900;
+    --yellow-dim: rgba(181,137,0,0.12);
+    --orange:  #cb4b16;
+    --orange-dim: rgba(203,75,22,0.10);
+    --red:     #dc322f;
+    --red-dim: rgba(220,50,47,0.10);
+    --green:   #859900;
+    --green-dim: rgba(133,153,0,0.10);
+    --cyan:    #2aa198;
+    --cyan-dim: rgba(42,161,152,0.10);
+    --blue:    #268bd2;
+    --blue-dim: rgba(38,139,210,0.10);
+    --magenta: #d33682;
+    --magenta-dim: rgba(211,54,130,0.10);
+    --violet:  #6c71c4;
+    --violet-dim: rgba(108,113,196,0.10);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:       #002b36;
+      --surface:  #073642;
+      --surface2: #0a3d4a;
+      --surface-elevated: #083847;
+      --border:        rgba(147,161,161,0.15);
+      --border-bright: rgba(147,161,161,0.28);
+      --text:     #fdf6e3;
+      --text-dim:  #93a1a1;
+
+      --yellow:  #b58900;
+      --yellow-dim: rgba(181,137,0,0.18);
+      --orange:  #cb4b16;
+      --orange-dim: rgba(203,75,22,0.18);
+      --red:     #dc322f;
+      --red-dim: rgba(220,50,47,0.18);
+      --green:   #859900;
+      --green-dim: rgba(133,153,0,0.18);
+      --cyan:    #2aa198;
+      --cyan-dim: rgba(42,161,152,0.18);
+      --blue:    #268bd2;
+      --blue-dim: rgba(38,139,210,0.18);
+      --magenta: #d33682;
+      --magenta-dim: rgba(211,54,130,0.18);
+      --violet:  #6c71c4;
+      --violet-dim: rgba(108,113,196,0.18);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 15% 0%, var(--cyan-dim) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 100%, var(--yellow-dim) 0%, transparent 45%);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .section, .flow-arrow, .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.05s);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  h1 {
+    font-size: 38px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+    text-wrap: balance;
+  }
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-bottom: 40px;
+    font-family: var(--font-mono);
+  }
+
+  .diagram {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+    max-width: 1160px;
+    margin: 0 auto;
+  }
+
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+  .section--hero {
+    background: var(--surface-elevated);
+    border-color: color-mix(in srgb, var(--border) 50%, var(--cyan) 40%);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    padding: 28px 32px;
+  }
+  .section--recessed {
+    background: var(--surface2);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .section--yellow  { border-color: var(--yellow-dim); }
+  .section--yellow  .section-label { color: var(--yellow); }
+  .section--yellow  .section-label .dot { background: var(--yellow); }
+
+  .section--orange  { border-color: var(--orange-dim); }
+  .section--orange  .section-label { color: var(--orange); }
+  .section--orange  .section-label .dot { background: var(--orange); }
+
+  .section--red     { border-color: var(--red-dim); }
+  .section--red     .section-label { color: var(--red); }
+  .section--red     .section-label .dot { background: var(--red); }
+
+  .section--green   { border-color: var(--green-dim); }
+  .section--green   .section-label { color: var(--green); }
+  .section--green   .section-label .dot { background: var(--green); }
+
+  .section--cyan    { border-color: var(--cyan-dim); }
+  .section--cyan    .section-label { color: var(--cyan); }
+  .section--cyan    .section-label .dot { background: var(--cyan); }
+
+  .section--blue    { border-color: var(--blue-dim); }
+  .section--blue    .section-label { color: var(--blue); }
+  .section--blue    .section-label .dot { background: var(--blue); }
+
+  .section--magenta { border-color: var(--magenta-dim); }
+  .section--magenta .section-label { color: var(--magenta); }
+  .section--magenta .section-label .dot { background: var(--magenta); }
+
+  .section--violet  { border-color: var(--violet-dim); }
+  .section--violet  .section-label { color: var(--violet); }
+  .section--violet  .section-label .dot { background: var(--violet); }
+
+  .inner-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+  }
+  .inner-grid--2 { grid-template-columns: 1fr 1fr; }
+  .inner-grid--3 { grid-template-columns: repeat(3, 1fr); }
+  .inner-grid--4 { grid-template-columns: repeat(4, 1fr); }
+
+  .ve-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .ve-card .title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 3px;
+    font-family: var(--font-mono);
+  }
+  .ve-card .lines {
+    color: var(--text-dim);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    margin-bottom: 4px;
+  }
+  .ve-card .desc {
+    color: var(--text-dim);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .ve-card code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--cyan-dim);
+    color: var(--cyan);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .flow-arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 4px 0;
+  }
+  .flow-arrow svg {
+    width: 20px; height: 20px;
+    fill: none;
+    stroke: var(--border-bright);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 360px;
+    cursor: grab;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .mermaid-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px; right: 8px;
+    display: flex; gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+  .zoom-controls button {
+    width: 28px; height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 15px !important; color: var(--text) !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; color: var(--text-dim) !important; background-color: var(--bg) !important; }
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+
+  .callout {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--cyan);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+  .callout strong { color: var(--text); font-weight: 600; }
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--cyan-dim);
+    color: var(--cyan);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  details > summary {
+    padding: 16px 20px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    user-select: none;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary .chevron {
+    width: 16px; height: 16px;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  details[open] > summary .chevron { transform: rotate(90deg); }
+  details > summary .sdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-dim); }
+  details .details-body { padding: 0 20px 20px; }
+
+  .sideband-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 6px;
+  }
+  .sideband-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .sideband-item strong { color: var(--text); font-weight: 600; }
+
+  .node-list { list-style: none; font-size: 12px; line-height: 1.9; }
+  .node-list li { padding-left: 14px; position: relative; }
+  .node-list li::before { content: '\203A'; color: var(--text-dim); font-weight: 600; position: absolute; left: 0; }
+  .node-list code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--cyan-dim);
+    color: var(--cyan);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+  @media (max-width: 900px) {
+    body { padding: 20px; }
+    .inner-grid, .inner-grid--2, .inner-grid--3, .inner-grid--4 { grid-template-columns: 1fr; }
+    .two-col, .three-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1 class="animate" style="--i:0">Hooks Directory</h1>
+<p class="subtitle animate" style="--i:1">~/.claude/hooks/ &mdash; every non-gate .py file, sub-packages &amp; sideband files &mdash; 2026-03-06</p>
+
+<div class="diagram">
+
+  <div class="section section--hero animate" style="--i:2">
+    <div class="section-label"><span class="dot" style="background:var(--cyan)"></span> Directory Overview</div>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button onclick="zoomDiagram(this,1.2)" title="Zoom in">+</button>
+        <button onclick="zoomDiagram(this,0.8)" title="Zoom out">&minus;</button>
+        <button onclick="resetZoom(this)" title="Reset">&#8634;</button>
+        <button onclick="openDiagramFullscreen(this)" title="Fullscreen">&#x26F6;</button>
+      </div>
+      <pre class="mermaid">
+graph TD
+  hooks["hooks/"] --> enforcer["Enforcer<br/>(3 files)"]
+  hooks --> mcp["MCP Servers<br/>(4 files)"]
+  hooks --> lifecycle["Session Lifecycle<br/>(4 files)"]
+  hooks --> posttool["Post-Tool<br/>(4 files)"]
+  hooks --> userprompt["User Prompt<br/>(2 files)"]
+  hooks --> agents["Agents<br/>(2 files)"]
+  hooks --> integrations["Integrations<br/>(2 files)"]
+  hooks --> maintenance["Maintenance<br/>(3 files)"]
+  hooks --> testing["Testing<br/>(3 files)"]
+  hooks --> boot_pkg["boot_pkg/<br/>(5 files)"]
+  hooks --> tracker_pkg["tracker_pkg/<br/>(9 files)"]
+  hooks --> scripts["scripts/<br/>(7 files)"]
+
+  classDef core fill:#2aa19822,stroke:#2aa198,stroke-width:2px
+  classDef pkg  fill:#85990022,stroke:#859900,stroke-width:1.5px
+  classDef root fill:#b5890022,stroke:#b58900,stroke-width:2px
+
+  class hooks root
+  class enforcer,mcp,lifecycle core
+  class boot_pkg,tracker_pkg,scripts pkg
+      </pre>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="section section--cyan" style="--i:4">
+      <div class="section-label"><span class="dot"></span> 01 &mdash; Enforcer</div>
+      <div class="inner-grid" style="grid-template-columns:1fr;">
+        <div class="ve-card">
+          <div class="title">enforcer.py</div>
+          <div class="lines">651 lines</div>
+          <div class="desc">PreToolUse gate dispatcher. Inline fallback execution, ~134ms median. Tier-1 fail-closed for gates 1&ndash;3.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">enforcer_daemon.py</div>
+          <div class="lines">232 lines</div>
+          <div class="desc">Persistent Unix domain socket gate server. ~5ms median via socket. Eliminates Python startup overhead.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">enforcer_shim.py</div>
+          <div class="lines">113 lines</div>
+          <div class="desc">Fast UDS proxy shim. Connects to daemon, falls back to inline enforcer if socket not available.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section section--yellow" style="--i:5">
+      <div class="section-label"><span class="dot"></span> 02 &mdash; MCP Servers</div>
+      <div class="inner-grid" style="grid-template-columns:1fr;">
+        <div class="ve-card">
+          <div class="title">analytics_server.py</div>
+          <div class="lines">2,481 lines</div>
+          <div class="desc">15 registered tools, lazy-loaded, read-only. Scope: user via <code>~/.claude.json</code>.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">memory_server.py</div>
+          <div class="lines">4,627 lines</div>
+          <div class="desc">8 active tools. LanceDB + UDS <code>.chromadb.sock</code>. nomic-embed-text-v2-moe. Via <code>mcp.json</code>.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">search_server.py</div>
+          <div class="lines">&mdash;</div>
+          <div class="desc">2 tools: <code>terminal_history_search</code>, <code>transcript_context</code>. SQLite FTS5 backend.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">web_search_server.py</div>
+          <div class="lines">&mdash;</div>
+          <div class="desc">Web search capabilities. Registered in <code>mcp.json</code>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="section section--green" style="--i:6">
+      <div class="section-label"><span class="dot"></span> 03 &mdash; Session Lifecycle</div>
+      <div class="inner-grid" style="grid-template-columns:1fr;">
+        <div class="ve-card">
+          <div class="title">boot.py</div>
+          <div class="lines">42 lines</div>
+          <div class="desc">SessionStart shim &rarr; <code>boot_pkg/</code> orchestrator. Thin entry point.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">session_end.py</div>
+          <div class="lines">599 lines</div>
+          <div class="desc">Flush queues, write LIVE_STATE, LanceDB backup. Comprehensive session teardown.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">stop_cleanup.py</div>
+          <div class="lines">46 lines</div>
+          <div class="desc">Flush I/O, shutdown daemons. Called on StopSequence or abort events.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">pre_compact.py</div>
+          <div class="lines">264 lines</div>
+          <div class="desc">Snapshot gate state before context compression. Preserves timing and circuit breaker state.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section section--orange" style="--i:7">
+      <div class="section-label"><span class="dot"></span> 04 &mdash; Post-Tool Handlers</div>
+      <div class="inner-grid" style="grid-template-columns:1fr;">
+        <div class="ve-card">
+          <div class="title">event_logger.py</div>
+          <div class="lines">298 lines</div>
+          <div class="desc">Supplementary event logging. Writes structured events to audit JSONL.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">auto_format.py</div>
+          <div class="lines">92 lines</div>
+          <div class="desc">ruff/black Python auto-formatting on file writes. 3s timeout, non-blocking.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">tracker.py</div>
+          <div class="lines">47 lines</div>
+          <div class="desc">PostToolUse shim &rarr; <code>tracker_pkg/</code> orchestrator. 17-step pipeline.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">auto_commit.py</div>
+          <div class="lines">148 lines</div>
+          <div class="desc">Two-phase: stage on PostToolUse, commit on UserPromptSubmit. Smart grouping.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="three-col">
+    <div class="section section--blue" style="--i:8">
+      <div class="section-label"><span class="dot"></span> 05 &mdash; User Prompt</div>
+      <div class="inner-grid" style="grid-template-columns:1fr;">
+        <div class="ve-card">
+          <div class="title">user_prompt_capture.py</div>
+          <div class="lines">160 lines</div>
+          <div class="desc">Capture prompts to queues. Hash-based dedup.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">statusline.py</div>
+          <div class="lines">1,107 lines</div>
+          <div class="desc">2-line status display. State-based warnings. Session counters.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section section--magenta" style="--i:9">
+      <div class="section-label"><span class="dot"></span> 06 &mdash; Agents</div>
+      <div class="inner-grid" style="grid-template-columns:1fr;">
+        <div class="ve-card">
+          <div class="title">subagent_context.py</div>
+          <div class="lines">380 lines</div>
+          <div class="desc">Inject LIVE_STATE and session state into subagent context on start.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">auto_approve.py</div>
+          <div class="lines">136 lines</div>
+          <div class="desc">Auto-approve benign tool calls. Allow-list based, audited.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section section--violet" style="--i:10">
+      <div class="section-label"><span class="dot"></span> 07 &mdash; Integrations</div>
+      <div class="inner-grid" style="grid-template-columns:1fr;">
+        <div class="ve-card">
+          <div class="title">tg_mirror.py</div>
+          <div class="lines">127 lines</div>
+          <div class="desc">Mirror assistant responses to Telegram. Configurable via config.json.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">tts_signal.py</div>
+          <div class="lines">&mdash;</div>
+          <div class="desc">Notification TTS. Audio signal on key events.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="section section--red" style="--i:11">
+      <div class="section-label"><span class="dot"></span> 08 &mdash; Maintenance</div>
+      <div class="inner-grid inner-grid--3">
+        <div class="ve-card">
+          <div class="title">failure_recovery.py</div>
+          <div class="lines">59 lines</div>
+          <div class="desc">Tool failure triage. Logs and classifies error patterns.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">integrity_check.py</div>
+          <div class="lines">97 lines</div>
+          <div class="desc">SHA-256 file verification. Detects unauthorized hook modifications.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">config_change.py</div>
+          <div class="lines">137 lines</div>
+          <div class="desc">Hot-reload <code>config.json</code> on file change without session restart.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section section--green" style="--i:12">
+      <div class="section-label"><span class="dot"></span> 09 &mdash; Testing</div>
+      <div class="inner-grid inner-grid--3">
+        <div class="ve-card">
+          <div class="title">test_framework.py</div>
+          <div class="lines">53 lines</div>
+          <div class="desc">Gate test suite orchestrator. Runs all gate tests and shared modules.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">fuzz_gates.py</div>
+          <div class="lines">562 lines</div>
+          <div class="desc">Gate fuzzer. Generates adversarial inputs for each gate.</div>
+        </div>
+        <div class="ve-card">
+          <div class="title">fix_test_order.py</div>
+          <div class="lines">&mdash;</div>
+          <div class="desc">Test ordering fixes. Ensures deterministic gate test execution.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="three-col">
+    <div class="section section--cyan" style="--i:13">
+      <div class="section-label"><span class="dot"></span> 10 &mdash; boot_pkg/ (5 files)</div>
+      <ul class="node-list">
+        <li><code>orchestrator.py</code> &mdash; 22-step SessionStart pipeline</li>
+        <li><code>context.py</code> &mdash; context enrichment</li>
+        <li><code>maintenance.py</code> &mdash; startup checks</li>
+        <li><code>memory.py</code> &mdash; memory warm-up</li>
+        <li><code>util.py</code> &mdash; shared helpers</li>
+      </ul>
+    </div>
+
+    <div class="section section--yellow" style="--i:14">
+      <div class="section-label"><span class="dot"></span> 11 &mdash; tracker_pkg/ (9 files)</div>
+      <ul class="node-list">
+        <li><code>orchestrator.py</code> &mdash; 17-step PostToolUse pipeline</li>
+        <li><code>auto_remember.py</code></li>
+        <li><code>errors.py</code></li>
+        <li><code>mentor.py</code> &mdash; Mentor system core</li>
+        <li><code>mentor_analytics.py</code></li>
+        <li><code>mentor_memory.py</code></li>
+        <li><code>observations.py</code></li>
+        <li><code>outcome_chains.py</code></li>
+        <li><code>verification.py</code></li>
+      </ul>
+    </div>
+
+    <div class="section section--orange" style="--i:15">
+      <div class="section-label"><span class="dot"></span> 12 &mdash; scripts/ (7 files)</div>
+      <ul class="node-list">
+        <li><code>audit_rotation.py</code></li>
+        <li><code>backup_embeddings.py</code></li>
+        <li><code>create_lance_indexes.py</code></li>
+        <li><code>fix_lance_indexes.py</code></li>
+        <li><code>flush_audit.py</code></li>
+        <li><code>memory_compactor.py</code></li>
+        <li><code>stale_memory_archiver.py</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section section--violet" style="--i:16">
+    <div class="section-label"><span class="dot"></span> 13 &mdash; hooks/benchmarks/ (2 files)</div>
+    <div class="inner-grid inner-grid--2">
+      <div class="ve-card">
+        <div class="title">benchmark_gates.py</div>
+        <div class="lines">458 lines</div>
+        <div class="desc">Gate performance benchmarking. Measures per-gate latency, P50/P95/P99. Produces timing reports for enforcer daemon comparison.</div>
+      </div>
+      <div class="ve-card">
+        <div class="title">benchmark_io.py</div>
+        <div class="lines">162 lines</div>
+        <div class="desc">Ramdisk vs disk I/O benchmarking. 544 MB/s vs 1.2 MB/s throughput measurement.</div>
+      </div>
+    </div>
+  </div>
+
+  <details class="animate" style="--i:17">
+    <summary>
+      <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>
+      <span class="sdot"></span>
+      14 &mdash; Sideband Files (21 files) &mdash; click to expand
+    </summary>
+    <div class="details-body">
+      <div class="sideband-grid">
+        <div class="sideband-item"><strong>.memory_last_queried</strong> &mdash; Gate 4 sideband: atomic write, verifies memory was queried</div>
+        <div class="sideband-item"><strong>.circuit_breaker.json</strong> &mdash; Per-gate circuit breaker state</div>
+        <div class="sideband-item"><strong>.gate_timings.json</strong> &mdash; Rolling gate latency samples</div>
+        <div class="sideband-item"><strong>.audit_trail.jsonl</strong> &mdash; 46.3 MB live audit log (daily rotated)</div>
+        <div class="sideband-item"><strong>.tool_fingerprints.json</strong> &mdash; Tool call signatures for dedup</div>
+        <div class="sideband-item"><strong>.gate_effectiveness.json</strong> &mdash; Per-gate block/allow rates</div>
+        <div class="sideband-item"><strong>.experience_archive.csv</strong> &mdash; Q-table training data for gate tuning</div>
+        <div class="sideband-item"><strong>.capture_queue.jsonl</strong> &mdash; Pending observations awaiting flush</div>
+        <div class="sideband-item"><strong>.integrity_hashes.json</strong> &mdash; SHA-256 hashes for integrity_check.py</div>
+        <div class="sideband-item"><strong>.prompt_last_hash</strong> &mdash; Dedup hash for last user prompt</div>
+        <div class="sideband-item"><strong>.settings_snapshot.json</strong> &mdash; Snapshot of settings.json at boot</div>
+        <div class="sideband-item"><strong>.statusline_snapshot.json</strong> &mdash; Last rendered statusline state</div>
+        <div class="sideband-item"><strong>.file_claims.json</strong> &mdash; Active file-edit claims by gate</div>
+        <div class="sideband-item"><strong>.gate_qtable.json</strong> &mdash; Q-table for gate auto-tune RL</div>
+        <div class="sideband-item"><strong>.tier_backfill_done</strong> &mdash; Migration sentinel: tier backfill complete</div>
+        <div class="sideband-item"><strong>.embedding_migration_done</strong> &mdash; Migration sentinel: embedding format migrated</div>
+        <div class="sideband-item"><strong>agent_channel.db</strong> &mdash; SQLite: agent-to-agent communication</div>
+        <div class="sideband-item"><strong>requirements.txt</strong> &mdash; Python dependencies</div>
+        <div class="sideband-item"><strong>pyrightconfig.json</strong> &mdash; Pyright type-check config</div>
+        <div class="sideband-item"><strong>setup_ramdisk.sh</strong> &mdash; Ramdisk init script (/run/user/1000/claude-hooks/)</div>
+        <div class="sideband-item"><strong>user_prompt_check.sh</strong> &mdash; Shell wrapper for UserPromptSubmit hook</div>
+      </div>
+    </div>
+  </details>
+
+  <div class="callout animate" style="--i:18">
+    <strong>shared/ sub-package</strong> (~66 modules) lives inside hooks/ and is imported by every gate and script via <code>from shared.X import Y</code>. Core: <code>state.py</code>, <code>gate_result.py</code>, <code>audit_log.py</code>, <code>gate_router.py</code>, <code>circuit_breaker.py</code>. See the Shared Modules diagram for full coverage.
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      primaryColor:         isDark ? '#073642' : '#eee8d5',
+      primaryBorderColor:   isDark ? '#2aa198' : '#2aa198',
+      primaryTextColor:     isDark ? '#fdf6e3' : '#073642',
+      secondaryColor:       isDark ? '#0a3d4a' : '#fdf6e3',
+      secondaryBorderColor: isDark ? '#859900' : '#859900',
+      secondaryTextColor:   isDark ? '#fdf6e3' : '#073642',
+      tertiaryColor:        isDark ? '#1a2a18' : '#f5f0da',
+      tertiaryBorderColor:  isDark ? '#b58900' : '#b58900',
+      tertiaryTextColor:    isDark ? '#fdf6e3' : '#073642',
+      lineColor:            isDark ? '#93a1a1' : '#657b83',
+      fontSize: '15px',
+      fontFamily: "'Outfit', system-ui, sans-serif",
+      noteBkgColor:    isDark ? '#073642' : '#fdf6e3',
+      noteTextColor:   isDark ? '#fdf6e3' : '#073642',
+      noteBorderColor: isDark ? '#b58900' : '#b58900',
+    }
+  });
+</script>
+<script>
+  var INITIAL_ZOOM = 1;
+
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+    var next = Math.min(Math.max(current * factor, 0.5), 5);
+    target.dataset.zoom = next;
+    target.style.zoom = next;
+  }
+
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = INITIAL_ZOOM;
+    target.style.zoom = INITIAL_ZOOM;
+  }
+
+  function openDiagramFullscreen(btn) {
+    openMermaidInNewTab(btn.closest('.mermaid-wrap'));
+  }
+
+  function openMermaidInNewTab(wrap) {
+    var svg = wrap.querySelector('.mermaid svg');
+    if (!svg) return;
+    var clone = svg.cloneNode(true);
+    clone.style.zoom = '';
+    clone.style.transform = '';
+    var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#fdf6e3';
+    var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:' + bg + ';padding:40px;box-sizing:border-box;}svg{max-width:100%;max-height:90vh;height:auto;}</style></head><body>' + clone.outerHTML + '</body></html>';
+    window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+  }
+
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var next = Math.min(Math.max(current * (e.deltaY < 0 ? 1.1 : 0.9), 0.5), 5);
+      target.dataset.zoom = next;
+      target.style.zoom = next;
+    }, { passive: false });
+
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX; startY = e.clientY;
+      scrollL = wrap.scrollLeft; scrollT = wrap.scrollTop;
+      startTime = Date.now(); didPan = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      wrap.scrollLeft = scrollL - dx;
+      wrap.scrollTop = scrollT - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      if (!didPan && Date.now() - startTime < 300) openMermaidInNewTab(wrap);
+    });
+  });
+</script>
+</body>
+</html>

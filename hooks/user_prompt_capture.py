@@ -158,6 +158,52 @@ def _auto_index_urls(urls):
             pass  # Fail-silent
 
 
+_HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _collect_state_warnings():
+    """Read framework state and return actionable warnings. Fail-open: exceptions return []."""
+    warnings = []
+    try:
+        # 1. Uncommitted changes
+        import subprocess
+        r = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, timeout=2,
+            cwd=os.path.expanduser("~/.claude"),
+        )
+        modified = [l for l in r.stdout.strip().split("\n") if l.strip() and not l.startswith("??")]
+        if modified:
+            warnings.append(f"uncommitted changes ({len(modified)} files)")
+
+        # 2. Memory not queried recently (>5 min)
+        sideband = os.path.join(_HOOKS_DIR, ".memory_last_queried")
+        if os.path.exists(sideband):
+            with open(sideband) as f:
+                sb = json.load(f)
+            age = time.time() - sb.get("timestamp", 0)
+            if age > 300:
+                warnings.append(f"memory not queried ({int(age // 60)}m ago)")
+        else:
+            warnings.append("memory not queried this session")
+
+        # 3. Open causal chains
+        import glob as _glob
+        state_files = sorted(
+            _glob.glob(os.path.join(_HOOKS_DIR, "state_*.json")),
+            key=os.path.getmtime, reverse=True,
+        )
+        if state_files:
+            with open(state_files[0]) as f:
+                state = json.load(f)
+            chains = state.get("pending_chain_ids", [])
+            if chains:
+                warnings.append(f"open causal chains ({len(chains)})")
+    except Exception:
+        pass  # Fail-open — state check failures must never crash the hook
+    return warnings
+
+
 def main():
     # Read JSON from stdin
     try:
@@ -192,15 +238,14 @@ def main():
             "before the session ends.</session_ending>"
         )
 
-    # --- Rule 5 enforcement: verify before asserting ---
-    # Always remind Claude to use tools for factual claims.
-    # This fires on every prompt — stdout tags become part of Claude's context.
-    print(
-        "<user-prompt-submit-hook>RULE 5 REMINDER: Do not state counts, file paths, "
-        "system state, or any factual claim from memory alone. If you have not verified "
-        "it with a tool call (Glob, Grep, Read, search_knowledge, Bash) in this turn, "
-        "it is unverified. Call a tool first, then respond.</user-prompt-submit-hook>"
-    )
+    # --- State-based warnings + compact baseline ---
+    warnings = _collect_state_warnings()
+    baseline = "RULES: verify before asserting, ask before acting."
+    if warnings:
+        parts = [baseline] + warnings
+        print(f"<user-prompt-submit-hook>{' | '.join(parts)}</user-prompt-submit-hook>")
+    else:
+        print(f"<user-prompt-submit-hook>{baseline}</user-prompt-submit-hook>")
 
     # --- Auto-index URLs into LanceDB web_pages ---
 

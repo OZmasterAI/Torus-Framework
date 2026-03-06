@@ -20,6 +20,7 @@ memory check → plan → tests first → build → prove it → track → ship
 5. **Never guess** — Never assume file paths, branch state, or system state. Read/Glob/search_knowledge first. Unverified = unknown.
 6. **Model selection** — Gate 10 enforces model_profile from config.json. Do not override.
 7. **Gate awareness** — Gates enforce Edit/Write/Bash/Task automatically. Read/Glob/Grep are ungated — self-enforce rule 5.
+8. **Ask before acting** — Never push, deploy, delete, or take irreversible actions beyond what the user explicitly requested. Ask first.
 
 ## SESSION START (Non-Negotiable)
 1. Read LIVE_STATE.json

@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hook Pipeline — Torus Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Fragment+Mono:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  /* ============ THEME — teal/slate ============ */
+  :root {
+    --font-body: 'Bricolage Grotesque', system-ui, sans-serif;
+    --font-mono: 'Fragment Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f0fdfa;
+    --surface: #ffffff;
+    --surface2: #e6f7f4;
+    --surface3: #f8fffe;
+    --border: rgba(0, 0, 0, 0.07);
+    --border-bright: rgba(0, 0, 0, 0.14);
+    --text: #134e4a;
+    --text-dim: #5f8a85;
+
+    --primary: #0d9488;
+    --primary-dim: rgba(13, 148, 136, 0.10);
+    --primary-bg: rgba(13, 148, 136, 0.06);
+
+    --red: #dc2626;
+    --red-dim: rgba(220, 38, 38, 0.09);
+    --green: #16a34a;
+    --green-dim: rgba(22, 163, 74, 0.09);
+    --amber: #b45309;
+    --amber-dim: rgba(180, 83, 9, 0.09);
+    --blue: #0369a1;
+    --blue-dim: rgba(3, 105, 161, 0.09);
+    --slate: #475569;
+    --slate-dim: rgba(71, 85, 105, 0.09);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #042f2e;
+      --surface: #0a3d3a;
+      --surface2: #0e4f4b;
+      --surface3: #083533;
+      --border: rgba(255,255,255,0.08);
+      --border-bright: rgba(255,255,255,0.15);
+      --text: #ccfbf1;
+      --text-dim: #5eead4;
+
+      --primary: #2dd4bf;
+      --primary-dim: rgba(45, 212, 191, 0.15);
+      --primary-bg: rgba(45, 212, 191, 0.07);
+
+      --red: #f87171;
+      --red-dim: rgba(248, 113, 113, 0.13);
+      --green: #4ade80;
+      --green-dim: rgba(74, 222, 128, 0.12);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.12);
+      --blue: #38bdf8;
+      --blue-dim: rgba(56, 189, 248, 0.12);
+      --slate: #94a3b8;
+      --slate-dim: rgba(148, 163, 184, 0.12);
+    }
+  }
+
+  /* ============ RESET ============ */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+    background-size: 24px 24px;
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 48px 40px;
+    min-height: 100vh;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate {
+    animation: fadeUp 0.45s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.055s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ LAYOUT ============ */
+  .container { max-width: 1080px; margin: 0 auto; }
+
+  h1 {
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    letter-spacing: 0.3px;
+  }
+
+  .description {
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--text-dim);
+    max-width: 720px;
+    margin-bottom: 36px;
+  }
+
+  .description code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--primary-dim);
+    color: var(--primary);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .section-heading {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 1.8px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-heading::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-bright);
+  }
+
+  /* ============ MERMAID CONTAINER ============ */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    overflow: auto;
+    margin-bottom: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 360px;
+    cursor: grab;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .mermaid-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+  .mermaid-wrap::-webkit-scrollbar-track { background: transparent; }
+  .mermaid-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .mermaid-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .zoom-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .zoom-controls button:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  /* ============ MERMAID SVG OVERRIDES ============ */
+  .mermaid .nodeLabel {
+    font-family: var(--font-body) !important;
+    font-size: 15px !important;
+    color: var(--text) !important;
+  }
+  .mermaid .edgeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+    color: var(--text-dim) !important;
+    background-color: var(--bg) !important;
+  }
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+  .mermaid .node rect,
+  .mermaid .node circle,
+  .mermaid .node polygon { stroke-width: 1.5px !important; }
+  .mermaid .edge-pattern-solid { stroke-width: 1.5px !important; }
+
+  /* ============ LEGEND ROW ============ */
+  .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-bottom: 36px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .legend-swatch {
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+  }
+
+  /* ============ EVENT GRID (hybrid cards) ============ */
+  .event-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    gap: 16px;
+    margin-bottom: 48px;
+  }
+
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border-bright);
+    border-radius: 10px;
+    padding: 16px 18px;
+    position: relative;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .ve-card:hover {
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+  }
+
+  /* Color variants via border-left */
+  .ve-card--red   { border-left-color: var(--red); }
+  .ve-card--green { border-left-color: var(--green); }
+  .ve-card--amber { border-left-color: var(--amber); }
+  .ve-card--blue  { border-left-color: var(--blue); }
+  .ve-card--slate { border-left-color: var(--slate); }
+  .ve-card--primary { border-left-color: var(--primary); }
+
+  .ve-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .ve-card-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+  }
+
+  .ve-card-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 99px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border: 1px solid;
+  }
+
+  .badge--red     { color: var(--red);     background: var(--red-dim);     border-color: var(--red); }
+  .badge--green   { color: var(--green);   background: var(--green-dim);   border-color: var(--green); }
+  .badge--amber   { color: var(--amber);   background: var(--amber-dim);   border-color: var(--amber); }
+  .badge--blue    { color: var(--blue);    background: var(--blue-dim);    border-color: var(--blue); }
+  .badge--slate   { color: var(--slate);   background: var(--slate-dim);   border-color: var(--slate); }
+  .badge--primary { color: var(--primary); background: var(--primary-dim); border-color: var(--primary); }
+
+  .ve-card-matcher {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 7px;
+    margin-bottom: 8px;
+    display: inline-block;
+    line-height: 1.5;
+  }
+
+  .ve-card-flow {
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-dim);
+  }
+
+  .ve-card-flow strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .ve-card-flow code {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    background: var(--primary-bg);
+    color: var(--primary);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .flow-chain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+  }
+
+  .flow-step {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    color: var(--text);
+  }
+
+  .flow-arrow-sm {
+    color: var(--text-dim);
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  /* ============ CALLOUT ============ */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 0 10px 10px 0;
+    padding: 16px 20px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text-dim);
+    margin-top: 12px;
+  }
+
+  .callout strong { color: var(--text); }
+
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--primary-dim);
+    color: var(--primary);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 768px) {
+    body { padding: 20px 16px; }
+    h1 { font-size: 26px; }
+    .event-grid { grid-template-columns: 1fr; }
+    .mermaid-wrap { padding: 16px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1 class="animate" style="--i:0">Hook Pipeline</h1>
+  <p class="subtitle animate" style="--i:1">torus-framework &mdash; all 14 hook events &mdash; 2026-03-06</p>
+  <p class="description animate" style="--i:2">
+    Every Claude action passes through a layered hook system. <code>settings.json</code> maps each event type
+    to one or more handler scripts. Handlers receive JSON on stdin, run logic, and exit
+    <code>0</code> (allow) or <code>2</code> (block &mdash; PreToolUse only). The diagram below shows the
+    dispatch topology; the cards expand each event type with full flow detail.
+  </p>
+
+  <!-- MERMAID OVERVIEW -->
+  <p class="section-heading animate" style="--i:3">Overview</p>
+
+  <div class="mermaid-wrap animate" style="--i:4">
+    <div class="zoom-controls">
+      <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+      <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+      <button onclick="resetZoom(this)" title="Reset">&#8634;</button>
+      <button onclick="openDiagramFullscreen(this)" title="Fullscreen">&#x26F6;</button>
+    </div>
+    <pre class="mermaid">
+graph TD
+  A["User Action"] --> B["settings.json<br/>dispatch"]
+  B --> C["PreToolUse<br/>enforcer &rarr; 17 gates"]
+  B --> D["PostToolUse<br/>log &middot; format &middot; track"]
+  B --> E["SessionStart<br/>boot 22-step pipeline"]
+  B --> F["SessionEnd<br/>flush &middot; backup"]
+  B --> G["UserPromptSubmit<br/>capture &middot; warnings"]
+  B --> H["6 more events<br/>SubagentStart &middot; Stop..."]
+  C -->|"exit 0"| Z["Allow"]
+  C -->|"exit 2"| Y["Block"]
+  D --> Z
+  E --> Z
+  F --> Z
+  G --> Z
+  H --> Z
+
+  classDef danger  fill:#dc262618,stroke:#dc2626,stroke-width:2px
+  classDef ok      fill:#16a34a18,stroke:#16a34a,stroke-width:1.5px
+  classDef primary fill:#0d948818,stroke:#0d9488,stroke-width:1.5px
+  classDef neutral fill:#47556918,stroke:#475569,stroke-width:1px
+
+  class C danger
+  class Z ok
+  class Y danger
+  class B primary
+  class A,D,E,F,G,H neutral
+    </pre>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend animate" style="--i:5">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--red)"></div> danger / block</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--green)"></div> success / allow</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--amber)"></div> lifecycle</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--blue)"></div> data capture</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--slate)"></div> passive / logging</div>
+  </div>
+
+  <!-- EVENT CARDS -->
+  <p class="section-heading animate" style="--i:6">Event Cards</p>
+
+  <div class="event-grid">
+
+    <!-- 01 PreToolUse -->
+    <div class="ve-card ve-card--red animate" style="--i:7">
+      <div class="ve-card-header">
+        <div class="ve-card-title">01 &middot; PreToolUse</div>
+        <span class="ve-card-badge badge--red">can block</span>
+      </div>
+      <div class="ve-card-matcher">Edit | Write | NotebookEdit | Bash | Task | Skill<br>WebFetch | WebSearch | LSP | EnterWorktree</div>
+      <div class="flow-chain">
+        <span class="flow-step">enforcer_shim.py</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">UDS socket</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">enforcer_daemon.py</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">gate_router.py</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">17 gates</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">GateResult</span>
+      </div>
+      <div class="ve-card-flow" style="margin-top:10px">
+        Exit <code>0</code> allow &nbsp;&middot;&nbsp; Exit <code>2</code> block.<br>
+        Fallback: inline <code>enforcer.py</code> if daemon down (~134ms vs ~43ms daemon).
+      </div>
+    </div>
+
+    <!-- 02 PostToolUse -->
+    <div class="ve-card ve-card--green animate" style="--i:8">
+      <div class="ve-card-header">
+        <div class="ve-card-title">02 &middot; PostToolUse</div>
+        <span class="ve-card-badge badge--green">informational</span>
+      </div>
+      <div class="ve-card-matcher">* (all tools)</div>
+      <div class="ve-card-flow">
+        <strong>event_logger.py</strong> &mdash; logs all tool results to audit trail.<br><br>
+        <strong>auto_format.py</strong> (Edit|Write) &mdash; <code>ruff</code>/<code>black</code>, 3s timeout.<br><br>
+        <strong>tracker.py</strong> (Edit|Write) &mdash; 17-step pipeline via <code>tracker_pkg/</code>; mentor system for quality signals.<br><br>
+        <strong>auto_commit.py</strong> (Edit|Write) &mdash; stages files for deferred commit.
+      </div>
+    </div>
+
+    <!-- 03 SessionStart -->
+    <div class="ve-card ve-card--amber animate" style="--i:9">
+      <div class="ve-card-header">
+        <div class="ve-card-title">03 &middot; SessionStart</div>
+        <span class="ve-card-badge badge--amber">lifecycle</span>
+      </div>
+      <div class="ve-card-matcher">* (all sessions)</div>
+      <div class="ve-card-flow">
+        <strong>boot.py</strong> &rarr; <code>boot_pkg/orchestrator.py</code> &mdash; 22-step pipeline:
+      </div>
+      <div class="flow-chain" style="margin-top:8px">
+        <span class="flow-step">ramdisk init</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">audit rotation</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">LIVE_STATE load</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">UDS check</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">memory inject</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">gate auto-tune</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">context inject</span>
+        <span class="flow-arrow-sm">&rarr;</span>
+        <span class="flow-step">state reset</span>
+      </div>
+    </div>
+
+    <!-- 04 SessionEnd -->
+    <div class="ve-card ve-card--amber animate" style="--i:10">
+      <div class="ve-card-header">
+        <div class="ve-card-title">04 &middot; SessionEnd</div>
+        <span class="ve-card-badge badge--amber">lifecycle</span>
+      </div>
+      <div class="ve-card-matcher">* (all sessions)</div>
+      <div class="ve-card-flow">
+        <strong>session_end.py</strong>:<br>
+        flush queues &middot; update <code>LIVE_STATE.json</code> &middot; increment <code>session_count</code> &middot; backup LanceDB tables.
+      </div>
+    </div>
+
+    <!-- 05 UserPromptSubmit -->
+    <div class="ve-card ve-card--blue animate" style="--i:11">
+      <div class="ve-card-header">
+        <div class="ve-card-title">05 &middot; UserPromptSubmit</div>
+        <span class="ve-card-badge badge--blue">capture</span>
+      </div>
+      <div class="ve-card-matcher">* (all prompts)</div>
+      <div class="ve-card-flow">
+        <strong>user_prompt_capture.py</strong> &mdash; captures prompt text to observation queues.<br><br>
+        <strong>statusline.py</strong> &mdash; injects warnings when: uncommitted changes present; memory not queried this turn.
+      </div>
+    </div>
+
+    <!-- 06 PermissionRequest -->
+    <div class="ve-card ve-card--slate animate" style="--i:12">
+      <div class="ve-card-header">
+        <div class="ve-card-title">06 &middot; PermissionRequest</div>
+        <span class="ve-card-badge badge--slate">passive</span>
+      </div>
+      <div class="ve-card-matcher">* (all permission checks)</div>
+      <div class="ve-card-flow">
+        <strong>auto_approve.py</strong> &mdash; auto-approves known-benign tools to reduce interactive interrupts.
+      </div>
+    </div>
+
+    <!-- 07 SubagentStart -->
+    <div class="ve-card ve-card--blue animate" style="--i:13">
+      <div class="ve-card-header">
+        <div class="ve-card-title">07 &middot; SubagentStart</div>
+        <span class="ve-card-badge badge--blue">context inject</span>
+      </div>
+      <div class="ve-card-matcher">* (all subagent launches)</div>
+      <div class="ve-card-flow">
+        <strong>subagent_context.py</strong> &mdash; injects <code>LIVE_STATE.json</code> and per-session state into the subagent's context so sub-agents share project awareness automatically.
+      </div>
+    </div>
+
+    <!-- 08 SubagentStop -->
+    <div class="ve-card ve-card--slate animate" style="--i:14">
+      <div class="ve-card-header">
+        <div class="ve-card-title">08 &middot; SubagentStop</div>
+        <span class="ve-card-badge badge--slate">logging</span>
+      </div>
+      <div class="ve-card-matcher">* (all subagent completions)</div>
+      <div class="ve-card-flow">
+        <strong>event_logger.py</strong> &mdash; records subagent completion with duration and result status to the audit trail.
+      </div>
+    </div>
+
+    <!-- 09 PreCompact -->
+    <div class="ve-card ve-card--amber animate" style="--i:15">
+      <div class="ve-card-header">
+        <div class="ve-card-title">09 &middot; PreCompact</div>
+        <span class="ve-card-badge badge--amber">lifecycle</span>
+      </div>
+      <div class="ve-card-matcher">* (before context compression)</div>
+      <div class="ve-card-flow">
+        <strong>pre_compact.py</strong> &mdash; snapshots current gate state, queue depths, and session metrics before context window compression so continuity is preserved across the compaction boundary.
+      </div>
+    </div>
+
+    <!-- 10 Stop -->
+    <div class="ve-card ve-card--amber animate" style="--i:16">
+      <div class="ve-card-header">
+        <div class="ve-card-title">10 &middot; Stop</div>
+        <span class="ve-card-badge badge--amber">lifecycle</span>
+      </div>
+      <div class="ve-card-matcher">* (Claude response complete)</div>
+      <div class="ve-card-flow">
+        <strong>stop_cleanup.py</strong> &mdash; flushes I/O buffers, shuts down background daemons cleanly.<br><br>
+        <strong>tts_signal.py</strong> &mdash; emits audio signal indicating response is ready.
+      </div>
+    </div>
+
+    <!-- 11 PostToolUseFailure -->
+    <div class="ve-card ve-card--red animate" style="--i:17">
+      <div class="ve-card-header">
+        <div class="ve-card-title">11 &middot; PostToolUseFailure</div>
+        <span class="ve-card-badge badge--red">error recovery</span>
+      </div>
+      <div class="ve-card-matcher">* (any tool error)</div>
+      <div class="ve-card-flow">
+        <strong>failure_recovery.py</strong> &mdash; records failure context, triggers retry hints, escalates to state if recurring.<br><br>
+        <strong>event_logger.py</strong> &mdash; captures error trace to audit log.
+      </div>
+    </div>
+
+    <!-- 12 Notification -->
+    <div class="ve-card ve-card--slate animate" style="--i:18">
+      <div class="ve-card-header">
+        <div class="ve-card-title">12 &middot; Notification</div>
+        <span class="ve-card-badge badge--slate">signal</span>
+      </div>
+      <div class="ve-card-matcher">* (system notifications)</div>
+      <div class="ve-card-flow">
+        <strong>tts_signal.py</strong> &mdash; converts notification events to audio signals for ambient awareness without screen focus.
+      </div>
+    </div>
+
+    <!-- 13 ConfigChange -->
+    <div class="ve-card ve-card--primary animate" style="--i:19">
+      <div class="ve-card-header">
+        <div class="ve-card-title">13 &middot; ConfigChange</div>
+        <span class="ve-card-badge badge--primary">hot-reload</span>
+      </div>
+      <div class="ve-card-matcher">user_settings | project_settings</div>
+      <div class="ve-card-flow">
+        <strong>config_change.py</strong> &mdash; hot-reloads <code>config.json</code> changes into the running session without restart. Gate thresholds, model budgets, and bypass lists update immediately.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CALLOUT -->
+  <div class="callout animate" style="--i:20">
+    <strong>Exit code contract:</strong> Exit <code>0</code> = allow. Exit <code>2</code> = block (PreToolUse only &mdash; stderr shown to Claude). Exit <code>1</code> = non-blocking error (logged, proceeds). Only PreToolUse handlers can halt an action. All other event types are informational.
+  </div>
+
+</div>
+
+<!-- ============ MERMAID ============ -->
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      primaryColor:         isDark ? '#0e4f4b' : '#ccfbf1',
+      primaryBorderColor:   isDark ? '#2dd4bf' : '#0d9488',
+      primaryTextColor:     isDark ? '#ccfbf1' : '#134e4a',
+      secondaryColor:       isDark ? '#0c4a6e' : '#e0f2fe',
+      secondaryBorderColor: isDark ? '#38bdf8' : '#0369a1',
+      secondaryTextColor:   isDark ? '#ccfbf1' : '#134e4a',
+      tertiaryColor:        isDark ? '#2e2618' : '#fffbeb',
+      tertiaryBorderColor:  isDark ? '#fbbf24' : '#b45309',
+      tertiaryTextColor:    isDark ? '#ccfbf1' : '#134e4a',
+      lineColor:            isDark ? '#5eead4' : '#5f8a85',
+      fontSize: '15px',
+      fontFamily: "'Bricolage Grotesque', system-ui, sans-serif",
+      noteBkgColor:    isDark ? '#0e4f4b' : '#fefce8',
+      noteTextColor:   isDark ? '#ccfbf1' : '#134e4a',
+      noteBorderColor: isDark ? '#fbbf24' : '#b45309',
+    }
+  });
+</script>
+
+<!-- ============ ZOOM + PAN ============ -->
+<script>
+  var INITIAL_ZOOM = 1;
+
+  function zoomDiagram(btn, factor) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+    var next = Math.min(Math.max(current * factor, 0.4), 6);
+    target.dataset.zoom = next;
+    target.style.zoom = next;
+  }
+
+  function resetZoom(btn) {
+    var wrap = btn.closest('.mermaid-wrap');
+    var target = wrap.querySelector('.mermaid');
+    target.dataset.zoom = INITIAL_ZOOM;
+    target.style.zoom = INITIAL_ZOOM;
+  }
+
+  function openDiagramFullscreen(btn) {
+    openMermaidInNewTab(btn.closest('.mermaid-wrap'));
+  }
+
+  function openMermaidInNewTab(wrap) {
+    var svg = wrap.querySelector('.mermaid svg');
+    if (!svg) return;
+    var clone = svg.cloneNode(true);
+    clone.style.zoom = '';
+    clone.style.transform = '';
+    var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#f0fdfa';
+    var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1.0">' +
+      '<title>Hook Pipeline</title>' +
+      '<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:' + bg + ';padding:40px;box-sizing:border-box;}' +
+      'svg{max-width:100%;max-height:90vh;height:auto;}</style>' +
+      '</head><body>' + clone.outerHTML + '</body></html>';
+    window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+  }
+
+  document.querySelectorAll('.mermaid-wrap').forEach(function(wrap) {
+    wrap.addEventListener('wheel', function(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var target = wrap.querySelector('.mermaid');
+      var current = parseFloat(target.dataset.zoom || INITIAL_ZOOM);
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      var next = Math.min(Math.max(current * factor, 0.4), 6);
+      target.dataset.zoom = next;
+      target.style.zoom = next;
+    }, { passive: false });
+
+    var startX, startY, scrollL, scrollT, startTime, didPan;
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.zoom-controls')) return;
+      wrap.classList.add('is-panning');
+      startX = e.clientX; startY = e.clientY;
+      scrollL = wrap.scrollLeft; scrollT = wrap.scrollTop;
+      startTime = Date.now(); didPan = false;
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!wrap.classList.contains('is-panning')) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didPan = true;
+      wrap.scrollLeft = scrollL - dx;
+      wrap.scrollTop  = scrollT - dy;
+    });
+    window.addEventListener('mouseup', function() {
+      if (!wrap.classList.contains('is-panning')) return;
+      wrap.classList.remove('is-panning');
+      if (!didPan && Date.now() - startTime < 300) openMermaidInNewTab(wrap);
+    });
+  });
+</script>
+
+</body>
+</html>
