@@ -1,19 +1,19 @@
 {
-  "session_count": 349,
+  "session_count": 352,
   "project": "torus-framework",
-  "feature": "voice-web-per-session-tts-stt",
+  "feature": "mcp-server-reactivation",
   "framework_version": "v2.5.9",
-  "what_was_done": "Implemented per-session TTS and STT state for voice-web tabs. TTS: independent polling/playback per session via ttsState map. STT: mic preference saved/restored on tab switch. Enabled agent-teams in settings.json.",
+  "what_was_done": "Re-enabled all 3 MCP servers (analytics, search, web-search) in mcp.json. Fixed duplicate gate_correlation_report tool in analytics_server.py. Verified memory server LanceDB connects after warmup.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
-    "Memory DB at 2207 entries — run maintenance(action='stale') for cleanup",
+    "Memory DB at 2209 entries — run maintenance(action='stale') for cleanup",
     "Boot hook circuit breaker spam ([CB] memory_socket OPEN) — cosmetic, non-blocking"
   ],
   "next_steps": [
+    "Restart session to activate analytics/search/web-search MCP servers",
     "Add state-based warnings to UserPromptSubmit hook (unsaved fixes, unqueried memory, open causal chains)",
     "Upgrade original trading-framework for autonomous operation (Telegram alerts, paper mode testing)",
-    "Post framework showcase on Claude Code GitHub discussions and X/Twitter",
-    "Build /genesis skill (plan at plans/peppy-humming-twilight.md)"
+    "Post framework showcase on Claude Code GitHub discussions and X/Twitter"
   ]
 }
