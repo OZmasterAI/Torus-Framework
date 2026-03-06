@@ -1,20 +1,19 @@
 {
-  "session_count": 348,
+  "session_count": 349,
   "project": "torus-framework",
-  "feature": "voice-web-multi-session-tabs",
+  "feature": "voice-web-per-session-tts-stt",
   "framework_version": "v2.5.9",
-  "what_was_done": "Implemented multi-session tabs for voice-web. One server, one port, tab bar to switch tmux sessions. Added /tmux-sessions endpoint, target-aware /last-response and WS handler. Client renders pill-style tab bar after auth, sends target with each message. Deleted config-chainovi.json and removed --config multi-port approach. Verified working with 3 sessions (claude, chainovi, voxterm).",
+  "what_was_done": "Implemented per-session TTS and STT state for voice-web tabs. TTS: independent polling/playback per session via ttsState map. STT: mic preference saved/restored on tab switch. Enabled agent-teams in settings.json.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
-    "Memory DB at 2182 entries \u2014 run maintenance(action='stale') for cleanup",
-    "Boot hook circuit breaker spam ([CB] memory_socket OPEN) \u2014 cosmetic, non-blocking"
+    "Memory DB at 2207 entries — run maintenance(action='stale') for cleanup",
+    "Boot hook circuit breaker spam ([CB] memory_socket OPEN) — cosmetic, non-blocking"
   ],
   "next_steps": [
     "Add state-based warnings to UserPromptSubmit hook (unsaved fixes, unqueried memory, open causal chains)",
     "Upgrade original trading-framework for autonomous operation (Telegram alerts, paper mode testing)",
     "Post framework showcase on Claude Code GitHub discussions and X/Twitter",
     "Build /genesis skill (plan at plans/peppy-humming-twilight.md)"
-  ],
-  "last_response_preview": "That's a much better design. One server, one port, tabs to switch tmux sessions. The architecture already supports it since signal files are per-target.\n\nThe changes would be:\n\n1. **Server** \u2014 add `/tmux-sessions` endpoint that lists active tmux sessions\n2. **Client** \u2014 tab bar at the top showing available sessions, clicking one switches which target messages go to\n3. **WebSocket** \u2014 client sends the target with each message (e.g. `{\"type\": \"message\", \"text\": \"...\", \"target\": \"chainovi\"}`)\n4. **"
+  ]
 }
