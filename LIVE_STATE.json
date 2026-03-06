@@ -1,13 +1,13 @@
 {
-  "session_count": 356,
+  "session_count": 357,
   "project": "torus-framework",
   "feature": "mcp-server-loading",
   "framework_version": "v2.5.9",
-  "what_was_done": "Found root cause of analytics/search MCP servers not loading: enabledMcpjsonServers allowlist in settings.local.json only had 'memory'. Added analytics+search, removed redundant web-search server.",
+  "what_was_done": "Fixed MCP server loading (3rd recurrence): registered analytics+search in ~/.claude.json via `claude mcp add --scope user`. Root cause: servers only in ignored mcp.json, not ~/.claude.json.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
-    "Memory DB at 2213 entries — run maintenance(action='stale') for cleanup",
+    "Memory DB at 2215 entries — run maintenance(action='stale') for cleanup",
     "Boot hook circuit breaker spam ([CB] memory_socket OPEN) — cosmetic, non-blocking"
   ],
   "next_steps": [
