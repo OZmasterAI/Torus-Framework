@@ -1251,4 +1251,46 @@ try:
 except Exception as _gr_exc:
     test("Gate 04/07/13/15 Refactored Tests: import and tests", False, str(_gr_exc))
 
+# --- Gate 19: Hindsight Cascade Reset ---
+print("\n--- Gate 19: Hindsight Cascade Reset ---")
+try:
+    from gates.gate_19_hindsight import check as g19_check
+
+    # Test: blocks when score low + escalations high
+    _g19_state1 = {
+        "mentor_last_score": 0.1,
+        "mentor_last_verdict": "escalate",
+        "mentor_escalation_count": 3,
+        "gate19_consecutive_blocks": 0,
+    }
+    _g19_r1 = g19_check("Edit", {"file_path": "/tmp/code.py"}, _g19_state1)
+    test("Gate 19: blocks on low score + escalations", _g19_r1.blocked)
+    test("Gate 19: increments consecutive block counter", _g19_state1.get("gate19_consecutive_blocks") == 1)
+
+    # Test: cascade reset after CASCADE_BLOCK_LIMIT consecutive blocks
+    _g19_state2 = {
+        "mentor_last_score": 0.1,
+        "mentor_last_verdict": "escalate",
+        "mentor_escalation_count": 3,
+        "gate19_consecutive_blocks": 3,  # at limit
+    }
+    _g19_r2 = g19_check("Edit", {"file_path": "/tmp/code.py"}, _g19_state2)
+    test("Gate 19: cascade reset allows through after limit", not _g19_r2.blocked)
+    test("Gate 19: resets escalation_count on cascade reset", _g19_state2.get("mentor_escalation_count") == 0)
+    test("Gate 19: resets mentor_last_score to 0.5", _g19_state2.get("mentor_last_score") == 0.5)
+    test("Gate 19: resets block counter", _g19_state2.get("gate19_consecutive_blocks") == 0)
+
+    # Test: normal allow resets block counter
+    _g19_state3 = {
+        "mentor_last_score": 0.8,
+        "mentor_last_verdict": "proceed",
+        "mentor_escalation_count": 0,
+        "gate19_consecutive_blocks": 2,
+    }
+    _g19_r3 = g19_check("Edit", {"file_path": "/tmp/code.py"}, _g19_state3)
+    test("Gate 19: normal allow resets block counter", _g19_state3.get("gate19_consecutive_blocks") == 0)
+
+except Exception as _g19_exc:
+    test("Gate 19 Cascade Reset: import and tests", False, str(_g19_exc))
+
 # --- Memory Decay Deep Tests ---
