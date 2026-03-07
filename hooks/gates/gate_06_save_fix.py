@@ -104,11 +104,18 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     # Repair loop detection — warn when the same error recurs 3+ times
     # Time-aware: skip warning if the error pattern is stale (>10 min old)
+    # Scoped: only warn about ToolFail patterns when the current tool matches
+    # (e.g., ToolFail:WebFetch should not block Edit/Write)
     pattern_counts = state.get("error_pattern_counts", {})
     error_windows = state.get("error_windows", [])
     now = time.time()
     STALE_THRESHOLD = 600  # 10 minutes
     for pat, count in pattern_counts.items():
+        # Skip ToolFail patterns that don't match the current tool
+        if pat.startswith("ToolFail:"):
+            failed_tool = pat.split(":", 1)[1]
+            if failed_tool != tool_name:
+                continue
         if count >= 3:
             # Check if this pattern has a recent entry in error_windows
             is_stale = False
