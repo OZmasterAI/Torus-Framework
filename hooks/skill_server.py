@@ -137,16 +137,22 @@ _SELF_IMPROVE_SKILLS = {
     "super-evolve": "Evolution cycle — identify and implement framework improvements",
     "super-health": "Comprehensive health diagnostic — full system check",
     "super-prof-optimize": "Performance profiling and optimization — find and fix bottlenecks",
+    "code-hotspots": "Identify high-risk files from gate block patterns in audit logs",
+    "generate-test-stubs": "Auto-generate test stubs for a Python module using AST analysis",
+    "replay-events": "Replay historical tool events through gate pipeline for regression testing",
+    "tool-recommendations": "Suggest alternative tools for frequently blocked tools",
+    "gate-health-correlation": "Detect gate redundancy and synergy from fire patterns",
+    "causal-chain-analysis": "Analyze fix outcomes to detect patterns and suggest improvements",
 }
 
 
 @mcp.tool()
 @crash_proof
 def self_improve(action: str) -> dict:
-    """Run a self-improvement skill. Actions: sprint (multi-agent improvement), audit (full project audit), diagnose (gate effectiveness), analyze-errors (recurring errors), benchmark (performance baseline), introspect (deep self-analysis), super-evolve (evolution cycle), super-health (health diagnostic), super-prof-optimize (profiling & optimization)
+    """Run a self-improvement skill. Actions: sprint (multi-agent improvement), audit (full project audit), diagnose (gate effectiveness), analyze-errors (recurring errors), benchmark (performance baseline), introspect (deep self-analysis), super-evolve (evolution cycle), super-health (health diagnostic), super-prof-optimize (profiling & optimization), code-hotspots (high-risk files), generate-test-stubs (auto-generate tests), replay-events (gate regression testing), tool-recommendations (blocked tool alternatives), gate-health-correlation (gate redundancy analysis), causal-chain-analysis (fix outcome patterns)
 
     Args:
-        action: One of: sprint, audit, diagnose, analyze-errors, benchmark, introspect, super-evolve, super-health, super-prof-optimize
+        action: One of: sprint, audit, diagnose, analyze-errors, benchmark, introspect, super-evolve, super-health, super-prof-optimize, code-hotspots, generate-test-stubs, replay-events, tool-recommendations, gate-health-correlation, causal-chain-analysis
     """
     if action not in _SELF_IMPROVE_SKILLS:
         return {
