@@ -7,7 +7,7 @@
     <a href="https://github.com/OZmasterAI/Torus-Framework/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
     <img src="https://img.shields.io/badge/Python-3.10+-green.svg" alt="Python">
     <img src="https://img.shields.io/badge/Platform-Linux-lightgrey.svg" alt="Platform">
-    <img src="https://img.shields.io/badge/Framework-v2.6-orange.svg" alt="Version">
+    <img src="https://img.shields.io/badge/Framework-v2.6.5-orange.svg" alt="Version">
   </p>
 </p>
 

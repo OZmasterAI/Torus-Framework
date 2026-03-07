@@ -6,8 +6,19 @@ BEFORE building/fixing ANYTHING: search_knowledge("[what you're about to do]")
 AFTER any fix/decision/failed-approach/preference: remember_this(content, context, tags)
 For errors: use Causal Chain (below) then remember_this()
 
-## THE LOOP
-memory check → plan → tests first → build → prove it → track → ship
+## THE LOOP (mandatory — do not skip steps)
+memory → /brainstorm → /writing-plans → /implement → /test → /review → /commit
+- Do NOT use EnterPlanMode — /brainstorm replaces it
+- For quick fixes: memory → /fix → /test → /commit (skip brainstorm/writing-plans)
+
+## SKILL TRIGGERS (on-demand via MCP skill library)
+- "fix/debug/broken" → invoke_skill("fix")
+- "explore/trace/how does" → invoke_skill("explore")
+- "deep-dive/full context" → invoke_skill("deep-dive")
+- "status/health" → invoke_skill("status")
+- "research/investigate" → invoke_skill("research")
+- "learn [url]/teach" → invoke_skill("learn")
+- "wrap up/done" → /wrap-up
 
 ## CAUSAL CHAIN (for errors)
 1. query_fix_history("error") → 2. record_attempt("error", "strategy") → 3. Fix + test → 4. record_outcome(chain_id, result) → 5. remember_this(type:fix)
@@ -16,7 +27,7 @@ memory check → plan → tests first → build → prove it → track → ship
 1. **Prove it** — Never claim "fixed" without test output evidence
 2. **Save to memory** — Every fix, discovery, decision → remember_this()
 3. **Protect context** — Delegate heavy ops to sub-agents
-4. **Plan mode** — Never write code in plan mode. explore + plan → ExitPlanMode → approval → implement. If rejected, ask what's wrong. Max 1 ExitPlanMode per turn.
+4. **No plan mode** — Use /brainstorm + /writing-plans instead of EnterPlanMode. Present options directly to user.
 5. **Never guess** — Never assume file paths, branch state, or system state. Read/Glob/search_knowledge first. Unverified = unknown.
 6. **Model selection** — Gate 10 enforces model_profile from config.json. Do not override.
 7. **Gate awareness** — Gates enforce Edit/Write/Bash/Task automatically. Read/Glob/Grep are ungated — self-enforce rule 5.

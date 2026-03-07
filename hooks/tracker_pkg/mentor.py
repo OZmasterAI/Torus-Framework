@@ -79,8 +79,12 @@ def _eval_bash(tool_name, tool_input, tool_response, state) -> List[Signal]:
             signals.append(Signal("test_fail", 0.0, 2.0, f"Tests failed (exit {exit_code})"))
 
     # Error loop detection
+    # Scoped: skip ToolFail:X patterns where X ≠ "Bash" — unrelated tool
+    # failures (e.g., ToolFail:WebFetch) shouldn't tank the mentor score
     error_counts = state.get("error_pattern_counts", {}) if isinstance(state, dict) else {}
     for pattern, count in error_counts.items():
+        if pattern.startswith("ToolFail:") and pattern != "ToolFail:Bash":
+            continue
         if count >= 3:
             signals.append(Signal(
                 "error_loop", 0.1, 1.5,
