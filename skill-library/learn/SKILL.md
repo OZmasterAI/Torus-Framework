@@ -1,6 +1,6 @@
 ---
 name: learn
-description: Learn from external sources (URLs, topics, questions) and integrate knowledge into the framework. Researches, analyzes, cross-references memory, synthesizes actionable findings, and optionally applies code improvements following The Loop.
+description: Learn from URLs or topics, research and save findings to memory.
 ---
 
 # /learn — Learn from External Sources and Integrate Knowledge

@@ -402,6 +402,45 @@ test("Gate 6 no repair loop for count < 3",
      "REPAIR LOOP" not in _g6d_err8.getvalue(),
      f"Expected no REPAIR LOOP, got: {_g6d_err8.getvalue()[:100]!r}")
 
+# Test 8b: Gate 6 ToolFail scoping — ToolFail:WebFetch should NOT warn when tool is Edit
+_g6d_state8b = default_state()
+_g6d_state8b["error_pattern_counts"] = {"ToolFail:WebFetch": 5}
+_g6d_state8b["error_windows"] = [{"pattern": "ToolFail:WebFetch", "first_seen": time.time() - 60, "last_seen": time.time() - 10, "count": 5}]
+_g6d_state8b["_session_id"] = MAIN_SESSION
+_g6d_err8b = _io229.StringIO()
+sys.stderr = _g6d_err8b
+gate6_check_229("Edit", {"file_path": "/tmp/x.py"}, _g6d_state8b)
+sys.stderr = _orig_stderr229
+test("Gate 6 ToolFail:WebFetch does NOT warn on Edit (scoped)",
+     "REPAIR LOOP" not in _g6d_err8b.getvalue(),
+     f"Expected no REPAIR LOOP for mismatched tool, got: {_g6d_err8b.getvalue()[:100]!r}")
+
+# Test 8c: Gate 6 ToolFail scoping — ToolFail:Bash DOES warn when tool is Bash
+_g6d_state8c = default_state()
+_g6d_state8c["error_pattern_counts"] = {"ToolFail:Bash": 4}
+_g6d_state8c["error_windows"] = [{"pattern": "ToolFail:Bash", "first_seen": time.time() - 60, "last_seen": time.time() - 10, "count": 4}]
+_g6d_state8c["_session_id"] = MAIN_SESSION
+_g6d_err8c = _io229.StringIO()
+sys.stderr = _g6d_err8c
+gate6_check_229("Bash", {"command": "echo hi"}, _g6d_state8c)
+sys.stderr = _orig_stderr229
+test("Gate 6 ToolFail:Bash DOES warn on Bash (scoped match)",
+     "REPAIR LOOP" in _g6d_err8c.getvalue(),
+     f"Expected REPAIR LOOP for matching tool, got: {_g6d_err8c.getvalue()[:100]!r}")
+
+# Test 8d: Non-ToolFail patterns still warn regardless of tool
+_g6d_state8d = default_state()
+_g6d_state8d["error_pattern_counts"] = {"SyntaxError": 4}
+_g6d_state8d["error_windows"] = [{"pattern": "SyntaxError", "first_seen": time.time() - 60, "last_seen": time.time() - 10, "count": 4}]
+_g6d_state8d["_session_id"] = MAIN_SESSION
+_g6d_err8d = _io229.StringIO()
+sys.stderr = _g6d_err8d
+gate6_check_229("Write", {"file_path": "/tmp/x.py"}, _g6d_state8d)
+sys.stderr = _orig_stderr229
+test("Gate 6 non-ToolFail pattern still warns on any tool",
+     "REPAIR LOOP" in _g6d_err8d.getvalue(),
+     f"Expected REPAIR LOOP for SyntaxError, got: {_g6d_err8d.getvalue()[:100]!r}")
+
 # Test 9: STALE_FIX_SECONDS constant exists
 from gates.gate_06_save_fix import STALE_FIX_SECONDS
 test("STALE_FIX_SECONDS is 1200 (20 min)",
@@ -895,6 +934,21 @@ for _exempt_file, _exempt_label in [
 ]:
     _g14_re = _g14_check("Write", {"file_path": _exempt_file}, _g14_state4)
     test(f"Gate14: exempt {_exempt_label} → allowed", not _g14_re.blocked)
+
+# Test 7: Greenfield — Write to non-existent file allowed even with pending_verification
+_g14_state5 = default_state()
+_g14_state5["session_test_baseline"] = True
+_g14_state5["pending_verification"] = ["/tmp/already_edited.py"]
+_g14_greenfield_path = "/tmp/_gate14_test_nonexistent_file_" + str(int(time.time())) + ".py"
+_g14_r_gf = _g14_check("Write", {"file_path": _g14_greenfield_path}, _g14_state5)
+test("Gate14: greenfield Write to new file → allowed despite pending",
+     not _g14_r_gf.blocked)
+
+# Test 8: Write to existing file with pending → still blocked (not greenfield)
+_g14_existing_path = os.path.join(os.path.dirname(__file__), "..", "gates", "gate_14_confidence_check.py")
+_g14_r_existing = _g14_check("Write", {"file_path": _g14_existing_path}, _g14_state5)
+test("Gate14: Write to existing file with pending → blocked",
+     _g14_r_existing.blocked)
 
 # ─────────────────────────────────────────────────
 # Gate 15: Causal Chain Enforcement

@@ -1,7 +1,7 @@
-# /loop — Torus Loop Orchestrator
+# /prp-run — Sequential PRP Task Runner
 
 ## When to use
-When user says "loop", "start loop", "run loop", "torus loop", or wants to execute
+When user says "prp run", "run prp", "run tasks", or wants to execute
 a PRP's tasks via fresh Claude instances for maximum reasoning quality.
 
 ## Commands

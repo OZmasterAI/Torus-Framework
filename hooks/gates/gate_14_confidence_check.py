@@ -37,6 +37,13 @@ def _is_re_edit(file_path, state):
     return norm in pending or file_path in pending
 
 
+def _is_new_file(file_path):
+    """Check if this is a Write to a file that doesn't exist yet (greenfield)."""
+    if not file_path:
+        return False
+    return not os.path.exists(file_path)
+
+
 def _check_signals(state, file_path=""):
     """Check confidence signals. Returns list of failed signal descriptions."""
     failures = []
@@ -75,6 +82,11 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     # Re-edits of pending files are allowed (iteration)
     if _is_re_edit(file_path, state):
+        return GateResult(blocked=False, gate_name=GATE_NAME)
+
+    # Greenfield: creating a new file that doesn't exist yet — allow through.
+    # Pending verification from other files shouldn't block new file creation.
+    if tool_name == "Write" and _is_new_file(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check confidence signals — block immediately on failure

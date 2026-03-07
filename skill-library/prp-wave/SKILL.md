@@ -1,7 +1,7 @@
-# /wave — Torus Wave Orchestrator
+# /prp-wave — Parallel PRP Task Runner
 
 ## When to use
-When user says "wave", "start wave", "run wave", "parallel tasks", or wants to execute
+When user says "prp wave", "parallel prp", "batch tasks", or wants to execute
 a PRP's tasks via parallel execution for maximum throughput.
 
 Two modes:

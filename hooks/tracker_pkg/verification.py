@@ -4,7 +4,7 @@ import time
 
 from shared.state import update_gate_effectiveness
 
-BROAD_TEST_COMMANDS = ["pytest", "python -m pytest", "python3 test_framework.py", "python test_framework.py", "npm test", "cargo test", "go test", "make test"]
+BROAD_TEST_COMMANDS = ["pytest", "python -m pytest", "python3 test_framework.py", "python test_framework.py", "npm test", "npx vitest", "npx jest", "cargo test", "go test", "make test"]
 
 
 def _classify_verification_score(command):
