@@ -1,23 +1,21 @@
 {
-  "session_count": 370,
+  "session_count": 371,
   "project": "torus-framework",
   "feature": "torus-pi-agent",
   "framework_version": "v2.6",
-  "what_was_done": "Built Torus-Pi-Agent TypeScript extension at ~/projects/torus-pi-agent/. Full TS port with 3 gates (read-before-edit, no-destroy, memory-first), enforcer pipeline, state manager, pi-agent extension entry point. 47 tests passing. Cloned pi-mono, explored extension API.",
+  "what_was_done": "Live integration test of Torus extension in pi-agent. Symlinked dist to ~/.pi/agent/extensions/, hot-reloaded. Gate 02 blocked rm -rf, Gate 04 blocked unqueried edits. Added TORUS_MEMORY env guard to gate-04.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
     "Diagram 03 gate names slightly genericized — needs correction to match ARCHITECTURE.md",
-    "test_framework.py: ModuleNotFoundError on test_integration.py (index module) — pre-existing",
-    "EnterPlanMode still available — consider gate 20 redirect to enforce /brainstorm",
+    "Pi-agent edit tool inherently requires read-first (oldText match) — Gate 01 mainly guards write tool",
     "tmux session naming: claude + claude1 can share same pane — verify with list-panes before send-keys"
   ],
   "next_steps": [
-    "Integration test torus-pi-agent with live pi-agent instance",
     "Add LanceDB JS + @xenova/transformers for memory/embeddings to torus-pi-agent",
     "Port remaining 13 gates to torus-pi-agent TypeScript",
-    "Submit injection-guard PR to anthropics/claude-code",
     "Monitor PR #31633 for review feedback",
-    "Verify Agent 1 + Agent 2 combined changes on OptimisticChain"
+    "Test Gate 01 with write tool (not edit) to verify read-before-write enforcement",
+    "Add pi manifest (\"pi\" field) to torus-pi-agent package.json for cleaner discovery"
   ]
 }
