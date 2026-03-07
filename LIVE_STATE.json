@@ -3,19 +3,19 @@
   "project": "torus-framework",
   "feature": "torus-pi-agent",
   "framework_version": "v2.6",
-  "what_was_done": "Live integration test of Torus extension in pi-agent. Symlinked dist to ~/.pi/agent/extensions/, hot-reloaded. Gate 02 blocked rm -rf, Gate 04 blocked unqueried edits. Added TORUS_MEMORY env guard to gate-04.",
+  "what_was_done": "Ported gates 03, 07, 17 to torus-pi-agent. Live tested: Gate 03 blocked docker push, Gate 02 blocked rm -rf. Discovered /reload caching bug — full restart required. 6 gates active, 71 tests, 12 test files.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
     "Diagram 03 gate names slightly genericized — needs correction to match ARCHITECTURE.md",
-    "Pi-agent edit tool inherently requires read-first (oldText match) — Gate 01 mainly guards write tool",
-    "tmux session naming: claude + claude1 can share same pane — verify with list-panes before send-keys"
+    "Pi-agent /reload does NOT pick up code changes to extensions — must restart pi-agent after rebuild",
+    "Pi-agent edit tool inherently requires read-first (oldText match) — Gate 01 mainly guards write tool"
   ],
   "next_steps": [
     "Add LanceDB JS + @xenova/transformers for memory/embeddings to torus-pi-agent",
-    "Port remaining 13 gates to torus-pi-agent TypeScript",
+    "Port remaining 10 gates — evaluate which apply to pi-agent vs Claude Code-specific",
     "Monitor PR #31633 for review feedback",
-    "Test Gate 01 with write tool (not edit) to verify read-before-write enforcement",
+    "Test Gate 17 injection defense with actual injection payloads in pi-agent",
     "Add pi manifest (\"pi\" field) to torus-pi-agent package.json for cleaner discovery"
   ]
 }
