@@ -1,9 +1,9 @@
 {
-  "session_count": 369,
+  "session_count": 370,
   "project": "torus-framework",
-  "feature": "swarm-orchestration",
+  "feature": "torus-pi-agent",
   "framework_version": "v2.6",
-  "what_was_done": "Designed + tested multi-agent swarm orchestration via tmux. Spawned 2 worker agents on OptimisticChain (op-geth Go mods + genesis config), both completed with full framework enforcement. Proved no script needed — orchestrator pattern using task files + tmux send-keys.",
+  "what_was_done": "Built Torus-Pi-Agent TypeScript extension at ~/projects/torus-pi-agent/. Full TS port with 3 gates (read-before-edit, no-destroy, memory-first), enforcer pipeline, state manager, pi-agent extension entry point. 47 tests passing. Cloned pi-mono, explored extension API.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
@@ -13,11 +13,11 @@
     "tmux session naming: claude + claude1 can share same pane — verify with list-panes before send-keys"
   ],
   "next_steps": [
-    "Submit injection-guard PR to anthropics/claude-code (wait 1-2 days after safe-edit-guard)",
-    "Monitor PR #31633 for review feedback — adjust style if requested",
-    "Verify Agent 1 + Agent 2 combined changes on OptimisticChain — run full build + tests",
-    "Build gate 20 (tool redirect) to block EnterPlanMode → use /brainstorm",
-    "Run memory maintenance(action='stale') — DB at 2342 entries",
-    "Post Discord + Twitter announcements for v2.6 (drafts ready)"
+    "Integration test torus-pi-agent with live pi-agent instance",
+    "Add LanceDB JS + @xenova/transformers for memory/embeddings to torus-pi-agent",
+    "Port remaining 13 gates to torus-pi-agent TypeScript",
+    "Submit injection-guard PR to anthropics/claude-code",
+    "Monitor PR #31633 for review feedback",
+    "Verify Agent 1 + Agent 2 combined changes on OptimisticChain"
   ]
 }
