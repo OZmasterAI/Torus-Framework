@@ -1,21 +1,22 @@
 {
-  "session_count": 371,
+  "session_count": 372,
   "project": "torus-framework",
   "feature": "torus-pi-agent",
   "framework_version": "v2.6",
-  "what_was_done": "Ported gates 03, 07, 17 to torus-pi-agent. Live tested: Gate 03 blocked docker push, Gate 02 blocked rm -rf. Discovered /reload caching bug — full restart required. 6 gates active, 71 tests, 12 test files.",
+  "what_was_done": "Built memory layer (LanceDB+HF embeddings), ported all 17 gates, created AGENTS.md, added promptGuidelines to tools, added auto-RAG via before_provider_request, updated pi-agent to v0.57.0.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
-    "Diagram 03 gate names slightly genericized — needs correction to match ARCHITECTURE.md",
     "Pi-agent /reload does NOT pick up code changes to extensions — must restart pi-agent after rebuild",
-    "Pi-agent edit tool inherently requires read-first (oldText match) — Gate 01 mainly guards write tool"
+    "Pi-agent edit tool inherently requires read-first (oldText match) — Gate 01 mainly guards write tool",
+    "Pi-agent memory store is separate from Claude Code memory (different LanceDB at ~/.torus/memory/lancedb/)"
   ],
   "next_steps": [
-    "Add LanceDB JS + @xenova/transformers for memory/embeddings to torus-pi-agent",
-    "Port remaining 10 gates — evaluate which apply to pi-agent vs Claude Code-specific",
-    "Monitor PR #31633 for review feedback",
+    "Port causal chain tools (record_attempt, record_outcome, query_fix_history) — straightforward",
+    "Add resources_discover handler for dynamic session context (LIVE_STATE equivalent) — straightforward",
+    "Port skills to pi-agent's skill system (/brainstorm, /implement, etc.) — needs quick explore of pi skill docs",
     "Test Gate 17 injection defense with actual injection payloads in pi-agent",
-    "Add pi manifest (\"pi\" field) to torus-pi-agent package.json for cleaner discovery"
+    "Add pi manifest (\"pi\" field) to torus-pi-agent package.json for cleaner discovery",
+    "Monitor PR #31633 for review feedback"
   ]
 }
