@@ -1,22 +1,23 @@
 {
-  "session_count": 372,
+  "session_count": 374,
   "project": "torus-framework",
   "feature": "torus-pi-agent",
   "framework_version": "v2.6",
-  "what_was_done": "Built memory layer (LanceDB+HF embeddings), ported all 17 gates, created AGENTS.md, added promptGuidelines to tools, added auto-RAG via before_provider_request, updated pi-agent to v0.57.0.",
+  "what_was_done": "Ported causal chain tools, resources_discover, 5 skills, 7 analytics tools + audit trail infrastructure. Full gap audit: 5 meaningful gaps remain.",
   "known_issues": [
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
-    "Pi-agent /reload does NOT pick up code changes to extensions — must restart pi-agent after rebuild",
-    "Pi-agent edit tool inherently requires read-first (oldText match) — Gate 01 mainly guards write tool",
+    "Pi-agent /reload does NOT pick up code changes to extensions \u2014 must restart pi-agent after rebuild",
     "Pi-agent memory store is separate from Claude Code memory (different LanceDB at ~/.torus/memory/lancedb/)"
   ],
   "next_steps": [
-    "Port causal chain tools (record_attempt, record_outcome, query_fix_history) — straightforward",
-    "Add resources_discover handler for dynamic session context (LIVE_STATE equivalent) — straightforward",
-    "Port skills to pi-agent's skill system (/brainstorm, /implement, etc.) — needs quick explore of pi skill docs",
+    "Build circuit breakers \u2014 per-gate failure tracking, auto-trip after N failures, cooldown reset",
+    "Build observation capture \u2014 auto-log tool call summaries to LanceDB observations table",
+    "Add gate_timing, rw_ratio, all_metrics analytics tools",
+    "Add fuzzy_search \u2014 BM25 keyword search complement to semantic search",
+    "Build memory maintenance \u2014 decay old memories, dedup, compaction",
     "Test Gate 17 injection defense with actual injection payloads in pi-agent",
-    "Add pi manifest (\"pi\" field) to torus-pi-agent package.json for cleaner discovery",
-    "Monitor PR #31633 for review feedback"
-  ]
+    "Add pi manifest (\"pi\" field) to torus-pi-agent package.json"
+  ],
+  "last_response_preview": "The `~/.claude` repo only has untracked diagram files from prior sessions \u2014 nothing from this session to commit here. The torus-pi-agent commits are already done.\n\n## Session 372 Summary\n\n**What was done:**\n- Causal chain tools (record_attempt, record_outcome, query_fix_history) + FixOutcomeStore\n- resources_discover handler (session-context.md + LIVE_STATE integration)\n- 5 skills ported (brainstorm, implement, fix, review, wrap-up)\n- 7 analytics tools + audit trail infrastructure (AuditEntry, g"
 }
