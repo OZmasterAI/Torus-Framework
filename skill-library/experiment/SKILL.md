@@ -7,6 +7,7 @@ or wants unattended metric-driven optimization on a specific target.
 ## Commands
 - `/experiment start <program.md>` — Run the experiment loop
 - `/experiment start <program.md> --max N` — Limit to N iterations (default 10)
+- `/experiment start <program.md> --no-confirm` — Skip the "Ready?" prompt (for automated runs)
 - `/experiment status` — Show results.tsv for current branch
 - `/experiment resume` — Resume from last experiment on current branch
 
@@ -18,12 +19,17 @@ or wants unattended metric-driven optimization on a specific target.
    ```
    commit	metric	status	description
    ```
-4. **Run baseline**: Execute the metric command, extract the number, log as first row:
+4. **Pre-flight checks**:
+   - Run the test command from Constraints. Note pass/fail as `baseline_test_status`.
+   - If tests fail: warn "Pre-existing test failures detected" but continue (experiments track *relative* improvement, not absolute pass)
+5. **Run baseline**: Execute the metric command, extract the number
+6. **Validate metric**: If extract returns empty/NaN, STOP and report: "Metric extraction failed — check your Run and Extract commands in program.md." Do not proceed with a broken baseline.
+7. **Log baseline** to results.tsv:
    ```
    {commit}	{metric_value}	baseline	unmodified baseline
    ```
-5. **Set best**: `best_metric = baseline_value`
-6. **Confirm**: Show baseline and ask "Starting experiment loop. Ready?"
+8. **Set best**: `best_metric = baseline_value`
+9. **Confirm**: Show baseline, test status, and ask "Starting experiment loop. Ready?" (skip if `--no-confirm`)
 
 ## Phase 1: EXPERIMENT LOOP
 
@@ -41,7 +47,9 @@ Repeat until stop condition (Phase 2):
 
 ### c. TEST GUARD
 - Run the test command from Constraints (if specified)
-- If tests fail: revert with `git checkout -- .`, log as crash, increment failure counter, skip to next iteration
+- If `baseline_test_status` was failing: check that no *new* tests fail (compare failure set, not absolute pass)
+- If `baseline_test_status` was passing: all tests must still pass
+- On failure: revert with `git checkout -- .`, log as crash, increment failure counter, skip to next iteration
 
 ### d. MEASURE
 - Run the metric command from program.md
@@ -59,7 +67,7 @@ Append to results.tsv:
 ```
 
 ### g. COMMIT
-- If keep: `git add -A && git commit -m "experiment: {description}"`
+- If keep: `git add {files from program.md "What You CAN Edit"} results.tsv && git commit -m "experiment: {description}"`
 - If discard: no commit (files already reverted)
 - If crash: `git commit --allow-empty -m "experiment(crash): {description}"`
 
