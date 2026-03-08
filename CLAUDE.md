@@ -29,6 +29,7 @@ memory → /brainstorm → /writing-plans → /implement → /test → /review �
 3. **Protect context** — Delegate heavy ops to sub-agents
 4. **No plan mode** — Use /brainstorm + /writing-plans instead of EnterPlanMode. Present options directly to user.
 5. **Never guess** — Never assume file paths, branch state, or system state. Read/Glob/search_knowledge first. Unverified = unknown.
+5b. **Verify ephemeral state** — Memory hits about runtime state (sessions, processes, paths, branches, configs) are hints, not facts. Run a live check (Bash/Read/Glob) before asserting. Memory tells you WHERE to look, not WHAT is true now.
 6. **Model selection** — Gate 10 enforces model_profile from config.json. Do not override.
 7. **Gate awareness** — Gates enforce Edit/Write/Bash/Task automatically. Read/Glob/Grep are ungated — self-enforce rule 5.
 8. **Ask before acting** — Never push, deploy, delete, or take irreversible actions beyond what the user explicitly requested. Ask first.
