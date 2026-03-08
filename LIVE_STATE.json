@@ -1,19 +1,18 @@
 {
-  "session_count": 379,
+  "session_count": 380,
   "project": "torus-framework",
   "feature": "token-optimization",
   "framework_version": "v2.6.5",
-  "what_was_done": "Removed analytics MCP server from ~/.claude.json (saves ~1,540 tokens/prompt). Server file kept on disk. Updated LIVE_STATE next_steps.",
+  "what_was_done": "Token audit (exact tiktoken counts): ~2,900 tokens/prompt. gitignored docs/diagrams/ + pycache dirs to save ~690 tokens/prompt. Confirmed Gate 19 state isolation — multi-instance safe, deprioritized.",
   "known_issues": [
-    "Gate 19 cascade still triggers when mentor state is pre-contaminated",
-    "mcp.json at ~/.claude/mcp.json is NOT the active config \u2014 real config is ~/.claude.json mcpServers",
+    "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
+    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0"
   ],
   "next_steps": [
-    "Investigate Gate 19 state persistence",
     "Test all 21 tools live in pi-agent",
-    "Memory DB at 2,406 entries \u2014 consider running maintenance(action='stale')"
-  ],
-  "last_response_preview": "**Session 378 wrap-up complete.**\n\n| Item | Status |\n|---|---|\n| Analytics server removed | From `~/.claude.json` \u2014 takes effect next session |\n| Memory saved | Decision + context stored |\n| LIVE_STATE updated | New next_steps reprioritized |\n| Git committed | `ab2db3a` on `voice` |\n| Risk | YELLOW \u2014 56 untracked files in `docs/diagrams/` + `__pycache__/` (not project-critical) |\n\n**Next session:**\n1. Investigate Gate 19 state persistence\n2. Test all 21 tools live in pi-agent\n3. Memory maintenan"
+    "Memory DB at 2,409 entries — consider running maintenance(action='stale')",
+    "Further token optimization: skills list (342 tokens) — trim descriptions?"
+  ]
 }
