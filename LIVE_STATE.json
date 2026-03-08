@@ -1,20 +1,19 @@
 {
-  "session_count": 377,
+  "session_count": 378,
   "project": "torus-framework",
   "feature": "skill-architecture",
   "framework_version": "v2.6.5",
   "what_was_done": "Added self_improve routing tool (17 actions) to skill_server. Created 8 SKILL.md files. Disabled gate_timing/session_metrics in analytics. Removed 6 dead functions. Cleaned pi-agent git tracking. Compared Voice vs Pi-agent architecture.",
   "known_issues": [
     "Gate 19 cascade still triggers when mentor state is pre-contaminated",
-    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
+    "mcp.json at ~/.claude/mcp.json is NOT the active config \u2014 real config is ~/.claude.json mcpServers",
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
     "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0"
   ],
   "next_steps": [
-    "Consider converting analytics server to skill-library pattern (3 generic tools) — saves ~1,180 tokens/prompt",
-    "Consider making analytics server dormant (remove from ~/.claude.json) — saves ~1,540 tokens/prompt",
-    "Consolidate 30 disabled analytics functions — dead code cleanup",
+    "Analytics server removed from ~/.claude.json (session 378) \u2014 re-add if needed",
     "Investigate Gate 19 state persistence",
     "Test all 21 tools live in pi-agent"
-  ]
+  ],
+  "last_response_preview": "Good. Anything else or are we done for the session?"
 }
