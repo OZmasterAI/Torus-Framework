@@ -14,7 +14,7 @@ or wants unattended metric-driven optimization on a specific target.
 ## Phase 0: SETUP
 
 1. **Read program.md**: Parse Goal, Metric, editable files, constraints
-2. **Create branch**: `git checkout -b experiment/{tag}` where tag = user-provided or date-based
+2. **Create worktree**: Use `EnterWorktree` to create an isolated worktree on branch `experiment/{tag}` (tag = user-provided or date-based). All subsequent file edits, commands, and git operations run **inside the worktree** — the main working tree stays untouched.
 3. **Init results.tsv**: Create with header row:
    ```
    commit	metric	status	description
@@ -110,6 +110,13 @@ Save final summary to memory:
 remember_this("Experiment {tag} complete: {N} iterations, baseline={baseline} → best={best} ({improvement}%). Kept {k}, discarded {d}, crashed {c}.", "experiment result", "type:learning,area:framework,experiment,outcome:success")
 ```
 
+## Phase 4: CLEANUP
+
+After reporting results:
+1. **If improvements were kept**: Ask the user if they want to merge the experiment branch back (e.g., `git merge experiment/{tag}`) or keep it for review.
+2. **Remove worktree**: Run `git worktree remove <worktree_path>` (use `--force` if needed). Always clean up — do not leave stale worktrees behind.
+3. **Prune branches** (optional): If the user doesn't want the branch, `git branch -d experiment/{tag}`.
+
 ## Rules
 - NEVER edit files not listed in program.md's "What You CAN Edit"
 - NEVER skip the test guard — if tests break, it's a crash
@@ -118,3 +125,5 @@ remember_this("Experiment {tag} complete: {N} iterations, baseline={baseline} �
 - Simpler is better — a small improvement with less code beats a big improvement with complex code
 - Revert cleanly on discard — working tree must match last kept commit
 - results.tsv is tab-separated, never comma-separated
+- ALL work happens inside the worktree — never modify the main working tree
+- ALWAYS clean up the worktree in Phase 4 — do not leave stale worktrees behind

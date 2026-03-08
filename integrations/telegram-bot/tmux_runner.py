@@ -94,9 +94,24 @@ async def run_claude_tmux(message, tmux_target="claude-bot", timeout=120):
     except OSError:
         pass
 
+    # Get the pane PID so the Stop hook can verify session ownership
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "tmux", "list-panes", "-t", tmux_target, "-F", "#{pane_pid}",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+        pane_pid = int(stdout.decode().strip().split("\n")[0])
+    except Exception:
+        pane_pid = None
+
     # Write pending marker so the Stop hook knows to capture
     with open(pending_file, "w") as f:
-        f.write(json.dumps({"timestamp": time.time(), "message_preview": message[:60]}))
+        f.write(json.dumps({
+            "timestamp": time.time(),
+            "message_preview": message[:60],
+            "pane_pid": pane_pid,
+        }))
 
     # Send the message
     try:
