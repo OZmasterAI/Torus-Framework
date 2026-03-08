@@ -145,6 +145,7 @@ _SELF_IMPROVE_SKILLS = {
     "causal-chain-analysis": "Analyze fix outcomes to detect patterns and suggest improvements",
     "gate-timing": "Gate execution latency analysis — per-gate timing stats and slow gate detection",
     "session-metrics": "Current session operational metrics — tool calls, block rate, error rate",
+    "experiment": "Autoresearch-style experiment loop — metric-driven optimization with worktrees",
 }
 
 
