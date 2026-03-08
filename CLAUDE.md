@@ -24,6 +24,7 @@ memory → /brainstorm → /writing-plans → /implement → /test → /review �
 1. query_fix_history("error") → 2. record_attempt("error", "strategy") → 3. Fix + test → 4. record_outcome(chain_id, result) → 5. remember_this(type:fix)
 
 ## BEHAVIORAL RULES
+0. **Quality over speed** — Always verify then assert, never assert then verify. Applies to everything: code, conversation, analysis, questions. "Let me check" is always better than a fast wrong answer.
 1. **Prove it** — Never claim "fixed" without test output evidence
 2. **Save to memory** — Every fix, discovery, decision → remember_this()
 3. **Protect context** — Delegate heavy ops to sub-agents
