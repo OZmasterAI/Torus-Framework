@@ -11,7 +11,7 @@ mcp = FastMCP("model-router")
 
 
 async def _post(path: str, data: dict) -> dict:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(f"{ROUTER_URL}{path}", json=data)
         return resp.json()
 
