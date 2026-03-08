@@ -236,7 +236,7 @@ async def _tts_groq(text: str) -> bytes | None:
         return None
 
     # Truncate long responses for TTS (Telegram voice limit ~1MB)
-    tts_text = text[:2000] if len(text) > 2000 else text
+    tts_text = text[:800] if len(text) > 800 else text  # Groq Orpheus free tier: 1200 TPM
 
     try:
         from groq import Groq
@@ -290,6 +290,10 @@ async def handle_voice(update: Update, context):
     chat = update.effective_chat
 
     if not msg or not user or not chat:
+        return
+
+    # Ignore bot's own voice replies (prevents feedback loop)
+    if user.is_bot:
         return
 
     if not _is_authorized(user.id, chat.id):
