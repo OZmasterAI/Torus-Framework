@@ -168,7 +168,7 @@ async def handle_message(update: Update, context):
 _whisper_model = None
 _WHISPER_MODEL_SIZE = os.environ.get("WHISPER_MODEL", "small")
 _GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-_whisper_backend = "local"  # "local" or "groq"
+_whisper_backend = "groq" if _GROQ_API_KEY else "local"
 
 
 def _get_whisper_model():
