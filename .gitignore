@@ -98,6 +98,13 @@ backupclaude.md
 architecture.html
 diagram.html
 
+# Generated diagrams (local reference only)
+docs/diagrams/
+
+# Pycache in skill libraries
+dormant/**/scripts/__pycache__/
+skill-library/**/scripts/__pycache__/
+
 # Claude-managed plugin state
 plugins/installed_plugins.json
 plugins/known_marketplaces.json
