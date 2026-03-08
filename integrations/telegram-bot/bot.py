@@ -222,6 +222,67 @@ def _transcribe_ogg(ogg_path: str) -> str:
     return _transcribe_local(ogg_path)
 
 
+# ── Text-to-speech (Groq Orpheus) ─────────────────────────────────────────
+_tts_enabled = bool(_GROQ_API_KEY)
+_TTS_VOICE = os.environ.get("TTS_VOICE", "austin")
+
+
+async def _tts_groq(text: str) -> bytes | None:
+    """Synthesize text to OGG/Opus audio using Groq Orpheus TTS + ffmpeg."""
+    import asyncio
+    import hashlib
+
+    if not _GROQ_API_KEY:
+        return None
+
+    # Truncate long responses for TTS (Telegram voice limit ~1MB)
+    tts_text = text[:2000] if len(text) > 2000 else text
+
+    try:
+        from groq import Groq
+        client = Groq(api_key=_GROQ_API_KEY)
+
+        # Generate WAV
+        wav_path = os.path.join(tempfile.gettempdir(), f"tts-{hashlib.md5(tts_text.encode()).hexdigest()[:8]}.wav")
+        ogg_path = wav_path.replace(".wav", ".ogg")
+
+        response = client.audio.speech.create(
+            model="canopylabs/orpheus-v1-english",
+            input=tts_text,
+            voice=_TTS_VOICE,
+            response_format="wav",
+        )
+        response.write_to_file(wav_path)
+
+        # Convert WAV → OGG/Opus via ffmpeg
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", wav_path, "-c:a", "libopus", "-b:a", "48k", ogg_path,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await asyncio.wait_for(proc.wait(), timeout=10)
+
+        if proc.returncode != 0:
+            logger.error("ffmpeg conversion failed (rc=%d)", proc.returncode)
+            return None
+
+        with open(ogg_path, "rb") as f:
+            audio_data = f.read()
+
+        logger.info("TTS generated: %d chars → %d bytes OGG [groq orpheus]", len(tts_text), len(audio_data))
+        return audio_data
+
+    except Exception as e:
+        logger.error("Groq TTS failed: %s", e)
+        return None
+    finally:
+        for p in [wav_path, ogg_path]:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
 async def handle_voice(update: Update, context):
     """Handle incoming voice messages — transcribe and process as text."""
     msg = update.effective_message
@@ -315,6 +376,12 @@ async def handle_voice(update: Update, context):
         save_session(SESSIONS_PATH, chat.id, new_session_id)
 
     log_message(DB_PATH, chat.id, "Claude", result, _now_iso())
+
+    # Reply with voice + text for voice messages
+    if _tts_enabled and result:
+        audio_data = await _tts_groq(result)
+        if audio_data:
+            await msg.reply_voice(voice=audio_data)
 
     if len(result) <= 4096:
         await msg.reply_text(result)
