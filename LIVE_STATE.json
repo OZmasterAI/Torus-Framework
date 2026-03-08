@@ -1,9 +1,9 @@
 {
   "session_count": 392,
   "project": "torus-framework",
-  "feature": "tg-bot-session-isolation",
+  "feature": "tg-mirror-batch",
   "framework_version": "v2.6.5",
-  "what_was_done": "Fixed TG bot cross-session response leak (pane_pid ancestry check). Updated /experiment skill to use worktrees + cleanup phase. Cleaned stale experiment worktrees. Researched OpenClaw/ZeroClaw TG architectures. Confirmed voice-web STT+TTS working. TG bot target switched to 'claude' pane.",
+  "what_was_done": "Fixed TG bot cross-session response leak (pane_pid ancestry check). Updated /experiment skill to use worktrees. Built batch mirror: tool calls + user messages + Claude responses all mirrored to TG notify bot from all sessions. Confirmed STT/TTS working on both TG bot and voice-web.",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
@@ -13,7 +13,6 @@
   "next_steps": [
     "Fix 2: graceful offline handling — bot says 'offline' instead of 120s timeout when claude-bot is down",
     "Test /experiment on a real framework target (e.g., gate latency, test suite speed)",
-    "Mirror: add pane capture option for full tool-call output",
     "Memory DB at 2,457 entries — consider running maintenance(action='stale')"
   ]
 }
