@@ -1,19 +1,17 @@
 {
-  "session_count": 391,
+  "session_count": 390,
   "project": "torus-framework",
-  "feature": "experiment-skill",
+  "feature": "tg-bot-tts",
   "framework_version": "v2.6.5",
-  "what_was_done": "Built /experiment skill (autoresearch-style loop). Created SKILL.md + program.md template. Tested in 3 worktree runs, applied 4 bug fixes. 9-model fan-out research on Karpathy's autoresearch. Voice STT+TTS confirmed working.",
+  "what_was_done": "Added multi-engine TTS to TG bot (Edge-TTS, Piper, Groq). /tts on|off + /voice commands. Shared piper voices dir. Config persistence. Confirmed MCP fan-out working (10/10 models). Skipped ElevenLabs (10K chars/month limit).",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
-    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
-    "MCP bridge 30s timeout too short for fan-out >5 models — use direct curl to :18800 as workaround"
+    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers"
   ],
   "next_steps": [
+    "Test all 3 TTS engines from Telegram (edge, piper, groq) — verify voice quality",
     "Test /experiment on a real framework target (e.g., gate latency, test suite speed)",
-    "Fix MCP bridge timeout (30s→180s) in mcp_bridge.py for native tool use",
-    "Memory DB at 2,454 entries — consider running maintenance(action='stale')",
     "Mirror: add pane capture option for full tool-call output",
-    "TTS: consider /tts toggle for voice replies on text messages"
+    "Memory DB at 2,453 entries — consider running maintenance(action='stale')"
   ]
 }

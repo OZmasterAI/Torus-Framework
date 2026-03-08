@@ -109,3 +109,4 @@ skill-library/**/scripts/__pycache__/
 plugins/installed_plugins.json
 plugins/known_marketplaces.json
 plugins/marketplaces/
+integrations/tts-voices/
