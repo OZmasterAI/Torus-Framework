@@ -1,22 +1,19 @@
 {
-  "session_count": 389,
+  "session_count": 391,
   "project": "torus-framework",
-  "feature": "model-router",
+  "feature": "experiment-skill",
   "framework_version": "v2.6.5",
-  "what_was_done": "Researched Karpathy autoresearch repo, fixed MCP bridge timeout 30s→180s for fan-out, created memory entry with REST API curl endpoints for sub-agent access, compared 4 approaches (MCP bridge vs skill-library vs skill-standalone vs memory-entry)",
+  "what_was_done": "Built /experiment skill (autoresearch-style loop). Created SKILL.md + program.md template. Tested in 3 worktree runs, applied 4 bug fixes. 9-model fan-out research on Karpathy's autoresearch. Voice STT+TTS confirmed working.",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
-    "ZeroClaw free models can't do agentic skill workflows — need paid model",
-    "ZeroClaw 3 skills blocked by security audit (clawdbot-security-check, clawddocs, clawdefender)",
-    "Groq Orpheus TTS free tier: 100 req/day, 1200 TPM — may need Dev tier for heavy use",
-    "MCP bridge needs session restart to pick up 180s timeout fix"
+    "MCP bridge 30s timeout too short for fan-out >5 models — use direct curl to :18800 as workaround"
   ],
   "next_steps": [
-    "Test MCP bridge fan-out after session restart (timeout fix 30s→180s)",
-    "Mirror: add pane capture option for full tool-call output (currently shows last_assistant_message only)",
-    "TTS: consider /tts toggle for voice replies on text messages (watch Groq free tier limits)",
-    "Option C(A+B3) / F(A+B1+B3) memory verification upgrade path (saved in memory)",
-    "Memory DB at 2,441 entries — consider running maintenance(action='stale')"
+    "Test /experiment on a real framework target (e.g., gate latency, test suite speed)",
+    "Fix MCP bridge timeout (30s→180s) in mcp_bridge.py for native tool use",
+    "Memory DB at 2,454 entries — consider running maintenance(action='stale')",
+    "Mirror: add pane capture option for full tool-call output",
+    "TTS: consider /tts toggle for voice replies on text messages"
   ]
 }
