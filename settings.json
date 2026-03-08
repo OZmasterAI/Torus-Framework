@@ -84,6 +84,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/user_prompt_capture.py\"",
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/tg_mirror_user.py\"",
+            "timeout": 5
           }
         ]
       },
