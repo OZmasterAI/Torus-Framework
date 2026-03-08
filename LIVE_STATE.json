@@ -1,21 +1,20 @@
 {
-  "session_count": 376,
+  "session_count": 377,
   "project": "torus-framework",
-  "feature": "gate-false-positives",
+  "feature": "skill-architecture",
   "framework_version": "v2.6.5",
-  "what_was_done": "Fixed 3 gate false-positive cascades (Gate 14 greenfield, Gate 6 ToolFail scoping, mentor error_loop scoping). Synced voice→github-branch→main as v2.6.5. Updated README with accurate stats.",
+  "what_was_done": "Added self_improve routing tool (17 actions) to skill_server. Created 8 SKILL.md files. Disabled gate_timing/session_metrics in analytics. Removed 6 dead functions. Cleaned pi-agent git tracking. Compared Voice vs Pi-agent architecture.",
   "known_issues": [
-    "Gate 19 cascade still triggers when mentor state is pre-contaminated — state clear via shared.state doesn't always prevent it",
+    "Gate 19 cascade still triggers when mentor state is pre-contaminated",
+    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
     "Trading bot: ccxt 4.5.x packaging bug (using <4.5)",
-    "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0",
-    "Pi-agent /reload does NOT pick up code changes to extensions — must restart pi-agent after rebuild",
-    "Pi-agent memory store is separate from Claude Code memory (different LanceDB at ~/.torus/memory/lancedb/)"
+    "Trading bot: backtest journal doesn't call close_trade() so win_rate returns 0"
   ],
   "next_steps": [
-    "Investigate Gate 19 state persistence — why does shared.state clear not prevent cascade?",
-    "Test all 21 tools live in pi-agent — verify circuit breakers, observations, fuzzy_search work end-to-end",
-    "Test Gate 17 injection defense with actual injection payloads in pi-agent",
-    "Bridge pi-agent memory with Claude Code memory (shared LanceDB or sync)",
-    "Add remaining search_server tools (terminal_history_search, transcript_context)"
+    "Consider converting analytics server to skill-library pattern (3 generic tools) — saves ~1,180 tokens/prompt",
+    "Consider making analytics server dormant (remove from ~/.claude.json) — saves ~1,540 tokens/prompt",
+    "Consolidate 30 disabled analytics functions — dead code cleanup",
+    "Investigate Gate 19 state persistence",
+    "Test all 21 tools live in pi-agent"
   ]
 }
