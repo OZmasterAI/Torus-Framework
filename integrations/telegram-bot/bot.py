@@ -112,30 +112,30 @@ async def handle_message(update: Update, context):
     # Send typing indicator
     await chat.send_action(ChatAction.TYPING)
 
-    # Route: tmux mode or subprocess mode
+    # Route: tmux mode (exclusive) or subprocess mode
     use_tmux = _is_tmux_mode()
     result = None
     new_session_id = None
 
     if use_tmux:
         tmux_target = CFG.get("tmux_target", "claude-bot")
-        try:
-            if await is_tmux_session_alive(tmux_target):
+        if await is_tmux_session_alive(tmux_target):
+            try:
                 result, _ = await run_claude_tmux(
                     text,
                     tmux_target=tmux_target,
                     timeout=CFG.get("claude_timeout", 120),
                 )
                 logger.info("tmux response: %d chars", len(result) if result else 0)
-            else:
-                logger.warning("tmux target '%s' not alive, falling back to claude -p", tmux_target)
-                use_tmux = False
-        except TmuxError as e:
-            logger.warning("tmux error, falling back to claude -p: %s", e)
-            use_tmux = False
-
-    if not use_tmux or result is None:
-        # Subprocess fallback
+            except TmuxError as e:
+                logger.error("tmux error (no fallback): %s", e)
+                await msg.reply_text(f"tmux error: {e}")
+                return
+        else:
+            logger.warning("tmux target '%s' not alive", tmux_target)
+            await msg.reply_text(f"tmux session '{tmux_target}' not running. Start it or disable tg_bot_tmux.")
+            return
+    else:
         session_id = get_session_id(SESSIONS_PATH, chat.id)
         try:
             result, new_session_id = await run_claude(
@@ -283,19 +283,21 @@ async def handle_voice(update: Update, context):
 
     if use_tmux:
         tmux_target = CFG.get("tmux_target", "claude-bot")
-        try:
-            if await is_tmux_session_alive(tmux_target):
+        if await is_tmux_session_alive(tmux_target):
+            try:
                 result, _ = await run_claude_tmux(
                     text,
                     tmux_target=tmux_target,
                     timeout=CFG.get("claude_timeout", 120),
                 )
-            else:
-                use_tmux = False
-        except TmuxError:
-            use_tmux = False
-
-    if not use_tmux or result is None:
+            except TmuxError as e:
+                logger.error("tmux voice error (no fallback): %s", e)
+                await msg.reply_text(f"tmux error: {e}")
+                return
+        else:
+            await msg.reply_text(f"tmux session '{tmux_target}' not running.")
+            return
+    else:
         session_id = get_session_id(SESSIONS_PATH, chat.id)
         try:
             result, new_session_id = await run_claude(
