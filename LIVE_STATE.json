@@ -1,17 +1,18 @@
 {
-  "session_count": 390,
+  "session_count": 391,
   "project": "torus-framework",
   "feature": "tg-bot-tts",
   "framework_version": "v2.6.5",
   "what_was_done": "Added multi-engine TTS to TG bot (Edge-TTS, Piper, Groq). /tts on|off + /voice commands. Shared piper voices dir. Config persistence. Confirmed MCP fan-out working (10/10 models). Skipped ElevenLabs (10K chars/month limit).",
   "known_issues": [
-    "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
-    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers"
+    "Gate 19 cascade on branch switch (low priority \u2014 anti-cascade limit handles it)",
+    "mcp.json at ~/.claude/mcp.json is NOT the active config \u2014 real config is ~/.claude.json mcpServers"
   ],
   "next_steps": [
-    "Test all 3 TTS engines from Telegram (edge, piper, groq) — verify voice quality",
+    "Test all 3 TTS engines from Telegram (edge, piper, groq) \u2014 verify voice quality",
     "Test /experiment on a real framework target (e.g., gate latency, test suite speed)",
     "Mirror: add pane capture option for full tool-call output",
-    "Memory DB at 2,453 entries — consider running maintenance(action='stale')"
-  ]
+    "Memory DB at 2,453 entries \u2014 consider running maintenance(action='stale')"
+  ],
+  "last_response_preview": "The bot.py and server.py changes were already auto-committed by a hook earlier (the `auto: update bot.py` commit). Everything is committed.\n\n---\n\n## Session 390 Summary\n\n**Done:**\n- Multi-engine TTS added to TG bot: Edge-TTS, Piper (19 local voices), Groq\n- `/tts` command (on/off toggle for text message voice replies)\n- `/voice` command (switch engine, list voices, set voice)\n- Settings persist to config.json\n- Shared piper voices at `integrations/tts-voices/piper-voices/`\n- MCP fan-out confirme"
 }
