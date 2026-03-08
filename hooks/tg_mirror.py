@@ -103,7 +103,7 @@ def main():
 
         # Load Telegram config
         tg_cfg = _load_json(TG_CONFIG_FILE, {})
-        bot_token = tg_cfg.get("bot_token", "")
+        bot_token = tg_cfg.get("notify_bot_token", "") or tg_cfg.get("bot_token", "")
         allowed_users = tg_cfg.get("allowed_users", [])
         if not bot_token or not allowed_users:
             print("[TG_MIRROR] No bot_token or allowed_users configured", file=sys.stderr)
