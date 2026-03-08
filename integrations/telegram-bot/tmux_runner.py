@@ -2,29 +2,23 @@
 """Telegram Bot — tmux routing transport for Claude.
 
 Sends messages into an existing interactive Claude tmux session via
-tmux send-keys and reads responses via tmux capture-pane.  Falls back
-gracefully when the tmux session is unavailable.
+tmux send-keys and reads responses via tmux capture-pane.
+
+Uses prompt detection (❯ for idle, ● for response) instead of sentinels.
+No special instructions to Claude needed — purely observational.
 
 Same interface as claude_runner.run_claude() so bot.py can swap transports.
 """
 
 import asyncio
 import logging
-import os
-import time
+import re
 
 logger = logging.getLogger(__name__)
 
-_PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
-_SENTINEL = "END_TORUS_RESPONSE"
-_MARKER_PREFIX = "TORUS_MSG_"
-_SENTINEL_FILE = os.path.join(_PLUGIN_DIR, ".sentinel_sent")
-
-# Learning prefix injected with sentinel rule
-_LEARNING_PREFIX = (
-    "[System: If user shares a preference, decision, correction, or important context, "
-    "call remember_this() to save it. Keep tags concise.]"
-)
+# Prompt detection patterns (Claude Code terminal output)
+_IDLE_RE = re.compile(r"^❯\s*$", re.MULTILINE)
+_RESPONSE_RE = re.compile(r"^● ", re.MULTILINE)
 
 
 class TmuxError(Exception):
@@ -44,7 +38,7 @@ async def _run(cmd):
 
 
 async def _capture_pane(target, last_n=200):
-    """Capture last N lines of tmux pane content (not full scrollback)."""
+    """Capture last N lines of tmux pane content."""
     start = f"-{last_n}" if last_n else "-"
     rc, stdout, _ = await _run(["tmux", "capture-pane", "-p", "-S", start, "-t", target])
     if rc != 0:
@@ -58,31 +52,6 @@ async def is_tmux_session_alive(target):
     return rc == 0
 
 
-def _sentinel_was_sent(target):
-    """Check if we already sent the sentinel rule to this target."""
-    try:
-        if not os.path.exists(_SENTINEL_FILE):
-            return False
-        with open(_SENTINEL_FILE) as f:
-            return target in f.read()
-    except OSError:
-        return False
-
-
-def _mark_sentinel_sent(target):
-    """Record that we sent the sentinel rule to this target."""
-    try:
-        existing = ""
-        if os.path.exists(_SENTINEL_FILE):
-            with open(_SENTINEL_FILE) as f:
-                existing = f.read()
-        if target not in existing:
-            with open(_SENTINEL_FILE, "a") as f:
-                f.write(target + "\n")
-    except OSError:
-        pass
-
-
 async def _send_keys(target, text):
     """Send text to tmux pane using literal mode to avoid interpretation."""
     rc, _, stderr = await _run(["tmux", "send-keys", "-t", target, "-l", text])
@@ -94,70 +63,66 @@ async def _send_keys(target, text):
         raise TmuxError(f"send-keys Enter failed: {stderr2[:200]}")
 
 
-async def _send_sentinel_rule(target):
-    """Send the sentinel instruction to Claude on first use of this target.
+def _extract_response(pane_text, message):
+    """Extract Claude's response between the user message and the idle prompt.
 
-    Tells Claude to end every response with the sentinel string.
-    Waits for the sentinel to appear (confirming Claude understood),
-    then discards that response.
+    Looks for the user's message in the pane, then captures everything from
+    Claude's response (● marker) up to the next idle prompt (❯).
     """
-    if _sentinel_was_sent(target):
-        return
+    lines = pane_text.splitlines()
 
-    logger.info("Sending sentinel rule to tmux target %s", target)
+    # Find the last occurrence of the user's message
+    msg_start = -1
+    msg_prefix = message[:60]  # Match on first 60 chars to handle wrapping
+    for i in range(len(lines) - 1, -1, -1):
+        if msg_prefix in lines[i]:
+            msg_start = i
+            break
 
-    rule = (
-        f"{_LEARNING_PREFIX} "
-        f"IMPORTANT RULE: End every response you give with the exact text "
-        f'"{_SENTINEL}" on its own line. This is required for message parsing. '
-        f"Acknowledge with just: Understood. {_SENTINEL}"
-    )
-
-    await _send_keys(target, rule)
-
-    # Wait for sentinel acknowledgment
-    for _ in range(60):  # 30 seconds max
-        await asyncio.sleep(0.5)
-        current = await _capture_pane(target)
-        if _SENTINEL in current:
-            _mark_sentinel_sent(target)
-            logger.info("Sentinel rule acknowledged by target %s", target)
-            return
-
-    raise TmuxError("Sentinel rule not acknowledged within 30s")
-
-
-def _extract_response(pane_text, marker):
-    """Extract response text between marker and sentinel.
-
-    The pane contains: ...marker...user_message...Claude_response...SENTINEL...
-    We find the marker, skip the user message line, then grab everything
-    up to the sentinel.
-    """
-    marker_pos = pane_text.rfind(marker)
-    if marker_pos == -1:
+    if msg_start == -1:
         return ""
 
-    sentinel_pos = pane_text.find(_SENTINEL, marker_pos)
-    if sentinel_pos == -1:
+    # Find the response block: starts with ● after the message
+    resp_start = -1
+    for i in range(msg_start + 1, len(lines)):
+        if _RESPONSE_RE.match(lines[i]):
+            resp_start = i
+            break
+
+    if resp_start == -1:
         return ""
 
-    # Text between marker and sentinel
-    between = pane_text[marker_pos + len(marker):sentinel_pos]
+    # Find the idle prompt ❯ after the response
+    resp_end = len(lines)
+    for i in range(resp_start + 1, len(lines)):
+        if _IDLE_RE.match(lines[i]):
+            resp_end = i
+            break
 
-    # The first line contains the rest of the user's message (same line as marker).
-    # Find the first newline to skip it, then take Claude's response.
-    first_nl = between.find("\n")
-    if first_nl == -1:
-        return ""
-    response_block = between[first_nl + 1:]
+    # Extract and clean response lines
+    response_lines = lines[resp_start:resp_end]
 
-    # Strip leading/trailing whitespace and empty lines
-    return response_block.strip()
+    # Strip the ● prefix from the first line
+    if response_lines and response_lines[0].startswith("● "):
+        response_lines[0] = response_lines[0][2:]
+
+    # Strip tool call indicators and keep just the text content
+    cleaned = []
+    for line in response_lines:
+        # Skip lines that are just horizontal rules or status bars
+        if line.strip().startswith("─") and len(line.strip()) > 10:
+            continue
+        cleaned.append(line)
+
+    result = "\n".join(cleaned).strip()
+    return result
 
 
 async def run_claude_tmux(message, tmux_target="claude-bot", timeout=120):
-    """Send message via tmux, poll for sentinel, return response text.
+    """Send message via tmux, poll for idle prompt, return response text.
+
+    Uses prompt detection — watches for ❯ (idle) and ● (response) markers
+    in the terminal output. No sentinel instruction needed.
 
     Args:
         message: User message text
@@ -165,7 +130,7 @@ async def run_claude_tmux(message, tmux_target="claude-bot", timeout=120):
         timeout: Max seconds to wait for response
 
     Returns:
-        tuple: (result_text, None)  — no session_id needed for persistent session
+        tuple: (result_text, None)
 
     Raises:
         TmuxError: On tmux failure or timeout
@@ -173,31 +138,53 @@ async def run_claude_tmux(message, tmux_target="claude-bot", timeout=120):
     if not await is_tmux_session_alive(tmux_target):
         raise TmuxError(f"tmux target '{tmux_target}' not found")
 
-    # Ensure sentinel rule is active
-    await _send_sentinel_rule(tmux_target)
+    # Capture pane before sending to establish baseline
+    before = await _capture_pane(tmux_target)
+    before_idle_count = len(_IDLE_RE.findall(before))
 
-    # Generate unique marker for this message
-    marker = f"{_MARKER_PREFIX}{int(time.time() * 1000)}"
+    # Send the message (plain, no marker tag needed)
+    await _send_keys(tmux_target, message)
+    logger.info("Sent message to tmux target %s (%d chars)", tmux_target, len(message))
 
-    # Send marker + message as a single input so they appear together in the pane
-    tagged_message = f"[{marker}] {message}"
-    await _send_keys(tmux_target, tagged_message)
-    logger.info("Sent message to tmux target %s (%d chars, marker=%s)", tmux_target, len(message), marker)
-
-    # Poll for sentinel after our marker
+    # Poll for response completion
+    # Phase 1: Wait for ● (Claude starts responding)
+    # Phase 2: Wait for ❯ (Claude is idle again)
+    saw_response = False
     poll_interval = 0.5
     elapsed = 0.0
+
     while elapsed < timeout:
         await asyncio.sleep(poll_interval)
         elapsed += poll_interval
 
         current = await _capture_pane(tmux_target)
-        # Only look for sentinel AFTER our marker to avoid matching old responses
-        marker_pos = current.rfind(marker)
-        if marker_pos != -1 and _SENTINEL in current[marker_pos:]:
-            response = _extract_response(current, marker)
+
+        # Check if Claude started responding (● appeared after our message)
+        if not saw_response:
+            # Look for ● after our message text
+            msg_pos = current.rfind(message[:60])
+            if msg_pos != -1:
+                after_msg = current[msg_pos:]
+                if _RESPONSE_RE.search(after_msg):
+                    saw_response = True
+                    logger.info("Claude started responding (%.1fs)", elapsed)
+            continue
+
+        # Phase 2: Claude is responding, wait for idle prompt
+        current_idle_count = len(_IDLE_RE.findall(current))
+        if current_idle_count > before_idle_count:
+            # New idle prompt appeared = Claude is done
+            response = _extract_response(current, message)
             if response:
                 logger.info("Got response from tmux (%d chars, %.1fs)", len(response), elapsed)
                 return response, None
 
-    raise TmuxError(f"Response timeout after {timeout}s — sentinel not detected")
+    if saw_response:
+        # Claude started but didn't finish in time — try to extract partial
+        current = await _capture_pane(tmux_target)
+        response = _extract_response(current, message)
+        if response:
+            logger.warning("Partial response extracted after timeout (%d chars)", len(response))
+            return response, None
+
+    raise TmuxError(f"Response timeout after {timeout}s — no idle prompt detected")
