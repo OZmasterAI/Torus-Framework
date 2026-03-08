@@ -200,7 +200,7 @@ def gate_dashboard() -> dict:
     }
 
 
-@mcp.tool()
+# @mcp.tool()  # moved to skill-library/gate-timing
 @crash_proof
 def gate_timing(gate_name: str = "") -> dict:
     """Gate execution timing: per-gate latency stats, slow gates, formatted report.
@@ -311,7 +311,7 @@ def detect_anomalies(session_id: str = "") -> dict:
     }
 
 
-@mcp.tool()
+# @mcp.tool()  # moved to skill-library/session-metrics
 @crash_proof
 def session_metrics(session_id: str = "") -> dict:
     """Current session metrics: tool calls, gate blocks, error rate, memory gaps, duration.
