@@ -76,6 +76,34 @@ def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+async def _mirror_user_message(user_name: str, text: str):
+    """Mirror user message to notify bot if tg_mirror_user is enabled."""
+    import json as _json
+    import urllib.request
+    import urllib.error
+    cfg_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
+    try:
+        with open(cfg_path) as f:
+            cfg = _json.load(f)
+    except (FileNotFoundError, ValueError):
+        return
+    if not cfg.get("tg_mirror_user", False):
+        return
+    notify_token = CFG.get("notify_bot_token", "")
+    if not notify_token:
+        return
+    escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    html = f"<b>[{user_name}]</b>\n{escaped}"
+    for uid in CFG.get("allowed_users", []):
+        payload = _json.dumps({"chat_id": uid, "text": html, "parse_mode": "HTML"}).encode()
+        url = f"https://api.telegram.org/bot{notify_token}/sendMessage"
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req, timeout=5)
+        except Exception:
+            pass
+
+
 async def handle_message(update: Update, context):
     """Handle incoming text messages."""
     msg = update.effective_message
@@ -106,8 +134,9 @@ async def handle_message(update: Update, context):
         if not text:
             return
 
-    # Log incoming message
+    # Log incoming message and mirror if enabled
     log_message(DB_PATH, chat.id, user.first_name or "user", text, _now_iso())
+    await _mirror_user_message(user.first_name or "user", text)
 
     # Send typing indicator
     await chat.send_action(ChatAction.TYPING)
@@ -340,6 +369,7 @@ async def handle_voice(update: Update, context):
     # Send transcription preview, then route through normal Claude pipeline
     # (tmux mode sends to claude-bot pane and returns reply on Telegram)
     await msg.reply_text(f"🎤 _{text}_", parse_mode=ParseMode.MARKDOWN)
+    await _mirror_user_message(user.first_name or "user", f"🎤 {text}")
     await chat.send_action(ChatAction.TYPING)
 
     use_tmux = _is_tmux_mode()
@@ -500,6 +530,56 @@ async def cmd_whisper(update: Update, context):
         await msg.reply_text("Usage: /whisper [groq|local]")
 
 
+async def cmd_mirror(update: Update, context):
+    """Handle /mirror — toggle mirror settings."""
+    msg = update.effective_message
+    user = update.effective_user
+    chat = update.effective_chat
+    if not msg or not user or not chat or not _is_authorized(user.id, chat.id):
+        return
+
+    import json as _json
+    cfg_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
+    try:
+        with open(cfg_path) as f:
+            cfg = _json.load(f)
+    except (FileNotFoundError, ValueError):
+        cfg = {}
+
+    arg = context.args[0].lower() if context.args else ""
+    if not arg:
+        mirror_on = cfg.get("tg_mirror_messages", False)
+        user_on = cfg.get("tg_mirror_user", False)
+        await msg.reply_text(
+            f"<b>Mirror settings</b>\n\n"
+            f"Mirror: <b>{'on' if mirror_on else 'off'}</b>\n"
+            f"User messages: <b>{'on' if user_on else 'off'}</b>\n\n"
+            f"Usage: /mirror [on|off|user]",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    if arg == "on":
+        cfg["tg_mirror_messages"] = True
+        with open(cfg_path, "w") as f:
+            _json.dump(cfg, f, indent=2)
+        await msg.reply_text("Mirror <b>enabled</b>.", parse_mode=ParseMode.HTML)
+    elif arg == "off":
+        cfg["tg_mirror_messages"] = False
+        with open(cfg_path, "w") as f:
+            _json.dump(cfg, f, indent=2)
+        await msg.reply_text("Mirror <b>disabled</b>.", parse_mode=ParseMode.HTML)
+    elif arg == "user":
+        current = cfg.get("tg_mirror_user", False)
+        cfg["tg_mirror_user"] = not current
+        with open(cfg_path, "w") as f:
+            _json.dump(cfg, f, indent=2)
+        state = "on" if not current else "off"
+        await msg.reply_text(f"User message mirroring <b>{state}</b>.", parse_mode=ParseMode.HTML)
+    else:
+        await msg.reply_text("Usage: /mirror [on|off|user]")
+
+
 async def cmd_reset(update: Update, context):
     """Handle /reset — clear session for this chat."""
     msg = update.effective_message
@@ -533,6 +613,7 @@ def main():
     app.add_handler(CommandHandler("memory", cmd_memory))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("whisper", cmd_whisper))
+    app.add_handler(CommandHandler("mirror", cmd_mirror))
 
     # Messages — private chat: all text; groups: only @mentions or replies
     private_filter = filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND
