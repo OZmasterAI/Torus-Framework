@@ -15,17 +15,18 @@ def test_hybrid_decay():
     # Day 0: full strength
     assert abs(_time_decay_factor(0) - 1.0) < 0.01
 
-    # Day 1: ~50% (exponential phase, 1-day half-life)
-    assert 0.45 < _time_decay_factor(1) < 0.55
+    # Day 1: ~95% (exponential phase, 15-day half-life)
+    assert 0.93 < _time_decay_factor(1) < 0.97
 
-    # Day 3: ~12.5% (end of exponential, start of power-law)
-    assert 0.10 < _time_decay_factor(3) < 0.15
+    # Day 7: ~72% (still in exponential phase)
+    assert 0.68 < _time_decay_factor(7) < 0.76
 
-    # Day 30: power-law should be > pure exponential
+    # Day 15: ~50% (half-life, crossover to power-law)
+    assert 0.45 < _time_decay_factor(15) < 0.55
+
+    # Day 30: power-law tail — still retrievable
     hybrid_30 = _time_decay_factor(30)
-    pure_exp_30 = 0.5 ** (30 / 1.0)  # would be ~0.0 with 1-day half-life
-    assert hybrid_30 > pure_exp_30  # power-law decays slower
-    assert hybrid_30 > 0.01  # still retrievable at 30 days
+    assert hybrid_30 > 0.30  # still solid at 30 days
 
     # Day 365: very low but not zero
     assert _time_decay_factor(365) > 0.001

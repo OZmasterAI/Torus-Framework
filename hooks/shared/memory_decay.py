@@ -58,10 +58,10 @@ def _time_decay_factor(
 ) -> float:
     """Hybrid decay: exponential for recent, power-law for older memories.
 
-    Phase 1 (t < 3 days): exponential with ~1-day half-life
-    Phase 2 (t >= 3 days): power-law t^(-0.5) anchored at crossover point
+    Phase 1 (t < 15 days): exponential with 15-day half-life
+    Phase 2 (t >= 15 days): power-law t^(-0.5) anchored at crossover point
 
-    This gives fast initial decay but long-tail retrievability — old memories
+    This gives moderate initial decay with long-tail retrievability — old memories
     never fully vanish the way pure exponential would make them.
 
     Args:
@@ -69,13 +69,13 @@ def _time_decay_factor(
         half_life: Legacy parameter (accepted for backward compat, ignored in hybrid model)
         potentiated: If True, halve the decay rates (LTP-protected memories)
     """
-    exp_rate = 0.693   # ln(2), gives ~1-day half-life
+    exp_rate = 0.0462  # ln(2)/15, gives ~15-day half-life
     power_exp = 0.5    # power-law exponent
     if potentiated:
         exp_rate *= 0.5
         power_exp *= 0.5
 
-    crossover = 3.0  # days: transition from exponential to power-law
+    crossover = 15.0  # days: transition from exponential to power-law
 
     if age_days <= 0:
         return 1.0
