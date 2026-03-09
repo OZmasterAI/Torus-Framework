@@ -1,21 +1,21 @@
 {
-  "session_count": 396,
+  "session_count": 397,
   "project": "torus-framework",
-  "feature": "zerobrain-zerotor",
-  "framework_version": "v2.6.5",
-  "what_was_done": "Built ZeroBrain guardrail package for Agent Zero (12 gates, 5 extensions, memory adapter, installer, 264 tests). Compared with ZeroTor fork. Wrote ZEROTOR_UPGRADE_PLAN.md merging best of both (13→16 gates). Sonnet executing upgrade.",
+  "feature": "github-sync",
+  "framework_version": "v2.7.0",
+  "what_was_done": "Hardened .gitignore (6 entries, untracked router_config.toml with 17 API keys). Synthesized v2.7.0 squash commit on github-branch (49 files, scrubbed). Pushed to github/main. Re-enabled analytics MCP server.",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
-    "TG bot tmux_target set to 'claude' (not claude-bot) — messages will interrupt main session",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
-    "zerobrain project has no git repo initialized yet"
+    "zerobrain project has no git repo initialized yet",
+    "mem2x-combo2 merge reverted on mem2x — worktree branch has Phase 2 ready to re-merge after testing"
   ],
   "next_steps": [
-    "Check Sonnet's ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor — review and test results",
+    "Test and merge mem2x-combo2 (Phase 2: replay, adaptive weights, interference, tier auto-flow) into mem2x",
+    "Run full audit with analytics MCP (restart session first to connect)",
+    "Check Sonnet's ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor",
     "Init git repo for zerobrain project at ~/projects/zerobrain",
-    "Merge mem2x-combo2 worktree changes into mem2x branch, then merge mem2x into main",
-    "Fix 2: graceful offline handling — bot says 'offline' instead of 120s timeout when claude-bot is down",
-    "Memory DB at 2,516+ entries — consider running maintenance(action='stale')"
+    "Memory DB at 2,535 entries — consider running maintenance(action='stale')"
   ]
 }
