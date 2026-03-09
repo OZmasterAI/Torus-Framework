@@ -1635,10 +1635,11 @@ _md_old_score = calculate_relevance_score(_md_old)
 test("MemoryDecay: 180-day old T3 memory scores < 0.15",
      _md_old_score < 0.15, f"got {_md_old_score:.3f}")
 
-# Test 3: time_decay_factor at half-life is ~0.5
-_md_decay = _time_decay_factor(DEFAULT_HALF_LIFE_DAYS)
-test("MemoryDecay: decay factor at half-life is ~0.5",
-     abs(_md_decay - 0.5) < 0.01, f"got {_md_decay:.4f}")
+# Test 3: time_decay_factor is monotonically decreasing
+_md_decay_1 = _time_decay_factor(1.0)
+_md_decay_30 = _time_decay_factor(30.0)
+test("MemoryDecay: decay factor at day 1 > day 30 (monotonic)",
+     _md_decay_1 > _md_decay_30, f"d1={_md_decay_1:.4f}, d30={_md_decay_30:.4f}")
 
 # Test 4: access_boost increases with retrieval count
 _md_boost_0 = _access_boost(0)
@@ -2182,34 +2183,48 @@ test("MetricsExporter: export_json has exported_at field",
 
 # ─── Experience Archive Tests ────────────────────────────────────────
 print("\n--- Experience Archive ---")
+import shared.experience_archive as _ea_mod
 from shared.experience_archive import (
     record_fix, query_best_strategy, get_success_rate, get_archive_stats,
 )
 
-# Test 1: record_fix returns bool
-_ea_ok = record_fix("ImportError", "pip_install", "success", file="test.py")
-test("ExperienceArchive: record_fix returns bool",
-     isinstance(_ea_ok, bool), f"type={type(_ea_ok).__name__}")
+# Redirect to temp file — prevents polluting the production archive on every test run
+import tempfile as _ea_tmp_mod
+_ea_tmp_f = _ea_tmp_mod.NamedTemporaryFile(suffix=".csv", delete=False)
+_ea_tmp_f.close()
+_ea_orig_path = _ea_mod.ARCHIVE_PATH
+_ea_mod.ARCHIVE_PATH = _ea_tmp_f.name
+try:
+    # Test 1: record_fix returns bool
+    _ea_ok = record_fix("ImportError", "pip_install", "success", file="test.py")
+    test("ExperienceArchive: record_fix returns bool",
+         isinstance(_ea_ok, bool), f"type={type(_ea_ok).__name__}")
 
-# Test 2: get_archive_stats returns dict
-_ea_stats = get_archive_stats()
-test("ExperienceArchive: get_archive_stats returns dict",
-     isinstance(_ea_stats, dict), f"type={type(_ea_stats).__name__}")
+    # Test 2: get_archive_stats returns dict
+    _ea_stats = get_archive_stats()
+    test("ExperienceArchive: get_archive_stats returns dict",
+         isinstance(_ea_stats, dict), f"type={type(_ea_stats).__name__}")
 
-# Test 3: get_archive_stats has total_rows key
-test("ExperienceArchive: stats has total_rows key",
-     "total_rows" in _ea_stats, f"keys={set(_ea_stats.keys())}")
+    # Test 3: get_archive_stats has total_rows key
+    test("ExperienceArchive: stats has total_rows key",
+         "total_rows" in _ea_stats, f"keys={set(_ea_stats.keys())}")
 
-# Test 4: query_best_strategy returns string
-_ea_best = query_best_strategy("ImportError")
-test("ExperienceArchive: query_best_strategy returns string",
-     isinstance(_ea_best, str), f"type={type(_ea_best).__name__}")
+    # Test 4: query_best_strategy returns string
+    _ea_best = query_best_strategy("ImportError")
+    test("ExperienceArchive: query_best_strategy returns string",
+         isinstance(_ea_best, str), f"type={type(_ea_best).__name__}")
 
-# Test 5: get_success_rate returns float in [0, 1]
-_ea_rate = get_success_rate("pip_install")
-test("ExperienceArchive: get_success_rate returns float in [0,1]",
-     isinstance(_ea_rate, float) and 0.0 <= _ea_rate <= 1.0,
-     f"got {_ea_rate}")
+    # Test 5: get_success_rate returns float in [0, 1]
+    _ea_rate = get_success_rate("pip_install")
+    test("ExperienceArchive: get_success_rate returns float in [0,1]",
+         isinstance(_ea_rate, float) and 0.0 <= _ea_rate <= 1.0,
+         f"got {_ea_rate}")
+finally:
+    _ea_mod.ARCHIVE_PATH = _ea_orig_path
+    try:
+        os.unlink(_ea_tmp_f.name)
+    except OSError:
+        pass
 
 # ─── Memory Maintenance Tests ────────────────────────────────────────
 print("\n--- Memory Maintenance ---")

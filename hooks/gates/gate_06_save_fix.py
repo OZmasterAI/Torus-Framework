@@ -58,10 +58,14 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     issued_warning = False
 
     verified_fixes = state.get("verified_fixes", [])
+    if not isinstance(verified_fixes, list):
+        verified_fixes = []
     # Note: /tmp exclusion happens at insertion time in tracker.py, not here.
     # Filtering here would break tests that use /tmp paths for verification.
     # Time-decay: remove verified fixes older than STALE_FIX_SECONDS
     verification_timestamps = state.get("verification_timestamps", {})
+    if not isinstance(verification_timestamps, dict):
+        verification_timestamps = {}
     now = time.time()
     fresh_fixes = [f for f in verified_fixes if now - verification_timestamps.get(f, now) <= STALE_FIX_SECONDS]
     if len(fresh_fixes) < len(verified_fixes):

@@ -25,6 +25,10 @@ from shared.gate_helpers import extract_file_path, safe_tool_input
 GATE_NAME = "GATE 14: CONFIDENCE CHECK"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 
+# Block when pending_verification count meets or exceeds this threshold.
+# Tunable via state["gate_tune_overrides"]["gate_14_confidence_check"]["pending_threshold"].
+PENDING_THRESHOLD = 2
+
 from shared.exemptions import is_exempt_full as _is_exempt
 
 
@@ -55,7 +59,9 @@ def _check_signals(state, file_path=""):
     # Suppress during active error fixing — having unverified edits is expected
     # when fixing a known test failure. Gate 5 still limits unverified file count.
     pending = state.get("pending_verification", [])
-    if len(pending) > 0 and not state.get("fixing_error", False):
+    tune = state.get("gate_tune_overrides", {}).get("gate_14_confidence_check", {})
+    pending_threshold = tune.get("pending_threshold", PENDING_THRESHOLD)
+    if len(pending) >= pending_threshold and not state.get("fixing_error", False):
         failures.append(f"{len(pending)} file(s) with unverified edits")
     # Signal 3: memory freshness — DORMANT (redundant with Gate 4)
     # mem_ts = get_memory_last_queried(state)
