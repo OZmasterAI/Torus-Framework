@@ -121,8 +121,8 @@ remember_this("Experiment {tag} complete: {N} iterations, baseline={baseline} �
 
 After reporting results:
 1. **If improvements were kept**: Ask the user if they want to merge the experiment branch back (e.g., `git merge experiment/{tag}`) or keep it for review.
-2. **Remove worktree**: Run `git worktree remove <worktree_path>` (use `--force` if needed). Always clean up — do not leave stale worktrees behind.
-3. **Prune branches** (optional): If the user doesn't want the branch, `git branch -d experiment/{tag}`.
+2. **Keep worktree alive**: Do NOT remove the worktree automatically. Tell the user where it is so they can browse files, run tests, or inspect results.
+3. **Cleanup on request only**: When the user explicitly asks to clean up, run `git worktree remove <worktree_path>` (use `--force` if needed) and optionally `git branch -d experiment/{tag}`.
 
 ## Rules
 - NEVER edit files not listed in program.md's "What You CAN Edit"
@@ -135,4 +135,4 @@ After reporting results:
 - Redirect experiment output to `/tmp/experiment-run.log` — grep for metrics, don't flood context
 - On crash: read the traceback. If trivially fixable (syntax, import, typo), attempt ONE fix and re-run before reverting
 - ALL work happens inside the worktree — never modify the main working tree
-- ALWAYS clean up the worktree in Phase 4 — do not leave stale worktrees behind
+- Keep worktree alive after experiment — only clean up when user explicitly requests it
