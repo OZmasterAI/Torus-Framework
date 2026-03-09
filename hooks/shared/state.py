@@ -438,6 +438,11 @@ def _validate_consistency(state):
         state["skill_usage"] = {}
         corrections.append("skill_usage: reset to empty dict (was not a dict)")
 
+    # Ensure verification_timestamps is a dict (G06 calls .get() on it — crashes on float/int)
+    if not isinstance(state.get("verification_timestamps"), dict):
+        state["verification_timestamps"] = {}
+        corrections.append("verification_timestamps: reset to empty dict (was not a dict)")
+
     # Cap gate_timing_stats dict
     timing = state.get("gate_timing_stats", {})
     if len(timing) > 20:

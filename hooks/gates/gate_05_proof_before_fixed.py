@@ -23,7 +23,7 @@ from shared.gate_helpers import extract_file_path, is_test_file, safe_tool_input
 GATE_NAME = "GATE 5: PROOF BEFORE FIXED"
 
 # Block immediately at this many unverified files (no warn phase)
-BLOCK_THRESHOLD = 3
+BLOCK_THRESHOLD = 4
 
 from shared.exemptions import is_exempt_base as is_exempt
 

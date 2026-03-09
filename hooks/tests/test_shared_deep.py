@@ -2417,12 +2417,12 @@ try:
     test("MemDecay: _age_days invalid returns 0", _age_days("invalid") == 0.0)
     test("MemDecay: _age_days empty returns 0", _age_days("") == 0.0)
 
-    # _time_decay_factor
+    # _time_decay_factor (hybrid: exponential→power-law at 15 days)
     test("MemDecay: decay at age 0 is 1.0", abs(_time_decay_factor(0.0) - 1.0) < 1e-9)
-    test("MemDecay: decay at half-life is 0.5", abs(_time_decay_factor(45.0) - 0.5) < 1e-9)
-    test("MemDecay: decay at 2x half-life is 0.25", abs(_time_decay_factor(90.0) - 0.25) < 1e-6)
-    test("MemDecay: decay at 3x half-life is 0.125", abs(_time_decay_factor(135.0) - 0.125) < 1e-6)
-    test("MemDecay: custom half-life", abs(_time_decay_factor(10.0, half_life=10.0) - 0.5) < 1e-9)
+    test("MemDecay: decay at day 1 ~0.95", 0.93 < _time_decay_factor(1.0) < 0.97)
+    test("MemDecay: decay monotonic 45>90", _time_decay_factor(45.0) > _time_decay_factor(90.0))
+    test("MemDecay: decay monotonic 90>135", _time_decay_factor(90.0) > _time_decay_factor(135.0))
+    test("MemDecay: long-tail at 365d > 0.001", _time_decay_factor(365.0) > 0.001)
 
     # _access_boost
     test("MemDecay: access_boost 0 retrieval is 0", _access_boost(0) == 0.0)
@@ -8379,15 +8379,15 @@ try:
     test("MD: _MAX_TAG_BONUS == 0.15",
          _md_MAX_TAG_BONUS == 0.15, str(_md_MAX_TAG_BONUS))
 
-    # _time_decay_factor
+    # _time_decay_factor (hybrid: exponential→power-law at 3 days)
     test("MD: _time_decay_factor(0.0) returns 1.0",
          _md_time_decay(0.0) == 1.0, str(_md_time_decay(0.0)))
-    _md_decay_45 = _md_time_decay(45.0)
-    test("MD: _time_decay_factor(45.0) returns ~0.5 (half-life)",
-         abs(_md_decay_45 - 0.5) < 1e-9, str(_md_decay_45))
+    _md_decay_1 = _md_time_decay(1.0)
+    test("MD: _time_decay_factor(1.0) returns ~0.95",
+         0.93 < _md_decay_1 < 0.97, str(_md_decay_1))
     _md_decay_90 = _md_time_decay(90.0)
-    test("MD: _time_decay_factor(90.0) returns ~0.25 (two half-lives)",
-         abs(_md_decay_90 - 0.25) < 1e-9, str(_md_decay_90))
+    test("MD: _time_decay_factor monotonic (45 > 90)",
+         _md_time_decay(45.0) > _md_decay_90, f"45d={_md_time_decay(45.0)} 90d={_md_decay_90}")
 
     # _access_boost
     test("MD: _access_boost(0) returns 0.0",

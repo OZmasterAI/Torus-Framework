@@ -1198,7 +1198,14 @@ def _apply_tier_boost(results):
                 tier = int(tier)
             except (ValueError, TypeError):
                 tier = 2
-        entry["_tier_adjusted"] = raw + _TIER_BOOST.get(tier, 0.0)
+        _tb = _TIER_BOOST.get(tier, 0.0)
+        if _adaptive_weights:
+            _aw = _adaptive_weights.get_weights()
+            if tier == 1:
+                _tb = _aw.get("tier_boost_t1", 0.05)
+            elif tier == 3:
+                _tb = _aw.get("tier_boost_t3", -0.02)
+        entry["_tier_adjusted"] = raw + _tb
     results.sort(key=lambda x: x.get("_tier_adjusted", 0), reverse=True)
     for entry in results:
         entry.pop("_tier_adjusted", None)
@@ -1300,6 +1307,10 @@ tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
 _lance_fts_ready = False  # True once LanceDB FTS index is built
+_knowledge_graph = None   # KnowledgeGraph instance (initialized lazily)
+_ltp_tracker = None       # LTPTracker instance (initialized lazily)
+_adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
+_last_search_ids = []     # IDs from last search_knowledge call (for implicit feedback)
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
@@ -1443,12 +1454,13 @@ def _tag_ids_to_summaries(memory_ids, collection_ref=None):
 
 
 def _ensure_initialized():
-    """Run one-time initialization (LanceDB + TagIndex + LanceDB FTS).
+    """Run one-time initialization (LanceDB + TagIndex + LanceDB FTS + Knowledge Graph + LTP).
 
     Called lazily on first MCP tool use or explicitly at server startup.
     Safe to call multiple times — idempotent after first run.
     """
     global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
+    global _knowledge_graph, _ltp_tracker, _adaptive_weights
     if _initialized:
         return
     _init_lancedb()
@@ -1463,6 +1475,56 @@ def _ensure_initialized():
         _lance_fts_ready = True
     except Exception:
         pass  # FTS is optional — keyword search degrades gracefully
+
+    # Initialize knowledge graph and LTP tracker (fail-open)
+    try:
+        from shared.knowledge_graph import KnowledgeGraph
+        _kg_path = os.path.join(MEMORY_DIR, "knowledge_graph.db")
+        _knowledge_graph = KnowledgeGraph(_kg_path)
+    except Exception:
+        _knowledge_graph = None
+    try:
+        from shared.ltp_tracker import LTPTracker
+        _ltp_tracker = LTPTracker()
+    except Exception:
+        _ltp_tracker = None
+
+    # Initialize adaptive weights (fail-open)
+    try:
+        from shared.memory_replay import AdaptiveWeights
+        _adaptive_weights = AdaptiveWeights()
+    except Exception:
+        _adaptive_weights = None
+
+    # Session-start memory replay cycle (fail-open)
+    try:
+        if _knowledge_graph and _ltp_tracker and collection:
+            from shared.memory_replay import run_replay_cycle
+            _cutoff = time.time() - 30 * 86400  # 30 days
+            _recent_rows = collection._table.search().where(
+                f"session_time > {_cutoff}", prefilter=True
+            ).limit(50).to_list()
+            if _recent_rows:
+                _replay_mems = []
+                for _r in _recent_rows:
+                    _replay_mems.append({
+                        "id": _r.get("id", ""),
+                        "tier": _r.get("tier", 2),
+                        "retrieval_count": _r.get("retrieval_count", 0),
+                        "session_time": _r.get("session_time", 0),
+                        "timestamp": _r.get("timestamp", ""),
+                        "tags": _r.get("tags", ""),
+                    })
+                _replay_stats = run_replay_cycle(
+                    _replay_mems,
+                    ltp_tracker=_ltp_tracker,
+                    knowledge_graph=_knowledge_graph,
+                    collection=collection,
+                )
+                if any(v > 0 for v in _replay_stats.values()):
+                    print(f"[MCP] Replay: {_replay_stats}", file=_sys.stderr)
+    except Exception:
+        pass  # Replay failure must not block initialization
 
     # Check if persisted tag index is already synced with LanceDB
     lance_count = collection.count()
@@ -2278,6 +2340,28 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     except Exception:
         pass  # Access boost failure must not break search
 
+    # Apply LTP-aware relevance scoring: re-score using 4-level decay factor (fail-open)
+    try:
+        if _ltp_tracker:
+            from shared.memory_decay import calculate_relevance_score
+            for entry in formatted:
+                mem_id = entry.get("id", "")
+                if mem_id:
+                    ltp_factor = _ltp_tracker.get_decay_factor(mem_id)
+                else:
+                    ltp_factor = 1.0
+                ltp_score = calculate_relevance_score(entry, ltp_factor=ltp_factor)
+                # Blend: vector relevance + LTP-decay score (adaptive weight)
+                _ltp_blend = 0.3
+                if _adaptive_weights:
+                    _ltp_blend = _adaptive_weights.get_weights().get("ltp_blend", 0.3)
+                raw_rel = entry.get("relevance", 0.5)
+                entry["relevance"] = round(raw_rel * (1 - _ltp_blend) + ltp_score * _ltp_blend, 4)
+                entry["ltp_factor"] = ltp_factor
+            formatted.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+    except Exception:
+        pass  # LTP scoring failure must not break search
+
     # Trim to requested top_k after expansion
     formatted = formatted[:top_k]
 
@@ -2472,6 +2556,52 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                 r["relevance"] = r.get("relevance", 0) * 1.5
         formatted.sort(key=lambda r: r.get("relevance", 0), reverse=True)
 
+    # --- mem2x: LTP access tracking + Hebbian co-retrieval (fail-open) ---
+    try:
+        _mem_ids = [r.get("id") for r in formatted if r.get("id") and not r.get("source")]
+        if _ltp_tracker and _mem_ids:
+            for mid in _mem_ids[:10]:
+                _ltp_tracker.record_access(mid)
+        if _knowledge_graph and len(_mem_ids) >= 2:
+            _knowledge_graph.strengthen_coretrieval(_mem_ids[:10])
+    except Exception:
+        pass  # LTP/Hebbian failure must not break search
+
+    # --- mem2x: Graph-enriched search via spreading activation (fail-open) ---
+    graph_enriched_count = 0
+    try:
+        if _knowledge_graph and mode not in ("tags", "observations", "transcript"):
+            from shared.entity_extraction import extract_entities
+            _query_entities = [e["name"] for e in extract_entities(query)]
+            if _query_entities:
+                _activated = _knowledge_graph.spreading_activation(_query_entities, max_hops=3)
+                if _activated:
+                    # Look up memories containing activated entities
+                    _seen_ids = {r.get("id") for r in formatted if r.get("id")}
+                    _activated_names = [a["name"] for a in _activated[:5] if a["activation"] > 0.1]
+                    for _aname in _activated_names:
+                        try:
+                            _graph_results = collection.query(
+                                query_texts=[_aname], n_results=3,
+                                include=["metadatas", "distances"],
+                            )
+                            _graph_summaries = format_summaries(_graph_results)
+                            for gs in _graph_summaries:
+                                gid = gs.get("id", "")
+                                if gid and gid not in _seen_ids:
+                                    gs["graph_enriched"] = True
+                                    _graph_disc = 0.8
+                                    if _adaptive_weights:
+                                        _graph_disc = _adaptive_weights.get_weights().get("graph_discount", 0.8)
+                                    gs["relevance"] = gs.get("relevance", 0) * _graph_disc
+                                    formatted.append(gs)
+                                    _seen_ids.add(gid)
+                                    graph_enriched_count += 1
+                        except Exception:
+                            continue
+    except Exception:
+        pass  # Graph enrichment failure must not break search
+
     result = {
         "results": formatted,
         "total_memories": count,
@@ -2490,9 +2620,19 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         result["enrichment_count"] = enrichment_count
     if tg_enrichment_count > 0:
         result["tg_enrichment_count"] = tg_enrichment_count
+    if graph_enriched_count > 0:
+        result["graph_enriched_count"] = graph_enriched_count
     if tag_expanded:
         result["tag_expanded"] = True
         result["expanded_tags"] = expanded_tags
+
+    # Track search result IDs for implicit feedback (fail-open)
+    global _last_search_ids
+    try:
+        _last_search_ids = [r.get("id", "") for r in formatted[:10] if r.get("id")]
+    except Exception:
+        _last_search_ids = []
+
     return result
 
 
@@ -2748,6 +2888,25 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
         elif dedup_result.get("soft_dupe_tag"):
             _soft_dupe_tag = dedup_result["soft_dupe_tag"]
 
+    # Retroactive interference: corrections/fixes suppress similar existing memories (fail-open)
+    try:
+        if collection and not force and any(t in tags for t in ("type:fix", "type:correction")):
+            from shared.memory_replay import compute_interference
+            _ri_results = collection.query(query_texts=[content], n_results=3, include=["metadatas", "distances"])
+            if _ri_results and _ri_results.get("ids") and _ri_results["ids"][0]:
+                _new_mem = {"tier": _classify_tier(content, tags), "tags": tags}
+                for _ri_idx, _ri_id in enumerate(_ri_results["ids"][0]):
+                    _ri_dist = _ri_results["distances"][0][_ri_idx] if _ri_results.get("distances") else 1.0
+                    _ri_sim = max(0, 1.0 - _ri_dist)
+                    _ri_meta = _ri_results["metadatas"][0][_ri_idx] if _ri_results.get("metadatas") else {}
+                    _old_mem = {"tier": _ri_meta.get("tier", 2), "tags": _ri_meta.get("tags", "")}
+                    _ri_action = compute_interference(_new_mem, _old_mem, _ri_sim)
+                    if _ri_action.get("action") == "suppress":
+                        _new_tier = _ri_action.get("tier_change", 3)
+                        collection.update(ids=[_ri_id], metadatas=[{**_ri_meta, "tier": _new_tier}])
+    except Exception:
+        pass  # Interference failure must not block memory storage
+
     # Citation URL extraction (fail-open)
     citation = _extract_citations(content, context)
     content = citation["clean_content"]
@@ -2790,6 +2949,20 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
 
     # Update tag index
     tag_index.add_tags(doc_id, tags)
+
+    # Knowledge graph: extract entities and co-occurrences, populate graph (fail-open)
+    try:
+        if _knowledge_graph:
+            from shared.entity_extraction import extract_entities, extract_cooccurrences
+            _kg_text = f"{content} {context}"
+            _kg_entities = extract_entities(_kg_text)
+            for ent in _kg_entities:
+                _knowledge_graph.upsert_entity(ent["name"], ent["type"])
+            _kg_coocs = extract_cooccurrences(_kg_text)
+            for e1, e2 in _kg_coocs:
+                _knowledge_graph.add_edge(e1, e2, "co_occurs")
+    except Exception:
+        pass  # Graph population failure must not break memory storage
 
     # Mark tag co-occurrence matrix as dirty (new tags may change co-occurrence rates)
     global _tag_cooccurrence_dirty
@@ -2961,6 +3134,13 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
                         tag_index.remove(victim_id)
                     except Exception:
                         pass
+                    # Transfer graph edges from duplicate to survivor, then deactivate (fail-open)
+                    try:
+                        if _knowledge_graph:
+                            _knowledge_graph.transfer_edges(victim_id, cand["id_a"])
+                            _knowledge_graph.deactivate_entity(victim_id)
+                    except Exception:
+                        pass
                     moved += 1
             except Exception:
                 continue
@@ -3035,6 +3215,17 @@ def get_memory(id: str) -> dict:
 
             entries.append(entry)
 
+        # Implicit feedback: if retrieved ID was in last search results, signal positive (fail-open)
+        try:
+            if _adaptive_weights and _last_search_ids:
+                for _fid in ids:
+                    if _fid in _last_search_ids:
+                        _adaptive_weights.record_signal("ltp_blend", True)
+                        _adaptive_weights.record_signal("graph_discount", True)
+                        break  # one signal per get_memory call
+        except Exception:
+            pass
+
         _touch_memory_timestamp()
         # Single ID: return single entry (backward compatible)
         return entries[0] if len(entries) == 1 else {"memories": entries, "count": len(entries)}
@@ -3064,6 +3255,14 @@ def delete_memory(id: str) -> dict:
         if not found:
             return {"error": f"No memories found with ids: {ids}"}
         collection.delete(ids=found)
+        # Clean up knowledge graph edges for deleted memories (fail-open)
+        try:
+            if _knowledge_graph:
+                for did in found:
+                    _knowledge_graph.remove_entity_edges(did)
+                    _knowledge_graph.deactivate_entity(did)
+        except Exception:
+            pass
         return {"deleted": found, "count": len(found)}
     except Exception as e:
         return {"error": f"Failed to delete memory: {str(e)}"}

@@ -35,6 +35,7 @@ from shared.gate_router import get_optimal_gate_order, update_qtable, flush_qtab
 from shared.gate_timing import record_timing as _record_gate_timing, flush_timings as _flush_timings
 from shared.security_profiles import should_skip_for_profile, get_gate_mode_for_profile
 from shared.domain_registry import get_effective_gate_mode as _domain_gate_mode
+from shared.metrics_collector import record_gate_fire as _mc_fire, record_gate_block as _mc_block, record_gate_latency as _mc_latency
 
 
 # -- Gate Result Cache ----------------------------------------------------
@@ -467,6 +468,11 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 elapsed_ms = (time.time() - t0) * 1000
                 record_gate_result(gate_short, success=True)
                 _store_gate_result(gate_short, tool_name, tool_input, result)
+            try:
+                _mc_fire(gate_short)
+                _mc_latency(gate_short, elapsed_ms)
+            except Exception:
+                pass  # Metrics are non-fatal
             gate_label = getattr(gate, "GATE_NAME", gate.__name__)
             session_id = state.get("_session_id", "")
 
@@ -522,6 +528,10 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 block_counts[gate_short] = block_counts.get(gate_short, 0) + 1
                 # Track gate effectiveness (self-evolving) — persistent across sessions
                 update_gate_effectiveness(gate_short, "blocks")
+                try:
+                    _mc_block(gate_short)
+                except Exception:
+                    pass  # Metrics are non-fatal
                 # Record block outcome for later resolution tracking
                 file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "") or tool_input.get("command", "")[:100]
                 outcomes = state.setdefault("gate_block_outcomes", [])
