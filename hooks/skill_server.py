@@ -127,6 +127,44 @@ def invoke_skill(name: str) -> dict:
     }
 
 
+_SELF_IMPROVE_SKILLS = {
+    "sprint": "Multi-agent self-improvement sprint — find and fix framework weaknesses",
+    "audit": "Full project audit — verify all gates, tests, shared modules",
+    "diagnose": "Gate effectiveness analysis — which gates block too much or too little",
+    "analyze-errors": "Recurring error deep analysis — find patterns in repeated failures",
+    "benchmark": "Performance baseline — measure gate latency, memory search speed",
+    "introspect": "Deep self-analysis — examine reasoning patterns and blind spots",
+    "super-evolve": "Evolution cycle — identify and implement framework improvements",
+    "super-health": "Comprehensive health diagnostic — full system check",
+    "super-prof-optimize": "Performance profiling and optimization — find and fix bottlenecks",
+    "code-hotspots": "Identify high-risk files from gate block patterns in audit logs",
+    "generate-test-stubs": "Auto-generate test stubs for a Python module using AST analysis",
+    "replay-events": "Replay historical tool events through gate pipeline for regression testing",
+    "tool-recommendations": "Suggest alternative tools for frequently blocked tools",
+    "gate-health-correlation": "Detect gate redundancy and synergy from fire patterns",
+    "causal-chain-analysis": "Analyze fix outcomes to detect patterns and suggest improvements",
+    "gate-timing": "Gate execution latency analysis — per-gate timing stats and slow gate detection",
+    "session-metrics": "Current session operational metrics — tool calls, block rate, error rate",
+    "experiment": "Autoresearch-style experiment loop — metric-driven optimization with worktrees",
+}
+
+
+@mcp.tool()
+@crash_proof
+def self_improve(action: str) -> dict:
+    """Run a self-improvement skill. Actions: sprint (multi-agent improvement), audit (full project audit), diagnose (gate effectiveness), analyze-errors (recurring errors), benchmark (performance baseline), introspect (deep self-analysis), super-evolve (evolution cycle), super-health (health diagnostic), super-prof-optimize (profiling & optimization), code-hotspots (high-risk files), generate-test-stubs (auto-generate tests), replay-events (gate regression testing), tool-recommendations (blocked tool alternatives), gate-health-correlation (gate redundancy analysis), causal-chain-analysis (fix outcome patterns), experiment (autoresearch-style optimization loop)
+
+    Args:
+        action: One of: sprint, audit, diagnose, analyze-errors, benchmark, introspect, super-evolve, super-health, super-prof-optimize, code-hotspots, generate-test-stubs, replay-events, tool-recommendations, gate-health-correlation, causal-chain-analysis, gate-timing, session-metrics, experiment
+    """
+    if action not in _SELF_IMPROVE_SKILLS:
+        return {
+            "error": f"Unknown action '{action}'",
+            "available": {k: v for k, v in _SELF_IMPROVE_SKILLS.items()},
+        }
+    return invoke_skill(action)
+
+
 @mcp.tool()
 @crash_proof
 def skill_usage() -> dict:

@@ -492,7 +492,7 @@ Cross-session            → Sub-agents + memory
 
 ---
 
-## Teams (4 definitions)
+## Teams (5 definitions)
 
 | Team | Purpose | Members |
 |------|---------|---------|

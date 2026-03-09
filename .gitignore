@@ -97,8 +97,28 @@ mcp-needs-auth-cache.json
 backupclaude.md
 architecture.html
 diagram.html
+docs/diagrams/*.html.bak
+
+# Pycache in skill libraries
+dormant/**/scripts/__pycache__/
+skill-library/**/scripts/__pycache__/
 
 # Claude-managed plugin state
 plugins/installed_plugins.json
 plugins/known_marketplaces.json
 plugins/marketplaces/
+integrations/tts-voices/
+
+# Model router runtime config (contains API keys)
+integrations/model-router/router_config.toml
+
+# Dormant skills (private/project-specific)
+dormant/skills/market/
+dormant/skills/trade/
+
+# Runtime state (operational data, not source)
+hooks/.experience_archive.csv
+hooks/.circuit_breaker.json
+
+# Skill library runtime logs
+skill-library/.usage_log.jsonl

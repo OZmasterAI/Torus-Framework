@@ -29,7 +29,7 @@ import uvicorn
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 # --- Piper TTS voice loading ---
-PIPER_VOICES_DIR = os.path.join(_HERE, "piper-voices")
+PIPER_VOICES_DIR = os.path.join(os.path.dirname(_HERE), "tts-voices", "piper-voices")
 PIPER_PREFIX = "piper:"
 _piper_models = {}  # name -> onnx_path
 _piper_cache = {}   # name -> loaded PiperVoice (lazy)
