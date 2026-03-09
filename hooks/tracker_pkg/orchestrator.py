@@ -7,6 +7,7 @@ import time
 
 from shared.state import load_state, save_state, update_gate_effectiveness, get_live_toggle, read_enforcer_sideband, delete_enforcer_sideband
 from shared.error_normalizer import fnv1a_hash
+from shared.metrics_collector import set_test_pass_rate as _set_test_pass_rate
 
 from tracker_pkg import _log_debug
 from tracker_pkg.errors import _extract_error_pattern, _detect_errors
@@ -203,6 +204,22 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                     except (json.JSONDecodeError, TypeError):
                         pass
             state["last_test_exit_code"] = exit_code
+
+            # Update test.pass_rate metric from actual test output
+            try:
+                if exit_code == 0:
+                    _set_test_pass_rate(1.0)
+                else:
+                    # Parse pytest-style "N passed, M failed" summary from output
+                    out_str = str(tool_response) if tool_response else ""
+                    _m_pass = re.search(r'(\d+) passed', out_str)
+                    _m_fail = re.search(r'(\d+) failed', out_str)
+                    _n_pass = int(_m_pass.group(1)) if _m_pass else 0
+                    _n_fail = int(_m_fail.group(1)) if _m_fail else 0
+                    _total = _n_pass + _n_fail
+                    _set_test_pass_rate(_n_pass / _total if _total > 0 else 0.0)
+            except Exception:
+                pass  # Metrics are non-fatal
 
             # Causal chain auto-detect: set recent_test_failure on non-zero exit
             if exit_code and exit_code != 0:
