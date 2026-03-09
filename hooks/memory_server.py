@@ -1198,7 +1198,14 @@ def _apply_tier_boost(results):
                 tier = int(tier)
             except (ValueError, TypeError):
                 tier = 2
-        entry["_tier_adjusted"] = raw + _TIER_BOOST.get(tier, 0.0)
+        _tb = _TIER_BOOST.get(tier, 0.0)
+        if _adaptive_weights:
+            _aw = _adaptive_weights.get_weights()
+            if tier == 1:
+                _tb = _aw.get("tier_boost_t1", 0.05)
+            elif tier == 3:
+                _tb = _aw.get("tier_boost_t3", -0.02)
+        entry["_tier_adjusted"] = raw + _tb
     results.sort(key=lambda x: x.get("_tier_adjusted", 0), reverse=True)
     for entry in results:
         entry.pop("_tier_adjusted", None)
@@ -1302,6 +1309,8 @@ _initialized = False
 _lance_fts_ready = False  # True once LanceDB FTS index is built
 _knowledge_graph = None   # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None       # LTPTracker instance (initialized lazily)
+_adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
+_last_search_ids = []     # IDs from last search_knowledge call (for implicit feedback)
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
@@ -1451,7 +1460,7 @@ def _ensure_initialized():
     Safe to call multiple times — idempotent after first run.
     """
     global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
-    global _knowledge_graph, _ltp_tracker
+    global _knowledge_graph, _ltp_tracker, _adaptive_weights
     if _initialized:
         return
     _init_lancedb()
@@ -1479,6 +1488,43 @@ def _ensure_initialized():
         _ltp_tracker = LTPTracker()
     except Exception:
         _ltp_tracker = None
+
+    # Initialize adaptive weights (fail-open)
+    try:
+        from shared.memory_replay import AdaptiveWeights
+        _adaptive_weights = AdaptiveWeights()
+    except Exception:
+        _adaptive_weights = None
+
+    # Session-start memory replay cycle (fail-open)
+    try:
+        if _knowledge_graph and _ltp_tracker and collection:
+            from shared.memory_replay import run_replay_cycle
+            _cutoff = time.time() - 30 * 86400  # 30 days
+            _recent_rows = collection._table.search().where(
+                f"session_time > {_cutoff}", prefilter=True
+            ).limit(50).to_list()
+            if _recent_rows:
+                _replay_mems = []
+                for _r in _recent_rows:
+                    _replay_mems.append({
+                        "id": _r.get("id", ""),
+                        "tier": _r.get("tier", 2),
+                        "retrieval_count": _r.get("retrieval_count", 0),
+                        "session_time": _r.get("session_time", 0),
+                        "timestamp": _r.get("timestamp", ""),
+                        "tags": _r.get("tags", ""),
+                    })
+                _replay_stats = run_replay_cycle(
+                    _replay_mems,
+                    ltp_tracker=_ltp_tracker,
+                    knowledge_graph=_knowledge_graph,
+                    collection=collection,
+                )
+                if any(v > 0 for v in _replay_stats.values()):
+                    print(f"[MCP] Replay: {_replay_stats}", file=_sys.stderr)
+    except Exception:
+        pass  # Replay failure must not block initialization
 
     # Check if persisted tag index is already synced with LanceDB
     lance_count = collection.count()
@@ -2305,9 +2351,12 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                 else:
                     ltp_factor = 1.0
                 ltp_score = calculate_relevance_score(entry, ltp_factor=ltp_factor)
-                # Blend: 70% vector relevance + 30% LTP-decay score
+                # Blend: vector relevance + LTP-decay score (adaptive weight)
+                _ltp_blend = 0.3
+                if _adaptive_weights:
+                    _ltp_blend = _adaptive_weights.get_weights().get("ltp_blend", 0.3)
                 raw_rel = entry.get("relevance", 0.5)
-                entry["relevance"] = round(raw_rel * 0.7 + ltp_score * 0.3, 4)
+                entry["relevance"] = round(raw_rel * (1 - _ltp_blend) + ltp_score * _ltp_blend, 4)
                 entry["ltp_factor"] = ltp_factor
             formatted.sort(key=lambda x: x.get("relevance", 0), reverse=True)
     except Exception:
@@ -2541,7 +2590,10 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                                 gid = gs.get("id", "")
                                 if gid and gid not in _seen_ids:
                                     gs["graph_enriched"] = True
-                                    gs["relevance"] = gs.get("relevance", 0) * 0.8  # slight discount
+                                    _graph_disc = 0.8
+                                    if _adaptive_weights:
+                                        _graph_disc = _adaptive_weights.get_weights().get("graph_discount", 0.8)
+                                    gs["relevance"] = gs.get("relevance", 0) * _graph_disc
                                     formatted.append(gs)
                                     _seen_ids.add(gid)
                                     graph_enriched_count += 1
@@ -2573,6 +2625,14 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     if tag_expanded:
         result["tag_expanded"] = True
         result["expanded_tags"] = expanded_tags
+
+    # Track search result IDs for implicit feedback (fail-open)
+    global _last_search_ids
+    try:
+        _last_search_ids = [r.get("id", "") for r in formatted[:10] if r.get("id")]
+    except Exception:
+        _last_search_ids = []
+
     return result
 
 
@@ -2827,6 +2887,25 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
             }
         elif dedup_result.get("soft_dupe_tag"):
             _soft_dupe_tag = dedup_result["soft_dupe_tag"]
+
+    # Retroactive interference: corrections/fixes suppress similar existing memories (fail-open)
+    try:
+        if collection and not force and any(t in tags for t in ("type:fix", "type:correction")):
+            from shared.memory_replay import compute_interference
+            _ri_results = collection.query(query_texts=[content], n_results=3, include=["metadatas", "distances"])
+            if _ri_results and _ri_results.get("ids") and _ri_results["ids"][0]:
+                _new_mem = {"tier": _classify_tier(content, tags), "tags": tags}
+                for _ri_idx, _ri_id in enumerate(_ri_results["ids"][0]):
+                    _ri_dist = _ri_results["distances"][0][_ri_idx] if _ri_results.get("distances") else 1.0
+                    _ri_sim = max(0, 1.0 - _ri_dist)
+                    _ri_meta = _ri_results["metadatas"][0][_ri_idx] if _ri_results.get("metadatas") else {}
+                    _old_mem = {"tier": _ri_meta.get("tier", 2), "tags": _ri_meta.get("tags", "")}
+                    _ri_action = compute_interference(_new_mem, _old_mem, _ri_sim)
+                    if _ri_action.get("action") == "suppress":
+                        _new_tier = _ri_action.get("tier_change", 3)
+                        collection.update(ids=[_ri_id], metadatas=[{**_ri_meta, "tier": _new_tier}])
+    except Exception:
+        pass  # Interference failure must not block memory storage
 
     # Citation URL extraction (fail-open)
     citation = _extract_citations(content, context)
@@ -3135,6 +3214,17 @@ def get_memory(id: str) -> dict:
                     pass  # Tracking failure must not break retrieval
 
             entries.append(entry)
+
+        # Implicit feedback: if retrieved ID was in last search results, signal positive (fail-open)
+        try:
+            if _adaptive_weights and _last_search_ids:
+                for _fid in ids:
+                    if _fid in _last_search_ids:
+                        _adaptive_weights.record_signal("ltp_blend", True)
+                        _adaptive_weights.record_signal("graph_discount", True)
+                        break  # one signal per get_memory call
+        except Exception:
+            pass
 
         _touch_memory_timestamp()
         # Single ID: return single entry (backward compatible)

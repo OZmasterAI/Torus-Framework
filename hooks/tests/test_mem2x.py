@@ -384,6 +384,252 @@ def test_ltp_factor_gradation():
     )
 
 
+## --- Combo 2: Edge decay, pruning, clusters ---
+
+def test_edge_decay():
+    """Combo2 Task 1: Edge strength decays over time."""
+    from shared.knowledge_graph import KnowledgeGraph
+
+    kg = KnowledgeGraph(":memory:")
+    kg.upsert_entity("A")
+    kg.upsert_entity("B")
+    kg.add_edge("A", "B", "co_occurs", 0.8)
+    # Simulate 14-day-old edge
+    kg._conn.execute(
+        "UPDATE edges SET last_activated = strftime('%s','now') - 1209600"
+    )
+    kg._conn.commit()
+    result = kg.decay_edges(half_life_hours=168)  # 7-day half-life
+    strength = kg.get_edge_strength("A", "B")
+    assert strength < 0.8, f"Should have decayed from 0.8, got {strength}"
+    assert strength > 0.1, f"Should not be pruned yet, got {strength}"
+    assert result["decayed"] >= 1
+
+
+def test_edge_prune():
+    """Combo2 Task 1: Very weak edges get pruned."""
+    from shared.knowledge_graph import KnowledgeGraph
+
+    kg = KnowledgeGraph(":memory:")
+    kg.upsert_entity("A")
+    kg.upsert_entity("B")
+    kg.add_edge("A", "B", "co_occurs", 0.03)  # below prune threshold
+    kg.decay_edges(half_life_hours=168)
+    assert kg.edge_count() == 0, "Edge below 0.05 should be pruned"
+
+
+def test_high_activation_clusters():
+    """Combo2 Task 1: Union-find clusters on high-activation edges."""
+    from shared.knowledge_graph import KnowledgeGraph
+
+    kg = KnowledgeGraph(":memory:")
+    for e in ["A", "B", "C", "D"]:
+        kg.upsert_entity(e)
+    # Create a tight cluster A-B-C with high activation
+    for pair in [("A", "B"), ("B", "C"), ("A", "C")]:
+        kg.add_edge(pair[0], pair[1], "co_retrieved", 0.5)
+        for _ in range(5):
+            kg.add_edge(pair[0], pair[1], "co_retrieved", 0.1)
+    # D is weakly connected
+    kg.add_edge("A", "D", "co_retrieved", 0.1)
+    clusters = kg.get_high_activation_clusters(min_activation=3)
+    assert len(clusters) >= 1, "Should find at least one cluster"
+    assert {"A", "B", "C"}.issubset(clusters[0]), f"Cluster should contain A,B,C: {clusters[0]}"
+
+
+## --- Combo 2: Memory replay ---
+
+def test_select_replay_candidates():
+    """Combo2 Task 2: Replay candidate selection by priority."""
+    import time as _time
+    from shared.memory_replay import select_replay_candidates
+
+    now = _time.time()
+    memories = [
+        {"id": "a", "tier": 1, "retrieval_count": 8, "session_time": now - 86400, "tags": "type:fix"},
+        {"id": "b", "tier": 3, "retrieval_count": 1, "session_time": now - 2592000, "tags": ""},
+        {"id": "c", "tier": 2, "retrieval_count": 5, "session_time": now - 172800, "tags": "type:learning"},
+    ]
+    candidates = select_replay_candidates(memories, max_candidates=2)
+    assert len(candidates) == 2
+    assert candidates[0]["id"] == "a", f"T1 high-retrieval should be first, got {candidates[0]['id']}"
+
+
+def test_compute_interference():
+    """Combo2 Task 2: Retroactive interference suppresses old memory."""
+    from shared.memory_replay import compute_interference
+
+    new_mem = {"id": "new", "tier": 1, "tags": "type:fix"}
+    old_mem = {"id": "old", "tier": 2, "tags": ""}
+    result = compute_interference(new_mem, old_mem, similarity=0.85)
+    assert result["action"] == "suppress"
+    assert result["tier_change"] == 3  # demote T2->T3
+
+
+def test_no_interference_low_similarity():
+    """Combo2 Task 2: No interference below threshold."""
+    from shared.memory_replay import compute_interference
+
+    new_mem = {"id": "new", "tier": 1, "tags": "type:fix"}
+    old_mem = {"id": "old", "tier": 2, "tags": ""}
+    result = compute_interference(new_mem, old_mem, similarity=0.3)
+    assert result["action"] == "none"
+
+
+def test_evaluate_tier_flow_promote():
+    """Combo2 Task 2: High retrieval count promotes tier."""
+    import time as _time
+    from shared.memory_replay import evaluate_tier_flow
+
+    mem = {"id": "x", "tier": 2, "retrieval_count": 10, "session_time": _time.time() - 86400}
+    assert evaluate_tier_flow(mem, ltp_status="full") == 1  # T2->T1
+
+
+def test_evaluate_tier_flow_demote():
+    """Combo2 Task 2: Old stale memory demotes tier."""
+    import time as _time
+    from shared.memory_replay import evaluate_tier_flow
+
+    mem = {"id": "x", "tier": 1, "retrieval_count": 1, "session_time": _time.time() - 5184000}  # 60 days
+    assert evaluate_tier_flow(mem, ltp_status="none") == 2  # T1->T2
+
+
+def test_evaluate_tier_flow_ltp_protects():
+    """Combo2 Task 2: LTP full protects from demotion."""
+    import time as _time
+    from shared.memory_replay import evaluate_tier_flow
+
+    mem = {"id": "x", "tier": 1, "retrieval_count": 1, "session_time": _time.time() - 5184000}
+    assert evaluate_tier_flow(mem, ltp_status="full") is None  # LTP protects — no change
+
+
+def test_no_interference_on_normal_save():
+    """Combo2 Task 7: Same-tier non-correction doesn't suppress."""
+    from shared.memory_replay import compute_interference
+
+    new = {"id": "new", "tier": 2, "tags": "type:learning"}
+    old = {"id": "old", "tier": 2, "tags": "type:learning"}
+    result = compute_interference(new, old, similarity=0.85)
+    assert result["action"] == "none"
+
+
+## --- Combo 2: Adaptive weights ---
+
+def test_adaptive_weights_default():
+    """Combo2 Task 3: Default weights match expected values."""
+    import tempfile
+    from shared.memory_replay import AdaptiveWeights
+
+    path = os.path.join(tempfile.mkdtemp(), "aw.json")
+    aw = AdaptiveWeights(path=path)
+    w = aw.get_weights()
+    assert w["ltp_blend"] == 0.3
+    assert w["graph_discount"] == 0.8
+
+
+def test_adaptive_weights_positive_signal():
+    """Combo2 Task 3: Positive signals increase weights."""
+    import tempfile
+    from shared.memory_replay import AdaptiveWeights
+
+    path = os.path.join(tempfile.mkdtemp(), "aw.json")
+    aw = AdaptiveWeights(path=path)
+    aw.record_signal("ltp_blend", positive=True)
+    aw.record_signal("ltp_blend", positive=True)
+    w = aw.get_weights()
+    assert w["ltp_blend"] > 0.3, f"Should have increased from 0.3, got {w['ltp_blend']}"
+
+
+def test_adaptive_weights_floor():
+    """Combo2 Task 3: Weights never go below floor."""
+    import tempfile
+    from shared.memory_replay import AdaptiveWeights
+
+    path = os.path.join(tempfile.mkdtemp(), "aw.json")
+    aw = AdaptiveWeights(path=path)
+    for _ in range(100):
+        aw.record_signal("ltp_blend", positive=False)
+    w = aw.get_weights()
+    assert w["ltp_blend"] >= 0.05, f"Should be >= 0.05 floor, got {w['ltp_blend']}"
+
+
+def test_adaptive_weights_persistence():
+    """Combo2 Task 3: Weights survive reload from disk."""
+    import tempfile
+    from shared.memory_replay import AdaptiveWeights
+
+    path = os.path.join(tempfile.mkdtemp(), "aw.json")
+    aw1 = AdaptiveWeights(path=path)
+    aw1.record_signal("ltp_blend", positive=True)
+    val1 = aw1.get_weights()["ltp_blend"]
+    # Reload from disk
+    aw2 = AdaptiveWeights(path=path)
+    assert aw2.get_weights()["ltp_blend"] == val1, "Should persist across instances"
+
+
+## --- Combo 2: Replay cycle integration ---
+
+def test_replay_cycle_runs():
+    """Combo2 Task 4: Full replay cycle with promotion."""
+    import time as _time
+    import tempfile
+    from shared.memory_replay import run_replay_cycle
+    from shared.knowledge_graph import KnowledgeGraph
+    from shared.ltp_tracker import LTPTracker
+
+    kg = KnowledgeGraph(":memory:")
+    ltp = LTPTracker(os.path.join(tempfile.mkdtemp(), "ltp.json"))
+
+    now = _time.time()
+    memories = [
+        {"id": "m1", "tier": 1, "retrieval_count": 5, "session_time": now - 86400, "tags": "type:fix"},
+        {"id": "m2", "tier": 2, "retrieval_count": 12, "session_time": now - 172800, "tags": "type:learning"},
+        {"id": "m3", "tier": 3, "retrieval_count": 0, "session_time": now - 5184000, "tags": ""},
+    ]
+
+    stats = run_replay_cycle(memories, ltp_tracker=ltp, knowledge_graph=kg)
+    assert stats["replayed"] >= 1, f"Should replay at least 1 memory: {stats}"
+    # m2 has 12 retrievals -> should be promoted (T2->T1)
+    assert stats["promoted"] >= 1, f"m2 should be promoted: {stats}"
+
+
+## --- Combo 2: Plan-specified integration tests ---
+
+def test_adaptive_weights_used_in_blend():
+    """Combo2 Task 5: Default weights match search_knowledge hardcoded values."""
+    from shared.memory_replay import _WEIGHT_DEFAULTS
+    assert _WEIGHT_DEFAULTS["ltp_blend"] == 0.3
+    assert _WEIGHT_DEFAULTS["graph_discount"] == 0.8
+    assert _WEIGHT_DEFAULTS["tier_boost_t1"] == 0.05
+    assert _WEIGHT_DEFAULTS["tier_boost_t3"] == -0.02
+
+
+def test_outcome_signal_flow():
+    """Combo2 Task 6: Positive/negative signals adjust weights correctly."""
+    import tempfile
+    from shared.memory_replay import AdaptiveWeights
+
+    path = os.path.join(tempfile.mkdtemp(), "aw.json")
+    aw = AdaptiveWeights(path=path)
+    initial = aw.get_weights()["ltp_blend"]
+    aw.record_signal("ltp_blend", positive=True)
+    assert aw.get_weights()["ltp_blend"] > initial
+    aw.record_signal("ltp_blend", positive=False)
+    aw.record_signal("ltp_blend", positive=False)
+    assert aw.get_weights()["ltp_blend"] < initial + 0.03  # net near original
+
+
+def test_retroactive_interference_at_ingest():
+    """Combo2 Task 7: type:correction suppresses similar old memory."""
+    from shared.memory_replay import compute_interference
+
+    new = {"id": "new", "tier": 1, "tags": "type:correction"}
+    old = {"id": "old", "tier": 1, "tags": "type:learning"}
+    result = compute_interference(new, old, similarity=0.85)
+    assert result["action"] == "suppress"
+    assert result["tier_change"] == 2  # demoted from T1 to T2
+
+
 if __name__ == "__main__":
     test_hybrid_decay()
     test_hybrid_decay_potentiated()

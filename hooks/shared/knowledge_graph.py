@@ -239,5 +239,83 @@ class KnowledgeGraph:
         ).fetchall()
         return rows
 
+    # --- Edge decay and pattern detection ---
+
+    def decay_edges(self, half_life_hours: float = 168.0) -> Dict:
+        """Apply time-based decay to all edges. Prune edges below 0.05.
+
+        Returns dict with 'decayed' and 'pruned' counts.
+        """
+        import time as _time
+        now = _time.time()
+        rows = self._conn.execute(
+            "SELECT from_id, to_id, relation_type, strength, last_activated FROM edges"
+        ).fetchall()
+        decayed = 0
+        pruned = 0
+        for from_id, to_id, rel, strength, last_act in rows:
+            hours_since = max(0, (now - float(last_act)) / 3600)
+            factor = math.pow(0.5, hours_since / half_life_hours)
+            new_strength = strength * factor
+            if new_strength < 0.05:
+                self._conn.execute(
+                    "DELETE FROM edges WHERE from_id=? AND to_id=? AND relation_type=?",
+                    (from_id, to_id, rel))
+                pruned += 1
+            else:
+                self._conn.execute(
+                    "UPDATE edges SET strength=? WHERE from_id=? AND to_id=? AND relation_type=?",
+                    (new_strength, from_id, to_id, rel))
+                decayed += 1
+        self._conn.commit()
+        return {"decayed": decayed, "pruned": pruned}
+
+    def get_high_activation_clusters(self, min_activation: int = 5) -> List[set]:
+        """Find connected components of edges with activation_count >= threshold.
+
+        Returns list of sets, each set containing entity names in a cluster (3+ nodes).
+        Sorted by cluster size descending.
+        """
+        rows = self._conn.execute(
+            "SELECT from_id, to_id FROM edges WHERE activation_count >= ?",
+            (min_activation,)
+        ).fetchall()
+        # Union-find
+        parent: Dict[str, str] = {}
+
+        def find(x: str) -> str:
+            while parent.get(x, x) != x:
+                parent[x] = parent.get(parent[x], parent[x])
+                x = parent[x]
+            return x
+
+        def union(a: str, b: str):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        for from_id, to_id in rows:
+            parent.setdefault(from_id, from_id)
+            parent.setdefault(to_id, to_id)
+            union(from_id, to_id)
+
+        # Group by root
+        groups: Dict[str, set] = {}
+        for node in parent:
+            root = find(node)
+            groups.setdefault(root, set()).add(node)
+
+        clusters = [g for g in groups.values() if len(g) >= 3]
+        clusters.sort(key=len, reverse=True)
+        return clusters
+
+    def boost_entity_salience(self, names: List[str], delta: float = 0.1):
+        """Boost salience for a list of entity names."""
+        for name in names:
+            self._conn.execute(
+                "UPDATE entities SET salience = MIN(1.0, salience + ?) WHERE name=?",
+                (delta, name))
+        self._conn.commit()
+
     def close(self):
         self._conn.close()
