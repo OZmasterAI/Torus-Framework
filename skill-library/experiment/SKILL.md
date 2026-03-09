@@ -7,7 +7,9 @@ or wants unattended metric-driven optimization on a specific target.
 ## Commands
 - `/experiment start <program.md>` — Run the experiment loop
 - `/experiment start <program.md> --max N` — Limit to N iterations (default 10)
+- `/experiment start <program.md> --forever` — Never stop (run until manual kill or user interrupt)
 - `/experiment start <program.md> --no-confirm` — Skip the "Ready?" prompt (for automated runs)
+- `/experiment start <program.md> --timeout Ns` — Kill individual runs exceeding N seconds (default: no timeout)
 - `/experiment status` — Show results.tsv for current branch
 - `/experiment resume` — Resume from last experiment on current branch
 
@@ -17,7 +19,7 @@ or wants unattended metric-driven optimization on a specific target.
 2. **Create worktree**: Use `EnterWorktree` to create an isolated worktree on branch `experiment/{tag}` (tag = user-provided or date-based). All subsequent file edits, commands, and git operations run **inside the worktree** — the main working tree stays untouched.
 3. **Init results.tsv**: Create with header row:
    ```
-   commit	metric	status	description
+   commit	metric	duration_s	status	description
    ```
 4. **Pre-flight checks**:
    - Run the test command from Constraints. Note pass/fail as `baseline_test_status`.
@@ -26,7 +28,7 @@ or wants unattended metric-driven optimization on a specific target.
 6. **Validate metric**: If extract returns empty/NaN, STOP and report: "Metric extraction failed — check your Run and Extract commands in program.md." Do not proceed with a broken baseline.
 7. **Log baseline** to results.tsv:
    ```
-   {commit}	{metric_value}	baseline	unmodified baseline
+   {commit}	{metric_value}	{duration_s}	baseline	unmodified baseline
    ```
 8. **Set best**: `best_metric = baseline_value`
 9. **Confirm**: Show baseline, test status, and ask "Starting experiment loop. Ready?" (skip if `--no-confirm`)
@@ -49,21 +51,24 @@ Repeat until stop condition (Phase 2):
 - Run the test command from Constraints (if specified)
 - If `baseline_test_status` was failing: check that no *new* tests fail (compare failure set, not absolute pass)
 - If `baseline_test_status` was passing: all tests must still pass
-- On failure: revert with `git checkout -- .`, log as crash, increment failure counter, skip to next iteration
+- On failure: if the error is trivially fixable (syntax error, missing import, typo), attempt **one** fix and re-run the test. If it still fails: revert with `git checkout -- .`, log as crash, increment failure counter, skip to next iteration
 
 ### d. MEASURE
-- Run the metric command from program.md
-- Extract the metric value using the extract pattern
+- Redirect output to a log file: `{metric_command} > /tmp/experiment-run.log 2>&1`
+- Extract the metric value by grepping the log file using the extract pattern
+- Record `duration_s` (wall-clock seconds for the run)
+- If `--timeout` is set and the run exceeds the timeout, kill the process and treat as crash
 
 ### e. DECIDE
 Compare to `best_metric` using the direction from program.md:
 - **Keep**: New metric is better → `best_metric = new_metric`
-- **Discard**: New metric is worse or equal → `git checkout -- .` to revert
+- **Simplification win**: New metric is equal AND code is shorter/simpler → keep (this counts as an improvement)
+- **Discard**: New metric is worse, or equal with no simplification → `git checkout -- .` to revert
 
 ### f. LOG
 Append to results.tsv:
 ```
-{commit}	{metric_value}	{keep|discard|crash}	{short description of what was tried}
+{commit}	{metric_value}	{duration_s}	{keep|discard|crash}	{short description of what was tried}
 ```
 
 ### g. COMMIT
@@ -80,10 +85,12 @@ remember_this("Experiment {tag} iteration {N}: best={best_metric}, tried={descri
 ## Phase 2: STOP CONDITIONS
 
 Any of these triggers a full stop:
-- **Max iterations reached** (default 10)
+- **Max iterations reached** (default 10, disabled with `--forever`)
 - **3 consecutive crashes** (something is fundamentally broken)
-- **Metric plateau**: 3 consecutive discards with <0.1% change from best
+- **Metric plateau**: 3 consecutive discards with <0.1% change from best (disabled with `--forever`)
 - **User interrupt**: User sends any message
+
+In `--forever` mode, only crashes (3 consecutive) and user interrupt can stop the loop. This is for overnight/unattended runs where you want maximum exploration.
 
 ## Phase 3: REPORT
 
@@ -122,8 +129,10 @@ After reporting results:
 - NEVER skip the test guard — if tests break, it's a crash
 - NEVER continue past stop conditions
 - One change per iteration — keep experiments isolated and comparable
-- Simpler is better — a small improvement with less code beats a big improvement with complex code
+- Simpler is better — equal metric + less code = keep (simplification win)
 - Revert cleanly on discard — working tree must match last kept commit
 - results.tsv is tab-separated, never comma-separated
+- Redirect experiment output to `/tmp/experiment-run.log` — grep for metrics, don't flood context
+- On crash: read the traceback. If trivially fixable (syntax, import, typo), attempt ONE fix and re-run before reverting
 - ALL work happens inside the worktree — never modify the main working tree
 - ALWAYS clean up the worktree in Phase 4 — do not leave stale worktrees behind
