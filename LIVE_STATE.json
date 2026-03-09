@@ -1,9 +1,9 @@
 {
-  "session_count": 393,
+  "session_count": 395,
   "project": "torus-framework",
-  "feature": "mem2x-build",
+  "feature": "mem2x-combo2",
   "framework_version": "v2.6.5",
-  "what_was_done": "Audited mem2x build (8/10 pass, 2 partial). Worktree completed all fixes (LTP 4-level, quarantine cleanup, dedup edges, 15-day decay). Created ~/projects/zerobrain for agent-zero custom build. Compared RocksDB vs LanceDB.",
+  "what_was_done": "Implemented Combo 2 on worktree-mem2x-task1: memory replay, retroactive interference, adaptive weights, tier auto-flow, edge decay. Fixed all 7 plan deviations. 38 tests pass. Commit 5db04fa.",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
@@ -11,11 +11,10 @@
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'"
   ],
   "next_steps": [
-    "Test mem2x worktree build (pytest test_mem2x.py + test_shared_deep.py), then merge to mem2x branch",
+    "Merge mem2x-combo2 worktree changes into mem2x branch, then merge mem2x into main",
     "Zerobrain: launch instance in ~/projects/zerobrain — research agent-zero + design custom torus-inspired framework",
-    "Three-Tier Auto-Flow — deferred, add after mem2x merge if desired",
     "Fix 2: graceful offline handling — bot says 'offline' instead of 120s timeout when claude-bot is down",
     "Test /experiment on a real framework target",
-    "Memory DB at 2,482 entries — consider running maintenance(action='stale')"
+    "Memory DB at 2,516 entries — consider running maintenance(action='stale')"
   ]
 }
