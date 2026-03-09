@@ -128,6 +128,21 @@ class KnowledgeGraph:
 
     # --- Cleanup operations ---
 
+    def transfer_edges(self, from_entity: str, to_entity: str):
+        """Transfer all edges from one entity to another (for dedup merge)."""
+        # Repoint edges where from_entity is the source
+        self._conn.execute(
+            "UPDATE OR IGNORE edges SET from_id=? WHERE from_id=?",
+            (to_entity, from_entity))
+        # Repoint edges where from_entity is the target
+        self._conn.execute(
+            "UPDATE OR IGNORE edges SET to_id=? WHERE to_id=?",
+            (to_entity, from_entity))
+        # Clean up any orphaned edges (conflicts from OR IGNORE)
+        self._conn.execute("DELETE FROM edges WHERE from_id=? OR to_id=?",
+                           (from_entity, from_entity))
+        self._conn.commit()
+
     def remove_entity_edges(self, entity_name: str):
         """Remove all edges to/from an entity."""
         self._conn.execute("DELETE FROM edges WHERE from_id=? OR to_id=?",

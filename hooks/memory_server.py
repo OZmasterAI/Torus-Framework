@@ -3036,6 +3036,13 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
                         tag_index.remove(victim_id)
                     except Exception:
                         pass
+                    # Transfer graph edges from duplicate to survivor, then deactivate (fail-open)
+                    try:
+                        if _knowledge_graph:
+                            _knowledge_graph.transfer_edges(victim_id, cand["id_a"])
+                            _knowledge_graph.deactivate_entity(victim_id)
+                    except Exception:
+                        pass
                     moved += 1
             except Exception:
                 continue

@@ -107,12 +107,13 @@ def calculate_relevance_score(
     memory_entry: Dict[str, Any],
     query_context: Optional[str] = None,
     half_life_days: float = DEFAULT_HALF_LIFE_DAYS,
+    ltp_factor: Optional[float] = None,
 ) -> float:
     """Score a memory entry's current relevance (0.0–1.0).
 
     Components:
     - Base score from tier (T1=1.0, T2=0.7, T3=0.4)
-    - Exponential time decay (half-life configurable, default 45 days)
+    - Hybrid time decay with LTP protection
     - Access boost: log-scaled bonus for high retrieval_count (max +0.20)
     - Recency boost: flat +0.10 for memories < 7 days old
     - Tag relevance: bonus if entry tags overlap with query_context (max +0.15)
@@ -121,6 +122,8 @@ def calculate_relevance_score(
         memory_entry: Dict with keys: tier, timestamp, retrieval_count, tags
         query_context: Comma-separated tags describing the current query context
         half_life_days: Days until base score halves (default 45)
+        ltp_factor: LTP decay factor from LTPTracker (1.0/0.5/0.33/0.1).
+                    If None, falls back to retrieval_count heuristic.
 
     Returns:
         float in [0.0, 1.0]
@@ -130,8 +133,20 @@ def calculate_relevance_score(
 
     age = _age_days(str(memory_entry.get("timestamp") or ""))
     retrieval_count = int(memory_entry.get("retrieval_count") or 0)
-    potentiated = retrieval_count >= 5  # LTP: frequent access slows decay
+
+    # LTP: use 4-level factor if provided, else fall back to boolean heuristic
+    if ltp_factor is not None:
+        potentiated = ltp_factor < 1.0
+    else:
+        potentiated = retrieval_count >= 5
+        ltp_factor = 0.5 if potentiated else 1.0
+
     decay = _time_decay_factor(age, half_life_days, potentiated=potentiated)
+    # Scale decay further by LTP factor for full 4-level gradation
+    # (potentiated halves the rate, ltp_factor applies the remaining scale)
+    if potentiated and ltp_factor < 0.5:
+        # potentiated already gives 0.5x rate; apply remaining ratio
+        decay = decay ** (ltp_factor / 0.5)
 
     access = _access_boost(retrieval_count)
     recency = _RECENCY_BOOST if age < _RECENCY_WINDOW_DAYS else 0.0
