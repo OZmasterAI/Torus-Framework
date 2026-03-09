@@ -51,39 +51,9 @@ def _age_days(timestamp_str: str) -> float:
     return max(0.0, (now - dt).total_seconds() / 86400.0)
 
 
-def _time_decay_factor(
-    age_days: float,
-    half_life: float = DEFAULT_HALF_LIFE_DAYS,
-    potentiated: bool = False,
-) -> float:
-    """Hybrid decay: exponential for recent, power-law for older memories.
-
-    Phase 1 (t < 15 days): exponential with 15-day half-life
-    Phase 2 (t >= 15 days): power-law t^(-0.5) anchored at crossover point
-
-    This gives moderate initial decay with long-tail retrievability — old memories
-    never fully vanish the way pure exponential would make them.
-
-    Args:
-        age_days: Age of the memory in days
-        half_life: Legacy parameter (accepted for backward compat, ignored in hybrid model)
-        potentiated: If True, halve the decay rates (LTP-protected memories)
-    """
-    exp_rate = 0.0462  # ln(2)/15, gives ~15-day half-life
-    power_exp = 0.5    # power-law exponent
-    if potentiated:
-        exp_rate *= 0.5
-        power_exp *= 0.5
-
-    crossover = 15.0  # days: transition from exponential to power-law
-
-    if age_days <= 0:
-        return 1.0
-    elif age_days < crossover:
-        return math.exp(-exp_rate * age_days)
-    else:
-        a_cross = math.exp(-exp_rate * crossover)
-        return a_cross * math.pow(crossover / age_days, power_exp)
+def _time_decay_factor(age_days: float, half_life: float = DEFAULT_HALF_LIFE_DAYS) -> float:
+    """Exponential decay: 1.0 at age=0, 0.5 at age=half_life."""
+    return math.pow(0.5, age_days / half_life)
 
 
 def _access_boost(retrieval_count: int) -> float:
@@ -107,13 +77,12 @@ def calculate_relevance_score(
     memory_entry: Dict[str, Any],
     query_context: Optional[str] = None,
     half_life_days: float = DEFAULT_HALF_LIFE_DAYS,
-    ltp_factor: Optional[float] = None,
 ) -> float:
     """Score a memory entry's current relevance (0.0–1.0).
 
     Components:
     - Base score from tier (T1=1.0, T2=0.7, T3=0.4)
-    - Hybrid time decay with LTP protection
+    - Exponential time decay (half-life configurable, default 45 days)
     - Access boost: log-scaled bonus for high retrieval_count (max +0.20)
     - Recency boost: flat +0.10 for memories < 7 days old
     - Tag relevance: bonus if entry tags overlap with query_context (max +0.15)
@@ -122,8 +91,6 @@ def calculate_relevance_score(
         memory_entry: Dict with keys: tier, timestamp, retrieval_count, tags
         query_context: Comma-separated tags describing the current query context
         half_life_days: Days until base score halves (default 45)
-        ltp_factor: LTP decay factor from LTPTracker (1.0/0.5/0.33/0.1).
-                    If None, falls back to retrieval_count heuristic.
 
     Returns:
         float in [0.0, 1.0]
@@ -132,23 +99,9 @@ def calculate_relevance_score(
     base = TIER_BASE.get(tier, TIER_BASE_DEFAULT)
 
     age = _age_days(str(memory_entry.get("timestamp") or ""))
-    retrieval_count = int(memory_entry.get("retrieval_count") or 0)
+    decay = _time_decay_factor(age, half_life_days)
 
-    # LTP: use 4-level factor if provided, else fall back to boolean heuristic
-    if ltp_factor is not None:
-        potentiated = ltp_factor < 1.0
-    else:
-        potentiated = retrieval_count >= 5
-        ltp_factor = 0.5 if potentiated else 1.0
-
-    decay = _time_decay_factor(age, half_life_days, potentiated=potentiated)
-    # Scale decay further by LTP factor for full 4-level gradation
-    # (potentiated halves the rate, ltp_factor applies the remaining scale)
-    if potentiated and ltp_factor < 0.5:
-        # potentiated already gives 0.5x rate; apply remaining ratio
-        decay = decay ** (ltp_factor / 0.5)
-
-    access = _access_boost(retrieval_count)
+    access = _access_boost(int(memory_entry.get("retrieval_count") or 0))
     recency = _RECENCY_BOOST if age < _RECENCY_WINDOW_DAYS else 0.0
     tag_bonus = _tag_relevance_bonus(
         str(memory_entry.get("tags") or ""), query_context
