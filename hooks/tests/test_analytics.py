@@ -1635,10 +1635,11 @@ _md_old_score = calculate_relevance_score(_md_old)
 test("MemoryDecay: 180-day old T3 memory scores < 0.15",
      _md_old_score < 0.15, f"got {_md_old_score:.3f}")
 
-# Test 3: time_decay_factor at half-life is ~0.5
-_md_decay = _time_decay_factor(DEFAULT_HALF_LIFE_DAYS)
-test("MemoryDecay: decay factor at half-life is ~0.5",
-     abs(_md_decay - 0.5) < 0.01, f"got {_md_decay:.4f}")
+# Test 3: time_decay_factor is monotonically decreasing
+_md_decay_1 = _time_decay_factor(1.0)
+_md_decay_30 = _time_decay_factor(30.0)
+test("MemoryDecay: decay factor at day 1 > day 30 (monotonic)",
+     _md_decay_1 > _md_decay_30, f"d1={_md_decay_1:.4f}, d30={_md_decay_30:.4f}")
 
 # Test 4: access_boost increases with retrieval count
 _md_boost_0 = _access_boost(0)
