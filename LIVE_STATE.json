@@ -9,7 +9,7 @@
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
     "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md — resolves on merge to Cognitive",
-    "wrap-up skill gather.py missing from skill-library/wrap-up/scripts/ — falls back to manual"
+    "Two skill systems coexist: ~/.claude/skills/ (Skill tool) and ~/.claude/skill-library/ (MCP) — keep in sync"
   ],
   "next_steps": [
     "Merge Cognitive-upgrade back into Cognitive (G16 ruff+AST ready, gate fixes included)",
