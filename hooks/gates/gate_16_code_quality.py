@@ -8,19 +8,126 @@ Clean edit on same file resets the counter.
 
 Tier 2 (non-safety): gate crash = warn + continue, not block.
 """
+
+import ast
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
 
 GATE_NAME = "GATE 16: CODE QUALITY"
+
+# ── ruff integration ──────────────────────────────────────────────────────────
+_RUFF_BIN = shutil.which("ruff") or "/home/crab/.local/bin/ruff"
+_RUFF_CONFIG = os.path.join(os.path.dirname(__file__), "..", ".ruff.toml")
+
+
+def _ruff_check(file_path: str, content: str) -> list:
+    """Run ruff on content via a temp file. Returns [(rule, lineno, msg), ...].
+    Fail-open: returns [] on any error (not found, timeout, parse error)."""
+    if not os.path.isfile(_RUFF_BIN):
+        return []
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".py", delete=False, mode="w", encoding="utf-8"
+        ) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            cfg = ["--config", _RUFF_CONFIG] if os.path.isfile(_RUFF_CONFIG) else []
+            result = subprocess.run(
+                [_RUFF_BIN, "check", tmp_path, "--output-format", "concise"] + cfg,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            violations = []
+            for line in result.stdout.splitlines():
+                # concise format: "path:line:col: CODE message"
+                parts = line.split(":", 3)
+                if len(parts) >= 4:
+                    try:
+                        lineno = int(parts[1])
+                        rest = parts[3].strip()
+                        code = rest.split()[0] if rest else "?"
+                        msg = rest[len(code) :].strip()
+                        violations.append((code, lineno, msg))
+                    except (ValueError, IndexError):
+                        pass
+            return violations
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    except Exception:
+        return []  # Fail-open
+
+
+# ── AST complexity ────────────────────────────────────────────────────────────
+_COMPLEXITY_WARN_DEFAULT = 12  # advisory warn, non-escalating
+_COMPLEXITY_BLOCK_DEFAULT = 20  # escalates G16 counter (blocks at 4th)
+
+_BRANCH_NODES = (
+    ast.If,
+    ast.For,
+    ast.While,
+    ast.ExceptHandler,
+    ast.With,
+    ast.Assert,
+    ast.comprehension,
+)
+
+
+class _ComplexityVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self.results = []  # [(func_name, complexity)]
+
+    def visit_FunctionDef(self, node):
+        branches = sum(1 for n in ast.walk(node) if isinstance(n, _BRANCH_NODES))
+        self.results.append((node.name, branches + 1))
+        self.generic_visit(node)
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+
+def _ast_complexity(content: str, warn_at: int, block_at: int) -> list:
+    """Check cyclomatic complexity for all functions in content.
+    Returns [(func_name, complexity, escalates), ...] for functions >= warn_at.
+    Fail-open: returns [] on SyntaxError or any parse failure."""
+    try:
+        tree = ast.parse(content)
+        visitor = _ComplexityVisitor()
+        visitor.visit(tree)
+        results = []
+        for name, complexity in visitor.results:
+            if complexity >= warn_at:
+                escalates = complexity >= block_at
+                results.append((name, complexity, escalates))
+        return results
+    except Exception:
+        return []  # Fail-open
+
+
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 MAX_WARNINGS = 3  # Block on 4th violation per file
 
 CODE_EXTENSIONS = {
-    ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".rb", ".sh",
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".rb",
+    ".sh",
 }
 
 from shared.exemptions import is_exempt_full
@@ -115,6 +222,35 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     violations = _scan_content(content)
+
+    # Python-only: ruff + AST complexity (non-Python files use regex patterns only)
+    if file_path.endswith(".py") and content.strip():
+        tune = state.get("gate_tune_overrides", {}).get("gate_16_code_quality", {})
+        # ruff: F-codes (undefined names, unused imports) and B-codes (bugbear) escalate
+        if tune.get("ruff_enabled", True):
+            for _code, _lineno, _msg in _ruff_check(file_path, content):
+                _escalates = _code.startswith("F") or _code.startswith("B")
+                violations.append(
+                    (
+                        f"ruff:{_code}",
+                        _lineno,
+                        "medium" if _escalates else "low",
+                        _escalates,
+                    )
+                )
+        # AST complexity: warn at 12, escalate counter at 20 (tunable)
+        _warn_at = tune.get("complexity_warn", _COMPLEXITY_WARN_DEFAULT)
+        _block_at = tune.get("complexity_block", _COMPLEXITY_BLOCK_DEFAULT)
+        for _fn, _cx, _escalates in _ast_complexity(content, _warn_at, _block_at):
+            violations.append(
+                (
+                    f"complexity:{_fn}(={_cx})",
+                    0,
+                    "high" if _escalates else "medium",
+                    _escalates,
+                )
+            )
+
     if not violations:
         # Clean edit — reset counter for this file
         per_file = state.get("code_quality_warnings_per_file", {})
@@ -143,7 +279,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             f"exceeded {MAX_WARNINGS} warning limit). Re-edit without the violation to clear. "
             f"If also blocked by Gate 6, call remember_this() first."
         )
-        return GateResult(blocked=True, gate_name=GATE_NAME, message=msg, severity="warn")
+        return GateResult(
+            blocked=True, gate_name=GATE_NAME, message=msg, severity="warn"
+        )
 
     # Warning path
     msg = (

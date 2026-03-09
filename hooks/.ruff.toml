@@ -1,0 +1,24 @@
+[lint]
+# Core rule sets: pyflakes (F), pycodestyle errors (E), warnings (W),
+# flake8-bugbear (B), naming (N). Skip docstrings (D), line-length (E501),
+# import-ordering (I), and module-level import position (E402).
+select = ["F", "E", "W", "B", "N"]
+ignore = [
+    "E501",   # line too long — formatter's job
+    "E402",   # module import not at top — we do this intentionally in gates
+    "E741",   # ambiguous variable name (l, O, I) — too pedantic
+    "W291",   # trailing whitespace — formatter's job
+    "W293",   # whitespace before comment — formatter's job
+    "B007",   # loop variable unused — too many false positives
+    "N802",   # function name should be lowercase — conflicts with our GATE_NAME pattern
+    "N806",   # variable in function should be lowercase — too pedantic
+    "W292",   # no newline at end of file — Edit patches are code fragments, not full files
+    "W391",   # blank line at end of file — same reason
+    "E711",   # comparison to None — too many false positives in framework code
+    "E712",   # comparison to True/False — same
+]
+
+[lint.per-file-ignores]
+# Test files: allow assert statements, magic values, broad exceptions
+"test_*.py" = ["F", "E", "W", "B", "N"]
+"*_test.py" = ["F", "E", "W", "B", "N"]
