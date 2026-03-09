@@ -9,6 +9,7 @@ Only fires on Edit/Write/NotebookEdit tools and only when session_id != "main"
 
 Tier 2 (non-safety): gate crash = warn + continue, not block.
 """
+
 import fcntl
 import json
 import os
@@ -21,7 +22,7 @@ from shared.gate_helpers import extract_file_path, safe_tool_input
 
 GATE_NAME = "GATE 13: WORKSPACE ISOLATION"
 CLAIMS_FILE = os.path.join(os.path.dirname(__file__), "..", ".file_claims.json")
-STALE_THRESHOLD = 1800  # 30 minutes (reduced from 2h to prevent long stale claim blocks)
+STALE_THRESHOLD = 600  # 10 minutes (reduced from 30m — claims refresh each Edit, 10m covers active agents)
 
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 
@@ -47,7 +48,10 @@ def _clean_stale_claims(claims):
     now = time.time()
     cleaned = {}
     for filepath, info in claims.items():
-        if isinstance(info, dict) and (now - info.get("claimed_at", 0)) < STALE_THRESHOLD:
+        if (
+            isinstance(info, dict)
+            and (now - info.get("claimed_at", 0)) < STALE_THRESHOLD
+        ):
             cleaned[filepath] = info
     return cleaned
 
@@ -84,7 +88,11 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             age_seconds = time.time() - claimed_at
 
             # Claimed by a DIFFERENT session and not stale
-            if claimed_by and claimed_by != session_id and age_seconds < STALE_THRESHOLD:
+            if (
+                claimed_by
+                and claimed_by != session_id
+                and age_seconds < STALE_THRESHOLD
+            ):
                 age_minutes = int(age_seconds / 60)
                 msg = (
                     f"[{GATE_NAME}] BLOCKED: File '{file_path}' is currently being "
