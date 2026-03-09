@@ -1,21 +1,22 @@
 {
-  "session_count": 397,
+  "session_count": 398,
   "project": "torus-framework",
   "feature": "github-sync",
   "framework_version": "v2.7.0",
   "what_was_done": "Hardened .gitignore (6 entries, untracked router_config.toml with 17 API keys). Synthesized v2.7.0 squash commit on github-branch (49 files, scrubbed). Pushed to github/main. Re-enabled analytics MCP server.",
   "known_issues": [
-    "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
-    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
+    "Gate 19 cascade on branch switch (low priority \u2014 anti-cascade limit handles it)",
+    "mcp.json at ~/.claude/mcp.json is NOT the active config \u2014 real config is ~/.claude.json mcpServers",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
     "zerobrain project has no git repo initialized yet",
-    "mem2x-combo2 merge reverted on mem2x — worktree branch has Phase 2 ready to re-merge after testing"
+    "mem2x-combo2 merge reverted on mem2x \u2014 worktree branch has Phase 2 ready to re-merge after testing"
   ],
   "next_steps": [
     "Test and merge mem2x-combo2 (Phase 2: replay, adaptive weights, interference, tier auto-flow) into mem2x",
     "Run full audit with analytics MCP (restart session first to connect)",
     "Check Sonnet's ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor",
     "Init git repo for zerobrain project at ~/projects/zerobrain",
-    "Memory DB at 2,535 entries — consider running maintenance(action='stale')"
-  ]
+    "Memory DB at 2,535 entries \u2014 consider running maintenance(action='stale')"
+  ],
+  "last_response_preview": "Risk level: **YELLOW** (2 uncommitted files \u2014 `plugins/blocklist.json` and `settings.json` are just runtime state, safe to leave).\n\n---\n\n**Session 397 Summary**\n\n**Done:**\n- Hardened `.gitignore` \u2014 6 new entries, untracked `router_config.toml` (17 API keys), created `.example.toml`\n- Synthesized **v2.7.0** squash commit on `github-branch` (49 files, 10k insertions)\n- Scrubbed eclipse/ProjectDawn refs, verified no API keys or `/home/crab` paths\n- Pushed to `github/main` (`f61ad8d..ea55244`)\n- Re-"
 }
