@@ -1,22 +1,21 @@
 {
-  "session_count": 398,
+  "session_count": 399,
   "project": "torus-framework",
-  "feature": "github-sync",
+  "feature": "mem2x-comparison",
   "framework_version": "v2.7.0",
-  "what_was_done": "Hardened .gitignore (6 entries, untracked router_config.toml with 17 API keys). Synthesized v2.7.0 squash commit on github-branch (49 files, scrubbed). Pushed to github/main. Re-enabled analytics MCP server.",
+  "what_was_done": "Revised 11-way framework comparison with evidence-based scoring. Added ZeroTor (Agent Zero + Torus gates fork). Corrected Learning Ability 62→82 (8 mechanisms), Testing ~70→88 (fuzz/mutation/28K lines), Observability ~65→92 (Prometheus/11 modules). Fixed Voice Branch 79→69 (no mem2x upgrades). Full capability audit: 73 shared modules, 18 gates, 5 LanceDB tables.",
   "known_issues": [
-    "Gate 19 cascade on branch switch (low priority \u2014 anti-cascade limit handles it)",
-    "mcp.json at ~/.claude/mcp.json is NOT the active config \u2014 real config is ~/.claude.json mcpServers",
+    "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
+    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
     "zerobrain project has no git repo initialized yet",
-    "mem2x-combo2 merge reverted on mem2x \u2014 worktree branch has Phase 2 ready to re-merge after testing"
+    "mem2x-combo2 merge reverted on mem2x — worktree branch has Phase 2 ready to re-merge after testing"
   ],
   "next_steps": [
     "Test and merge mem2x-combo2 (Phase 2: replay, adaptive weights, interference, tier auto-flow) into mem2x",
     "Run full audit with analytics MCP (restart session first to connect)",
     "Check Sonnet's ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor",
     "Init git repo for zerobrain project at ~/projects/zerobrain",
-    "Memory DB at 2,535 entries \u2014 consider running maintenance(action='stale')"
-  ],
-  "last_response_preview": "Risk level: **YELLOW** (2 uncommitted files \u2014 `plugins/blocklist.json` and `settings.json` are just runtime state, safe to leave).\n\n---\n\n**Session 397 Summary**\n\n**Done:**\n- Hardened `.gitignore` \u2014 6 new entries, untracked `router_config.toml` (17 API keys), created `.example.toml`\n- Synthesized **v2.7.0** squash commit on `github-branch` (49 files, 10k insertions)\n- Scrubbed eclipse/ProjectDawn refs, verified no API keys or `/home/crab` paths\n- Pushed to `github/main` (`f61ad8d..ea55244`)\n- Re-"
+    "Memory DB at 2,537 entries — consider running maintenance(action='stale')"
+  ]
 }
