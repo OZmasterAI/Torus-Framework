@@ -1,20 +1,21 @@
 {
-  "session_count": 395,
+  "session_count": 396,
   "project": "torus-framework",
-  "feature": "mem2x-combo2",
+  "feature": "zerobrain-zerotor",
   "framework_version": "v2.6.5",
-  "what_was_done": "Implemented Combo 2 on worktree-mem2x-task1: memory replay, retroactive interference, adaptive weights, tier auto-flow, edge decay. Fixed all 7 plan deviations. 38 tests pass. Commit 5db04fa.",
+  "what_was_done": "Built ZeroBrain guardrail package for Agent Zero (12 gates, 5 extensions, memory adapter, installer, 264 tests). Compared with ZeroTor fork. Wrote ZEROTOR_UPGRADE_PLAN.md merging best of both (13→16 gates). Sonnet executing upgrade.",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
     "TG bot tmux_target set to 'claude' (not claude-bot) — messages will interrupt main session",
-    "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'"
+    "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
+    "zerobrain project has no git repo initialized yet"
   ],
   "next_steps": [
+    "Check Sonnet's ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor — review and test results",
+    "Init git repo for zerobrain project at ~/projects/zerobrain",
     "Merge mem2x-combo2 worktree changes into mem2x branch, then merge mem2x into main",
-    "Zerobrain: launch instance in ~/projects/zerobrain — research agent-zero + design custom torus-inspired framework",
     "Fix 2: graceful offline handling — bot says 'offline' instead of 120s timeout when claude-bot is down",
-    "Test /experiment on a real framework target",
-    "Memory DB at 2,516 entries — consider running maintenance(action='stale')"
+    "Memory DB at 2,516+ entries — consider running maintenance(action='stale')"
   ]
 }
