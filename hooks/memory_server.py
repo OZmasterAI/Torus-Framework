@@ -1300,6 +1300,8 @@ tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
 _lance_fts_ready = False  # True once LanceDB FTS index is built
+_knowledge_graph = None   # KnowledgeGraph instance (initialized lazily)
+_ltp_tracker = None       # LTPTracker instance (initialized lazily)
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
@@ -1443,12 +1445,13 @@ def _tag_ids_to_summaries(memory_ids, collection_ref=None):
 
 
 def _ensure_initialized():
-    """Run one-time initialization (LanceDB + TagIndex + LanceDB FTS).
+    """Run one-time initialization (LanceDB + TagIndex + LanceDB FTS + Knowledge Graph + LTP).
 
     Called lazily on first MCP tool use or explicitly at server startup.
     Safe to call multiple times — idempotent after first run.
     """
     global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
+    global _knowledge_graph, _ltp_tracker
     if _initialized:
         return
     _init_lancedb()
@@ -1463,6 +1466,19 @@ def _ensure_initialized():
         _lance_fts_ready = True
     except Exception:
         pass  # FTS is optional — keyword search degrades gracefully
+
+    # Initialize knowledge graph and LTP tracker (fail-open)
+    try:
+        from shared.knowledge_graph import KnowledgeGraph
+        _kg_path = os.path.join(MEMORY_DIR, "knowledge_graph.db")
+        _knowledge_graph = KnowledgeGraph(_kg_path)
+    except Exception:
+        _knowledge_graph = None
+    try:
+        from shared.ltp_tracker import LTPTracker
+        _ltp_tracker = LTPTracker()
+    except Exception:
+        _ltp_tracker = None
 
     # Check if persisted tag index is already synced with LanceDB
     lance_count = collection.count()
@@ -2472,6 +2488,49 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                 r["relevance"] = r.get("relevance", 0) * 1.5
         formatted.sort(key=lambda r: r.get("relevance", 0), reverse=True)
 
+    # --- mem2x: LTP access tracking + Hebbian co-retrieval (fail-open) ---
+    try:
+        _mem_ids = [r.get("id") for r in formatted if r.get("id") and not r.get("source")]
+        if _ltp_tracker and _mem_ids:
+            for mid in _mem_ids[:10]:
+                _ltp_tracker.record_access(mid)
+        if _knowledge_graph and len(_mem_ids) >= 2:
+            _knowledge_graph.strengthen_coretrieval(_mem_ids[:10])
+    except Exception:
+        pass  # LTP/Hebbian failure must not break search
+
+    # --- mem2x: Graph-enriched search via spreading activation (fail-open) ---
+    graph_enriched_count = 0
+    try:
+        if _knowledge_graph and mode not in ("tags", "observations", "transcript"):
+            from shared.entity_extraction import extract_entities
+            _query_entities = [e["name"] for e in extract_entities(query)]
+            if _query_entities:
+                _activated = _knowledge_graph.spreading_activation(_query_entities, max_hops=3)
+                if _activated:
+                    # Look up memories containing activated entities
+                    _seen_ids = {r.get("id") for r in formatted if r.get("id")}
+                    _activated_names = [a["name"] for a in _activated[:5] if a["activation"] > 0.1]
+                    for _aname in _activated_names:
+                        try:
+                            _graph_results = collection.query(
+                                query_texts=[_aname], n_results=3,
+                                include=["metadatas", "distances"],
+                            )
+                            _graph_summaries = format_summaries(_graph_results)
+                            for gs in _graph_summaries:
+                                gid = gs.get("id", "")
+                                if gid and gid not in _seen_ids:
+                                    gs["graph_enriched"] = True
+                                    gs["relevance"] = gs.get("relevance", 0) * 0.8  # slight discount
+                                    formatted.append(gs)
+                                    _seen_ids.add(gid)
+                                    graph_enriched_count += 1
+                        except Exception:
+                            continue
+    except Exception:
+        pass  # Graph enrichment failure must not break search
+
     result = {
         "results": formatted,
         "total_memories": count,
@@ -2490,6 +2549,8 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         result["enrichment_count"] = enrichment_count
     if tg_enrichment_count > 0:
         result["tg_enrichment_count"] = tg_enrichment_count
+    if graph_enriched_count > 0:
+        result["graph_enriched_count"] = graph_enriched_count
     if tag_expanded:
         result["tag_expanded"] = True
         result["expanded_tags"] = expanded_tags
@@ -2791,6 +2852,20 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     # Update tag index
     tag_index.add_tags(doc_id, tags)
 
+    # Knowledge graph: extract entities and co-occurrences, populate graph (fail-open)
+    try:
+        if _knowledge_graph:
+            from shared.entity_extraction import extract_entities, extract_cooccurrences
+            _kg_text = f"{content} {context}"
+            _kg_entities = extract_entities(_kg_text)
+            for ent in _kg_entities:
+                _knowledge_graph.upsert_entity(ent["name"], ent["type"])
+            _kg_coocs = extract_cooccurrences(_kg_text)
+            for e1, e2 in _kg_coocs:
+                _knowledge_graph.add_edge(e1, e2, "co_occurs")
+    except Exception:
+        pass  # Graph population failure must not break memory storage
+
     # Mark tag co-occurrence matrix as dirty (new tags may change co-occurrence rates)
     global _tag_cooccurrence_dirty
     if tags:
@@ -3064,6 +3139,13 @@ def delete_memory(id: str) -> dict:
         if not found:
             return {"error": f"No memories found with ids: {ids}"}
         collection.delete(ids=found)
+        # Clean up knowledge graph edges for deleted memories (fail-open)
+        try:
+            if _knowledge_graph:
+                for did in found:
+                    _knowledge_graph.remove_entity_edges(did)
+        except Exception:
+            pass
         return {"deleted": found, "count": len(found)}
     except Exception as e:
         return {"error": f"Failed to delete memory: {str(e)}"}
