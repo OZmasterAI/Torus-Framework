@@ -430,7 +430,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                     print(result.message, file=sys.stderr)
                     # Record effectiveness
                     try:
-                        update_gate_effectiveness("gate_17_injection_defense", "block")
+                        update_gate_effectiveness("gate_17_injection_defense", "blocks")
                     except Exception:
                         pass
         except Exception as e:
