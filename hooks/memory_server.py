@@ -629,31 +629,98 @@ def generate_id(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
-# ── Auto Tier Classification ─────────────────────────────────────────────────
-# Tier 1 = high-value (fixes, decisions, critical)
-# Tier 2 = standard (default)
-# Tier 3 = low-value (auto-captured, short, low-priority)
+# ── Auto Tier Classification (Salience-Scored) ──────────────────────────────
+# Tier 1 = high-value (score >= 0.35)
+# Tier 2 = standard (0.10 < score < 0.35)
+# Tier 3 = low-value (score <= 0.10)
+#
+# Salience signals (inspired by thermal-memory):
+#   Decision change  25% — redirected approach or strategy
+#   Human-originated 20% — corrections, preferences, direct feedback
+#   Hard-won         15% — debugging, multiple attempts, root cause
+#   Recurrence       15% — topic tagged as recurring or pattern
+#   Real-world impact 15% — production, shipped, breaking, deployed
+#   Connective density 10% — many tags = connects to many areas
 
-_TIER1_TAGS = {"type:fix", "type:decision", "priority:critical", "priority:high"}
 _TIER3_TAGS = {"type:auto-captured", "priority:low"}
-_TIER1_KEYWORDS = ("root cause", "breaking")
+
+_DECISION_KW = ("decision", "chose", "switched to", "instead of", "trade-off",
+                "went with", "picked", "selected approach", "design:")
+_HARDWON_KW = ("root cause", "finally fixed", "after debugging", "tracked down",
+               "hard to find", "subtle bug", "race condition")
+_IMPACT_KW = ("production", "shipped", "deployed", "breaking", "outage",
+              "user-facing", "live system")
+_HUMAN_TAGS = {"type:correction", "type:preference"}
+_DECISION_TAGS = {"type:decision"}
+_FIX_TAGS = {"type:fix"}
+_RECURRENCE_TAGS = {"type:learning", "outcome:success"}
+
+
+def _salience_score(content: str, tags: str) -> float:
+    """Calculate salience score (0.0-1.0) from content and tags."""
+    tag_set = {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
+    lower = content.lower()
+    score = 0.0
+
+    # Decision change (25%)
+    if tag_set & _DECISION_TAGS or any(kw in lower for kw in _DECISION_KW):
+        score += 0.25
+
+    # Human-originated (20%)
+    if tag_set & _HUMAN_TAGS:
+        score += 0.20
+
+    # Hard-won (15%)
+    if tag_set & _FIX_TAGS or any(kw in lower for kw in _HARDWON_KW):
+        score += 0.15
+
+    # Recurrence (15%)
+    if tag_set & _RECURRENCE_TAGS:
+        score += 0.15
+
+    # Real-world impact (15%)
+    if "priority:critical" in tag_set or "priority:high" in tag_set:
+        score += 0.15
+    elif any(kw in lower for kw in _IMPACT_KW):
+        score += 0.15
+
+    # Connective density (10%) — more tags = more connections
+    if len(tag_set) >= 5:
+        score += 0.10
+    elif len(tag_set) >= 3:
+        score += 0.05
+
+    return min(score, 1.0)
 
 
 def _classify_tier(content: str, tags: str) -> int:
     """Classify a memory into tier 1 (high), 2 (standard), or 3 (low).
 
     Pure function — no side effects.  Called during remember_this() to
-    assign a tier before upsert.
+    assign a tier before upsert.  Uses salience scoring with 6 weighted
+    signals inspired by thermal-memory.
     """
     tag_set = {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
-    if tag_set & _TIER1_TAGS:
-        return 1
-    lower = content.lower()
-    if any(kw in lower for kw in _TIER1_KEYWORDS) or content.startswith("Fixed "):
-        return 1
+
+    # Tier 3 fast path — low-value indicators
     if tag_set & _TIER3_TAGS:
         return 3
-    if len(content) < 50:
+
+    score = _salience_score(content, tags)
+
+    # Short content with no salience signals = low value
+    if len(content) < 50 and score <= 0.10:
+        return 3
+
+    # High-signal tags get a floor — trust explicit tagging
+    _HIGH_SIGNAL_TAGS = {"type:fix", "type:decision", "type:correction",
+                         "type:preference", "priority:critical"}
+    if tag_set & _HIGH_SIGNAL_TAGS:
+        return 1
+
+    if score >= 0.25:
+        return 1
+    if score <= 0.10:
         return 3
     return 2
 

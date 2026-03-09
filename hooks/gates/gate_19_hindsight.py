@@ -32,6 +32,7 @@ WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 SCORE_BLOCK_THRESHOLD = 0.3      # mentor_last_score below this triggers block check
 ESCALATION_BLOCK_THRESHOLD = 2   # need this many consecutive escalations to actually block
 CHAIN_SCORE_WARN_THRESHOLD = 0.3 # warn if outcome chain score is low
+CASCADE_BLOCK_LIMIT = 3          # max consecutive Gate 19 blocks before auto-reset
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
@@ -63,7 +64,22 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     warned_this_cycle = state.get("mentor_warned_this_cycle", False)
 
     # BLOCK: sustained escalation (low score + multiple consecutive escalations)
+    # Anti-cascade: after CASCADE_BLOCK_LIMIT consecutive blocks, reset and let
+    # the next tool call through so the mentor can re-evaluate with fresh signals.
+    gate19_blocks = state.get("gate19_consecutive_blocks", 0)
     if mentor_score < SCORE_BLOCK_THRESHOLD and escalation_count >= ESCALATION_BLOCK_THRESHOLD:
+        if gate19_blocks >= CASCADE_BLOCK_LIMIT:
+            # Break the spiral: reset mentor state, allow through
+            state["mentor_escalation_count"] = 0
+            state["mentor_last_score"] = 0.5
+            state["mentor_last_verdict"] = "advise"
+            state["gate19_consecutive_blocks"] = 0
+            msg = (
+                f"[{GATE_NAME}] CASCADE RESET: {gate19_blocks} consecutive blocks — "
+                f"resetting mentor state to break spiral. Proceeding with caution."
+            )
+            return GateResult(blocked=False, gate_name=GATE_NAME, message=msg, severity="warn")
+        state["gate19_consecutive_blocks"] = gate19_blocks + 1
         msg = (
             f"[{GATE_NAME}] BLOCKED: Mentor score critically low ({mentor_score:.2f}) "
             f"with {escalation_count} consecutive escalations. "
@@ -71,6 +87,9 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             f"Run tests, verify your approach, or check memory for prior solutions."
         )
         return GateResult(blocked=True, gate_name=GATE_NAME, message=msg, severity="error")
+    # Reset block counter when not blocking
+    if gate19_blocks > 0:
+        state["gate19_consecutive_blocks"] = 0
 
     # WARN: low chain score (outcome chain detected churn/stuck pattern)
     if chain_score < CHAIN_SCORE_WARN_THRESHOLD and not warned_this_cycle:

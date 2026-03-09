@@ -133,7 +133,7 @@ def main():
         try:
             with open(CONFIG_PATH) as f:
                 cfg = json.load(f)
-            bot_token = cfg.get("bot_token", "")
+            bot_token = cfg.get("notify_bot_token", "") or cfg.get("bot_token", "")
             allowed_users = cfg.get("allowed_users", [])
             if bot_token and allowed_users:
                 html_text = _format_html(summary_text, session_num)

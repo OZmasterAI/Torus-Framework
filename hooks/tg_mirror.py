@@ -103,19 +103,40 @@ def main():
 
         # Load Telegram config
         tg_cfg = _load_json(TG_CONFIG_FILE, {})
-        bot_token = tg_cfg.get("bot_token", "")
+        bot_token = tg_cfg.get("notify_bot_token", "") or tg_cfg.get("bot_token", "")
         allowed_users = tg_cfg.get("allowed_users", [])
         if not bot_token or not allowed_users:
             print("[TG_MIRROR] No bot_token or allowed_users configured", file=sys.stderr)
             sys.exit(0)
 
+        # Read tool call batch (written by tg_mirror_tools.py PostToolUse hook)
+        session_id = data.get("session_id", "unknown")
+        tools_file = f"/tmp/tg-mirror-tools-{session_id}.jsonl"
+        tool_lines = []
+        try:
+            with open(tools_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        entry = json.loads(line)
+                        tool_lines.append(entry.get("summary", ""))
+            os.unlink(tools_file)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            pass
+
         # Format and send
+        parts = []
+        if tool_lines:
+            escaped_tools = "\n".join(_escape_html(t) for t in tool_lines)
+            parts.append(f"<b>[tools]</b>\n{escaped_tools}")
         escaped = _escape_html(message)
-        msg = f"<b>[Claude]</b>\n{escaped}"
+        parts.append(f"<b>[Claude]</b>\n{escaped}")
+        msg = "\n\n".join(parts)
+
         for uid in allowed_users:
             _send_telegram(bot_token, uid, msg)
 
-        print("[TG_MIRROR] Sent 1 turn", file=sys.stderr)
+        print(f"[TG_MIRROR] Sent 1 turn ({len(tool_lines)} tools)", file=sys.stderr)
 
     except Exception as e:
         print(f"[TG_MIRROR] Error (non-fatal): {e}", file=sys.stderr)
