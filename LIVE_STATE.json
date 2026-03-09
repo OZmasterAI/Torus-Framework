@@ -1,21 +1,21 @@
 {
-  "session_count": 399,
+  "session_count": 398,
   "project": "torus-framework",
-  "feature": "mem2x-comparison",
+  "feature": "cognitive-merge",
   "framework_version": "v2.7.0",
-  "what_was_done": "Revised 11-way framework comparison with evidence-based scoring. Added ZeroTor (Agent Zero + Torus gates fork). Corrected Learning Ability 62→82 (8 mechanisms), Testing ~70→88 (fuzz/mutation/28K lines), Observability ~65→92 (Prometheus/11 modules). Fixed Voice Branch 79→69 (no mem2x upgrades). Full capability audit: 73 shared modules, 18 gates, 5 LanceDB tables.",
+  "what_was_done": "Full analytics MCP deep audit. Fixed G17 block→blocks key (tracker_pkg/orchestrator.py). Fixed fix_outcomes test pollution (288 rows, test_analytics.py ARCHIVE_PATH isolation). Created Cognitive branch off mem2x, merged mem2x-combo2 via revert-of-revert. All 9 mem2x tests pass.",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
-    "zerobrain project has no git repo initialized yet",
-    "mem2x-combo2 merge reverted on mem2x — worktree branch has Phase 2 ready to re-merge after testing"
+    "Metrics gap — production gates not emitting to metrics system (low priority)",
+    "G06 — 60 lifetime skips, investigate when convenient"
   ],
   "next_steps": [
-    "Test and merge mem2x-combo2 (Phase 2: replay, adaptive weights, interference, tier auto-flow) into mem2x",
-    "Run full audit with analytics MCP (restart session first to connect)",
+    "Decide: merge Cognitive into mem2x, or promote Cognitive as the new main memory branch",
+    "G13/G14/G05 override rate threshold tuning (post-merge evaluation)",
     "Check Sonnet's ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor",
-    "Init git repo for zerobrain project at ~/projects/zerobrain",
-    "Memory DB at 2,537 entries — consider running maintenance(action='stale')"
+    "Memory DB at 2,541 entries — consider running maintenance(action='stale')",
+    "Fix test_framework.py import error (ModuleNotFoundError for 'index' at test_integration.py:748)"
   ]
 }
