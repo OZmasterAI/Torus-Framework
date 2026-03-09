@@ -3,18 +3,19 @@
   "project": "torus-framework",
   "feature": "github-sync",
   "framework_version": "v2.8.0",
-  "what_was_done": "Completed G16 ruff+AST upgrade (22/22 tests pass). Synced Cognitive→github-branch→pushed v2.8.0 to GitHub main. Created Cognitive-upgrade branch for G16 work. Currently on Cognitive-upgrade.",
+  "what_was_done": "Completed G16 ruff+AST upgrade (22/22 tests pass). Synced Cognitive\u2192github-branch\u2192pushed v2.8.0 to GitHub main. Created Cognitive-upgrade branch for G16 work. Currently on Cognitive-upgrade.",
   "known_issues": [
-    "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
-    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
+    "Gate 19 cascade on branch switch (low priority \u2014 anti-cascade limit handles it)",
+    "mcp.json at ~/.claude/mcp.json is NOT the active config \u2014 real config is ~/.claude.json mcpServers",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
-    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md — resolves on merge to Cognitive"
+    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md \u2014 resolves on merge to Cognitive"
   ],
   "next_steps": [
     "Merge Cognitive-upgrade back into Cognitive (G16 ruff+AST ready)",
     "Fix test_framework.py import error (ModuleNotFoundError for 'index' at test_integration.py:748)",
-    "Memory DB at 2,551 entries — run maintenance(action='stale')",
+    "Memory DB at 2,551 entries \u2014 run maintenance(action='stale')",
     "Check ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor",
-    "G13 override rate — behavioral not threshold, consider documenting/accepting as-is"
-  ]
+    "G13 override rate \u2014 behavioral not threshold, consider documenting/accepting as-is"
+  ],
+  "last_response_preview": "**Session 400 \u2014 wrapped.**\n\n---\n\n**What was done:**\n- G16 ruff + AST complexity upgrade complete \u2014 22/22 tests pass (`Cognitive-upgrade` branch)\n- Fixed ruff test path bug (`g16_ruff_test.py` matched `_test.` exempt pattern \u2192 renamed to `g16_unused_imports.py`)\n- Full 3-way branch comparison: github-branch (69) vs Cognitive (81) vs Cognitive-upgrade (85)\n- GitHub sync: v2.8.0 pushed to public main with shodh-memory attribution\n- Branch cleanup: remote `github-branch` deleted, only `main` remains"
 }
