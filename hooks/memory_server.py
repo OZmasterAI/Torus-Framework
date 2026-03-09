@@ -3170,6 +3170,7 @@ def delete_memory(id: str) -> dict:
             if _knowledge_graph:
                 for did in found:
                     _knowledge_graph.remove_entity_edges(did)
+                    _knowledge_graph.deactivate_entity(did)
         except Exception:
             pass
         return {"deleted": found, "count": len(found)}

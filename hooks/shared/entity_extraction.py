@@ -51,7 +51,7 @@ _COMPOUND_NOUNS = frozenset([
 _FILE_PATTERN = re.compile(r'[\w/.-]+\.\w{1,10}')
 
 # --- CamelCase / PascalCase splitter ---
-_CAMEL_RE = re.compile(r'[A-Z][a-z]+(?:[A-Z][a-z]+)+')
+_CAMEL_RE = re.compile(r'[A-Z][a-z]+(?:[A-Z][a-z]+|[A-Z]+)+')
 
 # --- Identifier pattern (snake_case, etc) ---
 _IDENT_PATTERN = re.compile(r'[a-zA-Z_]\w*(?:_\w+)+')
