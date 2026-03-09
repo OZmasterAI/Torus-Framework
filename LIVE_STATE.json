@@ -1,19 +1,20 @@
 {
-  "session_count": 399,
+  "session_count": 400,
   "project": "torus-framework",
-  "feature": "gate-tuning",
-  "framework_version": "v2.7.0",
-  "what_was_done": "Wired metrics_collector into enforcer (metrics gap closed). G05 threshold 3→4, G14 threshold 2+gate_tune_overrides. Fixed G06 crash (verification_timestamps float guard in state.py+gate). Wired test.pass_rate in orchestrator. All on Cognitive branch.",
+  "feature": "github-sync",
+  "framework_version": "v2.8.0",
+  "what_was_done": "Completed G16 ruff+AST upgrade (22/22 tests pass). Synced Cognitive→github-branch→pushed v2.8.0 to GitHub main. Created Cognitive-upgrade branch for G16 work. Currently on Cognitive-upgrade.",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
-    "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'"
+    "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
+    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md — resolves on merge to Cognitive"
   ],
   "next_steps": [
-    "Decide: merge Cognitive into mem2x, or promote Cognitive as the new main memory branch",
-    "Check ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor",
-    "Memory DB at 2,545 entries — run maintenance(action='stale')",
+    "Merge Cognitive-upgrade back into Cognitive (G16 ruff+AST ready)",
     "Fix test_framework.py import error (ModuleNotFoundError for 'index' at test_integration.py:748)",
+    "Memory DB at 2,551 entries — run maintenance(action='stale')",
+    "Check ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor",
     "G13 override rate — behavioral not threshold, consider documenting/accepting as-is"
   ]
 }
