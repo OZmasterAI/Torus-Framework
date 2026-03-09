@@ -1,18 +1,20 @@
 {
-  "session_count": 392,
+  "session_count": 393,
   "project": "torus-framework",
-  "feature": "tg-mirror-batch",
+  "feature": "mem2x-research",
   "framework_version": "v2.6.5",
-  "what_was_done": "Fixed TG bot cross-session response leak (pane_pid ancestry check). Updated /experiment skill to use worktrees. Built batch mirror: tool calls + user messages + Claude responses all mirrored to TG notify bot from all sessions. Confirmed STT/TTS working on both TG bot and voice-web.",
+  "what_was_done": "Implemented salience scoring in _classify_tier(). Researched heartbeats, Shodh-Memory, thermal-memory, advanced tool use. Planned Option C memory upgrade (10-task TDD plan). Created mem2x branch. Launched separate instance for build.",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
     "TG bot tmux_target set to 'claude' (not claude-bot) — messages will interrupt main session",
-    "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'"
+    "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
+    "skill_server.py has uncommitted change (experiment added to self_improve)"
   ],
   "next_steps": [
+    "mem2x build in progress — check worktree session for status",
     "Fix 2: graceful offline handling — bot says 'offline' instead of 120s timeout when claude-bot is down",
-    "Test /experiment on a real framework target (e.g., gate latency, test suite speed)",
-    "Memory DB at 2,457 entries — consider running maintenance(action='stale')"
+    "Test /experiment on a real framework target",
+    "Memory DB at 2,468 entries — consider running maintenance(action='stale')"
   ]
 }

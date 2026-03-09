@@ -152,10 +152,10 @@ _SELF_IMPROVE_SKILLS = {
 @mcp.tool()
 @crash_proof
 def self_improve(action: str) -> dict:
-    """Run a self-improvement skill. Actions: sprint (multi-agent improvement), audit (full project audit), diagnose (gate effectiveness), analyze-errors (recurring errors), benchmark (performance baseline), introspect (deep self-analysis), super-evolve (evolution cycle), super-health (health diagnostic), super-prof-optimize (profiling & optimization), code-hotspots (high-risk files), generate-test-stubs (auto-generate tests), replay-events (gate regression testing), tool-recommendations (blocked tool alternatives), gate-health-correlation (gate redundancy analysis), causal-chain-analysis (fix outcome patterns)
+    """Run a self-improvement skill. Actions: sprint (multi-agent improvement), audit (full project audit), diagnose (gate effectiveness), analyze-errors (recurring errors), benchmark (performance baseline), introspect (deep self-analysis), super-evolve (evolution cycle), super-health (health diagnostic), super-prof-optimize (profiling & optimization), code-hotspots (high-risk files), generate-test-stubs (auto-generate tests), replay-events (gate regression testing), tool-recommendations (blocked tool alternatives), gate-health-correlation (gate redundancy analysis), causal-chain-analysis (fix outcome patterns), experiment (autoresearch-style optimization loop)
 
     Args:
-        action: One of: sprint, audit, diagnose, analyze-errors, benchmark, introspect, super-evolve, super-health, super-prof-optimize, code-hotspots, generate-test-stubs, replay-events, tool-recommendations, gate-health-correlation, causal-chain-analysis, gate-timing, session-metrics
+        action: One of: sprint, audit, diagnose, analyze-errors, benchmark, introspect, super-evolve, super-health, super-prof-optimize, code-hotspots, generate-test-stubs, replay-events, tool-recommendations, gate-health-correlation, causal-chain-analysis, gate-timing, session-metrics, experiment
     """
     if action not in _SELF_IMPROVE_SKILLS:
         return {
