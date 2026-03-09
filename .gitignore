@@ -110,3 +110,17 @@ plugins/installed_plugins.json
 plugins/known_marketplaces.json
 plugins/marketplaces/
 integrations/tts-voices/
+
+# Model router runtime config (contains API keys)
+integrations/model-router/router_config.toml
+
+# Dormant skills (private/project-specific)
+dormant/skills/market/
+dormant/skills/trade/
+
+# Runtime state (operational data, not source)
+hooks/.experience_archive.csv
+hooks/.circuit_breaker.json
+
+# Skill library runtime logs
+skill-library/.usage_log.jsonl
