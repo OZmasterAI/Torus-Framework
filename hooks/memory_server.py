@@ -2294,6 +2294,25 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     except Exception:
         pass  # Access boost failure must not break search
 
+    # Apply LTP-aware relevance scoring: re-score using 4-level decay factor (fail-open)
+    try:
+        if _ltp_tracker:
+            from shared.memory_decay import calculate_relevance_score
+            for entry in formatted:
+                mem_id = entry.get("id", "")
+                if mem_id:
+                    ltp_factor = _ltp_tracker.get_decay_factor(mem_id)
+                else:
+                    ltp_factor = 1.0
+                ltp_score = calculate_relevance_score(entry, ltp_factor=ltp_factor)
+                # Blend: 70% vector relevance + 30% LTP-decay score
+                raw_rel = entry.get("relevance", 0.5)
+                entry["relevance"] = round(raw_rel * 0.7 + ltp_score * 0.3, 4)
+                entry["ltp_factor"] = ltp_factor
+            formatted.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+    except Exception:
+        pass  # LTP scoring failure must not break search
+
     # Trim to requested top_k after expansion
     formatted = formatted[:top_k]
 

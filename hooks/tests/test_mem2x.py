@@ -315,6 +315,75 @@ def test_graph_deactivate_entity():
     assert row[0] == 0.0
 
 
+## --- Fix 1: Full LTP chain verification ---
+
+def test_ltp_full_chain():
+    """Fix 1: LTP tracker → calculate_relevance_score with ltp_factor flows correctly."""
+    import tempfile
+    from shared.ltp_tracker import LTPTracker
+    from shared.memory_decay import calculate_relevance_score
+
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        tmp = f.name
+
+    try:
+        tracker = LTPTracker(tmp)
+
+        # Access mem1 10+ times to trigger "full" LTP
+        for _ in range(12):
+            tracker.record_access("mem1")
+
+        assert tracker.get_status("mem1") == "full", f"Expected full, got {tracker.get_status('mem1')}"
+        ltp_factor = tracker.get_decay_factor("mem1")
+        assert ltp_factor == 0.1, f"Expected 0.1 for full LTP, got {ltp_factor}"
+
+        # Score with and without ltp_factor
+        memory = {
+            "tier": 2,
+            "timestamp": "2026-01-15T00:00:00Z",
+            "retrieval_count": 12,
+            "tags": "",
+        }
+
+        score_with_ltp = calculate_relevance_score(memory, ltp_factor=ltp_factor)
+        score_without_ltp = calculate_relevance_score(memory, ltp_factor=1.0)
+
+        # Full LTP (0.1) should give significantly higher score than no LTP (1.0)
+        assert score_with_ltp > score_without_ltp, (
+            f"Full LTP should boost score: {score_with_ltp} vs {score_without_ltp}"
+        )
+
+        # Verify no-access memory gets ltp_factor=1.0
+        assert tracker.get_decay_factor("mem_new") == 1.0
+    finally:
+        os.unlink(tmp)
+
+
+def test_ltp_factor_gradation():
+    """Fix 1: All 4 LTP levels produce distinct scores."""
+    from shared.memory_decay import calculate_relevance_score
+
+    memory = {
+        "tier": 2,
+        "timestamp": "2026-01-01T00:00:00Z",
+        "retrieval_count": 0,
+        "tags": "",
+    }
+
+    scores = {}
+    for label, factor in [("none", 1.0), ("burst", 0.5), ("weekly", 0.33), ("full", 0.1)]:
+        scores[label] = calculate_relevance_score(memory, ltp_factor=factor)
+
+    # Higher protection (lower factor) = higher score
+    assert scores["full"] >= scores["weekly"] >= scores["burst"] >= scores["none"], (
+        f"LTP gradation should be monotonic: {scores}"
+    )
+    # Full and none should be meaningfully different
+    assert scores["full"] > scores["none"], (
+        f"Full LTP should beat no LTP: {scores}"
+    )
+
+
 if __name__ == "__main__":
     test_hybrid_decay()
     test_hybrid_decay_potentiated()
@@ -342,3 +411,6 @@ if __name__ == "__main__":
     test_graph_cleanup_on_delete()
     test_graph_deactivate_entity()
     print("All Task 9 tests passed!")
+    test_ltp_full_chain()
+    test_ltp_factor_gradation()
+    print("All Fix 1 tests passed!")
