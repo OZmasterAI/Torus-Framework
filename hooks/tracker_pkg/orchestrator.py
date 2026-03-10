@@ -209,6 +209,34 @@ def _handle_causal_chain(tool_name, tool_input, tool_response, state):
             _log_debug(f"query_fix_history tracking failed: {e}")
 
 
+def _handle_gate17_scan(tool_name, tool_response, state):
+    """Scan external tool results for prompt injection (Gate 17, PostToolUse).
+    Fail-open: any error is logged and silently skipped."""
+    if gate_17_check is None or _g17_is_external is None:
+        return
+    try:
+        if _g17_is_external(tool_name) and tool_response:
+            resp_content = tool_response
+            if isinstance(tool_response, dict):
+                resp_content = (
+                    tool_response.get("content", "")
+                    or tool_response.get("output", "")
+                    or str(tool_response)
+                )
+            g17_input = {"content": str(resp_content)[:50000]}  # Cap scan size
+            result = gate_17_check(
+                tool_name, g17_input, state, event_type="PostToolUse"
+            )
+            if result.message:
+                print(result.message, file=sys.stderr)
+                try:
+                    update_gate_effectiveness("gate_17_injection_defense", "blocks")
+                except Exception:
+                    pass
+    except Exception as e:
+        _log_debug(f"Gate 17 scan failed (non-blocking): {e}")
+
+
 def _handle_bash(tool_input, tool_response, state):
     """Handle all Bash PostToolUse tracking: test detection, causal chain
     auto-detect, git commit capture, and verification scoring."""
@@ -532,30 +560,7 @@ def handle_post_tool_use(
         _handle_causal_chain(tool_name, tool_input, tool_response, state)
 
     # Gate 17: Injection defense — scan external tool results for prompt injection
-    if gate_17_check is not None and _g17_is_external is not None:
-        try:
-            if _g17_is_external(tool_name) and tool_response:
-                # Build tool_input-like dict with response content for gate_17 to scan
-                resp_content = tool_response
-                if isinstance(tool_response, dict):
-                    resp_content = (
-                        tool_response.get("content", "")
-                        or tool_response.get("output", "")
-                        or str(tool_response)
-                    )
-                g17_input = {"content": str(resp_content)[:50000]}  # Cap scan size
-                result = gate_17_check(
-                    tool_name, g17_input, state, event_type="PostToolUse"
-                )
-                if result.message:
-                    print(result.message, file=sys.stderr)
-                    # Record effectiveness
-                    try:
-                        update_gate_effectiveness("gate_17_injection_defense", "blocks")
-                    except Exception:
-                        pass
-        except Exception as e:
-            _log_debug(f"Gate 17 scan failed (non-blocking): {e}")
+    _handle_gate17_scan(tool_name, tool_response, state)
 
     # Analytics tool usage tracking (for Upgrades C+F)
     if tool_name.startswith("mcp__analytics__"):
