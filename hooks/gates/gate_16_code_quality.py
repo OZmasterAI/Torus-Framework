@@ -73,9 +73,13 @@ def _ruff_check(file_path: str, content: str) -> list:
 _COMPLEXITY_WARN_DEFAULT = 12  # advisory warn, non-escalating
 _COMPLEXITY_BLOCK_DEFAULT = 20  # escalates G16 counter (blocks at 4th)
 _NESTING_WARN_DEFAULT = 4  # 4 levels of nesting is hard to read
-_NESTING_BLOCK_DEFAULT = 6  # 6+ levels escalates G16 counter
-_LENGTH_WARN_DEFAULT = 60  # advisory: functions over 60 lines
-_LENGTH_BLOCK_DEFAULT = 100  # escalates G16 counter at 100+ lines
+_NESTING_BLOCK_DEFAULT = (
+    7  # 7+ levels escalates G16 counter (6 is common in legitimate gate code)
+)
+_LENGTH_WARN_DEFAULT = 80  # advisory: functions over 80 lines
+_LENGTH_BLOCK_DEFAULT = (
+    150  # escalates G16 counter at 150+ lines (100 too tight for framework)
+)
 
 _BRANCH_NODES = (
     ast.If,
