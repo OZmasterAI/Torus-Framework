@@ -1,22 +1,25 @@
 {
-  "session_count": 402,
+  "session_count": 408,
   "project": "torus-framework",
-  "feature": "cognitive-upgrade",
+  "feature": "toroidal-teams",
   "framework_version": "v2.8.0",
-  "what_was_done": "Gate 16: added nesting depth+function length AST checks, calibrated thresholds (80/150 length, 7 nesting). Gate 20 (new): risk-scored self-check, 2 questions, ~120 tokens/session. Tech debt logged.",
+  "what_was_done": "Toroidal Teams v1 complete \u2014 all 3 phases reviewed, committed (4 commits on Toroidal-teams). Phase 3 review passed. Disabled model-router, analytics, skills, search MCPs (only memory remains). Cleaned up settings.local.json. Saved v2 pre-plan to memory (id:251438e166e050c4). Researched disler repos (agent-sandbox-skill, hooks-multi-agent-observability, multi-agent-postgres, hooks-mastery) \u2014 none would have changed our design. Pi agent review: result-write contract is weakest link, tmux paste race mitigated, co-claim foreknowledge partially valid.",
   "known_issues": [
-    "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
-    "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
+    "Gate 19 cascade on branch switch (low priority \u2014 anti-cascade limit handles it)",
+    "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
-    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md — resolves on merge to Cognitive",
-    "Two skill systems coexist: ~/.claude/skills/ (Skill tool) and ~/.claude/skill-library/ (MCP) — keep in sync"
+    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md \u2014 resolves on merge to Cognitive",
+    "Two skill systems coexist: ~/.claude/skills/ (Skill tool) and ~/.claude/skill-library/ (MCP) \u2014 keep in sync",
+    "Never Edit ~/.claude.json directly \u2014 use python3 json.load/dump for atomic edits (file got nuked once)"
   ],
   "next_steps": [
+    "Toroidal Teams v2 planning \u2014 pre-plan in memory id:251438e166e050c4 (dispatch helper, agent-to-agent tasks, templates)",
     "Merge Cognitive-upgrade back into Cognitive (G16 nesting+length+thresholds, Gate 20 all ready)",
     "Consider Gate 20 C+D extensions after observing in production (Task #1, memory id:539d73f7a279d7bf)",
-    "Refactor 3 tech debt targets: compress_observation (depth 12), search_knowledge (596 lines), handle_post_tool_use (491 lines) — memory id:ec2e1f685b8bb9cd",
-    "Memory stale purge — 2,562 entries, run maintenance(action='stale')",
+    "Refactor 3 tech debt targets: compress_observation (depth 12), search_knowledge (596 lines), handle_post_tool_use (491 lines) \u2014 memory id:ec2e1f685b8bb9cd",
+    "Memory stale purge \u2014 2,579 entries, run maintenance(action='stale')",
     "Fix test_framework.py import error (ModuleNotFoundError for 'index' at test_integration.py:748)",
-    "Check ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor"
-  ]
+    "Re-enable skills/search/analytics MCPs when needed"
+  ],
+  "last_response_preview": "Good find \u2014 Gastown is Steve Yegge's framework. Here's the comparison:\n\n---\n\n## Toroidal Teams vs Gas Town\n\n| Dimension | **Toroidal Teams** (ours) | **Gas Town** (Yegge) |\n|---|---|---|\n| **Scale** | Few focused agents (1-5) | 12\u201330 parallel agents |\n| **Roles** | Role-typed agents (researcher, etc.) | Mayor / Polecats / Witness / Deacon / Refinery |\n| **Orchestration** | Main session + watcher script | Dedicated Mayor agent |\n| **IPC** | JSON files + inotifywait watcher | Git-backed \"Beads\" (t"
 }
