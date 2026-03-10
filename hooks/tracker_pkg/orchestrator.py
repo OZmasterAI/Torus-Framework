@@ -209,6 +209,69 @@ def _handle_causal_chain(tool_name, tool_input, tool_response, state):
             _log_debug(f"query_fix_history tracking failed: {e}")
 
 
+def _run_mentor_system(tool_name, tool_input, tool_response, state):
+    """Run all mentor evaluators (A+D+E+F) — toggle-gated, all fail-open."""
+    state["mentor_warned_this_cycle"] = False
+    t0 = time.time()
+    mentor_all = get_live_toggle("mentor_all")
+
+    if mentor_all or get_live_toggle("mentor_tracker"):
+        try:
+            from tracker_pkg.mentor import evaluate as mentor_evaluate
+
+            verdict_a = mentor_evaluate(tool_name, tool_input, tool_response, state)
+            if verdict_a and verdict_a.action in ("warn", "escalate"):
+                print(f"[MENTOR] {verdict_a.message}", file=sys.stderr)
+                state["mentor_warned_this_cycle"] = True
+        except Exception as e:
+            _log_debug(f"Mentor tracker failed (non-blocking): {e}")
+
+    if (mentor_all or get_live_toggle("mentor_outcome_chains")) and state.get(
+        "tool_call_count", 0
+    ) % 10 == 0:
+        if time.time() - t0 < 2.5:
+            try:
+                from tracker_pkg.outcome_chains import evaluate as chains_evaluate
+
+                verdict_d = chains_evaluate(tool_name, tool_input, tool_response, state)
+                if (
+                    verdict_d
+                    and verdict_d.get("message")
+                    and not state.get("mentor_warned_this_cycle")
+                ):
+                    print(f"[MENTOR:CHAINS] {verdict_d['message']}", file=sys.stderr)
+            except Exception as e:
+                _log_debug(f"Mentor outcome chains failed (non-blocking): {e}")
+
+    if mentor_all or get_live_toggle("mentor_memory"):
+        if time.time() - t0 < 2.5:
+            try:
+                from tracker_pkg.mentor_memory import evaluate as memory_evaluate
+
+                verdict_e = memory_evaluate(tool_name, tool_input, tool_response, state)
+                if (
+                    verdict_e
+                    and verdict_e.get("context")
+                    and not state.get("mentor_warned_this_cycle")
+                ):
+                    print(f"[MENTOR:MEMORY] {verdict_e['context']}", file=sys.stderr)
+            except Exception as e:
+                _log_debug(f"Mentor memory failed (non-blocking): {e}")
+
+    if mentor_all or get_live_toggle("mentor_analytics"):
+        if time.time() - t0 < 2.5:
+            try:
+                from tracker_pkg.mentor_analytics import evaluate as analytics_evaluate
+
+                nudges_f = analytics_evaluate(
+                    tool_name, tool_input, tool_response, state
+                )
+                if nudges_f and not state.get("mentor_warned_this_cycle"):
+                    print(f"[MENTOR:ANALYTICS] {nudges_f[0]}", file=sys.stderr)
+            except Exception as e:
+                _log_debug(f"Mentor analytics failed (non-blocking): {e}")
+
+
 def _handle_gate17_scan(tool_name, tool_response, state):
     """Scan external tool results for prompt injection (Gate 17, PostToolUse).
     Fail-open: any error is logged and silently skipped."""
@@ -578,66 +641,7 @@ def handle_post_tool_use(
     _capture_observation(tool_name, tool_input, tool_response, session_id, state)
 
     # ── Mentor System (A+D+E+F) — all toggle-gated, all fail-open ──
-    state["mentor_warned_this_cycle"] = False  # Reset at start of mentor block
-    _mentor_t0 = time.time()
-    _mentor_all = get_live_toggle("mentor_all")
-
-    if _mentor_all or get_live_toggle("mentor_tracker"):
-        try:
-            from tracker_pkg.mentor import evaluate as mentor_evaluate
-
-            verdict_a = mentor_evaluate(tool_name, tool_input, tool_response, state)
-            if verdict_a and verdict_a.action in ("warn", "escalate"):
-                print(f"[MENTOR] {verdict_a.message}", file=sys.stderr)
-                state["mentor_warned_this_cycle"] = True
-        except Exception as e:
-            _log_debug(f"Mentor tracker failed (non-blocking): {e}")
-
-    if (_mentor_all or get_live_toggle("mentor_outcome_chains")) and state.get(
-        "tool_call_count", 0
-    ) % 10 == 0:
-        if time.time() - _mentor_t0 < 2.5:
-            try:
-                from tracker_pkg.outcome_chains import evaluate as chains_evaluate
-
-                verdict_d = chains_evaluate(tool_name, tool_input, tool_response, state)
-                if (
-                    verdict_d
-                    and verdict_d.get("message")
-                    and not state.get("mentor_warned_this_cycle")
-                ):
-                    print(f"[MENTOR:CHAINS] {verdict_d['message']}", file=sys.stderr)
-            except Exception as e:
-                _log_debug(f"Mentor outcome chains failed (non-blocking): {e}")
-
-    if _mentor_all or get_live_toggle("mentor_memory"):
-        if time.time() - _mentor_t0 < 2.5:
-            try:
-                from tracker_pkg.mentor_memory import evaluate as memory_evaluate
-
-                verdict_e = memory_evaluate(tool_name, tool_input, tool_response, state)
-                if (
-                    verdict_e
-                    and verdict_e.get("context")
-                    and not state.get("mentor_warned_this_cycle")
-                ):
-                    print(f"[MENTOR:MEMORY] {verdict_e['context']}", file=sys.stderr)
-            except Exception as e:
-                _log_debug(f"Mentor memory failed (non-blocking): {e}")
-
-    if _mentor_all or get_live_toggle("mentor_analytics"):
-        if time.time() - _mentor_t0 < 2.5:
-            try:
-                from tracker_pkg.mentor_analytics import evaluate as analytics_evaluate
-
-                nudges_f = analytics_evaluate(
-                    tool_name, tool_input, tool_response, state
-                )
-                if nudges_f and not state.get("mentor_warned_this_cycle"):
-                    # Max 1 nudge per cycle
-                    print(f"[MENTOR:ANALYTICS] {nudges_f[0]}", file=sys.stderr)
-            except Exception as e:
-                _log_debug(f"Mentor analytics failed (non-blocking): {e}")
+    _run_mentor_system(tool_name, tool_input, tool_response, state)
 
     # Session duration nudge — once per milestone (1h, 2h, 3h)
     session_hours = (time.time() - state.get("session_start", time.time())) / 3600
