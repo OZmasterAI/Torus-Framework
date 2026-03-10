@@ -105,6 +105,160 @@ def _write_file_claim(claim_path, claim_session):
         _log_debug(f"file claim write failed: {e}")
 
 
+def _handle_bash(tool_input, tool_response, state):
+    """Handle all Bash PostToolUse tracking: test detection, causal chain
+    auto-detect, git commit capture, and verification scoring."""
+    command = tool_input.get("command", "")
+
+    # --- Block A: test detection + fixing_error + auto-remember ---
+    if any(
+        kw in command
+        for kw in [
+            "pytest",
+            "python -m pytest",
+            "npm test",
+            "cargo test",
+            "go test",
+            "test_framework.py",
+        ]
+    ):
+        state["last_test_run"] = time.time()
+        state["last_test_command"] = command[:200]
+        state["session_test_baseline"] = True
+        # Capture exit code from tool_response (Claude Code provides it there)
+        exit_code = 0
+        if tool_response is not None:
+            if isinstance(tool_response, dict):
+                exit_code = tool_response.get(
+                    "exit_code",
+                    tool_response.get("exitCode", tool_response.get("status", 0)),
+                )
+            elif isinstance(tool_response, str):
+                try:
+                    resp = json.loads(tool_response)
+                    if isinstance(resp, dict):
+                        exit_code = resp.get(
+                            "exit_code", resp.get("exitCode", resp.get("status", 0))
+                        )
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        state["last_test_exit_code"] = exit_code
+
+        # Update test.pass_rate metric from actual test output
+        try:
+            if exit_code == 0:
+                _set_test_pass_rate(1.0)
+            else:
+                # Parse pytest-style "N passed, M failed" summary from output
+                out_str = str(tool_response) if tool_response else ""
+                _m_pass = re.search(r"(\d+) passed", out_str)
+                _m_fail = re.search(r"(\d+) failed", out_str)
+                _n_pass = int(_m_pass.group(1)) if _m_pass else 0
+                _n_fail = int(_m_fail.group(1)) if _m_fail else 0
+                _total = _n_pass + _n_fail
+                _set_test_pass_rate(_n_pass / _total if _total > 0 else 0.0)
+        except Exception:
+            pass  # Metrics are non-fatal
+
+        # Causal chain auto-detect: set recent_test_failure on non-zero exit
+        if exit_code and exit_code != 0:
+            # Detect primary error pattern from output
+            error_pattern = _extract_error_pattern(tool_response)
+            state["recent_test_failure"] = {
+                "pattern": error_pattern,
+                "timestamp": time.time(),
+                "command": command[:200],
+            }
+            state["fixing_error"] = True
+        else:
+            # Tests passed — clear error state
+            # Trigger C: Error fix verified (critical — useful in current session)
+            was_fixing = state.get("fixing_error", False)
+            if was_fixing:
+                error_info = state.get("recent_test_failure", {})
+                pattern = (
+                    error_info.get("pattern", "unknown")
+                    if isinstance(error_info, dict)
+                    else "unknown"
+                )
+                edited = list(
+                    state.get("files_edited", state.get("pending_verification", []))
+                )[-5:]
+                _auto_remember_event(
+                    f"Error fixed: {pattern}. Files edited: {', '.join(edited)}",
+                    context=f"Test passed after fixing error: {command[:100]}",
+                    tags="type:auto-captured,type:fix,area:framework",
+                    critical=True,
+                    state=state,
+                )
+            # Trigger A: Test run snapshot (queued for boot)
+            edited_files = list(
+                state.get("files_edited", state.get("pending_verification", []))
+            )[-10:]
+            _auto_remember_event(
+                f"Tests passed: {command[:150]}. Files modified this session: {', '.join(edited_files) if edited_files else 'none'}",
+                context="auto-captured test run snapshot",
+                tags="type:auto-captured,area:testing",
+                critical=False,
+                state=state,
+            )
+            state["recent_test_failure"] = None
+            state["fixing_error"] = False
+            state["confidence_warned_signals"] = []  # Reset G14 signal suppression
+
+    # Trigger B: Git commit (queued for boot)
+    if "git commit" in command:
+        _auto_remember_event(
+            f"Git commit: {command[:200]}",
+            context="auto-captured git commit",
+            tags="type:auto-captured,area:git",
+            critical=False,
+            state=state,
+        )
+
+    # --- Block B: verification scoring (all bash commands) ---
+    score = _classify_verification_score(command)
+    scores = state.setdefault("verification_scores", {})
+    pending = state.get("pending_verification", [])
+
+    # Reset edit streaks on verification
+    state["edit_streak"] = {}
+
+    if any(kw in command for kw in BROAD_TEST_COMMANDS):
+        # Broad tests apply score to all pending files
+        for fp in pending:
+            scores[fp] = scores.get(fp, 0) + score
+    else:
+        # Targeted commands: score only files referenced in command
+        for filepath in pending:
+            basename = os.path.basename(filepath)
+            stem = os.path.splitext(basename)[0]
+            matched = (
+                re.search(r"\b" + re.escape(filepath) + r"\b", command)
+                or re.search(r"\b" + re.escape(basename) + r"\b", command)
+                or re.search(r"\b" + re.escape(stem) + r"\b", command)
+            )
+            if matched:
+                # Direct file execution (score >= 30) gets minimum 70 — running
+                # the exact file you edited is strong verification evidence
+                effective_score = max(score, 70) if score >= 30 else score
+                scores[filepath] = scores.get(filepath, 0) + effective_score
+
+    # Clear files that have reached the verification threshold (>= 70)
+    # Exclude temp files from verified_fixes (they trigger false positives in gate 6)
+    _EXCLUDED_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/")
+    remaining = []
+    for fp in pending:
+        if scores.get(fp, 0) >= 70:
+            if not any(fp.startswith(p) for p in _EXCLUDED_PREFIXES):
+                state.setdefault("verified_fixes", []).append(fp)
+                state.setdefault("verification_timestamps", {})[fp] = time.time()
+            scores.pop(fp, None)
+        else:
+            remaining.append(fp)
+    state["pending_verification"] = remaining
+
+
 def handle_post_tool_use(
     tool_name, tool_input, state, session_id="main", tool_response=None
 ):
@@ -222,113 +376,9 @@ def handle_post_tool_use(
     if tool_name == "ExitPlanMode":
         state["last_exit_plan_mode"] = time.time()
 
-    # Track test runs + causal chain auto-detect (Option A)
+    # test detection + git-commit capture (Block A) + verification scoring (Block B)
     if tool_name == "Bash":
-        command = tool_input.get("command", "")
-        if any(
-            kw in command
-            for kw in [
-                "pytest",
-                "python -m pytest",
-                "npm test",
-                "cargo test",
-                "go test",
-                "test_framework.py",
-            ]
-        ):
-            state["last_test_run"] = time.time()
-            state["last_test_command"] = command[:200]
-            state["session_test_baseline"] = True
-            # Capture exit code from tool_response (Claude Code provides it there)
-            exit_code = 0
-            if tool_response is not None:
-                if isinstance(tool_response, dict):
-                    exit_code = tool_response.get(
-                        "exit_code",
-                        tool_response.get("exitCode", tool_response.get("status", 0)),
-                    )
-                elif isinstance(tool_response, str):
-                    try:
-                        resp = json.loads(tool_response)
-                        if isinstance(resp, dict):
-                            exit_code = resp.get(
-                                "exit_code", resp.get("exitCode", resp.get("status", 0))
-                            )
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-            state["last_test_exit_code"] = exit_code
-
-            # Update test.pass_rate metric from actual test output
-            try:
-                if exit_code == 0:
-                    _set_test_pass_rate(1.0)
-                else:
-                    # Parse pytest-style "N passed, M failed" summary from output
-                    out_str = str(tool_response) if tool_response else ""
-                    _m_pass = re.search(r"(\d+) passed", out_str)
-                    _m_fail = re.search(r"(\d+) failed", out_str)
-                    _n_pass = int(_m_pass.group(1)) if _m_pass else 0
-                    _n_fail = int(_m_fail.group(1)) if _m_fail else 0
-                    _total = _n_pass + _n_fail
-                    _set_test_pass_rate(_n_pass / _total if _total > 0 else 0.0)
-            except Exception:
-                pass  # Metrics are non-fatal
-
-            # Causal chain auto-detect: set recent_test_failure on non-zero exit
-            if exit_code and exit_code != 0:
-                # Detect primary error pattern from output
-                error_pattern = _extract_error_pattern(tool_response)
-                state["recent_test_failure"] = {
-                    "pattern": error_pattern,
-                    "timestamp": time.time(),
-                    "command": command[:200],
-                }
-                state["fixing_error"] = True
-            else:
-                # Tests passed — clear error state
-                # Trigger C: Error fix verified (critical — useful in current session)
-                was_fixing = state.get("fixing_error", False)
-                if was_fixing:
-                    error_info = state.get("recent_test_failure", {})
-                    pattern = (
-                        error_info.get("pattern", "unknown")
-                        if isinstance(error_info, dict)
-                        else "unknown"
-                    )
-                    edited = list(
-                        state.get("files_edited", state.get("pending_verification", []))
-                    )[-5:]
-                    _auto_remember_event(
-                        f"Error fixed: {pattern}. Files edited: {', '.join(edited)}",
-                        context=f"Test passed after fixing error: {command[:100]}",
-                        tags="type:auto-captured,type:fix,area:framework",
-                        critical=True,
-                        state=state,
-                    )
-                # Trigger A: Test run snapshot (queued for boot)
-                edited_files = list(
-                    state.get("files_edited", state.get("pending_verification", []))
-                )[-10:]
-                _auto_remember_event(
-                    f"Tests passed: {command[:150]}. Files modified this session: {', '.join(edited_files) if edited_files else 'none'}",
-                    context="auto-captured test run snapshot",
-                    tags="type:auto-captured,area:testing",
-                    critical=False,
-                    state=state,
-                )
-                state["recent_test_failure"] = None
-                state["fixing_error"] = False
-                state["confidence_warned_signals"] = []  # Reset G14 signal suppression
-
-        # Trigger B: Git commit (queued for boot)
-        if "git commit" in command:
-            _auto_remember_event(
-                f"Git commit: {command[:200]}",
-                context="auto-captured git commit",
-                tags="type:auto-captured,area:git",
-                critical=False,
-                state=state,
-            )
+        _handle_bash(tool_input, tool_response, state)
 
     # Track edits for pending verification (including NotebookEdit)
     # Only track non-exempt files — exempt files (config, tests, non-code) are
@@ -364,50 +414,6 @@ def handle_post_tool_use(
                     critical=False,
                     state=state,
                 )
-
-    # Progressive verification scoring: accumulate confidence scores for pending files
-    if tool_name == "Bash":
-        command = tool_input.get("command", "")
-        score = _classify_verification_score(command)
-        scores = state.setdefault("verification_scores", {})
-        pending = state.get("pending_verification", [])
-
-        # Reset edit streaks on verification
-        state["edit_streak"] = {}
-
-        if any(kw in command for kw in BROAD_TEST_COMMANDS):
-            # Broad tests apply score to all pending files
-            for fp in pending:
-                scores[fp] = scores.get(fp, 0) + score
-        else:
-            # Targeted commands: score only files referenced in command
-            for filepath in pending:
-                basename = os.path.basename(filepath)
-                stem = os.path.splitext(basename)[0]
-                matched = (
-                    re.search(r"\b" + re.escape(filepath) + r"\b", command)
-                    or re.search(r"\b" + re.escape(basename) + r"\b", command)
-                    or re.search(r"\b" + re.escape(stem) + r"\b", command)
-                )
-                if matched:
-                    # Direct file execution (score >= 30) gets minimum 70 — running
-                    # the exact file you edited is strong verification evidence
-                    effective_score = max(score, 70) if score >= 30 else score
-                    scores[filepath] = scores.get(filepath, 0) + effective_score
-
-        # Clear files that have reached the verification threshold (>= 70)
-        # Exclude temp files from verified_fixes (they trigger false positives in gate 6)
-        _EXCLUDED_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/")
-        remaining = []
-        for fp in pending:
-            if scores.get(fp, 0) >= 70:
-                if not any(fp.startswith(p) for p in _EXCLUDED_PREFIXES):
-                    state.setdefault("verified_fixes", []).append(fp)
-                    state.setdefault("verification_timestamps", {})[fp] = time.time()
-                scores.pop(fp, None)
-            else:
-                remaining.append(fp)
-        state["pending_verification"] = remaining
 
     # Detect errors in Bash output
     if tool_name == "Bash" and tool_response is not None:
