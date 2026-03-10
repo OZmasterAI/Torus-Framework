@@ -179,24 +179,30 @@ cleanup_test_states()
 # ─────────────────────────────────────────────────
 print("\n--- Gate 5: Proof Before Fixed ---")
 
-# Build state with 3 pending unverified edits (bypasses need for PostToolUse setup)
+# Build state with 4 pending unverified edits (BLOCK_THRESHOLD=4)
 _g5_state_3pending = {
-    "pending_verification": ["/tmp/file_a.py", "/tmp/file_b.py", "/tmp/file_c.py"],
-    "files_read": [
+    "pending_verification": [
         "/tmp/file_a.py",
         "/tmp/file_b.py",
         "/tmp/file_c.py",
         "/tmp/file_d.py",
     ],
+    "files_read": [
+        "/tmp/file_a.py",
+        "/tmp/file_b.py",
+        "/tmp/file_c.py",
+        "/tmp/file_d.py",
+        "/tmp/file_e.py",
+    ],
     "edit_streak": {},
     "memory_last_queried": time.time(),
 }
 
-# Editing a 4th different file should BLOCK (3 unverified = BLOCK_THRESHOLD)
-_g5_result_3 = _g05_check("Edit", {"file_path": "/tmp/file_d.py"}, _g5_state_3pending)
+# Editing a 5th different file should BLOCK (4 unverified = BLOCK_THRESHOLD)
+_g5_result_3 = _g05_check("Edit", {"file_path": "/tmp/file_e.py"}, _g5_state_3pending)
 code, msg = _direct(_g5_result_3)
 test(
-    "Gate 5: 3 unverified edits blocks 4th file",
+    "Gate 5: 4 unverified edits blocks 5th file",
     code != 0 and _g5_result_3.blocked,
     f"code={code} blocked={_g5_result_3.blocked}",
 )
@@ -267,15 +273,15 @@ test(
     f"Expected not blocked for test file, got blocked={_g5_result.blocked}",
 )
 
-# Test 5: Gate 5 graduated escalation — warns at 3 unverified, does not block
+# Test 5: Gate 5 — blocks at 4 unverified files (BLOCK_THRESHOLD=4)
 _g5_warn_state = {
-    "pending_verification": ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py"],
+    "pending_verification": ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py", "/tmp/d.py"],
     "verification_scores": {},
     "edit_streak": {},
 }
 _g5_warn_result = _g5_check("Edit", {"file_path": "/tmp/new.py"}, _g5_warn_state)
 test(
-    "Gate 5 blocks at 3 unverified files (no warn phase)",
+    "Gate 5 blocks at 4 unverified files (BLOCK_THRESHOLD=4)",
     _g5_warn_result.blocked is True,
     f"Expected blocked=True, got blocked={_g5_warn_result.blocked}",
 )
@@ -1399,13 +1405,13 @@ print("\n--- Gate 14: Pre-Implementation Confidence ---")
 
 from gates.gate_14_confidence_check import check as _g14_check
 
-# Test 1: No test baseline → warns first time
+# Test 1: No test baseline → blocks (use Edit to avoid greenfield exemption on Write)
 _g14_state1 = default_state()
 _g14_state1["session_test_baseline"] = False
 _g14_state1["pending_verification"] = []
 _g14_state1["memory_last_queried"] = 0  # stale
 _g14_r1 = _g14_check(
-    "Write", {"file_path": f"{_HOME}/.claude/hooks/shared/new_module.py"}, _g14_state1
+    "Edit", {"file_path": f"{_HOME}/.claude/hooks/shared/state.py"}, _g14_state1
 )
 test("Gate14: no test baseline → BLOCKED immediately", _g14_r1.blocked)
 test(
@@ -1462,12 +1468,21 @@ test(
     not _g14_r_gf.blocked,
 )
 
-# Test 8: Write to existing file with pending → still blocked (not greenfield)
+# Test 8: Write to existing file with pending >= PENDING_THRESHOLD → blocked
+_g14_state6 = default_state()
+_g14_state6["session_test_baseline"] = True
+_g14_state6["pending_verification"] = [
+    "/tmp/edited_a.py",
+    "/tmp/edited_b.py",
+]  # 2 = PENDING_THRESHOLD
 _g14_existing_path = os.path.join(
     os.path.dirname(__file__), "..", "gates", "gate_14_confidence_check.py"
 )
-_g14_r_existing = _g14_check("Write", {"file_path": _g14_existing_path}, _g14_state5)
-test("Gate14: Write to existing file with pending → blocked", _g14_r_existing.blocked)
+_g14_r_existing = _g14_check("Write", {"file_path": _g14_existing_path}, _g14_state6)
+test(
+    "Gate14: Write to existing file with pending >= threshold → blocked",
+    _g14_r_existing.blocked,
+)
 
 # ─────────────────────────────────────────────────
 # Gate 15: Causal Chain Enforcement
@@ -1687,12 +1702,12 @@ try:
         f"blocked={_r.blocked}",
     )
 
-    # Test 7: blocks at BLOCK_THRESHOLD (3) — no warn phase
+    # Test 7: blocks at BLOCK_THRESHOLD (4)
     _g05_warn_state = default_state()
-    _g05_warn_state["pending_verification"] = ["/a.py", "/b.py", "/c.py"]
+    _g05_warn_state["pending_verification"] = ["/a.py", "/b.py", "/c.py", "/d.py"]
     _r = g05_check("Edit", {"file_path": "/new.py"}, _g05_warn_state)
     test(
-        "G05 Refactored: blocks at 3 unverified files (no warn phase)",
+        "G05 Refactored: blocks at 4 unverified files (BLOCK_THRESHOLD=4)",
         _r.blocked is True,
         f"blocked={_r.blocked}",
     )
@@ -1863,7 +1878,7 @@ try:
         _g13_json.dump(_g13_claims, _f)
     _g13_state_b = {"_session_id": "session-B"}
     _g13_tool_input = {"file_path": "/tmp/shared_file.py"}
-    import hooks.gates.gate_13_workspace_isolation as _g13_mod
+    import gates.gate_13_workspace_isolation as _g13_mod
 
     _g13_old_claims = _g13_mod.CLAIMS_FILE
     _g13_old_coclaims = _g13_mod.COCLAIMS_FILE
@@ -1990,5 +2005,106 @@ try:
 
 except Exception as _g19_exc:
     test("Gate 19 Cascade Reset: import and tests", False, str(_g19_exc))
+
+# --- Branch-Change Mentor Reset ---
+print("\n--- Branch-Change Mentor Reset ---")
+try:
+    from shared.state import _check_branch_change, _get_current_branch
+
+    # Test: no reset when branch unchanged
+    _bc_state1 = {
+        "_last_branch": "main",
+        "mentor_last_score": 0.1,
+        "mentor_escalation_count": 5,
+        "mentor_last_verdict": "escalate",
+        "mentor_chain_score": 0.2,
+        "gate19_consecutive_blocks": 2,
+    }
+    # Monkey-patch to simulate staying on same branch
+    import shared.state as _state_mod
+
+    _orig_get_branch = _state_mod._get_current_branch
+    _state_mod._get_current_branch = lambda: "main"
+    _check_branch_change(_bc_state1)
+    test(
+        "Branch change: no reset when branch unchanged",
+        _bc_state1["mentor_last_score"] == 0.1
+        and _bc_state1["mentor_escalation_count"] == 5,
+    )
+
+    # Test: reset when branch changes
+    _bc_state2 = {
+        "_last_branch": "feature-a",
+        "mentor_last_score": 0.1,
+        "mentor_escalation_count": 5,
+        "mentor_last_verdict": "escalate",
+        "mentor_chain_score": 0.2,
+        "gate19_consecutive_blocks": 2,
+    }
+    _state_mod._get_current_branch = lambda: "feature-b"
+    _check_branch_change(_bc_state2)
+    test(
+        "Branch change: resets mentor_last_score",
+        _bc_state2["mentor_last_score"] == 1.0,
+    )
+    test(
+        "Branch change: resets escalation_count",
+        _bc_state2["mentor_escalation_count"] == 0,
+    )
+    test(
+        "Branch change: resets mentor_last_verdict",
+        _bc_state2["mentor_last_verdict"] == "proceed",
+    )
+    test(
+        "Branch change: resets mentor_chain_score",
+        _bc_state2["mentor_chain_score"] == 1.0,
+    )
+    test(
+        "Branch change: resets gate19_consecutive_blocks",
+        _bc_state2["gate19_consecutive_blocks"] == 0,
+    )
+    test(
+        "Branch change: updates _last_branch", _bc_state2["_last_branch"] == "feature-b"
+    )
+
+    # Test: no reset when _last_branch is empty (first load)
+    _bc_state3 = {
+        "_last_branch": "",
+        "mentor_last_score": 0.1,
+        "mentor_escalation_count": 5,
+        "mentor_last_verdict": "escalate",
+        "mentor_chain_score": 0.2,
+        "gate19_consecutive_blocks": 2,
+    }
+    _state_mod._get_current_branch = lambda: "main"
+    _check_branch_change(_bc_state3)
+    test(
+        "Branch change: no reset on first load (empty _last_branch)",
+        _bc_state3["mentor_last_score"] == 0.1
+        and _bc_state3["mentor_escalation_count"] == 5,
+    )
+    test(
+        "Branch change: sets _last_branch on first load",
+        _bc_state3["_last_branch"] == "main",
+    )
+
+    # Test: no reset when git fails (empty branch returned)
+    _bc_state4 = {
+        "_last_branch": "main",
+        "mentor_last_score": 0.1,
+        "mentor_escalation_count": 5,
+    }
+    _state_mod._get_current_branch = lambda: ""
+    _check_branch_change(_bc_state4)
+    test(
+        "Branch change: no reset when git fails",
+        _bc_state4["mentor_last_score"] == 0.1 and _bc_state4["_last_branch"] == "main",
+    )
+
+    # Restore original
+    _state_mod._get_current_branch = _orig_get_branch
+
+except Exception as _bc_exc:
+    test("Branch-Change Mentor Reset: import and tests", False, str(_bc_exc))
 
 # --- Memory Decay Deep Tests ---
