@@ -47,4 +47,9 @@ echo "Launching $ROLE (model: $MODEL) from $AGENT_DIR"
 tmux new-session -d -s "$ROLE" -c "$AGENT_DIR" \
     "AGENT_ROLE=$ROLE CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude --model $MODEL"
 
+# Register with placeholder — real session ID will be captured by SessionStart hook
+SESSION_ID="tt-${ROLE}-$(date +%s)"
+"$HOME/.claude/toroidal/session_register.sh" "$ROLE" "$SESSION_ID" "$MODEL" "active"
+echo "Note: Real session ID will be captured when Claude starts (SessionStart hook)"
+
 echo "Agent '$ROLE' started. Attach with: tmux attach -t $ROLE"

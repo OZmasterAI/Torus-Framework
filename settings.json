@@ -73,6 +73,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/integrity_check.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/toroidal/session_capture_hook.py\"",
+            "timeout": 3
           }
         ]
       }

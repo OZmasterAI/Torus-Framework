@@ -22,6 +22,14 @@ teardown_agent() {
     # Update status
     echo "{\"state\":\"stopped\",\"role\":\"$ROLE\",\"timestamp\":$(date +%s)}" \
         > "$CHANNELS_DIR/status_${ROLE}.json" 2>/dev/null || true
+    # Update session registry
+    SESSIONS_FILE="$HOME/.claude/toroidal/sessions.json"
+    if [ -f "$SESSIONS_FILE" ]; then
+        "$HOME/.claude/toroidal/session_register.sh" "$ROLE" \
+            "$(jq -r ".\"$ROLE\".session_id // \"unknown\"" "$SESSIONS_FILE")" \
+            "$(jq -r ".\"$ROLE\".model // \"unknown\"" "$SESSIONS_FILE")" \
+            "stopped" 2>/dev/null || true
+    fi
 }
 
 TARGET="${1:?Usage: teardown.sh <role|all>}"

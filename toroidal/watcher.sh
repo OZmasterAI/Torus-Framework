@@ -113,6 +113,33 @@ $ROLE_CONFIG
 ---
 When done, write your result summary to ~/.claude/channels/result_${ROLE}.json"
 
+    # Register co-claims if task specifies shared_files
+    SHARED_FILES=$(echo "$TASK_JSON" | jq -r '.shared_files // [] | .[]' 2>/dev/null)
+    if [ -n "$SHARED_FILES" ]; then
+        NOW=$(date +%s)
+        EXPIRES=$((NOW + 3600))
+        echo "$TASK_JSON" | WATCHER_ROLE="$ROLE" WATCHER_NOW="$NOW" WATCHER_EXPIRES="$EXPIRES" python3 -c "
+import sys, json, os
+task = json.load(sys.stdin)
+shared = task.get('shared_files', [])
+role = os.environ['WATCHER_ROLE']
+now = int(os.environ['WATCHER_NOW'])
+expires = int(os.environ['WATCHER_EXPIRES'])
+coclaims_path = os.path.expanduser('~/.claude/hooks/.file_coclaims.json')
+if os.path.exists(coclaims_path):
+    with open(coclaims_path) as f:
+        data = json.load(f)
+else:
+    data = {}
+for fp in shared:
+    data[fp] = {'sessions': ['main', role], 'authorized_at': now, 'expires': expires}
+with open(coclaims_path, 'w') as f:
+    json.dump(data, f, indent=2)
+print(f'Registered {len(shared)} co-claims for {role}')
+" || true
+        echo "[watcher] Registered co-claims for $ROLE"
+    fi
+
     # Update status to working
     echo "{\"state\":\"working\",\"role\":\"$ROLE\",\"timestamp\":$(date +%s)}" > "$STATUS_FILE"
 
