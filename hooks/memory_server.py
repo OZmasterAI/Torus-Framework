@@ -87,8 +87,23 @@ def _touch_memory_timestamp():
     os.replace(tmp, MEMORY_TIMESTAMP_FILE)
 
 
-# Initialize MCP server
-mcp = FastMCP("memory")
+# SSE transport config — used when launched with --sse flag
+_SSE_HOST = os.environ.get("MEMORY_SSE_HOST", "127.0.0.1")
+_SSE_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8741"))
+
+# Detect transport mode from CLI args
+import argparse as _argparse
+
+_parser = _argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--sse", action="store_true", default=False)
+_parser.add_argument("--port", type=int, default=_SSE_PORT)
+_args, _ = _parser.parse_known_args()
+
+# Initialize MCP server (with host/port for SSE mode)
+if _args.sse:
+    mcp = FastMCP("memory", host=_SSE_HOST, port=_args.port)
+else:
+    mcp = FastMCP("memory")
 
 
 def crash_proof(fn):
@@ -5663,8 +5678,11 @@ if __name__ == "__main__":
     # Defer _ensure_initialized() to first tool call — mcp.run() must start
     # immediately so Claude Code's MCP handshake doesn't timeout (~25s model load).
     _start_socket_server()
+    _mode = "sse" if _args.sse else "stdio"
+    if _args.sse:
+        _sys.stderr.write(f"[MCP] Starting SSE transport on {_SSE_HOST}:{_args.port}\n")
     try:
-        mcp.run()
+        mcp.run(transport=_mode)
     except Exception as e:
-        print(f"[MCP] Fatal: {e}", file=_sys.stderr)
+        _sys.stderr.write(f"[MCP] Fatal: {e}\n")
         _sys.exit(1)
