@@ -1,24 +1,24 @@
 {
-  "session_count": 408,
+  "session_count": 410,
   "project": "torus-framework",
   "feature": "memory-server-optimization",
   "framework_version": "v2.8.0",
-  "what_was_done": "Fixed Gate 19 cascade on branch switch (mentor state reset in load_state). Fixed 8 stale test failures (Gate 5/14/13). Memory server optimization: thread pools 52\u219214 (OMP/MKL/TOKIO/RAYON=2), SSE transport for shared server across sessions (saves ~4GB/instance). Updated v2 pre-plan with async delegation + auto-compaction.",
+  "what_was_done": "Verified memory server health (2,597 memories, LanceDB+embeddings OK). Upgraded sentence-transformers 3.0.1→3.3.0 to fix version mismatch warning. Restarted memory SSE server.",
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
-    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md \u2014 resolves on merge to Cognitive",
-    "Two skill systems coexist: ~/.claude/skills/ (Skill tool) and ~/.claude/skill-library/ (MCP) \u2014 keep in sync",
-    "Never Edit ~/.claude.json directly \u2014 use python3 json.load/dump for atomic edits (file got nuked once)",
-    "Memory server now SSE \u2014 must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
-    "lance-cpu threads (7) not controlled by RAYON_NUM_THREADS \u2014 lance-internal pool, low priority"
+    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md — resolves on merge to Cognitive",
+    "Two skill systems coexist: ~/.claude/skills/ (Skill tool) and ~/.claude/skill-library/ (MCP) — keep in sync",
+    "Never Edit ~/.claude.json directly — use python3 json.load/dump for atomic edits (file got nuked once)",
+    "Memory server now SSE — must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
+    "lance-cpu threads (7) not controlled by RAYON_NUM_THREADS — lance-internal pool, low priority"
   ],
   "next_steps": [
-    "Toroidal Teams v2 planning \u2014 pre-plan in memory id:251438e166e050c4 + addendum id:d606d65a65c86621",
+    "Toroidal Teams v2 planning — pre-plan in memory id:251438e166e050c4 + addendum id:d606d65a65c86621",
     "Merge Cognitive-upgrade back into Cognitive (G16 nesting+length+thresholds, Gate 20 all ready)",
     "Consider Gate 20 C+D extensions after observing in production (Task #1, memory id:539d73f7a279d7bf)",
-    "Refactor 3 tech debt targets: compress_observation (depth 12), search_knowledge (596 lines), handle_post_tool_use (491 lines) \u2014 memory id:ec2e1f685b8bb9cd",
-    "Memory stale purge \u2014 2,597 entries, run maintenance(action='stale')",
+    "Refactor 3 tech debt targets: compress_observation (depth 12), search_knowledge (596 lines), handle_post_tool_use (491 lines) — memory id:ec2e1f685b8bb9cd",
+    "Memory stale purge — 2,597 entries, run maintenance(action='stale')",
     "Fix test_framework.py import error (ModuleNotFoundError for 'index' at test_integration.py:748)",
     "Re-enable skills/search/analytics MCPs when needed"
   ]
