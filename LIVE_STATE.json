@@ -1,9 +1,9 @@
 {
-  "session_count": 401,
+  "session_count": 402,
   "project": "torus-framework",
-  "feature": "gate-audit-fixes",
+  "feature": "cognitive-upgrade",
   "framework_version": "v2.8.0",
-  "what_was_done": "Deep audit + gate fixes: G13 stale 1800→600s, G02/G09 prevented tracking, status SKILL.md path. Added ~/worktrees/ with auto state isolation in detect_project(). Verified session-398 fixes valid.",
+  "what_was_done": "Gate 16: added nesting depth+function length AST checks, calibrated thresholds (80/150 length, 7 nesting). Gate 20 (new): risk-scored self-check, 2 questions, ~120 tokens/session. Tech debt logged.",
   "known_issues": [
     "Gate 19 cascade on branch switch (low priority — anti-cascade limit handles it)",
     "mcp.json at ~/.claude/mcp.json is NOT the active config — real config is ~/.claude.json mcpServers",
@@ -12,8 +12,10 @@
     "Two skill systems coexist: ~/.claude/skills/ (Skill tool) and ~/.claude/skill-library/ (MCP) — keep in sync"
   ],
   "next_steps": [
-    "Merge Cognitive-upgrade back into Cognitive (G16 ruff+AST ready, gate fixes included)",
-    "Memory stale purge — 2,557 entries, run maintenance(action='stale')",
+    "Merge Cognitive-upgrade back into Cognitive (G16 nesting+length+thresholds, Gate 20 all ready)",
+    "Consider Gate 20 C+D extensions after observing in production (Task #1, memory id:539d73f7a279d7bf)",
+    "Refactor 3 tech debt targets: compress_observation (depth 12), search_knowledge (596 lines), handle_post_tool_use (491 lines) — memory id:ec2e1f685b8bb9cd",
+    "Memory stale purge — 2,562 entries, run maintenance(action='stale')",
     "Fix test_framework.py import error (ModuleNotFoundError for 'index' at test_integration.py:748)",
     "Check ZeroTor upgrade progress at ~/projects/torus-pi-agent/projects/ZeroTor"
   ]
