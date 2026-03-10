@@ -105,6 +105,110 @@ def _write_file_claim(claim_path, claim_session):
         _log_debug(f"file claim write failed: {e}")
 
 
+def _ensure_bans_dict(state):
+    """Migrate active_bans from list format (legacy) to dict format.
+    Returns the bans dict, already written back to state."""
+    bans = state.get("active_bans", {})
+    if isinstance(bans, list):
+        bans = {
+            sid: {
+                "fail_count": 3,
+                "first_failed": time.time(),
+                "last_failed": time.time(),
+            }
+            for sid in bans
+        }
+        state["active_bans"] = bans
+    return bans
+
+
+def _handle_causal_chain(tool_name, tool_input, tool_response, state):
+    """Handle PostToolUse tracking for causal chain MCP tools."""
+    # Parse tool_response once — both outcome branches need it
+    resp = tool_response if isinstance(tool_response, dict) else {}
+    if isinstance(tool_response, str):
+        try:
+            resp = json.loads(tool_response)
+        except (json.JSONDecodeError, TypeError):
+            resp = {}
+
+    if tool_name == "mcp__memory__record_attempt":
+        try:
+            error_text = tool_input.get("error_text", "")
+            strategy_id = tool_input.get("strategy_id", "")
+            if error_text and strategy_id:
+                from shared.error_normalizer import error_signature
+
+                _, error_hash = error_signature(error_text)
+                strategy_hash = fnv1a_hash(strategy_id)
+                chain_id = f"{error_hash}_{strategy_hash}"
+                state["current_strategy_id"] = strategy_id
+                state["current_error_signature"] = error_hash
+                pending = state.setdefault("pending_chain_ids", [])
+                if chain_id not in pending:
+                    pending.append(chain_id)
+        except Exception as e:
+            _log_debug(f"record_attempt tracking failed: {e}")
+
+    elif tool_name == "mcp__memory__record_outcome":
+        try:
+            strategy_id = resp.get("strategy_id", "") or state.get(
+                "current_strategy_id", ""
+            )
+            outcome = resp.get("outcome", "")
+
+            if strategy_id:
+                # Track successful strategies
+                if outcome == "success":
+                    successes = state.setdefault("successful_strategies", {})
+                    if strategy_id not in successes:
+                        successes[strategy_id] = {"success_count": 0, "last_success": 0}
+                    successes[strategy_id]["success_count"] += 1
+                    successes[strategy_id]["last_success"] = time.time()
+
+                # Track failures with retry budget (dict format)
+                if resp.get("banned") or outcome == "failure":
+                    bans = _ensure_bans_dict(state)
+                    if strategy_id not in bans:
+                        bans[strategy_id] = {
+                            "fail_count": 0,
+                            "first_failed": time.time(),
+                            "last_failed": time.time(),
+                        }
+                    if resp.get("banned"):
+                        # Explicit ban from MCP: immediately set to ban threshold
+                        bans[strategy_id]["fail_count"] = max(
+                            bans[strategy_id].get("fail_count", 0), 3
+                        )
+                    else:
+                        # Gradual failure: increment retry budget
+                        bans[strategy_id]["fail_count"] = (
+                            bans[strategy_id].get("fail_count", 0) + 1
+                        )
+                    bans[strategy_id]["last_failed"] = time.time()
+
+            state["pending_chain_ids"] = []
+            state["current_strategy_id"] = ""
+        except Exception as e:
+            _log_debug(f"record_outcome tracking failed: {e}")
+
+    elif tool_name == "mcp__memory__query_fix_history":
+        state["fix_history_queried"] = time.time()
+        try:
+            banned_list = resp.get("banned", [])
+            bans = _ensure_bans_dict(state)
+            for entry in banned_list:
+                sid = entry.get("strategy_id", "") if isinstance(entry, dict) else ""
+                if sid and sid not in bans:
+                    bans[sid] = {
+                        "fail_count": 3,
+                        "first_failed": time.time(),
+                        "last_failed": time.time(),
+                    }
+        except Exception as e:
+            _log_debug(f"query_fix_history tracking failed: {e}")
+
+
 def _handle_bash(tool_input, tool_response, state):
     """Handle all Bash PostToolUse tracking: test detection, causal chain
     auto-detect, git commit capture, and verification scoring."""
@@ -419,118 +523,13 @@ def handle_post_tool_use(
     if tool_name == "Bash" and tool_response is not None:
         _detect_errors(tool_input, tool_response, state)
 
-    # Causal fix tracking: record_attempt
-    if tool_name == "mcp__memory__record_attempt":
-        try:
-            error_text = tool_input.get("error_text", "")
-            strategy_id = tool_input.get("strategy_id", "")
-            if error_text and strategy_id:
-                from shared.error_normalizer import error_signature
-
-                _, error_hash = error_signature(error_text)
-                strategy_hash = fnv1a_hash(strategy_id)
-                chain_id = f"{error_hash}_{strategy_hash}"
-                state["current_strategy_id"] = strategy_id
-                state["current_error_signature"] = error_hash
-                pending = state.setdefault("pending_chain_ids", [])
-                if chain_id not in pending:
-                    pending.append(chain_id)
-        except Exception as e:
-            _log_debug(f"record_attempt tracking failed: {e}")
-
-    # Causal fix tracking: record_outcome
-    if tool_name == "mcp__memory__record_outcome":
-        try:
-            resp = tool_response if isinstance(tool_response, dict) else {}
-            if isinstance(tool_response, str):
-                try:
-                    resp = json.loads(tool_response)
-                except (json.JSONDecodeError, TypeError):
-                    resp = {}
-            strategy_id = resp.get("strategy_id", "") or state.get(
-                "current_strategy_id", ""
-            )
-            outcome = resp.get("outcome", "")
-
-            if strategy_id:
-                # Track successful strategies
-                if outcome == "success":
-                    successes = state.setdefault("successful_strategies", {})
-                    if strategy_id not in successes:
-                        successes[strategy_id] = {"success_count": 0, "last_success": 0}
-                    successes[strategy_id]["success_count"] += 1
-                    successes[strategy_id]["last_success"] = time.time()
-
-                # Track failures with retry budget (dict format)
-                if resp.get("banned") or outcome == "failure":
-                    bans = state.get("active_bans", [])
-                    # Migrate list → dict if needed
-                    if isinstance(bans, list):
-                        bans_dict = {}
-                        for sid in bans:
-                            bans_dict[sid] = {
-                                "fail_count": 3,
-                                "first_failed": time.time(),
-                                "last_failed": time.time(),
-                            }
-                        bans = bans_dict
-                        state["active_bans"] = bans
-                    if strategy_id not in bans:
-                        bans[strategy_id] = {
-                            "fail_count": 0,
-                            "first_failed": time.time(),
-                            "last_failed": time.time(),
-                        }
-                    if resp.get("banned"):
-                        # Explicit ban from MCP: immediately set to ban threshold
-                        bans[strategy_id]["fail_count"] = max(
-                            bans[strategy_id].get("fail_count", 0), 3
-                        )
-                    else:
-                        # Gradual failure: increment retry budget
-                        bans[strategy_id]["fail_count"] = (
-                            bans[strategy_id].get("fail_count", 0) + 1
-                        )
-                    bans[strategy_id]["last_failed"] = time.time()
-
-            state["pending_chain_ids"] = []
-            state["current_strategy_id"] = ""
-        except Exception as e:
-            _log_debug(f"record_outcome tracking failed: {e}")
-
-    # Causal fix tracking: query_fix_history
-    if tool_name == "mcp__memory__query_fix_history":
-        state["fix_history_queried"] = time.time()
-        try:
-            resp = tool_response if isinstance(tool_response, dict) else {}
-            if isinstance(tool_response, str):
-                try:
-                    resp = json.loads(tool_response)
-                except (json.JSONDecodeError, TypeError):
-                    resp = {}
-            banned_list = resp.get("banned", [])
-            bans = state.get("active_bans", [])
-            # Migrate list → dict if needed
-            if isinstance(bans, list):
-                bans_dict = {}
-                for sid in bans:
-                    bans_dict[sid] = {
-                        "fail_count": 3,
-                        "first_failed": time.time(),
-                        "last_failed": time.time(),
-                    }
-                bans = bans_dict
-                state["active_bans"] = bans
-            for entry in banned_list:
-                sid = entry.get("strategy_id", "") if isinstance(entry, dict) else ""
-                if sid and sid not in bans:
-                    bans[sid] = {
-                        "fail_count": 3,
-                        "first_failed": time.time(),
-                        "last_failed": time.time(),
-                    }
-        except Exception as e:
-            _log_debug(f"query_fix_history tracking failed: {e}")
+    # causal chain: attempt registration, outcome + ban tracking, history query
+    if tool_name in (
+        "mcp__memory__record_attempt",
+        "mcp__memory__record_outcome",
+        "mcp__memory__query_fix_history",
+    ):
+        _handle_causal_chain(tool_name, tool_input, tool_response, state)
 
     # Gate 17: Injection defense — scan external tool results for prompt injection
     if gate_17_check is not None and _g17_is_external is not None:
