@@ -69,6 +69,17 @@ def detect_project(cwd=None):
             return root, root_dir, exp_name, exp_dir
         return root, root_dir, None, None
 
+    # --- ~/agents/<role>/ ---
+    agents = os.path.realpath(AGENTS_DIR)
+    if cwd.startswith(agents + os.sep):
+        rel = cwd[len(agents) + 1 :]
+        parts = rel.split(os.sep)
+        role = parts[0]
+        if not role:
+            return None, None, None, None
+        role_dir = os.path.join(agents, role)
+        return role, role_dir, None, None
+
     # --- ~/projects/<name>/ ---
     projects = os.path.realpath(PROJECTS_DIR)
     if not cwd.startswith(projects + os.sep):
