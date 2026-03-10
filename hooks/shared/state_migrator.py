@@ -120,7 +120,11 @@ def validate_state(state_dict):
         value = state_dict[field_name]
 
         # Special case: None is allowed for optional fields
-        if value is None and field_name in ("recent_test_failure", "last_test_exit_code"):
+        if value is None and field_name in (
+            "recent_test_failure",
+            "last_test_exit_code",
+            "mentor_memory_match",
+        ):
             continue
 
         # Type check (int is acceptable where float is expected — every int is a valid float)
@@ -136,7 +140,9 @@ def validate_state(state_dict):
         # Size check for lists with MAX_* caps
         max_size = field_meta.get("max_size")
         if isinstance(value, list) and max_size is not None and len(value) > max_size:
-            warnings.append(f"Field {field_name}: exceeds max_size {max_size} (has {len(value)})")
+            warnings.append(
+                f"Field {field_name}: exceeds max_size {max_size} (has {len(value)})"
+            )
 
         # Additional checks for specific fields
         if field_name == "error_pattern_counts" and isinstance(value, dict):
@@ -232,7 +238,9 @@ def get_schema_diff(state_dict, expected_defaults=None):
     # Find missing fields
     for field_name, default_value in expected_defaults.items():
         if field_name not in state_dict:
-            missing_fields.append({"name": field_name, "default": _serialize_for_diff(default_value)})
+            missing_fields.append(
+                {"name": field_name, "default": _serialize_for_diff(default_value)}
+            )
         else:
             # Check type
             field_meta = schema.get(field_name, {})
@@ -244,27 +252,35 @@ def get_schema_diff(state_dict, expected_defaults=None):
             if field_name == "recent_test_failure" and actual_value is None:
                 continue
 
-            if expected_type is not None and not isinstance(actual_value, expected_type):
-                type_mismatches.append({
-                    "name": field_name,
-                    "expected": expected_type_str,
-                    "actual": type(actual_value).__name__,
-                })
+            if expected_type is not None and not isinstance(
+                actual_value, expected_type
+            ):
+                type_mismatches.append(
+                    {
+                        "name": field_name,
+                        "expected": expected_type_str,
+                        "actual": type(actual_value).__name__,
+                    }
+                )
             elif actual_value != default_value:
                 # Value differs from default
-                value_changes.append({
-                    "name": field_name,
-                    "default": _serialize_for_diff(default_value),
-                    "current": _serialize_for_diff(actual_value),
-                })
+                value_changes.append(
+                    {
+                        "name": field_name,
+                        "default": _serialize_for_diff(default_value),
+                        "current": _serialize_for_diff(actual_value),
+                    }
+                )
 
     # Find extra fields (shouldn't happen after migration, but check anyway)
     for field_name in state_dict:
         if field_name not in expected_defaults:
-            extra_fields.append({
-                "name": field_name,
-                "value": _serialize_for_diff(state_dict[field_name]),
-            })
+            extra_fields.append(
+                {
+                    "name": field_name,
+                    "value": _serialize_for_diff(state_dict[field_name]),
+                }
+            )
 
     summary = {
         "missing": len(missing_fields),
