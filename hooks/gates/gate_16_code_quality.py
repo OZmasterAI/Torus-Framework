@@ -129,16 +129,42 @@ def _ast_complexity(content: str, warn_at: int, block_at: int) -> list:
 
 def _compute_nesting(node, depth=0):
     """Recursively compute max control-flow nesting depth.
-    Does not cross nested function/class boundaries."""
+    Does not cross nested function/class boundaries.
+    elif chains stay at same depth as the if — only true nesting increments."""
     max_d = depth
-    for child in ast.iter_child_nodes(node):
-        if isinstance(child, _NESTING_STOP):
-            continue
-        child_depth = _compute_nesting(
-            child, depth + 1 if isinstance(child, _NESTING_NODES) else depth
-        )
-        if child_depth > max_d:
-            max_d = child_depth
+    if isinstance(node, ast.If):
+        # Body: depth+1 (genuinely nested inside the if)
+        for child in node.body:
+            if isinstance(child, _NESTING_STOP):
+                continue
+            child_depth = _compute_nesting(
+                child, depth + 1 if isinstance(child, _NESTING_NODES) else depth
+            )
+            if child_depth > max_d:
+                max_d = child_depth
+        # orelse: single If = elif chain → same depth (not +1); else block → depth+1
+        if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
+            child_depth = _compute_nesting(node.orelse[0], depth)
+            if child_depth > max_d:
+                max_d = child_depth
+        else:
+            for child in node.orelse:
+                if isinstance(child, _NESTING_STOP):
+                    continue
+                child_depth = _compute_nesting(
+                    child, depth + 1 if isinstance(child, _NESTING_NODES) else depth
+                )
+                if child_depth > max_d:
+                    max_d = child_depth
+    else:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, _NESTING_STOP):
+                continue
+            child_depth = _compute_nesting(
+                child, depth + 1 if isinstance(child, _NESTING_NODES) else depth
+            )
+            if child_depth > max_d:
+                max_d = child_depth
     return max_d
 
 
