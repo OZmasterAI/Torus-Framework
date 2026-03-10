@@ -8,6 +8,7 @@ CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 PROJECTS_DIR = os.path.join(os.path.expanduser("~"), "projects")
 WORKTREES_DIR = os.path.join(os.path.expanduser("~"), "worktrees")
+AGENTS_DIR = os.path.join(os.path.expanduser("~"), "agents")
 PROJECT_STATE_FILENAME = ".claude-state.json"
 SUBPROJECT_MARKER = ".claude-project"
 
