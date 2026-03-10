@@ -27,11 +27,13 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-# Reduce PyTorch thread pool sizes before torch is imported (via sentence_transformers).
-# Defaults to CPU count (8) per pool = 16 idle threads + ~320MB in memory arenas.
-# We embed one string at a time, so 2 threads per pool is plenty.
-os.environ.setdefault("OMP_NUM_THREADS", "2")
-os.environ.setdefault("MKL_NUM_THREADS", "2")
+# Reduce thread pool sizes before libraries are imported.
+# Defaults = CPU count per pool (8 each) = 52 threads + ~320MB in memory arenas.
+# We process one query at a time, so 2 threads per pool is plenty.
+os.environ.setdefault("OMP_NUM_THREADS", "2")  # PyTorch OpenMP threads
+os.environ.setdefault("MKL_NUM_THREADS", "2")  # PyTorch MKL threads
+os.environ.setdefault("TOKIO_WORKER_THREADS", "2")  # LanceDB async I/O (Tokio)
+os.environ.setdefault("RAYON_NUM_THREADS", "2")  # LanceDB CPU compute (Rayon)
 
 import lancedb
 import pyarrow as pa
