@@ -216,6 +216,16 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/toroidal/idle_prompt_hook.sh\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "ConfigChange": [

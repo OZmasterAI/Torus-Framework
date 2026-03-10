@@ -72,13 +72,46 @@ while read -r file; do
     # Save raw task JSON for Phase 3 co-claim registration
     TASK_JSON=$(cat "$TASK_FILE")
 
-    # Build merged prompt (project rules injection is Phase 2)
-    PROMPT="$TASK_CONTENT"
-    if [ -n "$PROJECT" ]; then
-        PROMPT="Project: $PROJECT
+    # Build merged prompt with project config injection
+    # NOTE: PROJECT must be an absolute path (no ~ or $HOME). Watcher rejects relative paths.
+    PROMPT=""
 
-$TASK_CONTENT"
+    # Inject .agent-config.json rules if project has one
+    if [ -n "$PROJECT" ]; then
+        # Reject non-absolute paths (security: no eval/expansion of user input)
+        if [[ "$PROJECT" != /* ]]; then
+            echo "[watcher] WARNING: PROJECT must be an absolute path, got '$PROJECT' — skipping config injection"
+            PROJECT=""
+        else
+            CONFIG_FILE="$PROJECT/.agent-config.json"
+            if [ -f "$CONFIG_FILE" ]; then
+                # Extract role type from agent config.json (e.g., researcher-alpha → researcher)
+                AGENT_DIR="$HOME/agents/$ROLE"
+                ROLE_TYPE=$(python3 -c "import json; print(json.load(open('$AGENT_DIR/config.json')).get('role_type',''))" 2>/dev/null || echo "")
+                if [ -z "$ROLE_TYPE" ]; then
+                    # Fallback: strip suffix (researcher-alpha → researcher)
+                    ROLE_TYPE=$(echo "$ROLE" | sed 's/-[a-zA-Z]*$//')
+                fi
+                ROLE_CONFIG=$(jq -r ".$ROLE_TYPE // empty" "$CONFIG_FILE" 2>/dev/null)
+                if [ -n "$ROLE_CONFIG" ]; then
+                    PROMPT="## Project Rules for $ROLE_TYPE in $(basename "$PROJECT")
+$ROLE_CONFIG
+
+---
+
+"
+                fi
+            fi
+            PROMPT="${PROMPT}Project: $PROJECT
+
+"
+        fi
     fi
+
+    PROMPT="${PROMPT}${TASK_CONTENT}
+
+---
+When done, write your result summary to ~/.claude/channels/result_${ROLE}.json"
 
     # Update status to working
     echo "{\"state\":\"working\",\"role\":\"$ROLE\",\"timestamp\":$(date +%s)}" > "$STATUS_FILE"
