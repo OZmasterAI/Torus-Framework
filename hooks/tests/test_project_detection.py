@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for subproject detection via .claude-project marker."""
+
 import json
 import os
 import tempfile
@@ -7,8 +8,10 @@ import tempfile
 from tests.harness import test
 
 from boot_pkg.util import (
-    detect_project, scan_subproject_states,
-    SUBPROJECT_MARKER, PROJECT_STATE_FILENAME,
+    detect_project,
+    scan_subproject_states,
+    SUBPROJECT_MARKER,
+    PROJECT_STATE_FILENAME,
     PROJECTS_DIR,
 )
 
@@ -21,6 +24,7 @@ print("\n--- Project Detection: Subproject Support ---")
 def _with_temp_projects(fn):
     """Run fn(temp_projects_dir) with PROJECTS_DIR monkeypatched."""
     import boot_pkg.util as _util
+
     with tempfile.TemporaryDirectory() as tmpdir:
         proj_dir = os.path.join(tmpdir, "projects")
         os.makedirs(proj_dir)
@@ -35,9 +39,12 @@ def _with_temp_projects(fn):
 # Test 1: Non-project cwd returns 4-None tuple
 def _test_non_project(projects_dir):
     result = detect_project("/tmp")
-    test("PD: non-project cwd returns 4-None tuple",
-         result == (None, None, None, None),
-         f"got {result}")
+    test(
+        "PD: non-project cwd returns 4-None tuple",
+        result == (None, None, None, None),
+        f"got {result}",
+    )
+
 
 _with_temp_projects(_test_non_project)
 
@@ -47,9 +54,12 @@ def _test_project_level(projects_dir):
     proj = os.path.join(projects_dir, "myproj")
     os.makedirs(proj)
     result = detect_project(proj)
-    test("PD: project-level cwd returns (name, dir, None, None)",
-         result == ("myproj", proj, None, None),
-         f"got {result}")
+    test(
+        "PD: project-level cwd returns (name, dir, None, None)",
+        result == ("myproj", proj, None, None),
+        f"got {result}",
+    )
+
 
 _with_temp_projects(_test_project_level)
 
@@ -62,9 +72,12 @@ def _test_subproject_with_marker(projects_dir):
     # Create marker
     open(os.path.join(sub, SUBPROJECT_MARKER), "w").close()
     result = detect_project(sub)
-    test("PD: subproject detected with .claude-project marker",
-         result == ("myproj", proj, "sub1", sub),
-         f"got {result}")
+    test(
+        "PD: subproject detected with .claude-project marker",
+        result == ("myproj", proj, "sub1", sub),
+        f"got {result}",
+    )
+
 
 _with_temp_projects(_test_subproject_with_marker)
 
@@ -76,9 +89,12 @@ def _test_subproject_without_marker(projects_dir):
     os.makedirs(sub)
     # No marker file
     result = detect_project(sub)
-    test("PD: no subproject when marker absent",
-         result == ("myproj", proj, None, None),
-         f"got {result}")
+    test(
+        "PD: no subproject when marker absent",
+        result == ("myproj", proj, None, None),
+        f"got {result}",
+    )
+
 
 _with_temp_projects(_test_subproject_without_marker)
 
@@ -91,9 +107,12 @@ def _test_deep_cwd(projects_dir):
     os.makedirs(deep)
     open(os.path.join(sub, SUBPROJECT_MARKER), "w").close()
     result = detect_project(deep)
-    test("PD: deep cwd inside subproject resolves correctly",
-         result == ("myproj", proj, "sub1", sub),
-         f"got {result}")
+    test(
+        "PD: deep cwd inside subproject resolves correctly",
+        result == ("myproj", proj, "sub1", sub),
+        f"got {result}",
+    )
+
 
 _with_temp_projects(_test_deep_cwd)
 
@@ -121,9 +140,10 @@ def _test_scan_marked_only(projects_dir):
 
     results = scan_subproject_states(proj)
     names = [r["project_name"] for r in results]
-    test("PD: scan finds only marked subdirs",
-         names == ["alpha", "beta"],
-         f"got {names}")
+    test(
+        "PD: scan finds only marked subdirs", names == ["alpha", "beta"], f"got {names}"
+    )
+
 
 _with_temp_projects(_test_scan_marked_only)
 
@@ -137,9 +157,8 @@ def _test_scan_skips_unmarked(projects_dir):
     os.makedirs(sub_y)
     # No markers, no state files
     results = scan_subproject_states(proj)
-    test("PD: scan returns empty for unmarked dirs",
-         results == [],
-         f"got {results}")
+    test("PD: scan returns empty for unmarked dirs", results == [], f"got {results}")
+
 
 _with_temp_projects(_test_scan_skips_unmarked)
 
@@ -152,9 +171,8 @@ def _test_scan_skips_no_state(projects_dir):
     open(os.path.join(sub, SUBPROJECT_MARKER), "w").close()
     # Marker present but no state file
     results = scan_subproject_states(proj)
-    test("PD: scan skips marked dirs without state",
-         results == [],
-         f"got {results}")
+    test("PD: scan skips marked dirs without state", results == [], f"got {results}")
+
 
 _with_temp_projects(_test_scan_skips_no_state)
 
@@ -166,14 +184,43 @@ def _test_tuple_length(projects_dir):
     proj = os.path.join(projects_dir, "p")
     os.makedirs(proj)
     r3 = detect_project(proj)
-    test("PD: detect_project always returns 4-tuple",
-         all(len(r) == 4 for r in [r1, r2, r3]),
-         f"lengths: {[len(r) for r in [r1, r2, r3]]}")
+    test(
+        "PD: detect_project always returns 4-tuple",
+        all(len(r) == 4 for r in [r1, r2, r3]),
+        f"lengths: {[len(r) for r in [r1, r2, r3]]}",
+    )
+
 
 _with_temp_projects(_test_tuple_length)
 
 
 # Test 10: SUBPROJECT_MARKER constant exists
-test("PD: SUBPROJECT_MARKER constant is .claude-project",
-     SUBPROJECT_MARKER == ".claude-project",
-     f"got {SUBPROJECT_MARKER}")
+test(
+    "PD: SUBPROJECT_MARKER constant is .claude-project",
+    SUBPROJECT_MARKER == ".claude-project",
+    f"got {SUBPROJECT_MARKER}",
+)
+
+
+# Test 11: Agent dir detected
+def _test_agent_dir(projects_dir):
+    import boot_pkg.util as _util
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        agents_dir = os.path.join(tmpdir, "agents")
+        agent = os.path.join(agents_dir, "researcher-alpha")
+        os.makedirs(agent)
+        old = _util.AGENTS_DIR
+        _util.AGENTS_DIR = agents_dir
+        try:
+            result = detect_project(agent)
+            test(
+                "PD: agent dir returns (role, dir, None, None)",
+                result == ("researcher-alpha", agent, None, None),
+                f"got {result}",
+            )
+        finally:
+            _util.AGENTS_DIR = old
+
+
+_test_agent_dir(None)  # projects_dir unused but signature required
