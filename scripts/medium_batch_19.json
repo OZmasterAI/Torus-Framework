@@ -25,7 +25,7 @@
   },
   {
     "id": "8dd45d566fd9e1df",
-    "new_text": "Chainovi/eclipse-agave #7 Phase 5A: fee_distribution.rs → Developer Rewards direct state manipulation. Changes: (1) Added imports: solana_developer_rewards_program types (ProgramRevenueConfig, EpochFeeTracker, seeds, sizes), AccountSharedData. (2) Added credit_developer_fees_direct(): derives config PDA, reads/writes ProgramRevenueConfig (epoch rollover, fee crediting), deposits lamports to fee pool PDA, updates EpochFeeTracker PDA. (3) Rewrote distribute_developer_fees(): iterates attribution, tries credit_developer_fees_direct() first, falls back to treasury. (4) Added is_emergency_unlocked() method (Phase 5C bank-side check). (5) Suppressed get_program_upgrade_authority unused warning. (6) Added 3 unit tests: missing PDA→false, inactive→false, epoch rollover. runtime/Cargo.toml: added solana-developer-rewards-program + solana-governance-program. 14 fee_distribution tests pass (was 11)."
+    "new_text": "Chainovi/eclipse-agave #7 Phase 5A: fee_distribution.rs → Developer Rewards. Changes: (1) Imports: solana_developer_rewards_program types, AccountSharedData. (2) Added credit_developer_fees_direct(): derives config PDA, reads/writes ProgramRevenueConfig, deposits lamports to fee pool PDA, updates EpochFeeTracker. (3) Rewrote distribute_developer_fees(): tries credit_developer_fees_direct() first, falls back to treasury. (4) Added is_emergency_unlocked() (Phase 5C check). (5) 3 unit tests: missing PDA→false, inactive→false, epoch rollover. runtime/Cargo.toml: added solana-developer-rewards-program + solana-governance-program. 14 tests pass (was 11)."
   },
   {
     "id": "19e5a0b907419bef",
