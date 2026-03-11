@@ -16,7 +16,7 @@ shortened_batch = [
     },
     {
         "id": "58dfefbb02d7e27d",
-        "new_text": "Trading framework final design (Session 343): Separate Python project at ~/projects/trading-framework/ built on torus, runs independently. Architecture: Connector pattern (multi-asset), scheduler abstraction (multi-timeframe), embedded Python gates (<1ms), graduated autonomy (paper→real). Decisions: All asset classes via connectors (crypto/Binance/CCXT first); all timeframes via schedulers (daily/swing first); paper+full-auto start, 5 autonomy levels; Claude A/B/C (dev/analysis/decisions), coded strategies first; 12 gates/3 tiers (only 4 phase 1); custom backtester (no Backtrader/Zipline). Libraries: CCXT, alpaca-py, pandas-ta, pandas, numpy, Anthropic SDK, python-telegram-bot. Build: Engine core, gate system, strategy framework, backtester, journal. Phases: (1) Foundation+Paper+4 gates+1 strategy, (2) Binance+real, (3) Second asset, (4) Claude analysis/strategy, (5) Real money.",
+        "new_text": "Trading framework final design (Session 343): Separate Python project built on torus. Architecture: Connectors (multi-asset), schedulers (multi-timeframe), embedded gates (<1ms), graduated autonomy. Decisions: All assets via connectors (crypto/Binance first); all timeframes via schedulers (daily first); paper+auto start, 5 levels; Claude A/B/C, coded strategies; 12 gates/3 tiers (4 phase 1); custom backtester. Libraries: CCXT, alpaca-py, pandas-ta, pandas, numpy, anthropic SDK, telegram-bot. Build: Engine, gates, strategies, backtester, journal. Phases: (1) Foundation+paper+4g+1s, (2) Binance+real, (3) Second asset, (4) Claude analysis, (5) Real money.",
     },
     {
         "id": "ca88300ec73d4d09",
