@@ -98,6 +98,7 @@ import argparse as _argparse
 _parser = _argparse.ArgumentParser(add_help=False)
 _parser.add_argument("--sse", action="store_true", default=False)
 _parser.add_argument("--port", type=int, default=_SSE_PORT)
+_parser.add_argument("--bootstrap-clusters", action="store_true", default=False)
 _args, _ = _parser.parse_known_args()
 
 # Initialize MCP server (with host/port for SSE mode)
@@ -167,7 +168,7 @@ quarantine = None  # LanceCollection wrapper for quarantine table
 _lance_degraded = False  # kept for backward compat (now means "lance degraded")
 
 
-# ── Arrow Schemas for LanceDB Tables ───────────────────────────────────────
+# ── Arrow Schemas for LanceDB Tables (knowledge, fix_outcomes, etc.) ────────
 
 _KNOWLEDGE_SCHEMA = pa.schema(
     [
@@ -5014,6 +5015,50 @@ def cluster_knowledge(
     }
 
 
+def _bootstrap_clusters() -> None:
+    """One-time: assign all existing memories to clusters.
+
+    Run with: python memory_server.py --bootstrap-clusters
+    O(n) with centroid cache in memory — safe even for thousands of memories.
+    """
+    _ensure_initialized()
+    if not _cluster_store:
+        print("Bootstrap: cluster store unavailable", file=_sys.stderr)
+        return
+    if not collection:
+        print("Bootstrap: collection unavailable", file=_sys.stderr)
+        return
+
+    count = collection.count()
+    print(f"Bootstrap: assigning clusters to {count} memories...", file=_sys.stderr)
+
+    all_data = collection.get(limit=count, include=["metadatas", "documents"])
+    if not all_data or not all_data.get("ids"):
+        print("Bootstrap: no memories found", file=_sys.stderr)
+        return
+
+    ids = all_data["ids"]
+    docs = all_data.get("documents") or []
+    processed = 0
+
+    for i, doc_id in enumerate(ids):
+        doc = docs[i] if i < len(docs) else ""
+        if not doc:
+            continue
+        try:
+            vec = _embed_text(doc)
+            cid = _cluster_store.assign(vec, doc)
+            if cid:
+                collection.update(ids=[doc_id], metadatas=[{"cluster_id": cid}])
+                processed += 1
+        except Exception as e:
+            print(f"Bootstrap: failed for {doc_id}: {e}", file=_sys.stderr)
+
+    print(
+        f"Bootstrap: done — {processed}/{len(ids)} memories assigned", file=_sys.stderr
+    )
+
+
 def memory_health_report() -> dict:
     """Generate a comprehensive memory health report with metrics and trends.
 
@@ -5987,6 +6032,9 @@ if __name__ == "__main__":
     # Defer _ensure_initialized() to first tool call — mcp.run() must start
     # immediately so Claude Code's MCP handshake doesn't timeout (~25s model load).
     _start_socket_server()
+    if _args.bootstrap_clusters:
+        _bootstrap_clusters()
+        _sys.exit(0)
     _mode = "sse" if _args.sse else "stdio"
     if _args.sse:
         _sys.stderr.write(f"[MCP] Starting SSE transport on {_SSE_HOST}:{_args.port}\n")
