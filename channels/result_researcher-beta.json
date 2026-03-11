@@ -1,162 +1,19 @@
 {
-  "agent": "researcher-beta",
-  "model": "claude-sonnet-4-6",
-  "timestamp": "2026-03-11T01:39:00Z",
-  "task": "HyMem and Dual-Layer Memory Architecture Research",
-  "status": "complete",
-  "memory_ids": ["5e099643fe276f2a", "073c948f46dcfe74"],
-  "memory_tags": ["type:learning", "area:memory-system", "research:dual-layer-memory", "agent:researcher-beta"],
-
-  "findings": {
-
-    "hymem": {
-      "confirmed": true,
-      "arxiv_id": "2602.13933",
-      "title": "HyMem: Hybrid Memory Architecture with Dynamic Retrieval Scheduling",
-      "authors": ["Xiaochen Zhao", "Kaikai Wang", "Xiaowen Zhang", "Chen Yao", "Aili Wang"],
-      "submitted": "2026-02-15",
-      "key_idea": "Do not choose between compression and retention — maintain both L1 summaries and L2 raw text, then route queries dynamically to the appropriate granularity level.",
-      "architecture": {
-        "storage": {
-          "L1": "Event-level summaries (context, time, location, participants, general progression) — fast retrieval",
-          "L2": "Raw dialogue text per event — full fidelity",
-          "linking": "Explicit L1→L2 pointers for backtracking without re-processing"
-        },
-        "retrieval": {
-          "tier1_lightweight": "Cosine similarity over L1 summaries. Generates answer from L1, evaluates completeness. Always activated.",
-          "tier2_deep": "Activated only when T1 detects incompleteness (~22% of queries at k=10). Coarse semantic recall → LLM self-retrieval → L2 raw text backtracking.",
-          "reflection": "If query still unresolved after T2, decomposes into sub-queries for multi-hop chains."
-        },
-        "write_policy": "Static at ingest — events summarized at write time, no background consolidation."
-      },
-      "benchmarks": {
-        "LOCOMO_gpt4o_mini": {
-          "overall": "89.55% vs full-context 77.51% vs best-baseline 75.14% (Zep)",
-          "multi_hop": "88.16% vs full-context 46.89% (+41.3 pp — near-doubling)",
-          "single_hop": "85.15% vs full-context 80.14%",
-          "temporal": "92.98% vs full-context 90.49%",
-          "token_usage": "1,500 vs 21,400 (92.6% reduction)"
-        },
-        "LongMemEval_s": {
-          "hymem": "75.00% vs LightMem 68.64% vs full-context 56.80%"
-        }
-      },
-      "strengths": [
-        "SOTA on LOCOMO and LongMemEval-s simultaneously",
-        "92.6% token reduction while beating full-context accuracy",
-        "Tier 2 only activates 22% of the time — very efficient",
-        "Reflection mechanism handles multi-hop and causal chains robustly",
-        "Elegant L1→L2 backtracking without re-summarization cost"
-      ],
-      "weaknesses": [
-        "No write-time consolidation — stored events are static, no knowledge evolution",
-        "Completeness detection heuristic in T1 is a critical single point of failure",
-        "L1 summary quality entirely dependent on initial event segmentation",
-        "No cross-session knowledge evolution (unlike A-MEM or HiMem reconsolidation)",
-        "NOT a true episodic/semantic split — lacks 'what it means' abstraction layer"
-      ]
-    },
-
-    "dual_layer_architecture": {
-      "core_distinction": {
-        "episodic": {
-          "definition": "What happened — specific events, interactions, tool calls, outcomes with temporal grounding",
-          "write_policy": "Append-only, immutable, cheap (no LLM required)",
-          "retrieval": "Deterministic window queries (last N events, session scope, timestamp filters)",
-          "use_cases": ["audit trails", "replay", "multi-hop temporal reasoning", "specific conversation recall"]
-        },
-        "semantic": {
-          "definition": "What it means — distilled facts, preferences, profiles, timeless generalized knowledge",
-          "write_policy": "Selective, expensive (LLM distillation required), background async",
-          "retrieval": "k-NN vector similarity + BM25 hybrid search",
-          "use_cases": ["efficient general knowledge retrieval", "user preferences", "cross-session patterns"]
-        }
-      },
-      "key_papers": {
-        "HiMem": {
-          "arxiv": "2601.06377",
-          "pattern": "Immutable episodes + evolving Note Memory with reconsolidation (ADD/UPDATE/DELETE)",
-          "segmentation": "Topic-Aware Event-Surprise Dual-Channel (OR-fused boundary detection)",
-          "benchmark": "LOCOMO 80.71% vs A-MEM 51.88% (+28.83 pp)"
-        },
-        "Synapse": {
-          "arxiv": "2601.02744",
-          "pattern": "Unified graph with episodic+semantic nodes, spreading activation retrieval",
-          "retrieval": "BM25+embeddings → fan effect → lateral inhibition → sigmoid normalization",
-          "benchmark": "LOCOMO F1 40.5 (+7.2 vs A-MEM), token cost 814/query"
-        },
-        "SimpleMem": {
-          "arxiv": "2601.02553",
-          "pattern": "Entropy-gated ingest (τ=0.35) + recursive consolidation (τ=0.85 affinity) + adaptive k",
-          "benchmark": "30x token reduction vs Mem0; ablation: -31.3% multi-hop without consolidation"
-        },
-        "A_MEM": {
-          "arxiv": "2502.12110",
-          "pattern": "Zettelkasten linked notes, every write triggers link creation and note refinement, no separate episodic"
-        },
-        "Mem0": {
-          "arxiv": "2504.19413",
-          "pattern": "Extract-then-Update pipeline (two-phase: extract candidates, reconcile with existing)",
-          "benchmark": "26% relative improvement over OpenAI memory on LOCOMO (66.9% vs 52.9%), 90% token reduction"
-        },
-        "MemGPT": {
-          "arxiv": "2310.08560",
-          "pattern": "Core/Recall/Archival memory, agent self-edits via tool calls — foundational OS analogy"
-        }
-      },
-      "why_dual_beats_flat": {
-        "evidence": [
-          "HyMem multi-hop: 88.16% vs full-context 46.89% (+41.3 pp)",
-          "HiMem vs A-MEM on LOCOMO: +28.83 pp",
-          "SimpleMem consolidation ablation: -31.3% multi-hop without it",
-          "Mem0 vs OpenAI memory: +26% relative",
-          "Synapse vs A-MEM: +7.2 F1 points"
-        ],
-        "note_on_40pct_claim": "No single paper makes an exact '40% improvement' claim. Closest: HyMem multi-hop +41.3 pp (88.16% vs 46.89%). The ~40% figure likely refers to this result or aggregate multi-hop gains across papers.",
-        "structural_reasons": [
-          "Recency vs. relevance: episodic handles recency, semantic handles topical relevance — no tradeoff",
-          "Scale: episodic window bounded, semantic cache amortizes cost across queries",
-          "Multi-hop: reflection mechanism decomposes complex queries into sub-problems",
-          "Generalization: semantic layer consolidates cross-session patterns into reusable knowledge",
-          "Auditability: episodic provides reproducible event timeline with provenance",
-          "Cost: token usage sublinear vs history length (vs linear for full-context)"
-        ]
-      },
-      "lancedb_implementation": {
-        "tables": {
-          "episodes": "id, session_id, timestamp, event_type, content, embedding, ttl_expiry",
-          "semantic": "id, source_episode_ids (provenance), content, embedding, bm25_index, tags, confidence, last_updated"
-        },
-        "write_policy": {
-          "episodic": "Append-only on every event, no LLM at write time",
-          "semantic": "Async background job. Cluster by embedding similarity (τ=0.85) + temporal proximity. LLM synthesizes clusters. HiMem ADD/UPDATE/DELETE reconciliation.",
-          "dedup": "fnv1a_hash for exact dedup; embedding similarity >0.90 for semantic dedup"
-        },
-        "retrieval": {
-          "strategy": "Run episodic (last N=10 or session window, deterministic) and semantic (top-k=5, hybrid vector+BM25) in PARALLEL",
-          "merge": "Dedup by source, apply ~3K token budget, conflict rule: freshest episodic wins over semantic",
-          "lancedb_native": "Use LanceDB's native hybrid search (vector+BM25) for semantic table; timestamp-filtered scans for episodic (prefer auditability over vector search)"
-        },
-        "consolidation": {
-          "timing": "Background async — NOT on the hot retrieval path",
-          "algorithm": "SimpleMem τ=0.85 affinity clustering → LLM synthesis → HiMem reconciliation (ADD/UPDATE/DELETE)"
-        },
-        "ttl": {
-          "episodic": "30-day default TTL indexed on ttl_expiry",
-          "semantic": "No TTL; confidence decay (Ebbinghaus-inspired) based on access frequency"
-        }
-      }
-    }
-  },
-
-  "references": [
-    {"title": "HyMem", "arxiv": "2602.13933"},
-    {"title": "HiMem", "arxiv": "2601.06377"},
-    {"title": "Synapse", "arxiv": "2601.02744"},
-    {"title": "SimpleMem", "arxiv": "2601.02553"},
-    {"title": "A-MEM", "arxiv": "2502.12110"},
-    {"title": "Mem0", "arxiv": "2504.19413"},
-    {"title": "MemGPT", "arxiv": "2310.08560"},
-    {"title": "AI Memory Survey", "arxiv": "2512.23343"}
-  ]
+  "status": "done",
+  "role": "researcher-beta",
+  "summary": "Researched HyMem (arxiv:2602.13933) and the dual-layer episodic/semantic memory architecture pattern for LLM agents. Surveyed 7 papers (HyMem, HiMem, Synapse, SimpleMem, A-MEM, Mem0, MemGPT), extracted benchmark results, architecture details, and practical LanceDB implementation patterns. Saved findings to persistent memory.",
+  "findings": [
+    "HyMem (arxiv:2602.13933, Feb 2026) is a real paper: dual-granularity L1 (summaries) + L2 (raw text) with dynamic routing. 89.55% LOCOMO overall, 92.6% token reduction vs full-context.",
+    "HyMem's biggest win is multi-hop: 88.16% vs 46.89% full-context (+41.3 pp) — this is the closest evidence to the '~40% improvement' claim.",
+    "HyMem uses summary/raw granularity layers, NOT episodic/semantic. It lacks write-time consolidation and cross-session knowledge evolution.",
+    "Episodic memory (what happened): append-only, cheap, deterministic window retrieval. Semantic memory (what it means): LLM-distilled, async write, hybrid vector+BM25 retrieval.",
+    "HiMem (arxiv:2601.06377) achieves 80.71% LOCOMO GPT-Score vs A-MEM 51.88% using immutable episodes + evolving Note Memory with ADD/UPDATE/DELETE reconsolidation.",
+    "SimpleMem ablation: removing consolidation drops multi-hop accuracy by 31.3% — consolidation is the key differentiator for dual-layer over flat storage.",
+    "For LanceDB: two tables (episodes + semantic), parallel retrieval (deterministic window scan + hybrid search), async background consolidation at τ=0.85 affinity threshold, freshest episodic wins on conflict."
+  ],
+  "files_touched": [
+    "/home/crab/.claude/channels/result_researcher-beta.json"
+  ],
+  "memories_saved": 2,
+  "timestamp": 1773189729
 }
