@@ -25,7 +25,7 @@
   },
   {
     "id": "3ad0a6bd2470e7bf",
-    "new_text": "Session 24: 5 priority items implemented:\n\n1. /commit skill: Git commit with auto-generated message, warns secrets, no push default, HEREDOC formatting, never --no-verify\n2. /build skill: Codifies Loop (MEMORY->PLAN->TESTS->BUILD->PROVE->SHIP), 15min timeout, refs /commit\n3. 5 hook events: SubagentStop, PostToolUseFailure, Notification, TeammateIdle, TaskCompleted. New event_logger.py (single script), logs stderr+audit, PostToolUseFailure updates error_pattern_counts. Total 13 events.\n4. /deep-dive skill: deep_query(top_k=50)+tags+observations+expansion+timeline+synthesis+optional save\n5. /ralph skill: Autonomous loop (max 10 iterations, 3-fail ceiling, no deploys, memory saves every 3 iterations, user approval). SETUP->PLAN->EXECUTE->REPORT\n\nFILES: 6 created (commit/build/deep-dive/ralph SKILDs + event_logger.py), 2 modified (settings.json+test_framework.py)\nTESTS: 475 passed (39 new), Skills: 9 total (5 original+4 new), Hook events: 13"
+    "new_text": "Session 24: 5 priority items:\n\n1. /commit: Git commit, auto-message, warn secrets, no push default, HEREDOC, no --no-verify\n2. /build: Loop (MEMORY->PLAN->TESTS->BUILD->PROVE->SHIP), 15min timeout\n3. 5 hook events: SubagentStop, PostToolUseFailure, Notification, TeammateIdle, TaskCompleted. event_logger.py, logs stderr+audit, error_pattern_counts updates. Total 13 events.\n4. /deep-dive: deep_query(50)+tags+observations+expansion+timeline+synthesis\n5. /ralph: Autonomous loop (max 10 iter, 3-fail ceiling, no deploys, saves every 3 iter, user approval). SETUP->PLAN->EXEC->REPORT\n\nCREATED: 6 files, MODIFIED: 2\nTESTS: 475 passed (39 new), Skills: 9 (5+4), Events: 13"
   },
   {
     "id": "4bdeb084434cebfd",
@@ -33,7 +33,7 @@
   },
   {
     "id": "30ab3fceb5d8ebf0",
-    "new_text": "Created /home/crab/.claude/hooks/shared/test_generator.py: Auto-generates test stubs for Framework components.\n\nDESIGN:\n1. AST-based scanner (no imports — safe for gate files with sys.exit)\n2. Scans only top-level functions (no nested helpers)\n3. Three types: gate_check, shared_util, skill_entry\n4. gate_check: check(tool_name, tool_input, state, ...) -> GateResult assertions+mock state\n5. shared_util: _state setup only when state arg present\n6. Uses ABSOLUTE _HOOKS_DIR path (not relative __file__) — runs from /tmp/ correctly\n7. _stub_args() generates only valid literals (no inline comments in tuples)\n8. __main__ smoke test defaults to shared/gate_router.py\n\nPUBLIC API: scan_module(path), generate_tests(scan_result, module_path), generate_smoke_test(module_path)\nCLI: python3 shared/test_generator.py [module] [--output file]"
+    "new_text": "/home/crab/.claude/hooks/shared/test_generator.py: Auto-generate test stubs.\n\nDESIGN: AST scanner (no imports, safe for sys.exit), top-level only, 3 types: gate_check, shared_util, skill_entry\n- gate_check: check(tool_name, tool_input, state) -> GateResult\n- shared_util: _state setup only if state arg present\n- ABSOLUTE _HOOKS_DIR path (not __file__), runs from /tmp/\n- _stub_args() valid literals, no inline comments\n- __main__ smoke test: shared/gate_router.py\n\nAPI: scan_module(path), generate_tests(scan_result, module_path), generate_smoke_test(path)\nCLI: python3 shared/test_generator.py [module] [--output file]"
   },
   {
     "id": "5c3deb2a91ad8bb6",
