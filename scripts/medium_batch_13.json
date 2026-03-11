@@ -1,0 +1,62 @@
+[
+  {
+    "id": "e5b7f27acbfd4411",
+    "new_text": "[torus-web #10] vitest jsdom: DO NOT use Proxy for lucide-react mocks—causes ESM hang. Use explicit named exports instead. CORRECT: `Trophy: (props) => <span data-testid=\"icon-Trophy\" {...props} />`. vitest run hangs on teardown (Node 25 / Vite 7 / jsdom 28 compatibility). Tests pass; wrap with process exit. Use Object.defineProperty for localStorage over vi.stubGlobal. Passing specific test files to vitest with jsdom causes worker hang—run all files together."
+  },
+  {
+    "id": "ac01bb342c20b99e",
+    "new_text": "[torus-web #11] wallet-provider.test.tsx (12 tests, passing). QueryClient mock must be named constructor: `QueryClient: function QueryClient() {}` (not vi.fn(() => ({})) which isn't newable). WagmiProvider/QueryClientProvider mocked as passthrough. mockWagmiDisconnect shared. network from chain?.name. connectionInProgressRef not reset—each test needs fresh mount. console.error doesn't fail tests. makeJsonResponse: `{ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(data) }`."
+  },
+  {
+    "id": "1a7886c72850225b",
+    "new_text": "[torus-web] admin-auth-provider.test.tsx (12 tests, passing). jsdom 28.x vitest 4.x doesn't support localStorage.clear() without URL. Fix: vi.stubGlobal('localStorage', makeLocalStorageMock()) in beforeEach, vi.unstubAllGlobals() in afterEach. Mock: Map-backed with getItem/setItem/removeItem/clear/key/_store. Seed via `_store.set(key, value)`. Tests: children, outside provider error, loading, initializeAuth success/fail/no-tokens, login success/no-wallet/fail, logout, authenticatedFetch GET (no CSRF), POST/PUT/DELETE (CSRF token)."
+  },
+  {
+    "id": "4251de082ec9a5ed",
+    "new_text": "[torus-web #13] Canvas tests (torus-visualization, hero-animation, horn-torus-animation): hero/horn—no mocks, canvas.getContext('2d') returns null, useEffect bails. torus-visualization: mock three + postprocessing with {} causes unhandled rejections. Fix: provide stub constructors (Scene, PerspectiveCamera, WebGLRenderer) and postprocessing classes (EffectComposer, RenderPass, BloomEffect, EffectPass). forwardRef + useImperativeHandle: ref.current.triggerZoom accessible immediately. All 7 tests pass."
+  },
+  {
+    "id": "330bd685b6b3af5c",
+    "new_text": "[torus-web #13] Page-level tests: home-page (4 tests)—framer-motion motion.div passes props, harmless React warnings. getAllByText() for duplicate text (e.g., \"The Toroidal\"). profile-page (4 tests)—Tabs mock renders all TabsContent, \"Rewards\" appears twice, use getAllByText(). rankings/esports/info pages—mock lucide icons explicitly, shadcn UI passthrough, framer-motion, wallet/router/fetch. global.fetch required. community-pools uses dynamic import('@/components/a-hole-component')—must mock it."
+  },
+  {
+    "id": "5f9d6426e4c56f71",
+    "new_text": "[torus-web #13] 11 test files created, all passing (2026-03-04). CANVAS (3 files, 7 tests): torus-visualization (3), hero-animation (2), horn-torus-animation (2). PAGES (8 files, 24 tests): home/profile/rankings/esports (3 each), info-pages (10—combines community-pools, ai-gateway, social-media, toroidal-income, volume-liquidity). TOTAL: 38 files, 263 tests. KEY: Mock framer-motion passthrough, shadcn Tabs render all content, community-pools has <a-hole> + Path2D stub, unhandled exceptions cosmetic. global.fetch in beforeEach. Profile in Suspense—use act() + await."
+  },
+  {
+    "id": "e030dba6bafe7235",
+    "new_text": "[chainovi/eclipse-agave #18] Session wrap-up. All 10 launch-readiness audit items complete (1-8, 10 done; 9 deferred pre-mainnet). Session #18 implemented: item 6 (getTreasuryBalance RPC), 7 (CU consumption metric), 8 (validator docs), 10 (--projectdawn-treasury-pubkey flag). Gated is_emergency_unlocked() as dev-only. BUILD ENV: PKG_CONFIG_PATH and PROTOC required. REMAINING: Item 9 real program IDs, early unlock penalty, fee market multi-block tests with CU, snapshot round-trip, 5 dead_code warnings."
+  },
+  {
+    "id": "b76f007a4aab80ec",
+    "new_text": "[torus Framework] Stats snapshot (2026-02-23): 1269 memory entries, 18 active gates, 12 hook events (PreToolUse, PostToolUse, SessionStart, UserPromptSubmit, PermissionRequest, SubagentStart, PreCompact, SessionEnd, Stop, SubagentStop, PostToolUseFailure, Notification, ConfigChange), 33 skills, 48,917 framework lines across 110 Python files, CLAUDE.md 73 lines, rules 75 lines, 2 MCP servers, 208 sessions, v2.5.3, Telegram voice-to-text + incremental wrapup indexing."
+  },
+  {
+    "id": "32495b12f7cb505f",
+    "new_text": "[torus-voice-ios #2] Security audit (2026-03-04): ALL CLEAR on tracked files. config.example.json (\"CHANGE_ME\" only), gen_cert.sh (\"YOUR_SERVER_IP\" placeholder, remediated from 95.111.231.121), server.py (voxterm logger, no secrets), static/* (safe), tests/test_server.py (token from CONFIG). REMAINING: MEDIUM—git history has old \"torus-terminal\" logger name (c875a5b), author \"OZ\" (noreply GitHub, acceptable), port 8444 (public config detail). Previously-critical issues RESOLVED: IP removed, auth token in .gitignore, config.json/PROMPT.md excluded."
+  },
+  {
+    "id": "1b7d21830684abb0",
+    "new_text": "[torus-web #11] Admin route tests (2026-03-04): games-id.test.ts (GET/PUT/DELETE), games-discover-params.test.ts (complex—Game.findOne called twice, User.find().limit(3) chainable, process.env.STEAM_API_KEY stubbed), test-steam.test.ts (no specific auth error handling—all 500). Pattern: vi.stubGlobal('fetch', mockFetch) in beforeEach + vi.unstubAllGlobals() in afterEach. [id] routes: pass `{ params: Promise.resolve({ id: 'value' }) }`."
+  },
+  {
+    "id": "4b93c64c35e35e99",
+    "new_text": "[torus-web #7] Session 7: Fixed 11 bugs. CRITICAL: gameStatsData→allTimeStats empty params. HIGH: Game.populate replaced with find(), auth errors return 401/403 not 500, added API_KEY_ENCRYPTION_KEY to .env.example, added config.isEnabled before referrals. MEDIUM: $reward→$$reward in $map (earnings 0), null check on updatedUser, ISO 8601 week numbers (4 files), field allowlist in PUT. LOW: parseInt NaN guards (6 files). DEFERRED: AI gateway auth (needs wallet auth), JWT fallback. User added encryption key to Vercel. No MongoDB/Docker yet—user needs Atlas or Docker."
+  },
+  {
+    "id": "a60a2ddc7be1acd7",
+    "new_text": "[torus-web #11] Admin action API tests (batch 2, 2026-03-04): calculate-game-stats.test.ts (getGameStatsCalculator, logSystemAction—POST), calculate-rankings.test.ts (triggerRankingsCalculation—POST), collect-stats.test.ts (triggerStatsCollection—POST), refresh-esports-metadata.test.ts (refreshDashboardMetadata, getTTLHours—POST), update-game-stats.test.ts (smartIncrementalUpdate, updateMultipleGameStats, updateUserGameStats—POST with type validation). Pattern: requireAdmin(request, true) returns { user: { walletId } }, logSystemAction on success, 401/403/500 errors. No direct mongodb imports."
+  },
+  {
+    "id": "a455c30a2de5b148",
+    "new_text": "[torus-web #9] Admin route tests (games, users, news). DataCollector: vi.mock('@/lib/data-collector', { DataCollector: vi.fn() }). uuid: vi.mock('uuid', { v4: () => 'mock-uuid-1234' }). Chainable find().sort().lean() defined per-test, not in factory. [id] routes: `{ params: Promise.resolve({ id: '...' }) }`. news POST: createdBy from admin.user.walletId. games POST: requireAdmin(request, true) returns { user: { walletId } }. admin/users/[id]/PUT: two findOne calls—mockResolvedValueOnce twice. news has no GET. users has no POST/PUT/DELETE."
+  },
+  {
+    "id": "1e4231998f0739ca",
+    "new_text": "[torus-web #11] Admin routes test patterns: [id] routes—`{ params: Promise.resolve({ id: 'value' }) }`. admin-logger dynamic import—must vi.mock('@/lib/admin-logger'). Reward model exports RewardStatus enum—include in mock. Chain find().sort().skip().limit().lean()—each returns `this` except lean. rewards route uses request.nextUrl.searchParams. logs route: requireAdmin(false) for read, requireAdmin(true) for write. User model: static methods + constructor (vi.fn().mockImplementation). ReferralConfig needs save() method."
+  },
+  {
+    "id": "1b39a956bf7eb71c",
+    "new_text": "[chainovi/eclipse-agave #2] EIP-1559 Phase 1 COMPLETE. Verification: cargo check/test all pass (36 fee-market tests, 8 bank tests). FILES CREATED (6): fee-market Cargo.toml, lib.rs, config.rs (min=5k, max=50M, target=24M, limit=48M, denom=8), state.rs, calculator.rs (EIP-1559 u128-safe), error.rs. FILES MODIFIED (5): workspace Cargo.toml, runtime Cargo.toml, bank.rs (2 fields, 3 constructors, CU recording, accessors), fee_market_integration.rs (6 bridge + 8 tests), serde_snapshot.rs. NOTE: When editing bank.rs imports, solana_fee_market block SEPARATE from crate::{}."
+  }
+]

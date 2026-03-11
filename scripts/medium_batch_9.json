@@ -1,0 +1,62 @@
+[
+  {
+    "id": "0bbedd3044f4c864",
+    "new_text": "Design-v2.1 comprehensive comparison: 16/16 feature matrix complete vs feat/ai-api-gateway (10/16) and v0-new-design (4/16). Bug fixes: font-switcher.tsx checkmark symbol, torus-energy-button.tsx disabled state + opacity styling, steam-connection.tsx textClassName=\"text-sm\" on 3 buttons. Key: Design-v2.1 defaults to text-lg; removing textClassName makes buttons bigger—must override with text-sm explicitly."
+  },
+  {
+    "id": "54473e63ad88738d",
+    "new_text": "Design-v2.1 master parity verified—0 breaking changes. Restored: torus-energy-button.tsx type/variant/size props with defaults + conditional classes for ghost/outline/destructive variants. navbar.tsx admin link in 3 locations gated by isConnected && user?.isAdmin with red-400 styling. isAdmin defaults false in MongoDB; must set manually. Commit 8a913ed pushed."
+  },
+  {
+    "id": "6ee7fdfbc0e6075a",
+    "new_text": "Design-v2.1 merge complete: (1) app/ai-gateway/page.tsx restored GatewayStats/NewsItem interfaces, useEffect fetching /api/admin/ai-gateway + /api/news, real leaderboard/news with time-ago, copyEndpoint toast, AIGatewayDashboard; removed static mockup. (2) app/esports/page.tsx restored DashboardData/UserStats interfaces, useState hooks, fetchDashboardData (3 APIs), connectSteam OAuth, selectedPeriod buttons, real API-driven history. Result: 0 TS errors, 49/49 tests pass."
+  },
+  {
+    "id": "01311411b4d1c283",
+    "new_text": "Design-v2.1 component merge (2026-03-02): (1) player-rankings.tsx restored fetchRankings() calling /api/esports/rankings/overall, 2hr cache, loading spinner, search, handlePlayerClick, handleViewAllRankings, PlayerDetailModal. (2) steam-connection.tsx restored useWallet, real APIs (/api/auth/identity/verify, /api/auth/steam/*, /api/auth/x/connect), toast, disconnect confirmation dialog. (3) torus-energy-button.tsx restored if(disabled)return guard, kept Web Animations API for particles. 49/49 tests pass."
+  },
+  {
+    "id": "7770f92e9ce3fc41",
+    "new_text": "Design-v2.1 vs master regression analysis: 0 breaking issues. Minor: progress.tsx indicatorClassName removed (visual only). Changes: lib/utils.ts getTimeAgo removed (safe—inline only), lib/mongodb.ts URI validation moved to connectDB(), models/User.ts openrouter schema added (additive), 2 new models (AIGatewayConfig, AIUsageLog), 4 new AI API routes, multiple component enhancements. Conclusion: Design-v2.1 fully functional, no regressions."
+  },
+  {
+    "id": "84cb5b96b85e3568",
+    "new_text": "Session 146 boot.py fixes: (1) Display all 9 toggles at session start (was 5). (2) Added mandatory instruction to show toggle states. (3) Added short descriptions. (4) Fixed misleading descriptions—terminal_l2_always and context_enrichment are independent pipeline steps. L2 toggles FTS5 timing; enrichment attaches ±30min context. (5) Renamed 'TG bot tmux' to 'Telegram bot'—now starts/stops + prompts for config. (6) Added Telegram bot status display."
+  },
+  {
+    "id": "50d09deb30e9cb4e",
+    "new_text": "[chainovi/eclipse-agave #4] Phase 3 Governance Program COMPLETE. Verification: cargo check/test -p solana-governance-program (69 tests pass), cargo check -p solana-builtins, cargo test -p solana-builtins (39 tests pass). Files: programs/governance/{Cargo.toml, lib.rs, constants.rs, error.rs, instruction.rs, state.rs, vote_weight.rs, processor.rs}. GovernanceConfig disc=0x47 104bytes, Proposal disc=0x50 512bytes, VoteRecord disc=0x56 58bytes; 28 errors, 8 instructions."
+  },
+  {
+    "id": "ea274e4316c88c6a",
+    "new_text": "OptimisticChain testnet-readiness: 7 of 22 security findings fixed—ReentrancyGuard, delegation accounting sync, onlyRewardSource modifier, MAX_DAPPS=200 cap with deregisterDApp swap-and-pop, _activeValidatorCount counter, early unlock penalty to BURN_ADDRESS, epoch catch-up (capped 10). Genesis: 27 slots computed. OP-GETH build passes. 181 tests across 8 suites, 0 failures. Unfixed: governance snapshots, lerp bounds, fee override, getVoteWeight loops, low/info findings."
+  },
+  {
+    "id": "9b95463ff4514936",
+    "new_text": "PERMANENTLY_LOCKED guards (2026-02-09): 5 security fixes in /home/crab/agave/programs/stake/src/stake_state.rs—split(), move_stake(), move_lamports(), MergeKind::get_if_mergeable(), deactivate_delinquent(). Pattern: if stake_flags.contains(StakeFlags::PERMANENTLY_LOCKED) return StakeError::PermanentlyLocked. 5 tests added: test_split/merge/move_stake/move_lamports/deactivate_delinquent_permanently_locked_rejected. All 119 tests pass."
+  },
+  {
+    "id": "68207a1be98118e8",
+    "new_text": "Session 182 architecture audit: 6 of 20 items completed. (1) Gate 06 sideband: replaced state.get with get_memory_last_queried(). (2) researcher.md remember_this added. (3) state_migrator.py hardcoded profile set → VALID_PROFILES import. (4) Q-table in-process cache in gate_router.py eliminates ~29 file ops/hook. (5) Gate timing cache in gate_timing.py eliminates ~18 ops. (6) Tri-mode search routing via LIVE_STATE.json toggle (default/fast/full_hybrid). Commits: baca95c, b3b8ac5, 8710cf3, 3a41133. 1562 tests pass."
+  },
+  {
+    "id": "0c0280a97e73518b",
+    "new_text": "TRv1 active validator set wired into leader schedule (2026-02-20): bank.rs added trv1_active_set: Arc<RwLock<ActiveValidatorSet>> field, initialized in default_with_accounts(), cloned in new_from_parent(), recomputed at epoch boundary in process_new_epoch() using leader_schedule_epoch vote accounts + jailed set. leader_schedule_utils.rs uses cached active set from bank; falls back to on-the-fly compute for genesis. cargo check passes."
+  },
+  {
+    "id": "f80bf585202db0c5",
+    "new_text": "Circuit breaker wired into chromadb_socket.py and enforcer_shim.py. chromadb_socket.py: _CB_SVC=\"memory_socket\", request() checks _cb_is_open() before call, records success/failure via _reached_worker flag (True only on valid JSON response), logs on failure. enforcer_shim.py: _CB_SVC=\"enforcer_daemon\", _try_daemon() records success before exit, main() checks _cb_is_open(). Design: connection errors = failure; worker-returned application errors = success. Stubs on ImportError degrade gracefully. 4 new tests."
+  },
+  {
+    "id": "909eb076a0d774a4",
+    "new_text": "[chainovi/eclipse-agave #7] Phase 5B Treasury process_governance_withdraw: (1) check 4 accounts, (2) read proposal from account[2] verify owner=governance ID, (3) deserialize GovernanceProposal verify executed=true, (4) match TreasurySpend extract recipient+amount, (5) verify destination matches, (6) check marker data[0]==0x57 (already claimed), (7) update treasury state: total_withdrawn+=amount, last_withdrawal_slot=clock.slot, (8) transfer lamports, (9) write marker [0x57 + proposal_id]."
+  },
+  {
+    "id": "06d994d3b524d00a",
+    "new_text": "ProjectDawn Fuzz Testing (2026-02-10): 22 proptest tests across 2 files. FILE 1 (stake_state.rs, 16 tests): State Machine Validity (4)—fuzz_permanent_lock_requires_stake_state, fuzz_passive_lock_requires_initialized, fuzz_early_unlock_requires_passive, fuzz_permanent_lock_rejects_deactivated. Authority Enforcement (3)—both signers required, staker required. Flag Bit Independence (3)—roundtrip, isolation, idempotent. Lamport Conservation (4)—no overflow, conservation, monotonic, less-than-stake. Lockup epoch overflow, penalty < stake. FILE 2 (stake_instruction.rs, 6 tests): Deserialization (2), Cross-Instruction Invariants (4). All 22 pass; full suite 149 passed."
+  },
+  {
+    "id": "d21c5844a1416250",
+    "new_text": "OptimisticChain Audit (2026-02-10): 22 findings—3 CRITICAL, 4 HIGH, 6 MEDIUM, 5 LOW, 4 INFO. CRITICAL: C-1 reentrancy (add ReentrancyGuard), C-2 delegation accounting desync (update delegatedStake in stake/unstake), C-3 FeeDistributor can't call distributeRewards (showstopper—add to allowed callers). HIGH: H-1 unbounded distributeFees loop, H-2 no dApp deregistration (permissionless registration DoS), H-3 no vote snapshots, H-4 unbounded getActiveValidatorCount. Fix priorities: C-3 first, then C-2, C-1, H-1/H-2, H-3."
+  }
+]

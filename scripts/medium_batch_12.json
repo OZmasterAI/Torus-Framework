@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ef87bd2803024335",
+    "new_text": "[chainovi/eclipse-agave #10] Integration test fixes: (1) KeypairPubkeyMismatch: create_account_and_delegate_stake only needs mint_keypair and stake_keypair as signers, NOT vote_keypair (just referenced). (2) ExternalAccountDataModified: removed all consume_emergency_marker() calls—stake program can't write governance-owned accounts. State changes prevent re-use (deactivated accounts can't deactivate again). (3) Option::unwrap() panic in loaded_programs.rs:1062: must use `let (bank, _bank_forks)` NOT `let (bank, _)`. Underscore drops BankForks immediately, which drops fork_graph weak ref, causing panic when processing instructions. (4) Markers NOT zeroed by stake program, remain on-chain. State change is protection."
+  },
+  {
+    "id": "60dc21778b50afb7",
+    "new_text": "[torus-web #7] Web3 rewards platform: TRS token payments for activities across 5 pools + referrals. (1) eSports: connect Steam, auto-track stats (60min), top 20% by points get daily/weekly/monthly pools (100/1000/5000 TRS). (2) Media: Twitter/Instagram/YouTube/TikTok/Facebook/Twitch, 1.4M TRS, 34.5K creators. (3) Finance: DEX volume & LP across 6 chains, 3.2M TRS. (4) Toroidal Income (UBI): 54% of TRS, hold BABT or Galxe, 8.9M TRS, 127K users. (5) AI Gateway: BYOK OpenRouter, route calls, earn weekly (1000 TRS default, Sundays 01:30 UTC). Referrals: 50 TRS per verified code. Tech: Next.js 15, MongoDB, Wagmi/Viem, AES-256-GCM, 46 API routes, 14 DB models, 7 cron jobs."
+  },
+  {
+    "id": "32cafd2bfbfc8fb0",
+    "new_text": "[torus-web #9] Vitest tests for data-collector and scheduler. Patterns: (1) SteamAPI mocked via constructor. (2) node-cron: { schedule: mockCronSchedule } returns { start, stop }. (3) UserGameStats.findOne chains: first uses sort promise, second mockResolvedValue. (4) initializeDefaultGames is static. (5) getScheduler() returns singleton. (6) initializeScheduler() starts on NODE_ENV=production or ENABLE_SCHEDULER=true. (7) Cron callbacks from mockCronSchedule.mock.calls, invoked directly for async. (8) Cron errors swallowed—tests verify resolves.toBeUndefined()."
+  },
+  {
+    "id": "7a46dc30ac3021ea",
+    "new_text": "[torus-web #11] Esports API test files (2026-03-04). 9 files with mocks: dashboard (esports-metadata-calculator), games-stats (game-stats-calculator, Game.find), user-stats (User/UserGameStats/Reward/Game), update-stats (game-stats-calculator), refresh-metadata (esports-metadata-calculator), rankings-games/overall/game (UserGameStats/Game), rankings-user (User/Game/UserGameStats/Reward), rankings-user-game (User.findOne, Game.findOne, UserGameStats.find)."
+  },
+  {
+    "id": "80ce825274866f84",
+    "new_text": "[torus-web #11] Esports API vitest: 10 files, 35 tests ALL PASSING (2026-03-04). (1) dashboard: esports-metadata-calculator getDashboardMetadata. (2) games-stats: Game.find {limit: fn} chain. (3) user-stats: User/UserGameStats/Reward mocks. (4) update-stats: calculator smart variants + errors. (5) refresh-metadata: calculator (refreshDashboard, checkAndRefresh, getTTL). (6-7) rankings: UserGameStats/Game mocks. (8) rankings-game: Game.findOne, UserGameStats (2 calls). (9) rankings-user: multi-model mocks. (10) rankings-user-game: User/Game/UserGameStats (sort+limit)."
+  },
+  {
+    "id": "89cb2307c0d8c568",
+    "new_text": "[torus-web #10] 3 component test files created, all passing: tournament-card.test.tsx (13), wallet-selection-modal.test.tsx (12), wallet-stats.test.tsx (9). Total: 21 files, 169 tests passing. KEY: getWalletDisplayName returns `name || 'Browser Wallet'`—trigger fallback with empty string '' NOT unknown id with real name. wallet-stats: mock Tabs/TabsContent/TabsList/TabsTrigger as passthrough divs, useWallet mock via vi.hoisted() { balance, network }. tournament-card: vi.useFakeTimers() in beforeEach for 1500ms setTimeout in handleRegister; vi.useRealTimers() afterEach. Test loading state: click button, check 'Registering...' + disabled BEFORE advancing timers."
+  },
+  {
+    "id": "a97d377671a06fe4",
+    "new_text": "[torus-web #11] 3 new Vitest test files (2026-03-04): steam-state.test.ts (11 tests)—generateSteamState, validateSteamState (returns walletId, lowercase, expired/invalid/empty/wrong-secret = null). x-state.test.ts (11 tests)—same as steam-state but validateXState returns {walletId, oauthToken, oauthTokenSecret}. utils.test.ts (10 tests)—cn() merge, multi-class, conflict resolution (px-2 px-4 → px-4), nested, conditional, object syntax, empty/falsy args, array. All 32 tests pass. No mocks—jsonwebtoken imported directly. JWT_SECRET='fallback-secret-change-in-production'. Expired tokens tested by crafting jwt.sign() with past exp manually."
+  },
+  {
+    "id": "f803112880049600",
+    "new_text": "[torus-web #11] Vitest files for x-auth, esports-metadata-calculator, mongodb (2026-03-04): (1) x-auth.test.ts (22 tests)—XAuthProvider OAuth 1.0a, vi.stubGlobal('fetch', mockFetch), vi.stubEnv for X_CONSUMER_KEY/SECRET, tests isConfigured/getRequestToken/generateAuthUrl/getAccessToken/verifyCredentials. (2) esports-metadata-calculator.test.ts (15 tests)—mocks @/lib/mongodb, @/models (ESportsMetadata/User/UserGameStats/Reward), vi.mock, tests cache hit/miss, checkAndRefreshMetadata, refreshDashboardMetadata, getTTLHours, singleton. (3) mongodb.test.ts (4 tests)—connectDB, vi.mock mongoose with importOriginal, vi.resetModules() + dynamic import in loadConnectDB() helper to reset module-level cache between tests. KEY: module has global.mongoose cache; must reset modules + reset global.mongoose in beforeEach."
+  },
+  {
+    "id": "e09560506bac2947",
+    "new_text": "[torus-web #12] 6 component/hook test files created and passing (2026-03-04): theme-provider.test.tsx (2), torus-energy-button.test.tsx (8), liquid-button.test.tsx (3), interactive-torus-nav.test.tsx (4), use-mobile.test.tsx (4), use-toast.test.tsx (8). Total: 29 tests. KEY FIXES: (1) React 19 mock calls: toHaveBeenCalledWith(objectContaining) fails with 2 args (props, undefined)—use mock.calls[0][0] + toMatchObject(). (2) <a> without href not accessible as 'link' role in jsdom—use container.querySelector('a'). (3) vi.stubGlobal('requestAnimationFrame', ...) + cancelAnimationFrame prevent rAF loops. (4) matchMedia: createMatchMediaMock helper tracks listeners, vi.stubGlobal('innerWidth'), vi.unstubAllGlobals() afterEach. (5) use-toast: mock @/components/ui/toast (avoid @radix-ui), test reducer as pure function."
+  },
+  {
+    "id": "0b66b632bdacc378",
+    "new_text": "[torus-web #10] CRITICAL: vi.mock Proxy causes vitest 4.x ESM hang with jsdom. BUG: `vi.mock('lucide-react', () => new Proxy({}, { get: (_, name) => ... }))` causes infinite hang (no error, just timeout kill). FIX: Use explicit named exports. WRONG (hangs): Proxy factory. CORRECT: { Loader2: (props) => ..., Users: ..., Clock: ..., Info: ... }. OTHER PATTERNS: (1) vi.hoisted() for mocks in factories. (2) @/components/wallet-provider: vi.mock with useWallet mock. (3) pending-promise: resolve via await act(async () => { resolveConnect(); await promise; }). (4) vi.useFakeTimers()/useRealTimers() for setTimeout. (5) Mock CardDescription always (real component returns null). FILES: connect-wallet-button.test.tsx (7), pool-card.test.tsx (8), all passing. RUN: npx vitest run --config vitest.component.config.ts [file]"
+  },
+  {
+    "id": "6be2430740188e8b",
+    "new_text": "[torus-web #10] Vitest component tests critical findings: (1) JSX auto-transform: vitest.component.config.ts MUST include esbuild: { jsx: 'automatic', jsxImportSource: 'react' }—without it, components using import type React get 'React is not defined'. (2) Proxy mock for lucide-react HANGS with static imports—use EXPLICIT named exports (Send, Gamepad2, etc.), never Proxy. (3) next/image and next/link work fine with explicit factory: { default: (props) => <img {...props} /> }. (4) Config: vitest.component.config.ts uses jsdom, includes __tests__/components/**/*.test.tsx. (5) FILES: energy-card.test.tsx (5), font-switcher.test.tsx (6), footer.test.tsx (4). All passing. (6) Stubs: mocks/next-image-stub.tsx, next-link-stub.tsx (optional since vi.mock also works)."
+  },
+  {
+    "id": "a9de3fc021d2d18c",
+    "new_text": "[torus-web #10] 4 component test files created and passing (2026-03-04): feature-card.test.tsx (6), scientific-card.test.tsx (5), connect-wallet-prompt.test.tsx (7), theme-toggle.test.tsx (9). Total: 27 tests. KEY PATTERNS: (1) next-themes: vi.mock('next-themes', () => ({ useTheme: mockUseTheme })). (2) lucide-react: explicit named exports only (Sun, Moon), no Proxy. (3) @/components/ui/card mocked per component (CardTitle, CardHeader, CardContent as needed). (4) vi.hoisted() for mockConnect, mockSetTheme, etc. in vi.mock factories. (5) feature-card: decorative element via container.querySelector('.rounded-bl-full'). (6) scientific-card: cn() verifies className merge via .toContain('card-scientific'). (7) connect-wallet-prompt: next/image mocked inline for fill prop passthrough. (8) theme-toggle: 3 setTheme click tests included."
+  },
+  {
+    "id": "659dad0fa25df9ac",
+    "new_text": "[torus-web #9] 3 Vitest test files on debug1 (2026-03-03): (1) steam-auth.test.ts (15249 bytes)—SteamAuthProvider (generateAuthUrl, validateAndExtractSteamId), SteamAPI (getPlayerSummaries, getUserStatsForGame, getRecentlyPlayedGames, key rotation). Uses vi.stubGlobal('fetch', mockFetch) from vi.hoisted(). No external module mocks. (2) identity-verification.test.ts (8961 bytes)—checkBABT, checkGalxePassport, verifyIdentityTokens, CONTRACTS. Mocks viem: vi.mock('viem', async importOriginal => { ...actual, createPublicClient: vi.fn(...) }), returns { readContract: mockReadContract }. (3) admin-logger.test.ts (24724 bytes)—logAdminAction, logGameAction, logUserAction, logSystemAction, formatAdminAction (all cases), getActionIcon. Mocks @/lib/mongodb, @/models/AdminLog via constructor pattern. Captures `this` in mockSave.mockImplementationOnce()."
+  },
+  {
+    "id": "e77381de8d34dcc0",
+    "new_text": "[torus-web] AI API Gateway test suite: 6 test files, 49 tests, all passing. Setup: vitest 4.0.18 + @types/jest, vitest.config.ts (node env, globals, @/ alias). Scripts: \"test\": \"vitest run\", \"test:watch\": \"vitest\". CRITICAL: vi.mock() factories hoisted above consts. Use vi.hoisted() for mock variables in factories. (1) encryption.test.ts (8)—encrypt/decrypt roundtrip, format, tampered, missing key. (2) ai-rewards-calculator.test.ts (6)—disabled gateway, no usage, proportional, duplicates, rounding. (3) __tests__/api/ai/api-key.test.ts (12)—GET/POST/DELETE CRUD, validation, encryption. (4) chat-completions.test.ts (7)—auth, gateway disabled, proxy, error forwarding. (5) usage.test.ts (7)—validation, aggregation, period params. (6) __tests__/api/admin/ai-gateway.test.ts (9)—auth, config CRUD, stats, selective updates."
+  },
+  {
+    "id": "979095918217bb3b",
+    "new_text": "[torus-web #10] COMPONENT TEST PATTERNS (vitest + jsdom + React 19): CRITICAL: vitest.component.config.ts needs esbuild JSX config—sources use React 17+ automatic transform (no import React). Without it: 'React is not defined'. FIX: esbuild: { jsx: 'automatic', jsxImportSource: 'react' }. CRITICAL: DO NOT use Proxy for lucide-react. Proxy pattern causes infinite hang (vitest module system accesses __esModule, Proxy returns function, infinite loop). CORRECT: explicit named exports { CalendarDays: ..., Clock: ... } using React.createElement(). USE React.createElement in factories, not JSX (hoisting). TabsContent mock renders ALL tab content simultaneously—use getAllByText() not getByText() for multi-tab items. FILES (2026-03-04): match-schedule.test.tsx (5), reward-history.test.tsx (5), scientific-formula.test.tsx (3). Modified: vitest.component.config.ts. All 13 tests pass."
+  }
+]

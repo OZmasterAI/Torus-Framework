@@ -1,0 +1,62 @@
+[
+  {
+    "id": "7fc822e64ce5d841",
+    "new_text": "Enhanced circuit_breaker.py with gate system integration. Added _GATE_STATE_PATH (~/.claude/hooks/.circuit_breaker_state.json), gate-specific constants (_GATE_CRASH_THRESHOLD=3, _GATE_CRASH_WINDOW=300s, _GATE_COOLDOWN=60s, _GATE_SUCCESS_NEEDED=1), per-gate record schema (state, crash_timestamps, opened_at, total_crashes, total_skips), private helpers (_load_gate_state, _save_gate_state, _default_gate_record, _get_or_create_gate, _prune_crash_window, _gate_maybe_recover). Public API: should_skip_gate(gate_name)->bool, record_gate_result(gate_name, success), get_gate_circuit_state(gate_name)->str, reset_gate_circuit(gate_name), get_all_gate_states()->Dict. Design: fail-open, thread-safe, atomic writes. Tests: 16/16 smoke + 19/19 gate integration = 1182/1212 pass (30 pre-existing failures)."
+  },
+  {
+    "id": "c4ddf99e8c0867d5",
+    "new_text": "Created memory_maintenance.py (69/69 tests pass) — read-only memory health analysis. Public functions: analyze_memory_health() returns dict (count_stats, tag_distribution, similarity_groups, stale_scan, recommendations, summary), cleanup_candidates() returns IDs sorted by tier (strong/moderate/soft) with reason, age_days, preview, tags. Helpers: _safe_fetch_all (UDS socket), _count_stats (age buckets + quarantine), _tag_distribution (canonical categories, possible-dupe count), _similarity_groups (tag-cluster index), _stale_memory_scan (3 signals: old+session_ref, superseded_language, possible-dupe tag), _build_recommendations(). CLI: python3 memory_maintenance.py [--json] [--candidates [--top N]]. Verification: verify_memory_maintenance.py."
+  },
+  {
+    "id": "0189e1aeace601f9",
+    "new_text": "Sprint-2 infrastructure: 12 builder agents launched in parallel. New shared modules confirmed: gate_router.py (priority tiers, short-circuit), hook_cache.py (performance cache), health_monitor.py (component checks), consensus_validator.py (multi-signal), session_analytics.py (audit analysis + productivity), skill_maturity.py (levels 0-4), auto_remediate.py (self-healing), metrics_collector.py (counters/gauges/histograms with ramdisk). Also building: debugger, security-auditor, metrics-dashboard agents. Test fix: guarded sys.exit with __name__==\"__main__\", fixed broken string at line 11204. Gate result: graduated escalation (ask/warn/block/allow), hookSpecificOutput JSON in context."
+  },
+  {
+    "id": "a9eebe265b229310",
+    "new_text": "awesome-claude-code (jqueryscript/awesome-claude-code) — curated awesome-list cataloging 300+ Claude Code ecosystem tools, frameworks, integrations. Pure documentation. 11 categories: Official Resources, Agents & Orchestration, Agent Skills (100+), Claude Plugins, Tools & Utilities (50+), IDE/Editor, Clients & GUIs, Infrastructure & Proxies, Usage & Observability, SDKs, Guides & Learning. Notable high-star projects: claude-code-router (25.3k), SuperClaude (20k), claudia (19.9k), agents (25k), Claude-Flow (11.4k), zen-mcp-server (10.8k). License: CC0-1.0 (permissive)."
+  },
+  {
+    "id": "bba806f0561034d8",
+    "new_text": "Session 366: First open source Claude Code contributions. (1) PR #31633: safe-edit-guard plugin (gate 1 standalone, 140 lines, zero deps). (2) injection-guard plugin (gate 17 standalone, 200 lines, 6 categories + base64 decoding, feat/injection-guard branch). (3) Commented issue #31592: proposed exit 3 for \"ask user\" escalation. (4) Analyzed vanilla Claude comparison (70 vs GSD 72 fair). (5) Moved OptimisticChain to projects/chainovi/. (6) Researched meta-agent-teams, agent-orchestrator, SwarmWatch, Qwen-Agent."
+  },
+  {
+    "id": "d1150d3ac6ee104d",
+    "new_text": "GSD (get-shit-done) meta-prompting framework: Fresh 200k contexts per subagent, thin orchestrator (30-40% main), atomic commits per task, 4 researchers/planners/executors/verifiers/debuggers, context via PROJECT.md/STATE.md/REQUIREMENTS.md/ROADMAP.md, wave-based parallel with dependency tracking, plan verification gates, /gsd:map-codebase convention learning, 8 test files, Node.js+esbuild no prod deps, CLAUDE.md per subagent (≤500 lines), ~50% context per task (2-3 tasks/plan)."
+  },
+  {
+    "id": "2ad071cbe468ee9a",
+    "new_text": "/self-improve skill at ~/.claude/skills/self-improve/SKILL.md. Meta-skill with 7 steps: INTROSPECT (LIVE_STATE, ARCHITECTURE, CLAUDE.md), ANALYZE (memory + audit for gate blocks/errors), RESEARCH (WebSearch, skip with --quick), IDENTIFY (rank by impact/effort/risk/novelty), IMPLEMENT (plan/read/baseline/build/verify/save), VERIFY (100% regression), REPORT (summary + remember_this + LIVE_STATE). Commands: /self-improve, --quick, --area <focus>, --dry-run. Audit log analysis via Python snippet counting blocks from JSONL logs."
+  },
+  {
+    "id": "7f1a19fa0a7c517d",
+    "new_text": "ARXIV: Agent0 (arXiv:2511.16043) — symbiotic competition between agents from same LLM: Curriculum Agent proposes tasks, Executor learns to solve. No human data. +18% math, +24% general reasoning on Qwen3-8B. Torus applicability: (1) Escalating Difficulty — gates auto-increase strictness as system improves, (2) Self-Pressuring Standards — pass rate >95% triggers stricter thresholds, (3) Tool-Integrated Validation. Implementable: Gate Curriculum — track pass rates, auto-increase threshold at 95% over 50+ evals (e.g., 80%→85%). Logged to LanceDB as gate_evolution event. URL: https://arxiv.org/abs/2511.16043"
+  },
+  {
+    "id": "dc4d74e8042129ca",
+    "new_text": "[torus-voice-ios]: Built proper .xcodeproj (moshi-swift pattern). Reset voice code to commit 9e1ae04 (split-send fix: text + \\r as separate WS messages, 150ms delay). Created VoxTerm.xcodeproj with Python-generated pbxproj (objVersion 56, Xcode 14 compat), SwiftTerm SPM, sandbox+audio+network entitlements. CI: Xcode 15.4, archives .app. xcodegen abandoned (generates v77 needing Xcode 16, no iOS runtimes on macos-14). KNOWN: User hasn't confirmed .ipa installs. Voice features reverted — only record→stop→send works. Clipboard paste on tap still present."
+  },
+  {
+    "id": "ba4934998ad0aca9",
+    "new_text": "Session 390: Added multi-engine TTS to Telegram bot (bot.py). Engines: Edge-TTS (free, cloud, Microsoft, 10K limit), Piper (free, local ONNX, 19 voices), Groq Orpheus (100 req/day, 800 char). Commands: /tts (on|off), /voice (edge|piper|groq, list, <name>). Settings in config.json (tts_engine, tts_voice, tts_text_replies). Default: edge, en-US-GuyNeural, off. Piper voices: /home/crab/.claude/integrations/tts-voices/piper-voices/ (voice-web and TG bot share). _tts_synthesize() routes to active engine. Voice replies always on voice messages, optional on text via /tts on."
+  },
+  {
+    "id": "235da8fd1f89478f",
+    "new_text": "claude-simone Research (2026-02-28): 547 stars, 50 forks, 6 contributors, 124 commits. Latest: simone-mcp v0.4.0 (Aug 19), Hello-Simone v0.6.3 (Jul 23), last commit Aug 26. Dual: /legacy (dir) + /mcp-server (TS MCP, early). NO test metrics, persistent memory, mechanical gates, multi-agent native, causal chains. Handlebars templates, GitHub Projects, PR automation, YOLO mode, SQLite activity. MCP prompts: work_issue, check_activity, create_changelog, commit, refine_pr (optional-only, Claude Code issue #71). TS, @modelcontextprotocol/sdk, Handlebars, Node.js. COMPARISON: Simone=lightweight task mgr (no gates). Torus=mechanical enforcement (exit 2, LanceDB, causal chains). Limitation: All optional prompts fail in Claude Code."
+  },
+  {
+    "id": "ba50d6d7f7c8f93b",
+    "new_text": "Files ONLY on voice branch (not github-branch): (1) hooks/tts_signal.py (session ~347, Stop hook writing assistant responses to /tmp/voice-tts-signal-{target}.json, 3.7h after v2.5.9). (2) hooks/shared/model_profiles.py (session 361, MODEL_PROFILES, AGENT_ROLE_MAP, get_model_for_agent()). (3) agents/explore.md (session 361, sonnet, read-only specialist). (4) agents/plan.md (session 361, opus, architect). NOTE: voice-web files (server.py, app.js, index.html) in v2.5.9. gate_10_model_enforcement.py redesigned not new."
+  },
+  {
+    "id": "5267f7648adc2fc6",
+    "new_text": "Session 230: Torus vs claude-enforcer (AKIRA) scored comparison. Token Efficiency 82/78, Usage Cost 88/60, Speed 65/82, Consistency 88/76, Learning 90/50, Quality 82/80, Memory 92/55, Reliability 88/75. TOTAL: 84/70. AKIRA: no-hedging gate (blocks weasel, [SSH]/[AKIRA]/[FILE] citations), VPS deploy (SSH freshness, pull-before-push, backup-before-deploy, 8/hr limit), protected tiers (CURSED/CRITICAL TTL), 8 gates. Torus: causal chains, 15 MCP memory tools, 7 search modes, model guard, 17 gates. AKIRA wins speed, Torus wins learning/memory. Domain: AKIRA=trading/VPS, Torus=general. Source: jesusamongai-prog/claude-enforcer."
+  },
+  {
+    "id": "bc73fd27d71f7edc",
+    "new_text": "Session 31: AKIRA Feature Adoption — 4 features, 9 files. (1) Gate 6 threshold 5→2 (gate_06_save_fix.py). (2) Path-specific rules (hooks.md, memory.md, framework.md with glob frontmatter). (3) Gate 13 workspace isolation (gate_13_workspace_isolation.py, shared .file_claims.json with fcntl.flock, Tier 2, 2h stale). Modified: enforcer.py (GATE_MODULES + GATE_DEPENDENCIES), tracker.py (claim writing), boot.py (claim cleanup). (4) TaskCompleted warnings (event_logger.py checks state for unverified edits, unlogged errors, 3+ patterns, [TaskCompleted WARNING] to stderr, non-blocking). Tests: 867 pass, 0 fail."
+  },
+  {
+    "id": "30d61029724ddf53",
+    "new_text": "AKIRA v5.8 vs Framework v1.0.4 (Session 22). AKIRA: 638+ sessions, all 13 Claude Code hooks (we use 4), 13 gates (we have 9), 20,950 memories (196), 434 tests (307), 6 agents, 10 skills, 3 path rules. We beat AKIRA: FTS5 hybrid search vs semantic only, auto-capture observations, causal fix tracking + strategy banning, progressive disclosure, forced search modes, tag-based search. AKIRA domain gates: VPS (7,20,21,22), trading (10), model (17), rate (24), no PowerShell (25), plan save (18). Arch: AKIRA gates read-only, tracker separate. Borrow: auto-approve, audit trail, PreCompact/SessionEnd hooks, separate tracker, ingestion filter/dedup."
+  }
+]

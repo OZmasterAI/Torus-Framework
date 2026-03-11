@@ -1,0 +1,62 @@
+[
+  {
+    "id": "2a931c9817c31f6e",
+    "new_text": "Session 7 (2026-02-09): Self-Healing Framework audit (53 findings). 12 fixes implemented: Phase 1 - fail-closed on malformed input, sideband timestamp clamping, Gate 2 pattern hardening; Phase 2 - NotebookEdit added to Gates 1/5/7/8, Gate 3 exit code check, boot sideband reset, Gate 4 hooks/ exemption removed; Phase 3 - 15 new tests. Post-fix verification audit found 4 false positives. Gate 2 tuning added SAFE_EXCEPTIONS allowlist (source, exec, <<<, DELETE FROM, git stash drop). 126/126 tests passing. Residual: M3 unbounded list growth, G1-2 extension gaps, G3-2 deploy gaps, G7-3 SSH patterns, X1 two-step bypass."
+  },
+  {
+    "id": "97ca3a81888d1735",
+    "new_text": "ChromaDB Worker Upgrade Plan (Session 33): Unix Domain Socket architecture. memory_server.py becomes SINGLE PersistentClient owner, exposes UDS thread on ~/.claude/hooks/.chromadb.sock. New shared module hooks/shared/chromadb_socket.py provides is_worker_available(), request(), count(), query(), get(), upsert(), flush_queue(). 7-phase rollout: client module, UDS server, statusline/session_end/boot migration, dashboard, tests. Protocol: JSON-over-newline UDS. Graceful fallback if worker unavailable. Eliminates direct PersistentClient creation in boot.py, session_end.py, statusline.py, dashboard."
+  },
+  {
+    "id": "001e750fa6892015",
+    "new_text": "Eclipse Agave runtime diff analysis (2026-02-09): Compared 6 file groups between Eclipse and ProjectDawn. Already ported: bank.rs struct (3 PD fields), default_with_accounts(), From<DeserializableVersionedBank>. Remaining: 26 insertion points - bank.rs (10), fee_distribution.rs (2), calculation.rs (4), mod.rs (3), serde_snapshot.rs (4), snapshot_utils.rs (1). Key issue: filter_program_errors_and_collect_fee_details signature change adds sanitized_txs param, requires caller update at Eclipse line 3775."
+  },
+  {
+    "id": "7813f393c5ad66ca",
+    "new_text": "Session 27 Sprint 4 (framework-v2.0.5): 8 improvements. Dashboard: memory tag network visualization (force-directed graph), mobile responsiveness (@768px/@480px), dark/light theme. Skills: /refactor (7-step scope/impact/safety/iterate/verify) and /document (detect gaps/generate/review). Infrastructure: audit log rotation (5MB, gzip, 10 files), state versioning (v1→v2 migration), semantic memory clustering. Total: 15 skills, 572 tests, 18 MCP tools, 229 memories."
+  },
+  {
+    "id": "c082793166d07dbf",
+    "new_text": "TRv1 CI/CD audit (2026-02-20): 17 workflow files but most gated to upstream. Critical gaps: NO cargo test in CI, NO clippy/fmt enforcement, NO Docker image CI, NO cargo audit. Monitoring: 27 Prometheus metrics but NO HTTP server. Genesis: TBD values (token supply, treasury, bootstrap stake, hashes-per-tick). Release.yml works (tag-triggered, 3 platforms). Makefile ready (make ci, make ci-full). Docker: multi-stage, 3-node testnet, non-root user. Workspace v4.0.0-alpha.0."
+  },
+  {
+    "id": "61c2429c8824597a",
+    "new_text": "TRv1→eclipse-agave porting feasibility (2026-03-02): NOT directly portable, needs targeted rewrite. Blockers: SDK version gap (4.0.0-alpha vs 2.2.0), API differences (try_borrow params), crate renames, feature gate philosophy (compile-time vs runtime), Eclipse zero custom programs, fee distribution via lamport transfers not programs, passive staking integrated into stake program. Compatible: declare_process_instruction!, dispatch pattern, account operations. Best reference: agave/programs/treasury/ for 2.2.0 API."
+  },
+  {
+    "id": "30e994f7ee354d64",
+    "new_text": "TRv1 bank.rs public methods for RPC: trv1_active_validator_set() (RwLockReadGuard), trv1_slashing_state(), trv1_base_fee_per_cu() (u64), trv1_block_fee_state() (BlockFeeState copy), trv1_fee_config() (&FeeMarketConfig), get_account(), vote_accounts(), epoch(), slot(). NO executed_programs() or epoch_schedule() direct method. Fixes: Line 2035 added trv1_active_set to snapshot initializer; Line 3816 changed program_indices to program_indices() method call. Verified compiling."
+  },
+  {
+    "id": "2ff9133ad19be6c0",
+    "new_text": "Session 11 (2026-02-09): Repo rename project-dawn-l2-chain/agave-empty→agave-dawn (301 redirect). Multi-validator cluster tests PASSED: test_local_cluster_start_and_exit (1 val, 13.45s), test_spend_and_verify_all_nodes_2 (2 equal stakes, 41.61s), test_two_unbalanced_stakes (100:1 ratio, 71.13s). 52 local-cluster tests compiled. ~126s total execution. ProjectDawn mods do NOT break multi-validator consensus."
+  },
+  {
+    "id": "76b4ec702dc4792f",
+    "new_text": "ProjectDawn P0 Security Fixes Applied (2026-02-09): (1) PERMANENTLY_LOCKED guards in programs/stake/src/stake_state.rs: split(), move_stake(), move_lamports(), MergeKind::get_if_mergeable(), deactivate_delinquent(). 5 new tests. (2) Feature gate: PROJECTDAWN_FEATURE_ID in runtime/src/projectdawn_config.rs (0xDA00...0002). Bank constructors default projectdawn_enabled: false. apply_feature_activations() dynamically sets based on feature account. (3) Treasury CLI: --treasury-pubkey flag, with_treasury_pubkey() builder, u128 intermediates for overflow-safe arithmetic. 119 tests pass (0 failures)."
+  },
+  {
+    "id": "bdb91a63cd09f69c",
+    "new_text": "Eclipse Agave Metrics/Logging Pattern: Import solana_metrics (datapoint_info, datapoint_warn, inc_new_counter_info). Datapoint_info macro: (\"metric-name\", (\"field1\", value1, i64), (\"field2\", option, Option<i64>)). Examples: bank.rs lines 1993 (bank-new-from-fields), 2202 (bank-timestamp-correction). Datapoint_warn: fee_distribution.rs lines 168-173 (bank-burned_fee), 510-514 (bank-burned_rent). Instrumentation: bank.new_from_parent() line 1282, base_fee 1468-1490; bank.freeze() line 2694, fees 2711."
+  },
+  {
+    "id": "2e0dc3192a321729",
+    "new_text": "TRv1 treasury program rewrite COMPLETE (2026-02-20): TreasuryState (version: u8, authority: Pubkey, total_deposited/withdrawn: u64, slots). Discriminator 0x54, size 66 bytes. Instructions: Initialize, DepositFees, Withdraw, UpdateAuthority, GetBalance. Processor has 5 handlers. 24 tests pass. DepositFees permissionless (runtime calls); Withdraw requires authority sig; lamports held in state account itself. Slot-based tracking."
+  },
+  {
+    "id": "fa4a827e26958a8f",
+    "new_text": "TRv1 treasury program comprehensive unit tests (2026-02-20): 17 new state.rs tests. 22 tests (no feature), 41 tests (agave-unstable-api). Coverage: borsh round-trip, all fields preserved, max values, equality, clone, discriminator (0x54 as first byte), deserialize validation, version constant (1), zero counters, serialized size (66), oversized buffer, version/authority/counters bytes at offsets. Key: lib.rs gates only processor with #[cfg(feature)], not entire crate."
+  },
+  {
+    "id": "eed5088f5a3f6766",
+    "new_text": "Eclipse Agave Bank ProjectDawn State: pub(crate) fields - projectdawn_config: Arc<ProjectDawnConfig>, projectdawn_enabled: bool, fee_market_state: RwLock<BlockFeeState>. NO direct public accessors; read directly or via RwLock. Base fee: bank.fee_market_state.read().unwrap().base_fee. Fee distribution entry: bank.freeze() line 2694 → distribute_transaction_fee_details() (fee_distribution.rs 53-150+) → projectdawn_config.split_fees(). Base fee update: bank.new_from_parent() line 1282, init 1468-1490, uses calculate_next_base_fee()."
+  },
+  {
+    "id": "cdea6b486c7ebb43",
+    "new_text": "Torus-web redesign recon: 56 UI components (7 new: button-group, empty, field, input-group, item, kbd, spinner), 15 top-level, mock wallet. MUST preserve: wallet-provider.tsx, player-rankings, steam-connection, admin-*, username-modal, player-detail-modal, connect-wallet-button. Redesign profile references non-existent wallet methods (verifyIdentity, connectX, connectSteam). Navbar: admin checks in 3 places, isMounted guard. a-hole-component: vanilla Canvas Web Component. globals.css: 1181 lines, @theme block, 30+ animations. Button variants: torus, outline-pill, ghost-pill, icon-sm."
+  },
+  {
+    "id": "8f15ad9fa3d3a699",
+    "new_text": "Eclipse Agave #10 ExternalAccountDataModified error: stake program cannot modify governance-owned marker PDA (program only writes to owned accounts). FIX: Remove consume_emergency_marker() calls from stake_instruction dispatch and early_unlock(). Marker validation sufficient; marker becomes useless after unlock/deactivation without re-use risk: permanently locked changes deactivation_epoch from MAX (deactivate() won't trigger PERMANENTLY_LOCKED again); passive changes to Initialized (early_unlock() returns NotPassiveStake). Marker stays on-chain harmless."
+  }
+]

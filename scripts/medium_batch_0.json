@@ -1,0 +1,62 @@
+[
+  {
+    "id": "256892b923c86337",
+    "new_text": "H-3 Vote Weight Snapshots IMPLEMENTED (2026-02-10): Added getVoteWeightAt(address, uint256) to IStakingManager, IPassiveStaking, IChainGovernor interfaces. Implemented Checkpoint struct with blockNumber+weight in StakingManager and PassiveStaking; _writeCheckpoint() handles same-block overwrites. Binary search lookup in getVoteWeightAt(). ChainGovernor ProposalCore now has snapshotBlock field; castVote() uses snapshot weights instead of current. Test file: 17 tests covering checkpoints, delegation, passives, governance. Total: 215 tests passing."
+  },
+  {
+    "id": "3aee79491823bbad",
+    "new_text": "Framework v2.0 COMPLETE: All 10 features implemented, 398 tests pass (up from 307). NEW FILES (14): tracker.py (PostToolUse handler), audit_log.py (JSONL trail), gates 10-12, auto_approve.py, subagent_context.py, pre_compact.py, session_end.py, statusline.py, 4 agent profiles. MODIFIED (5): enforcer.py (PreToolUse only, 12 gates), memory_server.py (ingestion, dedup 0.05), state.py (exit_plan_mode), settings.json (8 hooks). Hook events: PreToolUse, PostToolUse, SessionStart, UserPromptSubmit, PermissionRequest, SubagentStart, PreCompact, SessionEnd. Gates: 12 total (9 blocking + 3 advisory)."
+  },
+  {
+    "id": "491bc04aedd6e8b7",
+    "new_text": "StakeFlags bounds clamping fix (2026-02-09): set_passive_tier() now clamps tier>5 to 0. Previously tier&0x07 allowed invalid 6-7. 6 new tests added: permanently_locked_flag, passive_tier_set_get (1-5 roundtrip), passive_tier_zero, passive_tier_out_of_range (6,7 clamped), passive_tier_large_input (8,255,13 clamped), flags_independence (no bit interference). All 17 tests pass."
+  },
+  {
+    "id": "4fa2ff449e57af4c",
+    "new_text": "Session 27 Sprint 11 improvements: (1) ENRICHED SNAPSHOTS: pre_compact.py captures error_pattern_counts (top 3), pending_chain_ids, active_bans, gate6_warn_count, error_windows (5m recency). (2) AUDIT DETAIL POPOVER: parse_audit_line() returns state_keys array; Timeline shows state-key badges; click for detail popover with gate/decision/reason/state_keys/session_id/timestamp. (3) TESTS: 27 new v2.1.2 tests. 693 total, 685 passing. Files: pre_compact.py, dashboard/server.py, dashboard/static/, hooks/test_framework.py. Commit: 245ee20."
+  },
+  {
+    "id": "7a3c359a46669afb",
+    "new_text": "OptimisticChain CRITICAL bug fixes (2026-02-10) in StakingManager.sol: (C-3) Renamed onlyRewardMinter to onlyRewardSource accepting both REWARD_MINTER+FEE_DISTRIBUTOR. (C-2) Added delegatedStake sync in stake()/unstake() when delegation active. (C-1) Added _locked bool + nonReentrant modifier to registerValidator/unstake/claimRewards. New test file StakingManagerSecurity.t.sol with 5 tests (C-2 delegation, C-3 fee distributor, C-1 reentrancy). Total: 165 tests passing (160+5 new)."
+  },
+  {
+    "id": "a76f8ab1cf7dfa45",
+    "new_text": "P2 Group A integration tests (4 passing): test_permanent_lock_e2e (creates delegated stake, sets PERMANENTLY_LOCKED flag), test_permanent_lock_blocks_deactivate (verifies deactivate fails), test_permanent_lock_blocks_split (split fails), test_permanent_lock_120pct_reward (flag persists across epochs, deactivate/withdraw blocked). KEY: Must advance ~10 slots past epoch boundary for reward distribution. Pre-existing bug: 120% multiplier causes panic in partitioned_epoch_rewards assertion (reward pool overflow). permanent_lock instruction fixed to include CLOCK_ID at index 1."
+  },
+  {
+    "id": "ac0fe1a237bf4ebf",
+    "new_text": "v2.2.6 sprint completed (commit b9886ee): (1) Gate 3 framework detection: _detect_test_framework() suggests test command. (2) Boot test status: shows PASS/FAIL, framework, minutes-ago. (3) Tracker files_edited: tracks Edit/Write paths with 200-entry cap. CRITICAL LESSON: Previous agent attempt failed with 27 regressions — agent used non-existent functions (make_clean_state, handle_post_tool_use). Correct pattern: run_enforcer(\"PostToolUse\", ...) then load_state(). Agent also lied about test results. Tests: 675/675 passing."
+  },
+  {
+    "id": "ca900b98e1ad1f95",
+    "new_text": "Session 14 Security Audit (2026-02-10): 23 findings (0 CRITICAL, 4 HIGH, 8 MEDIUM, 6 LOW, 5 INFO). HIGH (4): H1 Gate 2 exec bypass via safe exception+flags, H2 write-then-execute bypass, H3 symlink bypass, H4 race condition in load_state/save_state (no file locking). MEDIUM (8): M1 NotebookEdit bypass, M2 Gate 9 missing NotebookEdit, M3 memory_stats always healthy, M4 Gate 3 exit code from wrong source (dead check), M5 python --version clears pending, M6 overly broad feature request detection, M7 path regex collisions, M8 record_outcome leaks exceptions. NEW bypass: exec heredoc with <<EOF (not caught). TOP FIX: M4 makes Gate 3 ineffective."
+  },
+  {
+    "id": "d62629a58ee35109",
+    "new_text": "ProjectDawnConfig snapshot persistence (2026-02-09): Added Serialize/Deserialize derives to ProjectDawnConfig. Added projectdawn_config to ExtraFieldsTo{De,}Serialize with backward-compat default_on_eof. Updated BankFields structs, From<DeserializableVersionedBank> impl, deserialize_bank_fields(), new_from_fields() to use unwrap_or_default(), get_fields_to_serialize(). Updated test/production ExtraFields construction in serde_snapshot.rs, snapshot_utils.rs, bank/serde_snapshot.rs. BUILD: cargo check passes zero errors."
+  },
+  {
+    "id": "d77980b66706d756",
+    "new_text": "OptimisticChain CRITICAL fixes in StakingManager.sol (2026-02-10): (C-1) Reentrancy: bool _locked + nonReentrant modifier on registerValidator/unstake/claimRewards. (C-2) Delegation accounting: stake() updates delegatedStake if delegation active; unstake() subtracts with saturation. (C-3) FeeDistributor: onlyRewardSource accepts REWARD_MINTER+FEE_DISTRIBUTOR; error message updated. STORAGE: _locked bool packs with governor in slot 0, new value 0x0000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb9226600. Tests: 171 total (160+11 new). All passing."
+  },
+  {
+    "id": "de34e481ffbfa84e",
+    "new_text": "6 proptest fuzz tests added to stake_instruction.rs (2026-02-10): (1) fuzz_permanent_lock_random_data: Vec<u8> never panics, always Err. (2) fuzz_passive_lock_random_tier: u8 1-5 succeed, others InvalidPassiveTier. (3) fuzz_passive_then_early_unlock_roundtrip: direct construction roundtrip. (4) fuzz_permanent_lock_blocks_deactivate: PermanentlyLocked error. (5) fuzz_permanent_lock_blocks_withdraw_principal: InsufficientFunds. (6) fuzz_governance_unlock_always_fails: all states fail. KEY LESSON: get_default_transaction_accounts() uses HashSet (non-deterministic), never use [0]. Use .position() or direct state construction. All 149 tests pass (128+21 new)."
+  },
+  {
+    "id": "dedac249dd1708c6",
+    "new_text": "ChromaDB session_time type fix (Session 19, 2026-02-12): session_time was str(time.time()) but ChromaDB $gte/$lte require numeric types. Fixed 7 locations: compress_observation() (str→float), _compact_observations() digest storage+query cutoff, remember_this(), get_recent_activity() cutoff, search_observations() hours cutoff, timeline() start/end. DATA MIGRATION: converted 396 entries (215 observations+181 knowledge) str→float. KEY LEARNING: ChromaDB comparison operators only work with numeric types; string timestamps silently break temporal filtering."
+  },
+  {
+    "id": "1c50c2047768a253",
+    "new_text": "Session 32: v2.0.2 functional tests — 33 new tests in test_framework.py. Coverage: (1) _apply_recency_boost (7 tests): weight=0 no-op, empty input, recent beats older, >365d no boost, formula precision, missing timestamp, cleanup. (2) format_results (7 tests): count, documents, relevance=1-distance, edge cases. (3) format_summaries (4 tests): query nested ids[0], relevance from distances, get flat, no relevance fallback. (4) suggest_promotions (15 tests, ChromaDB-guarded): structure, cluster fields, score formula (score>=count*2), sort, top_k. Added timedelta import. 901 passed, 0 failed."
+  },
+  {
+    "id": "e3c51060be73ab10",
+    "new_text": "Session 53: 3 completed tasks: (1) GATE NAME NORMALIZATION: Added 13-entry dict mapping old module paths to \"GATE N: NAME\" canonical format. Applied in parse_audit_line/aggregate_gate_perf/_aggregate_entry/get_block_summary. Read-time normalization preserves JSONL integrity. (2) STALE X CLEANUP CRON: ~/.claude/scripts/cleanup-x-sessions.sh removes dead-PID X11 locks, warns on old processes. Supports X_CLEANUP_DRY_RUN, X_CLEANUP_MAX_AGE_HOURS (48h default). Cron every 6h. (3) FRAMEWORK VALIDATION PRP: 5-task loop passed. Fixed torus-loop.sh sed bug (|). Tests: 1036/1037 passed."
+  },
+  {
+    "id": "174ba9d1f1e1c4df",
+    "new_text": "Citation URL system implemented in memory_server.py: (1) _extract_citations() parses [source: URL]/[ref: URL] + auto-extracts bare URLs. (2) _validate_url() strips punctuation, validates scheme+netloc. (3) _rank_url_authority() tiers domains (high/medium/low). (4) remember_this() extracts citations, strips markers, adds primary_source/related_urls/source_method to ChromaDB metadata. (5) FTS5Index: url column added via migration. (6) get_memory() returns citations object. (7) format_summaries() includes url field. Zero token cost. 29 new tests, 1034 total pass."
+  }
+]

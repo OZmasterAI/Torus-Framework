@@ -1,0 +1,62 @@
+[
+  {
+    "id": "7685b8a26554a1b7",
+    "new_text": "Enforcer Daemon Mode (Session 209): Optional persistent UDS server eliminates Python import cost for gated tool calls. Created enforcer_daemon.py (persistent server at .enforcer.sock, wraps enforcer.main()) and enforcer_shim.py (thin entry point with fast path ~75ms via socket, slow path ~141ms fallback). Modified settings.json (PreToolUse → enforcer_shim.py), config.json (\"enforcer_daemon\": false toggle), boot_pkg/orchestrator.py (optional daemon start), session_end.py (daemon SIGTERM stop). Benchmark: 141ms → 75ms = 47% savings per gated call. Tests: 1448/1448 pass, zero regressions. Toggle via config.json."
+  },
+  {
+    "id": "e0b2eee75e6e8e26",
+    "new_text": "Created hooks/shared/error_pattern_analyzer.py: cross-session error pattern analysis module. Functions: extract_pattern(msg) normalizes error strings to canonical labels (gate1:read-before-edit, fs:file-not-found); analyze_errors(entries) full analysis from audit log; top_patterns(entries, n) top N patterns by frequency; correlate_errors(entries) finds co-occurring pairs within 5-event window; suggest_prevention(pattern) returns prevention tip. _PATTERN_TABLE has 35 entries covering 16 gates + Python/filesystem/network/test errors. All inputs fail-open. Gate 4 fix: UUID session agents lacked sideband file; updated memory_last_queried via load_state/save_state before Write."
+  },
+  {
+    "id": "bc6c5760b781329f",
+    "new_text": "Enforcer/Tracker Sideband Split (Session 289): Single-writer state architecture. Modified shared/state.py (added sideband read/write/delete functions), enforcer.py (replaced 5 save_state calls with write_enforcer_sideband, no save_state import), tracker_pkg/orchestrator.py (sideband merge after load_state, delete sideband after save_state), test_framework.py (8 new sideband tests). All 5493 tests pass. Enforcer has 0 save_state calls, tracker has exactly 1. Sideband files at STATE_DIR/.enforcer_sideband_{session_id}.json. Race fix: enforcer never writes disk state; tracker reads sideband, merges, writes disk, deletes sideband."
+  },
+  {
+    "id": "dcefc538fa39cf1c",
+    "new_text": "LSP plugins installed (Session 24). Three language servers: pyright-lsp (Python, /home/linuxbrew/.linuxbrew/bin/pyright-langserver via npm), rust-analyzer-lsp (Rust, /home/crab/.cargo/bin/rust-analyzer via rustup), typescript-lsp (TypeScript/JS, /home/linuxbrew/.linuxbrew/bin/typescript-language-server via npm). Setup: Added anthropics/claude-plugins-official marketplace, ENABLE_LSP_TOOL=1 to ~/.bashrc. Requires Claude Code 2.0.74+ (tested 2.1.39). Known issue: pyright-lsp marketplace.json config may not propagate (GitHub #16219); if LSP doesn't activate, may need manual .lsp.json config."
+  },
+  {
+    "id": "9c81fc9e683b4d15",
+    "new_text": "Enhanced hooks/shared/health_monitor.py (Session Self-Sprint-2). Added 5 simple-API functions each returning {\"status\": \"healthy|degraded|unhealthy\", \"details\": str, \"timestamp\": float}: check_gate_health() (verifies 17 gate files + check() callable), check_state_health(session_id) (validates state JSON), check_memory_health() (checks .memory_last_queried age, threshold 1hr), check_test_health() (reads stats-cache.json, healthy if <1h old), full_health_check(session_id) (runs all 4 + extended, combines \"ok\"/\"healthy\"=100, \"degraded\"=50, \"unhealthy\"=0). Backward compat preserved. Scoring: 60% simple + 40% extended weighted. Added --check gate|state|memory|test CLI. Tests: 1208 passed, 4 failed (improved from 1206/6)."
+  },
+  {
+    "id": "7c2b400e9565d7a1",
+    "new_text": "Created hooks/shared/health_monitor.py (Session Self-Sprint-2). Full-featured health monitoring: check_gates_health() (verifies 17 gates + check() callable), check_memory_health() (ChromaDB UDS socket ping, knowledge count), check_state_health(session_id) (validates state JSON), check_ramdisk_health() (checks RAMDISK_DIR writable), check_audit_health() (audit dir writable, counts .jsonl), full_health_check(session_id) (all 5 checks, weighted score 40/25/15/10/10), get_degraded_components(). Thresholds: score≥80 healthy, ≥40 degraded, <40 critical. Verified: parses clean, live run DEGRADED 75/100 (memory expected down). CLI: python3 -m shared.health_monitor [--session-id X] [--json] [--component gates|memory|state|ramdisk|audit]"
+  },
+  {
+    "id": "697aa1ee4711ef64",
+    "new_text": "Session 234: Consolidated FTS5 → LanceDB native FTS + TagIndex. Deleted 268-line FTS5Index class, replaced with ~60-line TagIndex class (SQLite tags-only table for boolean AND/OR). Keyword search: LanceDB BM25 FTS (~19ms vs old FTS5 0.6ms, imperceptible since embedding 200ms). Tag search unchanged <2ms. Changes: (1) TAGS_DB_PATH replaces FTS5_DB_PATH, (2) _lance_keyword_search() replaces fts_index.keyword_search(), (3) tag_index.tag_search() returns memory_id strings (use _tag_ids_to_summaries to hydrate), (4) add_tags(memory_id, tags_str) replaces add_entry(), (5) LanceDB FTS at startup via create_fts_index(), (6) _lance_fts_ready flag gates keyword search. Bug fix: add_tags needs explicit commit(). Tests: 1425 passed, 2 failed (pre-existing)."
+  },
+  {
+    "id": "b6c920fe4cbe708a",
+    "new_text": "ChromaDB UDS Gateway complete (Session 36). 7 phases: Phase 1: chromadb_socket.py client (SOCKET_PATH, WorkerUnavailable, is_worker_available, request, ping, count, query, get, upsert, flush_queue). Phase 2: UDS server in memory_server.py (daemon thread on .chromadb.sock, atexit cleanup, stale socket removal). Phase 3-7: statusline.py, session_end.py, boot.py, dashboard/server.py, test_framework.py all replaced direct ChromaDB access with socket calls (socket_count, socket_query, socket_get, socket_flush). Result: single-owner guarantee. Only memory_server.py creates PersistentClient. Eliminated all pgrep guards and direct chromadb imports from consumers. Tests: 925 total, 0 failures."
+  },
+  {
+    "id": "a833c967e82f03c2",
+    "new_text": "Created hooks/shared/metrics_exporter.py (session 268, task #18). Prometheus-compatible metrics export, 199 lines. Exports: torus_gate_blocks_total (counter/gate), torus_gate_fires_total (counter), torus_gate_latency_seconds (histogram, ms→s 0.001), torus_memory_count{table=\"knowledge\"} (gauge with label), torus_memory_queries_total (counter), torus_session_tool_calls_total (counter), torus_errors_total (sum of blocks), torus_health_score (gauge from health_monitor). Sources: metrics_collector.get_all_metrics() + health_monitor.full_health_check(). Default write: /tmp/torus_metrics.prom. Fail-open—file write errors swallowed. Verified: smoke test passes, all 8 metric keys present, 1658 bytes written."
+  },
+  {
+    "id": "9c33872f6d8778e6",
+    "new_text": "Session 27 Self-Improvement Sprint 2: 9 improvements across 3 streams. SECURITY (3): (1) File locking in state.py—fcntl.flock around load/save_state. (2) Gate 2 bypass fixes—shlex tokenization for -c/-e flags, os.path.realpath symlink validation, << heredoc to DANGEROUS_PATTERNS. (3) Gate 3 exit code fix + timing—read from tool_response, time.time() instrumentation >100ms logs. NEW SKILLS (2): /explore skill (memory check, scope map, trace flow, visualization), /review skill (memory check, scan git diff, linters, secrets, corrections, severity-ranked). MEMORY (1): list_stale_memories MCP (queries age/retrievals). DASHBOARD (3): gate-perf endpoint, audit log query, session comparison. Total: 13 skills, 539 tests, 16 MCP tools. All compile clean."
+  },
+  {
+    "id": "08a7f082f6b8fc63",
+    "new_text": "Sprint 2 testing improvements: 56 new tests for 5 shared modules. (1) error_normalizer: hex/timestamp/number normalization, fnv1a_hash 8-char hex determinism, error_signature tuple, lowercase, git hash stripping. (2) observation: Read/Bash/Edit/Glob/Grep/Write/unknown tool types, has_error detection, priority logic, obs_ ID prefix, char count in Write. (3) audit_log: tmpdir isolation, log creates file+trail, schema validation, filtering, limit, compact, block_summary, empty trail. (4) anomaly_detector: EMA/trend/consensus—compute_ema length/first/empty, detect_trend rising/falling/stable/single/keys, anomaly_consensus empty/quorum/max_severity. (5) config_validator: validate_settings/live_state/gates/skills with missing/invalid/valid/unknown-event cases."
+  },
+  {
+    "id": "7e8cc0c2f6435cf1",
+    "new_text": "MCP Tool Consolidation Analysis (Session 83). Current 17 tools cost ~2,830 tokens/prompt. Consolidating to ~10 would save ~1,170 tokens (6% total). NEGATIVES: (1) Worse tool selection accuracy, (2) Longer per-tool descriptions eat savings, (3) Conditional parameter confusion, (4) Gate 4 refactor needed, (5) Blurs knowledge/observations boundary. MIDDLE GROUND: Merge obvious pairs (get_memory+get_observation) for ~500 tokens with minimal loss. HIGHEST LEVERAGE: Disabling Agent Teams saves ~5,300 tokens (28% total)—far more impactful than MCP consolidation."
+  },
+  {
+    "id": "a8d7083528d84cf0",
+    "new_text": "Created hooks/shared/anomaly_detector.py: gate fire rate anomaly detection module. Functions: compute_baseline(history, window=10)—averages gate rates over trailing window; detect_anomalies(current, baseline, threshold_sigma=2.0)—flags gates exceeding (mean + sigma*stddev), returns dicts with gate/current_rate/baseline_rate/delta/sigma; detect_stuck_loop(recent_gates, window=20, threshold=0.7)—returns gate if ≥threshold fraction of window; should_escalate(anomalies, stuck_gate)—returns (bool, str) if stuck loop detected or ≥3 simultaneous anomalies or delta≥5.0. Added 7 tests to test_framework.py (lines 11020-11109). All 7 pass. Full suite ~1200 tests."
+  },
+  {
+    "id": "a3514a81d0354be0",
+    "new_text": "Added session behavioral drift detection to anomaly_detector.py. Three functions: get_session_baseline(state)—extracts tool_call_rate, gate_block_rate, error_rate, memory_query_interval; compare_to_baseline(current_metrics, baseline)—returns deviations exceeding thresholds; detect_behavioral_anomaly(state)—flags tool_call_burst (sigma>3.0, needs 20+ tools), high_block_rate (>50%), high_error_rate (>30%), memory_query_gap (>600s). Key: tool_call_burst requires many tools with count=1 for sigma>3.0; with only 4 tools sigma~1.73 regardless of imbalance. Added 10 tests to test_framework.py in '--- Behavioral Anomaly Detection ---' section (around line 11287). All 10 pass when run directly."
+  },
+  {
+    "id": "a3c1710a3d9eece5",
+    "new_text": "GitHub-ready copy workflow: Created ~/Desktop/torus-github/ as clean public repo copy of ~/.claude/. Key learnings: (1) sync.sh copies git-tracked files excluding personal configs (config.json, mcp.json, plugins/installed_plugins.json). (2) Auto-format hook replaces paths in Write-generated files—use Python gen_sync.py with raw strings (r'''...'''). (3) Split personal path across bash variables (PERSONAL=\"/hom\"; PERSONAL=\"${PERSONAL}e\") to survive auto-format. (4) sed fix for LANCE_PATH adds import os after shebang line. (5) Path replacements: Python ~, JSON $HOME, shell $HOME, markdown ~. (6) Template files: config.example.json, mcp.example.json, integrations/telegram-bot/config.example.json."
+  }
+]
