@@ -97,7 +97,9 @@ mcp-needs-auth-cache.json
 backupclaude.md
 architecture.html
 diagram.html
-docs/diagrams/*.html.bak
+
+# Generated diagrams (local reference only)
+docs/diagrams/
 
 # Pycache in skill libraries
 dormant/**/scripts/__pycache__/

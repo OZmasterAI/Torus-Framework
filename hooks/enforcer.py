@@ -27,15 +27,28 @@ import time
 
 # Add parent to path for shared imports
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.state import load_state, update_gate_effectiveness, get_live_toggle, write_enforcer_sideband, read_enforcer_sideband
+from shared.state import (
+    load_state,
+    update_gate_effectiveness,
+    get_live_toggle,
+    write_enforcer_sideband,
+    read_enforcer_sideband,
+)
 from shared.gate_result import GateResult
 from shared.audit_log import log_gate_decision
 from shared.circuit_breaker import should_skip_gate, record_gate_result
 from shared.gate_router import get_optimal_gate_order, update_qtable, flush_qtable
-from shared.gate_timing import record_timing as _record_gate_timing, flush_timings as _flush_timings
+from shared.gate_timing import (
+    record_timing as _record_gate_timing,
+    flush_timings as _flush_timings,
+)
 from shared.security_profiles import should_skip_for_profile, get_gate_mode_for_profile
 from shared.domain_registry import get_effective_gate_mode as _domain_gate_mode
-from shared.metrics_collector import record_gate_fire as _mc_fire, record_gate_block as _mc_block, record_gate_latency as _mc_latency
+from shared.metrics_collector import (
+    record_gate_fire as _mc_fire,
+    record_gate_block as _mc_block,
+    record_gate_latency as _mc_latency,
+)
 
 
 # -- Gate Result Cache ----------------------------------------------------
@@ -62,13 +75,13 @@ _cache_misses: int = 0
 # Fields included in cache key per tool -- only fields that affect gate
 # decisions, to avoid spurious cache misses (e.g. new_string in Edit).
 _CACHE_KEY_FIELDS: dict = {
-    "Edit":         ("file_path", "old_string"),
-    "Write":        ("file_path",),
+    "Edit": ("file_path", "old_string"),
+    "Write": ("file_path",),
     "NotebookEdit": ("notebook_path", "cell_number"),
-    "Bash":         ("command",),
-    "Task":         ("model", "subagent_type", "description"),
-    "WebFetch":     ("url",),
-    "WebSearch":    ("query",),
+    "Bash": ("command",),
+    "Task": ("model", "subagent_type", "description"),
+    "WebFetch": ("url",),
+    "WebSearch": ("query",),
 }
 _CACHE_KEY_FIELDS_DEFAULT: tuple = ("file_path", "command", "url", "query")
 
@@ -77,7 +90,9 @@ def _make_cache_key(gate_name: str, tool_name: str, tool_input: dict) -> str:
     """Build a stable 16-char hex cache key (first 64 bits of SHA-256)."""
     fields = _CACHE_KEY_FIELDS.get(tool_name, _CACHE_KEY_FIELDS_DEFAULT)
     relevant = {k: tool_input.get(k, "") for k in fields}
-    raw = json.dumps((gate_name, tool_name, relevant), sort_keys=True, separators=(",", ":"))
+    raw = json.dumps(
+        (gate_name, tool_name, relevant), sort_keys=True, separators=(",", ":")
+    )
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -100,7 +115,9 @@ def _get_cached_gate_result(gate_name: str, tool_name: str, tool_input: dict):
     return entry["result"]
 
 
-def _store_gate_result(gate_name: str, tool_name: str, tool_input: dict, result) -> None:
+def _store_gate_result(
+    gate_name: str, tool_name: str, tool_input: dict, result
+) -> None:
     """Cache a non-blocking, non-ask GateResult for future lookups."""
     if not GATE_CACHE_ENABLED:
         return
@@ -138,10 +155,22 @@ TIER1_SAFETY_GATES = {
 
 # Tools that are always allowed (never gated)
 ALWAYS_ALLOWED_TOOLS = {
-    "Read", "Glob", "Grep", "WebFetch", "WebSearch",
-    "AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
-    "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
-    "TeamCreate", "TeamDelete", "SendMessage", "TaskStop",
+    "Read",
+    "Glob",
+    "Grep",
+    "WebFetch",
+    "WebSearch",
+    "AskUserQuestion",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "TaskCreate",
+    "TaskUpdate",
+    "TaskList",
+    "TaskGet",
+    "TeamCreate",
+    "TeamDelete",
+    "SendMessage",
+    "TaskStop",
 }
 
 # MCP memory tools are always allowed
@@ -166,7 +195,11 @@ def is_analytics_tool(tool_name):
 
 
 def is_always_allowed(tool_name):
-    return tool_name in ALWAYS_ALLOWED_TOOLS or is_memory_tool(tool_name) or is_analytics_tool(tool_name)
+    return (
+        tool_name in ALWAYS_ALLOWED_TOOLS
+        or is_memory_tool(tool_name)
+        or is_analytics_tool(tool_name)
+    )
 
 
 # Tools that bypass most gates but still run Gate 17 (injection defense)
@@ -199,7 +232,15 @@ GATE_DEPENDENCIES = {
         "writes": [],
     },
     "gate_06_save_fix": {
-        "reads": ["gate6_warn_count", "verified_fixes", "unlogged_errors", "error_pattern_counts", "pending_chain_ids", "last_exit_plan_mode", "memory_last_queried"],
+        "reads": [
+            "gate6_warn_count",
+            "verified_fixes",
+            "unlogged_errors",
+            "error_pattern_counts",
+            "pending_chain_ids",
+            "last_exit_plan_mode",
+            "memory_last_queried",
+        ],
         "writes": ["gate6_warn_count"],
     },
     "gate_07_critical_file_guard": {
@@ -228,7 +269,12 @@ GATE_DEPENDENCIES = {
         "writes": [],
     },
     "gate_14_confidence_check": {
-        "reads": ["session_test_baseline", "pending_verification", "memory_last_queried", "confidence_warnings_per_file"],
+        "reads": [
+            "session_test_baseline",
+            "pending_verification",
+            "memory_last_queried",
+            "confidence_warnings_per_file",
+        ],
         "writes": ["confidence_warnings_per_file", "confidence_warned_signals"],
     },
     "gate_15_causal_chain": {
@@ -236,7 +282,7 @@ GATE_DEPENDENCIES = {
         "writes": [],
     },
     "gate_16_code_quality": {
-        "reads": ["code_quality_warnings_per_file"],
+        "reads": ["code_quality_warnings_per_file", "gate_tune_overrides"],
         "writes": ["code_quality_warnings_per_file"],
     },
     "gate_17_injection_defense": {
@@ -245,20 +291,36 @@ GATE_DEPENDENCIES = {
     },
     "gate_18_canary": {
         "reads": [
-            "canary_tool_counts", "canary_seen_tools", "canary_total_calls",
-            "canary_size_count", "canary_size_mean", "canary_size_m2",
-            "canary_short_timestamps", "canary_long_timestamps", "canary_recent_seq",
+            "canary_tool_counts",
+            "canary_seen_tools",
+            "canary_total_calls",
+            "canary_size_count",
+            "canary_size_mean",
+            "canary_size_m2",
+            "canary_short_timestamps",
+            "canary_long_timestamps",
+            "canary_recent_seq",
         ],
         "writes": [
-            "canary_tool_counts", "canary_seen_tools", "canary_total_calls",
-            "canary_size_count", "canary_size_mean", "canary_size_m2",
-            "canary_short_timestamps", "canary_long_timestamps", "canary_recent_seq",
+            "canary_tool_counts",
+            "canary_seen_tools",
+            "canary_total_calls",
+            "canary_size_count",
+            "canary_size_mean",
+            "canary_size_m2",
+            "canary_short_timestamps",
+            "canary_long_timestamps",
+            "canary_recent_seq",
         ],
     },
     "gate_19_hindsight": {
         "reads": [
-            "mentor_last_verdict", "mentor_last_score", "mentor_escalation_count",
-            "mentor_chain_score", "mentor_memory_match", "mentor_warned_this_cycle",
+            "mentor_last_verdict",
+            "mentor_last_score",
+            "mentor_escalation_count",
+            "mentor_chain_score",
+            "mentor_memory_match",
+            "mentor_warned_this_cycle",
             "fixing_error",
         ],
         "writes": [],
@@ -293,7 +355,10 @@ GATE_TOOL_MAP = {
     "gates.gate_14_confidence_check": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_15_causal_chain": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_16_code_quality": {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_17_injection_defense": {"WebFetch", "WebSearch"},  # + MCP tools checked internally
+    "gates.gate_17_injection_defense": {
+        "WebFetch",
+        "WebSearch",
+    },  # + MCP tools checked internally
     "gates.gate_18_canary": None,  # Universal — observes all tool calls
     "gates.gate_19_hindsight": {"Edit", "Write", "NotebookEdit"},
 }
@@ -304,10 +369,10 @@ GATE_TOOL_MAP = {
 # Hot-reload checks filesystem every RELOAD_CHECK_INTERVAL seconds.
 
 RELOAD_CHECK_INTERVAL = 30  # seconds between mtime checks
-_gate_mtimes = {}           # module_name -> last known mtime
-_last_reload_check = 0.0    # timestamp of last mtime scan
-_loaded_gates = {}           # module_name -> module (cached after first load)
-_gates_loaded = False        # True after first successful full load
+_gate_mtimes = {}  # module_name -> last known mtime
+_last_reload_check = 0.0  # timestamp of last mtime scan
+_loaded_gates = {}  # module_name -> module (cached after first load)
+_gates_loaded = False  # True after first successful full load
 
 
 def _get_gate_file_path(module_name):
@@ -348,7 +413,9 @@ def _check_and_reload_gates():
                     if hasattr(mod, "check"):
                         _loaded_gates[module_name] = mod
                     log_gate_decision(
-                        module_name, "reload", "pass",
+                        module_name,
+                        "reload",
+                        "pass",
                         f"Gate reloaded (file modified, mtime {current_mtime:.0f})",
                         "",
                         severity="info",
@@ -385,7 +452,10 @@ def _ensure_gates_loaded():
                         pass
         except ImportError as e:
             if module_name not in TIER1_SAFETY_GATES:
-                print(f"[ENFORCER] Warning: Gate '{module_name}' failed to load: {e}", file=sys.stderr)
+                print(
+                    f"[ENFORCER] Warning: Gate '{module_name}' failed to load: {e}",
+                    file=sys.stderr,
+                )
 
     # Verify all Tier 1 safety gates loaded successfully (fail-closed)
     loaded_names = set(_loaded_gates.keys())
@@ -424,7 +494,9 @@ def handle_pre_tool_use(tool_name, tool_input, state):
         g17_key = "gates.gate_17_injection_defense"
         if g17_key in _loaded_gates:
             try:
-                result = _loaded_gates[g17_key].check(tool_name, tool_input, state, event_type="PreToolUse")
+                result = _loaded_gates[g17_key].check(
+                    tool_name, tool_input, state, event_type="PreToolUse"
+                )
                 if result and result.blocked:
                     print(result.message, file=sys.stderr)
                     sys.exit(2)
@@ -464,7 +536,9 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 record_gate_result(gate_short, success=True)
             else:
                 t0 = time.time()
-                result = gate.check(tool_name, tool_input, state, event_type="PreToolUse")
+                result = gate.check(
+                    tool_name, tool_input, state, event_type="PreToolUse"
+                )
                 elapsed_ms = (time.time() - t0) * 1000
                 record_gate_result(gate_short, success=True)
                 _store_gate_result(gate_short, tool_name, tool_input, result)
@@ -482,20 +556,36 @@ def handle_pre_tool_use(tool_name, tool_input, state):
 
             # Update gate timing stats
             timing = state.setdefault("gate_timing_stats", {})
-            entry = timing.setdefault(gate_short, {"count": 0, "total_ms": 0.0, "min_ms": 999999, "max_ms": 0.0})
+            entry = timing.setdefault(
+                gate_short,
+                {"count": 0, "total_ms": 0.0, "min_ms": 999999, "max_ms": 0.0},
+            )
             entry["count"] += 1
             entry["total_ms"] += elapsed_ms
             entry["min_ms"] = min(entry["min_ms"], elapsed_ms)
             entry["max_ms"] = max(entry["max_ms"], elapsed_ms)
 
             if elapsed_ms > 100:
-                log_gate_decision(gate_label, tool_name, "slow",
-                                  f"gate took {elapsed_ms:.0f}ms (>100ms threshold)", session_id, state_keys_read,
-                                  severity="warn")
+                log_gate_decision(
+                    gate_label,
+                    tool_name,
+                    "slow",
+                    f"gate took {elapsed_ms:.0f}ms (>100ms threshold)",
+                    session_id,
+                    state_keys_read,
+                    severity="warn",
+                )
             if result.is_ask:
                 # Graduated escalation: ask user for permission instead of blocking
-                log_gate_decision(gate_label, tool_name, "ask", result.message, session_id, state_keys_read,
-                                  severity=result.severity)
+                log_gate_decision(
+                    gate_label,
+                    tool_name,
+                    "ask",
+                    result.message,
+                    session_id,
+                    state_keys_read,
+                    severity=result.severity,
+                )
                 hook_decision = result.to_hook_decision()
                 # Q-learning: treat ask as a block (gate did something useful)
                 update_qtable(gate.__name__, tool_name, blocked=True)
@@ -506,23 +596,43 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 print(json.dumps(hook_decision), file=sys.stdout)
                 flush_qtable()
                 _flush_timings()
-                write_enforcer_sideband(state, session_id=state.get("_session_id", "main"))
+                write_enforcer_sideband(
+                    state, session_id=state.get("_session_id", "main")
+                )
                 sys.exit(0)
             elif result.blocked:
                 # Domain + security profile: downgrade block to warn if mode says "warn"
                 # Tier 1 safety gates are never downgraded regardless of profile/domain
-                if _effective_mode == "warn" and gate.__name__ not in TIER1_SAFETY_GATES:
-                    log_gate_decision(gate_label, tool_name, "warn",
-                                      f"[profile:downgraded] {result.message}",
-                                      session_id, state_keys_read, severity="warn")
+                if (
+                    _effective_mode == "warn"
+                    and gate.__name__ not in TIER1_SAFETY_GATES
+                ):
+                    log_gate_decision(
+                        gate_label,
+                        tool_name,
+                        "warn",
+                        f"[profile:downgraded] {result.message}",
+                        session_id,
+                        state_keys_read,
+                        severity="warn",
+                    )
                     passed_gates.append(gate.__name__)
                     try:
-                        _record_gate_timing(gate_short, tool_name, elapsed_ms, blocked=False)
+                        _record_gate_timing(
+                            gate_short, tool_name, elapsed_ms, blocked=False
+                        )
                     except Exception:
                         pass
                     continue
-                log_gate_decision(gate_label, tool_name, "block", result.message, session_id, state_keys_read,
-                                  severity=result.severity)
+                log_gate_decision(
+                    gate_label,
+                    tool_name,
+                    "block",
+                    result.message,
+                    session_id,
+                    state_keys_read,
+                    severity=result.severity,
+                )
                 # Track gate block counts for diagnostics
                 block_counts = state.setdefault("gate_block_counts", {})
                 block_counts[gate_short] = block_counts.get(gate_short, 0) + 1
@@ -533,9 +643,21 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 except Exception:
                     pass  # Metrics are non-fatal
                 # Record block outcome for later resolution tracking
-                file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "") or tool_input.get("command", "")[:100]
+                file_path = (
+                    tool_input.get("file_path", "")
+                    or tool_input.get("notebook_path", "")
+                    or tool_input.get("command", "")[:100]
+                )
                 outcomes = state.setdefault("gate_block_outcomes", [])
-                outcomes.append({"gate": gate_short, "tool": tool_name, "file": file_path, "timestamp": time.time(), "resolved_by": None})
+                outcomes.append(
+                    {
+                        "gate": gate_short,
+                        "tool": tool_name,
+                        "file": file_path,
+                        "timestamp": time.time(),
+                        "resolved_by": None,
+                    }
+                )
                 if len(outcomes) > 100:
                     state["gate_block_outcomes"] = outcomes[-100:]
                 # Q-learning: update qtable — this gate blocked
@@ -548,22 +670,42 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 print(result.message, file=sys.stderr)
                 flush_qtable()
                 _flush_timings()
-                write_enforcer_sideband(state, session_id=state.get("_session_id", "main"))
+                write_enforcer_sideband(
+                    state, session_id=state.get("_session_id", "main")
+                )
                 sys.exit(2)
             elif result.message:
-                log_gate_decision(gate_label, tool_name, "warn", result.message, session_id, state_keys_read,
-                                  severity="warn")
+                log_gate_decision(
+                    gate_label,
+                    tool_name,
+                    "warn",
+                    result.message,
+                    session_id,
+                    state_keys_read,
+                    severity="warn",
+                )
                 passed_gates.append(gate.__name__)
                 try:
-                    _record_gate_timing(gate_short, tool_name, elapsed_ms, blocked=False)
+                    _record_gate_timing(
+                        gate_short, tool_name, elapsed_ms, blocked=False
+                    )
                 except Exception:
                     pass  # Timing analytics are non-fatal
             else:
-                log_gate_decision(gate_label, tool_name, "pass", "", session_id, state_keys_read,
-                                  severity="info")
+                log_gate_decision(
+                    gate_label,
+                    tool_name,
+                    "pass",
+                    "",
+                    session_id,
+                    state_keys_read,
+                    severity="info",
+                )
                 passed_gates.append(gate.__name__)
                 try:
-                    _record_gate_timing(gate_short, tool_name, elapsed_ms, blocked=False)
+                    _record_gate_timing(
+                        gate_short, tool_name, elapsed_ms, blocked=False
+                    )
                 except Exception:
                     pass  # Timing analytics are non-fatal
         except Exception as e:
@@ -572,16 +714,37 @@ def handle_pre_tool_use(tool_name, tool_input, state):
             deps = GATE_DEPENDENCIES.get(gate_short, {})
             state_keys_read = deps.get("reads", [])
             if gate.__name__ in TIER1_SAFETY_GATES:
-                log_gate_decision(gate_label, tool_name, "block", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
-                                  severity="error")
-                print(f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate_label}' crashed: {e}", file=sys.stderr)
+                log_gate_decision(
+                    gate_label,
+                    tool_name,
+                    "block",
+                    f"crash: {e}",
+                    state.get("_session_id", ""),
+                    state_keys_read,
+                    severity="error",
+                )
+                print(
+                    f"[ENFORCER] BLOCKED: Tier 1 safety gate '{gate_label}' crashed: {e}",
+                    file=sys.stderr,
+                )
                 flush_qtable()
                 _flush_timings()
-                write_enforcer_sideband(state, session_id=state.get("_session_id", "main"))
+                write_enforcer_sideband(
+                    state, session_id=state.get("_session_id", "main")
+                )
                 sys.exit(2)
-            log_gate_decision(gate_label, tool_name, "crash", f"crash: {e}", state.get("_session_id", ""), state_keys_read,
-                              severity="warn")
-            print(f"[ENFORCER] Warning: Gate error in {gate_label}: {e}", file=sys.stderr)
+            log_gate_decision(
+                gate_label,
+                tool_name,
+                "crash",
+                f"crash: {e}",
+                state.get("_session_id", ""),
+                state_keys_read,
+                severity="warn",
+            )
+            print(
+                f"[ENFORCER] Warning: Gate error in {gate_label}: {e}", file=sys.stderr
+            )
 
     # Q-learning: all gates passed — update qtable for each gate that ran and passed
     for gate_name in passed_gates:
@@ -615,7 +778,10 @@ def main():
     # Fail-closed for write-like tools with missing/empty tool_input
     if tool_name in ("Bash", "Edit", "Write", "NotebookEdit"):
         if not tool_input:
-            print(f"[ENFORCER] BLOCKED: Missing or empty tool_input for {tool_name}", file=sys.stderr)
+            print(
+                f"[ENFORCER] BLOCKED: Missing or empty tool_input for {tool_name}",
+                file=sys.stderr,
+            )
             sys.exit(2)
 
     session_id = data.get("session_id", "main")
@@ -638,11 +804,15 @@ def main():
     # without requiring a full SessionStart boot sequence.
     # Only triggers for UUID-pattern session IDs (real subagent sessions).
     # Main sessions must query memory explicitly (no boot pre-write); test sessions are excluded.
-    if (not state.get("_sideband_refreshed")
-            and len(session_id) >= 8 and session_id[8:9] == "-"
-            and all(c in "0123456789abcdef" for c in session_id[:8])):
+    if (
+        not state.get("_sideband_refreshed")
+        and len(session_id) >= 8
+        and session_id[8:9] == "-"
+        and all(c in "0123456789abcdef" for c in session_id[:8])
+    ):
         try:
             from boot_pkg.memory import _write_sideband_timestamp
+
             _write_sideband_timestamp()
         except Exception:
             pass  # Best-effort — subagent can still query memory to refresh

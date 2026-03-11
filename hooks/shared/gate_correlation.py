@@ -24,6 +24,25 @@ AUDIT_DIRS = [
 ]
 
 
+def _read_one_file(audit_dir, date_str, suffix):
+    """Read all valid JSON entries from one audit log file. Returns [] on any error."""
+    path = os.path.join(audit_dir, f"{date_str}.jsonl{suffix}")
+    if not os.path.isfile(path):
+        return []
+    entries = []
+    try:
+        opener = gzip.open if suffix else open
+        with opener(path, "rt") as f:
+            for line in f:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except Exception:
+        return []
+    return entries
+
+
 def _read_audit_entries(days=7):
     """Read audit log entries from the last N days."""
     entries = []
@@ -31,19 +50,7 @@ def _read_audit_entries(days=7):
         d = (date.today() - timedelta(days=delta)).isoformat()
         for audit_dir in AUDIT_DIRS:
             for suffix in ["", ".gz"]:
-                path = os.path.join(audit_dir, f"{d}.jsonl{suffix}")
-                if not os.path.isfile(path):
-                    continue
-                try:
-                    opener = gzip.open if suffix else open
-                    with opener(path, "rt") as f:
-                        for line in f:
-                            try:
-                                entries.append(json.loads(line))
-                            except json.JSONDecodeError:
-                                continue
-                except Exception:
-                    continue
+                entries.extend(_read_one_file(audit_dir, d, suffix))
     return entries
 
 
@@ -84,16 +91,20 @@ def analyze_correlations(days=7):
 
     # Calculate percentages
     pairs = []
-    for (gate_a, gate_b), count in sorted(co_occurrence.items(), key=lambda x: x[1], reverse=True):
+    for (gate_a, gate_b), count in sorted(
+        co_occurrence.items(), key=lambda x: x[1], reverse=True
+    ):
         # Percentage relative to the less common gate
         min_blocks = min(gate_blocks.get(gate_a, 1), gate_blocks.get(gate_b, 1))
         pct = (count / min_blocks * 100) if min_blocks > 0 else 0
-        pairs.append({
-            "gate_a": gate_a,
-            "gate_b": gate_b,
-            "co_occurrence_pct": round(pct, 1),
-            "count": count,
-        })
+        pairs.append(
+            {
+                "gate_a": gate_a,
+                "gate_b": gate_b,
+                "co_occurrence_pct": round(pct, 1),
+                "count": count,
+            }
+        )
 
     return {
         "pairs": pairs[:20],  # Top 20
@@ -114,7 +125,9 @@ def format_correlation_report(data):
     blocks = data.get("gate_block_counts", {})
     if blocks:
         lines.append("\nBlock counts per gate:")
-        for gate, count in sorted(blocks.items(), key=lambda x: x[1], reverse=True)[:10]:
+        for gate, count in sorted(blocks.items(), key=lambda x: x[1], reverse=True)[
+            :10
+        ]:
             lines.append(f"  {gate:<40} {count:>4} blocks")
 
     pairs = data.get("pairs", [])

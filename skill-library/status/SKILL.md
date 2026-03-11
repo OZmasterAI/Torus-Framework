@@ -4,7 +4,7 @@
 When the user says "status", "check", "health", or wants a system overview.
 
 ## Steps
-1. Run `python3 ~/.claude/skills/status/scripts/gather.py`
+1. Run `python3 ~/.claude/skill-library/status/scripts/gather.py`
 2. Display the output to the user exactly as-is (it's a pre-formatted dashboard)
 3. If the script fails or returns an error, fall back to manual gathering:
    - Read ~/.claude/LIVE_STATE.json for current project state

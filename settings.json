@@ -286,5 +286,7 @@
     "Model cost — haiku for search, sonnet for work, opus for complex",
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
-  ]
+  ],
+  "effortLevel": "high",
+  "model": "sonnet"
 }

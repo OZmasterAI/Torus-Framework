@@ -1,29 +1,52 @@
 """PostToolUse orchestrator — main handle_post_tool_use and entry point."""
+
 import json
 import os
 import re
 import sys
 import time
 
-from shared.state import load_state, save_state, update_gate_effectiveness, get_live_toggle, read_enforcer_sideband, delete_enforcer_sideband
+from shared.state import (
+    load_state,
+    save_state,
+    update_gate_effectiveness,
+    get_live_toggle,
+    read_enforcer_sideband,
+    delete_enforcer_sideband,
+)
 from shared.error_normalizer import fnv1a_hash
 from shared.metrics_collector import set_test_pass_rate as _set_test_pass_rate
 
 from tracker_pkg import _log_debug
 from tracker_pkg.errors import _extract_error_pattern, _detect_errors
 from tracker_pkg.observations import _capture_observation
-from tracker_pkg.verification import _classify_verification_score, _resolve_gate_block_outcomes, BROAD_TEST_COMMANDS
+from tracker_pkg.verification import (
+    _classify_verification_score,
+    _resolve_gate_block_outcomes,
+    BROAD_TEST_COMMANDS,
+)
 from tracker_pkg.auto_remember import _auto_remember_event
 
 # Gate 17 injection scanning — imported here to run on PostToolUse results
 try:
-    from gates.gate_17_injection_defense import check as gate_17_check, _is_external_tool as _g17_is_external
+    from gates.gate_17_injection_defense import (
+        check as gate_17_check,
+        _is_external_tool as _g17_is_external,
+    )
 except ImportError:
     gate_17_check = None
     _g17_is_external = None
 
 # Token estimation per tool (module-level to avoid per-call dict creation)
-_TOKEN_ESTIMATES = {"Bash": 2000, "Edit": 1500, "Write": 1500, "Read": 800, "Glob": 500, "Grep": 500, "NotebookEdit": 1500}
+_TOKEN_ESTIMATES = {
+    "Bash": 2000,
+    "Edit": 1500,
+    "Write": 1500,
+    "Read": 800,
+    "Glob": 500,
+    "Grep": 500,
+    "NotebookEdit": 1500,
+}
 
 # MCP memory tools
 MEMORY_TOOL_PREFIXES = [
@@ -39,7 +62,401 @@ def is_memory_tool(tool_name):
     return False
 
 
-def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_response=None):
+def _write_file_claim(claim_path, claim_session):
+    """Write a file ownership claim for Gate 13 workspace isolation.
+
+    Only writes claims for non-main sessions (worktree agents).
+    Fail-open: any error is logged and silently skipped.
+    """
+    if not claim_path or claim_session == "main":
+        return
+    try:
+        import fcntl
+
+        claim_path = os.path.normpath(claim_path)
+        claims_file = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), ".file_claims.json"
+        )
+        claims = {}
+        if os.path.exists(claims_file):
+            try:
+                with open(claims_file, "r") as f:
+                    fcntl.flock(f, fcntl.LOCK_SH)
+                    try:
+                        claims = json.load(f)
+                    finally:
+                        fcntl.flock(f, fcntl.LOCK_UN)
+            except (json.JSONDecodeError, OSError, ValueError):
+                claims = {}
+        claims[claim_path] = {
+            "session_id": claim_session,
+            "claimed_at": time.time(),
+        }
+        try:
+            with open(claims_file, "w") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                try:
+                    json.dump(claims, f)
+                finally:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+        except OSError:
+            pass
+    except Exception as e:
+        _log_debug(f"file claim write failed: {e}")
+
+
+def _ensure_bans_dict(state):
+    """Migrate active_bans from list format (legacy) to dict format.
+    Returns the bans dict, already written back to state."""
+    bans = state.get("active_bans", {})
+    if isinstance(bans, list):
+        bans = {
+            sid: {
+                "fail_count": 3,
+                "first_failed": time.time(),
+                "last_failed": time.time(),
+            }
+            for sid in bans
+        }
+        state["active_bans"] = bans
+    return bans
+
+
+def _handle_causal_chain(tool_name, tool_input, tool_response, state):
+    """Handle PostToolUse tracking for causal chain MCP tools."""
+    # Parse tool_response once — both outcome branches need it
+    resp = tool_response if isinstance(tool_response, dict) else {}
+    if isinstance(tool_response, str):
+        try:
+            resp = json.loads(tool_response)
+        except (json.JSONDecodeError, TypeError):
+            resp = {}
+
+    if tool_name == "mcp__memory__record_attempt":
+        try:
+            error_text = tool_input.get("error_text", "")
+            strategy_id = tool_input.get("strategy_id", "")
+            if error_text and strategy_id:
+                from shared.error_normalizer import error_signature
+
+                _, error_hash = error_signature(error_text)
+                strategy_hash = fnv1a_hash(strategy_id)
+                chain_id = f"{error_hash}_{strategy_hash}"
+                state["current_strategy_id"] = strategy_id
+                state["current_error_signature"] = error_hash
+                pending = state.setdefault("pending_chain_ids", [])
+                if chain_id not in pending:
+                    pending.append(chain_id)
+        except Exception as e:
+            _log_debug(f"record_attempt tracking failed: {e}")
+
+    elif tool_name == "mcp__memory__record_outcome":
+        try:
+            strategy_id = resp.get("strategy_id", "") or state.get(
+                "current_strategy_id", ""
+            )
+            outcome = resp.get("outcome", "")
+
+            if strategy_id:
+                # Track successful strategies
+                if outcome == "success":
+                    successes = state.setdefault("successful_strategies", {})
+                    if strategy_id not in successes:
+                        successes[strategy_id] = {"success_count": 0, "last_success": 0}
+                    successes[strategy_id]["success_count"] += 1
+                    successes[strategy_id]["last_success"] = time.time()
+
+                # Track failures with retry budget (dict format)
+                if resp.get("banned") or outcome == "failure":
+                    bans = _ensure_bans_dict(state)
+                    if strategy_id not in bans:
+                        bans[strategy_id] = {
+                            "fail_count": 0,
+                            "first_failed": time.time(),
+                            "last_failed": time.time(),
+                        }
+                    if resp.get("banned"):
+                        # Explicit ban from MCP: immediately set to ban threshold
+                        bans[strategy_id]["fail_count"] = max(
+                            bans[strategy_id].get("fail_count", 0), 3
+                        )
+                    else:
+                        # Gradual failure: increment retry budget
+                        bans[strategy_id]["fail_count"] = (
+                            bans[strategy_id].get("fail_count", 0) + 1
+                        )
+                    bans[strategy_id]["last_failed"] = time.time()
+
+            state["pending_chain_ids"] = []
+            state["current_strategy_id"] = ""
+        except Exception as e:
+            _log_debug(f"record_outcome tracking failed: {e}")
+
+    elif tool_name == "mcp__memory__query_fix_history":
+        state["fix_history_queried"] = time.time()
+        try:
+            banned_list = resp.get("banned", [])
+            bans = _ensure_bans_dict(state)
+            for entry in banned_list:
+                sid = entry.get("strategy_id", "") if isinstance(entry, dict) else ""
+                if sid and sid not in bans:
+                    bans[sid] = {
+                        "fail_count": 3,
+                        "first_failed": time.time(),
+                        "last_failed": time.time(),
+                    }
+        except Exception as e:
+            _log_debug(f"query_fix_history tracking failed: {e}")
+
+
+def _run_mentor_system(tool_name, tool_input, tool_response, state):
+    """Run all mentor evaluators (A+D+E+F) — toggle-gated, all fail-open."""
+    state["mentor_warned_this_cycle"] = False
+    t0 = time.time()
+    mentor_all = get_live_toggle("mentor_all")
+
+    if mentor_all or get_live_toggle("mentor_tracker"):
+        try:
+            from tracker_pkg.mentor import evaluate as mentor_evaluate
+
+            verdict_a = mentor_evaluate(tool_name, tool_input, tool_response, state)
+            if verdict_a and verdict_a.action in ("warn", "escalate"):
+                print(f"[MENTOR] {verdict_a.message}", file=sys.stderr)
+                state["mentor_warned_this_cycle"] = True
+        except Exception as e:
+            _log_debug(f"Mentor tracker failed (non-blocking): {e}")
+
+    if (mentor_all or get_live_toggle("mentor_outcome_chains")) and state.get(
+        "tool_call_count", 0
+    ) % 10 == 0:
+        if time.time() - t0 < 2.5:
+            try:
+                from tracker_pkg.outcome_chains import evaluate as chains_evaluate
+
+                verdict_d = chains_evaluate(tool_name, tool_input, tool_response, state)
+                if (
+                    verdict_d
+                    and verdict_d.get("message")
+                    and not state.get("mentor_warned_this_cycle")
+                ):
+                    print(f"[MENTOR:CHAINS] {verdict_d['message']}", file=sys.stderr)
+            except Exception as e:
+                _log_debug(f"Mentor outcome chains failed (non-blocking): {e}")
+
+    if mentor_all or get_live_toggle("mentor_memory"):
+        if time.time() - t0 < 2.5:
+            try:
+                from tracker_pkg.mentor_memory import evaluate as memory_evaluate
+
+                verdict_e = memory_evaluate(tool_name, tool_input, tool_response, state)
+                if (
+                    verdict_e
+                    and verdict_e.get("context")
+                    and not state.get("mentor_warned_this_cycle")
+                ):
+                    print(f"[MENTOR:MEMORY] {verdict_e['context']}", file=sys.stderr)
+            except Exception as e:
+                _log_debug(f"Mentor memory failed (non-blocking): {e}")
+
+    if mentor_all or get_live_toggle("mentor_analytics"):
+        if time.time() - t0 < 2.5:
+            try:
+                from tracker_pkg.mentor_analytics import evaluate as analytics_evaluate
+
+                nudges_f = analytics_evaluate(
+                    tool_name, tool_input, tool_response, state
+                )
+                if nudges_f and not state.get("mentor_warned_this_cycle"):
+                    print(f"[MENTOR:ANALYTICS] {nudges_f[0]}", file=sys.stderr)
+            except Exception as e:
+                _log_debug(f"Mentor analytics failed (non-blocking): {e}")
+
+
+def _handle_gate17_scan(tool_name, tool_response, state):
+    """Scan external tool results for prompt injection (Gate 17, PostToolUse).
+    Fail-open: any error is logged and silently skipped."""
+    if gate_17_check is None or _g17_is_external is None:
+        return
+    try:
+        if _g17_is_external(tool_name) and tool_response:
+            resp_content = tool_response
+            if isinstance(tool_response, dict):
+                resp_content = (
+                    tool_response.get("content", "")
+                    or tool_response.get("output", "")
+                    or str(tool_response)
+                )
+            g17_input = {"content": str(resp_content)[:50000]}  # Cap scan size
+            result = gate_17_check(
+                tool_name, g17_input, state, event_type="PostToolUse"
+            )
+            if result.message:
+                print(result.message, file=sys.stderr)
+                try:
+                    update_gate_effectiveness("gate_17_injection_defense", "blocks")
+                except Exception:
+                    pass
+    except Exception as e:
+        _log_debug(f"Gate 17 scan failed (non-blocking): {e}")
+
+
+def _handle_bash(tool_input, tool_response, state):
+    """Handle all Bash PostToolUse tracking: test detection, causal chain
+    auto-detect, git commit capture, and verification scoring."""
+    command = tool_input.get("command", "")
+
+    # --- Block A: test detection + fixing_error + auto-remember ---
+    if any(
+        kw in command
+        for kw in [
+            "pytest",
+            "python -m pytest",
+            "npm test",
+            "cargo test",
+            "go test",
+            "test_framework.py",
+        ]
+    ):
+        state["last_test_run"] = time.time()
+        state["last_test_command"] = command[:200]
+        state["session_test_baseline"] = True
+        # Capture exit code from tool_response (Claude Code provides it there)
+        exit_code = 0
+        if tool_response is not None:
+            if isinstance(tool_response, dict):
+                exit_code = tool_response.get(
+                    "exit_code",
+                    tool_response.get("exitCode", tool_response.get("status", 0)),
+                )
+            elif isinstance(tool_response, str):
+                try:
+                    resp = json.loads(tool_response)
+                    if isinstance(resp, dict):
+                        exit_code = resp.get(
+                            "exit_code", resp.get("exitCode", resp.get("status", 0))
+                        )
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        state["last_test_exit_code"] = exit_code
+
+        # Update test.pass_rate metric from actual test output
+        try:
+            if exit_code == 0:
+                _set_test_pass_rate(1.0)
+            else:
+                # Parse pytest-style "N passed, M failed" summary from output
+                out_str = str(tool_response) if tool_response else ""
+                _m_pass = re.search(r"(\d+) passed", out_str)
+                _m_fail = re.search(r"(\d+) failed", out_str)
+                _n_pass = int(_m_pass.group(1)) if _m_pass else 0
+                _n_fail = int(_m_fail.group(1)) if _m_fail else 0
+                _total = _n_pass + _n_fail
+                _set_test_pass_rate(_n_pass / _total if _total > 0 else 0.0)
+        except Exception:
+            pass  # Metrics are non-fatal
+
+        # Causal chain auto-detect: set recent_test_failure on non-zero exit
+        if exit_code and exit_code != 0:
+            # Detect primary error pattern from output
+            error_pattern = _extract_error_pattern(tool_response)
+            state["recent_test_failure"] = {
+                "pattern": error_pattern,
+                "timestamp": time.time(),
+                "command": command[:200],
+            }
+            state["fixing_error"] = True
+        else:
+            # Tests passed — clear error state
+            # Trigger C: Error fix verified (critical — useful in current session)
+            was_fixing = state.get("fixing_error", False)
+            if was_fixing:
+                error_info = state.get("recent_test_failure", {})
+                pattern = (
+                    error_info.get("pattern", "unknown")
+                    if isinstance(error_info, dict)
+                    else "unknown"
+                )
+                edited = list(
+                    state.get("files_edited", state.get("pending_verification", []))
+                )[-5:]
+                _auto_remember_event(
+                    f"Error fixed: {pattern}. Files edited: {', '.join(edited)}",
+                    context=f"Test passed after fixing error: {command[:100]}",
+                    tags="type:auto-captured,type:fix,area:framework",
+                    critical=True,
+                    state=state,
+                )
+            # Trigger A: Test run snapshot (queued for boot)
+            edited_files = list(
+                state.get("files_edited", state.get("pending_verification", []))
+            )[-10:]
+            _auto_remember_event(
+                f"Tests passed: {command[:150]}. Files modified this session: {', '.join(edited_files) if edited_files else 'none'}",
+                context="auto-captured test run snapshot",
+                tags="type:auto-captured,area:testing",
+                critical=False,
+                state=state,
+            )
+            state["recent_test_failure"] = None
+            state["fixing_error"] = False
+            state["confidence_warned_signals"] = []  # Reset G14 signal suppression
+
+    # Trigger B: Git commit (queued for boot)
+    if "git commit" in command:
+        _auto_remember_event(
+            f"Git commit: {command[:200]}",
+            context="auto-captured git commit",
+            tags="type:auto-captured,area:git",
+            critical=False,
+            state=state,
+        )
+
+    # --- Block B: verification scoring (all bash commands) ---
+    score = _classify_verification_score(command)
+    scores = state.setdefault("verification_scores", {})
+    pending = state.get("pending_verification", [])
+
+    # Reset edit streaks on verification
+    state["edit_streak"] = {}
+
+    if any(kw in command for kw in BROAD_TEST_COMMANDS):
+        # Broad tests apply score to all pending files
+        for fp in pending:
+            scores[fp] = scores.get(fp, 0) + score
+    else:
+        # Targeted commands: score only files referenced in command
+        for filepath in pending:
+            basename = os.path.basename(filepath)
+            stem = os.path.splitext(basename)[0]
+            matched = (
+                re.search(r"\b" + re.escape(filepath) + r"\b", command)
+                or re.search(r"\b" + re.escape(basename) + r"\b", command)
+                or re.search(r"\b" + re.escape(stem) + r"\b", command)
+            )
+            if matched:
+                # Direct file execution (score >= 30) gets minimum 70 — running
+                # the exact file you edited is strong verification evidence
+                effective_score = max(score, 70) if score >= 30 else score
+                scores[filepath] = scores.get(filepath, 0) + effective_score
+
+    # Clear files that have reached the verification threshold (>= 70)
+    # Exclude temp files from verified_fixes (they trigger false positives in gate 6)
+    _EXCLUDED_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/")
+    remaining = []
+    for fp in pending:
+        if scores.get(fp, 0) >= 70:
+            if not any(fp.startswith(p) for p in _EXCLUDED_PREFIXES):
+                state.setdefault("verified_fixes", []).append(fp)
+                state.setdefault("verification_timestamps", {})[fp] = time.time()
+            scores.pop(fp, None)
+        else:
+            remaining.append(fp)
+    state["pending_verification"] = remaining
+
+
+def handle_post_tool_use(
+    tool_name, tool_input, state, session_id="main", tool_response=None
+):
     """Track state after a tool call completes."""
     state["tool_call_count"] = state.get("tool_call_count", 0) + 1
 
@@ -50,7 +467,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     # Cap tool_call_counts at 50 keys (defensive, prevent unbounded growth)
     if len(tool_call_counts) > 50:
         sorted_tools = sorted(tool_call_counts.items(), key=lambda x: x[1])
-        for k, _ in sorted_tools[:len(tool_call_counts) - 50]:
+        for k, _ in sorted_tools[: len(tool_call_counts) - 50]:
             del tool_call_counts[k]
 
     # Per-tool call stats
@@ -61,7 +478,9 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     # Token estimation (self-evolving: budget-aware degradation)
     token_est = _TOKEN_ESTIMATES.get(tool_name, 800)  # Default 800 for unknown tools
     if tool_name != "Task":  # Task tokens tracked separately in subagent_total_tokens
-        state["session_token_estimate"] = state.get("session_token_estimate", 0) + token_est
+        state["session_token_estimate"] = (
+            state.get("session_token_estimate", 0) + token_est
+        )
 
     # Gate effectiveness: resolve pending block outcomes
     _resolve_gate_block_outcomes(tool_name, tool_input, state)
@@ -99,39 +518,10 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
 
     # Write file claims for workspace isolation (Gate 13)
     if tool_name in ("Edit", "Write", "NotebookEdit"):
-        try:
-            import fcntl
-            claim_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
-            claim_session = state.get("_session_id", "main")
-            if claim_path and claim_session != "main":
-                claim_path = os.path.normpath(claim_path)
-                claims_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".file_claims.json")
-                claims = {}
-                if os.path.exists(claims_file):
-                    try:
-                        with open(claims_file, "r") as f:
-                            fcntl.flock(f, fcntl.LOCK_SH)
-                            try:
-                                claims = json.load(f)
-                            finally:
-                                fcntl.flock(f, fcntl.LOCK_UN)
-                    except (json.JSONDecodeError, OSError, ValueError):
-                        claims = {}
-                claims[claim_path] = {
-                    "session_id": claim_session,
-                    "claimed_at": time.time(),
-                }
-                try:
-                    with open(claims_file, "w") as f:
-                        fcntl.flock(f, fcntl.LOCK_EX)
-                        try:
-                            json.dump(claims, f)
-                        finally:
-                            fcntl.flock(f, fcntl.LOCK_UN)
-                except OSError:
-                    pass
-        except Exception as e:
-            _log_debug(f"file claim write failed: {e}")
+        _write_file_claim(
+            tool_input.get("file_path", "") or tool_input.get("notebook_path", ""),
+            state.get("_session_id", "main"),
+        )
 
     # Track memory queries
     if is_memory_tool(tool_name):
@@ -140,6 +530,7 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
         # doesn't block long-running subagents after the 5-min window
         try:
             from boot_pkg.memory import _write_sideband_timestamp
+
             _write_sideband_timestamp()
         except Exception:
             pass  # Best-effort redundancy
@@ -180,100 +571,21 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     if tool_name == "ExitPlanMode":
         state["last_exit_plan_mode"] = time.time()
 
-    # Track test runs + causal chain auto-detect (Option A)
+    # test detection + git-commit capture (Block A) + verification scoring (Block B)
     if tool_name == "Bash":
-        command = tool_input.get("command", "")
-        if any(kw in command for kw in ["pytest", "python -m pytest", "npm test", "cargo test", "go test", "test_framework.py"]):
-            state["last_test_run"] = time.time()
-            state["last_test_command"] = command[:200]
-            state["session_test_baseline"] = True
-            # Capture exit code from tool_response (Claude Code provides it there)
-            exit_code = 0
-            if tool_response is not None:
-                if isinstance(tool_response, dict):
-                    exit_code = tool_response.get("exit_code",
-                                tool_response.get("exitCode",
-                                tool_response.get("status", 0)))
-                elif isinstance(tool_response, str):
-                    try:
-                        resp = json.loads(tool_response)
-                        if isinstance(resp, dict):
-                            exit_code = resp.get("exit_code",
-                                        resp.get("exitCode",
-                                        resp.get("status", 0)))
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-            state["last_test_exit_code"] = exit_code
-
-            # Update test.pass_rate metric from actual test output
-            try:
-                if exit_code == 0:
-                    _set_test_pass_rate(1.0)
-                else:
-                    # Parse pytest-style "N passed, M failed" summary from output
-                    out_str = str(tool_response) if tool_response else ""
-                    _m_pass = re.search(r'(\d+) passed', out_str)
-                    _m_fail = re.search(r'(\d+) failed', out_str)
-                    _n_pass = int(_m_pass.group(1)) if _m_pass else 0
-                    _n_fail = int(_m_fail.group(1)) if _m_fail else 0
-                    _total = _n_pass + _n_fail
-                    _set_test_pass_rate(_n_pass / _total if _total > 0 else 0.0)
-            except Exception:
-                pass  # Metrics are non-fatal
-
-            # Causal chain auto-detect: set recent_test_failure on non-zero exit
-            if exit_code and exit_code != 0:
-                # Detect primary error pattern from output
-                error_pattern = _extract_error_pattern(tool_response)
-                state["recent_test_failure"] = {
-                    "pattern": error_pattern,
-                    "timestamp": time.time(),
-                    "command": command[:200],
-                }
-                state["fixing_error"] = True
-            else:
-                # Tests passed — clear error state
-                # Trigger C: Error fix verified (critical — useful in current session)
-                was_fixing = state.get("fixing_error", False)
-                if was_fixing:
-                    error_info = state.get("recent_test_failure", {})
-                    pattern = error_info.get("pattern", "unknown") if isinstance(error_info, dict) else "unknown"
-                    edited = list(state.get("files_edited", state.get("pending_verification", [])))[-5:]
-                    _auto_remember_event(
-                        f"Error fixed: {pattern}. Files edited: {', '.join(edited)}",
-                        context=f"Test passed after fixing error: {command[:100]}",
-                        tags="type:auto-captured,type:fix,area:framework",
-                        critical=True, state=state,
-                    )
-                # Trigger A: Test run snapshot (queued for boot)
-                edited_files = list(state.get("files_edited", state.get("pending_verification", [])))[-10:]
-                _auto_remember_event(
-                    f"Tests passed: {command[:150]}. Files modified this session: {', '.join(edited_files) if edited_files else 'none'}",
-                    context="auto-captured test run snapshot",
-                    tags="type:auto-captured,area:testing",
-                    critical=False, state=state,
-                )
-                state["recent_test_failure"] = None
-                state["fixing_error"] = False
-                state["confidence_warned_signals"] = []  # Reset G14 signal suppression
-
-        # Trigger B: Git commit (queued for boot)
-        if "git commit" in command:
-            _auto_remember_event(
-                f"Git commit: {command[:200]}",
-                context="auto-captured git commit",
-                tags="type:auto-captured,area:git",
-                critical=False, state=state,
-            )
+        _handle_bash(tool_input, tool_response, state)
 
     # Track edits for pending verification (including NotebookEdit)
     # Only track non-exempt files — exempt files (config, tests, non-code) are
     # already skipped by Gate 14's blocking logic, so tracking them just creates
     # a dead counter that jams the gate.
     if tool_name in ("Edit", "Write", "NotebookEdit"):
-        file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+        file_path = tool_input.get("file_path", "") or tool_input.get(
+            "notebook_path", ""
+        )
         if file_path and file_path not in state.get("pending_verification", []):
             from shared.exemptions import is_exempt_full
+
             if not is_exempt_full(file_path):
                 pending = state.get("pending_verification", [])
                 pending.append(file_path)
@@ -281,7 +593,9 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
 
         # Track edit streak per file
         edit_streak = state.setdefault("edit_streak", {})
-        file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+        file_path = tool_input.get("file_path", "") or tool_input.get(
+            "notebook_path", ""
+        )
         if file_path:
             old_count = edit_streak.get(file_path, 0)
             edit_streak[file_path] = old_count + 1
@@ -292,166 +606,24 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
                     f"Heavy editing: {file_path} ({new_count} edits this session)",
                     context="auto-captured heavy edit pattern",
                     tags="type:auto-captured,area:framework",
-                    critical=False, state=state,
+                    critical=False,
+                    state=state,
                 )
-
-    # Progressive verification scoring: accumulate confidence scores for pending files
-    if tool_name == "Bash":
-        command = tool_input.get("command", "")
-        score = _classify_verification_score(command)
-        scores = state.setdefault("verification_scores", {})
-        pending = state.get("pending_verification", [])
-
-        # Reset edit streaks on verification
-        state["edit_streak"] = {}
-
-        if any(kw in command for kw in BROAD_TEST_COMMANDS):
-            # Broad tests apply score to all pending files
-            for fp in pending:
-                scores[fp] = scores.get(fp, 0) + score
-        else:
-            # Targeted commands: score only files referenced in command
-            for filepath in pending:
-                basename = os.path.basename(filepath)
-                stem = os.path.splitext(basename)[0]
-                matched = (
-                    re.search(r'\b' + re.escape(filepath) + r'\b', command)
-                    or re.search(r'\b' + re.escape(basename) + r'\b', command)
-                    or re.search(r'\b' + re.escape(stem) + r'\b', command)
-                )
-                if matched:
-                    # Direct file execution (score >= 30) gets minimum 70 — running
-                    # the exact file you edited is strong verification evidence
-                    effective_score = max(score, 70) if score >= 30 else score
-                    scores[filepath] = scores.get(filepath, 0) + effective_score
-
-        # Clear files that have reached the verification threshold (>= 70)
-        # Exclude temp files from verified_fixes (they trigger false positives in gate 6)
-        _EXCLUDED_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/")
-        remaining = []
-        for fp in pending:
-            if scores.get(fp, 0) >= 70:
-                if not any(fp.startswith(p) for p in _EXCLUDED_PREFIXES):
-                    state.setdefault("verified_fixes", []).append(fp)
-                    state.setdefault("verification_timestamps", {})[fp] = time.time()
-                scores.pop(fp, None)
-            else:
-                remaining.append(fp)
-        state["pending_verification"] = remaining
 
     # Detect errors in Bash output
     if tool_name == "Bash" and tool_response is not None:
         _detect_errors(tool_input, tool_response, state)
 
-    # Causal fix tracking: record_attempt
-    if tool_name == "mcp__memory__record_attempt":
-        try:
-            error_text = tool_input.get("error_text", "")
-            strategy_id = tool_input.get("strategy_id", "")
-            if error_text and strategy_id:
-                from shared.error_normalizer import error_signature
-                _, error_hash = error_signature(error_text)
-                strategy_hash = fnv1a_hash(strategy_id)
-                chain_id = f"{error_hash}_{strategy_hash}"
-                state["current_strategy_id"] = strategy_id
-                state["current_error_signature"] = error_hash
-                pending = state.setdefault("pending_chain_ids", [])
-                if chain_id not in pending:
-                    pending.append(chain_id)
-        except Exception as e:
-            _log_debug(f"record_attempt tracking failed: {e}")
-
-    # Causal fix tracking: record_outcome
-    if tool_name == "mcp__memory__record_outcome":
-        try:
-            resp = tool_response if isinstance(tool_response, dict) else {}
-            if isinstance(tool_response, str):
-                try:
-                    resp = json.loads(tool_response)
-                except (json.JSONDecodeError, TypeError):
-                    resp = {}
-            strategy_id = resp.get("strategy_id", "") or state.get("current_strategy_id", "")
-            outcome = resp.get("outcome", "")
-
-            if strategy_id:
-                # Track successful strategies
-                if outcome == "success":
-                    successes = state.setdefault("successful_strategies", {})
-                    if strategy_id not in successes:
-                        successes[strategy_id] = {"success_count": 0, "last_success": 0}
-                    successes[strategy_id]["success_count"] += 1
-                    successes[strategy_id]["last_success"] = time.time()
-
-                # Track failures with retry budget (dict format)
-                if resp.get("banned") or outcome == "failure":
-                    bans = state.get("active_bans", [])
-                    # Migrate list → dict if needed
-                    if isinstance(bans, list):
-                        bans_dict = {}
-                        for sid in bans:
-                            bans_dict[sid] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
-                        bans = bans_dict
-                        state["active_bans"] = bans
-                    if strategy_id not in bans:
-                        bans[strategy_id] = {"fail_count": 0, "first_failed": time.time(), "last_failed": time.time()}
-                    if resp.get("banned"):
-                        # Explicit ban from MCP: immediately set to ban threshold
-                        bans[strategy_id]["fail_count"] = max(bans[strategy_id].get("fail_count", 0), 3)
-                    else:
-                        # Gradual failure: increment retry budget
-                        bans[strategy_id]["fail_count"] = bans[strategy_id].get("fail_count", 0) + 1
-                    bans[strategy_id]["last_failed"] = time.time()
-
-            state["pending_chain_ids"] = []
-            state["current_strategy_id"] = ""
-        except Exception as e:
-            _log_debug(f"record_outcome tracking failed: {e}")
-
-    # Causal fix tracking: query_fix_history
-    if tool_name == "mcp__memory__query_fix_history":
-        state["fix_history_queried"] = time.time()
-        try:
-            resp = tool_response if isinstance(tool_response, dict) else {}
-            if isinstance(tool_response, str):
-                try:
-                    resp = json.loads(tool_response)
-                except (json.JSONDecodeError, TypeError):
-                    resp = {}
-            banned_list = resp.get("banned", [])
-            bans = state.get("active_bans", [])
-            # Migrate list → dict if needed
-            if isinstance(bans, list):
-                bans_dict = {}
-                for sid in bans:
-                    bans_dict[sid] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
-                bans = bans_dict
-                state["active_bans"] = bans
-            for entry in banned_list:
-                sid = entry.get("strategy_id", "") if isinstance(entry, dict) else ""
-                if sid and sid not in bans:
-                    bans[sid] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
-        except Exception as e:
-            _log_debug(f"query_fix_history tracking failed: {e}")
+    # causal chain: attempt registration, outcome + ban tracking, history query
+    if tool_name in (
+        "mcp__memory__record_attempt",
+        "mcp__memory__record_outcome",
+        "mcp__memory__query_fix_history",
+    ):
+        _handle_causal_chain(tool_name, tool_input, tool_response, state)
 
     # Gate 17: Injection defense — scan external tool results for prompt injection
-    if gate_17_check is not None and _g17_is_external is not None:
-        try:
-            if _g17_is_external(tool_name) and tool_response:
-                # Build tool_input-like dict with response content for gate_17 to scan
-                resp_content = tool_response
-                if isinstance(tool_response, dict):
-                    resp_content = tool_response.get("content", "") or tool_response.get("output", "") or str(tool_response)
-                g17_input = {"content": str(resp_content)[:50000]}  # Cap scan size
-                result = gate_17_check(tool_name, g17_input, state, event_type="PostToolUse")
-                if result.message:
-                    print(result.message, file=sys.stderr)
-                    # Record effectiveness
-                    try:
-                        update_gate_effectiveness("gate_17_injection_defense", "blocks")
-                    except Exception:
-                        pass
-        except Exception as e:
-            _log_debug(f"Gate 17 scan failed (non-blocking): {e}")
+    _handle_gate17_scan(tool_name, tool_response, state)
 
     # Analytics tool usage tracking (for Upgrades C+F)
     if tool_name.startswith("mcp__analytics__"):
@@ -469,63 +641,29 @@ def handle_post_tool_use(tool_name, tool_input, state, session_id="main", tool_r
     _capture_observation(tool_name, tool_input, tool_response, session_id, state)
 
     # ── Mentor System (A+D+E+F) — all toggle-gated, all fail-open ──
-    state["mentor_warned_this_cycle"] = False  # Reset at start of mentor block
-    _mentor_t0 = time.time()
-    _mentor_all = get_live_toggle("mentor_all")
-
-    if _mentor_all or get_live_toggle("mentor_tracker"):
-        try:
-            from tracker_pkg.mentor import evaluate as mentor_evaluate
-            verdict_a = mentor_evaluate(tool_name, tool_input, tool_response, state)
-            if verdict_a and verdict_a.action in ("warn", "escalate"):
-                print(f"[MENTOR] {verdict_a.message}", file=sys.stderr)
-                state["mentor_warned_this_cycle"] = True
-        except Exception as e:
-            _log_debug(f"Mentor tracker failed (non-blocking): {e}")
-
-    if (_mentor_all or get_live_toggle("mentor_outcome_chains")) and state.get("tool_call_count", 0) % 10 == 0:
-        if time.time() - _mentor_t0 < 2.5:
-            try:
-                from tracker_pkg.outcome_chains import evaluate as chains_evaluate
-                verdict_d = chains_evaluate(tool_name, tool_input, tool_response, state)
-                if verdict_d and verdict_d.get("message") and not state.get("mentor_warned_this_cycle"):
-                    print(f"[MENTOR:CHAINS] {verdict_d['message']}", file=sys.stderr)
-            except Exception as e:
-                _log_debug(f"Mentor outcome chains failed (non-blocking): {e}")
-
-    if _mentor_all or get_live_toggle("mentor_memory"):
-        if time.time() - _mentor_t0 < 2.5:
-            try:
-                from tracker_pkg.mentor_memory import evaluate as memory_evaluate
-                verdict_e = memory_evaluate(tool_name, tool_input, tool_response, state)
-                if verdict_e and verdict_e.get("context") and not state.get("mentor_warned_this_cycle"):
-                    print(f"[MENTOR:MEMORY] {verdict_e['context']}", file=sys.stderr)
-            except Exception as e:
-                _log_debug(f"Mentor memory failed (non-blocking): {e}")
-
-    if _mentor_all or get_live_toggle("mentor_analytics"):
-        if time.time() - _mentor_t0 < 2.5:
-            try:
-                from tracker_pkg.mentor_analytics import evaluate as analytics_evaluate
-                nudges_f = analytics_evaluate(tool_name, tool_input, tool_response, state)
-                if nudges_f and not state.get("mentor_warned_this_cycle"):
-                    # Max 1 nudge per cycle
-                    print(f"[MENTOR:ANALYTICS] {nudges_f[0]}", file=sys.stderr)
-            except Exception as e:
-                _log_debug(f"Mentor analytics failed (non-blocking): {e}")
+    _run_mentor_system(tool_name, tool_input, tool_response, state)
 
     # Session duration nudge — once per milestone (1h, 2h, 3h)
     session_hours = (time.time() - state.get("session_start", time.time())) / 3600
     last_nudge = state.get("session_duration_nudge_hour", 0)
     if session_hours >= 3 and last_nudge < 3:
         state["session_duration_nudge_hour"] = 3
-        print("[SESSION] ADVISORY: Session running 3h+. Save progress with /wrap-up before context degrades.", file=sys.stderr)
+        print(
+            "[SESSION] ADVISORY: Session running 3h+. Save progress with /wrap-up before context degrades.",
+            file=sys.stderr,
+        )
     elif session_hours >= 2 and last_nudge < 2:
         state["session_duration_nudge_hour"] = 2
-        print("[SESSION] ADVISORY: Session running 2h+. Consider saving key findings to memory.", file=sys.stderr)
+        print(
+            "[SESSION] ADVISORY: Session running 2h+. Consider saving key findings to memory.",
+            file=sys.stderr,
+        )
     elif session_hours >= 1 and last_nudge < 1:
         state["session_duration_nudge_hour"] = 1
-        print("[SESSION] ADVISORY: Session running 1h+. Good time for a memory checkpoint.", file=sys.stderr)
+        print(
+            "[SESSION] ADVISORY: Session running 1h+. Good time for a memory checkpoint.",
+            file=sys.stderr,
+        )
 
     save_state(state, session_id=session_id)
     # Promote complete: delete enforcer sideband (tracker is now the source of truth)
@@ -562,7 +700,13 @@ def main():
                     continue
                 state[_k] = _v
 
-        handle_post_tool_use(tool_name, tool_input, state, session_id=session_id, tool_response=tool_response)
+        handle_post_tool_use(
+            tool_name,
+            tool_input,
+            state,
+            session_id=session_id,
+            tool_response=tool_response,
+        )
     except Exception as e:
         # FAIL-OPEN: tracker crashes must never block work
         print(f"[TRACKER] Warning: Tracker error (non-blocking): {e}", file=sys.stderr)
