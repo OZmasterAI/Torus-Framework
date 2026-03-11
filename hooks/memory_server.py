@@ -3255,7 +3255,7 @@ def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
 @mcp.tool()
 @crash_proof
 def remember_this(
-    content: str, context: str = "", tags: str = "", force: bool = False
+    content: str, context: str = "", tags: str = "", force: bool = False, source_session_id: str = ""
 ) -> dict:
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
@@ -3264,8 +3264,24 @@ def remember_this(
         context: What you were doing when you learned this
         tags: Comma-separated tags for categorization (e.g., "bug,fix,auth")
         force: Skip dedup check entirely (escape hatch if threshold is wrong)
+        source_session_id: Session ID to record provenance (auto-detected if omitted)
     """
     _ensure_initialized()
+    # Auto-detect source session ID from most recent JSONL session file
+    if not source_session_id:
+        try:
+            import glob as _glob
+            _sessions_pattern = os.path.join(
+                os.path.expanduser("~"), ".claude", "projects", "**", "sessions", "*.jsonl"
+            )
+            _jsonl_files = sorted(
+                _glob.glob(_sessions_pattern, recursive=True),
+                key=os.path.getmtime, reverse=True
+            )
+            if _jsonl_files:
+                source_session_id = os.path.splitext(os.path.basename(_jsonl_files[0]))[0]
+        except Exception:
+            pass  # Session detection failure must not block memory storage
     if _lance_degraded:
         return {
             "error": "LanceDB unavailable — running in degraded mode",
