@@ -185,6 +185,7 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("retrieval_count", pa.int32()),
         pa.field("last_retrieved", pa.string()),
         pa.field("source_session_id", pa.string()),
+        pa.field("source_observation_ids", pa.string()),
     ]
 )
 
@@ -2128,7 +2129,7 @@ def _compact_observations():
             # Promote high-value expired observations to curated knowledge (scoped criteria)
             promoted = 0
 
-            def _promote_observation(doc, meta, criterion_tag):
+            def _promote_observation(doc, meta, criterion_tag, obs_id=""):
                 """Upsert a promoted observation into knowledge collection."""
                 nonlocal promoted
                 if promoted >= MAX_PROMOTIONS_PER_CYCLE:
@@ -2148,6 +2149,7 @@ def _compact_observations():
                             "preview": promo_preview,
                             "original_error_pattern": meta.get("error_pattern", ""),
                             "source_session_id": meta.get("session_id", ""),
+                            "source_observation_ids": obs_id,
                         }
                     ],
                     ids=[promo_id],
