@@ -152,26 +152,12 @@ def reembed_table(db, model, table_name, dry_run=False):
         "vector": all_vectors,
     }
 
-    # Add quality_score and embedding_model as new columns for knowledge
+    # New columns are added directly in the rebuilt Arrow table below.
+    # No add_columns() calls needed — avoids concurrent commit conflicts with MCP server.
     if table_name == "knowledge" and quality_scores is not None:
-        # Check if columns exist, add them if not
-        existing_cols = set(df.columns)
-        if "quality_score" not in existing_cols:
-            print(f"  Adding quality_score column...")
-            tbl.add_columns({"quality_score": "0.5"})
-            # Alter to float type
-            tbl.alter_columns(pa.field("quality_score", pa.float64()))
-        if "embedding_model" not in existing_cols:
-            print(f"  Adding embedding_model column...")
-            tbl.add_columns({"embedding_model": f"'{EMBEDDING_MODEL}'"})
-
         update_data["quality_score"] = quality_scores
         update_data["embedding_model"] = [EMBEDDING_MODEL] * total
-    elif table_name != "knowledge":
-        existing_cols = set(df.columns)
-        if "embedding_model" not in existing_cols:
-            print(f"  Adding embedding_model column to {table_name}...")
-            tbl.add_columns({"embedding_model": f"'{EMBEDDING_MODEL}'"})
+    else:
         update_data["embedding_model"] = [EMBEDDING_MODEL] * total
 
     # Use row-by-row update for vectors (LanceDB update() supports SQL-like where clauses)
