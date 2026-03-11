@@ -1935,6 +1935,8 @@ def format_summaries(results) -> list[dict]:
                 entry["url"] = meta["primary_source"]
             if meta.get("source_session_id"):
                 entry["source_session_id"] = meta["source_session_id"]
+            if meta.get("source_observation_ids"):
+                entry["source_observation_ids"] = meta["source_observation_ids"]
         formatted.append(entry)
 
         # Queue retrieval tracking update
@@ -2181,7 +2183,12 @@ def _compact_observations():
                 # Only promote if no subsequent success for same tool in same session
                 if sid and tool and tool in session_success_tools.get(sid, set()):
                     continue  # Tool succeeded later — skip
-                _promote_observation(doc, meta, "criterion:standalone-error")
+                _promote_observation(
+                    doc,
+                    meta,
+                    "criterion:standalone-error",
+                    exp_ids[idx] if idx < len(exp_ids) else "",
+                )
 
             # Criterion 2: Cross-session file churn
             file_sessions = {}  # file_path -> set of session_ids
@@ -2245,7 +2252,12 @@ def _compact_observations():
                 # Only promote if the tool DID succeed later in the same session
                 if sid and tool and tool in session_success_tools.get(sid, set()):
                     fix_doc = f"Resolved error pattern ({tool}): {doc}"
-                    _promote_observation(fix_doc, meta, "criterion:resolved-error")
+                    _promote_observation(
+                        fix_doc,
+                        meta,
+                        "criterion:resolved-error",
+                        exp_ids[idx] if idx < len(exp_ids) else "",
+                    )
 
             # Delete expired observations
             if exp_ids:
@@ -3299,6 +3311,7 @@ def remember_this(
     tags: str = "",
     force: bool = False,
     source_session_id: str = "",
+    source_observation_ids: str = "",
 ) -> dict:
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
@@ -3308,6 +3321,7 @@ def remember_this(
         tags: Comma-separated tags for categorization (e.g., "bug,fix,auth")
         force: Skip dedup check entirely (escape hatch if threshold is wrong)
         source_session_id: Session ID to record provenance (auto-detected if omitted)
+        source_observation_ids: Comma-separated observation IDs this knowledge was derived from
     """
     _ensure_initialized()
     # Auto-detect source session ID from most recent JSONL session file
@@ -3467,6 +3481,7 @@ def remember_this(
                 "source_method": source_method,
                 "tier": tier,
                 "source_session_id": source_session_id,
+                "source_observation_ids": source_observation_ids,
             }
         ],
         ids=[doc_id],
@@ -3781,6 +3796,13 @@ def get_memory(id: str) -> dict:
                         "session_id": source_sid,
                         "hint": f"Raw transcript: ~/.claude/projects/*/sessions/{source_sid}.jsonl",
                     }
+
+                # Observation evidence pointers
+                obs_ids_str = meta.get("source_observation_ids", "")
+                if obs_ids_str:
+                    entry["source_observations"] = [
+                        oid.strip() for oid in obs_ids_str.split(",") if oid.strip()
+                    ]
 
                 # Retrieval tracking: increment count and update timestamp
                 try:
