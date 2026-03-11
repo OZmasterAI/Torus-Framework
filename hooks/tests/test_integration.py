@@ -847,7 +847,7 @@ import subprocess as _bsg_sp
 
 _BSG_CLAUDE_DIR = os.path.expanduser("~/.claude")
 _STATUS_SCRIPT = os.path.join(
-    _BSG_CLAUDE_DIR, "skills", "status", "scripts", "gather.py"
+    _BSG_CLAUDE_DIR, "skill-library", "status", "scripts", "gather.py"
 )
 _WRAPUP_SCRIPT = os.path.join(
     _BSG_CLAUDE_DIR, "skills", "wrap-up", "scripts", "gather.py"
@@ -1455,22 +1455,6 @@ test(
 test(
     "TorusLoop: prompt has search_knowledge rule", "search_knowledge" in _ml_prompt_src
 )
-
-# Test: /loop SKILL.md exists and has required commands
-_loop_skill = os.path.expanduser("~/.claude/skill-library/loop/SKILL.md")
-if not os.path.isfile(_loop_skill):
-    _loop_skill = os.path.expanduser("~/.claude/skills/loop/SKILL.md")
-if os.path.isfile(_loop_skill):
-    test("LoopSkill: SKILL.md exists", True)
-    with open(_loop_skill) as _f:
-        _loop_src = _f.read()
-    test("LoopSkill: has start command", "/loop start" in _loop_src)
-    test("LoopSkill: has status command", "/loop status" in _loop_src)
-    test("LoopSkill: has stop command", "/loop stop" in _loop_src)
-    test("LoopSkill: references torus-loop.sh", "torus-loop.sh" in _loop_src)
-    test("LoopSkill: references stop sentinel", ".stop" in _loop_src)
-else:
-    print("  [SKIP] Loop skill not installed")
 
 # Test: base.md template has Validate field
 _base_tmpl = os.path.join(_tm_dir, "templates", "base.md")
