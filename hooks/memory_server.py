@@ -1836,7 +1836,7 @@ class _ClusterStore:
             return best_id
         else:
             # Create new cluster
-            new_id = f"cl_{fnv1a_hash(content)[:12]}"
+            new_id = f"cl_{fnv1a_hash(content)}"
             label = _cluster_label(content)
             cursor = self._conn.execute(
                 "INSERT OR IGNORE INTO clusters (cluster_id, centroid, member_count, label, created_at, updated_at) "
