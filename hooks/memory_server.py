@@ -187,6 +187,7 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("last_retrieved", pa.string()),
         pa.field("source_session_id", pa.string()),
         pa.field("source_observation_ids", pa.string()),
+        pa.field("cluster_id", pa.string()),
     ]
 )
 
@@ -1514,6 +1515,8 @@ _lance_fts_ready = False  # True once LanceDB FTS index is built
 _knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None  # LTPTracker instance (initialized lazily)
 _adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
+_cluster_store = None  # _ClusterStore instance (initialized lazily)
+CLUSTER_THRESHOLD = 0.7  # cosine similarity threshold for cluster assignment
 _last_search_ids = []  # IDs from last search_knowledge call (for implicit feedback)
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
@@ -1663,6 +1666,183 @@ def _tag_ids_to_summaries(memory_ids, collection_ref=None):
         return []
 
 
+class _ClusterStore:
+    """SQLite-backed centroid store for incremental clustering.
+
+    Stores cluster centroids as normalized float32 numpy arrays (768-dim).
+    Provides fast nearest-centroid lookup via in-memory cache.
+    """
+
+    def __init__(self, db_path: str):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        self._conn = sqlite3.connect(db_path)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._create_tables()
+        self._cache = None  # List of (cluster_id, centroid_np, member_count) or None
+
+    def _create_tables(self):
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS clusters (
+                cluster_id TEXT PRIMARY KEY,
+                centroid BLOB NOT NULL,
+                member_count INTEGER DEFAULT 0,
+                label TEXT DEFAULT '',
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+        self._conn.commit()
+
+    def _load_cache(self):
+        import numpy as np
+
+        rows = self._conn.execute(
+            "SELECT cluster_id, centroid, member_count FROM clusters"
+        ).fetchall()
+        self._cache = [
+            (cid, np.frombuffer(blob, dtype=np.float32).copy(), count)
+            for cid, blob, count in rows
+        ]
+
+    def assign(self, vec_list: list, content: str = "") -> str:
+        """Assign a vector to the nearest cluster or create a new one.
+
+        Args:
+            vec_list: 768-dim embedding as list of floats
+            content: original text (used for label generation)
+
+        Returns cluster_id string.
+        """
+        import numpy as np
+
+        vec = np.array(vec_list, dtype=np.float32)
+        norm = np.linalg.norm(vec)
+        if norm < 1e-10:
+            return ""
+        vec_norm = vec / norm
+
+        if self._cache is None:
+            self._load_cache()
+
+        best_id = None
+        best_sim = -1.0
+        best_idx = -1
+
+        for i, (cid, c_vec, _count) in enumerate(self._cache):
+            sim = float(np.dot(vec_norm, c_vec))
+            if sim > best_sim:
+                best_sim = sim
+                best_id = cid
+                best_idx = i
+
+        now = datetime.now().isoformat()
+
+        if best_id is not None and best_sim >= CLUSTER_THRESHOLD:
+            # Join existing cluster, update centroid via running mean
+            cid, c_vec, count = self._cache[best_idx]
+            new_count = count + 1
+            new_centroid = (c_vec * count + vec_norm) / new_count
+            c_norm = np.linalg.norm(new_centroid)
+            if c_norm > 1e-10:
+                new_centroid = new_centroid / c_norm
+
+            label_update = ""
+            if new_count % 10 == 0:
+                label_update = _cluster_label(content)
+
+            self._conn.execute(
+                "UPDATE clusters SET centroid=?, member_count=?, updated_at=? WHERE cluster_id=?",
+                (new_centroid.astype(np.float32).tobytes(), new_count, now, best_id),
+            )
+            if label_update:
+                self._conn.execute(
+                    "UPDATE clusters SET label=? WHERE cluster_id=?",
+                    (label_update, best_id),
+                )
+            self._conn.commit()
+            self._cache[best_idx] = (cid, new_centroid, new_count)
+            return best_id
+        else:
+            # Create new cluster
+            new_id = f"cl_{fnv1a_hash(content)[:12]}"
+            label = _cluster_label(content)
+            self._conn.execute(
+                "INSERT OR IGNORE INTO clusters (cluster_id, centroid, member_count, label, created_at, updated_at) "
+                "VALUES (?, ?, 1, ?, ?, ?)",
+                (new_id, vec_norm.astype(np.float32).tobytes(), label, now, now),
+            )
+            self._conn.commit()
+            if self._cache is not None:
+                self._cache.append((new_id, vec_norm, 1))
+            return new_id
+
+    def close(self):
+        self._conn.close()
+
+
+def _cluster_label(content: str) -> str:
+    """Extract top-3 meaningful words from content for a cluster label."""
+    import re as _re_cl
+
+    _stop = {
+        "this",
+        "that",
+        "with",
+        "from",
+        "have",
+        "been",
+        "were",
+        "will",
+        "would",
+        "could",
+        "should",
+        "their",
+        "there",
+        "they",
+        "which",
+        "when",
+        "what",
+        "where",
+        "than",
+        "then",
+        "also",
+        "about",
+        "into",
+        "more",
+        "some",
+        "such",
+        "only",
+        "other",
+        "each",
+        "just",
+        "like",
+        "over",
+        "very",
+        "after",
+        "before",
+        "between",
+        "under",
+        "again",
+        "does",
+        "done",
+        "make",
+        "made",
+        "most",
+        "much",
+        "must",
+        "need",
+        "none",
+        "true",
+        "false",
+    }
+    from collections import Counter
+
+    words = _re_cl.findall(r"[a-zA-Z_]{4,}", content.lower())
+    counts = Counter(w for w in words if w not in _stop)
+    top = [w for w, _ in counts.most_common(3)]
+    return " / ".join(top) if top else "misc"
+
+
 def _ensure_initialized():
     """Run one-time initialization (LanceDB + TagIndex + LanceDB FTS + Knowledge Graph + LTP).
 
@@ -1670,7 +1850,7 @@ def _ensure_initialized():
     Safe to call multiple times — idempotent after first run.
     """
     global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
-    global _knowledge_graph, _ltp_tracker, _adaptive_weights
+    global _knowledge_graph, _ltp_tracker, _adaptive_weights, _cluster_store
     if _initialized:
         return
     _init_lancedb()
@@ -1710,6 +1890,14 @@ def _ensure_initialized():
         _adaptive_weights = AdaptiveWeights()
     except Exception:
         _adaptive_weights = None
+
+    # Initialize incremental cluster store (fail-open)
+    try:
+        global _cluster_store
+        _clusters_path = os.path.join(MEMORY_DIR, "clusters.db")
+        _cluster_store = _ClusterStore(_clusters_path)
+    except Exception:
+        _cluster_store = None
 
     # Session-start memory replay cycle (fail-open)
     try:
@@ -1945,6 +2133,8 @@ def format_summaries(results) -> list[dict]:
                 entry["source_session_id"] = meta["source_session_id"]
             if meta.get("source_observation_ids"):
                 entry["source_observation_ids"] = meta["source_observation_ids"]
+            if meta.get("cluster_id"):
+                entry["cluster_id"] = meta["cluster_id"]
         formatted.append(entry)
 
         # Queue retrieval tracking update
@@ -3475,6 +3665,15 @@ def remember_this(
     # Auto tier classification
     tier = _classify_tier(content, tags)
 
+    # Incremental cluster assignment (fail-open)
+    _assigned_cluster_id = ""
+    try:
+        if _cluster_store:
+            _cluster_vec = _embed_text(content)
+            _assigned_cluster_id = _cluster_store.assign(_cluster_vec, content)
+    except Exception:
+        pass  # Clustering failure must not block memory storage
+
     collection.upsert(
         documents=[content],
         metadatas=[
@@ -3490,6 +3689,7 @@ def remember_this(
                 "tier": tier,
                 "source_session_id": source_session_id,
                 "source_observation_ids": source_observation_ids,
+                "cluster_id": _assigned_cluster_id,
             }
         ],
         ids=[doc_id],
