@@ -29,7 +29,7 @@
   },
   {
     "id": "f803112880049600",
-    "new_text": "[torus-web #11] Vitest files for x-auth, esports-metadata-calculator, mongodb (2026-03-04): (1) x-auth.test.ts (22 tests)—XAuthProvider OAuth 1.0a, vi.stubGlobal('fetch', mockFetch), vi.stubEnv for X_CONSUMER_KEY/SECRET, tests isConfigured/getRequestToken/generateAuthUrl/getAccessToken/verifyCredentials. (2) esports-metadata-calculator.test.ts (15 tests)—mocks @/lib/mongodb, @/models (ESportsMetadata/User/UserGameStats/Reward), vi.mock, tests cache hit/miss, checkAndRefreshMetadata, refreshDashboardMetadata, getTTLHours, singleton. (3) mongodb.test.ts (4 tests)—connectDB, vi.mock mongoose with importOriginal, vi.resetModules() + dynamic import in loadConnectDB() helper to reset module-level cache between tests. KEY: module has global.mongoose cache; must reset modules + reset global.mongoose in beforeEach."
+    "new_text": "[torus-web #11] Vitest files (2026-03-04): (1) x-auth.test.ts (22 tests)—XAuthProvider OAuth, stubGlobal fetch, stubEnv X_CONSUMER_KEY/SECRET, tests isConfigured/getRequestToken/generateAuthUrl/getAccessToken. (2) esports-metadata-calculator.test.ts (15 tests)—mocks mongodb/@models, cache hit/miss, checkAndRefresh, refreshDashboard, getTTLHours, singleton. (3) mongodb.test.ts (4 tests)—connectDB, vi.mock mongoose with importOriginal, vi.resetModules() + dynamic import to reset cache between tests. KEY: global.mongoose cache—must reset modules + global.mongoose in beforeEach."
   },
   {
     "id": "e09560506bac2947",
