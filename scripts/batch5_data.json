@@ -45,7 +45,7 @@
   },
   {
     "id": "fc36d077329018e8",
-    "new_text": "Torus Gate Inventory (2026-03-09). TIER 1 fail-closed: G01 READ BEFORE EDIT (.py/.js/.ts/.rs/.go; exempt new files, __init__.py, LIVE_STATE.json); G02 NO DESTROY (rm-rf, git reset --hard, DROP TABLE, git push --force, dd if=, mkfs, heredoc-to-shell, shred, DELETE without WHERE); G03 TEST BEFORE DEPLOY (scp, docker push, kubectl apply, git push main, npm publish; no test in 30min or exit!=0 -> block). TIER 2 fail-open: G04 MEMORY FIRST (5min Edit/10min Write; sideband); G05 PROOF BEFORE FIXED (>=3 unverified -> block); G06 SAVE TO MEMORY (>=2 unsaved fixes -> block); G09 STRATEGY BAN; G10 MODEL COST GUARD (4-tier); G11 RATE LIMIT (>40/min warn, >60 block); G13 WORKSPACE ISOLATION; G14 CONFIDENCE; G15 CAUSAL CHAIN; G16 CODE QUALITY (warn 3x->block). TIER 3: G17 INJECTION; G18 CANARY; G19 HINDSIGHT. DORMANT: G08, G12."
+    "new_text": "Torus Gate Inventory (2026-03-09). TIER 1 fail-closed: G01 READ BEFORE EDIT (.py/.js/.ts/.rs/.go); G02 NO DESTROY (harmful bash ops: force-reset, force-push, disk wipe cmds, secure-erase, SQL mass-delete); G03 TEST BEFORE DEPLOY (scp, docker push, kubectl apply, git push main; no test in 30min -> block). TIER 2 fail-open: G04 MEMORY FIRST (5min Edit/10min Write); G05 PROOF BEFORE FIXED (>=3 unverified -> block); G06 SAVE TO MEMORY (>=2 unsaved fixes -> block); G09 STRATEGY BAN; G10 MODEL COST GUARD (4-tier); G11 RATE LIMIT (>40/min warn, >60 block); G13 WORKSPACE ISOLATION; G14 CONFIDENCE; G15 CAUSAL CHAIN; G16 CODE QUALITY (warn 3x->block). TIER 3: G17 INJECTION; G18 CANARY; G19 HINDSIGHT. DORMANT: G08, G12."
   },
   {
     "id": "3fd6c0f0964e5d68",
@@ -61,7 +61,7 @@
   },
   {
     "id": "d51f1020b82cd698",
-    "new_text": "Agent Zero v0.9.8.2+ (March 2026). STARTUP: Flask+Socket.IO (Uvicorn); mounts /mcp, /a2a, /; auth: session-based (1-day), API key, CSRF; max 5GB. LOOP: dual while-True (outer=monologue/retries, inner=message). Flow: monologue_start->prepare_prompt->call_chat_model->process_tools->break_loop. Errors: InterventionException (restart), RepairableException (fwd LLM), critical (terminate). TOOLS (24): a2a_chat, call_subordinate, code_execution_tool, memory_delete/forget/load/save, scheduler, search_engine, vision_load; 3 disabled (._py). MEMORY: FAISS+LangChain, all-MiniLM-L6-v2, areas MAIN/FRAGMENTS/SOLUTIONS. HISTORY: 3-tier (50/30/20%), LLM compression. MULTI-AGENT: Agent(parent+1). A2A: fasta2a 0.5.0. MCP: client only . SECURITY: no gates; Docker only. Deps: faiss-cpu 1.11.0, flask 3.0.3."
+    "new_text": "Agent Zero v0.9.8.2+ (March 2026). STARTUP: Flask+Socket.IO (Uvicorn); /mcp, /a2a, / mounts; auth: session-based, API key, CSRF; max 5GB. LOOP: dual while-True (outer=monologue/retries, inner=message). Flow: monologue_start->prepare_prompt->call_chat_model->process_tools->break_loop. TOOLS (24): a2a_chat, call_subordinate, code_execution_tool, memory_delete/forget/load/save, scheduler, search_engine, vision_load; 3 disabled (._py). MEMORY: FAISS+LangChain, all-MiniLM-L6-v2, MAIN/FRAGMENTS/SOLUTIONS areas. HISTORY: 3-tier (50/30/20%), LLM compression. MULTI-AGENT: Agent(parent+1). A2A: fasta2a 0.5.0. MCP: client only. SECURITY: no gates; Docker only. Deps: faiss-cpu 1.11.0, flask 3.0.3."
   },
   {
     "id": "12b90f924d3e76e1",
@@ -69,7 +69,7 @@
   },
   {
     "id": "c7969d116b26f9f3",
-    "new_text": "Option C Memory Upgrade Plan (Session 392). DECISION: Build Shodh-inspired features natively into memory_server.py. Score: 82/100 vs current 74/100. BRANCH: mem2x (worktree isolation). COMPONENTS: 1. Hybrid Decay : exp days 1-3 (lambda=0.693); power-law day 3+ (beta=0.5/0.3); lazy on read. 2. Hebbian : co-retrieval -> boost connection. 3. LTP : None->Burst(5+/24h,2x)->Weekly(3+/wk,3x)->Full(10+,10x). 4. Entity Extraction (MEDIUM-HIGH): tokenization+POS+suffix, compound nouns, Porter2, co-occurrence edges. 5. Three-Tier Flow : working(7)->session(100)->long-term; promote on 3+ accesses or importance>=0.5. 6. Knowledge Graph (~1000+ lines, 2-3wk): SQLite+LanceDB, entity nodes+edges. 7. Spreading Activation (~500 lines): BFS+hop-decay, 3-6 hops. TOTAL: 3-5 weeks."
+    "new_text": "Option C Memory Upgrade Plan (Session 392). DECISION: Build Shodh-inspired features into memory_server.py. Score: 82/100 vs 74/100. BRANCH: mem2x (worktree). COMPONENTS: 1. Hybrid Decay: exp days 1-3 (lambda=0.693); power-law day 3+ (beta=0.5/0.3); lazy on read. 2. Hebbian: co-retrieval -> boost connection. 3. LTP: None->Burst(5+/24h,2x)->Weekly(3+/wk,3x)->Full(10+,10x). 4. Entity Extraction (MEDIUM-HIGH): POS+suffix, compound nouns, Porter2, co-occurrence edges. 5. Three-Tier Flow: working(7)->session(100)->long-term; promote on 3+ accesses. 6. Knowledge Graph (2-3wk): SQLite+LanceDB, entity nodes+edges. 7. Spreading Activation: BFS+hop-decay, 3-6 hops. TOTAL: 3-5 weeks."
   },
   {
     "id": "5267c39f6cd69fcb",
@@ -81,7 +81,7 @@
   },
   {
     "id": "073c948f46dcfe74",
-    "new_text": "Dual-Layer Memory Architecture Survey (2025-2026). CORE: Episodic: events, append-only, cheap write. Semantic: distilled facts, LLM write, k-NN+BM25. PAPERS: HiMem (2601.06377): immutable episodes + Note Memory; LOCOMO 80.71% vs A-MEM 51.88%. Synapse (2601.02744): unified directed graph; F1 40.5 (+7.2 vs A-MEM); 814 tokens/query. SimpleMem (2601.02553): entropy-aware gating tau=0.35; recursive consolidation tau=0.85; 30x token reduction; -31.3% multi-hop without consolidation. Mem0 (2504.19413): Extract-then-Update; +26% vs OpenAI memory; 90% token reduction. LANCEDB IMPL: episodes (append-only, TTL 30d) + semantic (async consolidation, confidence decay). Retrieval: episodic+semantic parallel, ~3K token budget, freshest episodic wins."
+    "new_text": "Dual-Layer Memory Architecture Survey (2025-2026). CORE: Episodic: events, append-only, deterministic retrieval, cheap write. Semantic: distilled facts, LLM write, k-NN+BM25. PAPERS: HiMem (2601.06377): immutable episodes + Note Memory; LOCOMO 80.71% vs A-MEM 51.88%. Synapse (2601.02744): unified directed graph; F1 40.5 (+7.2 vs A-MEM); 814 tokens/query. SimpleMem (2601.02553): entropy gating tau=0.35; consolidation tau=0.85; 30x token reduction; -31.3% multi-hop without consolidation. Mem0 (2504.19413): Extract-then-Update; +26% vs OpenAI memory; 90% token reduction. LANCEDB IMPL: episodes (append-only, TTL 30d) + semantic (async consolidation, confidence decay). Retrieval: episodic+semantic parallel, ~3K budget, freshest episodic wins."
   },
   {
     "id": "747d761cbfa1c4f4",
@@ -89,7 +89,7 @@
   },
   {
     "id": "7ef587c4a612421c",
-    "new_text": "Quality Gates Audit (2026-02-16) -- CLEAN SWEEP. ALL 15 GATES PASS. Test counts: G1(9), G2(13), G3(7), G4(5), G5(15), G6(27), G7(31), G8(12), G9(17), G10(38), G11(11), G12(11), G13(9), G14(11), G15(8); total 224. All gates: file exists; check() exported; in enforcer GATE_MODULES; in CLAUDE.md; return valid GateResult; have GATE_DEPENDENCIES. TIER1=gates 1-3. ENFORCER: hot-reload (30s); fail-closed on malformed input; 22 state keys read, 2 written (gate6_warn_count, confidence_warnings). STATE KEYS (22): files_read, last_test_run, memory_last_queried, pending_chain_ids, current_strategy_id, active_bans, session_start, recent_test_failure, fixing_error + others. CONCLUSION: production-ready."
+    "new_text": "Quality Gates Audit (2026-02-16) -- CLEAN SWEEP. ALL 15 GATES PASS. Test counts: G1(9), G2(13), G3(7), G4(5), G5(15), G6(27), G7(31), G8(12), G9(17), G10(38), G11(11), G12(11), G13(9), G14(11), G15(8); total 224. All gates: file exists; check() exported; in GATE_MODULES; in CLAUDE.md; valid GateResult; GATE_DEPENDENCIES set. TIER1=gates 1-3. ENFORCER: hot-reload (30s); fail-closed; 22 state keys read, 2 written. STATE KEYS: files_read, last_test_run, last_test_exit_code, memory_last_queried, pending_chain_ids, current_strategy_id, active_bans, session_start, recent_test_failure, fix_history_queried, fixing_error, tool_call_count + others. CONCLUSION: production-ready."
   },
   {
     "id": "196d3b5220fc9726",
@@ -97,7 +97,7 @@
   },
   {
     "id": "4670761a264b1b20",
-    "new_text": "Session 11 (2026-02-10): Causal Fix Tracking -- 5 features, 7 files. 1. error_normalizer.py (NEW, 43 lines): strips paths/UUIDs/hex/timestamps; FNV-1a->8-char fingerprint; normalize_error(), fnv1a_hash(), error_signature(). 2. fix_outcomes ChromaDB + 3 MCP tools: record_attempt(error,strategy)->chain_id; record_outcome(chain_id,outcome)->Laplace (s+1)/(n+2), auto-ban if attempts>=2 AND confidence<0.18; query_fix_history(error,top_k)->semantic+hash+30-day decay. 3. gate_09_strategy_ban.py (NEW, 42 lines): Tier 2, blocks Edit/Write on banned strategy. 4-5. state.py: 4 new fields (pending_chain_ids, current_strategy_id, current_error_signature, active_bans); MAX_ACTIVE_BANS=50, MAX_PENDING_CHAINS=10. TESTS: 174/175 passing (22 new). Chain IDs: {error_hash}_{strategy_hash}."
+    "new_text": "Session 11 (2026-02-10): Causal Fix Tracking -- 5 features, 7 files. 1. error_normalizer.py (NEW, 43 lines): strips paths/UUIDs/hex/timestamps; FNV-1a->8-char fingerprint; normalize_error(), fnv1a_hash(), error_signature(). 2. fix_outcomes ChromaDB + 3 MCP tools: record_attempt(error,strategy)->chain_id; record_outcome(chain_id,outcome)->Laplace (s+1)/(n+2), auto-ban if attempts>=2 AND confidence<0.18; query_fix_history->semantic+hash+30-day decay. 3. gate_09_strategy_ban.py (NEW, 42 lines): Tier 2, blocks Edit/Write on banned strategy. 4-5. state.py: 4 new fields (pending_chain_ids, current_strategy_id, current_error_signature, active_bans); MAX_ACTIVE_BANS=50, MAX_PENDING_CHAINS=10. TESTS: 174/175 passing. Chain IDs: {error_hash}_{strategy_hash}."
   },
   {
     "id": "91b770e3f29a24f0",
@@ -105,7 +105,7 @@
   },
   {
     "id": "5528eff61bb0d80a",
-    "new_text": "Shodh-Memory audit (2026-03-09). REPO: varun29ankuS/shodh-memory (Rust). 8 MCP tools: remember; recall(semantic/associative/hybrid); proactive_context(implicit feedback); lineage_trace(backward/forward/both); lineage_confirm; lineage_reject; lineage_link(7 types: Caused/ResolvedBy/InformedBy/SupersededBy/TriggeredBy/BranchedFrom/RelatedTo); lineage_stats. STORAGE: RocksDB; API 127.0.0.1:3030. MEMORY: 3-tier; hybrid Semantic(0.5)+Graph(0.35)+Linguistic(0.15) or RRF BM25(0.35)+Vector(0.40)+Graph(0.25) k=45. FEEDBACK: implicit (EntityOverlap, SemanticSimilarity, NegKeywords x33, UserRepetition, TopicChange, EntityFlow); EMA; 14-day decay. PATTERN (PIPE-2): EntityCoOccurrence; SemanticCluster tau=0.7; TemporalCluster 3600s; SalienceSpike; BehavioralChange; TimerInterval. REPLAY: top 8; retroactive+proactive+RIF. SPANN: sqrt-n k-means, PQ 32x."
+    "new_text": "Shodh-Memory audit (2026-03-09). REPO: varun29ankuS/shodh-memory (Rust). 8 MCP tools: remember; recall(semantic/associative/hybrid); proactive_context(implicit feedback); lineage_trace(backward/forward/both); lineage_confirm; lineage_reject; lineage_link(7 types: Caused/ResolvedBy/InformedBy/SupersededBy/TriggeredBy/BranchedFrom/RelatedTo); lineage_stats. STORAGE: RocksDB; API 127.0.0.1:3030. MEMORY: 3-tier; hybrid Semantic(0.5)+Graph(0.35)+Linguistic(0.15) or RRF BM25(0.35)+Vector(0.40)+Graph(0.25) k=45. FEEDBACK: implicit (EntityOverlap, SemanticSimilarity, NegKeywords x33, TopicChange); EMA; 14-day decay. PATTERN (PIPE-2): EntityCoOccurrence; SemanticCluster tau=0.7; TemporalCluster; SalienceSpike; BehavioralChange. REPLAY: top 8; retroactive+proactive+RIF. SPANN: sqrt-n k-means, PQ 32x"
   },
   {
     "id": "7f31bec3d1101c7d",
@@ -113,7 +113,7 @@
   },
   {
     "id": "61641951d23fc00f",
-    "new_text": "Combo 2 Plan -- 8 tasks (Session 394, branch: mem2x-combo2). QUICK FIXES (commit cbfc727): quarantine->graph deactivation (1 line memory_server.py:3171); CamelCase regex [A-Z][a-z]+(?:[A-Z][a-z]+|[A-Z]+)+ catches ChromaDB/FastAPI/GraphQL. TASK 1 knowledge_graph.py: decay_edges(half_life_hours=168); get_high_activation_clusters(min_activation=5); boost_entity_salience(delta=0.1). TASK 2 memory_replay.py: session-start replay (top 8, max 30 days); evaluate_tier_flow (promote >=8 retrievals or LTP full; demote >60d+<2 retrievals); compute_interference (suppress similar if new is correction/fix or higher tier); AdaptiveWeights JSON-persisted Bayesian per-signal. TASK 3-5: ltp_tracker integration, entity salience, adaptive weights. TASK 6-8 tests. Target: 38 tests."
+    "new_text": "Combo 2 Plan -- 8 tasks (Session 394, branch: mem2x-combo2). QUICK FIXES (commit cbfc727): quarantine->graph deactivation (1 line memory_server.py:3171); CamelCase regex [A-Z][a-z]+(?:[A-Z][a-z]+|[A-Z]+)+ catches ChromaDB/FastAPI/GraphQL. TASK 1 knowledge_graph.py: decay_edges(half_life_hours=168); get_high_activation_clusters(min_activation=5); boost_entity_salience(delta=0.1). TASK 2 memory_replay.py: session-start replay (top 8, max 30 days); evaluate_tier_flow (promote >=8 or LTP full; demote >60d+<2 retrievals); compute_interference (suppress similar if correction/fix); AdaptiveWeights JSON-persisted Bayesian per-signal. TASK 3-5: ltp_tracker, entity salience, adaptive weights. TASK 6-8 tests. Target: 38 tests."
   },
   {
     "id": "168c78ea305a6b59",
