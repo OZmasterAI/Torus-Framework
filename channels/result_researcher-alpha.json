@@ -1,0 +1,123 @@
+{
+  "agent": "researcher-alpha",
+  "task": "Research ActMem and M2A dual-layer memory papers",
+  "completed_at": "2026-03-11T01:37:29Z",
+  "model": "claude-sonnet-4-6",
+  "memory_ids": ["f74b5a547010b38a", "196d3b5220fc9726", "168c78ea305a6b59"],
+  "status": "complete",
+  "corrections": {
+    "40_percent_claim": "NOT FOUND in either paper. Largest gain in M2A is ~23% relative (Qwen3-VL-8B backbone). Largest ActMem gain is +14.78% retrieval vs LightMem.",
+    "actmem_layers": "ActMem does NOT use episodic/semantic layers. It uses a single unified KG with two edge types (semantic + causal).",
+    "terminology_map": {
+      "episodic_layer": "M2A RawMessageStore (append-only log)",
+      "semantic_layer": "M2A SemanticMemoryStore (compressed + indexed)",
+      "flat_memory_baseline": "NaiveRAG (ActMem comparison)"
+    }
+  },
+  "papers": {
+    "ActMem": {
+      "arxiv_id": "2603.00026",
+      "title": "ActMem: Bridging the Gap Between Memory Retrieval and Reasoning in LLM Agents",
+      "authors": ["Xiaohui Zhang", "Zequn Sun", "Chengyuan Yang", "Yaqin Jin", "Yazhong Zhang", "Wei Hu"],
+      "submitted": "2026-02-04",
+      "url": "https://arxiv.org/abs/2603.00026",
+      "key_idea": "The retrieval-reasoning gap: NaiveRAG achieves 84.86% retrieval accuracy but only 61.54% QA accuracy. Finding facts does not equal reasoning about them. ActMem closes this via a causal+semantic knowledge graph with two-pass counterfactual retrieval.",
+      "architecture": {
+        "type": "Unified causal+semantic knowledge graph (single layer, not episodic/semantic split)",
+        "modules": [
+          "Fact Extraction: LLM converts dialogue to atomic subject-predicate-object sentences",
+          "Fact Clustering: single-pass incremental cosine clustering (threshold tau=0.2)",
+          "KG Construction: semantic edges (cos>0.3) + causal edges (PMI filtering tau=0.8)",
+          "Counterfactual Retrieval: vector search → LLM generates counterfactual consequences → second retrieval pass"
+        ],
+        "key_innovation": "Counterfactual reasoning allows deducing implicit constraints (e.g. 'user moved cities → gym membership cancelled')"
+      },
+      "benchmark_results": {
+        "ActMemEval_DeepSeek-V3": {
+          "retrieval_acc": "71.66%",
+          "qa_acc": "76.52%",
+          "vs_LightMem_retrieval": "+14.78%",
+          "vs_LightMem_qa": "+12.55%"
+        },
+        "LongMemEval": {
+          "qa_acc": "75.60%",
+          "vs_LightMem": "+6.96%"
+        },
+        "baselines": ["NaiveRAG", "Mem0", "A-Mem", "MemoryOS", "LightMem"]
+      },
+      "ablation": {
+        "no_counterfactual": "-9% retrieval accuracy",
+        "no_causal_edges": "lowest QA accuracy",
+        "no_semantic_edges": "hurts context completeness"
+      },
+      "vs_flat_memory": "NaiveRAG (flat vector) has highest retrieval accuracy (84.86%) but lowest QA (61.54%). ActMem trades retrieval precision for large QA gains via reasoning."
+    },
+    "M2A": {
+      "arxiv_id": "2602.07624",
+      "title": "M2A: Multimodal Memory Agent with Dual-Layer Hybrid Memory for Long-Term Personalized Interactions",
+      "authors": ["Junyu Feng", "Binxiao Xu", "Jiayi Chen", "Mengyu Dai", "Cenyang Wu", "Haodong Li", "Bohan Zeng", "Yunliu Xie", "Hao Liang", "Ming Lu", "Wentao Zhang"],
+      "submitted": "2026-02-07",
+      "url": "https://arxiv.org/abs/2602.07624",
+      "github": "https://github.com/Little-Fridge/M2A",
+      "key_idea": "True dual-layer memory for multimodal long-term personalization. Memory co-evolves with the user. Only system evaluated that handles both text and images in memory.",
+      "architecture": {
+        "two_agents": {
+          "ChatAgent": "ReAct loop: Query memory → Generate response → Update memory",
+          "MemoryManager": "Dedicated read-write controller, isolates memory ops from conversation context"
+        },
+        "layer_1_RawMessageStore": {
+          "description": "What-happened layer: append-only, immutable, chronological log",
+          "content": "Complete turns including text, images, video frames",
+          "role": "Ground-truth evidence"
+        },
+        "layer_2_SemanticMemoryStore": {
+          "description": "What-it-means layer: compressed high-level knowledge entries",
+          "content": "Text description + auto-generated image captions + associated images",
+          "key_field": "evidence_ids: pointers back to specific RawMessageStore ranges",
+          "indexes": ["dense text embedding", "sparse BM25 (keyword)", "cross-modal image embedding"]
+        },
+        "retrieval": {
+          "type": "Tri-path hybrid fused via Reciprocal Rank Fusion (k=60)",
+          "path_1": "Dense cosine similarity on text embeddings",
+          "path_2": "BM25 sparse keyword matching (handles exact terms, names, dates)",
+          "path_3": "Cross-modal image retrieval (text query vs image captions)",
+          "progressive_narrowing": "Broad semantic retrieval → fine-grained raw-message lookup via evidence_ids"
+        }
+      },
+      "benchmark_results": {
+        "dataset": "LoCoMo (~621 turns/conversation, 10 conversations, 214 injected images)",
+        "evaluation": "LLM-as-a-Judge (Qwen3-VL-32B + GPT-4o, binary)",
+        "GPT-4o-mini": {
+          "M2A_overall": "44.64%",
+          "A-MEM_overall": "36.26%",
+          "improvement": "+8.38 absolute points"
+        },
+        "Qwen3-VL-8B": {
+          "M2A": "54.69%",
+          "best_baseline": "43.95%",
+          "improvement": "+23.5% relative"
+        },
+        "GLM-4.6V-Flash": {
+          "M2A": "56.48%",
+          "best_baseline": "47.46%",
+          "improvement": "+19% relative"
+        }
+      },
+      "ablation_Qwen3-VL-8B": {
+        "full_M2A": "54.69%",
+        "without_dual_layer": "41.38% (-13.31 pts)",
+        "without_iterative_retrieval": "38.67% (-16.02 pts, LARGEST DROP)",
+        "without_tri_path_retrieval": "50.59% (-4.10 pts)"
+      }
+    }
+  },
+  "lancedb_application_insights": [
+    "1. ADD EVIDENCE POINTERS: Semantic memory entries should carry evidence_ids linking back to raw observation records. Our current system lacks this link between compressed knowledge and source observations.",
+    "2. TWO-AGENT ISOLATION: Separating memory read/write from conversation context (M2A's MemoryManager pattern) maps to our gate/session separation. Memory retrieval results should not overflow conversation context.",
+    "3. BM25 + DENSE FUSION (RRF): Our current FTS5 + vector search should be fused via Reciprocal Rank Fusion (k=60) rather than independent fallback. This handles exact-match queries (names, dates) that pure semantic search misses.",
+    "4. PMI FILTERING FOR CAUSAL CHAINS: Before storing causal relationships in knowledge entries, score them with Pointwise Mutual Information to filter spurious causality (ActMem uses tau=0.8).",
+    "5. SINGLE-PASS INCREMENTAL CLUSTERING: Group related facts by cosine similarity (tau=0.2) before KG insertion. Avoids full reindex per conversation turn.",
+    "6. COUNTERFACTUAL RETRIEVAL PASS: After initial vector retrieval, generate 'what would follow from these facts' and run a second retrieval pass. Highest-value addition for reasoning tasks.",
+    "7. PROGRESSIVE NARROWING (HIGHEST VALUE PER M2A ABLATION): Semantic layer retrieval first, then drill into raw records via pointers. Removing this causes the largest single accuracy drop (-16 pts)."
+  ]
+}
