@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for Feature #5: Incremental Clustering at Ingest."""
+
 import sys
 import os
 import tempfile
@@ -16,6 +17,7 @@ if MEMORY_SERVER_RUNNING:
     print("  [SKIP] Memory server running — skipping direct import tests")
     # Register skips so harness counts are consistent
     from tests.harness import skip
+
     skip("Clustering: _cluster_label extracts words")
     skip("Clustering: _ClusterStore creates cluster for first vector")
     skip("Clustering: similar vector joins existing cluster")
@@ -25,11 +27,13 @@ if MEMORY_SERVER_RUNNING:
     skip("Clustering: _assign_cluster fallback on zero vector")
 else:
     import sys as _sys
+
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
     # We need to import memory_server — but it's a server module that calls
     # argparse at import time and needs sys.argv. Patch it.
     import sys
+
     _orig_argv = sys.argv[:]
     sys.argv = ["memory_server.py"]
 
@@ -96,7 +100,7 @@ else:
             test(
                 "Clustering: centroid running mean updates correctly",
                 total_cached >= 1 and all(c >= 1 for _, _, c in store2._cache),
-                f"clusters={total_cached}, counts={[c for _,_,c in store2._cache]}",
+                f"clusters={total_cached}, counts={[c for _, _, c in store2._cache]}",
             )
 
             # Test 6: Cache invalidation doesn't happen mid-update
@@ -124,6 +128,7 @@ else:
     except Exception as e:
         sys.argv = _orig_argv
         from tests.harness import skip
+
         skip(f"Clustering: import failed — {e}")
         skip("Clustering: _ClusterStore creates cluster for first vector")
         skip("Clustering: similar vector joins existing cluster")
@@ -138,14 +143,17 @@ print("\n--- Incremental Clustering: Schema ---")
 
 if MEMORY_SERVER_RUNNING:
     from tests.harness import skip
+
     skip("Clustering schema: cluster_id in _KNOWLEDGE_SCHEMA")
     skip("Clustering schema: CLUSTER_THRESHOLD constant exists")
 else:
     try:
         import sys
+
         _orig_argv2 = sys.argv[:]
         sys.argv = ["memory_server.py"]
         from memory_server import _KNOWLEDGE_SCHEMA, CLUSTER_THRESHOLD
+
         sys.argv = _orig_argv2
 
         _schema_names = {f.name for f in _KNOWLEDGE_SCHEMA}
@@ -160,7 +168,8 @@ else:
             f"CLUSTER_THRESHOLD={CLUSTER_THRESHOLD}",
         )
     except Exception as e:
-        sys.argv = _orig_argv2 if '_orig_argv2' in dir() else sys.argv
+        sys.argv = _orig_argv2 if "_orig_argv2" in dir() else sys.argv
         from tests.harness import skip
+
         skip(f"Clustering schema: import failed — {e}")
         skip("Clustering schema: CLUSTER_THRESHOLD constant exists")
