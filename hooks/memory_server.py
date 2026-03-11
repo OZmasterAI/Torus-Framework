@@ -731,7 +731,7 @@ DOMAIN_AUTHORITY = {
 }
 
 # Observation promotion settings
-MAX_PROMOTIONS_PER_CYCLE = 10
+MAX_PROMOTIONS_PER_CYCLE = 50
 PROMOTION_TAGS = "type:auto-promoted,area:framework"
 
 
@@ -2210,6 +2210,18 @@ def _compact_observations():
                 if cnt >= 3:
                     repeat_doc = f"Repeated command: {cmd} ({cnt} occurrences)"
                     _promote_observation(repeat_doc, {}, "criterion:repeated-command")
+
+            # Criterion 4: Resolved errors (error followed by success for same tool = fix pattern)
+            # These are the inverse of Criterion 1 — captures "what worked" not just "what broke"
+            for idx, doc, meta in session_errors:
+                if promoted >= MAX_PROMOTIONS_PER_CYCLE:
+                    break
+                sid = meta.get("session_id", "")
+                tool = meta.get("tool_name", "")
+                # Only promote if the tool DID succeed later in the same session
+                if sid and tool and tool in session_success_tools.get(sid, set()):
+                    fix_doc = f"Resolved error pattern ({tool}): {doc}"
+                    _promote_observation(fix_doc, meta, "criterion:resolved-error")
 
             # Delete expired observations
             if exp_ids:
