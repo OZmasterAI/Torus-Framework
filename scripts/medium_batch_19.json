@@ -17,7 +17,7 @@
   },
   {
     "id": "8f867f56b02c8047",
-    "new_text": "OptimisticChain genesis configuration (2026-02-10): (1) generate-genesis.sh: Uses `forge inspect <Contract> deployedBytecode` for runtime bytecode, generates genesis.json with 7 predeploy allocations. (2) genesis.json: OP Stack compatible (chainId 42069, bedrock/regolith/canyon/ecotone/fjord), customConfig (stakingAPYBps=500, epochLength=600, feeTransitionEpochs=1825), 7 allocs (StakingManager, PassiveStaking, FeeDistributor, ChainGovernor, Treasury, RewardMinter, Dev account). (3) initialize-predeploys.sh: Documents that constructors don't run at genesis, constructor-set storage must be initialized separately. KEY: forge inspect bytecode = creation code, deployedBytecode = runtime. Genesis needs runtime bytecode. LIMITATION: Predeploy storage slots zeroed at genesis—need genesis storage entries or initializer pattern for production."
+    "new_text": "OptimisticChain genesis config (2026-02-10): (1) generate-genesis.sh: Uses `forge inspect <Contract> deployedBytecode` for runtime bytecode. (2) genesis.json: OP Stack compatible (chainId 42069, bedrock/regolith/canyon/ecotone/fjord), customConfig (stakingAPYBps=500, epochLength=600, feeTransitionEpochs=1825), 7 allocs (StakingManager, PassiveStaking, FeeDistributor, ChainGovernor, Treasury, RewardMinter, Dev). (3) initialize-predeploys.sh: Constructors don't run at genesis; storage must initialize separately. KEY: deployedBytecode = runtime bytecode (needed for genesis). LIMITATION: Predeploy storage slots zeroed at genesis—need genesis storage entries or initializer pattern for production."
   },
   {
     "id": "9fcbea7c1b155cdc",

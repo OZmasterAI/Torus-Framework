@@ -33,7 +33,7 @@
   },
   {
     "id": "e09560506bac2947",
-    "new_text": "[torus-web #12] 6 component/hook test files created and passing (2026-03-04): theme-provider.test.tsx (2), torus-energy-button.test.tsx (8), liquid-button.test.tsx (3), interactive-torus-nav.test.tsx (4), use-mobile.test.tsx (4), use-toast.test.tsx (8). Total: 29 tests. KEY FIXES: (1) React 19 mock calls: toHaveBeenCalledWith(objectContaining) fails with 2 args (props, undefined)—use mock.calls[0][0] + toMatchObject(). (2) <a> without href not accessible as 'link' role in jsdom—use container.querySelector('a'). (3) vi.stubGlobal('requestAnimationFrame', ...) + cancelAnimationFrame prevent rAF loops. (4) matchMedia: createMatchMediaMock helper tracks listeners, vi.stubGlobal('innerWidth'), vi.unstubAllGlobals() afterEach. (5) use-toast: mock @/components/ui/toast (avoid @radix-ui), test reducer as pure function."
+    "new_text": "[torus-web #12] 6 component/hook tests (2026-03-04): theme-provider (2), torus-energy-button (8), liquid-button (3), interactive-torus-nav (4), use-mobile (4), use-toast (8). Total: 29. KEY: (1) React 19: toHaveBeenCalledWith(objectContaining) fails 2 args—use mock.calls[0][0] + toMatchObject(). (2) <a> without href: use container.querySelector('a'). (3) vi.stubGlobal(requestAnimationFrame). (4) matchMedia: createMatchMediaMock, stubGlobal(innerWidth). (5) use-toast: mock @/components/ui/toast, test reducer pure."
   },
   {
     "id": "0b66b632bdacc378",
