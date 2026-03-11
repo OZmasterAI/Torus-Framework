@@ -3286,6 +3286,57 @@ def search_knowledge(
     except Exception:
         pass  # Graph enrichment failure must not break search
 
+    # --- Counterfactual retrieval pass (fail-open) ---
+    counterfactual_count = 0
+    try:
+        _cf_enabled = _ls_toggles.get("counterfactual_retrieval", False)
+        _cf_mode = _ls_toggles.get("counterfactual_mode", "always")
+        _cf_model = _ls_toggles.get("counterfactual_model", "haiku")
+        _cf_threshold = _ls_toggles.get("counterfactual_threshold", 0.4)
+        _should_cf = False
+
+        if _cf_enabled:
+            if _cf_mode == "always":
+                _should_cf = True
+            elif _cf_mode == "threshold" and formatted:
+                _best_rel = max((r.get("relevance", 0) for r in formatted), default=0)
+                if _best_rel < _cf_threshold:
+                    _should_cf = True
+            # "opt-in" mode: only explicit param triggers (handled below)
+
+        # Explicit param overrides mode (but respects master toggle)
+        if counterfactual and _cf_enabled:
+            _should_cf = True
+
+        # Never for non-semantic modes
+        if mode in ("tags", "observations", "transcript"):
+            _should_cf = False
+
+        if _should_cf and formatted:
+            _cf_query = _generate_counterfactual_query(
+                query, formatted, model_key=_cf_model
+            )
+            if _cf_query:
+                _seen_ids = {r.get("id") for r in formatted if r.get("id")}
+                _cf_results = collection.query(
+                    query_texts=[_cf_query],
+                    n_results=min(top_k, 5),  # Cap at 5 extra results
+                    include=["metadatas", "distances"],
+                )
+                _cf_summaries = format_summaries(_cf_results)
+                _cf_disc = _ls_toggles.get("counterfactual_discount", 0.8)
+                for cs in _cf_summaries:
+                    cid = cs.get("id", "")
+                    if cid and cid not in _seen_ids:
+                        cs["counterfactual"] = True
+                        cs["cf_query"] = _cf_query
+                        cs["relevance"] = cs.get("relevance", 0) * _cf_disc
+                        formatted.append(cs)
+                        _seen_ids.add(cid)
+                        counterfactual_count += 1
+    except Exception:
+        pass  # Counterfactual failure must not break search
+
     result = {
         "results": formatted,
         "total_memories": count,
@@ -3306,6 +3357,8 @@ def search_knowledge(
         result["tg_enrichment_count"] = tg_enrichment_count
     if graph_enriched_count > 0:
         result["graph_enriched_count"] = graph_enriched_count
+    if counterfactual_count > 0:
+        result["counterfactual_count"] = counterfactual_count
     if tag_expanded:
         result["tag_expanded"] = True
         result["expanded_tags"] = expanded_tags
