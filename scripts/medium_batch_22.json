@@ -1,0 +1,62 @@
+[
+  {
+    "id": "468a30ac96716fd2",
+    "new_text": "Option F (A+B1+B3): Rule 5b + Heuristic Auto-Tagging + Model Confidence Tagging. Score: 86, Net gain: +73. Model tags confidence (verified_now/historical/inferred) when saving. LanceDB adds confidence column. Search results show [state_type | confidence] pair. Learning ability: 78→85. Consistency: 90→92. Output quality: 90→92. Multi-agentic: 92→95. Net gain is LOWER than Option C (+113) because F loses on token cost (-40), speed (-18), memory (-48). Consider revisiting only if learning ability gap proves problematic in practice. Upgrade path: A → C → F additive."
+  },
+  {
+    "id": "860400ca35ded5e5",
+    "new_text": "Claude Code MCP has THREE config layers: (1) Global ~/.claude/mcp.json, (2) Project .mcp.json in repo root, (3) Local ~/.claude.json under projects.\"<path>\".mcpServers (private, managed via `claude mcp add/remove -s local`). Local scope is default for `claude mcp add` without -s flag. Commands: `claude mcp list` (all servers), `claude mcp get <name>` (scope), `claude mcp remove \"<name>\" -s local`, `claude mcp add -s local <name> -- <cmd> <args>`."
+  },
+  {
+    "id": "504afaccf47f2ad3",
+    "new_text": "Model Router REST API (bypass MCP): http://127.0.0.1:18800. Endpoints: POST /fan-out {prompt, n} → fan to N free models. POST /compare {prompt, models} → compare+score. POST /research {topic, n} → synthesize. POST /schedule {prompt, cron, n} → recurring. GET /models → list+health. Response: JSON array {name, text, latency_ms, error}. MCP bridge at ~/.claude/integrations/model-router/mcp_bridge.py has 180s timeout."
+  },
+  {
+    "id": "fa43c0112aeb8d1a",
+    "new_text": "Whisper optimization (Feb 2026, Telegram bot, CPU-only, faster-whisper turbo). Current: turbo (809MB), beam_size=5, first call ~40s (load+transcribe), subsequent ~35s for 2-7s audio (model loaded but slow). CRITICAL: 35s is NOT model-load, it's beam_size=5+temperature fallback on short audio. Fix: set temperature=0, beam_size=1 → ~3-8s expected. Alternative: Groq API ($0.04/hr, 20 RPM free tier, 200-500ms latency for 5s clip). Distil-whisper: 6x faster, 50% smaller, English-only, ~1.5-3s for 5s audio on 8-core i7, WER within 1% of large-v3."
+  },
+  {
+    "id": "a9af3ec7430a9782",
+    "new_text": "Session 164 Self-Sprint-2: Added test sections to test_framework.py covering error_normalizer (hex/timestamp/number normalization, fnv1a_hash, error_signature), observation (tool compression, priority logic), audit_log (daily file creation, trail, schema, filtering, limit, compact, block summary), anomaly_detector (EMA, trend rising/falling/stable), anomaly_consensus (quorum, max_severity), tool_dominance, config_validator (settings/live_state/gates/skills validation). Appended tests after sys.exit() need moving before cleanup+summary block."
+  },
+  {
+    "id": "fc8dc3a778712aa6",
+    "new_text": "Created 3 merged super-skills (originals NOT deleted): 1) super-evolve (434 lines) merges evolve+self-improve, adds --quick/--area/--dry-run, 6 memory queries (was 3), WebSearch research, Novelty scoring, audit log analysis. 2) super-health (123 lines) merges health+health-report+status, quick dashboard+deep diagnostics+metrics. 3) super-prof-optimize (167 lines) merges profile+optimize, adds framework-specific profiling (gate timing, hook latency, N+1 detection). Total skills: 39 (36 original + 3 super)."
+  },
+  {
+    "id": "bbc758c9424fbf2f",
+    "new_text": "Sprint-2 Research Swarm Phase 2 (session 163): 10 key arxiv papers: (1) Adaptive Orchestration MoE, (2) Self-Improving GVU, (3) SYMPHONY heterogeneous LLM planning, (4) Scaling Agent Systems (centralized 80.8% better), (5) Self-Healing Nature, (6) SHML H-LLM, (7) MAGMA multi-graph memory, (8) AgeMem LTM/STM, (9) Orchestral AI, (10) AdaptOrch topology>model. KEY PATTERNS FROM BUILD-WITH-CLAUDE: autonomy tiering, hybrid memory, multi-agent orchestration, continuous monitoring + anomaly detection, heterogeneous tiers, specialist panels, false-positive filtering, dynamic least-privilege, event-driven hooks, modular plugins."
+  },
+  {
+    "id": "3eddfee244f2c5d4",
+    "new_text": "michaelshimeles/ralphy: Production-grade Ralph orchestrator (~2000+ lines bash/TypeScript). Multi-engine (7+ AI CLIs), parallel with git worktree isolation, brownfield support (.ralphy/config.yaml), retries (--max-retries N), GitHub integration (issues sync, auto-PR), task sources (Markdown/YAML/JSON/Issues), webhooks (Discord/Slack), cost tracking, sandbox (symlinks), per-task branching. vs ralphy (2000+ lines) + quickstart (50-line POC). We have gates (12), memory (312 ChromaDB), tests (985), teams, causal tracking, 21 skills. Ralph has multi-engine, GitHub sync, webhooks. Ralph economics: $10.42/hr on Sonnet 4.5."
+  },
+  {
+    "id": "77763b735c76962d",
+    "new_text": "coleam00/ralph-loop-quickstart (110 stars): Bash orchestrates fresh Claude instances per iteration. Loop: read PROMPT.md → find task from prd.md (JSON with passes:false) → implement → verify with agent-browser → log to activity.md → commit → exit. Detects <promise>COMPLETE</promise> signal. Components: ralph.sh, PROMPT.md, prd.md, activity.md, agent-browser-skill. NEW VALUE vs Megaman: (1) Browser Automation (Vercel agent-browser: open, snapshot, screenshot, click, fill), (2) Fresh context per iteration, (3) JSON task format, (4) Termination signal. Megaman better on gates (12), memory (ChromaDB 309), teams, causal tracking, tests (985)."
+  },
+  {
+    "id": "380563d39c5a6527",
+    "new_text": "MCP Skill Library vs Hook-Injected Skills (Session 363). MCP: active judgment, no false positives, ~50 tokens idle, built-in usage tracking. Hook-injected: automatic, false positive risk (keyword matching), adds latency to every message, 0 tokens idle. HYBRID OPTION (best): Hook detects keywords, injects one-line nudge (\"[Skill hint: /research available]\"), ~15 tokens per nudge, no false positive cost, MCP server as backend. DECISION: Built MCP approach. Hook layer could be added later as nudge-only."
+  },
+  {
+    "id": "1d47513f93bec236",
+    "new_text": "Session 363: Built MCP Skill Library Server (skill_server.py ~130 lines). Registered: `claude mcp add --scope user -t stdio skills`. Tools: list_skills() → names+descriptions+token estimates. invoke_skill(name) → full SKILL.md, logs usage. skill_usage() → history+counts. System prompt skills (7, ~3,812 tokens): brainstorm, writing-plans, implement, test, review, commit, wrap-up. MCP library (12, 0 idle): explore, fix, deep-dive, status, research, learn, prp-wave, ralph, chain, deploy, web, build. Token savings: 12,236 → 3,812 = 8,424 tokens/message. All 19 skills available."
+  },
+  {
+    "id": "9156c2266dc243ba",
+    "new_text": "Session 183: Removed 6 superseded skills (redundant with super- merged versions): /evolve → /super-evolve, /self-improve → /super-evolve, /health → /super-health, /health-report → /super-health, /profile → /super-prof-optimize, /optimize → /super-prof-optimize. Key detail: check.py moved from skills/health/scripts/ to skills/super-health/scripts/ before deletion. Updated test_framework.py (3 sections), ARCHITECTURE.md (skills table+changelog). Tests: 1580 passed, 0 failures (net -14 tests from removed skills)."
+  },
+  {
+    "id": "27faf3db341227a7",
+    "new_text": "[trading-framework #3] Phase 3 COMPLETE. 4 waves built, 152 tests passing (47 new). Wave 1: AlpacaConnector via alpaca-py (TradingClient+StockHistoricalDataClient), 13 tests. Wave 2: CorrelationGate (T2), blocks if abs(Pearson corr)>0.7 with existing positions, 9 tests. Wave 3: Scheduler ABC+IntervalScheduler with candle timestamp dedup, 10 tests. Wave 4: AnalysisAgent with MODEL_TIER (daily=Sonnet, weekly=Opus), MAX_TOKENS (1024/4096), 11 tests. Files: connectors/alpaca.py, gates/correlation.py, claude/analyst.py, modified engine/scheduler.py, engine/core.py, main.py. Dependencies: alpaca-py>=0.30, anthropic."
+  },
+  {
+    "id": "3cfe316a28b01f07",
+    "new_text": "Session 27 Sprint 3 (framework-v2.0.4, 7 improvements). TESTS (+33): v2.0.2 features (recency boost, suggest_promotions, /test+/research), v2.0.3 features (fcntl locking, realpath symlink, heredoc, gate timing, list_stale_memories, dashboard). BOOT+ANALYTICS: Dashboard auto-start (port 7777), skill usage analytics (tracker.py, /api/skill-usage endpoint), knowledge transfer in wrap-up (KNOWLEDGE_TRANSFER+CONTINUITY_CHECK steps), error deduplication (60s window, cap 50 patterns). OBSERVATION INTELLIGENCE: sentiment tagging (frustration/confidence/uncertainty), search_observations sentiment filter, get_session_sentiment MCP tool. Total: 572 tests (up from 539), 17 MCP tools, 13 skills."
+  },
+  {
+    "id": "8141e5f4a2081863",
+    "new_text": "Tier 1 optimization: Converted ~215 run_enforcer() subprocess calls to direct gate check() imports in test_framework.py. Results: 84s → 31.4s (62.6% speedup), 1533 tests passing. Key details: Direct imports for gates 01-07,09,11. _direct_stderr() wrapper for Gate 6 (advisory, prints to stderr). Gate 2 -uf/-fu combined flags kept as subprocess. Gate 4 tests need .memory_last_queried file removal before blocked tests. Gate 11 mutates state (timestamp append). 17 subprocess smoke tests kept for pipeline integration."
+  }
+]
