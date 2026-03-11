@@ -28,6 +28,7 @@ from tests import test_shared_deep
 from tests import test_project_detection
 from tests import test_pmi
 from tests import test_clustering
+from tests import test_counterfactual
 
 # Restore sideband backup
 if harness._SIDEBAND_BACKUP is not None:
