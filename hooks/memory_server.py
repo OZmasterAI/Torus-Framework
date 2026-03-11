@@ -1519,6 +1519,77 @@ _adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
 _cluster_store = None  # _ClusterStore instance (initialized lazily)
 CLUSTER_THRESHOLD = 0.7  # cosine similarity threshold for cluster assignment
 _last_search_ids = []  # IDs from last search_knowledge call (for implicit feedback)
+
+# --- Counterfactual retrieval client (lazy init) ---
+_cf_client = None
+_cf_client_init = False
+
+
+def _get_cf_client():
+    """Lazy-init Anthropic client for counterfactual retrieval. Returns None on failure."""
+    global _cf_client, _cf_client_init
+    if _cf_client_init:
+        return _cf_client
+    _cf_client_init = True
+    try:
+        import anthropic
+
+        _cf_client = anthropic.Anthropic(timeout=5.0)
+        return _cf_client
+    except Exception:
+        return None
+
+
+_CF_SYSTEM_PROMPT = (
+    "You generate alternative search queries for a memory retrieval system. "
+    "Given the original query and initial results, produce ONE short search query "
+    "(under 15 words) that would find related but DIFFERENT memories — "
+    "focus on causes, consequences, or prerequisites the initial results miss. "
+    "Reply with ONLY the query, nothing else."
+)
+
+_CF_MODEL_MAP = {
+    "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6-20250514",
+    "opus": "claude-opus-4-6-20250514",
+}
+
+
+def _generate_counterfactual_query(original_query, initial_results, model_key="haiku"):
+    """Ask LLM for an alternative query based on initial results. Returns str or None."""
+    client = _get_cf_client()
+    if not client:
+        return None
+    try:
+        # Build compact context from top-5 results
+        context_lines = []
+        for r in initial_results[:5]:
+            preview = r.get("preview", "")[:120]
+            rel = r.get("relevance", 0)
+            context_lines.append(f"[{rel:.2f}] {preview}")
+        context_block = "\n".join(context_lines)
+
+        user_msg = (
+            f"Original query: {original_query}\n\nInitial results:\n{context_block}"
+        )
+
+        model_id = _CF_MODEL_MAP.get(model_key, _CF_MODEL_MAP["haiku"])
+        response = client.messages.create(
+            model=model_id,
+            max_tokens=80,
+            temperature=0.7,
+            system=_CF_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        cf_query = response.content[0].text.strip()
+        # Sanity: reject empty or absurdly long responses
+        if not cf_query or len(cf_query) > 200:
+            return None
+        return cf_query
+    except Exception:
+        return None  # Fail-open: any error → skip counterfactual
+
+
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
@@ -2526,6 +2597,7 @@ def search_knowledge(
     mode: str = "",
     recency_weight: float = 0.15,
     match_all: bool = False,
+    counterfactual: bool = False,
 ) -> dict:
     """Search memory for relevant information. Use before starting any task.
 
@@ -2535,6 +2607,7 @@ def search_knowledge(
         mode: Force search mode ("keyword", "semantic", "hybrid", "tags", "observations", "all", "code"). Empty = auto-detect.
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
         match_all: For tag mode only — if true, all tags must be present (default false).
+        counterfactual: Force counterfactual retrieval pass (default false). Behavior depends on counterfactual_mode in config: "always" (every search), "threshold" (weak results only), "opt-in" (this param only).
     """
     _ensure_initialized()
     if _lance_degraded:
