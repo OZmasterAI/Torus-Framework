@@ -2076,16 +2076,13 @@ def _get_expanded_tags(query: str) -> list[str]:
     query_lower = query.lower().strip()
     query_tokens = set(query_lower.split())
 
-    # Match query against known tags (substring or token match)
+    # Match query against known tags (exact or token match, min 4 chars)
     matched_tags = []
     for tag in _tag_counts:
         tag_lower = tag.lower()
-        # Exact match, substring, or token overlap
-        if (
-            tag_lower == query_lower
-            or tag_lower in query_lower
-            or tag_lower in query_tokens
-        ):
+        if len(tag_lower) < 4:
+            continue
+        if tag_lower == query_lower or tag_lower in query_tokens:
             matched_tags.append(tag)
 
     if not matched_tags:
@@ -2108,7 +2105,7 @@ def _get_expanded_tags(query: str) -> list[str]:
                 if tag_pmi > 1.0:
                     expanded.add(co_tag)
 
-    return list(expanded)
+    return list(expanded)[:15]
 
 
 def format_results(results) -> list[dict]:
@@ -3361,7 +3358,6 @@ def search_knowledge(
         result["counterfactual_count"] = counterfactual_count
     if tag_expanded:
         result["tag_expanded"] = True
-        result["expanded_tags"] = expanded_tags
 
     # Track search result IDs for implicit feedback (fail-open)
     global _last_search_ids
