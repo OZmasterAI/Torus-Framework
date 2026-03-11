@@ -57,6 +57,6 @@
   },
   {
     "id": "0d528b0c0b20b9e6",
-    "new_text": "Created /home/crab/.claude/hooks/shared/tool_patterns.py: Markov chain tool call pattern analysis. PUBLIC API: load_sequences(queue_path)→List[List[str]], build_markov_chain(sequences)→MarkovChain, predict_next_tool(recent_tools, queue_path, top_k)→List[Tuple[str,float]] (Laplace-smoothed), get_workflow_templates(queue_path, min_count, max_templates)→List[WorkflowTemplate], detect_unusual_sequence(recent_tools, queue_path, sigma_threshold)→Optional[AnomalyReport], get_transition_matrix(queue_path), get_tool_stats(queue_path), summarize_patterns(queue_path). DESIGN: Lazy loading, mtime cache invalidation, Laplace smoothing (alpha=0.1), session boundary (id change OR 5-min gap), skips UserPrompt+PreCompact, anomaly detection (sigma≥2.0 below mean OR ≥2 rare transitions), 107 tests pass against live queue (/home/crab/.claude/hooks/.capture_queue.jsonl)."
+    "new_text": "Created /home/crab/.claude/hooks/shared/tool_patterns.py: Markov chain pattern analysis. API: load_sequences(queue_path), build_markov_chain(sequences), predict_next_tool(recent_tools, queue_path, top_k) Laplace-smoothed, get_workflow_templates(queue_path), detect_unusual_sequence(queue_path, sigma_threshold), get_transition_matrix(queue_path), get_tool_stats(queue_path), summarize_patterns(queue_path). DESIGN: Lazy loading, mtime cache, Laplace smoothing (alpha=0.1), session boundary (id change OR 5-min gap), skips UserPrompt+PreCompact, anomaly detection (sigma≥2.0 OR ≥2 rare transitions), 107 tests pass."
   }
 ]
