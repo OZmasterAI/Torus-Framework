@@ -3641,7 +3641,7 @@ def remember_this(
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
     Args:
-        content: The knowledge to remember (be specific and detailed)
+        content: The knowledge to remember (max 800 chars — concise key facts only, not full research)
         context: What you were doing when you learned this
         tags: Comma-separated tags for categorization (e.g., "bug,fix,auth")
         force: Skip dedup check entirely (escape hatch if threshold is wrong)
@@ -3695,6 +3695,14 @@ def remember_this(
     if len(content.strip()) < MIN_CONTENT_LENGTH:
         return {
             "result": "Rejected: content too short (minimum 20 characters)",
+            "rejected": True,
+            "total_memories": collection.count(),
+        }
+    # --- Max content length: keep memories concise (index cards, not textbooks) ---
+    MAX_CONTENT_LENGTH = 800
+    if not force and len(content.strip()) > MAX_CONTENT_LENGTH:
+        return {
+            "result": f"Rejected: content too long ({len(content.strip())} chars, max {MAX_CONTENT_LENGTH}). Distill to key facts only.",
             "rejected": True,
             "total_memories": collection.count(),
         }
