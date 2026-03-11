@@ -70,7 +70,7 @@ def main() -> None:
     )
 
     entries["d4715cc9ee7e0cf3"] = (
-        "HIVE FRAMEWORK TECHNICAL (Feb 28, 2026): github.com/adenhq/hive; v0.5.1; 8,415 stars; Python 3.11+; Apache 2.0. CORE: triangulated verification (deterministic->LLM->human). RUNTIME: AgentRunner->AgentRuntime->ExecutionStream->GraphExecutor; EventBus(NODE_STARTED,TOOL_CALL_COMPLETED). TOKEN: max_tokens=8192; auto model degradation. MEMORY: STM(ISOLATED/SHARED/SYNCHRONIZED)+LTM; checkpoints ~/.hive/agents/{name}/sessions/. EVOLUTION: Execute->Evaluate->Diagnose->Regenerate; Hive Coder modifies prompts/nodes/edges/tools; reliability NOT general reasoning. GUARDRAILS: hard/soft; client_facing=True; Pydantic auto-retry; NO pre-tool-use gates. v0.5.1: Hive Coder; Multi-Graph Runtime; TUI overhaul; Discord/Exa/Razorpay/Docs MCP. DEPS: pydantic>=2.0, litellm>=1.81.0, fastmcp>=2.0.0, textual>=1.0.0; uv."
+        "HIVE FRAMEWORK TECHNICAL (Feb 28, 2026): github.com/adenhq/hive; v0.5.1; 8,415 stars; Python 3.11+; Apache 2.0. CORE: triangulated verification (deterministic->LLM->human). RUNTIME: AgentRunner->AgentRuntime->ExecutionStream->GraphExecutor; EventBus(NODE_STARTED,TOOL_CALL_COMPLETED). TOKEN: max_tokens=8192; auto degradation. MEMORY: STM(ISOLATED/SHARED/SYNCHRONIZED)+LTM; checkpoints ~/.hive/agents/{name}/sessions/. EVOLUTION: Execute->Evaluate->Diagnose->Regenerate; Hive Coder modifies prompts/nodes/edges/tools; reliability NOT general reasoning. GUARDRAILS: hard/soft; client_facing=True; Pydantic auto-retry; NO pre-tool-use gates. v0.5.1: Hive Coder; Multi-Graph Runtime; TUI overhaul; Discord/Exa/Razorpay/Docs MCP. DEPS: pydantic>=2.0, litellm>=1.81.0, fastmcp>=2.0.0, textual>=1.0.0; uv."
     )
 
     entries["85ba2ee27dee7ef4"] = (
@@ -82,7 +82,7 @@ def main() -> None:
     )
 
     entries["e96690e1695e79bc"] = (
-        "DUAL-LAYER MEMORY SURVEY (March 2026): EPISODIC: events+temporal, append-only, for audit/replay/multi-hop. SEMANTIC: generalized facts, embedding-indexed. PAPERS: HiMem(2601.06377): LOCOMO 80.71% GPT-Score vs A-MEM 51.88%/Mem0 68.74%. Synapse(2601.02744): episodic-semantic graph; F1 40.5, 95% token reduction, $0.24/1k queries. SimpleMem(2601.02553): L0/L1/L2 multi-view; t=0.85; 43.24 F1/531 tokens vs Mem0 34.20/973; 30x token reduction. A-MEM(2502.12110): Zettelkasten; LLM-generated keywords+links on write. Mem0(2504.19413): 2-phase Extract+Update; 26% over OpenAI memory LOCOMO (66.9% vs 52.9%); 91% lower latency, 90% fewer tokens. WRITE: episodic=append-only+TTL 30d; semantic=LLM-distilled+dedup; consolidation=async cluster t~0.85. RETRIEVAL: dual parallel->dedup->rerank. LANCEDB: hybrid vector+BM25."
+        "DUAL-LAYER MEMORY SURVEY (March 2026): EPISODIC: events+temporal, append-only, for audit/replay/multi-hop. SEMANTIC: generalized facts, embedding-indexed. PAPERS: HiMem(2601.06377): LOCOMO 80.71% vs A-MEM 51.88%/Mem0 68.74%. Synapse(2601.02744): episodic-semantic graph; F1 40.5, 95% token reduction, $0.24/1k queries. SimpleMem(2601.02553): L0/L1/L2 multi-view; t=0.85; 43.24 F1/531 tokens vs Mem0 34.20/973; 30x reduction. A-MEM(2502.12110): Zettelkasten; LLM-generated keywords+links on write. Mem0(2504.19413): 2-phase Extract+Update; 26% over OpenAI memory LOCOMO (66.9% vs 52.9%); 91% lower latency, 90% fewer tokens. WRITE: episodic=append-only+TTL 30d; semantic=LLM-distilled+dedup; consolidation=async cluster t~0.85. RETRIEVAL: dual parallel->dedup->rerank. LANCEDB: hybrid vector+BM25."
     )
 
     entries["03c936ff5647d15c"] = (
@@ -90,7 +90,7 @@ def main() -> None:
     )
 
     entries["842a02d279706ac3"] = (
-        "P2P GOSSIP+CRDT ARCHITECTURE (Option 5): KEY TECHS: libp2p (IPFS/Ethereum); GossipSub v1.1 (score-based peers, flood own msgs, mesh propagation); IPFS Kademlia DHT (O(log N), CIDs SHA-256); OrbitDB (serverless P2P, Merkle-CRDTs, events/documents/keyvalue); GunDB (offline-first, commutative CRDT, SEA crypto). CRDT TYPES: state-based(full merge); operation-based(reliable delivery); Merkle-CRDTs(DAG-based, content-deduped). PEER DISCOVERY: bootstrap; Kademlia DHT; rendezvous by namespace; mDNS; GossipSub PRUNE. SYBIL RESISTANCE: GossipSub score; web-of-trust(BrightID); MeritRank decay; GunDB SEA PoW. SCALABILITY: gossip O(k*logN) fanout 6-12; SpanningFL 30.7% comms reduction; GossipSub D=6(D_low=4,D_high=12). PROS: zero infra cost, censorship resistant. CONS: eventual consistency, hard quality enforcement, sybil risk, NAT traversal."
+        "P2P GOSSIP+CRDT ARCHITECTURE (Option 5): KEY TECHS: libp2p (IPFS/Ethereum); GossipSub v1.1 (score-based peers, mesh propagation); IPFS Kademlia DHT (O(log N), CIDs SHA-256); OrbitDB (serverless P2P, Merkle-CRDTs, events/documents/keyvalue); GunDB (offline-first, commutative CRDT, SEA crypto). CRDT TYPES: state-based(full merge); operation-based(reliable delivery); Merkle-CRDTs(DAG, content-deduped). PEER DISCOVERY: bootstrap; Kademlia DHT; rendezvous; mDNS; GossipSub PRUNE. SYBIL RESISTANCE: GossipSub score; web-of-trust(BrightID); MeritRank decay; SEA PoW. SCALABILITY: O(k*logN) fanout 6-12; SpanningFL 30.7% comms reduction; GossipSub D=6(D_low=4,D_high=12). PROS: zero infra cost, censorship resistant. CONS: eventual consistency, hard quality enforcement, sybil risk, NAT traversal."
     )
 
     violations = [(k, len(v)) for k, v in entries.items() if len(v) > 800]
