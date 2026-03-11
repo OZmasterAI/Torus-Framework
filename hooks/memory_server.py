@@ -184,6 +184,7 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("tier", pa.int32()),
         pa.field("retrieval_count", pa.int32()),
         pa.field("last_retrieved", pa.string()),
+        pa.field("source_session_id", pa.string()),
     ]
 )
 
@@ -638,6 +639,27 @@ def _init_lancedb():
             """Open table if exists, create with schema if not."""
             try:
                 tbl = _lance_db.open_table(name)
+                # Migrate: add missing columns from schema
+                existing_cols = set(tbl.schema.names)
+                for field in schema:
+                    if field.name not in existing_cols:
+                        if pa.types.is_float64(field.type):
+                            default = "0.0"
+                        elif pa.types.is_int32(field.type):
+                            default = "0"
+                        else:
+                            default = "''"
+                        try:
+                            tbl.add_columns({field.name: default})
+                            print(
+                                f"[MCP] Migrated {name}: added column {field.name}",
+                                file=_sys.stderr,
+                            )
+                        except Exception as e:
+                            print(
+                                f"[MCP] Migration failed for {name}.{field.name}: {e}",
+                                file=_sys.stderr,
+                            )
             except Exception:
                 tbl = _lance_db.create_table(name, schema=schema)
             return LanceCollection(tbl, schema, name)
