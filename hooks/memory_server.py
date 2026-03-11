@@ -20,6 +20,7 @@ import atexit
 import functools
 import hashlib
 import json
+import math
 import os
 import socket
 import subprocess
@@ -1763,6 +1764,7 @@ def _ensure_initialized():
 _tag_cooccurrence: dict[str, dict[str, int]] = {}  # tag_a -> {tag_b: count}
 _tag_counts: dict[str, int] = {}  # tag -> total memories with this tag
 _tag_cooccurrence_dirty: bool = True  # rebuild on first use
+_tag_total_memories: int = 0  # total tagged memories (for PMI denominator)
 
 
 def _build_tag_cooccurrence():
@@ -1771,7 +1773,7 @@ def _build_tag_cooccurrence():
     Scans all memory tags, counts how often tag pairs appear together.
     Called lazily on first search or explicitly via rebuild_tag_index().
     """
-    global _tag_cooccurrence, _tag_counts, _tag_cooccurrence_dirty
+    global _tag_cooccurrence, _tag_counts, _tag_cooccurrence_dirty, _tag_total_memories
 
     conn = tag_index.conn
     rows = conn.execute("SELECT memory_id, tag FROM tags").fetchall()
@@ -1795,6 +1797,7 @@ def _build_tag_cooccurrence():
 
     _tag_cooccurrence = cooccur
     _tag_counts = tag_totals
+    _tag_total_memories = len(mem_tags)
     _tag_cooccurrence_dirty = False
 
 
@@ -1828,17 +1831,22 @@ def _get_expanded_tags(query: str) -> list[str]:
     if not matched_tags:
         return []
 
-    # Find co-occurring tags above 40% threshold
+    # Find co-occurring tags with PMI > 1.0 (2x more likely than chance)
     expanded = set()
     matched_set = set(matched_tags)
+    N = _tag_total_memories
     for tag in matched_tags:
         if tag not in _tag_cooccurrence:
             continue
-        tag_total = _tag_counts.get(tag, 1)
-        for co_tag, count in _tag_cooccurrence[tag].items():
-            rate = count / tag_total
-            if rate > 0.4 and co_tag not in matched_set:
-                expanded.add(co_tag)
+        count_x = _tag_counts.get(tag, 1)
+        for co_tag, co_count in _tag_cooccurrence[tag].items():
+            if co_tag in matched_set:
+                continue
+            count_y = _tag_counts.get(co_tag, 1)
+            if N > 0 and count_x > 0 and count_y > 0:
+                tag_pmi = math.log2((co_count * N) / (count_x * count_y))
+                if tag_pmi > 1.0:
+                    expanded.add(co_tag)
 
     return list(expanded)
 
@@ -3500,8 +3508,10 @@ def remember_this(
             for ent in _kg_entities:
                 _knowledge_graph.upsert_entity(ent["name"], ent["type"])
             _kg_coocs = extract_cooccurrences(_kg_text)
+            _kg_total = collection.count()
             for e1, e2 in _kg_coocs:
                 _knowledge_graph.add_edge(e1, e2, "co_occurs")
+                _knowledge_graph.update_pmi(e1, e2, "co_occurs", _kg_total)
     except Exception:
         pass  # Graph population failure must not break memory storage
 

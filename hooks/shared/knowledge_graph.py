@@ -96,11 +96,12 @@ class KnowledgeGraph:
         """Create or strengthen an edge between two entities."""
         self._conn.execute(
             """
-            INSERT INTO edges (from_id, to_id, relation_type, strength, activation_count)
-            VALUES (?, ?, ?, ?, 1)
+            INSERT INTO edges (from_id, to_id, relation_type, strength, activation_count, co_occurrence_count)
+            VALUES (?, ?, ?, ?, 1, 1)
             ON CONFLICT(from_id, to_id, relation_type) DO UPDATE SET
                 strength = MIN(1.0, strength + ? * (1.0 - strength)),
                 activation_count = activation_count + 1,
+                co_occurrence_count = co_occurrence_count + 1,
                 last_activated = strftime('%s','now')
         """,
             (from_name, to_name, relation_type, strength, strength),
@@ -133,6 +134,45 @@ class KnowledgeGraph:
     def edge_count(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM edges").fetchone()
         return row[0] if row else 0
+
+    def update_pmi(
+        self, from_name: str, to_name: str, relation_type: str, total_memories: int
+    ):
+        """Compute and store PMI for an edge.
+
+        PMI = log2( P(x,y) / (P(x) * P(y)) )
+            = log2( co_count * total_memories / (mention_x * mention_y) )
+
+        Skips silently if entity counts or co_occurrence_count are zero.
+        """
+        if total_memories < 2:
+            return
+        try:
+            row = self._conn.execute(
+                "SELECT co_occurrence_count FROM edges WHERE from_id=? AND to_id=? AND relation_type=?",
+                (from_name, to_name, relation_type),
+            ).fetchone()
+            if not row or row[0] == 0:
+                return
+            co_count = row[0]
+
+            fx = self._conn.execute(
+                "SELECT mention_count FROM entities WHERE name=?", (from_name,)
+            ).fetchone()
+            fy = self._conn.execute(
+                "SELECT mention_count FROM entities WHERE name=?", (to_name,)
+            ).fetchone()
+            if not fx or not fy or fx[0] == 0 or fy[0] == 0:
+                return
+
+            pmi = math.log2((co_count * total_memories) / (fx[0] * fy[0]))
+            self._conn.execute(
+                "UPDATE edges SET pmi=? WHERE from_id=? AND to_id=? AND relation_type=?",
+                (pmi, from_name, to_name, relation_type),
+            )
+            self._conn.commit()
+        except Exception:
+            pass  # PMI computation failure is non-fatal
 
     def strengthen_coretrieval(self, memory_ids: List[str]):
         """Hebbian: strengthen edges between all pairs of co-retrieved memories."""
@@ -268,14 +308,27 @@ class KnowledgeGraph:
         return results
 
     def _get_neighbors(self, node: str) -> List[Tuple[str, float]]:
-        """Get all neighbors with edge strengths (both directions)."""
+        """Get all neighbors with effective edge weights (PMI-weighted or raw fallback)."""
         rows = self._conn.execute(
-            "SELECT to_id, strength FROM edges WHERE from_id=? AND strength > 0 "
+            "SELECT to_id, strength, pmi, co_occurrence_count FROM edges WHERE from_id=? AND strength > 0 "
             "UNION "
-            "SELECT from_id, strength FROM edges WHERE to_id=? AND strength > 0",
+            "SELECT from_id, strength, pmi, co_occurrence_count FROM edges WHERE to_id=? AND strength > 0",
             (node, node),
         ).fetchall()
-        return rows
+        result = []
+        for neighbor_name, strength, pmi, co_count in rows:
+            co_count = co_count or 0
+            if co_count == 0 or pmi is None:
+                # Legacy edge (no PMI data yet) — use raw strength as fallback
+                effective = strength
+            elif pmi > 0.0:
+                # PMI-weighted: above-chance co-occurrence boosts activation
+                effective = strength * pmi
+            else:
+                # pmi <= 0.0: at-chance or anti-correlated — block this path
+                effective = 0.0
+            result.append((neighbor_name, effective))
+        return result
 
     # --- Edge decay and pattern detection ---
 
