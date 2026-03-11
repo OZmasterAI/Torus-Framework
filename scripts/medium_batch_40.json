@@ -1,7 +1,7 @@
 [
   {
     "id": "c3a40d6ba328b5c4",
-    "new_text": "Session 8 Fixes Applied (2026-02-09): 7 audit findings fixed, all verified with 132/132 tests. FIX H4: Removed hooks/ from EXEMPT_DIRS in gate_05 and gate_08, making security infrastructure subject to proof checks. FIX M9: Updated requirements.txt: chromadb >=0.4,<0.6 → >=1.0,<2.0; mcp >=0.1 → >=1.0,<2.0 (matched installed 1.4.1 and 1.26.0). FIX M1: Added MAX_VERIFIED_FIXES=100 cap in shared/state.py save_state(). FIX M2: Added MAX_PENDING_VERIFICATION=50 cap. FIX H6: Input validation to memory_server.py—top_k [1,500], hours [1,8760]. FIX M8: Removed \"curl\" and \"systemctl\" from verify_keywords (line 160-161). FIX M11: Tightened test assertions for Gate 4/7 isolation. 6 new tests added. Files: gate_05, gate_08, requirements.txt, memory_server.py, shared/state.py, enforcer.py, test_framework.py."
+    "new_text": "Session 8: 7 audit fixes verified with 132/132 tests. H4: Removed hooks/ from EXEMPT_DIRS in gate_05/gate_08. H4: M9: chromadb >=0.4,<0.6→>=1.0,<2.0; mcp >=0.1→>=1.0,<2.0. M1: MAX_VERIFIED_FIXES=100 cap in state.py. M2: MAX_PENDING_VERIFICATION=50 cap. H6: Input validation—top_k [1,500], hours [1,8760]. M8: Removed \"curl\"/\"systemctl\" from verify_keywords. M11: Tightened Gate 4/7 test isolation. 6 new tests added. Files: gate_05, gate_08, requirements.txt, memory_server.py, shared/state.py, enforcer.py, test_framework.py."
   },
   {
     "id": "d56bfd77ab797cd8",
@@ -9,11 +9,11 @@
   },
   {
     "id": "5ce68b007c89b506",
-    "new_text": "Quality Gates - 8 Total Gates. TIER 1 (fail-closed): Gate 1 (read_before_edit) blocks Edit/Write unless Read first, exempt new files/__init__.py/HANDOFF.md/LIVE_STATE.json/CLAUDE.md. Gate 2 (no_destroy) blocks rm -rf, DROP TABLE, git push --force, git reset --hard, etc. Gate 3 (test_before_deploy) blocks deploy unless tests ran <30min ago. TIER 2 (quality, non-blocking): Gate 4 (memory_first) blocks Edit/Write if memory not queried within 5 min, exempt hooks/skills/config files. Gate 5 (proof_before_fixed) blocks further edits when 3+ files have unverified edits. Gate 6 (save_fix) WARNS when 2+ verified fixes unsaved to memory. TIER 3 (domain-specific): Gate 7 blocks critical file edits unless memory queried <3 min. Gate 8 (temporal) requires memory query <2 min during 1-5 AM, warns on sessions >3 hours. All gates in: /home/crab/.claude/hooks/gates/"
+    "new_text": "8 Quality Gates. TIER 1 (fail-closed): Gate 1 blocks Edit/Write unless Read first; exempt new files, __init__.py, HANDOFF.md, LIVE_STATE.json, CLAUDE.md. Gate 2 blocks rm -rf, DROP TABLE, git push --force, git reset --hard. Gate 3 blocks deploy unless tests <30min old. TIER 2 (non-blocking): Gate 4 blocks Edit/Write if memory not queried in 5min; exempt hooks/skills/config. Gate 5 blocks edits when 3+ files have unverified changes. Gate 6 warns when 2+ verified fixes unsaved. TIER 3: Gate 7 blocks critical file edits unless memory queried <3min. Gate 8 requires memory <2min during 1-5AM; warns sessions >3hours. Location: /home/crab/.claude/hooks/gates/"
   },
   {
     "id": "bab40291e7af33b7",
-    "new_text": "FTS5 Persistence (Session 34). Changes to memory_server.py: Added FTS5_DB_PATH constant (~/data/memory/fts5_index.db). FTS5Index.__init__ accepts db_path param (default :memory: for backward compat). Added sync_meta table with is_synced() and _update_sync_count() methods. build_from_chromadb sets sync_count after rebuild. add_entry increments sync_count. reset_and_rebuild(collection) for corruption recovery. Module-level fts_index uses FTS5_DB_PATH (disk-backed). _ensure_initialized checks is_synced before rebuilding, skips when synced. Added 10 new tests: file creation, sync_meta, is_synced (empty/match/mismatch), add_entry increment, build sync, reset_and_rebuild, :memory: backward compat, persistent DB survives reconnect. Result: 911 tests pass. Cold start: 1.4ms (open+read) vs 218ms rebuild."
+    "new_text": "FTS5 Persistence (Session 34). memory_server.py: Added FTS5_DB_PATH (~/data/memory/fts5_index.db). FTS5Index.__init__ accepts db_path (default :memory:). sync_meta table with is_synced() and _update_sync_count(). build_from_chromadb sets sync_count. add_entry increments count. reset_and_rebuild() for recovery. Module-level fts_index disk-backed. _ensure_initialized skips rebuild when synced. Added 10 tests: file creation, sync_meta, is_synced (empty/match/mismatch), add_entry, build, reset, :memory: compat, persistent DB reconnect. Result: 911 tests pass. Cold start: 1.4ms vs 218ms rebuild."
   },
   {
     "id": "7ee16ed8a5db910a",
@@ -53,7 +53,7 @@
   },
   {
     "id": "1ca3cadc3f845621",
-    "new_text": "TUI DataLayer (/home/crab/.claude/tui/data.py) methods: live_state(), get_toggle(key, default), set_toggle(key, value), gate_effectiveness(), session_state(), memory_stats(), audit_tail(n=50), activity_buckets(hours=24), block_summary(hours=24). DATA SOURCES: LIVE_STATE.json (toggles, test_count, test_failures), .gate_effectiveness.json, state_*.json (newest, tool_calls, files_edited, verified_fixes), stats-cache.json (mem_count), hooks/audit/{YYYY-MM-DD}.jsonl. 9 TOGGLES: terminal_l2_always, context_enrichment, tg_l3_always, tg_enrichment, tg_bot_tmux, gate_auto_tune, budget_degradation, chain_memory, session_token_budget. MISSING: cost, context%, tokens, model, git branch, session duration, ramdisk health, subagent status, compression, memory freshness. CACHE: 2s TTL (most), 60s (memory stats)."
+    "new_text": "TUI DataLayer (tui/data.py) methods: live_state(), get_toggle(), set_toggle(), gate_effectiveness(), session_state(), memory_stats(), audit_tail(n=50), activity_buckets(hours), block_summary(hours). SOURCES: LIVE_STATE.json, .gate_effectiveness.json, state_*.json, stats-cache.json, hooks/audit/{date}.jsonl. 9 TOGGLES: terminal_l2_always, context_enrichment, tg_l3_always, tg_enrichment, tg_bot_tmux, gate_auto_tune, budget_degradation, chain_memory, session_token_budget. MISSING: cost, tokens, model, git branch, duration, ramdisk health, compression. CACHE: 2s TTL (most), 60s (memory)."
   },
   {
     "id": "0c7f4b1a6203c385",

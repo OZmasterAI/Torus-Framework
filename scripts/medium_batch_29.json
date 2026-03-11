@@ -1,7 +1,7 @@
 [
   {
     "id": "cbd262d1012f3526",
-    "new_text": "TypeScript port inventory (2026-03-07): 16 active gates (T1: G01-G03), ~3,163 gate lines. enforcer.py (651L) dispatches PreToolUse. state.py (748L, schema v3, ~60 fields), atomic JSON+fcntl. 5 MCP servers: memory_server (4744L), analytics_server (2481L), skill_server (163L), search_server (117L), web_search_server (96L). ~65 shared modules (~25,080 lines): gate_result, gate_registry, gate_helpers, state, audit_log, circuit_breaker, exemptions, ramdisk, memory_socket, error_normalizer, security_profiles, domain_registry, model_profiles. Hook registration: PreToolUse→enforcer_shim, PostToolUse→tracker+auto_commit+auto_format, SessionStart→boot, UserPromptSubmit→user_prompt_capture+auto_commit, PermissionRequest→auto_approve, SubagentStart→subagent_context, PreCompact→pre_compact, SessionEnd→session_end, Stop→tg_mirror."
+    "new_text": "TypeScript port inventory: 16 gates (T1: G01-G03), 3,163 lines. enforcer.py (651L) PreToolUse dispatch, state.py (748L, schema v3, 60+ fields, atomic JSON+fcntl). 5 MCP servers: memory_server (4744L), analytics_server (2481L), skill_server (163L), search_server (117L), web_search_server (96L). 65 shared modules (25,080L): gate_result, gate_registry, gate_helpers, state, audit_log, circuit_breaker, exemptions, ramdisk, memory_socket, error_normalizer, security_profiles, domain_registry, model_profiles. Hooks: PreToolUse→enforcer_shim, PostToolUse→tracker/auto_commit/auto_format, SessionStart→boot, UserPromptSubmit→user_prompt_capture/auto_commit, PermissionRequest→auto_approve, SubagentStart→subagent_context, PreCompact→pre_compact, SessionEnd→session_end, Stop→tg_mirror."
   },
   {
     "id": "842160eb0e449947",

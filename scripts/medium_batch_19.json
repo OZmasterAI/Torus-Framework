@@ -37,7 +37,7 @@
   },
   {
     "id": "fa0445be84e9b8ef",
-    "new_text": "Session 2026-03-06: Created two interactive HTML diagrams at /home/crab/.claude-visual/docs/diagrams/. (1) 11-skills-catalog.html (1067 lines): Rose/cranberry aesthetic (#fff5f5 bg, #be123c accent), Instrument Serif + JetBrains Mono, 38 total skills KPI, search+filter pills (All/Dev/Research/Ops/etc), sticky <table> header, 6 columns (Name/Description/Category/Invocable/Scripts), real data from SKILL.md, JS sorting, live filtering, 2 collapsible sections. (2) 14-testing-infrastructure.html (929 lines): Rosé Pine dark palette, Libre Franklin + Inconsolata, 13 test files + 2 benchmark KPI, Mermaid TD flowchart, 7 architecture cards, coverage map <table>, benchmarks/fuzz/generators sections. Both: light+dark prefers-color-scheme, fadeUp+prefers-reduced-motion, no Inter/Roboto/indigo/violet, no gradient text, Mermaid CDN."
+    "new_text": "Session 2026-03-06: HTML diagrams at /home/crab/.claude-visual/docs/diagrams/. (1) 11-skills-catalog.html (1067 lines): Rose/cranberry aesthetic, 38 skills KPI, search+filter pills, sticky table, 6 columns, real SKILL.md data, JS sorting, live filtering. (2) 14-testing-infrastructure.html (929 lines): Rosé Pine dark, 13 test files + 2 benchmark KPI, Mermaid TD flowchart, 7 cards, coverage map, benchmarks/fuzz/generators. Both: light+dark prefers-color-scheme, fadeUp+prefers-reduced-motion, Mermaid CDN."
   },
   {
     "id": "72bdad349e505bb8",
@@ -49,7 +49,7 @@
   },
   {
     "id": "1ee788ed063b52a5",
-    "new_text": "Session 229: Built Torus-Pi Adapter Extension at ~/Desktop/torus-pi-adapter/pi-extension/. Bridges Torus gate enforcement to Pi's tool system via subprocess calls to enforcer.py/tracker.py. FILES: (1) types.ts: EnforcerInput, SubprocessResult, ToolCallEvent, GateDecision interfaces. (2) config.ts: env vars (TORUS_HOOKS_DIR, TORUS_STATE_DIR, PI_SESSION_ID, timeouts, PYTHON_BIN). (3) tool-name-map.ts: Pi↔Torus bidirectional mapping (edit↔Edit, bash↔Bash), isGatedTool/isTrackedTool. (4) enforcer-bridge.ts: spawns enforcer.py, JSON stdin, interprets exit codes (0=allow, 2=block). (5) tracker-bridge.ts: fire-and-forget tracker.py spawn. (6) boot-bridge.ts: runs boot.py on load. (7) index.ts: main extension (onLoad boot, onToolCall gate, onToolResult track). (8) gates/tool_aliases.py: PI_TO_TORUS_TOOL_MAP dict. Design: zero runtime deps, fail-open, gates in Python, strict TypeScript, ES2020 target, CommonJS output, 0 errors."
+    "new_text": "Session 229: Torus-Pi Adapter at ~/Desktop/torus-pi-adapter/pi-extension/. Bridges gate enforcement to Pi via subprocess (enforcer.py/tracker.py). FILES: (1) types.ts: EnforcerInput, SubprocessResult, ToolCallEvent, GateDecision. (2) config.ts: env vars (HOOKS_DIR, STATE_DIR, PI_SESSION_ID, timeouts, PYTHON_BIN). (3) tool-name-map.ts: Pi↔Torus bidirectional mapping (edit↔Edit), isGatedTool/isTrackedTool. (4) enforcer-bridge.ts: spawns enforcer.py, exit codes (0=allow, 2=block). (5) tracker-bridge.ts: fire-and-forget. (6) boot-bridge.ts: boot.py on load. (7) index.ts: onLoad, onToolCall, onToolResult. (8) tool_aliases.py: PI_TO_TORUS_TOOL_MAP. Design: zero deps, fail-open, gates in Python, strict TS, ES2020, CommonJS, 0 errors."
   },
   {
     "id": "a6a3ad68aa13d25c",

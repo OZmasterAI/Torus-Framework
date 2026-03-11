@@ -41,7 +41,7 @@
   },
   {
     "id": "8046aee592484fda",
-    "new_text": "Session 236: Token optimization + web auto-index. (1) Updated 7 HTML docs to v2.5.4 accuracy via 7 sonnet agents. (2) Compressed CLAUDE.md ~796→~297, hooks.md ~471→~143, memory.md ~240→~144 (fixed ChromaDB→LanceDB), framework.md ~284→~121. Zero loss. (3) Moved domains to dormant/ (rules+skill must move OUT of rules/ dir, .dormant extension doesn't prevent loading). (4) Dormanted telegram_search (~35 tokens). (5) Deleted obsolete run_migration.py. (6) Added auto-index URL hook to user_prompt_capture.py — detects URLs, spawns index.py to persist to LanceDB web_pages, dedup via content_hash. (7) Updated web skills: ChromaDB→LanceDB. (8) Fixed Lever1 test. (9) Confirmed web on LanceDB via UDS (chromadb_socket.py name legacy). Total savings: ~1,086 tokens/prompt. Tests: 1437 pass, 2 pre-existing UDS fails."
+    "new_text": "Session 236: Token optimization + web auto-index. (1) Updated 7 HTML docs v2.5.4 via sonnet. (2) Compressed CLAUDE.md ~796→~297, hooks.md ~471→~143, memory.md ~240→~144, framework.md ~284→~121. Zero loss. (3) Moved domains to dormant/ (must move OUT of rules/, .dormant doesn't prevent loading). (4) Dormanted telegram_search (~35 tokens). (5) Deleted run_migration.py. (6) Auto-index URL hook in user_prompt_capture.py — detects URLs, spawns index.py to LanceDB web_pages, dedup content_hash. (7) Updated web skills: ChromaDB→LanceDB. (8) Fixed Lever1 test. (9) Web on LanceDB via UDS. Total: ~1,086 tokens/prompt saved. Tests: 1437 pass, 2 pre-existing fails."
   },
   {
     "id": "0a915791efcab4a5",
@@ -57,10 +57,6 @@
   },
   {
     "id": "c3c89e456abb8fe9",
-    "new_text": "Security audit of DB watchdog (boot.py) and backup gathering (gather.py) (2026-02-16). MEDIUM severity: gather.py generic error handling — doesn't distinguish WorkerUnavailable vs RuntimeError. Returns {} on failure, indistinguishable from missing data. Recommendation: separate exception handlers, always return {status:ok|error} structure. LOW/INFO (correct behavior): 80% threshold appropriate (no VACUUM), append-only ChromaDB; _bak_size>0 check adequate; two-tier defense (<1KB checks); missing files silently pass (correct for new installs); watchdog independent of _worker_available check (critical for corruption when worker down); chromadb_socket.py backup() correctly calls request(backup); gather.py imports correct. Atomic writes prevent partial backups. No critical vulnerabilities."
-  },
-  {
-    "id": "987416c6ac3281ba",
-    "new_text": "Hive Judge vs Torus Gates deep comparison (Session 190). Fundamentally different: Torus PREVENTION (pre-execution, sys.exit(2), deterministic, zero LLM cost), Hive CORRECTION (post-execution, LLM judge, goal alignment, weighted criteria). Hive: EventLoopNode (per-turn, rule/LLM) + HybridJudge (goal-level, 90% threshold). Verdicts: ACCEPT/RETRY/ESCALATE/REPLAN. Torus: prevents bad actions beforehand, deterministic, no cost, fail-closed, 16 specialized gates, causal chain. Hive: goal alignment evaluation, natural criteria, evolution cycle (Execute→Evaluate→Diagnose→Regenerate rewrites agent graph). Ideal: combine both. Three ideas from Hive: (1) PostToolUse quality check, (2) session-level goal tracker, (3) REPLAN for different approaches."
+    "new_text": "Security audit of DB watchdog (boot.py) and backup (gather.py) (2026-02-16). MEDIUM: gather.py generic error handling — doesn't distinguish WorkerUnavailable vs RuntimeError. Returns {} on failure. Recommendation: separate handlers, return {status:ok|error}. LOW/INFO: 80% threshold OK (no VACUUM); _bak_size>0 check adequate; two-tier defense; missing files OK for new installs; watchdog independent of _worker_available (critical for corruption); backup() correctly calls request(backup); imports correct. Atomic writes prevent partial backups. No critical vulnerabilities."
   }
 ]

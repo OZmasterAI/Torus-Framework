@@ -49,7 +49,7 @@
   },
   {
     "id": "65bdd1e90b429d21",
-    "new_text": "Enhanced capability_registry.py w/ agent ACL support (Session 165). New (backward-compatible): (1) AGENT_ACLS dict—11 entries: explorer/researcher (read-only), builder/optimizer (full), bash (Bash+read), auditor (read+memory write), code-reviewer (read+memory), team-lead (full minus Edit/Write), test-writer (read/write to test files), stress-tester/perf-analyzer (Bash+read). (2) _ACL_OVERRIDES dict—runtime registry via define_agent_acl(). (3) _DESTRUCTIVE_BASH_PATTERNS tuple—guard for rm -rf, DROP TABLE, mkfs, fork bomb, dd, > /dev/. (4) define_agent_acl(agent_type, *, allowed_tools, denied_tools, allowed_paths)—merges overrides. (5) check_agent_permission(agent_type, tool_name, file_path=None)→bool—eval: deny>allow>default>path; fail-closed. (6) get_agent_acl(agent_type)→dict|None. All 11 assertions pass."
+    "new_text": "Enhanced capability_registry.py w/ agent ACL support (Session 165). AGENT_ACLS dict—11 entries: explorer/researcher (read-only), builder/optimizer (full), bash (Bash+read), auditor (read+memory), code-reviewer (read+memory), team-lead (full minus Edit/Write), test-writer (test files only), stress-tester (Bash+read). _ACL_OVERRIDES dict—runtime registry. _DESTRUCTIVE_BASH_PATTERNS—guards rm -rf, DROP TABLE, mkfs, fork bomb, dd, /dev/. define_agent_acl(agent_type, *, allowed_tools, denied_tools, allowed_paths) merges overrides. check_agent_permission()→bool; eval: deny>allow>default>path. All 11 assertions pass."
   },
   {
     "id": "94974eee818dfe64",
@@ -57,10 +57,6 @@
   },
   {
     "id": "40e9cb4d80428ee4",
-    "new_text": "Audit .claude directory (2026-02-16). Findings: (1) 22 skills valid SKILL.md, most working; /browser, /web, /status, /wrap-up functional; /ralph, /loop, /chain sophisticated orchestrators. (2) Hooks directory active + valid; test/utility files (benchmark_io.py, test_edit_streak.py, user_prompt_check.sh) are ACTIVE. (3) No hooks/scripts/ orphaned. (4) Ramdisk /run/user/1000/claude-hooks working (320KB capture_queue.jsonl). (5) BLOAT: debug (356MB), backups (378MB), hooks/.disk_backup (19MB), file-history (43MB), 3 __pycache__ dirs. (6) .capture_queue.jsonl 184KB, history.jsonl 284KB reasonable. (7) .lock files (agent execution artifacts). (8) paste-cache 15 files ~140KB. (9) archive/ 20 old HANDOFF. (10) No stale skills. (11) venv in hooks/ (needed). (12) 2 CLAUDE.md backups. (13) hooks/audit/ 2-5MB daily JSONL."
-  },
-  {
-    "id": "ed23e3201209efa6",
-    "new_text": "Session 27 Sprint 6 (framework-v2.0.7 team): 6 improvements across 3 streams. Observation Intelligence: Context-aware compression—Bash gets exit_code/cmd/cwd, Edit gets file_path/extension, Read gets pattern/result_count. Priority scoring (high/med/low). Scope expansion to non-file tools. Error normalization: Hook exceptions → observation + gate audit log + circuit breaker. Gate testing overhaul: Parallel gate execution, new fixture harness, edge-case matrix. Performance: 0.8ms/obs, 1.2ms/audit. Schema: observation[type|source|tool|severity|metadata], gate_audit_log[gate_name|passed|duration_ms|result]. Integration: SessionStart gate ordering, PostToolUse audit write, circuit breaker stops propagation on alarm. Tests: all passing."
+    "new_text": "Audit .claude directory (2026-02-16): 22 skills valid SKILL.md, most working; /browser, /web, /status, /wrap-up functional; /ralph, /loop, /chain sophisticated. Hooks directory active + valid; test/utility files ACTIVE. No hooks/scripts/ orphaned. Ramdisk working (320KB capture_queue.jsonl). BLOAT: debug (356MB), backups (378MB), hooks/.disk_backup (19MB), file-history (43MB). .capture_queue.jsonl 184KB, history.jsonl 284KB reasonable. .lock files artifact. paste-cache ~140KB. archive/ 20 HANDOFF. No stale skills. venv in hooks/ needed. 2 CLAUDE.md backups. hooks/audit/ 2-5MB daily."
   }
 ]
