@@ -1,10 +1,22 @@
 """Verification scoring and gate block outcome resolution."""
+
 import re
 import time
 
 from shared.state import update_gate_effectiveness
 
-BROAD_TEST_COMMANDS = ["pytest", "python -m pytest", "python3 test_framework.py", "python test_framework.py", "npm test", "npx vitest", "npx jest", "cargo test", "go test", "make test"]
+BROAD_TEST_COMMANDS = [
+    "pytest",
+    "python -m pytest",
+    "python3 test_framework.py",
+    "python test_framework.py",
+    "npm test",
+    "npx vitest",
+    "npx jest",
+    "cargo test",
+    "go test",
+    "make test",
+]
 
 
 def _classify_verification_score(command):
@@ -21,9 +33,9 @@ def _classify_verification_score(command):
         if kw in command:
             rest = command.split(kw, 1)[1].strip()
             # Specific test file or test selector
-            if re.search(r'\btest_\w+\.py\b', rest) or '::' in rest:
+            if re.search(r"\btest_\w+\.py\b", rest) or "::" in rest:
                 return 70  # Targeted test
-            if re.search(r'\w+\.test\.(js|ts|tsx)\b', rest):
+            if re.search(r"\w+\.test\.(js|ts|tsx)\b", rest):
                 return 70  # Jest-style targeted test
             return 100  # Full test suite
 
@@ -51,7 +63,11 @@ def _resolve_gate_block_outcomes(tool_name, tool_input, state):
         if not outcomes:
             return
 
-        file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "") or tool_input.get("command", "")[:100]
+        file_path = (
+            tool_input.get("file_path", "")
+            or tool_input.get("notebook_path", "")
+            or tool_input.get("command", "")[:100]
+        )
         if not file_path:
             return
 
@@ -62,7 +78,11 @@ def _resolve_gate_block_outcomes(tool_name, tool_input, state):
                 remaining.append(outcome)
                 continue
             # Match: same tool+file combo, within 30 minutes
-            if outcome.get("tool") == tool_name and outcome.get("file") == file_path and (now - outcome.get("timestamp", 0)) < 1800:
+            if (
+                outcome.get("tool") == tool_name
+                and outcome.get("file") == file_path
+                and (now - outcome.get("timestamp", 0)) < 1800
+            ):
                 gate = outcome.get("gate", "")
                 # If memory was queried after the block, it's "prevented" (block forced better approach)
                 mem_ts = state.get("memory_last_queried", 0)
@@ -76,7 +96,18 @@ def _resolve_gate_block_outcomes(tool_name, tool_input, state):
                     outcome["resolved_by"] = "override"
             remaining.append(outcome)
 
-        # Prune resolved outcomes older than 30 minutes
-        state["gate_block_outcomes"] = [o for o in remaining if (now - o.get("timestamp", 0)) < 1800 or o.get("resolved_by") is None]
+        # Prune outcomes older than 30 minutes.
+        # Command-blocking gates (G02, G09) never get retried with the same command,
+        # so their unresolved expired outcomes count as prevented (block was accepted).
+        COMMAND_GATES = {"gate_02_no_destroy", "gate_09_strategy_ban"}
+        keep = []
+        for o in remaining:
+            if (now - o.get("timestamp", 0)) >= 1800:
+                if o.get("resolved_by") is None and o.get("gate", "") in COMMAND_GATES:
+                    update_gate_effectiveness(o["gate"], "prevented")
+                # Discard — too old
+            else:
+                keep.append(o)
+        state["gate_block_outcomes"] = keep
     except Exception:
         pass  # Effectiveness tracking is fail-open
