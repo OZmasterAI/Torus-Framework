@@ -12,7 +12,7 @@ shortened_batch = [
     },
     {
         "id": "b0fcec9bb825fb4e",
-        "new_text": "Multi-Instance Agent Architecture (codename TBD, Gastown-inspired): Persistent Claude Code sessions as role-agents (researcher-alpha, builder, planner) coordinated via file-based IPC at ~/.claude/channels/. Design: 1) Role-named not model-named; model is launch flag, role is identity. 2) Shared memory MCP with agent provenance (agent:researcher-alpha, model:opus). 3) File-based: task_{role}.json (inbox), result_{role}.json (outbox), log.jsonl (broadcast). 4) Shell watcher bridges files→tmux send-keys. 5) Worktrees for code-editing roles, normal launch for read-only. 6) Gate 13 needs co-claim for collaborative edits. 7) Persistent preferred over on-demand (no idle billing). 8) Main compacts/clears workers via watcher channel. 9) Torus makes agents smarter via cognitive memory vs Gastown's git-backed state.",
+        "new_text": "Multi-Instance Agent Architecture (Gastown-inspired): Persistent Claude Code role-agents (researcher-alpha, builder, planner) coordinated via file IPC at ~/.claude/channels/. Design: 1) Role-named (not model-named); role is identity. 2) Shared memory MCP with agent provenance. 3) File-based: task_{role}.json (inbox), result_{role}.json (outbox), log.jsonl (broadcast). 4) Shell watcher→tmux send-keys. 5) Worktrees for code-editing, normal for read-only. 6) Gate 13: co-claim for collaboration. 7) Persistent over on-demand (no billing). 8) Main compacts/clears workers. 9) Torus agents smarter via cognitive memory vs git-backed.",
     },
     {
         "id": "58dfefbb02d7e27d",
