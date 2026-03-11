@@ -1910,6 +1910,8 @@ def format_summaries(results) -> list[dict]:
             entry["retrieval_count"] = int(meta.get("retrieval_count", 0))
             if meta.get("primary_source"):
                 entry["url"] = meta["primary_source"]
+            if meta.get("source_session_id"):
+                entry["source_session_id"] = meta["source_session_id"]
         formatted.append(entry)
 
         # Queue retrieval tracking update
@@ -2123,6 +2125,7 @@ def _compact_observations():
                             "session_time": time.time(),
                             "preview": promo_preview,
                             "original_error_pattern": meta.get("error_pattern", ""),
+                            "source_session_id": meta.get("session_id", ""),
                         }
                     ],
                     ids=[promo_id],
@@ -3255,7 +3258,11 @@ def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
 @mcp.tool()
 @crash_proof
 def remember_this(
-    content: str, context: str = "", tags: str = "", force: bool = False, source_session_id: str = ""
+    content: str,
+    context: str = "",
+    tags: str = "",
+    force: bool = False,
+    source_session_id: str = "",
 ) -> dict:
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
@@ -3271,15 +3278,24 @@ def remember_this(
     if not source_session_id:
         try:
             import glob as _glob
+
             _sessions_pattern = os.path.join(
-                os.path.expanduser("~"), ".claude", "projects", "**", "sessions", "*.jsonl"
+                os.path.expanduser("~"),
+                ".claude",
+                "projects",
+                "**",
+                "sessions",
+                "*.jsonl",
             )
             _jsonl_files = sorted(
                 _glob.glob(_sessions_pattern, recursive=True),
-                key=os.path.getmtime, reverse=True
+                key=os.path.getmtime,
+                reverse=True,
             )
             if _jsonl_files:
-                source_session_id = os.path.splitext(os.path.basename(_jsonl_files[0]))[0]
+                source_session_id = os.path.splitext(os.path.basename(_jsonl_files[0]))[
+                    0
+                ]
         except Exception:
             pass  # Session detection failure must not block memory storage
     if _lance_degraded:
@@ -3414,6 +3430,7 @@ def remember_this(
                 "related_urls": related_urls,
                 "source_method": source_method,
                 "tier": tier,
+                "source_session_id": source_session_id,
             }
         ],
         ids=[doc_id],
@@ -3719,6 +3736,14 @@ def get_memory(id: str) -> dict:
                             u.strip() for u in related.split(",") if u.strip()
                         ],
                         "source_method": meta.get("source_method", ""),
+                    }
+
+                # L0 evidence pointer
+                source_sid = meta.get("source_session_id", "")
+                if source_sid:
+                    entry["source_l0"] = {
+                        "session_id": source_sid,
+                        "hint": f"Raw transcript: ~/.claude/projects/*/sessions/{source_sid}.jsonl",
                     }
 
                 # Retrieval tracking: increment count and update timestamp
