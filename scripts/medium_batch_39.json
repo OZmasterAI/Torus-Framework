@@ -1,0 +1,62 @@
+[
+  {
+    "id": "7f339bd1b28bcfaa",
+    "new_text": "Skills System - 5 Skills in /home/crab/.claude/skills/, each with SKILL.md: (1) /fix - auto-diagnose and fix issues (memory check, gather context, diagnose, fix, verify). Usage: 1. (2) /deploy - safe deployment (pre-flight, backup, deploy, verify, rollback). Usage: 0. (3) /status - quick health check (reads LIVE_STATE, HANDOFF, gate state, memory stats). Usage: 6. (4) /wrap-up - session end (save memory, update configs, git commit, verify). Usage: 7. (5) /audit - project audit (creates team with security-scan, dependency-check, test-coverage agents, checks infra/gates/memory). Usage: 9."
+  },
+  {
+    "id": "cfd0dadeccb03c88",
+    "new_text": "Created skill_health.py - complete skill health checker module. FEATURES: Scans /skills/ for directories, validates required SKILL.md, optional scripts/ and metadata.json. Compile-checks Python via AST parser with line numbers. PUBLIC API: check_all_skills() returns full health report with totals/broken/errors/warnings; get_broken_skills() lists structurally broken skills; get_skill_details(skill_name) for one skill; format_health_report() for readable output. TESTED: 36 existing skills all healthy, broken detection works (missing SKILL.md), script syntax errors detected via AST, blocks vs warnings distinguished. Example: 0 broken, 0 script issues."
+  },
+  {
+    "id": "51ed3e9bec899c54",
+    "new_text": "Infrastructure Modules Inventory (66 modules in hooks/shared/): RESILIENCE: circuit_breaker.py (CLOSED/OPEN/HALF_OPEN per-service), rate_limiter.py (token bucket), retry_strategy.py (exponential/linear/constant/fibonacci backoff). COMMUNICATION: event_bus.py (pub/sub), agent_channel.py (SQLite WAL messaging), chromadb_socket.py (UDS to avoid Rust segfaults). PERFORMANCE: ramdisk.py (hybrid tmpfs), hook_cache.py (3-layer cache with TTL), hook_profiler.py (nanosecond gate latency). MONITORING: metrics_collector.py (counters/gauges/histograms), health_monitor.py (0-100 health score), anomaly_detector.py (rate spikes/dominance/drift). SECURITY: tool_fingerprint.py (SHA256 supply chain), secrets_filter.py (scrub API keys), security_profiles.py (strict/balanced/permissive)."
+  },
+  {
+    "id": "ccc2724c7987550a",
+    "new_text": "Infrastructure Audit #2 (2026-02-09): 24 findings (0 critical, 3 high, 8 medium, 8 low, 5 info). HIGH: H1 No input validation on memory server top_k/hours params. H2 verified_fixes list unbounded growth (state.py missing cap). H3 get_recent_activity uses string comparison for time filtering. MEDIUM: M1 requirements.txt version constraints wrong (chromadb>=0.4,<0.6 vs installed 1.4.1). M2 settings.local.json gitignored but contains MCP enablement. M3 Test assertions too loose. M4-M5 Gate 5/8 exempt hooks/ dir. M6 memory_stats always healthy. M7-M8 Inconsistent file permissions. All 126 tests pass. No orphaned files. Prior critical fixes confirmed working."
+  },
+  {
+    "id": "e53ea2d7d84b5efd",
+    "new_text": "Session 392 decisions: (1) Heartbeat - researched OpenClaw/ZeroClaw, decided NO heartbeat (reactive only, zero idle cost). (2) Advanced Tool Use - none applicable to MCP/CLI. (3) Better Plan Mode - not adopted, /brainstorm sufficient. (4) Thermal-Memory - ADOPTED salience scoring. Implemented _classify_tier() with 6-signal scoring replacing simple tag match. Threshold 0.25 for tier 1, high-signal tags get floor guarantee. (5) Shodh-Memory - PLANNED Option C adoption (build natively). 10-task TDD plan in docs/plans/mem2x-cognitive-upgrade-impl.md. Branch mem2x created, instance working on Task 1. (6) Comparison methodology: unified single-system advantages compound across consistency, output quality, data safety."
+  },
+  {
+    "id": "b3d8ceb426deb901",
+    "new_text": "Toroidal-teams branch wrap-up (Session 410): 964 commits ahead of main. CORE FRAMEWORK (Sessions 1-22): self-healing Claude framework, MCP memory, hooks/gates, security audit, causal fix tracking, auto-capture, progressive disclosure search. GATE EVOLUTION (Sessions 401+): Gate 16/20/19 improvements with AST nesting/risk scoring, handle_post_tool_use refactor. TOROIDAL TEAMS v1 (Sessions 404-406): 3-phase multi-agent infra (dirs/channels/scripts, automation/config, Gate 13 co-claim). INFRASTRUCTURE (Sessions 407-410): Shared SSE memory server, sentence-transformers 3.0.1\u21923.3.0, knowledge graph + PMI filtering + clustering tests. TOROIDAL TEAMS v2: Pre-planned in memory but NOT yet implemented. Uncommitted: LIVE_STATE.json, .tool_fingerprints.json, blocklist.json, settings.json."
+  },
+  {
+    "id": "d606d65a65c86621",
+    "new_text": "Toroidal Teams v2 - Pre-Plan Addendum (Session 408): Added to Reliability: Agent auto-compaction - monitor worker context usage (token estimate or tool call count), trigger /compact when threshold hit to summarize and free context. Added to Coordination: Async delegation (fire-and-forget) - main dispatches task, continues working, gets notified when result arrives. Options: watcher writes notification channel, hook checks results on PreToolUse, dedicated MCP tool checks status. Updated priority: (1) Dispatch helper, (2) Agent-to-agent tasks, (3) Agent templates, (4) Async delegation, (5) Result watchdog, (6) Agent auto-compaction, (7) Dashboard."
+  },
+  {
+    "id": "b839364f23bb946a",
+    "new_text": "Session 392 Research - Memory Systems Comparison: Researched (1) Anthropic Advanced Tool Use - none applicable to MCP/CLI, (2) Thermal-Memory - adopted salience scoring idea, implemented in _classify_tier(), (3) Shodh-Memory - planning Option C adoption, (4) Better Plan Mode - not adopted, /brainstorm better, (5) Heartbeat systems - decided NOT to adopt (zero idle cost priority). IMPLEMENTED: Salience scoring in _classify_tier() - 6 weighted signals replacing tag match. CORRECTED SCORING: Unified single-system advantages compound across consistency, output quality, data safety, ecosystem. Initial scores biased toward mature external implementations."
+  },
+  {
+    "id": "3756a9210d6b4ab4",
+    "new_text": "Arxiv Survey - Actionable Patterns for Torus Memory (Session 268). Applicable patterns: (1) Hybrid Importance Score - add access_count/last_accessed_at to LanceDB, use score for ranking beyond cosine similarity. (2) Memory Lifecycle - Active\u2192Archived\u2192Expired pipeline. (3) Adaptive Forgetting - Ebbinghaus decay: strength=e^(-t/S), high-priority tags higher S (slower decay). (4) Memory Consolidation - cluster similar memories, LLM-merge into consolidated entry. (5) Structured Memory - contextual description+keywords+tags+linked IDs, graph traversal during retrieval. (6) Adaptive Structure Selection - different interaction types warrant different structures (flat, graph, episodic). (7) RL-Based Memory Operations - ADD/UPDATE/DELETE/NOOP decisions by Memory Manager agent."
+  },
+  {
+    "id": "050934e50f83f0e8",
+    "new_text": "Session 301: Full framework comparison vs 6 competitors + vanilla CC. Torus scores 84/100 at full capacity, next is Enforcer at 65. KEY: Was reading config.example.json instead of config.json - mentor_all is True, tg_mirror/tg_session_notify on, search_routing full_hybrid. Torus runs 80% not 60%. Wired mentor signals (score, verdict, escalations, chain_score) into observation persistence (previously lost at session end, ramdisk only). Fields populate when non-default to avoid noise. Separated Hindsight (Gate 19) toggle visually with \" | \" since blocking gate. CORRECTED: graduated escalation concern was wrong - already use block-or-allow, severity field is logs only, WARN from fail-open gates for human audit."
+  },
+  {
+    "id": "4f57a387f1c3b691",
+    "new_text": "Mentor System build (Session 190). Created 4 modules: tracker_pkg/mentor.py (Signal/MentorVerdict dataclasses, 4 evaluators, weighted verdict), tracker_pkg/outcome_chains.py (churn/stuck/healthy pattern detection every 10th call), tracker_pkg/mentor_memory.py (standalone UDS memory query, fail-open), gates/gate_19_hindsight.py (PreToolUse gate reading mentor_* state, blocks on score<0.3 + escalation>=2, skips when fixing_error=True). Orchestrator calls with LIVE_STATE toggles and 2.5s timing guard. State defaults added (mentor_last_verdict, mentor_last_score, mentor_escalation_count). LIVE_STATE toggles all-false: mentor_tracker, mentor_hindsight_gate, mentor_outcome_chains, mentor_memory. Gate registered in registry/router."
+  },
+  {
+    "id": "46a88addef6af4a0",
+    "new_text": "Gate 19 (Hindsight) toggle investigation (Session 325): ISSUE - Gate 19 appears off but blocks edits. KEY: (1) Toggle is TWO-PART: mentor_hindsight_gate + mentor_all (master switch). (2) get_live_toggle() checks config.json (canonical), falls back to LIVE_STATE.json, caches per process. (3) Gate 19 logic: if not (mentor_hindsight_gate OR mentor_all) return allow. ONE true = runs. (4) Current state: mentor_hindsight_gate NOT SET (False), mentor_all TRUE. (5) Circuit breaker CLOSED, 0 crashes/skips. (6) Statusline shows only mentor_hindsight_gate, hides mentor_all override - UI blind spot. (7) Tests expect mentor_hindsight_gate False, pass because mentor_all True. ROOT CAUSE: mentor_all=true activates Gate 19 regardless."
+  },
+  {
+    "id": "041253caefc556d8",
+    "new_text": "Task #4 completed (2026-02-09): Deduplicated tier rates in calculation.rs + fixed unchecked arithmetic in bank.rs. Changes: (1) /home/crab/agave/runtime/src/bank/partitioned_epoch_rewards/calculation.rs (lines 385-389) - Replaced hardcoded tier_rate_bp array and divisor with self.projectdawn_config.passive_tier_rate_bp(tier) and BASIS_POINTS_100_PCT * EPOCHS_PER_YEAR. (2) /home/crab/agave/runtime/src/bank.rs (lines 3672-3673) - Replaced unchecked += with saturating_add(). Build status: My changes introduce zero new errors. Remaining compile errors from snapshot-fix agent's incomplete work in serde_snapshot.rs and snapshot_utils.rs (task #3/#7)."
+  },
+  {
+    "id": "6d0961e54da736aa",
+    "new_text": "Session 88: FTS5 thread safety and query cap fixes in memory_server.py. FIX 1 - Thread Lock: Added threading.Lock() to FTS5Index class, wrapped keyword_search/tag_search/add_entry/get_preview with self._lock, used check_same_thread=False on sqlite3.connect(). Init-time methods left unlocked (single-threaded before UDS gateway starts). Prevents database is locked errors when MCP tool calls and UDS gateway queries hit FTS5 simultaneously. FIX 2 - Query Cap: Added 5000-char cap at top of _sanitize_fts_query(). Prevents pathological memory/CPU usage on oversized queries. 5000 chosen as balance between BM25 ranking quality and completeness. 20x safety margin below ~100KB danger zone. Test count: 1004\u21921005 (all passing)."
+  },
+  {
+    "id": "07fada84ddb14030",
+    "new_text": "Completed full ~/.claude path portability fix across 14 Python files (2026-02-26, Session ~246). All code now uses os.path.expanduser(\"~\") or os.getuid(). All docstrings use ~/.claude. FILES: fix_test_order.py, fix_lance_indexes.py, create_lance_indexes.py, flush_audit.py, benchmark_io.py, benchmark_gates.py, health_monitor.py, fuzz_gates.py, skill_mapper.py, gate_correlator.py, ramdisk.py, verify_memory_maintenance.py, _test_memory_maintenance.py, migrate_chromadb_to_lance.py. All syntax OK, 0 remaining hardcoded /home/crab paths. 1466 tests passed."
+  }
+]

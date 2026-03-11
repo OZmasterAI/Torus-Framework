@@ -1,0 +1,66 @@
+[
+  {
+    "id": "7d2678265db3be5e",
+    "new_text": "Implemented 2 wave orchestration upgrades: (1) Auto-restart+heartbeat: proc.poll() every-5s vs blocking wait, respawn on failure, safety timeout+30s grace, track retries. (2) Pre-execution plan check: validates requirement coverage (uncovered/orphan tasks), verifies target directories. Shows gaps, asks proceed/abort. Skips gracefully if no requirements file."
+  },
+  {
+    "id": "a35dde8d031b2b8b",
+    "new_text": "Agent Zero vs Torus memory: Agent Zero (FAISS, 3 areas MAIN/FRAGMENTS/SOLUTIONS, LLM consolidation, all-MiniLM). Torus (ChromaDB, 2 collections knowledge/observations, rule compaction TTL 30d cap 5000, causal chains). Comparison: They cost$ per save (smarter), we cost zero (simpler). They richer observations, ours better infrastructure. We have causal tracking."
+  },
+  {
+    "id": "424f3902308e6a95",
+    "new_text": "Session 306: Updated 3 public GitHub docs (README, USAGE_GUIDE, ARCHITECTURE). ChromaDB\u2192LanceDB rewrite, Analytics 10\u219250 tools, Memory 6\u21928, 151 files/76K lines/67 modules/36 skills, boot 20\u219222 steps. Removed memory counts, LIVE_STATE stub, eclipse-rebase team. Force-pushed to remove 2 leaked commits (LIVE_STATE, replaced)."
+  },
+  {
+    "id": "b176df57dd480e8f",
+    "new_text": "Session 343 research: Evaluated 7 tools (excalidraw ~13k, obsidian plugin, financial-datasets, skill-creator, visual-explainer ~37k, claude-terminal, vibeproxy). Claude Code 2.1.69 latest (new hook events, InstructionsLoaded). Akira comparison: 11 bash vs 19 Python gates, killed ChromaDB/MCP/LIVE_STATE. Design: use git log for LIVE_STATE truth. Trading framework Phase 1-3 designed, separate project."
+  },
+  {
+    "id": "fef43ae0cd0a47c4",
+    "new_text": "Worker Service: persistent daemon (localhost:37777) vs cold-start MCP. Our: new process per call (~500-1000ms), isolated. Claude-Mem: boots once, DB open (~50ms), single failure point. Worker isn't agent/LLM, zero token cost. WebUI shows observations/summaries/SSE, missing gates/audit/skills data. Recommendation: keep cold-start (reliable), build dashboard (gates/audit/mem/agents/tests)."
+  },
+  {
+    "id": "dec5e96d22dd20cc",
+    "new_text": "Session 244: GitHub consolidation. Eliminated separate torus-github repo, added `github` remote to ~/.claude. Orphan github-branch (0 history, 3 commits). Workflow: stash\u2192checkout\u2192apply\u2192commit\u2192push\u2192checkout\u2192pop. Untracked local (config.json, mcp.json, HANDOFF, LIVE_STATE). Updated .gitignore. Wired L0 transcript between L2-L3 in memory_server. 4-tier memory L1\u2192L2\u2192L0\u2192L3."
+  },
+  {
+    "id": "b0d745876240884f",
+    "new_text": "Session 240 (2026-02-26): GitHub release prep. Scrubbed /home/crab paths (30+ files), expanduser/$HOME. Replaced hardcoded UID 1000\u2192os.getuid(). Added sentence-transformers\u22652.7 (was missing). Created install.sh (pip, templates, optional ramdisk). Updated README (2-line quickstart, removed local #s). Global __pycache__ in .gitignore. Disabled analytics MCP (1760 tokens/prompt save). Public: github.com/OZmasterAI/Torus-Framework."
+  },
+  {
+    "id": "7165184bd54fe378",
+    "new_text": "Telegram bot (Session 341): bot.py (478 LOC, v21, text/voice\u2192tmux/subprocess), tmux_runner (203, sentinel protocol), claude_runner (82, JSON), config (40), db (143, FTS5), sessions (34). Transport: tmux mode (marker+poll+extract), subprocess fallback. Voice: ogg\u2192faster-whisper/Groq\u2192pipeline. Sentinel: append marker\u2192poll 0.5s\u2192extract. Packages: telegram-bot, groq, faster-whisper, starlette, uvicorn, websockets."
+  },
+  {
+    "id": "e978c41ffc145c11",
+    "new_text": "Session 387: TG bot rewrite. (1) Mirror/notify\u2192dedicated token (8628267302). (2) Signal file: Stop hook\u2192/tmp/tgbot-response json, bot polls (4s vs 120s). (3) TTS Groq Orpheus (100 req/day, 1200 TPM, 800 char cap). (4) /mirror command (on|off|user). (5) User message mirror. (6) user.is_bot check. (7) CLAUDE.md Rule 0/5b. Arch: bot long-running (polls TG), hooks short-lived, signal bridges."
+  },
+  {
+    "id": "1f81ab3cff8b508f",
+    "new_text": "Telegram Memory Plugin (Option D): Standalone plugins/telegram-memory/ with telegram_memory.py (Telethon client), config (api_id/hash/chat_id/phone), session/ (gitignored), hooks (session_end/start), search.py, index.db (FTS cache). Design: Torus never depends on TG. L1 ChromaDB (fast semantic), L2 Telegram (archive+search). Integration: SessionEnd posts, boot discovers, memory_server fallback. Requires: burner SIM, SMS, api_id/hash."
+  },
+  {
+    "id": "49ccd1a5bc599ec7",
+    "new_text": "Integration layer: Telegram Bot (integrations/telegram-bot/): bot.py 14KB (mirrors/session/logging), db (msg_log.db 532KB), search, config, sessions, tmux_runner, claude_runner, test coverage, tg_mirror (127 lines PostToolUse). Terminal History (integrations/terminal-history/): indexer (FTS5), db (19.8MB), search, on_session_end. Both feed analytics_server (L2/L3): telegram_search, terminal_history_search, web_search (ChromaDB)."
+  },
+  {
+    "id": "2c0354754339a1b4",
+    "new_text": "OptimisticChain genesis slots (2026-02-10): Created ComputeGenesisStorage.s.sol (Foundry script deploys 6 contracts, vm.load slots, outputs pairs). Updated generate-genesis.sh (embeds storage alongside code/balance). Summary 27 slots: StakingManager (3: gov/stake/APY), PassiveStaking (11: gov+6 tiers), FeeDistributor (3: shares), ChainGovernor (4: quorum/vote/delay), Treasury (0), RewardMinter (6). Packing: FeeShares 4x uint16\u219232-byte word."
+  },
+  {
+    "id": "184c8fb432a7d176",
+    "new_text": "Vercel/Cisco research: agent-browser (14.7k stars accessibility trees/state/mocking), skills CLI (6.4k maturity levels), json-render (11k Zod), skill-scanner (902 YARA), mcp-scanner (809 3-engine), aibom (libcst AST). Actionable: skill maturity, YARA scanning, Torus BOM, dependency graphs, LLM-as-judge Gate 14."
+  },
+  {
+    "id": "d3d8162abb5eebc3",
+    "new_text": "Swarm Intelligence papers: SwarmAgentic (arxiv:2506.15672) PSO-based system generation. SwarmSys (arxiv:2510.10047) 3-role (Explorer/Worker/Validator) decentralized. SIER (arxiv:2505.17115) density optimization. HiveMind (arxiv:2503.05473) multi-model. Maps: researcher\u2192Explorer, builder\u2192Worker, stress-tester\u2192Validator. Explorer/Worker/Validator\u2192research/build/test. Population approach: N instances, keep best."
+  },
+  {
+    "id": "5a00491c7f4d5256",
+    "new_text": "Telegram Memory Plugin (Option D): L2 storage (Telegram), L1 ChromaDB (fast semantic). Plugin plugins/telegram-memory/: telegram_memory (Telethon), config, session/, hooks (end/start), search, index.db (FTS). Integration: SessionEnd posts, boot discovers, manual CLI, memory_server fallback. Requires: burner SIM, SMS, api_id/hash. Why D: full MTProto search, 2-way messaging (text from phone), notifications, async queue. Bonuses: notifications (test/summary), channels/groups."
+  },
+  {
+    "id": "e9640fcea77245b4",
+    "new_text": "Hive Mind (HF/GitHub/GitLab): HF Hub (Lance HNSW on Hub, sub-second, DuckDB+VSS, 1K-6K calls/5m, 100GB free). GitHub (CODEOWNERS, Actions gates, PR workflow, 6/min push, no vector search, 5K req/hr). GitLab (free CE, Knowledge Graph v18.4, 7.2K req/hr). Recommendation: HF+Lance (warm layer semantic) + LanceDB (hot) + GitHub (CODEOWNERS/Actions) + GitLab self-hosted (private/throughput). All batch-only, hybrid with local DB mandatory."
+  }
+]

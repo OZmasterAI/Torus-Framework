@@ -1,0 +1,62 @@
+[
+  {
+    "id": "2d2d8f70e03958f1",
+    "text": "ChromaDB lazy init prevents segfault on concurrent access. memory_server.py: lazy _init_chromadb() on first MCP tool use. boot.py & session_end.py: pgrep guard skips direct DB access if MPC server running. Root: ChromaDB Rust backend PersistentClient segfaults (signal 11) on 2+ concurrent processes. Test: 874 passed."
+  },
+  {
+    "id": "ec7aaa4820dfae45",
+    "text": "test_framework.py refactored from 29,259-line monolith to 8 focused modules + master runner (29,259 \u2192 28,992 lines). Removed 90 duplicate anomaly_detector tests, trimmed 231 blank lines. 5385 passed, 6 failed (pre-existing). 3 commits on refactor-test branch, not merged."
+  },
+  {
+    "id": "b56ce3d1b0765d3c",
+    "text": "OptimisticChain research: compared to OP Stack (7 custom predeploy contracts, 137 lines Go). Covered fault proofs gap (Cannon MIPS vs ZK via SP1). Evaluated 3 options: A) Cannon standard 7-day delay, B) ZK via SP1 instant finality, C) Phased Cannon first then ZK (recommended). Discussed ZK-native L2 alternatives (Taiko, Polygon zkEVM, Scroll, zkSync). Recommendation: OP Stack + Cannon."
+  },
+  {
+    "id": "b5dbadf1bacf302b",
+    "text": "Claude Code Feb 2026 research: 5 framework improvements. (1) Hook JSON Decision Format (low effort): exit 0 + graduated escalation. (2) Agent-based Hooks (critical): spawn agents inside hooks for semantic verification. (3) Agent Teams (medium): 5-6 task-per-teammate teams. (4) MCP Lazy Loading (low-medium): 85% context reduction. (5) PostToolUseFailure Async Hooks (medium): structured failure diagnosis + auto-recovery."
+  },
+  {
+    "id": "57e6f5549c6a4a22",
+    "text": "Session 168: Created complete Torus Framework v2.5.3 docs (10 files): ARCHITECTURE-NEW.md/html, ASCII diagram, self-evolve diagram, README, USER-GUIDE (dark-themed, 16 gates, 39 skills, 7 agents, 48 shared modules, 1533 tests, 1086 memories)."
+  },
+  {
+    "id": "6e98bb0119bf78e4",
+    "text": "Key design patterns: (1) Memory-first in gates 4,7,8 (5/3/2 min windows). (2) Verification pipeline: Edit \u2192 pending_verification \u2192 test \u2192 verified_fixes \u2192 save. (3) Per-session state isolation. (4) Sideband .memory_last_queried timestamp. (5) Fail-closed safety (tier 1 crashes block). (6) Atomic state writes (tmp+replace). (7) MAX_FILES_READ=200. (8) Boot clears all state."
+  },
+  {
+    "id": "1f5c903d4785a230",
+    "text": "Plugin architecture design (session 298). Option A RECOMMENDED: Toggle Layer via manifest.json + dynamic gate_registry + try/except enforcer imports. Findings: 3 hard breaks (enforcer.py lines 35-37), 90% has try/except guards, zero cross-gate coupling. Core ~15K lines (16%), extensions ~65K (68%), tests ~30K (32%). Start with A, evolve to B/C. Design at docs/plans/plugin-architecture.md."
+  },
+  {
+    "id": "2ffd58846354067f",
+    "text": "Session 371: Ported all 17 gates to torus-pi-agent TypeScript. Added 11 gates (05-proof, 06-save, 09-strategy ban, 10-model cost, 11-rate limit, 13-workspace, 14-confidence, 15-causal, 16-code quality, 18-canary, 19-hindsight). Built memory layer: embedder.ts (nomic-embed, 768-dim), store.ts (@lancedb), tools.ts (search_knowledge + remember_this). 99 tests, clean build."
+  },
+  {
+    "id": "6785524fdbb98e4a",
+    "text": "[zerobrain] SecurityInjection gate (tier 2): monitored_tools={code_execution, search, document_query, browser_*}. _extract_text() scans INJECTION_INPUT_PATTERNS. _check_base64() finds >=20 char base64, decodes, checks keywords. _has_suspicious_unicode() detects zero-width codepoints + mixed Latin/Cyrillic. Critical/high \u2192 block, medium/low \u2192 warn. Smoke tested."
+  },
+  {
+    "id": "67d400548bce1926",
+    "text": "[zerobrain] SafetyLoopEscape + SafetyDepthLimit gates (tier 2). LoopEscape: MAX_ITERATIONS=50, MAX_TIME=600s, repeat MD5 hash of last 3 outputs blocks. DepthLimit: MAX_DEPTH=5, WARN_DEPTH=3 on call_subordinate. Both smoke tested confirmed correct."
+  },
+  {
+    "id": "f616af6a999725ee",
+    "text": "Tier 2 test optimization: converted ~118 run_enforcer() subprocess to direct function imports. 84s \u2192 31s (Tier 1) \u2192 14-16s (Tier 2) = 81% reduction. PostToolUse \u2192 _post() adapter, PreToolUse \u2192 _direct(_gXX_check()). Fix: cleanup_test_states() add \"main\" to session ID list. Gate 8 time-conditional (1-5 AM only). ~15 calls kept subprocess."
+  },
+  {
+    "id": "d816f23e21081fe7",
+    "text": "Completed run_enforcer() conversion sections 11-17 (lines ~1384-1910). S11-12: Causal tests + _post(). S13: M4 exit code. S14: M1/M2 NotebookEdit direct calls. S15: E1 crash keeps PreToolUse subprocess, PostToolUse direct state write. S16: get_memory. S17: capture queue. Result: 1531/1532 pass (1 pre-existing)."
+  },
+  {
+    "id": "aefd1c0366f8533e",
+    "text": "Tier 3 test_framework.py optimization: converted sections A-I to direct calls (Gate 03, 7/4, Gate 5 streaks with _direct/_direct_stderr, tool_stats, files_edited, related-files, verification timestamps, Gate 4 exemption). Kept subprocess: gate timing stats, rate limit, gate block counts. Key: streak=3 uses _direct_stderr. Result: 1531/1532 pass."
+  },
+  {
+    "id": "600bd226ba858dd4",
+    "text": "[zerobrain] Comprehensive test suite: 264 tests all passing (0.55s). Files: test_gate_result.py (21), test_enforcer.py (20), test_state.py (22), test_safety_gates.py (47), test_ops_gates.py (38), test_security_gates.py (28), test_patterns.py (57). Key fixes: get_stats shallow copy, avoid repeat-detection in iterations, \"ignore previous\" pattern 2-word match."
+  },
+  {
+    "id": "08e209df175d0c59",
+    "text": "[zerobrain] Tier 1 gates created: safety_destroy (blocks destructive shell + self-mod), safety_deploy (blocks unless tests passed <30min), safety_critical_files (blocks .env/config/keys writes + ZeroBrain self-mod warns). All match TIER1_GATES. Imports: Gate, GateResult/Severity, pattern utilities."
+  }
+]

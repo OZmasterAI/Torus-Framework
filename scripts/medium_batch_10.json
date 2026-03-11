@@ -1,0 +1,62 @@
+[
+  {
+    "id": "28205c3b968dbbb0",
+    "new_text": "TRv1 treasury program rewrite (2026-02-20): SPEC STATE: TreasuryState { version, authority, total_deposited, total_withdrawn, last_deposit_slot, last_withdrawal_slot }. SPEC INSTRUCTIONS: Initialize, DepositFees, Withdraw, UpdateAuthority, GetBalance. PROGRAM_ID: Treasury11111111111111111111111111111111111. Uses declare_process_instruction! macro, InvokeContext, limited_deserialize, Borsh for state, discriminator byte 0x54. KEY FACTS: workspace Cargo.toml has treasury at programs/treasury; builtins/src/lib.rs registers it; fee_distribution.rs has TODO treasury fee burn; trv1_constants.rs TREASURY_PUBKEY_DEFAULT hardcoded; state.rs discriminator=0x54, SERIALIZED_SIZE=66 bytes. No #[cfg(test)] tests exist. Build: cargo check -p solana-treasury-program --features agave-unstable-api"
+  },
+  {
+    "id": "f07d023e6f1de2b8",
+    "new_text": "ProjectDawn stake_state.rs P1 tests & penalty fix (2026-02-09): PENALTY FIX (line 513): OLD saturating_mul approach overflows; NEW uses (stake as u128) * (rate_bp as u128) * 5 / 10_000 as u64. EIGHT NEW TESTS: test_permanent_lock_sets_flag, test_permanent_lock_requires_dual_signature, test_permanent_lock_rejects_deactivated, test_permanent_lock_rejects_already_locked, test_permanent_lock_rejects_passive, test_passive_lock_sets_tier_and_lockup, test_passive_lock_rejects_invalid_tier, test_early_unlock_penalty_and_treasury_credit. Result: 127/127 tests pass (119 existing + 8 new). cargo test -p solana-stake-program: 0 failures."
+  },
+  {
+    "id": "d0d18fd5967eba31",
+    "new_text": "HIGH + MEDIUM security fixes OptimisticChain (2026-02-10): H-1/H-2 (FeeDistributor): MAX_DAPPS=200 cap, deregisterDApp() with onlyGovernor + swap-pop, _dappIndex O(1) lookup, DAppDeregistered event. H-4 (StakingManager): _activeValidatorCount counter replaces unbounded loop in getActiveValidatorCount(); incremented in registerValidator; inactive->active & active->inactive transitions in stake/unstake. Fixed stake() to update validator-specific _validators[msg.sender].stake. M-1 (PassiveStaking): penalty -> BURN_ADDRESS via low-call. M-5 (RewardMinter): MAX_CATCHUP_EPOCHS=10; missedEpochs capped at 10. Test results: 181 passing (171 existing + 10 new)."
+  },
+  {
+    "id": "8b0329241b9490c1",
+    "new_text": "Eclipse L2 rebase Phase 5 complete (2026-02-09): 20 ProjectDawn integration tests ported & passing. Files: projectdawn_permanent.rs (11), projectdawn_passive.rs (4), projectdawn_fees.rs (5). Modified: runtime/Cargo.toml (added solana-stake-interface); runtime/src/bank.rs (projectdawn_config, projectdawn_enabled pub); calculation.rs (removed redundant guard); distribution.rs (relaxed delegation assertion). Import adaptations: permanent_lock/passive_lock/early_unlock from solana_stake_interface::instruction; goto_end_of_slot from test_utils. VERIFIED: runtime 559/559, stake 127/127, integration (perm 11, pass 4, fees 5). GRAND TOTAL: 706 pass."
+  },
+  {
+    "id": "a7eb5cd35f3684cd",
+    "new_text": "TRv1 Session 159 COMPLETE (2026-02-20): 102 tests passing (44 runtime + 58 fee-market). Key fixes: (1) test_next_base_fee_increases_on_congestion - used current_gas_used instead of parent_gas_used; fixed via BlockFeeState direct construction. (2) Cleaned unused imports: DeveloperFeeDistribution, trv1_constants. (3) Removed unused MAX_PROGRAM_FEE_SHARE_BPS. (4) Removed unused make_vote_accounts_map helper. Agent results: Treasury agent (a8022c4) DONE, Active-set agent (a20ad41) DONE, RPC agent (a726b73) DONE (18 methods, clean compile). Feature list: 4 builtins, 4-way fee distribution, EIP-1559, active validator set (200 cap), slashing/jailing, 18 RPC endpoints, integer BPS math."
+  },
+  {
+    "id": "4a9f5ab15c1ec771",
+    "new_text": "Session #8 (2026-03-03) Eclipse L2: Answered \"missed epoch\" question (auto-distribute each epoch vs manual crank). Redesigned early unlock penalty: OLD = stake \u00d7 rate_bp \u00d7 5 / 10000; NEW = rewards_earned_so_far + (original_stake \u00d7 tier_penalty_bp / 10000). Insight: delegation.stake unchanged by reward distribution, so rewards_earned = lamports - delegation.stake - rent_reserve. Added EARLY_UNLOCK_PENALTY_BP array [0,0,250,500,750,1250] for tiers 0-5. Tier 1 now 0% penalty (free exit). Pending: more penalty refinement expected. Uncommitted: stake_state.rs + projectdawn_config.rs. Tests: stake 127/127, runtime 12/12."
+  },
+  {
+    "id": "2fab4fbf09347930",
+    "new_text": "ProjectDawn Feature Gate Implementation (2026-02-09): Added PROJECTDAWN_FEATURE_ID in projectdawn_config.rs (pubkey 0xDA00...0002). Modified apply_feature_activations() to inject ID into FeatureSet.inactive before compute_active_feature_set(). Changed hardcoded projectdawn_enabled: true to false in Bank::default_with_accounts and Bank::new_from_fields. Bank::new_from_parent already inherits. Approach: solana-feature-set external, can't modify; FeatureSet::default() only includes FEATURE_NAMES; inject custom ID into inactive before compute. Activation: create Feature account on-chain with matching pubkey, use 'solana feature activate'. Build: cargo check succeeds."
+  },
+  {
+    "id": "af9f758a2e692ade",
+    "new_text": "ARXIV 2506.05109 Metacognitive Learning - Self-Improving Agents: Framework for self-improvement via intrinsic metacognition: (1) Metacognitive Knowledge - self-assess capabilities/tasks/strategies; (2) Metacognitive Planning - determine learning dynamically; (3) Metacognitive Evaluation - reflect on experiences. Key: effective self-improvement needs agent's OWN adaptive evaluation, not fixed human-designed loops. Torus applicability: 17 gates are extrinsic (agent has no say); add meta-gate layer for agent self-assessment. Metacognitive Planning: agent proposes gate tightening/relaxation. Implementable: meta-reflection hook in gate 4 after N sessions with report on false positives/negatives, stored in LanceDB type:metacognition, team lead reviews/approves."
+  },
+  {
+    "id": "64563c8d91a34160",
+    "new_text": "Session 238 Super-evolve + sprint: (1) Super-evolve fixed 5 issues: statusline EXPECTED 39\u219233/12\u219213 (health 100%), UDS SIGALRM liveness, compression counter bleed, statusline pipe buffering, 2 test failures (Lever4 TriggerC, MemMentor fail-open). (2) Gate 6 false-positive: only verified_fixes warnings escalate, others advisory. (3) flush_audit.py + auto-audit rotation in session_end.py (freed 67.8MB). (4) 11 Gate 13 tests (NotebookEdit, Write, threshold, normalization, malformed, Tier 2 fail-open). (5) 16 Gate 01 tests (exempt patterns, 6 extensions, case-insensitive, symlinks, malformed). Tests: 1438\u21921466. Framework v2.5.5."
+  },
+  {
+    "id": "49ed8eb8552ff79c",
+    "new_text": "Session 168: Created 3 merged super-skills (super-evolve, super-health, super-prof-optimize) from 7 sources; old skills preserved. Updated EXPECTED_SKILLS 36\u219239. Built 10-file comparison (vanilla Claude Code, 9 external, 4 Torus variants). Documentation suite on Desktop: ARCHITECTURE-NEW (1081 lines), HTML (1391), diagram-md (406), diagram-html (1053), self-evolve-md (299), self-evolve-html (1060), README (328/930), USER-GUIDE (606/1415). All sent to Telegram. Memory 1068\u21921094."
+  },
+  {
+    "id": "eaee1b72ba43727c",
+    "new_text": "ProjectDawn P2 Integration Tests - Group B (2026-02-09): /home/crab/agave/runtime/tests/projectdawn_passive.rs (4 tests). (1) test_passive_lock_e2e: Initialized stake -> PassiveLock(3) -> StakeStateV2::Stake with passive_tier=3, voter_pubkey=default(), lockup.epoch=current+36. (2) test_passive_lock_lockup_enforced: tier 3 (36 epoch lockup), epoch 2 withdraw fails (LockupInForce), epoch 36+ early_unlock succeeds. (3) test_early_unlock_penalty_to_treasury: tier 2 -> EarlyUnlock -> treasury +penalty, stake -penalty, state reset. (4) test_early_unlock_rejects_non_passive: delegated (with vote) -> EarlyUnlock fails (NotPassiveStake). Fixed: BankFieldsToSerialize::default_for_tests missing projectdawn_config."
+  },
+  {
+    "id": "bccfb891702be633",
+    "new_text": "ProjectDawn Code Audit (2026-02-09): VERIFIED FILES: (1-4) solana-stake-interface flags/instruction/error, projectdawn_config (8 tests); (5-9) bank 3 fields, fee_distribution 4-way, calculation passive rewards, inflation 120% multiplier; (10-13) stake_state 4 instructions, stake_instruction routing, genesis seeded treasury, CLI commands. CRITICAL FINDINGS: Split/Merge/MoveStake/MoveLamports don't check PERMANENTLY_LOCKED; treasury pubkey hardcoded 0xDA00...0001; passive reward duplicates tier_rate_bp (not using config); GovernanceUnlock stub returning error; projectdawn_enabled always true (no feature gate); stake_flags tests only deprecated MUST_FULLY_ACTIVATE, not new flags."
+  },
+  {
+    "id": "7e4450d794dc6d54",
+    "new_text": "OptimisticChain Security Audit (2026-02-10): Reviewed 6 contracts + Predeploys + 6 interfaces. Findings: 2 CRITICAL (reentrancy StakingManager.unstake/claimRewards, delegation accounting bug stake/unstake don't update delegatedStake), 4 HIGH (unbounded loop DoS FeeDistributor/getActiveValidatorCount, no dApp deregistration, governance vote weight uses real-time not snapshot enabling flash-loan manipulation), 6 MEDIUM (early unlock tier 5 bypass, reward dust loss PassiveStaking), 5 LOW, 4 INFO."
+  },
+  {
+    "id": "a5f7ae2963121bd7",
+    "new_text": "Full test suite verification complete (2026-02-13): 539/539 TESTS PASSED. (1) Test Suite: 539 in hooks/test_framework.py, all framework features + gates + auto-capture + disclosure + hooks validated. (2) Memory Server: memory_server.py 55,361 bytes, no syntax errors. (3) New Skills: test/SKILL.md (2,075 bytes), research/SKILL.md (1,956 bytes). (4) Dashboard: server.py compiles, app.js 25,463 bytes, index.html 4,908 bytes with toast-container, markdown-body, gate-filter-badge. ALL SYSTEMS OPERATIONAL."
+  },
+  {
+    "id": "3e2b0aababec67a9",
+    "new_text": "[chainovi/eclipse-agave #7] Phase 5 Integration Wiring COMPLETE (2026-03-02): 5A (fee_distribution -> Developer Rewards): credit_developer_fees_direct() on Bank, ProgramRevenueConfig PDA, deposit via checked_add_lamports, EpochFeeTracker epoch rollover, 3 new tests (14 total). 5B (Governance TreasurySpend -> withdrawal): GovernanceWithdraw instruction, executed proposal read, 0x57 withdrawal marker prevents double-claim, 5 error variants (10-14), 10 tests (54 total). 5C (Governance EmergencyUnlock -> Unlock marker): write_execution_side_effects() helper, 41-byte unlock marker (disc 0x55 + target 32 + epoch 8), is_emergency_unlocked() on Bank. Results: all pass (runtime 14, treasury 54, governance 75, dev-rewards 66)."
+  }
+]

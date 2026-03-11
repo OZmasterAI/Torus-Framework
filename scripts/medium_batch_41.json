@@ -1,0 +1,18 @@
+[
+  {
+    "id": "8293a31acd914a32",
+    "new_text": "v2.3.5 sprint complete (082de18). Gate 3: DEPLOY_PATTERNS now (regex, category) tuples with messages showing category (container, kubernetes, package publish). Gate 10: tracks model_agent_usage {subagent_type:model: count}, suppresses mismatch warnings after 3+ uses. Dashboard /api/gate-state-conflicts finds write_conflicts (multiple gates writing same key) and hot_keys (read by 3+ gates). GateResult default message is empty string not None. 783/783 tests pass."
+  },
+  {
+    "id": "3d2f20e37f9993ae",
+    "new_text": "PMI Filtering (Feature #4, Toroidal-teams, 2026-03-11) \u2014 knowledge_graph.py: added co_occurrence_count and pmi columns to edges; update_pmi() computes PMI = log2(co_count * total_memories / (mention_x * mention_y)); _get_neighbors() returns PMI-weighted strength (pmi>0 => strength*pmi, pmi<=0 => 0). memory_server.py: import math, _tag_total_memories global, _build_tag_cooccurrence() sets it, _get_expanded_tags() uses PMI>1.0 instead of 40% threshold. knowledge_graph.py complete. memory_server.py steps 1-4 done; step 5 (update_pmi call in remember_this) pending."
+  },
+  {
+    "id": "d5a8c73bd530d041",
+    "new_text": "Sprint 3 COMPLETE (Framework v2.0): 387 tests pass. 4 new hooks: auto_approve.py (PermissionRequest, deny-before-allow, 12 tests), subagent_context.py (SubagentStart, 6 tests), pre_compact.py (PreCompact snapshot, 5 tests), session_end.py (SessionEnd queue, 5 tests). memory_server.py: ingestion filter (<20 chars + noise, 6 tests), near-dedup (cosine <0.05, 5 tests), error promotion (observations\u2192knowledge, 4 tests). settings.json: 8 hook events. Next: Sprint 4 (named agents)."
+  },
+  {
+    "id": "346b30da82e5d02f",
+    "new_text": "SSE transport implemented (session 408). memory_server.py: --sse flag + --port, FastMCP with host/port, mcp.run(transport=\"sse\"|\"stdio\"). .claude.json: mcpServers.memory type:\"sse\" url:http://127.0.0.1:8741/sse. memory_sse.sh: start/stop/status/restart. WORKFLOW: run ~/.claude/hooks/memory_sse.sh start before Claude session; ~10-15s startup. Results: 8 tools over SSE, 2596 memories accessible, 3.2GB RSS (was 4.2GB), 20 threads (was 52)."
+  }
+]

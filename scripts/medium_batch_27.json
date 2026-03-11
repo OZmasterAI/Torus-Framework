@@ -1,0 +1,62 @@
+[
+  {
+    "id": "1f172aacb8ea1429",
+    "new_text": "Framework comparison (Session 185). 11 frameworks scored on 9 dimensions. Torus Sprint-2: 66, AKIRA v5: 65, Hive: 68, GSD: 64, others lower. AKIRA closest sibling (same architecture), wins memory (20,950 vs 1,167), domain gates. Torus wins tests (1,291 vs 434), skills (33 vs 10). Self-Healing bootstrap has critical bug: sys.exit(1) instead of sys.exit(2) so gates don't block."
+  },
+  {
+    "id": "3c1a76de8e735804",
+    "new_text": "Session 288: 7-way comparison (Sprint3, AKIRA v5.8, others). Sprint3 avg 81.5/100 (best learning 93, memory 94, consistency 95). AKIRA avg 72.1 (speed 88). Self-Sprint-2 worst token cost (60) due to analytics live MCP; Sprint3 made dormant. Sprint3 mcp.json empty (17 memory tools), analytics 52 not in schema. LanceDB migration biggest upgrade. AKIRA enforcer/tracker split worth adopting."
+  },
+  {
+    "id": "0f618fcd4f0be607",
+    "new_text": "Session 236: Updated torus-architecture-NEW.html. v2.5.3\u21922.5.4, 1086\u21921,414 memories (LanceDB), 1533\u21921,437 tests, 39\u219235 skills, 16\u219217 gates. Added Tier 3: G17 Injection Defense, G18 Canary Monitor, G19 Hindsight. Memory 3\u21924 layers (L0 Raw Transcript/JSONL). LanceDB+tags.db, nomic-embed-v2-moe 768d. Search pipeline 12\u219219 steps. ChromaDB concurrent issue resolved. 17 MCP tools (6 memory+11 analytics)."
+  },
+  {
+    "id": "f737255ec79dd93d",
+    "new_text": "Created 3 Torus v2.5.3 diagrams (Session 168, Feb 21): (1) torus-self-evolve-diagram-NEW.md (15KB) ASCII: Loop, Self-Evolution 7-phase, Causal Chain, Memory Compounding, Gate Enforcement, 48 shared modules. (2) torus-self-evolve-diagram-NEW.html (37KB) interactive dark-theme: animated nodes, 5 collapsible panels, CSS animations, color-coded gate pipeline. (3) torus-architecture-diagram-NEW.md (19KB) system box diagram, data flow, memory pipeline, gate wiring."
+  },
+  {
+    "id": "eee82a62703a70ef",
+    "new_text": "Framework comparison (Session 125). Torus vs 6: (1) awesome-claude-code curated links, not comparable. (2) claude-simone MCP+sprints, no persistent memory/gates. (3) claude_code_agent_farm 20-50 parallel CLI, file-based, no semantic memory. (4) CCW JSON orchestration, no mechanical enforcement. (5) Ruflo claims 60 agents, minimal actual code. (6) SuperClaude 30 slash commands, 14.5k token overhead (6.6x Torus). Torus 87/100: unique gate enforcement, semantic memory MCP, causal chain, session handoffs."
+  },
+  {
+    "id": "6d4884f72b714e51",
+    "new_text": "Megaman vs thepopebot (Session 32, Feb 14). thepopebot NOT Claude Code framework\u2014autonomous Node.js+Docker+GitHub Actions agent. Express/Telegram\u2192Actions\u2192Pi agent+Chromium. Key diffs: thepopebot event containers, memory in-memory, safety ALLOWED_PATHS, 0 tests, Telegram. Megaman interactive, ChromaDB persistent, 13 gates, 901 tests, CLI. Token: thepopebot 4,160 (3.15x Megaman 1,321). Strengths: thepopebot production-ready, Megaman persistent memory+gates."
+  },
+  {
+    "id": "59f67d899514780c",
+    "new_text": "Session 68: Torus vs claude-mem. Torus 15 MCP tools vs 4, higher token cost (~2500 vs ~800). claude-mem's AI-processed observations burn ~250k tokens/session, exceeds '10x savings' claim. Torus zero-cost raw capture+filtered compaction more efficient. Torus dashboard 31 endpoints vs React viewer. claude-mem unique: AI-structured observations, privacy tags, citation URLs, multi-AI. Torus pipeline: capture\u2192compress\u2192buffer\u2192flush\u2192digest\u2192promote errors\u2192delete."
+  },
+  {
+    "id": "5fe18667d519a559",
+    "new_text": "coleam00 evaluation (Feb 14). Implemented: context-engineering-intro\u2192/prp. Candidates: Archon (13.7k) agent builder, ottomator-agents (5.3k) Live Agent Studio, ai-agents-masterclass (3.3k) patterns, Linear-Coding-Agent-Harness autonomous+Linear, custom-agent-with-skills PydanticAI, ralph-loop-quickstart, n8n-nodes-mcp, second-brain-skills (309), mcp-mem0 (643) Mem0 memory. Evaluate next."
+  },
+  {
+    "id": "d7751b82509d3967",
+    "new_text": "Framework capability refresh (March 9, 2026). hive: 9k stars, 5.2k forks, 944 issues. gsd: 26.8k stars, 2.3k forks. agent-zero: 15,909 stars, v0.9.8.2 Sonnet, loop bugs open. claude-simone: 547 stars, mcp v0.4.0 (Aug 25), legacy .simone/ structure. Torus: 2 stars, 213 files, 88k LOC, Feb 26 commit, 17 gates (3 T1+11 T2+3 T3), 5 MCP servers. Public matches internal but no private gate configs."
+  },
+  {
+    "id": "0ce0518351f0e19b",
+    "new_text": "ZeroBrain Gate Plan (Agent Zero guardrails). Include Torus: G02 No Destroy, G03 Test Deploy, G07 Critical Files, G11 Rate Limit, G13 Workspace, G17 Injection, G18 Canary, G04/G06 memory hooks, G10 Model Cost, G16 Code Quality. New: loop_escape (infinite monologue), token_budget, depth_limit (subordinates), output_sanitizer (LLM scanning). Architecture extension-based (tool_execute_before), NOT stdin/exit-code. Python class extending Extension, numbered prefix loading."
+  },
+  {
+    "id": "93e1424ae1651c99",
+    "new_text": "Session 396: ZeroBrain+ZeroTor research. Built ZeroBrain v0.1.0 (12 gates, 5 extensions, 264 tests). Discovered ZeroTor private repo: Agent Zero fork, 13 embedded Torus gates, LanceDB, causal chain, auto-RAG, system prompt injection. ZeroTor more complete but lacks loop escape, depth limit, token budget. Plan: 13\u219216 gates. Decisions: ZeroBrain reference, ZeroTor production. G01 broken, G05 noisy. G04 loosened 5\u219220min. G17 Tier 2 fail-open."
+  },
+  {
+    "id": "d1d6bfbef9793769",
+    "new_text": "ZeroTor private repo (Agent Zero fork). Architecture: embedded python/torus/, 13 gates, state agent.data['_torus_state'] (in-memory), LanceDB+nomic-embed v1.5 replacing FAISS. Causal chain: record_attempt/outcome, query_fix_history. Memory tools: TorusMemory+3 new. Extensions: pre/post/init/RAG/observer/rules. System prompt injects Torus rules. Blocking: Exception in tool_execute_before. Tests: gates/loop/memory/causal/enforcer. vs ZeroBrain: embedded vs package, 13 vs 12 gates, causal vs none."
+  },
+  {
+    "id": "9460934c5a9ea6da",
+    "new_text": "Gate 17 enhancement (Self-Sprint-2). 5 new detections: (1) _check_homoglyphs 30+ Cyrillic/Greek\u2192Latin, (2) _check_html_markdown script/event/javascript/iframe/markdown, (3) _check_nested_json role/content/system in fields, (4) _check_template ${}/{{}}/#{}/<%=%> patterns, (5) _check_tool_inputs PreToolUse+base64. Issue: enforcer uses session_id not ramdisk UUID. PostToolUse records files after turn."
+  },
+  {
+    "id": "f42583d062f7f507",
+    "new_text": "Gate 17 v2 complete (Feb 20). gate_17 771L: _HOMOGLYPH_MAP (36), _check_homoglyphs, _check_html_markdown (12 patterns), _check_nested_json (regex+load), _check_template (safe-key), _extract_string_fields, _check_tool_inputs (PreToolUse). test_framework +15. gate_01 restored 115L. Results: 49/49 custom, 19/19 existing, 15/15 new pass. Perf: PreToolUse <2ms, PostToolUse <2ms, detection <5ms."
+  },
+  {
+    "id": "ea4e947b844baf92",
+    "new_text": "Session 150: 3 cherry-picked features. (1) ULID audit IDs: _ulid_new() shared/audit_log.py, 26-char base32 sortable, additive. (2) Gate 17 Injection Defense: PostToolUse external tools (WebFetch/Search/MCP), 6 categories (instruction_override/authority/boundary/obfuscation/financial/self_harm), warns via GateResult. EXPECTED_GATES\u219216. (3) Budget Degradation 4-tier: NORMAL (0-40%), LOW_COMPUTE (40-80% opus\u2192sonnet), CRITICAL (80-95%), DEAD (95%+). Tests: 1116 (+13)."
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "98e54afcc12325b8",
+    "new_text": "Session 182: Fixed 2 bugs. (1) researcher.md: Added mcp__memory__remember_this to tool list, updated description from 'Read-only' to 'Research agent (read-only except memory saves)'. Now matches capability_registry.py. (2) state_migrator.py: Replaced hardcoded {strict,balanced,permissive} with VALID_PROFILES import, includes new 'refactor' profile + auto-includes future profiles. All 1538 tests pass."
+  },
+  {
+    "id": "ebeee1266db88743",
+    "new_text": "Session 220: Corrected Torus vs Clude comparison. Final: Torus 86.5 vs Clude 56.05 (+30.45). Previous undersold Torus\u2014missed: memory linking, observation compaction, integrity_check.py, error_pattern_analyzer.py, 5-layer search, auto-tune. Torus dominates enforcement (10 vs 5), token efficiency (9 vs 4), consistency (10 vs 5), learning (9 vs 6), reliability (9 vs 5). Key: audit own capabilities thoroughly before comparing."
+  },
+  {
+    "id": "26fe1bdc678f247a",
+    "new_text": "Correction #2: Torus has 6 distributed bond types\u2014(1) Causal, (2) Semantic, (3) Temporal, (4) Contradictory, (5) Predictive (Markov), (6) Gate correlation. Distributed across: causal chain, tag co-retrieval, error_pattern_analyzer, gate_correlator, tool_patterns, security_profiles. Clude has 4 unified bonds. Torus Memory score: 9/10."
+  },
+  {
+    "id": "cf61f0cce39ef905",
+    "new_text": "Bond architecture: Torus distributed (6 bonds/6 subsystems) 78.4 vs Clude unified 63.8 (+14.6). Clude wins elegance (8.6 vs 4.4)\u2014unified graph easier to reason, native cross-queries. Torus wins operational: reliability (9 vs 5, no SPOF), token efficiency (8 vs 5), learning (9 vs 6, Markov predictive). Distributed=microservices (resilient, specialized). Unified=single-DB (elegant, fragile). At 1.3K scale, distributed strictly better."
+  },
+  {
+    "id": "37b17e98fe92e753",
+    "new_text": "Session 220 Final: Torus 84.0 vs Clude 55.2 (+28.8). Torus: 150+ components (18 gates, 47 modules, 21 tools, 6 bond types, 7 memory subsystems, 7 self-evolution, 39 skills, 1405+ tests). Clude: ~15 components. Clude wins: on-chain immutability, cross-agent sharing, elegance. Torus wins: enforcement (10 vs 5), token efficiency (9 vs 4), self-evolution (10 vs 2), observability (10), security (10 vs 3), testing. Verdict: Clude=brilliant prototype. Torus=production system."
+  },
+  {
+    "id": "dc0491a3e05428c2",
+    "new_text": "Framework statistics (Session 221): 113 Python files, 48.5K lines in hooks/, 83MB total (46.3MB audit_trail). Components: shared/ 50 modules 19.4K lines; gates/ 17 active 3.2K lines; tracker_pkg/ 10 files 1.5K; boot_pkg/ 6 files 848 lines. Top files: test_framework.py 11.9K, memory_server.py 4.2K, statusline.py 1.1K. 17 active gates, 50 modules, 33 skills, 9 plugins, 6 agents, 2 MCP servers (16 tools), 2 orchestrators, 2 integrations, 43 session files."
+  },
+  {
+    "id": "b990596da80a6674",
+    "new_text": "FTS5Index\u2192TagIndex migration COMPLETE in memory_server.py (7 refs): Line 1879 tag_search, 2341-2342 add_tags, 2392-2403 add_tags resolves, 2516-2518 remove, 2972-2973 tag_search, 3543 count variable, 4083 add_tags. All syntax verified. Only remaining fts_index=LanceDB create_fts_index (legitimate)."
+  },
+  {
+    "id": "c7e69a6cf4a3d5a9",
+    "new_text": "USER-GUIDE-NEW.html v2.5.4 update (Session 236, 2026-02-25): 1416\u21921501 lines. Updates: gates 16\u219217, skills 39\u219235, memories 1086\u21921414, ChromaDB\u2192LanceDB primary, added Tier 3 gates (G17 Injection/6 cats, G18 Canary/Welford, G19 Hindsight), 4-layer arch table, LanceDB counts (knowledge 1414, fix_outcomes 267, observations 4587), 8 search modes, 12-step write pipeline, ramdisk /run/user/1000/claude-hooks/state/, Gate 6 deadlock fix."
+  },
+  {
+    "id": "02d1907bc975fac0",
+    "new_text": "Session 88: 3 critical fixes + CLAUDE.md optimization. C1: state.py:448\u2014double-sided timestamp clamp max(0,min(sideband_ts,time.time())), fixes negative timestamps bypassing Gate 4. C2: chromadb_socket.py:69-75\u201410MB buffer cap (MAX_RESPONSE_SIZE), prevents OOM. CLAUDE.md: 964\u2192851 tokens (12% reduction), removed preamble/redundant rules/SATISFACTION_FORMULA, added Gates 13 & 14 to list. Zero strictness loss."
+  },
+  {
+    "id": "3642ec9c1b35755d",
+    "new_text": "Gate timing analytics (Self-Sprint-2): 1. gate_timing.py module\u2014record_timing(gate_name,tool_name,elapsed_ms,blocked), get_gate_stats(), get_slow_gates(threshold_ms), get_timing_report(). Atomic .gate_timings.json. 2. enforcer.py wired _record_gate_timing, all branches (is_ask/blocked/warn/pass), try/except non-fatal. 3. test_framework.py 12 tests added. Result: 12/12 pass, 1185/1258 total (73 pre-existing failures)."
+  },
+  {
+    "id": "4f54f6df7e21873f",
+    "new_text": "Session 238 follow-up: 2 test failures fixed. (1) Lever4 TriggerC (line 7146): UDS-available code path returns early, no queue entry. Fixed assertion to accept UDS-direct OR queue-fallback: (Error fixed+ImportError) OR Tests passed. (2) MemMentor _query_uds: wrong protocol key (action vs method), returns ok=False. Fixed check: if ok=False and no ids key, return None (fail-open)."
+  },
+  {
+    "id": "cfb931b3fd836a20",
+    "new_text": "Session 168 wrap-up: Cleared Sprint 2. (1) 1530/1530 tests pass (46 pre-existing fixed). (2) isinstance(dict) guard 9 gates. (3) Gate 11 rate_limit 3.64ms\u21920.005ms (728x). (4) Wired auto_format.py. (5) Applied stop_cleanup, failure_recovery, integrity_check patterns. (6) Deleted Gate 12 merge artifact. (7) statusline 16 gates. (8) Sprint 2 changelog. Total: 122K\u2192158K lines."
+  },
+  {
+    "id": "dd4dc33d7111e12d",
+    "new_text": "Session 238 super-evolve: 5 verified. (1) statusline SKILLS 39\u219233, EVENTS 12\u219213, health 95\u2192100%. (2) UDS socket hang\u2014SIGALRM 5s ping before tests. (3) Compression counter\u2014takes session_id, resets on change. (4) Display buffering\u2014sys.stdout.reconfigure+flush before slow I/O. (5) MemMentor _query_uds fail-open. Final: 1439/1439 pass, v2.5.5."
+  },
+  {
+    "id": "84108058a9db8adb",
+    "new_text": "Cross-audit docs vs code (Session 243): Line count errors\u2014memory_server 3667 not 4188, test_framework 10600 not 11904, enforcer 547 not 632. 17 gates (1-7,9-11,13-19, gaps 8,12) not 19. 50 shared+1 dormant. 28 active skills not 33. v2.5.3 not later. 6 active MCP tools. 9 analytics tools. FTS5 correct for terminal. Boot=continuous 408-line function no discrete 22 steps. 7 scripts, 9 plugins, no transcript_context in docs."
+  },
+  {
+    "id": "b17c5174b916c9bc",
+    "new_text": "torus-github import audit (2026-02-26): MISSING deps\u2014hooks/requirements.txt lacks sentence-transformers (used memory_server, migrate, benchmark). telegram-bot missing faster-whisper. skills/web/ missing httpx, beautifulsoup4, markdownify, lxml. BROKEN: torus-wave.py:129 literal ~ in path. STALE: memory-prefetch.py queries deleted fts5_index.db. BENCHMARK: needs chromadb. All /home/ paths are fixtures/docs."
+  }
+]

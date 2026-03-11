@@ -1,0 +1,62 @@
+[
+  {
+    "id": "3045e793ff22148e",
+    "new_text": "Telegram Hive Mind: Bots can't see other bots; organizer runs MTProto service (Pyrogram/Telethon). Supergroup forum + channel for promotion. Limits: 20 msg/min per bot, 20 bots/group max, 4096 char msgs. Upsides: free storage, audit trail, reactions as signals, topic-domains. Downsides: no E2E, 20-bot cap, MTProto ToS risk, no native search, SPOF. Best for: non-sensitive, <20 bots, async. Worst for: sensitive, high throughput."
+  },
+  {
+    "id": "2309ecdd32c45f3b",
+    "new_text": "[GARBAGE: 1000 chars removed]"
+  },
+  {
+    "id": "40a1dfea444d78b6",
+    "new_text": "Session 86: Causal chain enforcement system built. State v3: recent_test_failure, fix_history_queried, fixing_error. Tracker auto-detects errors in test output. Gate 15 blocks Edit/Write if fixing_error=True & fix_history_queried stale (>5min). remember_this auto-writes to fix_outcomes when tags=type:fix. Tests: 979\u2192995, all pass."
+  },
+  {
+    "id": "25111282442b1926",
+    "new_text": "P2P Hive Mind Blueprint: Python + py-libp2p + pycrdt + LanceDB. 5-layer node (network\u2192gossip\u2192trust\u2192knowledge\u2192AI). GossipSub v1.1, Kademlia DHT, CRDT sync. Trust scoring (delivery 0.4, quality 0.3, web-of-trust 0.2, age 0.1). Sybil detection, cold-start probation 50 msgs. 9-step validation + llama-3.2-3b scorer (2s). Build: 4-6 wks MVP, then quality/trust/scale (10-17 dev-weeks total)."
+  },
+  {
+    "id": "088aaab0fc31e30a",
+    "new_text": "Session 86: Consolidated 3 observation tools into search_knowledge modes. Added mode=observations & mode=all. Auto-fallback when knowledge=0. Dormant: search_observations, get_observation, timeline. Token savings: 210 tokens (3 tools removed). MCP count: 10\u21927. Tests: 995 pass."
+  },
+  {
+    "id": "92736ffd24de53b3",
+    "new_text": "Feature #5: Incremental Clustering in memory_server (2026-03-11). Added cluster_id field, _ClusterStore class (SQLite), THRESHOLD=0.7 cosine. Online centroid update, fail-open. Bootstrap flag added. 10 changes total. Gate 16 workaround: comment-edit first to reset ruff F821 counter before actual edit."
+  },
+  {
+    "id": "abed39bd114a2f9a",
+    "new_text": "Session 410: M2A evidence pointers (2 fixes). (1) source_session_id: Added column + auto-migration, now returns source_l0 with session ID. (2) source_observation_ids: Comma-sep obs IDs in schema, 7 code locations. Generic migration auto-adds columns on restart. 53 tests pass. Remaining: PMI filtering, clustering, counterfactual retrieval."
+  },
+  {
+    "id": "06791f80a9108f9e",
+    "new_text": "torus-web API routes: Auth (6 endpoints: me, steam connect/callback/disconnect, verify), Users (3: GET/POST/PATCH), Admin (games/users/rewards CRUD, triggers, logs, news), Esports (rankings, stats, refresh), Public (rankings, referrals, news). Auth: JWT+CSRF. Models: User, Game, UserGameStats, Reward, Referral, etc."
+  },
+  {
+    "id": "2f49f65a8403c02f",
+    "new_text": "ChromaDB-to-LanceDB migration (606 lines). Batch export 50, 5 tables with Arrow schemas, vector=pa.list_(pa.float32(), 768). Helpers: _s/_f/_i coerce metadata. Re-embed via SentenceTransformer. Idempotent, marker at .migration_complete. Validates counts + 10 spot-checks. nomic-embed-text-v2-moe with trust_remote_code=True."
+  },
+  {
+    "id": "0153d6eca1874efe",
+    "new_text": "LanceDB migration research: 5 ChromaDB collections, nomic-embed-text-v2-moe (768-dim). Only 4 files import ChromaDB (rest via UDS). LanceDB API: connect(), create_table(Arrow), search().distance_type(cosine), merge_insert for upsert, SQL WHERE, BM25 FTS. Key: metadata=Arrow columns, upsert pattern, SQL delete, optimize() for compaction."
+  },
+  {
+    "id": "aff99bcbead419a2",
+    "new_text": "Memory-Architecture-Diagram.html update (Session 236, 2026-02-25): v2.5.3\u21922.5.4. LanceDB Client+TagIndex (removed ChromaDB/FTS5/Gateway). L0/L1/L2/L3 tiers, 768-dim embed, ~30ms semantic. 8 search modes. FTS5 renamed L2/L3 only. UDS Gateway removed. Boot 20\u219222 steps. Write/search pipelines updated."
+  },
+  {
+    "id": "82c5c7ad61c98b1d",
+    "new_text": "LanceDB migration mitigations (10): (1) Cosine drift\u2014snapshot 50 queries. (2) Arrow strictness\u2014audit types. (3) Decouple embedding. (4) Keep FTS5 phase 1. (5) Single-writer MCP. (6) Schedule compaction. (7) Integration tests. (8) Dual-write 2-3 sessions. (9) Sideband before return. (10) Lazy import if >2s."
+  },
+  {
+    "id": "fe57d715c9ec93e2",
+    "new_text": "USAGE_GUIDE.md update (2026-03-01): ChromaDB\u2192LanceDB, MCP expansion. 13 changes: v2.5.8, 22-step boot, L0 transcripts, 5 LanceDB tables, 8 tools, 36 skills, 5 teams. Key files: 151 Python, 76K lines. memory_server 4627, analytics 2481, test_framework+tests/ added. .chromadb.sock legacy note, tags.db new."
+  },
+  {
+    "id": "85fd6e3fa8da9cd2",
+    "new_text": "Memory-Architecture-Diagram.html (Session 172): 900-line .md\u2192HTML at ~/Desktop/. Needs 11 tabs (Overview, Write/Search Pipelines, Auto-Capture, Causal Chain, L2/L3, Infrastructure, Tools, FTS5, Hashes, Constants, Map). Token limit: 64K. Dark theme (bg:#0d1117, #58a6ff, JetBrains). Write in chunks: CSS+skeleton, then tabs."
+  },
+  {
+    "id": "0925c1f518b37b81",
+    "new_text": "TRv1 test coverage (Session 159): 102\u2192311 tests. Passive-stake 41, Treasury 41, Governance 68, Developer-rewards 55, Runtime 48, Fee-market 58. All tests pass. SECURITY.md Solana\u2192TRv1 rebrand."
+  }
+]
