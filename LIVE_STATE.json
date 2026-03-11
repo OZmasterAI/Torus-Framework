@@ -1,25 +1,23 @@
 {
-  "session_count": 410,
+  "session_count": 411,
   "project": "torus-framework",
-  "feature": "toroidal-teams-wrap-up",
+  "feature": "memory-quality-uplift",
   "framework_version": "v2.8.0",
-  "what_was_done": "Wrapped up Toroidal-teams branch (964 commits). Saved comprehensive branch summary to memory (id:b3d8ceb426deb901). Committed all pending state files.",
+  "what_was_done": "Implemented Memory Quality Uplift A+B+C: composite reranker, write-time quality scoring, action patterns from fix_outcomes. Analyzed friend's external audit. Condensed 233 long memories.",
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
-    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md \u2014 resolves on merge to Cognitive",
-    "Two skill systems coexist: ~/.claude/skills/ (Skill tool) and ~/.claude/skill-library/ (MCP) \u2014 keep in sync",
-    "Never Edit ~/.claude.json directly \u2014 use python3 json.load/dump for atomic edits (file got nuked once)",
-    "Memory server now SSE \u2014 must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
-    "lance-cpu threads (7) not controlled by RAYON_NUM_THREADS \u2014 lance-internal pool, low priority"
+    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md — resolves on merge to Cognitive",
+    "Security findings from external audit pending fix: shell=True in PRPs/task_manager.py, UDS socket chmod, voice server 0.0.0.0, bot token in config (memory id:65cab6b931e40aeb)",
+    "Memory server now SSE — must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
+    "lance-cpu threads (7) not controlled by RAYON_NUM_THREADS — lance-internal pool, low priority"
   ],
   "next_steps": [
-    "Toroidal Teams v2 planning \u2014 pre-plan in memory id:251438e166e050c4 + addendum id:d606d65a65c86621",
+    "Restart MCP server to load memory quality uplift (new shared modules + memory_server.py changes)",
+    "Condense 800-2000 char memories (Sonnet task — prompt ready)",
+    "Fix external audit security findings (memory id:65cab6b931e40aeb)",
+    "Toroidal Teams v2 planning — pre-plan in memory id:251438e166e050c4 + addendum id:d606d65a65c86621",
     "Merge Cognitive-upgrade back into Cognitive (G16 nesting+length+thresholds, Gate 20 all ready)",
-    "Consider Gate 20 C+D extensions after observing in production (Task #1, memory id:539d73f7a279d7bf)",
-    "Refactor 3 tech debt targets: compress_observation (depth 12), search_knowledge (596 lines), handle_post_tool_use (491 lines) \u2014 memory id:ec2e1f685b8bb9cd",
-    "Memory stale purge \u2014 2,620 entries, run maintenance(action='stale')",
-    "Fix test_framework.py import error (ModuleNotFoundError for 'index' at test_integration.py:748)",
-    "Re-enable skills/search/analytics MCPs when needed"
+    "Memory stale purge — 2,663 entries, run maintenance(action='stale')"
   ]
 }

@@ -1464,6 +1464,81 @@ def _rerank_keyword_overlap(results, query, boost_weight=0.05):
     return results
 
 
+def _rerank_composite(results, query, top_k, knowledge_graph=None):
+    """Composite reranker: tag overlap + graph proximity + tier + access count.
+
+    Runs after existing boosts as a final re-sort pass. Fail-open.
+    """
+    if not results or len(results) <= 1:
+        return results
+    try:
+        import math
+
+        query_tags = set()
+        query_lower = query.lower()
+        # Extract implicit tags from query words
+        for r in results:
+            for tag in (r.get("tags", "") or "").split(","):
+                tag = tag.strip().lower()
+                if tag and any(w in tag for w in query_lower.split() if len(w) > 3):
+                    query_tags.add(tag)
+
+        for entry in results:
+            raw = entry.get("relevance", 0) or 0
+
+            # Tag overlap with query (0-0.08)
+            entry_tags = set(
+                t.strip().lower()
+                for t in (entry.get("tags", "") or "").split(",")
+                if t.strip()
+            )
+            tag_overlap = (
+                len(entry_tags & query_tags) / max(len(query_tags), 1)
+                if query_tags
+                else 0
+            )
+            tag_bonus = min(0.08, tag_overlap * 0.08)
+
+            # Tier bonus (0-0.05)
+            tier = entry.get("tier", 2)
+            if not isinstance(tier, int):
+                try:
+                    tier = int(tier)
+                except (ValueError, TypeError):
+                    tier = 2
+            tier_bonus = {1: 0.05, 2: 0.0, 3: -0.02}.get(tier, 0.0)
+
+            # Access frequency (0-0.03): log-scaled
+            rc = int(entry.get("retrieval_count", 0) or 0)
+            access_bonus = min(0.03, 0.008 * math.log1p(rc)) if rc > 0 else 0.0
+
+            # Graph proximity (0-0.06): connected to other high-scoring results
+            graph_bonus = 0.0
+            if knowledge_graph and entry.get("id"):
+                try:
+                    neighbors = knowledge_graph.get_neighbors(entry["id"])
+                    top_ids = {
+                        r.get("id")
+                        for r in results[:5]
+                        if r.get("id") != entry.get("id")
+                    }
+                    connected = len(set(neighbors) & top_ids) if neighbors else 0
+                    graph_bonus = min(0.06, connected * 0.03)
+                except Exception:
+                    pass
+
+            entry["_composite_score"] = (
+                raw + tag_bonus + tier_bonus + access_bonus + graph_bonus
+            )
+
+        results.sort(key=lambda x: x.get("_composite_score", 0), reverse=True)
+        for entry in results:
+            entry.pop("_composite_score", None)
+    except Exception:
+        pass  # Reranker failure = return original order
+    return results[:top_k]
+
+
 def _merge_results(fts_results, lance_summaries, top_k=15):
     """Merge FTS5 and LanceDB results using Reciprocal Rank Fusion (RRF).
 
@@ -2734,7 +2809,7 @@ def search_knowledge(
             "source": "transcript_l0",
         }
 
-    actual_k = min(top_k, count)
+    actual_k = min(top_k * 2, count)  # 2x pool for composite reranking
 
     if mode == "tags":
         # Strip tag:/tags: prefix and parse
@@ -2995,8 +3070,62 @@ def search_knowledge(
     except Exception:
         pass  # LTP scoring failure must not break search
 
+    # Composite reranker: final re-sort with tag overlap + graph proximity (fail-open)
+    try:
+        formatted = _rerank_composite(
+            formatted, query, top_k, knowledge_graph=_knowledge_graph
+        )
+    except Exception:
+        pass  # Composite reranker failure must not break search
+
     # Trim to requested top_k after expansion
     formatted = formatted[:top_k]
+
+    # --- Action pattern lookup: check fix_outcomes for error-like queries (fail-open) ---
+    _action_pattern_count = 0
+    try:
+        from shared.action_patterns import is_error_query as _is_error_q
+        from shared.action_patterns import extract_pattern as _extract_ap
+        from shared.action_patterns import format_pattern as _format_ap
+        from shared.action_patterns import rank_patterns as _rank_ap
+
+        if _is_error_q(query) and fix_outcomes is not None:
+            _fo_count = fix_outcomes.count()
+            if _fo_count > 0:
+                _fo_results = fix_outcomes.query(
+                    query_texts=[query],
+                    n_results=min(5, _fo_count),
+                    include=["metadatas", "documents"],
+                )
+                if _fo_results and _fo_results.get("documents"):
+                    _fo_docs = _fo_results["documents"][0]
+                    _fo_metas = (
+                        _fo_results["metadatas"][0]
+                        if _fo_results.get("metadatas")
+                        else []
+                    )
+                    _patterns = []
+                    for _ap_i, _ap_doc in enumerate(_fo_docs):
+                        _ap_meta = _fo_metas[_ap_i] if _ap_i < len(_fo_metas) else {}
+                        if _ap_meta.get("outcome") in ("success", "failed"):
+                            _patterns.append(_extract_ap(_ap_doc, _ap_meta))
+                    _patterns = _rank_ap(_patterns)
+                    for _ap in _patterns[:3]:
+                        if _ap["confidence"] > 0.1:
+                            formatted.insert(
+                                0,
+                                {
+                                    "id": f"ap_{_ap['chain_id'][:12]}",
+                                    "preview": _format_ap(_ap),
+                                    "relevance": 0.95,
+                                    "source": "action_pattern",
+                                    "action_pattern": _ap,
+                                    "timestamp": "",
+                                },
+                            )
+                            _action_pattern_count += 1
+    except (ImportError, ValueError, TypeError, KeyError, AttributeError):
+        pass  # Action pattern failure must not break search
 
     # "all" mode: also search observations and merge
     if mode == "all":
@@ -3352,6 +3481,8 @@ def search_knowledge(
         result["enrichment_count"] = enrichment_count
     if tg_enrichment_count > 0:
         result["tg_enrichment_count"] = tg_enrichment_count
+    if _action_pattern_count > 0:
+        result["action_pattern_count"] = _action_pattern_count
     if graph_enriched_count > 0:
         result["graph_enriched_count"] = graph_enriched_count
     if counterfactual_count > 0:
@@ -3718,6 +3849,18 @@ def remember_this(
                     "total_memories": collection.count(),
                 }
 
+    # --- Quality scoring: soft-tag low-quality memories (fail-open) ---
+    _q_score = 0.5  # Default: neutral
+    try:
+        from shared.memory_quality import quality_score, QUALITY_THRESHOLD
+
+        _q_score = quality_score(content)
+        if _q_score < QUALITY_THRESHOLD:
+            _enrichment_tag = "needs-enrichment"
+            tags = f"{tags},{_enrichment_tag}" if tags else _enrichment_tag
+    except Exception:
+        pass  # Quality scoring failure must not block memory storage
+
     # --- Near-dedup: tiered threshold with soft-dupe tagging ---
     _soft_dupe_tag = None  # set if in soft zone (0.10-0.15)
     dedup_result = _check_dedup(content, tags) if not force else None
@@ -3821,6 +3964,7 @@ def remember_this(
                 "source_session_id": source_session_id,
                 "source_observation_ids": source_observation_ids,
                 "cluster_id": _assigned_cluster_id,
+                "quality_score": _q_score,
             }
         ],
         ids=[doc_id],
@@ -3922,6 +4066,7 @@ def remember_this(
         "id": doc_id,
         "total_memories": collection.count(),
         "timestamp": timestamp,
+        "quality_score": _q_score,
     }
     if bridge_result:
         result["fix_outcome_bridged"] = True
