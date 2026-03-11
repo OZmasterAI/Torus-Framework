@@ -7,17 +7,18 @@
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
-    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md — resolves on merge to Cognitive",
+    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md \u2014 resolves on merge to Cognitive",
     "Security findings from external audit pending fix (memory id:65cab6b931e40aeb)",
-    "Memory server now SSE — must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
+    "Memory server now SSE \u2014 must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
     "hooks/ has stale files + 110MB audit trail needing rotation (memory id:ffcf1efe1be2b6ba)"
   ],
   "next_steps": [
     "Hooks cleanup: delete stale files + add audit trail rotation + session state cleanup (memory id:ffcf1efe1be2b6ba)",
     "Fix external audit security findings (memory id:65cab6b931e40aeb)",
-    "Toroidal Teams v2 — inbox messaging + other enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)",
-    "Paste-cache memory enrichment — mine past pastes for context that never made it to memory",
+    "Toroidal Teams v2 \u2014 inbox messaging + other enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)",
+    "Paste-cache memory enrichment \u2014 mine past pastes for context that never made it to memory",
     "Merge Cognitive-upgrade back into Cognitive (G16 nesting+length+thresholds, Gate 20 all ready)",
-    "Memory stale purge — 2,685 entries, run maintenance(action='stale')"
-  ]
+    "Memory stale purge \u2014 2,685 entries, run maintenance(action='stale')"
+  ],
+  "last_response_preview": "## Session 411 Summary\n\n**What was done:**\n- Cleaned up ~170MB of stale artifacts (scripts, batch data, todos, session-envs, telemetry)\n- Disabled telemetry permanently\n- Moved modes/ and voice-web/ to dormant/\n- Designed Toroidal Teams v2 inbox messaging enhancement (saved to `docs/plans/toroidal-teams-v2-enhancements.md`)\n- Audited hooks/ for stale files (saved to memory for next session)\n- Restarted MCP server post re-embed\n\n**Risk: YELLOW** \u2014 all committed, but hooks cleanup still pending\n\n*"
 }
