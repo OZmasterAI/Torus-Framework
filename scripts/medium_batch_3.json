@@ -1,0 +1,66 @@
+[
+  {
+    "id": "62291362b3d8be8c",
+    "new_text": "Session 144: 10-item audit sweep completed. 1086/1086 tests passing. Changes: researcher.md model haiku→sonnet; session_end.py --model haiku→claude-haiku-4-5-20251001; CAPTURE_QUEUE disk path→_get_capture_queue() ramdisk-aware (silent data loss fix); CLAUDE.md added Gate 16 blocking; enforcer.py TaskOutput removed (deprecated in v2.1.15); settings.json hook timeouts ms→seconds (5000→5, 3000→3, 15000→15, session_end→30); enforcer.py GATE_DEPENDENCIES fixed (gate10, gate14); state.py added 10 undocumented fields to default_state()/get_state_schema(); gate4_exemptions is dict not list; blocklist.json removed test entry; stress-tester.md added memory tools; hooks.md documented Gate 13 main-session exemption; test_framework.py updated researcher model name."
+  },
+  {
+    "id": "af6928cc10cff121",
+    "new_text": "Created /home/crab/.claude/hooks/shared/security_profiles.py — configurable security risk profiles. Public API: PROFILES dict (strict/balanced/permissive), get_profile(state)→str, get_profile_config(state)→dict, should_skip_for_profile(gate_name,state)→bool, get_gate_mode_for_profile(gate_name,state)→str. Profiles: strict (all gates), balanced (default, same as strict), permissive (gate_14 disabled, gate_05+ downgraded to warn). Gate name matching supports short (gate_14) and full names. Added security_profile:balanced to default_state() and get_state_schema(). 12 new tests pass. Suite: 1258 tests."
+  },
+  {
+    "id": "6bf3fd9efe2e087b",
+    "new_text": "Architecture audit (2026-02-24): CRITICAL: Gate 7 active in gate_registry.py but MISSING from ARCHITECTURE.md/html. Framework version: docs say v2.6, LIVE_STATE.json says v2.5.3. MEDIUM: skills count says (4) but lists 5; health-report doesn't exist on disk; keybindings-help missing; Hook event name says SessionStop but settings.json uses Stop; event_logger.py pipeline shows PostToolUse but only has SubagentStop/PostToolUseFailure/Notification; tg_mirror.py runs on Stop BEFORE stop_cleanup.py; Memory tier: docs say Telegram L2 but correct is L3 (L1 ChromaDB, L2 Terminal, L3 Telegram). LOW: config.json undocumented keys (tg_l3_always, tg_bot_tmux, session_token_budget, mentor_outcome_chains, mentor_memory); memory count docs ~1,339 vs actual 1,342; Framework Ops (7) but health-report missing → 6."
+  },
+  {
+    "id": "bfd0836cf3f085b6",
+    "new_text": "Session 262 comprehensive audit. Git: backed up master as master-backup, fast-forward merged evolution-branch (270 commits), restored deleted LIVE_STATE.json. Root cause: CLAUDE.md trimmed in sessions 157/224 with false claims rules are second nature — each session starts fresh. 7 fixes applied (1464/1464 tests): CLAUDE.md added rules 5/6/7; boot_pkg/memory.py added behavioral correction query; domains/framework/behavior.md LanceDB fix; boot_pkg/orchestrator.py removed sideband pre-write; subagent_context.py memory-first reminder; test_framework.py mcp.json FileNotFoundError fix; enforcer.py comment updated; rules/hooks.md added stderr detail. KEY: github-branch orphan BY DESIGN. Never merge from other branches. Never claim rules are second nature and removable."
+  },
+  {
+    "id": "94fadb76a92b5a79",
+    "new_text": "Session 53: 3 features + 1 bug fix. (1) GATE NAME NORMALIZATION: 13-mapping dict in dashboard/server.py, _GATE_NAME_MAP in audit_log.py. Applied in parse_audit_line/aggregate_gate_perf/_aggregate_entry/get_block_summary. Preserves JSONL audit trail. 1036/1037 tests. (2) STALE X CLEANUP: ~/.claude/scripts/cleanup-x-sessions.sh removes dead-PID /tmp/.X*-lock files, warns old locks, dry-run support. Kept manual (root-owned locks need sudo). (3) FRAMEWORK VALIDATION: torus-loop.sh 5-task loop all pass. (4) BUG FIX: torus-loop.sh sed breakage — replaced sed substitution with Python str.replace() since pipe chars in validate commands broke sed |."
+  },
+  {
+    "id": "0143df4a78c9ae18",
+    "new_text": "Session 27 Sprint 8 (framework-v2.0.9): PERFORMANCE: N+1 fix in suggest_promotions() — batch collection.get() ~400→~200+1 trips. SECURITY: Gate 7 added 7 critical patterns (.pgpass, .aws/credentials, docker/config.json, sudoers.d, .netrc, .npmrc, .pypirc); Gate 1 symlink resolution via os.path.realpath(). RELIABILITY: Tracker opt-in debug logging (.tracker_debug.log). DASHBOARD: Toast severity levels (critical 8s/warning 5s/info 3s). TESTS: +23 (6-7 per stream), 635 total. Commit 045d637, +339 lines."
+  },
+  {
+    "id": "2e4034bf9a029e85",
+    "new_text": "Session 27 Sprint 9 (framework-v2.1.0): BOOT INTELLIGENCE: _extract_recent_errors() reads error_pattern_counts from most recent state_*.json BEFORE cleanup_all_states() wipes. Top 5 errors in boot dashboard. GATE EXPANSION: Gate 10 covers 6 new agent types (builder, researcher, auditor, stress-tester, claude-code-guide, statusline-setup). DASHBOARD: Skill usage bar chart (renderSkillUsage), localStorage persistence for auto-refresh + audit input validation (1-720h). TESTS: +22 (657 total) covering v2.0.9 features (12 tests) + v2.1.0 (10 tests). Fix: remember_this dedup returns existing_id not id. Commit a86864a, +321 lines."
+  },
+  {
+    "id": "6aa0aaf9fa2b806c",
+    "new_text": "Session 13 Audit Fixes (2026-02-10): 220/220 tests pass. FIX M4: enforcer.py PostToolUse test exit code read from tool_response (was dead code tool_input). Lines 173-185 handle dict/JSON string. Gate 3 now functional: blocked deploy after failing tests. FIX M1: Gate 1 added .ipynb to GUARDED_EXTENSIONS (gate_01:21-24). NotebookEdit requires Read first. FIX M2: Gate 9 added NotebookEdit to tool check. Banned strategies block NotebookEdit. FIX H1 (mitigation): Gate 2 exec safe exception tightened with negative lookahead for -c/-e flags. python3 -c/node -e/ruby -e BLOCKED, python3 app.py/node server.js ALLOWED. 13 new tests (207→220). Files: enforcer.py, gate_01, gate_02, gate_09, test_framework.py."
+  },
+  {
+    "id": "987416c6ac3281ba",
+    "new_text": "Hive Judge vs Torus Gates (Session 190): Different philosophies — Torus PREVENTION (pre-execution, sys.exit(2), deterministic, zero LLM), Hive CORRECTION (post-execution, LLM judge, goal alignment, weighted scoring). Hive: EventLoopNode (per-turn) + HybridJudge (goal-level, 90% threshold REPLAN). Verdicts: ACCEPT/RETRY/ESCALATE/REPLAN. Torus strengths: prevents before action, deterministic, no LLM cost, fail-closed, 16 gates, causal chain. Hive strengths: goal alignment, natural criteria, evolution cycle (Execute→Evaluate→Diagnose→Regenerate). Ideal: combine both. Three ideas from Hive: (1) PostToolUse quality check, (2) session-level goal tracker, (3) REPLAN mechanism."
+  },
+  {
+    "id": "3665a3b3608ee4fa",
+    "new_text": "Gate 2 false positive tuning (2026-02-09). Two-layer filter: DANGEROUS_PATTERNS fires first, _is_safe_exception() checks if match is known-safe. Safe exceptions: source (venv activate, shell profiles), exec (python2/3/node/ruby/java/perl/npm/npx/cargo/go), DELETE FROM with WHERE clause, git stash drop with stash@{N}, here-strings (extracts command word before <<<). NO EXCEPTIONS: eval, bash -c, sh -c, pipe-to-shell, rsync --delete. Design: exec+rm -rf blocked because exec exception lets it through but rm -rf pattern catches next. 23 new tests (15 safe + 8 blocked), 126/126 passing. File: gate_02_no_destroy.py (lines 76-115)."
+  },
+  {
+    "id": "8046aee592484fda",
+    "new_text": "Session 236: Token optimization + web auto-index. (1) Updated 7 HTML docs to v2.5.4 accuracy via 7 sonnet agents. (2) Compressed CLAUDE.md ~796→~297, hooks.md ~471→~143, memory.md ~240→~144 (fixed ChromaDB→LanceDB), framework.md ~284→~121. Zero loss. (3) Moved domains to dormant/ (rules+skill must move OUT of rules/ dir, .dormant extension doesn't prevent loading). (4) Dormanted telegram_search (~35 tokens). (5) Deleted obsolete run_migration.py. (6) Added auto-index URL hook to user_prompt_capture.py — detects URLs, spawns index.py to persist to LanceDB web_pages, dedup via content_hash. (7) Updated web skills: ChromaDB→LanceDB. (8) Fixed Lever1 test. (9) Confirmed web on LanceDB via UDS (chromadb_socket.py name legacy). Total savings: ~1,086 tokens/prompt. Tests: 1437 pass, 2 pre-existing UDS fails."
+  },
+  {
+    "id": "0a915791efcab4a5",
+    "new_text": "Session 2 Summary (2026-02-08): MCP memory server verified healthy, ChromaDB operational, 5 tools functional. Seeded 0→10 entries (architecture, enforcer design, 8 gates, MCP, skills, tests, design patterns, file map, session 1, subagent scan). Semantic search works (cosine similarity, different query wording). Full subagent reference scan: 6 framework files clean. 6 references in .openclaw/ (separate tool). Agent teams fully operational: created, spawned 2 background agents, assigned tasks, received results, graceful shutdown, cleanup — full lifecycle works. Both Session 1 issues RESOLVED: memory no longer empty, MCP server confirmed working after restart."
+  },
+  {
+    "id": "49a5e34510840d62",
+    "new_text": "Created /home/crab/.claude/hooks/shared/config_validator.py — framework config validator. Public API: validate_settings(path)→list[str] (validates settings.json events, command .py paths); validate_live_state(path)→list[str] (10 required fields, correct types); validate_gates(enforcer_path)→list[str] (active gates have .py files); validate_skills(skills_dir)→list[str] (each skill subdir has SKILL.md); validate_all(base_dir)→dict. Design: pure Python stdlib, returns list[str] of errors (empty=valid). Valid events: PreToolUse, PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, UserPromptSubmit, PermissionRequest, SubagentStart, SubagentStop, TaskCompleted, PreCompact, Stop, Notification, TeammateIdle. LIVE_STATE required: session_count, status, project, project_path, feature, feature_status, what_was_done, service_status, next_steps, known_issues. 12 tests added, all pass."
+  },
+  {
+    "id": "b9baa8a699c121bc",
+    "new_text": "Implemented auto-handoff system (Option 2+3 Mode A). (1) session_end.py generate_handoff() always appends Session Metrics to HANDOFF.md. If /wrap-up didn't run (mtime>5min), generates full metrics-only handoff carrying forward What's Next/Known Issues/Service Status. Archives old before overwriting. Uses _load_latest_state() for ramdisk/disk files. (2) user_prompt_capture.py detects ending keywords (bye, done, gn, goodnight, end session, wrap up, save progress, see ya) via _SESSION_END_RE/_DONE_RE. Injects <session_ending> tag to remind LLM to run /wrap-up. Avoids false positives (done with X, wrap up the function). Bug: rfind() needed for metrics marker stripping to avoid destroying sections. 981 tests pass."
+  },
+  {
+    "id": "c3c89e456abb8fe9",
+    "new_text": "Security audit of DB watchdog (boot.py) and backup gathering (gather.py) (2026-02-16). MEDIUM severity: gather.py generic error handling — doesn't distinguish WorkerUnavailable vs RuntimeError. Returns {} on failure, indistinguishable from missing data. Recommendation: separate exception handlers, always return {status:ok|error} structure. LOW/INFO (correct behavior): 80% threshold appropriate (no VACUUM), append-only ChromaDB; _bak_size>0 check adequate; two-tier defense (<1KB checks); missing files silently pass (correct for new installs); watchdog independent of _worker_available check (critical for corruption when worker down); chromadb_socket.py backup() correctly calls request(backup); gather.py imports correct. Atomic writes prevent partial backups. No critical vulnerabilities."
+  },
+  {
+    "id": "987416c6ac3281ba",
+    "new_text": "Hive Judge vs Torus Gates deep comparison (Session 190). Fundamentally different: Torus PREVENTION (pre-execution, sys.exit(2), deterministic, zero LLM cost), Hive CORRECTION (post-execution, LLM judge, goal alignment, weighted criteria). Hive: EventLoopNode (per-turn, rule/LLM) + HybridJudge (goal-level, 90% threshold). Verdicts: ACCEPT/RETRY/ESCALATE/REPLAN. Torus: prevents bad actions beforehand, deterministic, no cost, fail-closed, 16 specialized gates, causal chain. Hive: goal alignment evaluation, natural criteria, evolution cycle (Execute→Evaluate→Diagnose→Regenerate rewrites agent graph). Ideal: combine both. Three ideas from Hive: (1) PostToolUse quality check, (2) session-level goal tracker, (3) REPLAN for different approaches."
+  }
+]
