@@ -5158,13 +5158,16 @@ def _bootstrap_clusters() -> None:
     count = collection.count()
     print(f"Bootstrap: assigning clusters to {count} memories...", file=_sys.stderr)
 
-    all_data = collection.get(limit=count, include=["metadatas", "documents"])
+    all_data = collection.get(
+        limit=count, include=["metadatas", "documents", "embeddings"]
+    )
     if not all_data or not all_data.get("ids"):
         print("Bootstrap: no memories found", file=_sys.stderr)
         return
 
     ids = all_data["ids"]
     docs = all_data.get("documents") or []
+    embeddings = all_data.get("embeddings") or []
     processed = 0
 
     for i, doc_id in enumerate(ids):
@@ -5172,7 +5175,12 @@ def _bootstrap_clusters() -> None:
         if not doc:
             continue
         try:
-            vec = _embed_text(doc)
+            if i < len(embeddings) and embeddings[i]:
+                import numpy as np
+
+                vec = np.array(embeddings[i], dtype=np.float32)
+            else:
+                vec = _embed_text(doc)
             cid = _cluster_store.assign(vec, doc)
             if cid:
                 collection.update(ids=[doc_id], metadatas=[{"cluster_id": cid}])
