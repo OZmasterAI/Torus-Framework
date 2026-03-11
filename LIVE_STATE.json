@@ -1,9 +1,9 @@
 {
   "session_count": 410,
   "project": "torus-framework",
-  "feature": "memory-server-optimization",
+  "feature": "toroidal-teams-wrap-up",
   "framework_version": "v2.8.0",
-  "what_was_done": "Verified memory server health (2,597 memories, LanceDB+embeddings OK). Upgraded sentence-transformers 3.0.1\u21923.3.0 to fix version mismatch warning. Restarted memory SSE server.",
+  "what_was_done": "Wrapped up Toroidal-teams branch (964 commits). Saved comprehensive branch summary to memory (id:b3d8ceb426deb901). Committed all pending state files.",
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
@@ -18,9 +18,8 @@
     "Merge Cognitive-upgrade back into Cognitive (G16 nesting+length+thresholds, Gate 20 all ready)",
     "Consider Gate 20 C+D extensions after observing in production (Task #1, memory id:539d73f7a279d7bf)",
     "Refactor 3 tech debt targets: compress_observation (depth 12), search_knowledge (596 lines), handle_post_tool_use (491 lines) \u2014 memory id:ec2e1f685b8bb9cd",
-    "Memory stale purge \u2014 2,597 entries, run maintenance(action='stale')",
+    "Memory stale purge \u2014 2,620 entries, run maintenance(action='stale')",
     "Fix test_framework.py import error (ModuleNotFoundError for 'index' at test_integration.py:748)",
     "Re-enable skills/search/analytics MCPs when needed"
-  ],
-  "last_response_preview": "---\n\n**Session 409 Wrap-Up**\n\n**Completed:**\n- Verified memory server health \u2014 2,597 memories, LanceDB + embeddings functional\n- Upgraded `sentence-transformers` 3.0.1 \u2192 3.3.0 (fixes version mismatch warning)\n- Restarted memory SSE server\n\n**Risk: YELLOW** \u2014 Memory save deferred (MCP connection dropped after server restart). After you restart Claude, the connection will re-establish and memory will be available.\n\n**Pending:** `plugins/blocklist.json` has a 1-line change still uncommitted (not se"
+  ]
 }

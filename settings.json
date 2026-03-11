@@ -10,6 +10,7 @@
     ],
     "defaultMode": "default"
   },
+  "model": "sonnet",
   "hooks": {
     "PreToolUse": [
       {
@@ -261,6 +262,7 @@
     "skill-creator@claude-plugins-official": false,
     "code-simplifier@claude-plugins-official": false
   },
+  "effortLevel": "high",
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "disabled_hooks": {
@@ -302,6 +304,5 @@
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
   ],
-  "effortLevel": "high",
-  "model": "sonnet"
+  "voiceEnabled": true
 }
