@@ -2,64 +2,64 @@ import json
 
 entries = [
     {
-        "id": "caaca638a6d0dace",
-        "text": "Created /home/crab/.claude/hooks/shared/plugin_registry.py (Torus framework plugin registry). Key functions: scan_plugins (scans plugins/, caches to /dev/shm), get_plugin (lookup), is_enabled (checks settings.json), get_by_category (filter by type), validate_plugin (structural check), dependency_check (verify deps exist). Category inference from keywords. Scanned 29 plugins; 9 enabled. 15/15 smoke tests pass.",
+        "id": "7f339bd1b28bcfaa",
+        "text": "Skills System - 5 Skills in /home/crab/.claude/skills/, each with SKILL.md: (1) /fix - auto-diagnose and fix issues (memory check, gather context, diagnose, fix, verify). Usage: 1. (2) /deploy - safe deployment (pre-flight, backup, deploy, verify, rollback). Usage: 0. (3) /status - quick health check (reads LIVE_STATE, HANDOFF, gate state, memory stats). Usage: 6. (4) /wrap-up - session end (save memory, update configs, git commit, verify). Usage: 7. (5) /audit - project audit (creates team with security-scan, dependency-check, test-coverage agents, checks infra/gates/memory). Usage: 9.",
     },
     {
-        "id": "6ff67f482882099e",
-        "text": "Implemented /health diagnostic skill for Torus Framework (2026-02-20). 8 checks: memory_mcp (UDS socket), gates (compile syntax), state_files (json.load + version), ramdisk (writable), file_claims (stale claims >2h), audit_logs (today's logs, >5MB warning), deferred_items (PRP .deferred.md headers), prps (tasks with started_at >2h). --repair flag: removes stale claims, resets corrupt state. Output: human-readable + JSON.",
+        "id": "cfd0dadeccb03c88",
+        "text": "Created skill_health.py - complete skill health checker module. FEATURES: Scans /skills/ for directories, validates required SKILL.md, optional scripts/ and metadata.json. Compile-checks Python via AST parser with line numbers. PUBLIC API: check_all_skills() returns full health report with totals/broken/errors/warnings; get_broken_skills() lists structurally broken skills; get_skill_details(skill_name) for one skill; format_health_report() for readable output. TESTED: 36 existing skills all healthy, broken detection works (missing SKILL.md), script syntax errors detected via AST, blocks vs warnings distinguished. Example: 0 broken, 0 script issues.",
     },
     {
-        "id": "84a33a6fe15a8d8c",
-        "text": 'Implemented wave-based parallel execution for Torus /loop. Created: task_manager.py cmd_wave() (returns eligible tasks as JSON), torus-wave.py (~230 lines, parallel spawner with file-overlap guard), skills/loop/SKILL.md (--parallel flag). Design: file-overlap guard prevents tasks sharing files in same wave, validation serialized, spawns timeout+claude -p per task. Verified: task_manager wave test-planning returns {"done": true}, torus-wave shows usage.',
+        "id": "51ed3e9bec899c54",
+        "text": "Infrastructure Modules Inventory (66 modules in hooks/shared/): RESILIENCE: circuit_breaker.py (CLOSED/OPEN/HALF_OPEN per-service), rate_limiter.py (token bucket), retry_strategy.py (exponential/linear/constant/fibonacci backoff). COMMUNICATION: event_bus.py (pub/sub), agent_channel.py (SQLite WAL messaging), chromadb_socket.py (UDS to avoid Rust segfaults). PERFORMANCE: ramdisk.py (hybrid tmpfs), hook_cache.py (3-layer cache with TTL), hook_profiler.py (nanosecond gate latency). MONITORING: metrics_collector.py (counters/gauges/histograms), health_monitor.py (0-100 health score), anomaly_detector.py (rate spikes/dominance/drift). SECURITY: tool_fingerprint.py (SHA256 supply chain), secrets_filter.py (scrub API keys), security_profiles.py (strict/balanced/permissive).",
     },
     {
-        "id": "7b93dd2d665dd337",
-        "text": "Created 4 interactive HTML diagrams (Gruvbox/Catppuccin/Monochrome/Tokyo Night themes): 16-prps-domains (workflow pipeline), 17-plugins-system (plugin_registry 656 lines, capability_registry 475 lines), 18-archive-dormant (53 archive handoffs), 19-scripts-utilities (7 scripts with line counts, 7 maintenance files). All: .ve-card, prefers-color-scheme, zoom/pan/click-expand, Mermaid diagrams.",
+        "id": "ccc2724c7987550a",
+        "text": "Infrastructure Audit #2 (2026-02-09): 24 findings (0 critical, 3 high, 8 medium, 8 low, 5 info). HIGH: H1 No input validation on memory server top_k/hours params. H2 verified_fixes list unbounded growth (state.py missing cap). H3 get_recent_activity uses string comparison for time filtering. MEDIUM: M1 requirements.txt version constraints wrong (chromadb>=0.4,<0.6 vs installed 1.4.1). M2 settings.local.json gitignored but contains MCP enablement. M3 Test assertions too loose. M4-M5 Gate 5/8 exempt hooks/ dir. M6 memory_stats always healthy. M7-M8 Inconsistent file permissions. All 126 tests pass. No orphaned files. Prior critical fixes confirmed working.",
     },
     {
-        "id": "005dc7d668fa4649",
-        "text": "External orchestration inventory: TORUS-LOOP (scripts/torus-loop.sh, 261 lines, fresh-context task executor), TORUS-WAVE (scripts/torus-wave.py, 477 lines, wave-based parallel orchestrator with file-overlap guards), PRP SYSTEM (structured task breakdowns via /prp skill, task_manager.py manages state/deps, Memory MCP bridges knowledge cross-instance).",
+        "id": "e53ea2d7d84b5efd",
+        "text": "Session 392 decisions: (1) Heartbeat - researched OpenClaw/ZeroClaw, decided NO heartbeat (reactive only, zero idle cost). (2) Advanced Tool Use - none applicable to MCP/CLI. (3) Better Plan Mode - not adopted, /brainstorm sufficient. (4) Thermal-Memory - ADOPTED salience scoring. Implemented _classify_tier() with 6-signal scoring replacing simple tag match. Threshold 0.25 for tier 1, high-signal tags get floor guarantee. (5) Shodh-Memory - PLANNED Option C adoption (build natively). 10-task TDD plan in docs/plans/mem2x-cognitive-upgrade-impl.md. Branch mem2x created, instance working on Task 1. (6) Comparison methodology: unified single-system advantages compound across consistency, output quality, data safety.",
     },
     {
-        "id": "691917c9aa0b13de",
-        "text": "[chainovi/eclipse-agave #13] ProjectDawn RPC/Metrics: Implemented metrics (fee_distribution.rs datapoint + bank.rs datapoint) and 3 RPC endpoints (getBaseFee, getProjectDawnConfig, getStakingTierInfo) with structs RpcBaseFee, RpcProjectDawnConfig, RpcStakingTierInfo. Added solana-stake-interface dep. All 37 tests pass. Cargo check clean.",
+        "id": "b3d8ceb426deb901",
+        "text": "Toroidal-teams branch wrap-up (Session 410): 964 commits ahead of main. CORE FRAMEWORK (Sessions 1-22): self-healing Claude framework, MCP memory, hooks/gates, security audit, causal fix tracking, auto-capture, progressive disclosure search. GATE EVOLUTION (Sessions 401+): Gate 16/20/19 improvements with AST nesting/risk scoring, handle_post_tool_use refactor. TOROIDAL TEAMS v1 (Sessions 404-406): 3-phase multi-agent infra (dirs/channels/scripts, automation/config, Gate 13 co-claim). INFRASTRUCTURE (Sessions 407-410): Shared SSE memory server, sentence-transformers 3.0.1→3.3.0, knowledge graph + PMI filtering + clustering tests. TOROIDAL TEAMS v2: Pre-planned in memory but NOT yet implemented. Uncommitted: LIVE_STATE.json, .tool_fingerprints.json, blocklist.json, settings.json.",
     },
     {
-        "id": "aaaaed080c378f28",
-        "text": "Created 3 interactive HTML diagrams (2026-03-06): 08-mcp-servers (4 MCP servers, registration map, ~24K), 10-testing-infrastructure (test_framework.py, 13 files 29K lines, ~29K), 11-config-state (settings/config/mcp/LIVE_STATE/ramdisk, ~29K). All: Solarized/Dracula/Amber palettes, no gradient-text/glow/Inter, prefers-color-scheme, zoom/pan/expand.",
+        "id": "d606d65a65c86621",
+        "text": "Toroidal Teams v2 - Pre-Plan Addendum (Session 408): Added to Reliability: Agent auto-compaction - monitor worker context usage (token estimate or tool call count), trigger /compact when threshold hit to summarize and free context. Added to Coordination: Async delegation (fire-and-forget) - main dispatches task, continues working, gets notified when result arrives. Options: watcher writes notification channel, hook checks results on PreToolUse, dedicated MCP tool checks status. Updated priority: (1) Dispatch helper, (2) Agent-to-agent tasks, (3) Agent templates, (4) Async delegation, (5) Result watchdog, (6) Agent auto-compaction, (7) Dashboard.",
     },
     {
-        "id": "f21313a60fc8f2a5",
-        "text": "[Anza-xyz org overview] 10 repos: agave (Web-Scale Blockchain, v3.1.9, 31K+ commits, 156+ modules), kit (JS SDK), kit-plugins, solana-sdk, wallet-adapter, jetstreamer, wincode, sbpf, cryptography, alpenglow. Focus: Solana development, core infra, JS/Rust SDKs. Top langs: Rust 97.6% (agave), TypeScript, Shell. 139+ releases.",
+        "id": "b839364f23bb946a",
+        "text": "Session 392 Research - Memory Systems Comparison: Researched (1) Anthropic Advanced Tool Use - none applicable to MCP/CLI, (2) Thermal-Memory - adopted salience scoring idea, implemented in _classify_tier(), (3) Shodh-Memory - planning Option C adoption, (4) Better Plan Mode - not adopted, /brainstorm better, (5) Heartbeat systems - decided NOT to adopt (zero idle cost priority). IMPLEMENTED: Salience scoring in _classify_tier() - 6 weighted signals replacing tag match. CORRECTED SCORING: Unified single-system advantages compound across consistency, output quality, data safety, ecosystem. Initial scores biased toward mature external implementations.",
     },
     {
-        "id": "33e9c972b19f5e4c",
-        "text": "[chainovi/eclipse-agave] ProjectDawn RPC endpoints: Added 3 structs (RpcBaseFee, RpcProjectDawnConfig, RpcStakingTierInfo) to rpc-client-api/response.rs. Added solana-stake-interface to rpc/Cargo.toml. Implemented 3 trait methods + 3 impls in rpc/rpc.rs. Key patterns: bank.block_fee_state(), bank.projectdawn_config, cfg.fee_split_at_epoch, StakeStateV2 deserialization, new_response wrapping.",
+        "id": "3756a9210d6b4ab4",
+        "text": "Arxiv Survey - Actionable Patterns for Torus Memory (Session 268). Applicable patterns: (1) Hybrid Importance Score - add access_count/last_accessed_at to LanceDB, use score for ranking beyond cosine similarity. (2) Memory Lifecycle - Active→Archived→Expired pipeline. (3) Adaptive Forgetting - Ebbinghaus decay: strength=e^(-t/S), high-priority tags higher S (slower decay). (4) Memory Consolidation - cluster similar memories, LLM-merge into consolidated entry. (5) Structured Memory - contextual description+keywords+tags+linked IDs, graph traversal during retrieval. (6) Adaptive Structure Selection - different interaction types warrant different structures (flat, graph, episodic). (7) RL-Based Memory Operations - ADD/UPDATE/DELETE/NOOP decisions by Memory Manager agent.",
     },
     {
-        "id": "9431d9251d9db3da",
-        "text": "MCP Skill vs Hybrid (nudge+MCP) vs Hook-only comparison: MCP:81, Hybrid:81 (tied), Hook-only:57 (rejected). MCP wins speed/token/reliability; Hybrid wins consistency/learning. Hybrid risks: boy-who-cried-wolf (false nudges), reliability (two deps), speed (hook scans ~5-10ms), token stacking (15 tokens/nudge). Decision: Stay with MCP. Test first, add hybrid only if consistency fails.",
+        "id": "050934e50f83f0e8",
+        "text": 'Session 301: Full framework comparison vs 6 competitors + vanilla CC. Torus scores 84/100 at full capacity, next is Enforcer at 65. KEY: Was reading config.example.json instead of config.json - mentor_all is True, tg_mirror/tg_session_notify on, search_routing full_hybrid. Torus runs 80% not 60%. Wired mentor signals (score, verdict, escalations, chain_score) into observation persistence (previously lost at session end, ramdisk only). Fields populate when non-default to avoid noise. Separated Hindsight (Gate 19) toggle visually with " | " since blocking gate. CORRECTED: graduated escalation concern was wrong - already use block-or-allow, severity field is logs only, WARN from fail-open gates for human audit.',
     },
     {
-        "id": "0ac0c647c0a10ba1",
-        "text": "Framework scoring (0-100, 8 dims): Torus:87, Simone:59, CCW:54, VanillaCC:54, SuperClaude:51, AgentFarm:48, Claude-Flow:33. Insight: vanilla (54) ties CCW, beats claude-flow (33) and Agent Farm (48). Frameworks adding overhead without enforcement score worse than no framework. Only Torus (+33 over vanilla) justifies overhead via gates+memory+learning. Claude-flow has 475 open issues, stub code.",
+        "id": "4f57a387f1c3b691",
+        "text": "Mentor System build (Session 190). Created 4 modules: tracker_pkg/mentor.py (Signal/MentorVerdict dataclasses, 4 evaluators, weighted verdict), tracker_pkg/outcome_chains.py (churn/stuck/healthy pattern detection every 10th call), tracker_pkg/mentor_memory.py (standalone UDS memory query, fail-open), gates/gate_19_hindsight.py (PreToolUse gate reading mentor_* state, blocks on score<0.3 + escalation>=2, skips when fixing_error=True). Orchestrator calls with LIVE_STATE toggles and 2.5s timing guard. State defaults added (mentor_last_verdict, mentor_last_score, mentor_escalation_count). LIVE_STATE toggles all-false: mentor_tracker, mentor_hindsight_gate, mentor_outcome_chains, mentor_memory. Gate registered in registry/router.",
     },
     {
-        "id": "a833290324120712",
-        "text": "[torus-web #7] Design-v2.1 lint audit: BUILD PASSES. LINT: 356 problems (179 errors, 177 warnings). Errors: 156x no-explicit-any, 21x no-unescaped-entities (admin/games, admin/referrals), 1x no-empty-object-type (games:69), 1x prefer-const (data-collector:165). Warnings: 147x no-unused-vars, 22x exhaustive-deps, 6x no-img-element.",
+        "id": "46a88addef6af4a0",
+        "text": "Gate 19 (Hindsight) toggle investigation (Session 325): ISSUE - Gate 19 appears off but blocks edits. KEY: (1) Toggle is TWO-PART: mentor_hindsight_gate + mentor_all (master switch). (2) get_live_toggle() checks config.json (canonical), falls back to LIVE_STATE.json, caches per process. (3) Gate 19 logic: if not (mentor_hindsight_gate OR mentor_all) return allow. ONE true = runs. (4) Current state: mentor_hindsight_gate NOT SET (False), mentor_all TRUE. (5) Circuit breaker CLOSED, 0 crashes/skips. (6) Statusline shows only mentor_hindsight_gate, hides mentor_all override - UI blind spot. (7) Tests expect mentor_hindsight_gate False, pass because mentor_all True. ROOT CAUSE: mentor_all=true activates Gate 19 regardless.",
     },
     {
-        "id": "e0525bdbc3743aba",
-        "text": "[chainovi/eclipse-agave] 5-phase feature parity plan: Phase 1 Fee Market (medium, 43 tests), Phase 2 Treasury Program (medium, 24 tests), Phase 3 Governance (large, 68 tests), Phase 4 Developer Rewards (large, 52 tests), Phase 5 Integration wiring. Deps: 2→1, 3→2, 4→2, 5→all. Total ~190 tests. ECLIPSE_AGAVE_HANDOFF.md has templates + cheat sheet.",
+        "id": "041253caefc556d8",
+        "text": "Task #4 completed (2026-02-09): Deduplicated tier rates in calculation.rs + fixed unchecked arithmetic in bank.rs. Changes: (1) /home/crab/agave/runtime/src/bank/partitioned_epoch_rewards/calculation.rs (lines 385-389) - Replaced hardcoded tier_rate_bp array and divisor with self.projectdawn_config.passive_tier_rate_bp(tier) and BASIS_POINTS_100_PCT * EPOCHS_PER_YEAR. (2) /home/crab/agave/runtime/src/bank.rs (lines 3672-3673) - Replaced unchecked += with saturating_add(). Build status: My changes introduce zero new errors. Remaining compile errors from snapshot-fix agent's incomplete work in serde_snapshot.rs and snapshot_utils.rs (task #3/#7).",
     },
     {
-        "id": "e4fbf0ec7a142c51",
-        "text": "[chainovi] Eclipse-agave porting feasibility: TRv1-clean (SDK 4.0.0-alpha) programs CANNOT port to eclipse-agave (SDK 2.2.0) due to major version gap. Correct approach: rewrite targeting 2.2.0 using TRv1 logic as spec. Eclipse-agave's passive staking superior; uses runtime feature gates (better deployment). Created ECLIPSE_AGAVE_HANDOFF.md with SDK 2.2.0 templates, API cheat sheet, full specs, phase order.",
+        "id": "6d0961e54da736aa",
+        "text": "Session 88: FTS5 thread safety and query cap fixes in memory_server.py. FIX 1 - Thread Lock: Added threading.Lock() to FTS5Index class, wrapped keyword_search/tag_search/add_entry/get_preview with self._lock, used check_same_thread=False on sqlite3.connect(). Init-time methods left unlocked (single-threaded before UDS gateway starts). Prevents database is locked errors when MCP tool calls and UDS gateway queries hit FTS5 simultaneously. FIX 2 - Query Cap: Added 5000-char cap at top of _sanitize_fts_query(). Prevents pathological memory/CPU usage on oversized queries. 5000 chosen as balance between BM25 ranking quality and completeness. 20x safety margin below ~100KB danger zone. Test count: 1004→1005 (all passing).",
     },
     {
-        "id": "0f1707d348e4250c",
-        "text": "[chainovi/eclipse-agave] Token migration from Torus Economy (C++ Bitcoin-fork): Two approaches: 1) AUTOMATIC: snapshot UTXO at cutoff, registration period for new pubkeys, genesis seeding. 2) MANUAL: burn-and-claim with off-chain oracle (secp256k1→ed25519). Key challenges: cross-curve verify, address mapping, exchange rate. Simplest: snapshot+registration+genesis seeding (no smart contract, just conversion script). Expect 60-80% migration rate.",
+        "id": "07fada84ddb14030",
+        "text": 'Completed full ~/.claude path portability fix across 14 Python files (2026-02-26, Session ~246). All code now uses os.path.expanduser("~") or os.getuid(). All docstrings use ~/.claude. FILES: fix_test_order.py, fix_lance_indexes.py, create_lance_indexes.py, flush_audit.py, benchmark_io.py, benchmark_gates.py, health_monitor.py, fuzz_gates.py, skill_mapper.py, gate_correlator.py, ramdisk.py, verify_memory_maintenance.py, _test_memory_maintenance.py, migrate_chromadb_to_lance.py. All syntax OK, 0 remaining hardcoded /home/crab paths. 1466 tests passed.',
     },
 ]
 
@@ -68,10 +68,10 @@ for e in entries:
     assert len(e["text"]) <= 800, f"Entry {e['id']}: {len(e['text'])} > 800"
 
 # Write as JSON array
-with open("/home/crab/.claude/scripts/medium_batch_18.json", "w") as f:
+with open("/home/crab/.claude/scripts/medium_batch_39.json", "w") as f:
     json.dump([{"id": e["id"], "new_text": e["text"]} for e in entries], f, indent=2)
 
-print("✓ Wrote 15 entries to medium_batch_18.json")
+print("✓ Wrote 15 entries to medium_batch_39.json")
 print(f"✓ All entries ≤800 chars")
 for e in entries:
     print(f"  {e['id']}: {len(e['text'])} chars")
