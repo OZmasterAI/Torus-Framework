@@ -1838,13 +1838,13 @@ class _ClusterStore:
             # Create new cluster
             new_id = f"cl_{fnv1a_hash(content)[:12]}"
             label = _cluster_label(content)
-            self._conn.execute(
+            cursor = self._conn.execute(
                 "INSERT OR IGNORE INTO clusters (cluster_id, centroid, member_count, label, created_at, updated_at) "
                 "VALUES (?, ?, 1, ?, ?, ?)",
                 (new_id, vec_norm.astype(np.float32).tobytes(), label, now, now),
             )
             self._conn.commit()
-            if self._cache is not None:
+            if self._cache is not None and cursor.rowcount > 0:
                 self._cache.append((new_id, vec_norm, 1))
             return new_id
 
