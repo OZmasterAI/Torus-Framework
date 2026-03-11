@@ -9,7 +9,7 @@
   },
   {
     "id": "6bf3fd9efe2e087b",
-    "new_text": "Architecture audit (2026-02-24): CRITICAL: Gate 7 active in gate_registry.py but MISSING from ARCHITECTURE.md/html. Framework version: docs say v2.6, LIVE_STATE.json says v2.5.3. MEDIUM: skills count says (4) but lists 5; health-report doesn't exist on disk; keybindings-help missing; Hook event name says SessionStop but settings.json uses Stop; event_logger.py pipeline shows PostToolUse but only has SubagentStop/PostToolUseFailure/Notification; tg_mirror.py runs on Stop BEFORE stop_cleanup.py; Memory tier: docs say Telegram L2 but correct is L3 (L1 ChromaDB, L2 Terminal, L3 Telegram). LOW: config.json undocumented keys (tg_l3_always, tg_bot_tmux, session_token_budget, mentor_outcome_chains, mentor_memory); memory count docs ~1,339 vs actual 1,342; Framework Ops (7) but health-report missing → 6."
+    "new_text": "Architecture audit (2026-02-24): CRITICAL: Gate 7 active in gate_registry.py but MISSING from ARCHITECTURE.md/html. Version mismatch: docs v2.6, LIVE_STATE.json v2.5.3. MEDIUM: skills (4) but lists 5; health-report missing; keybindings-help missing; Hook event SessionStop vs settings.json Stop; event_logger.py shows PostToolUse but only SubagentStop/PostToolUseFailure/Notification; tg_mirror.py before stop_cleanup.py; Memory tier: docs Telegram L2 vs correct L3. LOW: config.json undocumented (tg_l3_always, tg_bot_tmux, session_token_budget, mentor keys); memory ~1,339 vs actual 1,342; Framework Ops (7)→6 (health-report missing)."
   },
   {
     "id": "bfd0836cf3f085b6",
@@ -49,7 +49,7 @@
   },
   {
     "id": "49a5e34510840d62",
-    "new_text": "Created /home/crab/.claude/hooks/shared/config_validator.py — framework config validator. Public API: validate_settings(path)→list[str] (validates settings.json events, command .py paths); validate_live_state(path)→list[str] (10 required fields, correct types); validate_gates(enforcer_path)→list[str] (active gates have .py files); validate_skills(skills_dir)→list[str] (each skill subdir has SKILL.md); validate_all(base_dir)→dict. Design: pure Python stdlib, returns list[str] of errors (empty=valid). Valid events: PreToolUse, PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, UserPromptSubmit, PermissionRequest, SubagentStart, SubagentStop, TaskCompleted, PreCompact, Stop, Notification, TeammateIdle. LIVE_STATE required: session_count, status, project, project_path, feature, feature_status, what_was_done, service_status, next_steps, known_issues. 12 tests added, all pass."
+    "new_text": "Created /home/crab/.claude/hooks/shared/config_validator.py. Public API: validate_settings (events, .py paths), validate_live_state (10 required fields), validate_gates (active gates exist), validate_skills (subdir SKILL.md), validate_all→dict. Returns list[str] errors (empty=valid). Valid events: PreToolUse, PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, UserPromptSubmit, PermissionRequest, SubagentStart, SubagentStop, TaskCompleted, PreCompact, Stop, Notification, TeammateIdle. LIVE_STATE: session_count, status, project, project_path, feature, feature_status, what_was_done, service_status, next_steps, known_issues. 12 tests pass."
   },
   {
     "id": "b9baa8a699c121bc",

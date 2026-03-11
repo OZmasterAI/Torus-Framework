@@ -1,0 +1,62 @@
+[
+  {
+    "id": "db0eaef05f04ff9a",
+    "new_text": "Trading framework gate architecture: Python functions embedded in engine, not bash or Claude hooks. Why: Trading gates need real computation (numpy, pandas correlation, Sharpe ratio, drawdown). Architecture: TradingGate base class with check(order, portfolio, market) → GateResult. Tier 1 (hard block): max position size, daily loss limit, capital, market closed. Tier 2 (override-able): no thesis, not backtested, cooldown, correlation high. Tier 3 (advisory): large order, off-hours, underperforming. From AKIRA: binary block/allow, fail-closed, data-driven, compliance. From torus: numbered testable gates, memory (learn from trades), causal chain (thesis→entry→outcome), tiered severity."
+  },
+  {
+    "id": "1bd1b17842ebf36b",
+    "new_text": "Benchmark: gate_performance.py (15 active gates, 1000 iterations). Results (2026-02-20): avg p95=0.33ms. gate_11_rate_limit needs optimization (p95=3.64ms, calls save_state() per invocation). Fastest: gate_09 (0.001ms), gate_06 (0.003ms), gate_05 (0.006ms). Pipeline estimate (11 gates): p50=0.81ms, p95=4.24ms. Design: importlib.import_module(), one realistic allow-path per gate, shallow dict.copy() state, reports p50/p95/p99/min/max/mean, flags p95>1ms, JSON output."
+  },
+  {
+    "id": "ec2e1f685b8bb9cd",
+    "new_text": "TECH DEBT (2026-03-10): 3 refactor targets identified by Gate 16 AST scan: (1) observation.py:149 compress_observation() — depth 12 nesting, needs sub-functions + early returns. (2) memory_server.py:2041 search_knowledge() — 596 lines + depth 9, doing query parsing, embedding, multi-table search, ranking, enrichment, dedup, formatting (needs 5-6 functions). (3) tracker_pkg/orchestrator.py:42 handle_post_tool_use() — 491 lines (split into stage functions). Also notable: boot/orchestrator.py:41 main() 486 lines, enforcer.py:487 handle_pre_tool_use() 272 lines depth 7. Thresholds: 80/150 (length), 7 (nesting)."
+  },
+  {
+    "id": "6a6c9df3331aacc9",
+    "new_text": "Gate 13 WORKSPACE ISOLATION (2026-02-14): Prevents agents from editing same file simultaneously via .file_claims.json + fcntl.flock. Files: gate_13_workspace_isolation.py (NEW), enforcer.py (added to GATE_MODULES), tracker.py (claim-writing PostToolUse Edit/Write/NotebookEdit), boot.py (cleanup on start). Solo work (session_id==\"main\") exempt. Claims file: ~/.claude/hooks/.file_claims.json, stale threshold 2h. Tier 2: crash=warn+continue. All 7 gate tests + 2 tracker tests pass."
+  },
+  {
+    "id": "a16967a30386eddb",
+    "new_text": "TRACKER PIPELINE (10 files, ~1,537 lines, PostToolUse): orchestrator.py (537) main entry, mentor.py (278) deterministic signal analysis, mentor_memory.py (144) track patterns, observations.py (107) capture/dedup, auto_remember.py (101) high-value events, outcome_chains.py (95) causal tracking, errors.py (84) extract signatures, verification.py (82) test pass/fail, mentor_analytics.py (72) metrics, __init__.py (37) debug logging. PostToolUse flow: 17 steps including token estimation, gate block resolution, file tracking, error detection, observation capture, verification, auto-remember, outcome chains, mentor evaluation."
+  },
+  {
+    "id": "2816c4e4518ad2ac",
+    "new_text": "v2.4.0 (commit 98b073b): 3 features, 12 tests (843 total, 0 failures). (1) GateResult metadata: dict param (default {}), to_dict() for logging, is_warning property (severity==\"warn\" and not blocked), enhanced __repr__. Backward compatible. (2) Tracker tool call counter: added tool_call_counts dict + total_tool_calls in tracker.py ~311, uses setdefault(), capped 50 keys. (3) Gate 12 plan decay: PLAN_STALE_SECONDS=1800 (30min). Plans >30min auto-forgiven (reset last_exit, clear warn count). Fresh shows \"created N min ago\"."
+  },
+  {
+    "id": "32f6d986fe45021b",
+    "new_text": "Phase 1 Critical Security Fixes (2026-02-09): FIX 1 — Fail-closed on malformed input: PreToolUse exit(1) on JSONDecodeError/EOFError/missing tool_name/empty input (was exit 0). PostToolUse keeps exit 0. Path normalization: os.path.normpath() on file_path. Track last_test_exit_code. FIX 2 — Sideband timestamp clamping: sideband_ts = min(sideband_ts, time.time()) prevents future timestamps bypassing Gates 4/7/8. FIX 3 — Gate 2 hardened: new patterns (eval, bash -c, sh -c, pipe to bash/sh, heredoc, exec, source, DELETE FROM, git checkout --, git stash drop), _rm_has_recursive_and_force() with shlex.split(). All 103 tests pass, 37 Phase 1 tests pass."
+  },
+  {
+    "id": "6f604a04a73bb651",
+    "new_text": "Session 9 Error Detection (2026-02-10): state.py: MAX_UNLOGGED_ERRORS=20, \"unlogged_errors\": [] in default_state(), cap enforcement in save_state(). enforcer.py: _detect_errors() helper with 13 patterns (Traceback, SyntaxError, ImportError, ModuleNotFoundError, Permission denied, npm ERR!, fatal:, error[E, FAILED, command not found, No such file, ConnectionRefusedError, OSError:). Modified handle_post_tool_use to accept tool_response param, clear on remember_this, detect Bash errors. Updated main() to extract tool_response from stdin. gate_06_save_fix.py: \"Bash\" trigger, unlogged_errors warning block. All 3 files pass syntax. 130/131 tests pass."
+  },
+  {
+    "id": "e5c5ca485ce97b31",
+    "new_text": "RESEARCH: Multi-Agent Orchestration Patterns. AgentOrchestra (arxiv:2506.12508): hierarchical planner + specialized sub-agents (web, analysis, file ops), TEA Protocol, 89.04% GAIA. AdaptOrch (arxiv:2602.16873 Feb2026): dynamically select 4 topologies (parallel, sequential, hierarchical, hybrid) per task, 12-23% improvement over static. Key: no single topology best. Multi-Agent Collaboration (arxiv:2505.19591): puppeteer paradigm with RL-trained orchestrator. OrchVis (arxiv:2510.24937): hierarchical alignment + oversight. For Torus: AdaptOrch critical — select torus-loop.sh vs torus-wave.py dynamically, not predetermined."
+  },
+  {
+    "id": "09312d715fe84118",
+    "new_text": "Git Worktrees: Physical second checkout sharing .git, multiple branches simultaneously. Claude Code 2.1.69: agent tool supports isolation:\"worktree\" — creates temp, agent works isolated, returns branch, auto-cleans. New: \"worktree\" field in hook event. Best use: framework evolution (risky changes to hooks/gates). Agent edits in worktree can't break live enforcer mid-session. Workflow: refactor → test → return branch → review diff → merge. Don't use: quick single-file edits, files needed in current session (LIVE_STATE.json), hooks need extra setup. Requires: agent teams (currently disabled)."
+  },
+  {
+    "id": "f614e9139d6db801",
+    "new_text": "Phase 2+3: JSON Task Tracking + External Bash Orchestrator (torus-loop). CREATED: templates/tasks.json (14 lines), task_manager.py (165 lines CLI for status/next/update/validate), torus-loop.sh (187 lines spawning fresh Claude per task), megaman-prompt.md (23 lines per-iteration), skills/loop/SKILL.md (/loop start|status|stop). MODIFIED: templates/base.md (Validate field), skills/prp/SKILL.md (/prp status, tasks.json step), test_framework.py (80 lines tests). Design: torus-loop reads tasks.json, spawns claude per task, validates, git commit success, logs activity.md. Stop sentinel (.stop) graceful shutdown. Default 50 max iterations, 10min timeout. 7 targeted tests pass. Full suite: 1036 passed."
+  },
+  {
+    "id": "eabc60e0af21bc77",
+    "new_text": "Eclipse L2 Phase 6 Terminology Comments (2026-02-09): Added L2 sequencer terminology to 4 files (comments only): fee_distribution.rs (collector_id is sequencer), bank.rs (validator acts sequencer in L2), projectdawn-testnet.sh (bootstrap validator = sequencer, DAWN staking), projectdawn_config.rs (ProjectDawn is L2 with single sequencer). Zero compilation errors: cargo check -p solana-runtime."
+  },
+  {
+    "id": "931caa7d034d45ba",
+    "new_text": "RESEARCH: Self-Healing Claude Code Framework — LOCAL/PROPRIETARY (private repo, not public). Location: /home/crab/.claude/ (4 commits, no remote). Architecture: 18 quality gates, ChromaDB memory, enforcer.py dispatcher, 539+ tests. Exit Code: Uses sys.exit(2) correctly (bug is in Claude Code 2.1.68 PreToolUse, not framework). Memory: ChromaDB nomic-embed-text-v2-moe 768-dim, ~/data/memory/, multiple collections. Multi-agent: state isolated per session_id. Tests: 539 passing (2026-02-13). Not publicly available."
+  },
+  {
+    "id": "e5d1aba055da1417",
+    "new_text": "CORRECTION: Terminal L2 actively used on every search_knowledge() (terminal_l2_always=true default), 3,516 records across 159+ sessions (full conversation transcripts—broader than Clude's molecules). Recency_weight actively used (default 0.15, formula: raw + 0.15*max(0,1-age_days/365)), disabled only on _search_observations_internal. FINAL: ZERO ideas from Clude worth adopting—we do everything they do actively and often better."
+  },
+  {
+    "id": "ed333d9fd9e1a576",
+    "new_text": "Claude Code 2.1.69 Hook Enhancements: (1) InstructionsLoaded Hook — fires on CLAUDE.md/.claude/rules/*.md load, enables automation on instruction updates, audit changes, compliance logging. (2) agent_id Field — UUID on all hook events in subagent/--agent mode, enables multi-agent state + routing. (3) worktree Field — {name, path, branch, original_repo_directory} when --worktree active, adapts hook behavior for CI/CD isolation. JSON format: session_id, hook_event_name, transcript_path, cwd, permission_mode, tool_name, tool_input + new optional agent_id, agent_type, worktree. No breaking changes—additive only."
+  }
+]
