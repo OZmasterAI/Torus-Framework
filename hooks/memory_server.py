@@ -286,317 +286,22 @@ def _embed_text(text):
     return _embed_texts([text])[0]
 
 
-def _lance_retry(fn, retries=3, base_delay=0.1):
-    """Retry a LanceDB write operation on OSError (file lock contention).
-
-    Exponential backoff: 0.1s, 0.3s, 0.9s (1.3s max total).
-    Only catches OSError — other exceptions propagate immediately.
-    """
-    for attempt in range(retries):
-        try:
-            return fn()
-        except OSError:
-            if attempt < retries - 1:
-                delay = base_delay * (3**attempt)
-                time.sleep(delay)
-            else:
-                raise
+from shared.lance_collection import (
+    LanceCollection as _LanceCollectionBase,
+    lance_retry as _lance_retry,
+)
 
 
-class LanceCollection:
-    """LanceDB table wrapper with a familiar API surface.
-
-    Provides query, get, upsert, update, delete, count methods.
-
-    LanceDB cosine distance: 0 = identical, 2 = opposite (range 0-2).
-    LanceDB cosine distance: 0 = identical, 2 = opposite (same range).
-    No conversion needed — distance semantics match directly.
-    """
-
-    def __init__(self, table, schema, name):
-        self._table = table
-        self._schema = schema
-        self._name = name
-        # Build set of known column names for metadata handling
-        self._meta_cols = {f.name for f in schema} - {"id", "text", "vector"}
-
-    def count(self):
-        """Return number of rows in the table."""
-        try:
-            return self._table.count_rows()
-        except Exception:
-            return 0
-
-    def query(self, query_texts=None, n_results=5, include=None, where=None):
-        """Semantic search. Returns nested results.
-
-        Result format: {"ids": [[...]], "documents": [[...]], "metadatas": [[...]], "distances": [[...]]}
-        """
-        if include is None:
-            include = ["metadatas", "distances"]
-        text = query_texts[0] if query_texts else ""
-        vector = _embed_text(text)
-
-        try:
-            q = self._table.search(vector).distance_type("cosine").limit(n_results)
-            if where:
-                sql_where = self._translate_where(where)
-                if sql_where:
-                    q = q.where(sql_where, prefilter=True)
-            rows = q.to_list()
-        except Exception:
-            rows = []
-
-        ids = [[r["id"] for r in rows]]
-        result = {"ids": ids}
-
-        if "documents" in include:
-            result["documents"] = [[r.get("text", "") for r in rows]]
-        if "distances" in include:
-            result["distances"] = [[r.get("_distance", 1.0) for r in rows]]
-        if "metadatas" in include:
-            result["metadatas"] = [[self._row_to_meta(r) for r in rows]]
-        if "embeddings" in include:
-            result["embeddings"] = [[r.get("vector", []) for r in rows]]
-
-        return result
-
-    def get(self, ids=None, where=None, limit=None, offset=0, include=None):
-        """Fetch by IDs or filter. Returns flat results.
-
-        Result format: {"ids": [...], "documents": [...], "metadatas": [...]}
-        """
-        if include is None:
-            include = ["metadatas", "documents"]
-
-        try:
-            if ids is not None and len(ids) > 0:
-                # Fetch by specific IDs
-                escaped = ", ".join(f"'{i}'" for i in ids)
-                sql = f"id IN ({escaped})"
-                rows = (
-                    self._table.search()
-                    .where(sql, prefilter=True)
-                    .limit(len(ids) + 10)
-                    .to_list()
-                )
-                # Preserve requested order
-                id_order = {i: idx for idx, i in enumerate(ids)}
-                rows.sort(key=lambda r: id_order.get(r["id"], 999999))
-            elif where:
-                sql_where = self._translate_where(where)
-                q = self._table.search().where(sql_where, prefilter=True)
-                if limit:
-                    q = q.limit(limit)
-                else:
-                    q = q.limit(10000)  # practical cap
-                rows = q.to_list()
-            elif limit:
-                rows = self._table.search().limit(limit).to_list()
-                if offset and offset > 0:
-                    rows = rows[offset:]
-            else:
-                rows = self._table.search().limit(10000).to_list()
-        except Exception:
-            rows = []
-
-        result = {"ids": [r["id"] for r in rows]}
-
-        if "documents" in include:
-            result["documents"] = [r.get("text", "") for r in rows]
-        if "metadatas" in include:
-            result["metadatas"] = [self._row_to_meta(r) for r in rows]
-        if "embeddings" in include:
-            result["embeddings"] = [r.get("vector", []) for r in rows]
-
-        return result
-
-    def upsert(self, documents=None, metadatas=None, ids=None):
-        """Upsert records using LanceDB merge_insert."""
-        if not ids or not documents:
-            return
-        records = []
-        vectors = _embed_texts(documents)
-        for i, doc_id in enumerate(ids):
-            doc = documents[i] if i < len(documents) else ""
-            meta = metadatas[i] if metadatas and i < len(metadatas) else {}
-            record = self._build_record(doc_id, doc, vectors[i], meta)
-            records.append(record)
-
-        try:
-            _lance_retry(
-                lambda: (
-                    self._table.merge_insert("id")
-                    .when_matched_update_all()
-                    .when_not_matched_insert_all()
-                    .execute(records)
-                )
-            )
-        except Exception as e:
-            # Fallback: try add (for new tables or if merge_insert fails)
-            try:
-                self._table.add(records)
-            except Exception:
-                print(f"[Lance] upsert failed for {self._name}: {e}", file=_sys.stderr)
-
-    def update(self, ids=None, metadatas=None, documents=None):
-        """Update metadata and/or documents for existing records.
-
-        API: collection.update(ids=[...], metadatas=[...], documents=[...])
-        LanceDB: fetch existing, merge, re-upsert (merge_insert pattern).
-        """
-        if not ids:
-            return
-        try:
-            # Fetch existing records
-            escaped = ", ".join(f"'{i}'" for i in ids)
-            existing = (
-                self._table.search()
-                .where(f"id IN ({escaped})", prefilter=True)
-                .limit(len(ids) + 10)
-                .to_list()
-            )
-            existing_map = {r["id"]: r for r in existing}
-
-            records = []
-            for i, doc_id in enumerate(ids):
-                old = existing_map.get(doc_id, {})
-                meta = metadatas[i] if metadatas and i < len(metadatas) else {}
-                doc = (
-                    documents[i]
-                    if documents and i < len(documents)
-                    else old.get("text", "")
-                )
-                vector = old.get("vector", [0.0] * _EMBEDDING_DIM)
-
-                # If document changed, re-embed
-                if (
-                    documents
-                    and i < len(documents)
-                    and documents[i] != old.get("text", "")
-                ):
-                    vector = _embed_text(documents[i])
-
-                # Merge: old metadata + new metadata
-                merged_meta = self._row_to_meta(old)
-                merged_meta.update(meta)
-
-                record = self._build_record(doc_id, doc, vector, merged_meta)
-                records.append(record)
-
-            if records:
-                _lance_retry(
-                    lambda: (
-                        self._table.merge_insert("id")
-                        .when_matched_update_all()
-                        .when_not_matched_insert_all()
-                        .execute(records)
-                    )
-                )
-        except Exception as e:
-            print(f"[Lance] update failed for {self._name}: {e}", file=_sys.stderr)
-
-    def delete(self, ids=None):
-        """Delete records by IDs."""
-        if not ids:
-            return
-        try:
-            escaped = ", ".join(f"'{i}'" for i in ids)
-            _lance_retry(lambda: self._table.delete(f"id IN ({escaped})"))
-        except Exception as e:
-            print(f"[Lance] delete failed for {self._name}: {e}", file=_sys.stderr)
-
-    def _build_record(self, doc_id, text, vector, meta):
-        """Build a typed record dict matching the Arrow schema."""
-        record = {
-            "id": str(doc_id),
-            "text": str(text) if text else "",
-            "vector": vector
-            if vector and len(vector) == _EMBEDDING_DIM
-            else [0.0] * _EMBEDDING_DIM,
-        }
-        # Fill metadata columns from schema
-        for col_name in self._meta_cols:
-            field = self._schema.field(col_name)
-            val = meta.get(col_name)
-            if pa.types.is_float64(field.type):
-                try:
-                    record[col_name] = float(val) if val is not None else 0.0
-                except (ValueError, TypeError):
-                    record[col_name] = 0.0
-            elif pa.types.is_int32(field.type):
-                try:
-                    record[col_name] = int(val) if val is not None else 0
-                except (ValueError, TypeError):
-                    record[col_name] = 0
-            else:
-                record[col_name] = str(val) if val is not None else ""
-        return record
-
-    def _row_to_meta(self, row):
-        """Extract metadata dict from a LanceDB row (exclude id, text, vector, _distance)."""
-        meta = {}
-        for col_name in self._meta_cols:
-            val = row.get(col_name)
-            if val is not None:
-                meta[col_name] = val
-        return meta
-
-    @staticmethod
-    def _translate_where(where):
-        """Translate where-clause dict to a LanceDB SQL filter string.
-
-        Examples:
-            {"session_time": {"$lt": 123.4}} → "session_time < 123.4"
-            {"error_hash": "abc"} → "error_hash = 'abc'"
-            {"$and": [...]} → "(clause1) AND (clause2)"
-        """
-        if not where or not isinstance(where, dict):
-            return ""
-
-        parts = []
-        for key, val in where.items():
-            if key == "$and":
-                sub_parts = []
-                for sub in val:
-                    translated = LanceCollection._translate_where(sub)
-                    if translated:
-                        sub_parts.append(f"({translated})")
-                if sub_parts:
-                    parts.append(" AND ".join(sub_parts))
-            elif key == "$or":
-                sub_parts = []
-                for sub in val:
-                    translated = LanceCollection._translate_where(sub)
-                    if translated:
-                        sub_parts.append(f"({translated})")
-                if sub_parts:
-                    parts.append(" OR ".join(sub_parts))
-            elif isinstance(val, dict):
-                # Operator clause: {"$lt": X}, {"$gte": X}, etc.
-                op_map = {
-                    "$lt": "<",
-                    "$lte": "<=",
-                    "$gt": ">",
-                    "$gte": ">=",
-                    "$eq": "=",
-                    "$ne": "!=",
-                }
-                for op, sql_op in op_map.items():
-                    if op in val:
-                        v = val[op]
-                        if isinstance(v, str):
-                            parts.append(f"{key} {sql_op} '{v}'")
-                        else:
-                            parts.append(f"{key} {sql_op} {v}")
-            else:
-                # Exact match: {"error_hash": "abc"}
-                if isinstance(val, str):
-                    parts.append(f"{key} = '{val}'")
-                else:
-                    parts.append(f"{key} = {val}")
-
-        return " AND ".join(parts)
+# Thin wrapper to inject embedding functions at construction time
+def _make_lance_collection(table, schema, name):
+    return _LanceCollectionBase(
+        table,
+        schema,
+        name,
+        embed_text=_embed_text,
+        embed_texts=_embed_texts,
+        embedding_dim=_EMBEDDING_DIM,
+    )
 
 
 def _init_lancedb():
@@ -666,7 +371,7 @@ def _init_lancedb():
                             )
             except Exception:
                 tbl = _lance_db.create_table(name, schema=schema)
-            return LanceCollection(tbl, schema, name)
+            return _make_lance_collection(tbl, schema, name)
 
         collection = _open_or_create("knowledge", _KNOWLEDGE_SCHEMA)
         fix_outcomes = _open_or_create("fix_outcomes", _FIX_OUTCOMES_SCHEMA)
@@ -771,256 +476,23 @@ def generate_id(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
-# ── Auto Tier Classification (Salience-Scored) ──────────────────────────────
-# Tier 1 = high-value (score >= 0.35)
-# Tier 2 = standard (0.10 < score < 0.35)
-# Tier 3 = low-value (score <= 0.10)
-#
-# Salience signals (inspired by thermal-memory):
-#   Decision change  25% — redirected approach or strategy
-#   Human-originated 20% — corrections, preferences, direct feedback
-#   Hard-won         15% — debugging, multiple attempts, root cause
-#   Recurrence       15% — topic tagged as recurring or pattern
-#   Real-world impact 15% — production, shipped, breaking, deployed
-#   Connective density 10% — many tags = connects to many areas
-
-_TIER3_TAGS = {"type:auto-captured", "priority:low"}
-
-_DECISION_KW = (
-    "decision",
-    "chose",
-    "switched to",
-    "instead of",
-    "trade-off",
-    "went with",
-    "picked",
-    "selected approach",
-    "design:",
+from shared.memory_classification import (
+    classify_tier as _classify_tier,
+    salience_score as _salience_score,
+    normalize_tags as _normalize_tags,
+    inject_project_tag as _mc_inject_project_tag,
+    build_project_prefix as _mc_build_project_prefix,
 )
-_HARDWON_KW = (
-    "root cause",
-    "finally fixed",
-    "after debugging",
-    "tracked down",
-    "hard to find",
-    "subtle bug",
-    "race condition",
-)
-_IMPACT_KW = (
-    "production",
-    "shipped",
-    "deployed",
-    "breaking",
-    "outage",
-    "user-facing",
-    "live system",
-)
-_HUMAN_TAGS = {"type:correction", "type:preference"}
-_DECISION_TAGS = {"type:decision"}
-_FIX_TAGS = {"type:fix"}
-_RECURRENCE_TAGS = {"type:learning", "outcome:success"}
-
-
-def _salience_score(content: str, tags: str) -> float:
-    """Calculate salience score (0.0-1.0) from content and tags."""
-    tag_set = (
-        {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
-    )
-    lower = content.lower()
-    score = 0.0
-
-    # Decision change (25%)
-    if tag_set & _DECISION_TAGS or any(kw in lower for kw in _DECISION_KW):
-        score += 0.25
-
-    # Human-originated (20%)
-    if tag_set & _HUMAN_TAGS:
-        score += 0.20
-
-    # Hard-won (15%)
-    if tag_set & _FIX_TAGS or any(kw in lower for kw in _HARDWON_KW):
-        score += 0.15
-
-    # Recurrence (15%)
-    if tag_set & _RECURRENCE_TAGS:
-        score += 0.15
-
-    # Real-world impact (15%)
-    if "priority:critical" in tag_set or "priority:high" in tag_set:
-        score += 0.15
-    elif any(kw in lower for kw in _IMPACT_KW):
-        score += 0.15
-
-    # Connective density (10%) — more tags = more connections
-    if len(tag_set) >= 5:
-        score += 0.10
-    elif len(tag_set) >= 3:
-        score += 0.05
-
-    return min(score, 1.0)
-
-
-def _classify_tier(content: str, tags: str) -> int:
-    """Classify a memory into tier 1 (high), 2 (standard), or 3 (low).
-
-    Pure function — no side effects.  Called during remember_this() to
-    assign a tier before upsert.  Uses salience scoring with 6 weighted
-    signals inspired by thermal-memory.
-    """
-    tag_set = (
-        {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
-    )
-
-    # Tier 3 fast path — low-value indicators
-    if tag_set & _TIER3_TAGS:
-        return 3
-
-    score = _salience_score(content, tags)
-
-    # Short content with no salience signals = low value
-    if len(content) < 50 and score <= 0.10:
-        return 3
-
-    # High-signal tags get a floor — trust explicit tagging
-    _HIGH_SIGNAL_TAGS = {
-        "type:fix",
-        "type:decision",
-        "type:correction",
-        "type:preference",
-        "priority:critical",
-    }
-    if tag_set & _HIGH_SIGNAL_TAGS:
-        return 1
-
-    if score >= 0.25:
-        return 1
-    if score <= 0.10:
-        return 3
-    return 2
-
-
-# ── Tag Normalization ─────────────────────────────────────────────────────────
-# Auto-corrects bare dimension values to canonical "dimension:value" format.
-# Non-destructive: unknown tags pass through unchanged.
-
-_BARE_TO_DIMENSION = {
-    # type dimension
-    "fix": "type:fix",
-    "error": "type:error",
-    "learning": "type:learning",
-    "feature": "type:feature",
-    "feature-request": "type:feature-request",
-    "correction": "type:correction",
-    "decision": "type:decision",
-    "auto-captured": "type:auto-captured",
-    "preference": "type:preference",
-    "audit": "type:audit",
-    # priority dimension
-    "critical": "priority:critical",
-    "high": "priority:high",
-    "medium": "priority:medium",
-    "low": "priority:low",
-    # outcome dimension
-    "success": "outcome:success",
-    "failed": "outcome:failed",
-}
-
-
-def _normalize_tags(tags: str) -> str:
-    """Normalize tags to canonical dimension:value format.
-
-    Non-destructive — unknown tags pass through unchanged.
-    Examples:
-        "fix,high,framework" -> "type:fix,priority:high,framework"
-        "type:fix,critical"  -> "type:fix,priority:critical"
-        ""                   -> ""
-    """
-    if not tags:
-        return tags
-    parts = [t.strip() for t in tags.split(",") if t.strip()]
-    normalized = []
-    for tag in parts:
-        lower = tag.lower()
-        # Already dimensioned (contains ":") — pass through as-is
-        if ":" in tag:
-            normalized.append(tag)
-        elif lower in _BARE_TO_DIMENSION:
-            normalized.append(_BARE_TO_DIMENSION[lower])
-        else:
-            normalized.append(tag)
-    return ",".join(normalized)
 
 
 def _inject_project_tag(tags):
-    """Auto-append project:<name> and subproject:<name> tags if applicable."""
-    if not _SERVER_PROJECT:
-        return tags
-    proj_tag = f"project:{_SERVER_PROJECT}"
-    if proj_tag not in (tags or ""):
-        tags = f"{tags},{proj_tag}" if tags else proj_tag
-    if _SERVER_SUBPROJECT:
-        sub_tag = f"subproject:{_SERVER_SUBPROJECT}"
-        if sub_tag not in (tags or ""):
-            tags = f"{tags},{sub_tag}" if tags else sub_tag
-    return tags
+    return _mc_inject_project_tag(tags, _SERVER_PROJECT, _SERVER_SUBPROJECT)
 
 
 def _build_project_prefix():
-    """Build '[project #N]' or '[project/sub #N]' prefix from project state."""
-    if not _SERVER_PROJECT:
-        return ""
-    eff_dir = _SERVER_SUBPROJECT_DIR or _SERVER_PROJECT_DIR
-    eff_name = (
-        f"{_SERVER_PROJECT}/{_SERVER_SUBPROJECT}"
-        if _SERVER_SUBPROJECT
-        else _SERVER_PROJECT
+    return _mc_build_project_prefix(
+        _SERVER_PROJECT, _SERVER_SUBPROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT_DIR
     )
-    session_num = "?"
-    if eff_dir:
-        state_file = os.path.join(eff_dir, ".claude-state.json")
-        try:
-            with open(state_file) as f:
-                state = json.load(f)
-            session_num = state.get("session_count", "?")
-        except Exception:
-            pass
-    return f"[{eff_name} #{session_num}] "
-
-
-def _migrate_previews():
-    """LEGACY: Preview backfill no longer needed — handled during LanceDB migration.
-    Returns 0 (no-op).
-    """
-    return 0
-
-
-_TIER_BACKFILL_MARKER = os.path.join(os.path.dirname(__file__), ".tier_backfill_done")
-
-
-def _backfill_tiers():
-    """LEGACY: Tier backfill no longer needed — handled during LanceDB migration.
-    Returns 0 (no-op).
-    """
-    return 0
-
-
-_EMBEDDING_MIGRATION_MARKER = os.path.join(
-    os.path.dirname(__file__), ".embedding_migration_done"
-)
-_COLLECTION_NAMES = [
-    "knowledge",
-    "fix_outcomes",
-    "observations",
-    "web_pages",
-    "quarantine",
-]
-
-
-def _migrate_embeddings():
-    """LEGACY: Embedding migration no longer needed — LanceDB stores vectors natively.
-    Returns 0 (no-op).
-    """
-    return 0
 
 
 # ──────────────────────────────────────────────────
@@ -1161,229 +633,21 @@ def _extract_citations(content: str, context: str) -> dict:
         return defaults
 
 
-# ──────────────────────────────────────────────────
-# FTS5 Hybrid Search Index
-# ──────────────────────────────────────────────────
-import sqlite3
-import re
+from shared.tag_index import TagIndex
 
 
-class TagIndex:
-    """Minimal SQLite tag index for boolean AND/OR tag search.
-
-    LanceDB is the source of truth; this is a derived read-optimized cache.
-    Keyword search is handled by LanceDB native FTS (BM25).
-    """
-
-    def __init__(self, db_path=":memory:"):
-        self.db_path = db_path
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._lock = threading.Lock()
-        if db_path != ":memory:":
-            self.conn.execute("PRAGMA journal_mode=WAL")
-        self._create_tables()
-
-    def _create_tables(self):
-        c = self.conn
-        c.execute("""CREATE TABLE IF NOT EXISTS tags (
-            memory_id TEXT,
-            tag TEXT
-        )""")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_tags_mid ON tags(memory_id)")
-        c.execute(
-            "CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)"
-        )
-        c.commit()
-
-    def is_synced(self, lance_count):
-        """Check if tag index is in sync with LanceDB by entry count."""
-        row = self.conn.execute(
-            "SELECT value FROM sync_meta WHERE key='sync_count'"
-        ).fetchone()
-        if row is None:
-            return False
-        return int(row[0]) == lance_count
-
-    def _update_sync_count(self, count):
-        self.conn.execute(
-            "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('sync_count', ?)",
-            (str(count),),
-        )
-        self.conn.commit()
-
-    def reset_and_rebuild(self, lance_collection):
-        """Drop all tables and rebuild from LanceDB (corruption recovery)."""
-        self.conn.execute("DROP TABLE IF EXISTS tags")
-        self.conn.execute("DROP TABLE IF EXISTS sync_meta")
-        self.conn.commit()
-        self._create_tables()
-        return self.build_from_lance(lance_collection)
-
-    def build_from_lance(self, lance_collection):
-        """Rebuild tags table from LanceDB. Returns entry count."""
-        count = lance_collection.count()
-        if count == 0:
-            return 0
-        all_data = lance_collection.get(limit=count, include=["metadatas"])
-        if not all_data or not all_data.get("ids"):
-            return 0
-        ids = all_data["ids"]
-        metas = all_data.get("metadatas", [])
-
-        with self._lock:
-            self.conn.execute("DELETE FROM tags")
-            rows = []
-            for i, mid in enumerate(ids):
-                meta = metas[i] if i < len(metas) else {}
-                tags_str = meta.get("tags", "") if meta else ""
-                if tags_str:
-                    for tag in tags_str.split(","):
-                        tag = tag.strip()
-                        if tag:
-                            rows.append((mid, tag))
-            self.conn.executemany("INSERT INTO tags VALUES (?, ?)", rows)
-            self._update_sync_count(len(ids))
-        return len(ids)
-
-    def add_tags(self, memory_id, tags_str):
-        """Add/update tags for a single memory (called on remember_this)."""
-        if not tags_str:
-            return
-        with self._lock:
-            self.conn.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
-            rows = [(memory_id, t.strip()) for t in tags_str.split(",") if t.strip()]
-            self.conn.executemany("INSERT INTO tags VALUES (?, ?)", rows)
-            # Increment sync count
-            row = self.conn.execute(
-                "SELECT value FROM sync_meta WHERE key='sync_count'"
-            ).fetchone()
-            if row:
-                self._update_sync_count(int(row[0]) + 1)
-            else:
-                self.conn.commit()
-
-    def remove(self, memory_id):
-        """Remove tags for a memory (used by dedup sweep)."""
-        with self._lock:
-            self.conn.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
-            self.conn.commit()
-
-    def tag_search(self, tags_list, match_all=False, top_k=15):
-        """Boolean tag search. Returns list of memory_id strings."""
-        if not tags_list:
-            return []
-        placeholders = ",".join("?" * len(tags_list))
-        with self._lock:
-            if match_all:
-                sql = f"""SELECT memory_id FROM tags
-                    WHERE tag IN ({placeholders})
-                    GROUP BY memory_id HAVING COUNT(DISTINCT tag) = ?
-                    LIMIT ?"""
-                rows = self.conn.execute(
-                    sql, (*tags_list, len(tags_list), top_k)
-                ).fetchall()
-            else:
-                sql = f"""SELECT DISTINCT memory_id FROM tags
-                    WHERE tag IN ({placeholders})
-                    LIMIT ?"""
-                rows = self.conn.execute(sql, (*tags_list, top_k)).fetchall()
-        return [r[0] for r in rows]
+from shared.search_helpers import detect_query_mode
 
 
 def _detect_query_mode(query, routing="default"):
-    """Route queries to the appropriate search engine.
+    return detect_query_mode(query, routing)
 
-    Args:
-        query:   The search query string.
-        routing: Routing strategy — "default" (current heuristics),
-                 "fast" (expanded FTS5 keyword routing),
-                 "full_hybrid" (both engines for all queries).
 
-    Returns one of: 'tags', 'keyword', 'semantic', 'hybrid'.
-    """
-    q = query.strip()
-    ql = q.lower()
-
-    # Tag queries: always FTS5 regardless of routing
-    if ql.startswith("tag:") or ql.startswith("tags:"):
-        return "tags"
-
-    # Full Hybrid: everything else goes through both engines
-    if routing == "full_hybrid":
-        return "hybrid"
-
-    # Keyword: quoted phrases or boolean operators
-    if '"' in q or " AND " in q or " OR " in q:
-        return "keyword"
-
-    words = q.split()
-
-    # Keyword: 1-2 word queries (likely identifiers or exact terms)
-    if len(words) <= 2:
-        return "keyword"
-
-    # Fast mode: catch technical 3-4 word queries for FTS5
-    if routing == "fast" and len(words) <= 4:
-        # Underscores or dots → identifiers (gate_timing, memory_server.py)
-        if any("_" in w or "." in w for w in words):
-            return "keyword"
-        # CamelCase → class/module names (LanceDB, FTS5Index)
-        if any(c.isupper() for w in words for c in w[1:]):
-            return "keyword"
-
-    # Semantic: questions or long natural language
-    if ql.endswith("?") or ql.startswith(
-        ("how ", "why ", "what ", "when ", "where ", "which ")
-    ):
-        return "semantic"
-    if len(words) >= 5:
-        return "semantic"
-
-    # Hybrid: 3-4 word ambiguous queries
-    return "hybrid"
+from shared.search_helpers import merge_results
 
 
 def _merge_results(fts_results, lance_summaries, top_k=15):
-    """Merge FTS5 and LanceDB results using Reciprocal Rank Fusion (RRF).
-
-    RRF gives each engine equal weight: score = sum(1/(k+rank)) across engines.
-    Items appearing in both engines naturally score ~2x higher.
-    k=60 is the standard RRF constant (dampens rank position differences).
-    """
-    k = 60  # RRF smoothing constant
-    scores = {}  # memory_id -> rrf_score
-    entries = {}  # memory_id -> best entry dict
-    sources = {}  # memory_id -> set of source names
-
-    # Score vector results by rank
-    for rank, entry in enumerate(lance_summaries, start=1):
-        mid = entry.get("id", "")
-        if not mid:
-            continue
-        scores[mid] = scores.get(mid, 0) + 1 / (k + rank)
-        entries[mid] = dict(entry)
-        sources[mid] = {"semantic"}
-
-    # Score FTS5 results by rank
-    for rank, entry in enumerate(fts_results, start=1):
-        mid = entry.get("id", "")
-        if not mid:
-            continue
-        scores[mid] = scores.get(mid, 0) + 1 / (k + rank)
-        if mid not in entries:
-            entries[mid] = dict(entry)
-        sources.setdefault(mid, set()).add("keyword")
-
-    # Inject RRF score as relevance and set match label
-    for mid, entry in entries.items():
-        entry["relevance"] = scores[mid]
-        entry["match"] = "both" if len(sources[mid]) > 1 else sources[mid].pop()
-
-    results = list(entries.values())
-    results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
-
-    return results[:top_k]
+    return merge_results(fts_results, lance_summaries, top_k)
 
 
 # Lazy initialization — only run when module is used as a server, not when imported
@@ -1397,7 +661,6 @@ _knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None  # LTPTracker instance (initialized lazily)
 _adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
 _cluster_store = None  # _ClusterStore instance (initialized lazily)
-CLUSTER_THRESHOLD = 0.7  # cosine similarity threshold for cluster assignment
 _last_search_ids = []  # IDs from last search_knowledge call (for implicit feedback)
 _search_pipeline = None  # SearchPipeline instance (initialized lazily)
 _write_pipeline = None  # WritePipeline instance (initialized lazily)
@@ -1475,326 +738,53 @@ def _generate_counterfactual_query(original_query, initial_results, model_key="h
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
+from shared.search_helpers import (
+    lance_keyword_search as _sh_lance_kw,
+    lance_fts_to_summary,
+)
+
+
 def _lance_fts_to_summary(row):
-    """Convert a LanceDB FTS result row to the standard summary dict format."""
-    entry = {
-        "id": row.get("id", ""),
-        "preview": row.get("preview", row.get("text", "")[:SUMMARY_LENGTH]),
-        "tags": row.get("tags", ""),
-        "timestamp": row.get("timestamp", ""),
-        "fts_score": round(row.get("_score", 0.0), 4),
-    }
-    url = row.get("primary_source", "")
-    if url:
-        entry["url"] = url
-    return entry
+    return lance_fts_to_summary(row, SUMMARY_LENGTH)
 
 
 def _lance_keyword_search(query, top_k=15):
-    """LanceDB native BM25 keyword search. Falls back to empty on error."""
-    if not _lance_fts_ready or collection is None:
-        return []
-    try:
-        rows = collection._table.search(query).limit(top_k).to_list()
-        return [_lance_fts_to_summary(r) for r in rows]
-    except Exception:
-        return []
+    return _sh_lance_kw(query, top_k, collection, _lance_fts_ready, SUMMARY_LENGTH)
 
 
-def _generate_fuzzy_variants(term: str, max_distance: int = 1) -> list:
-    """Generate spelling variants within edit distance for fuzzy matching."""
-    if len(term) <= 2:
-        return [term]
-
-    variants = {term}
-    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_"
-
-    # Deletions (remove one char)
-    for i in range(len(term)):
-        variants.add(term[:i] + term[i + 1 :])
-
-    # Substitutions (replace one char)
-    for i in range(len(term)):
-        for c in alphabet:
-            if c != term[i]:
-                variants.add(term[:i] + c + term[i + 1 :])
-
-    # Transpositions (swap adjacent chars)
-    for i in range(len(term) - 1):
-        variants.add(term[:i] + term[i + 1] + term[i] + term[i + 2 :])
-
-    return list(variants)
+from shared.search_helpers import (
+    fuzzy_keyword_search as _sh_fuzzy,
+    generate_fuzzy_variants as _generate_fuzzy_variants,
+)
 
 
 def _fuzzy_keyword_search(query: str, table_name: str = "knowledge", top_k: int = 10):
-    """Search with fuzzy term expansion for typo tolerance.
+    return _sh_fuzzy(
+        query,
+        table_name,
+        top_k,
+        collections={
+            "knowledge": collection,
+            "observations": observations,
+            "fix_outcomes": fix_outcomes,
+            "web_pages": web_pages,
+        },
+        fts_ready=_lance_fts_ready,
+    )
 
-    Splits query into terms, generates edit-distance-1 variants,
-    queries LanceDB FTS with expanded terms, boosts exact matches 2x.
-    """
-    if not _lance_fts_ready:
-        return []
 
-    global collection, observations, fix_outcomes, web_pages
-    tbl_map = {
-        "knowledge": collection,
-        "observations": observations,
-        "fix_outcomes": fix_outcomes,
-        "web_pages": web_pages,
-    }
-    tbl_coll = tbl_map.get(table_name, collection)
-    if tbl_coll is None:
-        return []
-
-    terms = query.lower().split()
-    if not terms:
-        return []
-
-    # Generate fuzzy variants for each term
-    all_variants = []
-    exact_terms = set(terms)
-    for term in terms:
-        all_variants.extend(_generate_fuzzy_variants(term))
-
-    # Build OR query with all variants (LanceDB FTS supports OR)
-    expanded_query = " OR ".join(set(all_variants))
-
-    try:
-        rows = (
-            tbl_coll._table.search(expanded_query, query_type="fts")
-            .limit(top_k * 2)
-            .to_list()
-        )
-        if not rows:
-            return []
-
-        # Boost exact matches 2x
-        scored_results = []
-        for row in rows:
-            text_lower = str(row.get("text", "")).lower()
-            boost = 1.0
-            for term in exact_terms:
-                if term in text_lower:
-                    boost = 2.0
-                    break
-            scored_results.append(
-                {
-                    "id": str(row.get("id", "")),
-                    "text": str(row.get("text", ""))[:500],
-                    "relevance": float(row.get("_score", 0.5)) * boost,
-                    "tags": str(row.get("tags", "")),
-                    "match_type": "exact" if boost > 1.0 else "fuzzy",
-                }
-            )
-
-        scored_results.sort(key=lambda x: x["relevance"], reverse=True)
-        return scored_results[:top_k]
-    except Exception:
-        return []
+from shared.search_helpers import tag_ids_to_summaries as _sh_tag_ids_to_summaries
 
 
 def _tag_ids_to_summaries(memory_ids, collection_ref=None):
-    """Fetch full metadata from LanceDB for a list of memory IDs."""
-    if not memory_ids:
-        return []
-    coll = collection_ref or collection
-    if coll is None:
-        return []
-    try:
-        data = coll.get(ids=list(memory_ids), include=["metadatas"])
-        results = []
-        for i, mid in enumerate(data.get("ids", [])):
-            meta = data["metadatas"][i] if i < len(data.get("metadatas", [])) else {}
-            entry = {
-                "id": mid,
-                "preview": meta.get("preview", ""),
-                "tags": meta.get("tags", ""),
-                "timestamp": meta.get("timestamp", ""),
-            }
-            url = meta.get("primary_source", "")
-            if url:
-                entry["url"] = url
-            results.append(entry)
-        return results
-    except Exception:
-        return []
+    return _sh_tag_ids_to_summaries(memory_ids, collection_ref or collection)
 
 
-class _ClusterStore:
-    """SQLite-backed centroid store for incremental clustering.
-
-    Stores cluster centroids as normalized float32 numpy arrays (768-dim).
-    Provides fast nearest-centroid lookup via in-memory cache.
-    """
-
-    def __init__(self, db_path: str):
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._create_tables()
-        self._cache = None  # List of (cluster_id, centroid_np, member_count) or None
-
-    def _create_tables(self):
-        self._conn.execute("""
-            CREATE TABLE IF NOT EXISTS clusters (
-                cluster_id TEXT PRIMARY KEY,
-                centroid BLOB NOT NULL,
-                member_count INTEGER DEFAULT 0,
-                label TEXT DEFAULT '',
-                created_at TEXT,
-                updated_at TEXT
-            )
-        """)
-        self._conn.commit()
-
-    def _load_cache(self):
-        import numpy as np
-
-        rows = self._conn.execute(
-            "SELECT cluster_id, centroid, member_count FROM clusters"
-        ).fetchall()
-        self._cache = [
-            (cid, np.frombuffer(blob, dtype=np.float32).copy(), count)
-            for cid, blob, count in rows
-        ]
-
-    def assign(self, vec_list: list, content: str = "") -> str:
-        """Assign a vector to the nearest cluster or create a new one.
-
-        Args:
-            vec_list: 768-dim embedding as list of floats
-            content: original text (used for label generation)
-
-        Returns cluster_id string.
-        """
-        import numpy as np
-
-        vec = np.array(vec_list, dtype=np.float32)
-        norm = np.linalg.norm(vec)
-        if norm < 1e-10:
-            return ""
-        vec_norm = vec / norm
-
-        if self._cache is None:
-            self._load_cache()
-
-        best_id = None
-        best_sim = -1.0
-        best_idx = -1
-
-        for i, (cid, c_vec, _count) in enumerate(self._cache):
-            sim = float(np.dot(vec_norm, c_vec))
-            if sim > best_sim:
-                best_sim = sim
-                best_id = cid
-                best_idx = i
-
-        now = datetime.now().isoformat()
-
-        if best_id is not None and best_sim >= CLUSTER_THRESHOLD:
-            # Join existing cluster, update centroid via running mean
-            cid, c_vec, count = self._cache[best_idx]
-            new_count = count + 1
-            new_centroid = (c_vec * count + vec_norm) / new_count
-            c_norm = np.linalg.norm(new_centroid)
-            if c_norm > 1e-10:
-                new_centroid = new_centroid / c_norm
-
-            label_update = ""
-            if new_count % 10 == 0:
-                label_update = _cluster_label(content)
-
-            self._conn.execute(
-                "UPDATE clusters SET centroid=?, member_count=?, updated_at=? WHERE cluster_id=?",
-                (new_centroid.astype(np.float32).tobytes(), new_count, now, best_id),
-            )
-            if label_update:
-                self._conn.execute(
-                    "UPDATE clusters SET label=? WHERE cluster_id=?",
-                    (label_update, best_id),
-                )
-            self._conn.commit()
-            self._cache[best_idx] = (cid, new_centroid, new_count)
-            return best_id
-        else:
-            # Create new cluster
-            new_id = f"cl_{fnv1a_hash(content)}"
-            label = _cluster_label(content)
-            cursor = self._conn.execute(
-                "INSERT OR IGNORE INTO clusters (cluster_id, centroid, member_count, label, created_at, updated_at) "
-                "VALUES (?, ?, 1, ?, ?, ?)",
-                (new_id, vec_norm.astype(np.float32).tobytes(), label, now, now),
-            )
-            self._conn.commit()
-            if self._cache is not None and cursor.rowcount > 0:
-                self._cache.append((new_id, vec_norm, 1))
-            return new_id
-
-    def close(self):
-        self._conn.close()
-
-
-def _cluster_label(content: str) -> str:
-    """Extract top-3 meaningful words from content for a cluster label."""
-    import re as _re_cl
-
-    _stop = {
-        "this",
-        "that",
-        "with",
-        "from",
-        "have",
-        "been",
-        "were",
-        "will",
-        "would",
-        "could",
-        "should",
-        "their",
-        "there",
-        "they",
-        "which",
-        "when",
-        "what",
-        "where",
-        "than",
-        "then",
-        "also",
-        "about",
-        "into",
-        "more",
-        "some",
-        "such",
-        "only",
-        "other",
-        "each",
-        "just",
-        "like",
-        "over",
-        "very",
-        "after",
-        "before",
-        "between",
-        "under",
-        "again",
-        "does",
-        "done",
-        "make",
-        "made",
-        "most",
-        "much",
-        "must",
-        "need",
-        "none",
-        "true",
-        "false",
-    }
-    from collections import Counter
-
-    words = _re_cl.findall(r"[a-zA-Z_]{4,}", content.lower())
-    counts = Counter(w for w in words if w not in _stop)
-    top = [w for w, _ in counts.most_common(3)]
-    return " / ".join(top) if top else "misc"
+from shared.cluster_store import (
+    ClusterStore as _ClusterStore,
+    cluster_label as _cluster_label,
+    CLUSTER_THRESHOLD,
+)
 
 
 def _ensure_initialized():
@@ -1988,94 +978,18 @@ def _read_config_toggles():
     return {}
 
 
-# ──────────────────────────────────────────────────
-# Tag Co-occurrence Matrix (lazy-built, cached)
-# ──────────────────────────────────────────────────
-_tag_cooccurrence: dict[str, dict[str, int]] = {}  # tag_a -> {tag_b: count}
-_tag_counts: dict[str, int] = {}  # tag -> total memories with this tag
-_tag_cooccurrence_dirty: bool = True  # rebuild on first use
-_tag_total_memories: int = 0  # total tagged memories (for PMI denominator)
+from shared.search_helpers import TagCooccurrence as _TagCooccurrence
+
+_tag_cooccurrence_obj = _TagCooccurrence()
+_tag_cooccurrence_dirty = True  # kept for backward compat (WritePipeline sets this)
 
 
 def _build_tag_cooccurrence():
-    """Build tag co-occurrence matrix from tag index.
-
-    Scans all memory tags, counts how often tag pairs appear together.
-    Called lazily on first search or explicitly via rebuild_tag_index().
-    """
-    global _tag_cooccurrence, _tag_counts, _tag_cooccurrence_dirty, _tag_total_memories
-
-    conn = tag_index.conn
-    rows = conn.execute("SELECT memory_id, tag FROM tags").fetchall()
-
-    # Group tags by memory_id
-    mem_tags: dict[str, set[str]] = {}
-    tag_totals: dict[str, int] = {}
-    for mid, tag in rows:
-        mem_tags.setdefault(mid, set()).add(tag)
-        tag_totals[tag] = tag_totals.get(tag, 0) + 1
-
-    # Build co-occurrence counts
-    cooccur: dict[str, dict[str, int]] = {}
-    for _mid, tagset in mem_tags.items():
-        tags = list(tagset)
-        for i in range(len(tags)):
-            for j in range(len(tags)):
-                if i != j:
-                    cooccur.setdefault(tags[i], {})
-                    cooccur[tags[i]][tags[j]] = cooccur[tags[i]].get(tags[j], 0) + 1
-
-    _tag_cooccurrence = cooccur
-    _tag_counts = tag_totals
-    _tag_total_memories = len(mem_tags)
-    _tag_cooccurrence_dirty = False
+    _tag_cooccurrence_obj.build(tag_index)
 
 
-def _get_expanded_tags(query: str) -> list[str]:
-    """Find tags that co-occur with tags matching the query (>40% rate).
-
-    Checks if query text matches any known tags, then returns co-occurring
-    tags above the 40% co-occurrence threshold.
-    """
-    if _tag_cooccurrence_dirty:
-        _build_tag_cooccurrence()
-
-    if not _tag_counts:
-        return []
-
-    query_lower = query.lower().strip()
-    query_tokens = set(query_lower.split())
-
-    # Match query against known tags (exact or token match, min 4 chars)
-    matched_tags = []
-    for tag in _tag_counts:
-        tag_lower = tag.lower()
-        if len(tag_lower) < 4:
-            continue
-        if tag_lower == query_lower or tag_lower in query_tokens:
-            matched_tags.append(tag)
-
-    if not matched_tags:
-        return []
-
-    # Find co-occurring tags with PMI > 1.0 (2x more likely than chance)
-    expanded = set()
-    matched_set = set(matched_tags)
-    N = _tag_total_memories
-    for tag in matched_tags:
-        if tag not in _tag_cooccurrence:
-            continue
-        count_x = _tag_counts.get(tag, 1)
-        for co_tag, co_count in _tag_cooccurrence[tag].items():
-            if co_tag in matched_set:
-                continue
-            count_y = _tag_counts.get(co_tag, 1)
-            if N > 0 and count_x > 0 and count_y > 0:
-                tag_pmi = math.log2((co_count * N) / (count_x * count_y))
-                if tag_pmi > 1.0:
-                    expanded.add(co_tag)
-
-    return list(expanded)[:15]
+def _get_expanded_tags(query):
+    return _tag_cooccurrence_obj.get_expanded_tags(query, tag_index)
 
 
 def format_results(results) -> list[dict]:
@@ -2610,10 +1524,15 @@ def search_knowledge(
         return result
 
     # Pipeline not initialized — return error
-    return {"error": "Search pipeline not initialized", "results": [], "total_memories": 0}
+    return {
+        "error": "Search pipeline not initialized",
+        "results": [],
+        "total_memories": 0,
+    }
 
 
 # Dead code below removed — inline fallback replaced by SearchPipeline
+
 
 def _extract_error_text(content, context):
     """Extract error description from fix content. Cascade, first match wins."""
@@ -2919,6 +1838,7 @@ def remember_this(
 
     # Pipeline not initialized — return error
     return {"error": "Write pipeline not initialized", "total_memories": 0}
+
 
 # DORMANT — saves ~70 tokens/prompt. Uncomment @mcp.tool() to reactivate.
 # @mcp.tool()

@@ -238,3 +238,20 @@ def test_keyword_overlap():
     assert s_match > s_no_match, (
         f"Keyword match ({s_match}) should score higher than no match ({s_no_match})"
     )
+
+
+# ── Test 11: Project affinity exactly 2x (not 4x double-apply bug) ────
+
+
+def test_project_affinity_exactly_2x():
+    """Project-matching memory gets exactly 2x boost, not 4x (bug: double application)."""
+    ctx = _make_ctx(project="myproject")
+    result_with = _make_result(tier=2, timestamp=_ago_iso(10), tags="project:myproject")
+    result_without = _make_result(tier=2, timestamp=_ago_iso(10), tags="")
+
+    s_with = score_result(result_with, 0.4, ctx)
+    s_without = score_result(result_without, 0.4, ctx)
+
+    # The ratio should be approximately 2.0 (project_mult), not 4.0
+    ratio = s_with / s_without if s_without > 0 else float("inf")
+    assert 1.8 < ratio < 2.3, f"Project boost ratio should be ~2.0, got {ratio}"

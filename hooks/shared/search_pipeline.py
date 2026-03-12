@@ -314,20 +314,6 @@ class SearchPipeline:
         # TG context enrichment
         tg_enrichment_count = self._enrich_tg_context(formatted, config)
 
-        # Project boost (post-scoring, multiplicative)
-        _server_project = h.get("server_project", "")
-        _server_subproject = h.get("server_subproject", "")
-        if _server_project and formatted:
-            proj_tag = f"project:{_server_project}"
-            sub_tag = f"subproject:{_server_subproject}" if _server_subproject else None
-            for r in formatted:
-                tags_str = r.get("tags") or ""
-                if proj_tag in tags_str:
-                    r["relevance"] = r.get("relevance", 0) * 2.0
-                if sub_tag and sub_tag in tags_str:
-                    r["relevance"] = r.get("relevance", 0) * 1.5
-            formatted.sort(key=lambda r: r.get("relevance", 0), reverse=True)
-
         # ── Step 9: Side effects (LTP tracking, Hebbian co-retrieval) ──
         try:
             _mem_ids = [
