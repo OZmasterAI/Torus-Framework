@@ -20,12 +20,21 @@ import atexit
 import functools
 import hashlib
 import json
+import math
 import os
 import socket
 import subprocess
 import threading
 import time
 from datetime import datetime, timedelta
+
+# Reduce thread pool sizes before libraries are imported.
+# Defaults = CPU count per pool (8 each) = 52 threads + ~320MB in memory arenas.
+# We process one query at a time, so 2 threads per pool is plenty.
+os.environ.setdefault("OMP_NUM_THREADS", "2")  # PyTorch OpenMP threads
+os.environ.setdefault("MKL_NUM_THREADS", "2")  # PyTorch MKL threads
+os.environ.setdefault("TOKIO_WORKER_THREADS", "2")  # LanceDB async I/O (Tokio)
+os.environ.setdefault("RAYON_NUM_THREADS", "2")  # LanceDB CPU compute (Rayon)
 
 import lancedb
 import pyarrow as pa
@@ -39,6 +48,7 @@ MEMORY_TIMESTAMP_FILE = os.path.join(
 
 # Add shared module path for error_normalizer
 import sys as _sys
+
 _sys.path.insert(0, os.path.dirname(__file__))
 from shared.error_normalizer import normalize_error, fnv1a_hash, error_signature
 
@@ -77,21 +87,41 @@ def _touch_memory_timestamp():
         json.dump({"timestamp": time.time()}, f)
     os.replace(tmp, MEMORY_TIMESTAMP_FILE)
 
-# Initialize MCP server
-mcp = FastMCP("memory")
+
+# SSE transport config — used when launched with --sse flag
+_SSE_HOST = os.environ.get("MEMORY_SSE_HOST", "127.0.0.1")
+_SSE_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8741"))
+
+# Detect transport mode from CLI args
+import argparse as _argparse
+
+_parser = _argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--sse", action="store_true", default=False)
+_parser.add_argument("--port", type=int, default=_SSE_PORT)
+_parser.add_argument("--bootstrap-clusters", action="store_true", default=False)
+_args, _ = _parser.parse_known_args()
+
+# Initialize MCP server (with host/port for SSE mode)
+if _args.sse:
+    mcp = FastMCP("memory", host=_SSE_HOST, port=_args.port)
+else:
+    mcp = FastMCP("memory")
 
 
 def crash_proof(fn):
     """Wrap MCP tool handler so exceptions return error dicts instead of crashing the server."""
+
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
         except Exception as e:
             import traceback
+
             tb = traceback.format_exc()
             print(f"[MCP] {fn.__name__} error: {e}\n{tb}", file=_sys.stderr)
             return {"error": f"{fn.__name__} failed: {type(e).__name__}: {e}"}
+
     return wrapper
 
 
@@ -103,7 +133,10 @@ _SERVER_SUBPROJECT_DIR = None
 try:
     _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
     from boot_pkg.util import detect_project
-    _SERVER_PROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT, _SERVER_SUBPROJECT_DIR = detect_project()
+
+    _SERVER_PROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT, _SERVER_SUBPROJECT_DIR = (
+        detect_project()
+    )
 except Exception:
     pass
 
@@ -120,9 +153,7 @@ _embedding_fn = None  # Lazy init — SentenceTransformer instance
 TAGS_DB_PATH = os.path.join(MEMORY_DIR, "tags.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
-SOCKET_PATH = os.path.join(
-    os.path.expanduser("~"), ".claude", "hooks", ".memory.sock"
-)
+SOCKET_PATH = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".memory.sock")
 _socket_server = None  # threading server reference for cleanup
 _uds_shutting_down = False  # prevents rebind during intentional shutdown
 _socket_owner_pid = None  # PID that successfully bound the socket
@@ -137,81 +168,94 @@ quarantine = None  # LanceCollection wrapper for quarantine table
 _lance_degraded = False  # kept for backward compat (now means "lance degraded")
 
 
-# ── Arrow Schemas for LanceDB Tables ───────────────────────────────────────
+# ── Arrow Schemas for LanceDB Tables (knowledge, fix_outcomes, etc.) ────────
 
-_KNOWLEDGE_SCHEMA = pa.schema([
-    pa.field("id", pa.string()),
-    pa.field("text", pa.string()),
-    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-    pa.field("context", pa.string()),
-    pa.field("tags", pa.string()),
-    pa.field("timestamp", pa.string()),
-    pa.field("session_time", pa.float64()),
-    pa.field("preview", pa.string()),
-    pa.field("primary_source", pa.string()),
-    pa.field("related_urls", pa.string()),
-    pa.field("source_method", pa.string()),
-    pa.field("tier", pa.int32()),
-    pa.field("retrieval_count", pa.int32()),
-    pa.field("last_retrieved", pa.string()),
-])
+_KNOWLEDGE_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("context", pa.string()),
+        pa.field("tags", pa.string()),
+        pa.field("timestamp", pa.string()),
+        pa.field("session_time", pa.float64()),
+        pa.field("preview", pa.string()),
+        pa.field("primary_source", pa.string()),
+        pa.field("related_urls", pa.string()),
+        pa.field("source_method", pa.string()),
+        pa.field("tier", pa.int32()),
+        pa.field("retrieval_count", pa.int32()),
+        pa.field("last_retrieved", pa.string()),
+        pa.field("source_session_id", pa.string()),
+        pa.field("source_observation_ids", pa.string()),
+        pa.field("cluster_id", pa.string()),
+    ]
+)
 
-_FIX_OUTCOMES_SCHEMA = pa.schema([
-    pa.field("id", pa.string()),
-    pa.field("text", pa.string()),
-    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-    pa.field("error_hash", pa.string()),
-    pa.field("strategy_id", pa.string()),
-    pa.field("chain_id", pa.string()),
-    pa.field("outcome", pa.string()),
-    pa.field("confidence", pa.string()),
-    pa.field("attempts", pa.string()),
-    pa.field("successes", pa.string()),
-    pa.field("timestamp", pa.string()),
-    pa.field("last_outcome_time", pa.string()),
-    pa.field("banned", pa.string()),
-    pa.field("bridged", pa.string()),
-])
+_FIX_OUTCOMES_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("error_hash", pa.string()),
+        pa.field("strategy_id", pa.string()),
+        pa.field("chain_id", pa.string()),
+        pa.field("outcome", pa.string()),
+        pa.field("confidence", pa.string()),
+        pa.field("attempts", pa.string()),
+        pa.field("successes", pa.string()),
+        pa.field("timestamp", pa.string()),
+        pa.field("last_outcome_time", pa.string()),
+        pa.field("banned", pa.string()),
+        pa.field("bridged", pa.string()),
+    ]
+)
 
-_OBSERVATIONS_SCHEMA = pa.schema([
-    pa.field("id", pa.string()),
-    pa.field("text", pa.string()),
-    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-    pa.field("session_id", pa.string()),
-    pa.field("tool_name", pa.string()),
-    pa.field("timestamp", pa.string()),
-    pa.field("session_time", pa.float64()),
-    pa.field("has_error", pa.string()),
-    pa.field("error_pattern", pa.string()),
-    pa.field("preview", pa.string()),
-])
+_OBSERVATIONS_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("session_id", pa.string()),
+        pa.field("tool_name", pa.string()),
+        pa.field("timestamp", pa.string()),
+        pa.field("session_time", pa.float64()),
+        pa.field("has_error", pa.string()),
+        pa.field("error_pattern", pa.string()),
+        pa.field("preview", pa.string()),
+    ]
+)
 
-_WEB_PAGES_SCHEMA = pa.schema([
-    pa.field("id", pa.string()),
-    pa.field("text", pa.string()),
-    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-    pa.field("url", pa.string()),
-    pa.field("title", pa.string()),
-    pa.field("chunk_index", pa.string()),
-    pa.field("total_chunks", pa.string()),
-    pa.field("indexed_at", pa.string()),
-    pa.field("content_hash", pa.string()),
-    pa.field("word_count", pa.string()),
-])
+_WEB_PAGES_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("url", pa.string()),
+        pa.field("title", pa.string()),
+        pa.field("chunk_index", pa.string()),
+        pa.field("total_chunks", pa.string()),
+        pa.field("indexed_at", pa.string()),
+        pa.field("content_hash", pa.string()),
+        pa.field("word_count", pa.string()),
+    ]
+)
 
-_QUARANTINE_SCHEMA = pa.schema([
-    pa.field("id", pa.string()),
-    pa.field("text", pa.string()),
-    pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-    pa.field("quarantine_reason", pa.string()),
-    pa.field("quarantine_pair", pa.string()),
-    pa.field("quarantined_at", pa.string()),
-    pa.field("context", pa.string()),
-    pa.field("tags", pa.string()),
-    pa.field("timestamp", pa.string()),
-    pa.field("session_time", pa.float64()),
-    pa.field("preview", pa.string()),
-])
+_QUARANTINE_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("quarantine_reason", pa.string()),
+        pa.field("quarantine_pair", pa.string()),
+        pa.field("quarantined_at", pa.string()),
+        pa.field("context", pa.string()),
+        pa.field("tags", pa.string()),
+        pa.field("timestamp", pa.string()),
+        pa.field("session_time", pa.float64()),
+        pa.field("preview", pa.string()),
+    ]
+)
 
 _TABLE_SCHEMAS = {
     "knowledge": _KNOWLEDGE_SCHEMA,
@@ -253,7 +297,7 @@ def _lance_retry(fn, retries=3, base_delay=0.1):
             return fn()
         except OSError:
             if attempt < retries - 1:
-                delay = base_delay * (3 ** attempt)
+                delay = base_delay * (3**attempt)
                 time.sleep(delay)
             else:
                 raise
@@ -330,7 +374,12 @@ class LanceCollection:
                 # Fetch by specific IDs
                 escaped = ", ".join(f"'{i}'" for i in ids)
                 sql = f"id IN ({escaped})"
-                rows = self._table.search().where(sql, prefilter=True).limit(len(ids) + 10).to_list()
+                rows = (
+                    self._table.search()
+                    .where(sql, prefilter=True)
+                    .limit(len(ids) + 10)
+                    .to_list()
+                )
                 # Preserve requested order
                 id_order = {i: idx for idx, i in enumerate(ids)}
                 rows.sort(key=lambda r: id_order.get(r["id"], 999999))
@@ -375,10 +424,14 @@ class LanceCollection:
             records.append(record)
 
         try:
-            _lance_retry(lambda: self._table.merge_insert("id")
-                .when_matched_update_all()
-                .when_not_matched_insert_all()
-                .execute(records))
+            _lance_retry(
+                lambda: (
+                    self._table.merge_insert("id")
+                    .when_matched_update_all()
+                    .when_not_matched_insert_all()
+                    .execute(records)
+                )
+            )
         except Exception as e:
             # Fallback: try add (for new tables or if merge_insert fails)
             try:
@@ -397,18 +450,31 @@ class LanceCollection:
         try:
             # Fetch existing records
             escaped = ", ".join(f"'{i}'" for i in ids)
-            existing = self._table.search().where(f"id IN ({escaped})", prefilter=True).limit(len(ids) + 10).to_list()
+            existing = (
+                self._table.search()
+                .where(f"id IN ({escaped})", prefilter=True)
+                .limit(len(ids) + 10)
+                .to_list()
+            )
             existing_map = {r["id"]: r for r in existing}
 
             records = []
             for i, doc_id in enumerate(ids):
                 old = existing_map.get(doc_id, {})
                 meta = metadatas[i] if metadatas and i < len(metadatas) else {}
-                doc = documents[i] if documents and i < len(documents) else old.get("text", "")
+                doc = (
+                    documents[i]
+                    if documents and i < len(documents)
+                    else old.get("text", "")
+                )
                 vector = old.get("vector", [0.0] * _EMBEDDING_DIM)
 
                 # If document changed, re-embed
-                if documents and i < len(documents) and documents[i] != old.get("text", ""):
+                if (
+                    documents
+                    and i < len(documents)
+                    and documents[i] != old.get("text", "")
+                ):
                     vector = _embed_text(documents[i])
 
                 # Merge: old metadata + new metadata
@@ -419,10 +485,14 @@ class LanceCollection:
                 records.append(record)
 
             if records:
-                _lance_retry(lambda: self._table.merge_insert("id")
-                    .when_matched_update_all()
-                    .when_not_matched_insert_all()
-                    .execute(records))
+                _lance_retry(
+                    lambda: (
+                        self._table.merge_insert("id")
+                        .when_matched_update_all()
+                        .when_not_matched_insert_all()
+                        .execute(records)
+                    )
+                )
         except Exception as e:
             print(f"[Lance] update failed for {self._name}: {e}", file=_sys.stderr)
 
@@ -441,7 +511,9 @@ class LanceCollection:
         record = {
             "id": str(doc_id),
             "text": str(text) if text else "",
-            "vector": vector if vector and len(vector) == _EMBEDDING_DIM else [0.0] * _EMBEDDING_DIM,
+            "vector": vector
+            if vector and len(vector) == _EMBEDDING_DIM
+            else [0.0] * _EMBEDDING_DIM,
         }
         # Fill metadata columns from schema
         for col_name in self._meta_cols:
@@ -502,8 +574,14 @@ class LanceCollection:
                     parts.append(" OR ".join(sub_parts))
             elif isinstance(val, dict):
                 # Operator clause: {"$lt": X}, {"$gte": X}, etc.
-                op_map = {"$lt": "<", "$lte": "<=", "$gt": ">", "$gte": ">=",
-                          "$eq": "=", "$ne": "!="}
+                op_map = {
+                    "$lt": "<",
+                    "$lte": "<=",
+                    "$gt": ">",
+                    "$gte": ">=",
+                    "$eq": "=",
+                    "$ne": "!=",
+                }
                 for op, sql_op in op_map.items():
                     if op in val:
                         v = val[op]
@@ -528,15 +606,33 @@ def _init_lancedb():
     Safe to call multiple times — idempotent after first run.
     Uses nomic-ai/nomic-embed-text-v2-moe embedding model (768-dim, 8192 tokens).
     """
-    global _lance_db, collection, fix_outcomes, observations, web_pages, quarantine, _lance_degraded, _embedding_fn
+    global \
+        _lance_db, \
+        collection, \
+        fix_outcomes, \
+        observations, \
+        web_pages, \
+        quarantine, \
+        _lance_degraded, \
+        _embedding_fn
     if _lance_db is not None:
         return
     try:
         # Initialize embedding function (nomic-embed-text-v2-moe, 768-dim, 8192 tokens)
         try:
+            import torch
+
+            torch.set_num_threads(2)
+            torch.set_num_interop_threads(2)
             from sentence_transformers import SentenceTransformer
-            _embedding_fn = SentenceTransformer(_EMBEDDING_MODEL, trust_remote_code=True)
-            print(f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim)", file=_sys.stderr)
+
+            _embedding_fn = SentenceTransformer(
+                _EMBEDDING_MODEL, trust_remote_code=True
+            )
+            print(
+                f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim)",
+                file=_sys.stderr,
+            )
         except Exception as ef_err:
             print(f"[MCP] Embedding model load failed: {ef_err}", file=_sys.stderr)
             _embedding_fn = None
@@ -547,6 +643,27 @@ def _init_lancedb():
             """Open table if exists, create with schema if not."""
             try:
                 tbl = _lance_db.open_table(name)
+                # Migrate: add missing columns from schema
+                existing_cols = set(tbl.schema.names)
+                for field in schema:
+                    if field.name not in existing_cols:
+                        if pa.types.is_float64(field.type):
+                            default = "0.0"
+                        elif pa.types.is_int32(field.type):
+                            default = "0"
+                        else:
+                            default = "''"
+                        try:
+                            tbl.add_columns({field.name: default})
+                            print(
+                                f"[MCP] Migrated {name}: added column {field.name}",
+                                file=_sys.stderr,
+                            )
+                        except Exception as e:
+                            print(
+                                f"[MCP] Migration failed for {name}.{field.name}: {e}",
+                                file=_sys.stderr,
+                            )
             except Exception:
                 tbl = _lance_db.create_table(name, schema=schema)
             return LanceCollection(tbl, schema, name)
@@ -560,8 +677,13 @@ def _init_lancedb():
         print(f"[MCP] LanceDB initialized at {LANCE_DIR}", file=_sys.stderr)
     except Exception as e:
         import traceback
-        print(f"[MCP] LanceDB init failed: {e}\n{traceback.format_exc()}", file=_sys.stderr)
+
+        print(
+            f"[MCP] LanceDB init failed: {e}\n{traceback.format_exc()}",
+            file=_sys.stderr,
+        )
         _lance_degraded = True
+
 
 # Progressive disclosure: preview length for search summaries
 SUMMARY_LENGTH = 120
@@ -571,6 +693,7 @@ OBSERVATION_TTL_DAYS = 30
 MAX_OBSERVATIONS = 5000
 try:
     from shared.ramdisk import get_capture_queue
+
     CAPTURE_QUEUE_FILE = get_capture_queue()
 except ImportError:
     CAPTURE_QUEUE_FILE = os.path.join(os.path.dirname(__file__), ".capture_queue.jsonl")
@@ -582,40 +705,59 @@ DIGEST_TAGS = "type:digest,auto-generated,area:framework"
 MIN_CONTENT_LENGTH = 20
 NOISE_PATTERNS = [
     # Package manager output (anchored to start of content)
-    r"^npm install\b", r"^pip install\b", r"^Successfully installed\b",
-    r"^already satisfied\b", r"^up to date\b", r"^added .* packages?\b",
-    r"^removing .* packages?\b", r"^npm WARN\b", r"^DEPRECATION\b",
-    r"^Collecting \b", r"^Downloading \b", r"^Installing collected\b",
-    r"^running setup\.py\b", r"^Building wheel\b", r"^Using cached\b",
+    r"^npm install\b",
+    r"^pip install\b",
+    r"^Successfully installed\b",
+    r"^already satisfied\b",
+    r"^up to date\b",
+    r"^added .* packages?\b",
+    r"^removing .* packages?\b",
+    r"^npm WARN\b",
+    r"^DEPRECATION\b",
+    r"^Collecting \b",
+    r"^Downloading \b",
+    r"^Installing collected\b",
+    r"^running setup\.py\b",
+    r"^Building wheel\b",
+    r"^Using cached\b",
     # Non-package noise (anchored full-line or start-of-content)
-    r"^(?:OK|Done|Got it|Sure|Understood)[.!]?\s*$",   # empty acks
-    r"^Session \d+ started\s*$",                         # session boilerplate
-    r"^(?:Reading|Writing|Editing) (?:file )?/\S",        # tool echo: requires absolute path
-    r"^Traceback \(most recent call last\):\s*$",        # raw traceback header only
+    r"^(?:OK|Done|Got it|Sure|Understood)[.!]?\s*$",  # empty acks
+    r"^Session \d+ started\s*$",  # session boilerplate
+    r"^(?:Reading|Writing|Editing) (?:file )?/\S",  # tool echo: requires absolute path
+    r"^Traceback \(most recent call last\):\s*$",  # raw traceback header only
     r"^(?:Let me|I'll|I will) (?:check|look|read|search)\b.{0,30}$",  # filler: only short content
 ]
 import re as _re
+
 NOISE_REGEXES = [_re.compile(p, _re.IGNORECASE) for p in NOISE_PATTERNS]
 
 # Near-dedup: cosine distance thresholds (tuned for nomic-embed-text-v2-moe 768-dim)
-DEDUP_THRESHOLD = 0.12        # distance < 0.12 = hard skip (was 0.10 for 384-dim)
-DEDUP_SOFT_THRESHOLD = 0.20   # 0.12-0.20 = save but tag as possible-dupe (was 0.15)
-FIX_DEDUP_THRESHOLD = 0.05    # Stricter threshold for type:fix memories (was 0.03)
-_FIX_DEDUP_EXEMPT = False      # DORMANT — flip True to skip dedup for all type:fix
+DEDUP_THRESHOLD = 0.12  # distance < 0.12 = hard skip (was 0.10 for 384-dim)
+DEDUP_SOFT_THRESHOLD = 0.20  # 0.12-0.20 = save but tag as possible-dupe (was 0.15)
+FIX_DEDUP_THRESHOLD = 0.05  # Stricter threshold for type:fix memories (was 0.03)
+_FIX_DEDUP_EXEMPT = False  # DORMANT — flip True to skip dedup for all type:fix
 
 # Citation URL extraction
 MAX_CITATION_URLS = 4  # 1 primary + 3 related
 MAX_URL_LENGTH = 500
 DOMAIN_AUTHORITY = {
-    "high": {"github.com", "docs.openzeppelin.com", "eips.ethereum.org",
-             "developer.mozilla.org", "docs.soliditylang.org", "react.dev",
-             "developer.x.com", "docs.python.org", "stackoverflow.com"},
+    "high": {
+        "github.com",
+        "docs.openzeppelin.com",
+        "eips.ethereum.org",
+        "developer.mozilla.org",
+        "docs.soliditylang.org",
+        "react.dev",
+        "developer.x.com",
+        "docs.python.org",
+        "stackoverflow.com",
+    },
     "medium": {"medium.com", "dev.to", "hackmd.io", "mirror.xyz"},
     "low": {"localhost", "127.0.0.1", "example.com", "0.0.0.0"},
 }
 
 # Observation promotion settings
-MAX_PROMOTIONS_PER_CYCLE = 10
+MAX_PROMOTIONS_PER_CYCLE = 50
 PROMOTION_TAGS = "type:auto-promoted,area:framework"
 
 
@@ -644,12 +786,35 @@ def generate_id(content: str) -> str:
 
 _TIER3_TAGS = {"type:auto-captured", "priority:low"}
 
-_DECISION_KW = ("decision", "chose", "switched to", "instead of", "trade-off",
-                "went with", "picked", "selected approach", "design:")
-_HARDWON_KW = ("root cause", "finally fixed", "after debugging", "tracked down",
-               "hard to find", "subtle bug", "race condition")
-_IMPACT_KW = ("production", "shipped", "deployed", "breaking", "outage",
-              "user-facing", "live system")
+_DECISION_KW = (
+    "decision",
+    "chose",
+    "switched to",
+    "instead of",
+    "trade-off",
+    "went with",
+    "picked",
+    "selected approach",
+    "design:",
+)
+_HARDWON_KW = (
+    "root cause",
+    "finally fixed",
+    "after debugging",
+    "tracked down",
+    "hard to find",
+    "subtle bug",
+    "race condition",
+)
+_IMPACT_KW = (
+    "production",
+    "shipped",
+    "deployed",
+    "breaking",
+    "outage",
+    "user-facing",
+    "live system",
+)
 _HUMAN_TAGS = {"type:correction", "type:preference"}
 _DECISION_TAGS = {"type:decision"}
 _FIX_TAGS = {"type:fix"}
@@ -658,7 +823,9 @@ _RECURRENCE_TAGS = {"type:learning", "outcome:success"}
 
 def _salience_score(content: str, tags: str) -> float:
     """Calculate salience score (0.0-1.0) from content and tags."""
-    tag_set = {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
+    tag_set = (
+        {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
+    )
     lower = content.lower()
     score = 0.0
 
@@ -700,7 +867,9 @@ def _classify_tier(content: str, tags: str) -> int:
     assign a tier before upsert.  Uses salience scoring with 6 weighted
     signals inspired by thermal-memory.
     """
-    tag_set = {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
+    tag_set = (
+        {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
+    )
 
     # Tier 3 fast path — low-value indicators
     if tag_set & _TIER3_TAGS:
@@ -713,8 +882,13 @@ def _classify_tier(content: str, tags: str) -> int:
         return 3
 
     # High-signal tags get a floor — trust explicit tagging
-    _HIGH_SIGNAL_TAGS = {"type:fix", "type:decision", "type:correction",
-                         "type:preference", "priority:critical"}
+    _HIGH_SIGNAL_TAGS = {
+        "type:fix",
+        "type:decision",
+        "type:correction",
+        "type:preference",
+        "priority:critical",
+    }
     if tag_set & _HIGH_SIGNAL_TAGS:
         return 1
 
@@ -731,16 +905,24 @@ def _classify_tier(content: str, tags: str) -> int:
 
 _BARE_TO_DIMENSION = {
     # type dimension
-    "fix": "type:fix", "error": "type:error", "learning": "type:learning",
-    "feature": "type:feature", "feature-request": "type:feature-request",
-    "correction": "type:correction", "decision": "type:decision",
-    "auto-captured": "type:auto-captured", "preference": "type:preference",
+    "fix": "type:fix",
+    "error": "type:error",
+    "learning": "type:learning",
+    "feature": "type:feature",
+    "feature-request": "type:feature-request",
+    "correction": "type:correction",
+    "decision": "type:decision",
+    "auto-captured": "type:auto-captured",
+    "preference": "type:preference",
     "audit": "type:audit",
     # priority dimension
-    "critical": "priority:critical", "high": "priority:high",
-    "medium": "priority:medium", "low": "priority:low",
+    "critical": "priority:critical",
+    "high": "priority:high",
+    "medium": "priority:medium",
+    "low": "priority:low",
     # outcome dimension
-    "success": "outcome:success", "failed": "outcome:failed",
+    "success": "outcome:success",
+    "failed": "outcome:failed",
 }
 
 
@@ -788,7 +970,11 @@ def _build_project_prefix():
     if not _SERVER_PROJECT:
         return ""
     eff_dir = _SERVER_SUBPROJECT_DIR or _SERVER_PROJECT_DIR
-    eff_name = f"{_SERVER_PROJECT}/{_SERVER_SUBPROJECT}" if _SERVER_SUBPROJECT else _SERVER_PROJECT
+    eff_name = (
+        f"{_SERVER_PROJECT}/{_SERVER_SUBPROJECT}"
+        if _SERVER_SUBPROJECT
+        else _SERVER_PROJECT
+    )
     session_num = "?"
     if eff_dir:
         state_file = os.path.join(eff_dir, ".claude-state.json")
@@ -818,8 +1004,16 @@ def _backfill_tiers():
     return 0
 
 
-_EMBEDDING_MIGRATION_MARKER = os.path.join(os.path.dirname(__file__), ".embedding_migration_done")
-_COLLECTION_NAMES = ["knowledge", "fix_outcomes", "observations", "web_pages", "quarantine"]
+_EMBEDDING_MIGRATION_MARKER = os.path.join(
+    os.path.dirname(__file__), ".embedding_migration_done"
+)
+_COLLECTION_NAMES = [
+    "knowledge",
+    "fix_outcomes",
+    "observations",
+    "web_pages",
+    "quarantine",
+]
 
 
 def _migrate_embeddings():
@@ -835,8 +1029,8 @@ def _migrate_embeddings():
 from urllib.parse import urlparse as _urlparse
 
 # Regex for [source: URL] and [ref: URL] markers
-_SOURCE_MARKER_RE = _re.compile(r'\[source:\s*(https?://[^\]\s]+)\s*\]', _re.IGNORECASE)
-_REF_MARKER_RE = _re.compile(r'\[ref:\s*(https?://[^\]\s]+)\s*\]', _re.IGNORECASE)
+_SOURCE_MARKER_RE = _re.compile(r"\[source:\s*(https?://[^\]\s]+)\s*\]", _re.IGNORECASE)
+_REF_MARKER_RE = _re.compile(r"\[ref:\s*(https?://[^\]\s]+)\s*\]", _re.IGNORECASE)
 # General URL regex for auto-extraction
 _URL_RE = _re.compile(r'https?://[^\s<>\'")\]]+')
 
@@ -846,12 +1040,16 @@ def _validate_url(url_str: str) -> str:
     try:
         url_str = url_str.strip()
         # Strip trailing punctuation that often clings to URLs in text
-        while url_str and url_str[-1] in '.,;:!?)':
+        while url_str and url_str[-1] in ".,;:!?)":
             url_str = url_str[:-1]
         if len(url_str) > MAX_URL_LENGTH:
             return ""
         parsed = _urlparse(url_str)
-        if parsed.scheme in ("http", "https") and parsed.netloc and "." in parsed.netloc:
+        if (
+            parsed.scheme in ("http", "https")
+            and parsed.netloc
+            and "." in parsed.netloc
+        ):
             return url_str
         return ""
     except Exception:
@@ -951,7 +1149,7 @@ def _extract_citations(content: str, context: str) -> dict:
             if u not in seen and u != primary:
                 seen.add(u)
                 deduped.append(u)
-        related = deduped[:MAX_CITATION_URLS - 1]
+        related = deduped[: MAX_CITATION_URLS - 1]
 
         return {
             "primary_source": primary,
@@ -993,7 +1191,9 @@ class TagIndex:
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_tags_mid ON tags(memory_id)")
-        c.execute("CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)")
+        c.execute(
+            "CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)"
+        )
         c.commit()
 
     def is_synced(self, lance_count):
@@ -1046,7 +1246,6 @@ class TagIndex:
             self._update_sync_count(len(ids))
         return len(ids)
 
-
     def add_tags(self, memory_id, tags_str):
         """Add/update tags for a single memory (called on remember_this)."""
         if not tags_str:
@@ -1081,7 +1280,9 @@ class TagIndex:
                     WHERE tag IN ({placeholders})
                     GROUP BY memory_id HAVING COUNT(DISTINCT tag) = ?
                     LIMIT ?"""
-                rows = self.conn.execute(sql, (*tags_list, len(tags_list), top_k)).fetchall()
+                rows = self.conn.execute(
+                    sql, (*tags_list, len(tags_list), top_k)
+                ).fetchall()
             else:
                 sql = f"""SELECT DISTINCT memory_id FROM tags
                     WHERE tag IN ({placeholders})
@@ -1132,7 +1333,9 @@ def _detect_query_mode(query, routing="default"):
             return "keyword"
 
     # Semantic: questions or long natural language
-    if ql.endswith("?") or ql.startswith(("how ", "why ", "what ", "when ", "where ", "which ")):
+    if ql.endswith("?") or ql.startswith(
+        ("how ", "why ", "what ", "when ", "where ", "which ")
+    ):
         return "semantic"
     if len(words) >= 5:
         return "semantic"
@@ -1223,6 +1426,7 @@ def _apply_access_boost(results):
     if not results:
         return results
     import math
+
     for entry in results:
         raw = entry.get("relevance", 0) or 0
         rc = int(entry.get("retrieval_count", 0))
@@ -1253,9 +1457,86 @@ def _rerank_keyword_overlap(results, query, boost_weight=0.05):
         text = (entry.get("preview", "") + " " + entry.get("tags", "")).lower()
         matched = sum(1 for t in terms if t in text)
         if matched > 0:
-            entry["relevance"] = entry.get("relevance", 0) + boost_weight * (matched / total)
+            entry["relevance"] = entry.get("relevance", 0) + boost_weight * (
+                matched / total
+            )
     results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
     return results
+
+
+def _rerank_composite(results, query, top_k, knowledge_graph=None):
+    """Composite reranker: tag overlap + graph proximity + tier + access count.
+
+    Runs after existing boosts as a final re-sort pass. Fail-open.
+    """
+    if not results or len(results) <= 1:
+        return results
+    try:
+        import math
+
+        query_tags = set()
+        query_lower = query.lower()
+        # Extract implicit tags from query words
+        for r in results:
+            for tag in (r.get("tags", "") or "").split(","):
+                tag = tag.strip().lower()
+                if tag and any(w in tag for w in query_lower.split() if len(w) > 3):
+                    query_tags.add(tag)
+
+        for entry in results:
+            raw = entry.get("relevance", 0) or 0
+
+            # Tag overlap with query (0-0.08)
+            entry_tags = set(
+                t.strip().lower()
+                for t in (entry.get("tags", "") or "").split(",")
+                if t.strip()
+            )
+            tag_overlap = (
+                len(entry_tags & query_tags) / max(len(query_tags), 1)
+                if query_tags
+                else 0
+            )
+            tag_bonus = min(0.08, tag_overlap * 0.08)
+
+            # Tier bonus (0-0.05)
+            tier = entry.get("tier", 2)
+            if not isinstance(tier, int):
+                try:
+                    tier = int(tier)
+                except (ValueError, TypeError):
+                    tier = 2
+            tier_bonus = {1: 0.05, 2: 0.0, 3: -0.02}.get(tier, 0.0)
+
+            # Access frequency (0-0.03): log-scaled
+            rc = int(entry.get("retrieval_count", 0) or 0)
+            access_bonus = min(0.03, 0.008 * math.log1p(rc)) if rc > 0 else 0.0
+
+            # Graph proximity (0-0.06): connected to other high-scoring results
+            graph_bonus = 0.0
+            if knowledge_graph and entry.get("id"):
+                try:
+                    neighbors = knowledge_graph.get_neighbors(entry["id"])
+                    top_ids = {
+                        r.get("id")
+                        for r in results[:5]
+                        if r.get("id") != entry.get("id")
+                    }
+                    connected = len(set(neighbors) & top_ids) if neighbors else 0
+                    graph_bonus = min(0.06, connected * 0.03)
+                except Exception:
+                    pass
+
+            entry["_composite_score"] = (
+                raw + tag_bonus + tier_bonus + access_bonus + graph_bonus
+            )
+
+        results.sort(key=lambda x: x.get("_composite_score", 0), reverse=True)
+        for entry in results:
+            entry.pop("_composite_score", None)
+    except Exception:
+        pass  # Reranker failure = return original order
+    return results[:top_k]
 
 
 def _merge_results(fts_results, lance_summaries, top_k=15):
@@ -1266,7 +1547,7 @@ def _merge_results(fts_results, lance_summaries, top_k=15):
     k=60 is the standard RRF constant (dampens rank position differences).
     """
     k = 60  # RRF smoothing constant
-    scores = {}   # memory_id -> rrf_score
+    scores = {}  # memory_id -> rrf_score
     entries = {}  # memory_id -> best entry dict
     sources = {}  # memory_id -> set of source names
 
@@ -1307,10 +1588,83 @@ tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
 _lance_fts_ready = False  # True once LanceDB FTS index is built
-_knowledge_graph = None   # KnowledgeGraph instance (initialized lazily)
-_ltp_tracker = None       # LTPTracker instance (initialized lazily)
+_knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
+_ltp_tracker = None  # LTPTracker instance (initialized lazily)
 _adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
-_last_search_ids = []     # IDs from last search_knowledge call (for implicit feedback)
+_cluster_store = None  # _ClusterStore instance (initialized lazily)
+CLUSTER_THRESHOLD = 0.7  # cosine similarity threshold for cluster assignment
+_last_search_ids = []  # IDs from last search_knowledge call (for implicit feedback)
+
+# --- Counterfactual retrieval client (lazy init) ---
+_cf_client = None
+_cf_client_init = False
+
+
+def _get_cf_client():
+    """Lazy-init Anthropic client for counterfactual retrieval. Returns None on failure."""
+    global _cf_client, _cf_client_init
+    if _cf_client_init:
+        return _cf_client
+    _cf_client_init = True
+    try:
+        import anthropic
+
+        _cf_client = anthropic.Anthropic(timeout=5.0)
+        return _cf_client
+    except Exception:
+        return None
+
+
+_CF_SYSTEM_PROMPT = (
+    "You generate alternative search queries for a memory retrieval system. "
+    "Given the original query and initial results, produce ONE short search query "
+    "(under 15 words) that would find related but DIFFERENT memories — "
+    "focus on causes, consequences, or prerequisites the initial results miss. "
+    "Reply with ONLY the query, nothing else."
+)
+
+_CF_MODEL_MAP = {
+    "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6-20250514",
+    "opus": "claude-opus-4-6-20250514",
+}
+
+
+def _generate_counterfactual_query(original_query, initial_results, model_key="haiku"):
+    """Ask LLM for an alternative query based on initial results. Returns str or None."""
+    client = _get_cf_client()
+    if not client:
+        return None
+    try:
+        # Build compact context from top-5 results
+        context_lines = []
+        for r in initial_results[:5]:
+            preview = r.get("preview", "")[:120]
+            rel = r.get("relevance", 0)
+            context_lines.append(f"[{rel:.2f}] {preview}")
+        context_block = "\n".join(context_lines)
+
+        user_msg = (
+            f"Original query: {original_query}\n\nInitial results:\n{context_block}"
+        )
+
+        model_id = _CF_MODEL_MAP.get(model_key, _CF_MODEL_MAP["haiku"])
+        response = client.messages.create(
+            model=model_id,
+            max_tokens=80,
+            temperature=0.7,
+            system=_CF_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        cf_query = response.content[0].text.strip()
+        # Sanity: reject empty or absurdly long responses
+        if not cf_query or len(cf_query) > 200:
+            return None
+        return cf_query
+    except Exception:
+        return None  # Fail-open: any error → skip counterfactual
+
+
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
@@ -1346,21 +1700,21 @@ def _generate_fuzzy_variants(term: str, max_distance: int = 1) -> list:
         return [term]
 
     variants = {term}
-    alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789_'
+    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_"
 
     # Deletions (remove one char)
     for i in range(len(term)):
-        variants.add(term[:i] + term[i+1:])
+        variants.add(term[:i] + term[i + 1 :])
 
     # Substitutions (replace one char)
     for i in range(len(term)):
         for c in alphabet:
             if c != term[i]:
-                variants.add(term[:i] + c + term[i+1:])
+                variants.add(term[:i] + c + term[i + 1 :])
 
     # Transpositions (swap adjacent chars)
     for i in range(len(term) - 1):
-        variants.add(term[:i] + term[i+1] + term[i] + term[i+2:])
+        variants.add(term[:i] + term[i + 1] + term[i] + term[i + 2 :])
 
     return list(variants)
 
@@ -1399,7 +1753,11 @@ def _fuzzy_keyword_search(query: str, table_name: str = "knowledge", top_k: int 
     expanded_query = " OR ".join(set(all_variants))
 
     try:
-        rows = tbl_coll._table.search(expanded_query, query_type="fts").limit(top_k * 2).to_list()
+        rows = (
+            tbl_coll._table.search(expanded_query, query_type="fts")
+            .limit(top_k * 2)
+            .to_list()
+        )
         if not rows:
             return []
 
@@ -1412,13 +1770,15 @@ def _fuzzy_keyword_search(query: str, table_name: str = "knowledge", top_k: int 
                 if term in text_lower:
                     boost = 2.0
                     break
-            scored_results.append({
-                "id": str(row.get("id", "")),
-                "text": str(row.get("text", ""))[:500],
-                "relevance": float(row.get("_score", 0.5)) * boost,
-                "tags": str(row.get("tags", "")),
-                "match_type": "exact" if boost > 1.0 else "fuzzy",
-            })
+            scored_results.append(
+                {
+                    "id": str(row.get("id", "")),
+                    "text": str(row.get("text", ""))[:500],
+                    "relevance": float(row.get("_score", 0.5)) * boost,
+                    "tags": str(row.get("tags", "")),
+                    "match_type": "exact" if boost > 1.0 else "fuzzy",
+                }
+            )
 
         scored_results.sort(key=lambda x: x["relevance"], reverse=True)
         return scored_results[:top_k]
@@ -1453,6 +1813,183 @@ def _tag_ids_to_summaries(memory_ids, collection_ref=None):
         return []
 
 
+class _ClusterStore:
+    """SQLite-backed centroid store for incremental clustering.
+
+    Stores cluster centroids as normalized float32 numpy arrays (768-dim).
+    Provides fast nearest-centroid lookup via in-memory cache.
+    """
+
+    def __init__(self, db_path: str):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        self._conn = sqlite3.connect(db_path)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._create_tables()
+        self._cache = None  # List of (cluster_id, centroid_np, member_count) or None
+
+    def _create_tables(self):
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS clusters (
+                cluster_id TEXT PRIMARY KEY,
+                centroid BLOB NOT NULL,
+                member_count INTEGER DEFAULT 0,
+                label TEXT DEFAULT '',
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+        self._conn.commit()
+
+    def _load_cache(self):
+        import numpy as np
+
+        rows = self._conn.execute(
+            "SELECT cluster_id, centroid, member_count FROM clusters"
+        ).fetchall()
+        self._cache = [
+            (cid, np.frombuffer(blob, dtype=np.float32).copy(), count)
+            for cid, blob, count in rows
+        ]
+
+    def assign(self, vec_list: list, content: str = "") -> str:
+        """Assign a vector to the nearest cluster or create a new one.
+
+        Args:
+            vec_list: 768-dim embedding as list of floats
+            content: original text (used for label generation)
+
+        Returns cluster_id string.
+        """
+        import numpy as np
+
+        vec = np.array(vec_list, dtype=np.float32)
+        norm = np.linalg.norm(vec)
+        if norm < 1e-10:
+            return ""
+        vec_norm = vec / norm
+
+        if self._cache is None:
+            self._load_cache()
+
+        best_id = None
+        best_sim = -1.0
+        best_idx = -1
+
+        for i, (cid, c_vec, _count) in enumerate(self._cache):
+            sim = float(np.dot(vec_norm, c_vec))
+            if sim > best_sim:
+                best_sim = sim
+                best_id = cid
+                best_idx = i
+
+        now = datetime.now().isoformat()
+
+        if best_id is not None and best_sim >= CLUSTER_THRESHOLD:
+            # Join existing cluster, update centroid via running mean
+            cid, c_vec, count = self._cache[best_idx]
+            new_count = count + 1
+            new_centroid = (c_vec * count + vec_norm) / new_count
+            c_norm = np.linalg.norm(new_centroid)
+            if c_norm > 1e-10:
+                new_centroid = new_centroid / c_norm
+
+            label_update = ""
+            if new_count % 10 == 0:
+                label_update = _cluster_label(content)
+
+            self._conn.execute(
+                "UPDATE clusters SET centroid=?, member_count=?, updated_at=? WHERE cluster_id=?",
+                (new_centroid.astype(np.float32).tobytes(), new_count, now, best_id),
+            )
+            if label_update:
+                self._conn.execute(
+                    "UPDATE clusters SET label=? WHERE cluster_id=?",
+                    (label_update, best_id),
+                )
+            self._conn.commit()
+            self._cache[best_idx] = (cid, new_centroid, new_count)
+            return best_id
+        else:
+            # Create new cluster
+            new_id = f"cl_{fnv1a_hash(content)}"
+            label = _cluster_label(content)
+            cursor = self._conn.execute(
+                "INSERT OR IGNORE INTO clusters (cluster_id, centroid, member_count, label, created_at, updated_at) "
+                "VALUES (?, ?, 1, ?, ?, ?)",
+                (new_id, vec_norm.astype(np.float32).tobytes(), label, now, now),
+            )
+            self._conn.commit()
+            if self._cache is not None and cursor.rowcount > 0:
+                self._cache.append((new_id, vec_norm, 1))
+            return new_id
+
+    def close(self):
+        self._conn.close()
+
+
+def _cluster_label(content: str) -> str:
+    """Extract top-3 meaningful words from content for a cluster label."""
+    import re as _re_cl
+
+    _stop = {
+        "this",
+        "that",
+        "with",
+        "from",
+        "have",
+        "been",
+        "were",
+        "will",
+        "would",
+        "could",
+        "should",
+        "their",
+        "there",
+        "they",
+        "which",
+        "when",
+        "what",
+        "where",
+        "than",
+        "then",
+        "also",
+        "about",
+        "into",
+        "more",
+        "some",
+        "such",
+        "only",
+        "other",
+        "each",
+        "just",
+        "like",
+        "over",
+        "very",
+        "after",
+        "before",
+        "between",
+        "under",
+        "again",
+        "does",
+        "done",
+        "make",
+        "made",
+        "most",
+        "much",
+        "must",
+        "need",
+        "none",
+        "true",
+        "false",
+    }
+    from collections import Counter
+
+    words = _re_cl.findall(r"[a-zA-Z_]{4,}", content.lower())
+    counts = Counter(w for w in words if w not in _stop)
+    top = [w for w, _ in counts.most_common(3)]
+    return " / ".join(top) if top else "misc"
+
+
 def _ensure_initialized():
     """Run one-time initialization (LanceDB + TagIndex + LanceDB FTS + Knowledge Graph + LTP).
 
@@ -1460,12 +1997,14 @@ def _ensure_initialized():
     Safe to call multiple times — idempotent after first run.
     """
     global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
-    global _knowledge_graph, _ltp_tracker, _adaptive_weights
+    global _knowledge_graph, _ltp_tracker, _adaptive_weights, _cluster_store
     if _initialized:
         return
     _init_lancedb()
     if collection is None:
-        print("[MCP] LanceDB unavailable — starting in degraded mode.", file=_sys.stderr)
+        print(
+            "[MCP] LanceDB unavailable — starting in degraded mode.", file=_sys.stderr
+        )
         _initialized = True
         return
 
@@ -1479,12 +2018,14 @@ def _ensure_initialized():
     # Initialize knowledge graph and LTP tracker (fail-open)
     try:
         from shared.knowledge_graph import KnowledgeGraph
+
         _kg_path = os.path.join(MEMORY_DIR, "knowledge_graph.db")
         _knowledge_graph = KnowledgeGraph(_kg_path)
     except Exception:
         _knowledge_graph = None
     try:
         from shared.ltp_tracker import LTPTracker
+
         _ltp_tracker = LTPTracker()
     except Exception:
         _ltp_tracker = None
@@ -1492,29 +2033,44 @@ def _ensure_initialized():
     # Initialize adaptive weights (fail-open)
     try:
         from shared.memory_replay import AdaptiveWeights
+
         _adaptive_weights = AdaptiveWeights()
     except Exception:
         _adaptive_weights = None
+
+    # Initialize incremental cluster store (fail-open)
+    try:
+        global _cluster_store
+        _clusters_path = os.path.join(MEMORY_DIR, "clusters.db")
+        _cluster_store = _ClusterStore(_clusters_path)
+    except Exception:
+        _cluster_store = None
 
     # Session-start memory replay cycle (fail-open)
     try:
         if _knowledge_graph and _ltp_tracker and collection:
             from shared.memory_replay import run_replay_cycle
+
             _cutoff = time.time() - 30 * 86400  # 30 days
-            _recent_rows = collection._table.search().where(
-                f"session_time > {_cutoff}", prefilter=True
-            ).limit(50).to_list()
+            _recent_rows = (
+                collection._table.search()
+                .where(f"session_time > {_cutoff}", prefilter=True)
+                .limit(50)
+                .to_list()
+            )
             if _recent_rows:
                 _replay_mems = []
                 for _r in _recent_rows:
-                    _replay_mems.append({
-                        "id": _r.get("id", ""),
-                        "tier": _r.get("tier", 2),
-                        "retrieval_count": _r.get("retrieval_count", 0),
-                        "session_time": _r.get("session_time", 0),
-                        "timestamp": _r.get("timestamp", ""),
-                        "tags": _r.get("tags", ""),
-                    })
+                    _replay_mems.append(
+                        {
+                            "id": _r.get("id", ""),
+                            "tier": _r.get("tier", 2),
+                            "retrieval_count": _r.get("retrieval_count", 0),
+                            "session_time": _r.get("session_time", 0),
+                            "timestamp": _r.get("timestamp", ""),
+                            "tags": _r.get("tags", ""),
+                        }
+                    )
                 _replay_stats = run_replay_cycle(
                     _replay_mems,
                     ltp_tracker=_ltp_tracker,
@@ -1536,12 +2092,14 @@ def _ensure_initialized():
     _tag_count = tag_index.build_from_lance(collection)
     _initialized = True
 
+
 # ──────────────────────────────────────────────────
 # Tag Co-occurrence Matrix (lazy-built, cached)
 # ──────────────────────────────────────────────────
 _tag_cooccurrence: dict[str, dict[str, int]] = {}  # tag_a -> {tag_b: count}
 _tag_counts: dict[str, int] = {}  # tag -> total memories with this tag
 _tag_cooccurrence_dirty: bool = True  # rebuild on first use
+_tag_total_memories: int = 0  # total tagged memories (for PMI denominator)
 
 
 def _build_tag_cooccurrence():
@@ -1550,7 +2108,7 @@ def _build_tag_cooccurrence():
     Scans all memory tags, counts how often tag pairs appear together.
     Called lazily on first search or explicitly via rebuild_tag_index().
     """
-    global _tag_cooccurrence, _tag_counts, _tag_cooccurrence_dirty
+    global _tag_cooccurrence, _tag_counts, _tag_cooccurrence_dirty, _tag_total_memories
 
     conn = tag_index.conn
     rows = conn.execute("SELECT memory_id, tag FROM tags").fetchall()
@@ -1574,6 +2132,7 @@ def _build_tag_cooccurrence():
 
     _tag_cooccurrence = cooccur
     _tag_counts = tag_totals
+    _tag_total_memories = len(mem_tags)
     _tag_cooccurrence_dirty = False
 
 
@@ -1592,30 +2151,36 @@ def _get_expanded_tags(query: str) -> list[str]:
     query_lower = query.lower().strip()
     query_tokens = set(query_lower.split())
 
-    # Match query against known tags (substring or token match)
+    # Match query against known tags (exact or token match, min 4 chars)
     matched_tags = []
     for tag in _tag_counts:
         tag_lower = tag.lower()
-        # Exact match, substring, or token overlap
-        if tag_lower == query_lower or tag_lower in query_lower or tag_lower in query_tokens:
+        if len(tag_lower) < 4:
+            continue
+        if tag_lower == query_lower or tag_lower in query_tokens:
             matched_tags.append(tag)
 
     if not matched_tags:
         return []
 
-    # Find co-occurring tags above 40% threshold
+    # Find co-occurring tags with PMI > 1.0 (2x more likely than chance)
     expanded = set()
     matched_set = set(matched_tags)
+    N = _tag_total_memories
     for tag in matched_tags:
         if tag not in _tag_cooccurrence:
             continue
-        tag_total = _tag_counts.get(tag, 1)
-        for co_tag, count in _tag_cooccurrence[tag].items():
-            rate = count / tag_total
-            if rate > 0.4 and co_tag not in matched_set:
-                expanded.add(co_tag)
+        count_x = _tag_counts.get(tag, 1)
+        for co_tag, co_count in _tag_cooccurrence[tag].items():
+            if co_tag in matched_set:
+                continue
+            count_y = _tag_counts.get(co_tag, 1)
+            if N > 0 and count_x > 0 and count_y > 0:
+                tag_pmi = math.log2((co_count * N) / (count_x * count_y))
+                if tag_pmi > 1.0:
+                    expanded.add(co_tag)
 
-    return list(expanded)
+    return list(expanded)[:15]
 
 
 def format_results(results) -> list[dict]:
@@ -1708,6 +2273,12 @@ def format_summaries(results) -> list[dict]:
             entry["retrieval_count"] = int(meta.get("retrieval_count", 0))
             if meta.get("primary_source"):
                 entry["url"] = meta["primary_source"]
+            if meta.get("source_session_id"):
+                entry["source_session_id"] = meta["source_session_id"]
+            if meta.get("source_observation_ids"):
+                entry["source_observation_ids"] = meta["source_observation_ids"]
+            if meta.get("cluster_id"):
+                entry["cluster_id"] = meta["cluster_id"]
         formatted.append(entry)
 
         # Queue retrieval tracking update
@@ -1721,7 +2292,9 @@ def format_summaries(results) -> list[dict]:
     # Batch update retrieval counts (fire-and-forget)
     if retrieval_update_ids:
         try:
-            collection.update(ids=retrieval_update_ids, metadatas=retrieval_update_metas)
+            collection.update(
+                ids=retrieval_update_ids, metadatas=retrieval_update_metas
+            )
         except Exception:
             pass  # Tracking failure must not break search
 
@@ -1783,9 +2356,9 @@ def _flush_capture_queue():
             batch_size = 100
             for i in range(0, len(docs), batch_size):
                 observations.upsert(
-                    documents=docs[i:i + batch_size],
-                    metadatas=metas[i:i + batch_size],
-                    ids=ids[i:i + batch_size],
+                    documents=docs[i : i + batch_size],
+                    metadatas=metas[i : i + batch_size],
+                    ids=ids[i : i + batch_size],
                 )
 
         # Run compaction after flush
@@ -1868,11 +2441,17 @@ def _compact_observations():
             ]
             if bash_total > 0:
                 rate = round(bash_errors / bash_total * 100, 1)
-                digest_parts.append(f"Bash error rate: {rate}% ({bash_errors}/{bash_total})")
+                digest_parts.append(
+                    f"Bash error rate: {rate}% ({bash_errors}/{bash_total})"
+                )
             if top_errors:
-                digest_parts.append(f"Top errors: {', '.join(f'{e}:{c}' for e, c in top_errors)}")
+                digest_parts.append(
+                    f"Top errors: {', '.join(f'{e}:{c}' for e, c in top_errors)}"
+                )
             if top_files:
-                digest_parts.append(f"Top files: {', '.join(f'{f}:{c}' for f, c in top_files[:5])}")
+                digest_parts.append(
+                    f"Top files: {', '.join(f'{f}:{c}' for f, c in top_files[:5])}"
+                )
 
             digest_text = "\n".join(digest_parts)
 
@@ -1880,19 +2459,21 @@ def _compact_observations():
             digest_id = hashlib.sha256(digest_text.encode()).hexdigest()[:16]
             collection.upsert(
                 documents=[digest_text],
-                metadatas=[{
-                    "context": "auto-capture compaction digest",
-                    "tags": DIGEST_TAGS,
-                    "timestamp": datetime.now().isoformat(),
-                    "session_time": time.time(),
-                }],
+                metadatas=[
+                    {
+                        "context": "auto-capture compaction digest",
+                        "tags": DIGEST_TAGS,
+                        "timestamp": datetime.now().isoformat(),
+                        "session_time": time.time(),
+                    }
+                ],
                 ids=[digest_id],
             )
 
             # Promote high-value expired observations to curated knowledge (scoped criteria)
             promoted = 0
 
-            def _promote_observation(doc, meta, criterion_tag):
+            def _promote_observation(doc, meta, criterion_tag, obs_id=""):
                 """Upsert a promoted observation into knowledge collection."""
                 nonlocal promoted
                 if promoted >= MAX_PROMOTIONS_PER_CYCLE:
@@ -1903,14 +2484,18 @@ def _compact_observations():
                     promo_preview += "..."
                 collection.upsert(
                     documents=[doc],
-                    metadatas=[{
-                        "context": "auto-promoted from observation",
-                        "tags": f"{PROMOTION_TAGS},{criterion_tag}",
-                        "timestamp": datetime.now().isoformat(),
-                        "session_time": time.time(),
-                        "preview": promo_preview,
-                        "original_error_pattern": meta.get("error_pattern", ""),
-                    }],
+                    metadatas=[
+                        {
+                            "context": "auto-promoted from observation",
+                            "tags": f"{PROMOTION_TAGS},{criterion_tag}",
+                            "timestamp": datetime.now().isoformat(),
+                            "session_time": time.time(),
+                            "preview": promo_preview,
+                            "original_error_pattern": meta.get("error_pattern", ""),
+                            "source_session_id": meta.get("session_id", ""),
+                            "source_observation_ids": obs_id,
+                        }
+                    ],
                     ids=[promo_id],
                 )
                 promoted += 1
@@ -1928,7 +2513,9 @@ def _compact_observations():
                 else:
                     # Track successful tool uses per session
                     if sid:
-                        session_success_tools.setdefault(sid, set()).add(meta.get("tool_name", ""))
+                        session_success_tools.setdefault(sid, set()).add(
+                            meta.get("tool_name", "")
+                        )
 
             for idx, doc, meta in session_errors:
                 if promoted >= MAX_PROMOTIONS_PER_CYCLE:
@@ -1938,7 +2525,12 @@ def _compact_observations():
                 # Only promote if no subsequent success for same tool in same session
                 if sid and tool and tool in session_success_tools.get(sid, set()):
                     continue  # Tool succeeded later — skip
-                _promote_observation(doc, meta, "criterion:standalone-error")
+                _promote_observation(
+                    doc,
+                    meta,
+                    "criterion:standalone-error",
+                    exp_ids[idx] if idx < len(exp_ids) else "",
+                )
 
             # Criterion 2: Cross-session file churn
             file_sessions = {}  # file_path -> set of session_ids
@@ -1957,7 +2549,9 @@ def _compact_observations():
                 if promoted >= MAX_PROMOTIONS_PER_CYCLE:
                     break
                 if len(sids) >= 5:
-                    churn_doc = f"High-churn file: {fp} (edited in {len(sids)} sessions)"
+                    churn_doc = (
+                        f"High-churn file: {fp} (edited in {len(sids)} sessions)"
+                    )
                     _promote_observation(churn_doc, {}, "criterion:file-churn")
 
             # Criterion 3: Repeated command patterns (non-test, non-commit)
@@ -1969,7 +2563,17 @@ def _compact_observations():
                 cmd = doc.split(":", 1)[1].strip() if ":" in doc else doc
                 cmd = cmd[:200]  # Normalize length
                 # Skip test and commit commands
-                if any(kw in cmd for kw in ["pytest", "test_framework", "npm test", "cargo test", "go test", "git commit"]):
+                if any(
+                    kw in cmd
+                    for kw in [
+                        "pytest",
+                        "test_framework",
+                        "npm test",
+                        "cargo test",
+                        "go test",
+                        "git commit",
+                    ]
+                ):
                     continue
                 cmd_counts[cmd] = cmd_counts.get(cmd, 0) + 1
 
@@ -1980,11 +2584,28 @@ def _compact_observations():
                     repeat_doc = f"Repeated command: {cmd} ({cnt} occurrences)"
                     _promote_observation(repeat_doc, {}, "criterion:repeated-command")
 
+            # Criterion 4: Resolved errors (error followed by success for same tool = fix pattern)
+            # These are the inverse of Criterion 1 — captures "what worked" not just "what broke"
+            for idx, doc, meta in session_errors:
+                if promoted >= MAX_PROMOTIONS_PER_CYCLE:
+                    break
+                sid = meta.get("session_id", "")
+                tool = meta.get("tool_name", "")
+                # Only promote if the tool DID succeed later in the same session
+                if sid and tool and tool in session_success_tools.get(sid, set()):
+                    fix_doc = f"Resolved error pattern ({tool}): {doc}"
+                    _promote_observation(
+                        fix_doc,
+                        meta,
+                        "criterion:resolved-error",
+                        exp_ids[idx] if idx < len(exp_ids) else "",
+                    )
+
             # Delete expired observations
             if exp_ids:
                 batch_size = 100
                 for i in range(0, len(exp_ids), batch_size):
-                    observations.delete(ids=exp_ids[i:i + batch_size])
+                    observations.delete(ids=exp_ids[i : i + batch_size])
 
         # Hard cap enforcement
         total = observations.count()
@@ -2000,7 +2621,7 @@ def _compact_observations():
                     batch_size = 100
                     old_ids = oldest["ids"]
                     for i in range(0, len(old_ids), batch_size):
-                        observations.delete(ids=old_ids[i:i + batch_size])
+                        observations.delete(ids=old_ids[i : i + batch_size])
             except Exception:
                 pass
 
@@ -2033,12 +2654,23 @@ def _search_observations_internal(query, top_k=20, recency_weight=0):
             "total_observations": obs_count,
         }
     except Exception:
-        return {"results": [], "total_observations": 0, "error": "Observation search failed"}
+        return {
+            "results": [],
+            "total_observations": 0,
+            "error": "Observation search failed",
+        }
 
 
 @mcp.tool()
 @crash_proof
-def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight: float = 0.15, match_all: bool = False) -> dict:
+def search_knowledge(
+    query: str,
+    top_k: int = 15,
+    mode: str = "",
+    recency_weight: float = 0.15,
+    match_all: bool = False,
+    counterfactual: bool = False,
+) -> dict:
     """Search memory for relevant information. Use before starting any task.
 
     Args:
@@ -2047,15 +2679,23 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         mode: Force search mode ("keyword", "semantic", "hybrid", "tags", "observations", "all", "code"). Empty = auto-detect.
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
         match_all: For tag mode only — if true, all tags must be present (default false).
+        counterfactual: Force counterfactual retrieval pass (default false). Behavior depends on counterfactual_mode in config: "always" (every search), "threshold" (weak results only), "opt-in" (this param only).
     """
     _ensure_initialized()
     if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
     recency_weight = max(0.0, min(1.0, recency_weight))
     top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
     count = collection.count()
     if count == 0:
-        return {"results": [], "total_memories": 0, "message": "Memory is empty. Start building knowledge with remember_this()."}
+        return {
+            "results": [],
+            "total_memories": 0,
+            "message": "Memory is empty. Start building knowledge with remember_this().",
+        }
 
     # Read config toggles once for the pipeline (needed by routing + enrichment)
     _config_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
@@ -2066,7 +2706,9 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                 _ls_toggles = json.load(_lsf)
     except Exception:
         # Fall back to LIVE_STATE.json for backward compat
-        _live_state_path = os.path.join(os.path.expanduser("~"), ".claude", "LIVE_STATE.json")
+        _live_state_path = os.path.join(
+            os.path.expanduser("~"), ".claude", "LIVE_STATE.json"
+        )
         try:
             if os.path.isfile(_live_state_path):
                 with open(_live_state_path, "r") as _lsf:
@@ -2074,7 +2716,15 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         except Exception:
             pass
 
-    VALID_MODES = {"keyword", "semantic", "hybrid", "tags", "observations", "all", "transcript"}
+    VALID_MODES = {
+        "keyword",
+        "semantic",
+        "hybrid",
+        "tags",
+        "observations",
+        "all",
+        "transcript",
+    }
     if mode and mode not in VALID_MODES:
         mode = ""  # Invalid mode falls back to auto-detect
     if not mode:
@@ -2117,16 +2767,25 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
             }
         transcript_results = []
         try:
-            _term_db = os.path.join(os.path.expanduser("~"), ".claude",
-                                    "integrations", "terminal-history",
-                                    "terminal_history.db")
+            _term_db = os.path.join(
+                os.path.expanduser("~"),
+                ".claude",
+                "integrations",
+                "terminal-history",
+                "terminal_history.db",
+            )
             if os.path.isfile(_term_db):
-                _term_dir = os.path.join(os.path.expanduser("~"), ".claude",
-                                         "integrations", "terminal-history")
+                _term_dir = os.path.join(
+                    os.path.expanduser("~"),
+                    ".claude",
+                    "integrations",
+                    "terminal-history",
+                )
                 if _term_dir not in _sys.path:
                     _sys.path.insert(0, _term_dir)
                 from db import search_fts as _t_search_fts
                 from db import get_raw_transcript_window as _get_raw_window
+
                 hits = _t_search_fts(_term_db, query, limit=10)
                 # Deduplicate by session_id, keep best-ranked per session
                 seen_sessions = {}
@@ -2136,8 +2795,9 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                         seen_sessions[sid] = hit.get("timestamp", "")
                 # Get raw transcript windows for top 3 sessions
                 for sid, ts in list(seen_sessions.items())[:3]:
-                    window = _get_raw_window(sid, around_timestamp=ts,
-                                             window_minutes=10, max_records=30)
+                    window = _get_raw_window(
+                        sid, around_timestamp=ts, window_minutes=10, max_records=30
+                    )
                     transcript_results.append(window)
         except Exception:
             pass
@@ -2149,7 +2809,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
             "source": "transcript_l0",
         }
 
-    actual_k = min(top_k, count)
+    actual_k = min(top_k * 2, count)  # 2x pool for composite reranking
 
     if mode == "tags":
         # Strip tag:/tags: prefix and parse
@@ -2163,7 +2823,8 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         # Both engines, merged via RRF
         fts_results = _lance_keyword_search(query, top_k=actual_k)
         lance_results = collection.query(
-            query_texts=[query], n_results=actual_k,
+            query_texts=[query],
+            n_results=actual_k,
             include=["metadatas", "distances"],
         )
         lance_summaries = format_summaries(lance_results)
@@ -2171,7 +2832,8 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     else:
         # Semantic (default)
         results = collection.query(
-            query_texts=[query], n_results=actual_k,
+            query_texts=[query],
+            n_results=actual_k,
             include=["metadatas", "distances"],
         )
         formatted = format_summaries(results)
@@ -2184,25 +2846,37 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     # Terminal History L2: search based on toggle
     terminal_l2_count = 0
     _run_terminal_l2 = _terminal_l2_always or (
-        formatted and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked"))
+        formatted
+        and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked"))
     )
     if _run_terminal_l2:
         try:
-            _term_db_path_l2 = os.path.join(os.path.expanduser("~"), ".claude",
-                                            "integrations", "terminal-history",
-                                            "terminal_history.db")
+            _term_db_path_l2 = os.path.join(
+                os.path.expanduser("~"),
+                ".claude",
+                "integrations",
+                "terminal-history",
+                "terminal_history.db",
+            )
             if os.path.isfile(_term_db_path_l2):
-                _term_dir_l2 = os.path.join(os.path.expanduser("~"), ".claude",
-                                            "integrations", "terminal-history")
+                _term_dir_l2 = os.path.join(
+                    os.path.expanduser("~"),
+                    ".claude",
+                    "integrations",
+                    "terminal-history",
+                )
                 if _term_dir_l2 not in _sys.path:
                     _sys.path.insert(0, _term_dir_l2)
                 from db import search_fts as _search_fts
+
                 for tr in _search_fts(_term_db_path_l2, query, limit=5):
                     _bm25 = abs(float(tr.get("bm25", 0)))
                     _relevance = min(1.0, _bm25 / 20.0)
                     _entry = {
                         "id": f"term_{tr.get('session_id', '?')[:12]}",
-                        "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
+                        "preview": (tr.get("text", "")[:120] + "...")
+                        if len(tr.get("text", "")) > 120
+                        else tr.get("text", ""),
                         "relevance": round(_relevance, 4),
                         "source": "terminal_l2",
                         "timestamp": tr.get("timestamp", ""),
@@ -2223,21 +2897,31 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     if _transcript_l0_enabled and mode not in ("tags", "observations"):
         # Only cascade if current results are weak (< 0.3) or always-on
         _l0_weak = not formatted or all(
-            r.get("relevance", 0) < 0.3 for r in formatted
+            r.get("relevance", 0) < 0.3
+            for r in formatted
             if not r.get("linked") and not r.get("tag_expanded")
         )
         if _l0_weak:
             try:
-                _term_db_l0 = os.path.join(os.path.expanduser("~"), ".claude",
-                                           "integrations", "terminal-history",
-                                           "terminal_history.db")
+                _term_db_l0 = os.path.join(
+                    os.path.expanduser("~"),
+                    ".claude",
+                    "integrations",
+                    "terminal-history",
+                    "terminal_history.db",
+                )
                 if os.path.isfile(_term_db_l0):
-                    _term_dir_l0 = os.path.join(os.path.expanduser("~"), ".claude",
-                                                "integrations", "terminal-history")
+                    _term_dir_l0 = os.path.join(
+                        os.path.expanduser("~"),
+                        ".claude",
+                        "integrations",
+                        "terminal-history",
+                    )
                     if _term_dir_l0 not in _sys.path:
                         _sys.path.insert(0, _term_dir_l0)
                     from db import search_fts as _l0_search_fts
                     from db import get_raw_transcript_window as _l0_get_raw_window
+
                     _l0_hits = _l0_search_fts(_term_db_l0, query, limit=6)
                     # Deduplicate by session_id
                     _l0_seen_sessions = {}
@@ -2248,8 +2932,10 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                     # Get raw transcript windows for top 2 sessions
                     for _l0_sid, _l0_ts in list(_l0_seen_sessions.items())[:2]:
                         _l0_window = _l0_get_raw_window(
-                            _l0_sid, around_timestamp=_l0_ts,
-                            window_minutes=10, max_records=20
+                            _l0_sid,
+                            around_timestamp=_l0_ts,
+                            window_minutes=10,
+                            max_records=20,
                         )
                         if _l0_window and _l0_window.get("records"):
                             # Compress into a single result entry
@@ -2257,15 +2943,17 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                                 r.get("summary", r.get("text", ""))[:80]
                                 for r in _l0_window.get("records", [])[:3]
                             )
-                            formatted.append({
-                                "id": f"l0_{_l0_sid[:16]}",
-                                "preview": _l0_preview[:200],
-                                "relevance": 0.22,
-                                "source": "transcript_l0",
-                                "timestamp": _l0_ts,
-                                "session_id": _l0_sid,
-                                "record_count": len(_l0_window.get("records", [])),
-                            })
+                            formatted.append(
+                                {
+                                    "id": f"l0_{_l0_sid[:16]}",
+                                    "preview": _l0_preview[:200],
+                                    "relevance": 0.22,
+                                    "source": "transcript_l0",
+                                    "timestamp": _l0_ts,
+                                    "session_id": _l0_sid,
+                                    "record_count": len(_l0_window.get("records", [])),
+                                }
+                            )
                             transcript_l0_count += 1
             except Exception:
                 pass  # L0 transcript cascade is optional
@@ -2277,7 +2965,9 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         expanded_tags = _get_expanded_tags(query)
         if expanded_tags:
             seen_ids = {r.get("id") for r in formatted if r.get("id")}
-            tag_ids = tag_index.tag_search(expanded_tags, match_all=False, top_k=actual_k)
+            tag_ids = tag_index.tag_search(
+                expanded_tags, match_all=False, top_k=actual_k
+            )
             tag_results = _tag_ids_to_summaries(tag_ids)
             if tag_results:
                 for tr in tag_results:
@@ -2290,28 +2980,43 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
 
             # Terminal L2 tag search: find terminal records matching expanded tags
             try:
-                _term_db_path = os.path.join(os.path.expanduser("~"), ".claude",
-                                             "integrations", "terminal-history",
-                                             "terminal_history.db")
+                _term_db_path = os.path.join(
+                    os.path.expanduser("~"),
+                    ".claude",
+                    "integrations",
+                    "terminal-history",
+                    "terminal_history.db",
+                )
                 if os.path.isfile(_term_db_path):
-                    _term_dir = os.path.join(os.path.expanduser("~"), ".claude",
-                                             "integrations", "terminal-history")
+                    _term_dir = os.path.join(
+                        os.path.expanduser("~"),
+                        ".claude",
+                        "integrations",
+                        "terminal-history",
+                    )
                     if _term_dir not in _sys.path:
                         _sys.path.insert(0, _term_dir)
                     from db import search_by_tags as _search_by_tags
-                    _tag_term_results = _search_by_tags(_term_db_path, expanded_tags, limit=3)
+
+                    _tag_term_results = _search_by_tags(
+                        _term_db_path, expanded_tags, limit=3
+                    )
                     for ttr in _tag_term_results:
                         _tid = f"term_tag_{ttr.get('session_id', '?')[:12]}"
                         if _tid not in seen_ids:
-                            formatted.append({
-                                "id": _tid,
-                                "preview": (ttr.get("text", "")[:120] + "...") if len(ttr.get("text", "")) > 120 else ttr.get("text", ""),
-                                "relevance": 0.25,
-                                "source": "terminal_l2",
-                                "timestamp": ttr.get("timestamp", ""),
-                                "tags": ttr.get("tags", ""),
-                                "tag_expanded": True,
-                            })
+                            formatted.append(
+                                {
+                                    "id": _tid,
+                                    "preview": (ttr.get("text", "")[:120] + "...")
+                                    if len(ttr.get("text", "")) > 120
+                                    else ttr.get("text", ""),
+                                    "relevance": 0.25,
+                                    "source": "terminal_l2",
+                                    "timestamp": ttr.get("timestamp", ""),
+                                    "tags": ttr.get("tags", ""),
+                                    "tag_expanded": True,
+                                }
+                            )
                             seen_ids.add(_tid)
             except Exception:
                 pass  # Terminal tag search is optional
@@ -2344,6 +3049,7 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     try:
         if _ltp_tracker:
             from shared.memory_decay import calculate_relevance_score
+
             for entry in formatted:
                 mem_id = entry.get("id", "")
                 if mem_id:
@@ -2356,14 +3062,70 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                 if _adaptive_weights:
                     _ltp_blend = _adaptive_weights.get_weights().get("ltp_blend", 0.3)
                 raw_rel = entry.get("relevance", 0.5)
-                entry["relevance"] = round(raw_rel * (1 - _ltp_blend) + ltp_score * _ltp_blend, 4)
+                entry["relevance"] = round(
+                    raw_rel * (1 - _ltp_blend) + ltp_score * _ltp_blend, 4
+                )
                 entry["ltp_factor"] = ltp_factor
             formatted.sort(key=lambda x: x.get("relevance", 0), reverse=True)
     except Exception:
         pass  # LTP scoring failure must not break search
 
+    # Composite reranker: final re-sort with tag overlap + graph proximity (fail-open)
+    try:
+        formatted = _rerank_composite(
+            formatted, query, top_k, knowledge_graph=_knowledge_graph
+        )
+    except Exception:
+        pass  # Composite reranker failure must not break search
+
     # Trim to requested top_k after expansion
     formatted = formatted[:top_k]
+
+    # --- Action pattern lookup: check fix_outcomes for error-like queries (fail-open) ---
+    _action_pattern_count = 0
+    try:
+        from shared.action_patterns import is_error_query as _is_error_q
+        from shared.action_patterns import extract_pattern as _extract_ap
+        from shared.action_patterns import format_pattern as _format_ap
+        from shared.action_patterns import rank_patterns as _rank_ap
+
+        if _is_error_q(query) and fix_outcomes is not None:
+            _fo_count = fix_outcomes.count()
+            if _fo_count > 0:
+                _fo_results = fix_outcomes.query(
+                    query_texts=[query],
+                    n_results=min(5, _fo_count),
+                    include=["metadatas", "documents"],
+                )
+                if _fo_results and _fo_results.get("documents"):
+                    _fo_docs = _fo_results["documents"][0]
+                    _fo_metas = (
+                        _fo_results["metadatas"][0]
+                        if _fo_results.get("metadatas")
+                        else []
+                    )
+                    _patterns = []
+                    for _ap_i, _ap_doc in enumerate(_fo_docs):
+                        _ap_meta = _fo_metas[_ap_i] if _ap_i < len(_fo_metas) else {}
+                        if _ap_meta.get("outcome") in ("success", "failed"):
+                            _patterns.append(_extract_ap(_ap_doc, _ap_meta))
+                    _patterns = _rank_ap(_patterns)
+                    for _ap in _patterns[:3]:
+                        if _ap["confidence"] > 0.1:
+                            formatted.insert(
+                                0,
+                                {
+                                    "id": f"ap_{_ap['chain_id'][:12]}",
+                                    "preview": _format_ap(_ap),
+                                    "relevance": 0.95,
+                                    "source": "action_pattern",
+                                    "action_pattern": _ap,
+                                    "timestamp": "",
+                                },
+                            )
+                            _action_pattern_count += 1
+    except (ImportError, ValueError, TypeError, KeyError, AttributeError):
+        pass  # Action pattern failure must not break search
 
     # "all" mode: also search observations and merge
     if mode == "all":
@@ -2384,7 +3146,9 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
 
     # Auto-fallback: if knowledge returned 0 results and mode was auto-detected, try observations
     if len(formatted) == 0 and mode not in ("tags", "observations", "all"):
-        obs_results = _search_observations_internal(query, min(top_k, 10), recency_weight=0)
+        obs_results = _search_observations_internal(
+            query, min(top_k, 10), recency_weight=0
+        )
         obs_formatted = obs_results.get("results", [])
         if obs_formatted:
             for obs in obs_formatted:
@@ -2438,14 +3202,18 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                 for i, lid in enumerate(l_ids):
                     meta = l_metas[i] if i < len(l_metas) else {}
                     doc = l_docs[i] if i < len(l_docs) else ""
-                    preview = meta.get("preview", "") or (doc[:120] + "..." if doc and len(doc) > 120 else doc)
-                    formatted.append({
-                        "id": lid,
-                        "preview": preview,
-                        "tags": meta.get("tags", ""),
-                        "timestamp": meta.get("timestamp", ""),
-                        "linked": True,
-                    })
+                    preview = meta.get("preview", "") or (
+                        doc[:120] + "..." if doc and len(doc) > 120 else doc
+                    )
+                    formatted.append(
+                        {
+                            "id": lid,
+                            "preview": preview,
+                            "tags": meta.get("tags", ""),
+                            "timestamp": meta.get("timestamp", ""),
+                            "linked": True,
+                        }
+                    )
                     linked_memories_count += 1
     except Exception:
         pass  # Fail-open: linking errors don't break search
@@ -2453,16 +3221,25 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     # Telegram L3: search based on toggle
     tg_fallback_count = 0
     _run_tg_l3 = _tg_l3_always or (
-        formatted and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked"))
+        formatted
+        and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked"))
     )
     if _run_tg_l3:
         try:
-            _tg_search = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
-                                      "telegram-bot", "search.py")
+            _tg_search = os.path.join(
+                os.path.expanduser("~"),
+                ".claude",
+                "integrations",
+                "telegram-bot",
+                "search.py",
+            )
             if os.path.isfile(_tg_search):
                 _tg_result = subprocess.run(
                     [_sys.executable, _tg_search, query, "--json", "--limit", "5"],
-                    capture_output=True, text=True, timeout=8, stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                    stdin=subprocess.DEVNULL,
                 )
                 if _tg_result.returncode == 0 and _tg_result.stdout.strip():
                     _tg_data = json.loads(_tg_result.stdout)
@@ -2470,13 +3247,17 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                         # Normalize BM25: FTS5 rank is negative, more negative = better
                         _bm25 = abs(float(tr.get("bm25", 0)))
                         _relevance = min(1.0, _bm25 / 20.0) if _bm25 > 0 else 0.2
-                        formatted.append({
-                            "id": f"tg_{tr.get('msg_id', '?')}",
-                            "preview": (tr.get("text", "")[:120] + "...") if len(tr.get("text", "")) > 120 else tr.get("text", ""),
-                            "relevance": round(_relevance, 4),
-                            "source": "telegram_l3",
-                            "timestamp": tr.get("date", ""),
-                        })
+                        formatted.append(
+                            {
+                                "id": f"tg_{tr.get('msg_id', '?')}",
+                                "preview": (tr.get("text", "")[:120] + "...")
+                                if len(tr.get("text", "")) > 120
+                                else tr.get("text", ""),
+                                "relevance": round(_relevance, 4),
+                                "source": "telegram_l3",
+                                "timestamp": tr.get("date", ""),
+                            }
+                        )
                         tg_fallback_count += 1
         except Exception:
             pass  # Telegram fallback is optional
@@ -2488,12 +3269,21 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     enrichment_count = 0
     try:
         if _enrichment_enabled:
-            _term_db = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
-                                    "terminal-history", "terminal_history.db")
+            _term_db = os.path.join(
+                os.path.expanduser("~"),
+                ".claude",
+                "integrations",
+                "terminal-history",
+                "terminal_history.db",
+            )
             if os.path.isfile(_term_db):
                 # Lazy import to avoid overhead when enrichment is off
-                _term_db_dir = os.path.join(os.path.expanduser("~"), ".claude",
-                                            "integrations", "terminal-history")
+                _term_db_dir = os.path.join(
+                    os.path.expanduser("~"),
+                    ".claude",
+                    "integrations",
+                    "terminal-history",
+                )
                 if _term_db_dir not in _sys.path:
                     _sys.path.insert(0, _term_db_dir)
                 from db import get_context_by_timestamp as _get_ctx
@@ -2518,11 +3308,17 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     tg_enrichment_count = 0
     try:
         if _tg_enrichment_enabled:
-            _tg_db = os.path.join(os.path.expanduser("~"), ".claude", "integrations",
-                                  "telegram-bot", "msg_log.db")
+            _tg_db = os.path.join(
+                os.path.expanduser("~"),
+                ".claude",
+                "integrations",
+                "telegram-bot",
+                "msg_log.db",
+            )
             if os.path.isfile(_tg_db):
-                _tg_db_dir = os.path.join(os.path.expanduser("~"), ".claude",
-                                          "integrations", "telegram-bot")
+                _tg_db_dir = os.path.join(
+                    os.path.expanduser("~"), ".claude", "integrations", "telegram-bot"
+                )
                 if _tg_db_dir not in _sys.path:
                     _sys.path.insert(0, _tg_db_dir)
                 from db import get_context_by_timestamp as _get_tg_ctx
@@ -2558,7 +3354,9 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
 
     # --- mem2x: LTP access tracking + Hebbian co-retrieval (fail-open) ---
     try:
-        _mem_ids = [r.get("id") for r in formatted if r.get("id") and not r.get("source")]
+        _mem_ids = [
+            r.get("id") for r in formatted if r.get("id") and not r.get("source")
+        ]
         if _ltp_tracker and _mem_ids:
             for mid in _mem_ids[:10]:
                 _ltp_tracker.record_access(mid)
@@ -2572,17 +3370,23 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
     try:
         if _knowledge_graph and mode not in ("tags", "observations", "transcript"):
             from shared.entity_extraction import extract_entities
+
             _query_entities = [e["name"] for e in extract_entities(query)]
             if _query_entities:
-                _activated = _knowledge_graph.spreading_activation(_query_entities, max_hops=3)
+                _activated = _knowledge_graph.spreading_activation(
+                    _query_entities, max_hops=3
+                )
                 if _activated:
                     # Look up memories containing activated entities
                     _seen_ids = {r.get("id") for r in formatted if r.get("id")}
-                    _activated_names = [a["name"] for a in _activated[:5] if a["activation"] > 0.1]
+                    _activated_names = [
+                        a["name"] for a in _activated[:5] if a["activation"] > 0.1
+                    ]
                     for _aname in _activated_names:
                         try:
                             _graph_results = collection.query(
-                                query_texts=[_aname], n_results=3,
+                                query_texts=[_aname],
+                                n_results=3,
                                 include=["metadatas", "distances"],
                             )
                             _graph_summaries = format_summaries(_graph_results)
@@ -2592,8 +3396,14 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                                     gs["graph_enriched"] = True
                                     _graph_disc = 0.8
                                     if _adaptive_weights:
-                                        _graph_disc = _adaptive_weights.get_weights().get("graph_discount", 0.8)
-                                    gs["relevance"] = gs.get("relevance", 0) * _graph_disc
+                                        _graph_disc = (
+                                            _adaptive_weights.get_weights().get(
+                                                "graph_discount", 0.8
+                                            )
+                                        )
+                                    gs["relevance"] = (
+                                        gs.get("relevance", 0) * _graph_disc
+                                    )
                                     formatted.append(gs)
                                     _seen_ids.add(gid)
                                     graph_enriched_count += 1
@@ -2601,6 +3411,57 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
                             continue
     except Exception:
         pass  # Graph enrichment failure must not break search
+
+    # --- Counterfactual retrieval pass (fail-open) ---
+    counterfactual_count = 0
+    try:
+        _cf_enabled = _ls_toggles.get("counterfactual_retrieval", False)
+        _cf_mode = _ls_toggles.get("counterfactual_mode", "always")
+        _cf_model = _ls_toggles.get("counterfactual_model", "haiku")
+        _cf_threshold = _ls_toggles.get("counterfactual_threshold", 0.4)
+        _should_cf = False
+
+        if _cf_enabled:
+            if _cf_mode == "always":
+                _should_cf = True
+            elif _cf_mode == "threshold" and formatted:
+                _best_rel = max((r.get("relevance", 0) for r in formatted), default=0)
+                if _best_rel < _cf_threshold:
+                    _should_cf = True
+            # "opt-in" mode: only explicit param triggers (handled below)
+
+        # Explicit param overrides mode (but respects master toggle)
+        if counterfactual and _cf_enabled:
+            _should_cf = True
+
+        # Never for non-semantic modes
+        if mode in ("tags", "observations", "transcript"):
+            _should_cf = False
+
+        if _should_cf and formatted:
+            _cf_query = _generate_counterfactual_query(
+                query, formatted, model_key=_cf_model
+            )
+            if _cf_query:
+                _seen_ids = {r.get("id") for r in formatted if r.get("id")}
+                _cf_results = collection.query(
+                    query_texts=[_cf_query],
+                    n_results=min(top_k, 5),  # Cap at 5 extra results
+                    include=["metadatas", "distances"],
+                )
+                _cf_summaries = format_summaries(_cf_results)
+                _cf_disc = _ls_toggles.get("counterfactual_discount", 0.8)
+                for cs in _cf_summaries:
+                    cid = cs.get("id", "")
+                    if cid and cid not in _seen_ids:
+                        cs["counterfactual"] = True
+                        cs["cf_query"] = _cf_query
+                        cs["relevance"] = cs.get("relevance", 0) * _cf_disc
+                        formatted.append(cs)
+                        _seen_ids.add(cid)
+                        counterfactual_count += 1
+    except Exception:
+        pass  # Counterfactual failure must not break search
 
     result = {
         "results": formatted,
@@ -2620,11 +3481,14 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
         result["enrichment_count"] = enrichment_count
     if tg_enrichment_count > 0:
         result["tg_enrichment_count"] = tg_enrichment_count
+    if _action_pattern_count > 0:
+        result["action_pattern_count"] = _action_pattern_count
     if graph_enriched_count > 0:
         result["graph_enriched_count"] = graph_enriched_count
+    if counterfactual_count > 0:
+        result["counterfactual_count"] = counterfactual_count
     if tag_expanded:
         result["tag_expanded"] = True
-        result["expanded_tags"] = expanded_tags
 
     # Track search result IDs for implicit feedback (fail-open)
     global _last_search_ids
@@ -2639,27 +3503,48 @@ def search_knowledge(query: str, top_k: int = 15, mode: str = "", recency_weight
 def _extract_error_text(content, context):
     """Extract error description from fix content. Cascade, first match wins."""
     import re
+
     # A: Fixed/Resolved + ErrorName/Exception/FAILED
-    m = re.search(r'(?:Fixed|Resolved|fixed|resolved)\s+(\S+(?:Error|Exception|FAILED|error)\S*)', content)
+    m = re.search(
+        r"(?:Fixed|Resolved|fixed|resolved)\s+(\S+(?:Error|Exception|FAILED|error)\S*)",
+        content,
+    )
     if m:
         return m.group(1)
     # B: Fixed [thing] bug/issue/problem/failure/crash/regression/mismatch/dead code
-    m = re.search(r'(?:Fixed|Resolved|fixed|resolved)\s+(.+?\b(?:bug|issue|problem|failure|crash|regression|mismatch|dead\s*code))', content)
+    m = re.search(
+        r"(?:Fixed|Resolved|fixed|resolved)\s+(.+?\b(?:bug|issue|problem|failure|crash|regression|mismatch|dead\s*code))",
+        content,
+    )
     if m:
         return m.group(1).strip()[:120]
     # C: Fixed Gate N / Fixed component.method()
-    m = re.search(r'(?:Fixed|Resolved|fixed|resolved)\s+((?:Gate\s*\d+|[A-Za-z_]+\.[A-Za-z_]+(?:\(\))?)\S*)', content)
+    m = re.search(
+        r"(?:Fixed|Resolved|fixed|resolved)\s+((?:Gate\s*\d+|[A-Za-z_]+\.[A-Za-z_]+(?:\(\))?)\S*)",
+        content,
+    )
     if m:
         return m.group(1).strip()[:120]
     # D: BUG FIX: / CRITICAL FIX: / FIX: description
-    m = re.search(r'(?:BUG\s+FIX|CRITICAL\s+FIX|FIX)\s*[:\-]\s*(.+?)(?:\.|,|\n|$)', content)
+    m = re.search(
+        r"(?:BUG\s+FIX|CRITICAL\s+FIX|FIX)\s*[:\-]\s*(.+?)(?:\.|,|\n|$)", content
+    )
     if m:
         return m.group(1).strip()[:120]
     # E: Fixed [description] — broad catch, skip noise phrases
-    m = re.search(r'(?:Fixed|Resolved|fixed|resolved)\s+(.+?)(?:\.|,|\n|$)', content)
+    m = re.search(r"(?:Fixed|Resolved|fixed|resolved)\s+(.+?)(?:\.|,|\n|$)", content)
     if m:
         txt = m.group(1).strip()
-        noise = {'the test', 'the bug', 'the issue', 'the code', 'the file', 'the error', 'it', 'this'}
+        noise = {
+            "the test",
+            "the bug",
+            "the issue",
+            "the code",
+            "the file",
+            "the error",
+            "it",
+            "this",
+        }
         if len(txt) > 5 and txt.lower() not in noise:
             return txt[:120]
     # F: Context field as fallback
@@ -2672,20 +3557,32 @@ def _extract_error_text(content, context):
 def _extract_strategy(content):
     """Extract fix strategy from content. Cascade, first match wins."""
     import re
+
     # S1: by/via + action phrase (verb-oriented)
-    m = re.search(r'\b(?:by|via)\s+((?:adding|removing|changing|replacing|setting|updating|patching|using|wrapping|moving|renaming|splitting|merging|importing|exporting|converting|switching|reverting)\b.+?)(?:\.|,|\n|$)', content, re.IGNORECASE)
+    m = re.search(
+        r"\b(?:by|via)\s+((?:adding|removing|changing|replacing|setting|updating|patching|using|wrapping|moving|renaming|splitting|merging|importing|exporting|converting|switching|reverting)\b.+?)(?:\.|,|\n|$)",
+        content,
+        re.IGNORECASE,
+    )
     if m:
         return m.group(1).strip()
     # S2: Solution:/Resolution:/Workaround: + description (not BUG FIX: or CRITICAL FIX:)
-    m = re.search(r'(?<!\bBUG\s)(?<!\bCRITICAL\s)(?<!\bM-\d\s)(?:Fix|Solution|Resolution|Workaround)\s*[:\-]\s*(.+?)(?:\.|,|\n|$)', content, re.IGNORECASE)
+    m = re.search(
+        r"(?<!\bBUG\s)(?<!\bCRITICAL\s)(?<!\bM-\d\s)(?:Fix|Solution|Resolution|Workaround)\s*[:\-]\s*(.+?)(?:\.|,|\n|$)",
+        content,
+        re.IGNORECASE,
+    )
     if m:
         return m.group(1).strip()
     # S3: Added/Changed/Replaced/Removed/Set/Updated/Patched + description
-    m = re.search(r'\b((?:Added|Changed|Replaced|Removed|Set|Updated|Patched|Renamed|Wrapped|Moved|Reverted|Converted|Switched)\s+.+?)(?:\.|,|\n|$)', content)
+    m = re.search(
+        r"\b((?:Added|Changed|Replaced|Removed|Set|Updated|Patched|Renamed|Wrapped|Moved|Reverted|Converted|Switched)\s+.+?)(?:\.|,|\n|$)",
+        content,
+    )
     if m:
         return m.group(1).strip()
     # S4: X → Y / X changed to Y / replaced X with Y
-    m = re.search(r'(\S+\s*(?:→|->|changed\s+to|replaced\s+with)\s+\S+)', content)
+    m = re.search(r"(\S+\s*(?:→|->|changed\s+to|replaced\s+with)\s+\S+)", content)
     if m:
         return m.group(1).strip()
     return None
@@ -2695,12 +3592,29 @@ def _normalize_strategy(raw):
     """Normalize raw strategy text into a short hyphenated strategy_id."""
     if not raw:
         return "auto-bridged"
-    fillers = {'the', 'a', 'an', 'in', 'to', 'for', 'of', 'on', 'at', 'is', 'was', 'and', 'or', 'that', 'this', 'it'}
+    fillers = {
+        "the",
+        "a",
+        "an",
+        "in",
+        "to",
+        "for",
+        "of",
+        "on",
+        "at",
+        "is",
+        "was",
+        "and",
+        "or",
+        "that",
+        "this",
+        "it",
+    }
     words = raw.lower().split()
     words = [w for w in words if w not in fillers and len(w) > 1]
     if not words:
         return "auto-bridged"
-    result = '-'.join(words[:5])
+    result = "-".join(words[:5])
     return result[:60] if len(result) > 60 else result
 
 
@@ -2726,7 +3640,11 @@ def _bridge_to_fix_outcomes(content, context, tags):
         # Dedup: skip if manual record_outcome already exists for this chain
         try:
             existing = fix_outcomes.get(ids=[chain_id])
-            if (existing and existing.get("documents") and len(existing["documents"]) > 0):
+            if (
+                existing
+                and existing.get("documents")
+                and len(existing["documents"]) > 0
+            ):
                 meta = existing["metadatas"][0] if existing.get("metadatas") else {}
                 if meta.get("outcome") in ("success", "failure"):
                     return None  # Manual chain already recorded — defer
@@ -2744,18 +3662,20 @@ def _bridge_to_fix_outcomes(content, context, tags):
 
         fix_outcomes.upsert(
             documents=[normalized],
-            metadatas=[{
-                "error_hash": error_hash,
-                "strategy_id": strategy_id,
-                "chain_id": chain_id,
-                "outcome": outcome,
-                "confidence": str(round(confidence, 4)),
-                "attempts": str(attempts),
-                "successes": str(successes),
-                "timestamp": str(time.time()),
-                "last_outcome_time": str(time.time()),
-                "bridged": "true",
-            }],
+            metadatas=[
+                {
+                    "error_hash": error_hash,
+                    "strategy_id": strategy_id,
+                    "chain_id": chain_id,
+                    "outcome": outcome,
+                    "confidence": str(round(confidence, 4)),
+                    "attempts": str(attempts),
+                    "successes": str(successes),
+                    "timestamp": str(time.time()),
+                    "last_outcome_time": str(time.time()),
+                    "bridged": "true",
+                }
+            ],
             ids=[chain_id],
         )
         return {"chain_id": chain_id, "outcome": outcome}
@@ -2777,16 +3697,25 @@ def _check_dedup(content, tags=""):
         if cnt == 0:
             return None
         similar = collection.query(
-            query_texts=[content], n_results=1,
+            query_texts=[content],
+            n_results=1,
             include=["distances"],
         )
-        if (similar and similar.get("distances") and similar["distances"][0]
-                and similar["distances"][0][0] is not None):
+        if (
+            similar
+            and similar.get("distances")
+            and similar["distances"][0]
+            and similar["distances"][0][0] is not None
+        ):
             dist = similar["distances"][0][0]
             existing_id = similar["ids"][0][0]
             threshold = FIX_DEDUP_THRESHOLD if "type:fix" in tags else DEDUP_THRESHOLD
             if dist < threshold:
-                return {"blocked": True, "existing_id": existing_id, "distance": round(dist, 4)}
+                return {
+                    "blocked": True,
+                    "existing_id": existing_id,
+                    "distance": round(dist, 4),
+                }
             elif dist < DEDUP_SOFT_THRESHOLD:
                 return {"soft_dupe_tag": f"possible-dupe:{existing_id}"}
     except Exception:
@@ -2809,7 +3738,10 @@ def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
     """
     _ensure_initialized()
     if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
 
     if not query or not query.strip():
         return {"error": "Empty query"}
@@ -2825,18 +3757,54 @@ def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
 
 @mcp.tool()
 @crash_proof
-def remember_this(content: str, context: str = "", tags: str = "", force: bool = False) -> dict:
+def remember_this(
+    content: str,
+    context: str = "",
+    tags: str = "",
+    force: bool = False,
+    source_session_id: str = "",
+    source_observation_ids: str = "",
+) -> dict:
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
     Args:
-        content: The knowledge to remember (be specific and detailed)
+        content: The knowledge to remember (max 800 chars — concise key facts only, not full research)
         context: What you were doing when you learned this
         tags: Comma-separated tags for categorization (e.g., "bug,fix,auth")
         force: Skip dedup check entirely (escape hatch if threshold is wrong)
+        source_session_id: Session ID to record provenance (auto-detected if omitted)
+        source_observation_ids: Comma-separated observation IDs this knowledge was derived from
     """
     _ensure_initialized()
+    # Auto-detect source session ID from most recent JSONL session file
+    if not source_session_id:
+        try:
+            import glob as _glob
+
+            _sessions_pattern = os.path.join(
+                os.path.expanduser("~"),
+                ".claude",
+                "projects",
+                "**",
+                "sessions",
+                "*.jsonl",
+            )
+            _jsonl_files = sorted(
+                _glob.glob(_sessions_pattern, recursive=True),
+                key=os.path.getmtime,
+                reverse=True,
+            )
+            if _jsonl_files:
+                source_session_id = os.path.splitext(os.path.basename(_jsonl_files[0]))[
+                    0
+                ]
+        except Exception:
+            pass  # Session detection failure must not block memory storage
     if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
     # Cap metadata strings to 500 chars
     if len(context) > 500:
         context = context[:497] + "..."
@@ -2857,6 +3825,14 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
             "rejected": True,
             "total_memories": collection.count(),
         }
+    # --- Max content length: keep memories concise (index cards, not textbooks) ---
+    MAX_CONTENT_LENGTH = 800
+    if not force and len(content.strip()) > MAX_CONTENT_LENGTH:
+        return {
+            "result": f"Rejected: content too long ({len(content.strip())} chars, max {MAX_CONTENT_LENGTH}). Distill to key facts only.",
+            "rejected": True,
+            "total_memories": collection.count(),
+        }
 
     if not force:
         _content_len = len(content.strip())
@@ -2872,6 +3848,18 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
                     "rejected": True,
                     "total_memories": collection.count(),
                 }
+
+    # --- Quality scoring: soft-tag low-quality memories (fail-open) ---
+    _q_score = 0.5  # Default: neutral
+    try:
+        from shared.memory_quality import quality_score, QUALITY_THRESHOLD
+
+        _q_score = quality_score(content)
+        if _q_score < QUALITY_THRESHOLD:
+            _enrichment_tag = "needs-enrichment"
+            tags = f"{tags},{_enrichment_tag}" if tags else _enrichment_tag
+    except Exception:
+        pass  # Quality scoring failure must not block memory storage
 
     # --- Near-dedup: tiered threshold with soft-dupe tagging ---
     _soft_dupe_tag = None  # set if in soft zone (0.10-0.15)
@@ -2890,20 +3878,40 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
 
     # Retroactive interference: corrections/fixes suppress similar existing memories (fail-open)
     try:
-        if collection and not force and any(t in tags for t in ("type:fix", "type:correction")):
+        if (
+            collection
+            and not force
+            and any(t in tags for t in ("type:fix", "type:correction"))
+        ):
             from shared.memory_replay import compute_interference
-            _ri_results = collection.query(query_texts=[content], n_results=3, include=["metadatas", "distances"])
+
+            _ri_results = collection.query(
+                query_texts=[content], n_results=3, include=["metadatas", "distances"]
+            )
             if _ri_results and _ri_results.get("ids") and _ri_results["ids"][0]:
                 _new_mem = {"tier": _classify_tier(content, tags), "tags": tags}
                 for _ri_idx, _ri_id in enumerate(_ri_results["ids"][0]):
-                    _ri_dist = _ri_results["distances"][0][_ri_idx] if _ri_results.get("distances") else 1.0
+                    _ri_dist = (
+                        _ri_results["distances"][0][_ri_idx]
+                        if _ri_results.get("distances")
+                        else 1.0
+                    )
                     _ri_sim = max(0, 1.0 - _ri_dist)
-                    _ri_meta = _ri_results["metadatas"][0][_ri_idx] if _ri_results.get("metadatas") else {}
-                    _old_mem = {"tier": _ri_meta.get("tier", 2), "tags": _ri_meta.get("tags", "")}
+                    _ri_meta = (
+                        _ri_results["metadatas"][0][_ri_idx]
+                        if _ri_results.get("metadatas")
+                        else {}
+                    )
+                    _old_mem = {
+                        "tier": _ri_meta.get("tier", 2),
+                        "tags": _ri_meta.get("tags", ""),
+                    }
                     _ri_action = compute_interference(_new_mem, _old_mem, _ri_sim)
                     if _ri_action.get("action") == "suppress":
                         _new_tier = _ri_action.get("tier_change", 3)
-                        collection.update(ids=[_ri_id], metadatas=[{**_ri_meta, "tier": _new_tier}])
+                        collection.update(
+                            ids=[_ri_id], metadatas=[{**_ri_meta, "tier": _new_tier}]
+                        )
     except Exception:
         pass  # Interference failure must not block memory storage
 
@@ -2931,19 +3939,34 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     # Auto tier classification
     tier = _classify_tier(content, tags)
 
+    # Incremental cluster assignment (fail-open)
+    _assigned_cluster_id = ""
+    try:
+        if _cluster_store:
+            _cluster_vec = _embed_text(content)
+            _assigned_cluster_id = _cluster_store.assign(_cluster_vec, content)
+    except Exception:
+        pass  # Clustering failure must not block memory storage
+
     collection.upsert(
         documents=[content],
-        metadatas=[{
-            "context": context,
-            "tags": tags,
-            "timestamp": timestamp,
-            "session_time": now,
-            "preview": preview,
-            "primary_source": primary_source,
-            "related_urls": related_urls,
-            "source_method": source_method,
-            "tier": tier,
-        }],
+        metadatas=[
+            {
+                "context": context,
+                "tags": tags,
+                "timestamp": timestamp,
+                "session_time": now,
+                "preview": preview,
+                "primary_source": primary_source,
+                "related_urls": related_urls,
+                "source_method": source_method,
+                "tier": tier,
+                "source_session_id": source_session_id,
+                "source_observation_ids": source_observation_ids,
+                "cluster_id": _assigned_cluster_id,
+                "quality_score": _q_score,
+            }
+        ],
         ids=[doc_id],
     )
 
@@ -2954,13 +3977,16 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     try:
         if _knowledge_graph:
             from shared.entity_extraction import extract_entities, extract_cooccurrences
+
             _kg_text = f"{content} {context}"
             _kg_entities = extract_entities(_kg_text)
             for ent in _kg_entities:
                 _knowledge_graph.upsert_entity(ent["name"], ent["type"])
             _kg_coocs = extract_cooccurrences(_kg_text)
+            _kg_total = collection.count()
             for e1, e2 in _kg_coocs:
                 _knowledge_graph.add_edge(e1, e2, "co_occurs")
+                _knowledge_graph.update_pmi(e1, e2, "co_occurs", _kg_total)
     except Exception:
         pass  # Graph population failure must not break memory storage
 
@@ -2976,9 +4002,13 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     link_warning = None
     try:
         if tags:
-            resolves_tags = [t.strip() for t in tags.split(",") if t.strip().startswith("resolves:")]
+            resolves_tags = [
+                t.strip() for t in tags.split(",") if t.strip().startswith("resolves:")
+            ]
             if len(resolves_tags) > 1:
-                link_warning = f"Multiple resolves: tags found; using first: {resolves_tags[0]}"
+                link_warning = (
+                    f"Multiple resolves: tags found; using first: {resolves_tags[0]}"
+                )
             if resolves_tags:
                 resolves_id = resolves_tags[0].split(":", 1)[1].strip()
                 if not resolves_id:
@@ -3003,13 +4033,17 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
                 back_link = f"resolved_by:{doc_id}"
 
                 if back_link not in target_tags:
-                    new_tags = f"{target_tags},{back_link}" if target_tags else back_link
+                    new_tags = (
+                        f"{target_tags},{back_link}" if target_tags else back_link
+                    )
                     if len(new_tags) > 500:
                         link_warning = f"Tag overflow (>{500} chars) — skipped resolved_by: back-link on target"
                     else:
                         target_meta_updated = dict(target_meta)
                         target_meta_updated["tags"] = new_tags
-                        collection.update(ids=[resolves_id], metadatas=[target_meta_updated])
+                        collection.update(
+                            ids=[resolves_id], metadatas=[target_meta_updated]
+                        )
 
                         # Update tag index for updated target tags
                         try:
@@ -3032,6 +4066,7 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
         "id": doc_id,
         "total_memories": collection.count(),
         "timestamp": timestamp,
+        "quality_score": _q_score,
     }
     if bridge_result:
         result["fix_outcome_bridged"] = True
@@ -3043,7 +4078,9 @@ def remember_this(content: str, context: str = "", tags: str = "", force: bool =
     if link_warning:
         result["link_warning"] = link_warning
     if tags and "type:fix" in tags and not resolves_id and not linked_to:
-        result["hint"] = "Tip: add a resolves:MEMORY_ID tag to link this fix to the problem memory it resolves"
+        result["hint"] = (
+            "Tip: add a resolves:MEMORY_ID tag to link this fix to the problem memory it resolves"
+        )
 
     return result
 
@@ -3061,24 +4098,33 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
     _ensure_initialized()
     if _lance_degraded:
         return {"error": "LanceDB unavailable — running in degraded mode"}
-    threshold = _validate_distance_threshold(threshold, default=0.15, min_val=0.03, max_val=0.5)
+    threshold = _validate_distance_threshold(
+        threshold, default=0.15, min_val=0.03, max_val=0.5
+    )
 
     count = collection.count()
     if count == 0:
         return {"candidates": [], "moved": 0, "message": "No memories to scan"}
 
     # Export backup before any changes
-    backup_file = os.path.join(MEMORY_DIR, f"dedup_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
-    all_data = collection.get(limit=count, include=["documents", "metadatas", "embeddings"])
+    backup_file = os.path.join(
+        MEMORY_DIR, f"dedup_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    )
+    all_data = collection.get(
+        limit=count, include=["documents", "metadatas", "embeddings"]
+    )
     with open(backup_file, "w") as f:
         # Embeddings are lists of floats — JSON-serializable
-        json.dump({
-            "ids": all_data.get("ids", []),
-            "documents": all_data.get("documents", []),
-            "metadatas": all_data.get("metadatas", []),
-            "count": count,
-            "exported_at": datetime.now().isoformat(),
-        }, f)
+        json.dump(
+            {
+                "ids": all_data.get("ids", []),
+                "documents": all_data.get("documents", []),
+                "metadatas": all_data.get("metadatas", []),
+                "count": count,
+                "exported_at": datetime.now().isoformat(),
+            },
+            f,
+        )
 
     # Scan for duplicates
     candidates = []
@@ -3092,25 +4138,38 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
             continue
         try:
             similar = collection.query(
-                query_texts=[doc], n_results=2,
+                query_texts=[doc],
+                n_results=2,
                 include=["distances"],
             )
-            if not similar or not similar.get("distances") or not similar["distances"][0]:
+            if (
+                not similar
+                or not similar.get("distances")
+                or not similar["distances"][0]
+            ):
                 continue
             # First result is self (distance ~0), second is nearest neighbor
-            for j, (sid, sdist) in enumerate(zip(similar["ids"][0], similar["distances"][0])):
+            for j, (sid, sdist) in enumerate(
+                zip(similar["ids"][0], similar["distances"][0])
+            ):
                 if sid == ids[i]:
                     continue  # skip self
                 if sdist < threshold:
                     pair_key = tuple(sorted([ids[i], sid]))
                     if pair_key not in seen_pairs:
                         seen_pairs.add(pair_key)
-                        candidates.append({
-                            "id_a": ids[i],
-                            "id_b": sid,
-                            "distance": round(sdist, 4),
-                            "preview_a": (metas[i].get("preview", "") if i < len(metas) else "")[:80],
-                        })
+                        candidates.append(
+                            {
+                                "id_a": ids[i],
+                                "id_b": sid,
+                                "distance": round(sdist, 4),
+                                "preview_a": (
+                                    metas[i].get("preview", "")
+                                    if i < len(metas)
+                                    else ""
+                                )[:80],
+                            }
+                        )
         except Exception:
             continue
 
@@ -3120,14 +4179,20 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
             try:
                 # Move the second item (id_b) to quarantine
                 victim_id = cand["id_b"]
-                victim = collection.get(ids=[victim_id], include=["documents", "metadatas"])
+                victim = collection.get(
+                    ids=[victim_id], include=["documents", "metadatas"]
+                )
                 if victim and victim.get("ids") and victim["ids"]:
                     v_doc = victim["documents"][0] if victim.get("documents") else ""
                     v_meta = victim["metadatas"][0] if victim.get("metadatas") else {}
-                    v_meta["quarantine_reason"] = f"dedup_sweep:distance={cand['distance']}"
+                    v_meta["quarantine_reason"] = (
+                        f"dedup_sweep:distance={cand['distance']}"
+                    )
                     v_meta["quarantine_pair"] = cand["id_a"]
                     v_meta["quarantined_at"] = datetime.now().isoformat()
-                    quarantine.upsert(documents=[v_doc], metadatas=[v_meta], ids=[victim_id])
+                    quarantine.upsert(
+                        documents=[v_doc], metadatas=[v_meta], ids=[victim_id]
+                    )
                     collection.delete(ids=[victim_id])
                     # Remove from tag index
                     try:
@@ -3156,8 +4221,6 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
     }
 
 
-
-
 @mcp.tool()
 @crash_proof
 def get_memory(id: str) -> dict:
@@ -3170,7 +4233,10 @@ def get_memory(id: str) -> dict:
     """
     _ensure_initialized()
     if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
     try:
         # Support batch fetch: comma-separated IDs return multiple memories
         ids = [i.strip() for i in id.split(",") if i.strip()]
@@ -3187,7 +4253,11 @@ def get_memory(id: str) -> dict:
                 "id": ids[i] if i < len(ids) else "unknown",
                 "content": doc,
             }
-            if result.get("metadatas") and i < len(result["metadatas"]) and result["metadatas"][i]:
+            if (
+                result.get("metadatas")
+                and i < len(result["metadatas"])
+                and result["metadatas"][i]
+            ):
                 meta = result["metadatas"][i]
                 entry["context"] = meta.get("context", "")
                 entry["tags"] = meta.get("tags", "")
@@ -3199,9 +4269,26 @@ def get_memory(id: str) -> dict:
                 if primary or related:
                     entry["citations"] = {
                         "primary_source": primary,
-                        "related_urls": [u.strip() for u in related.split(",") if u.strip()],
+                        "related_urls": [
+                            u.strip() for u in related.split(",") if u.strip()
+                        ],
                         "source_method": meta.get("source_method", ""),
                     }
+
+                # L0 evidence pointer
+                source_sid = meta.get("source_session_id", "")
+                if source_sid:
+                    entry["source_l0"] = {
+                        "session_id": source_sid,
+                        "hint": f"Raw transcript: ~/.claude/projects/*/sessions/{source_sid}.jsonl",
+                    }
+
+                # Observation evidence pointers
+                obs_ids_str = meta.get("source_observation_ids", "")
+                if obs_ids_str:
+                    entry["source_observations"] = [
+                        oid.strip() for oid in obs_ids_str.split(",") if oid.strip()
+                    ]
 
                 # Retrieval tracking: increment count and update timestamp
                 try:
@@ -3228,11 +4315,14 @@ def get_memory(id: str) -> dict:
 
         _touch_memory_timestamp()
         # Single ID: return single entry (backward compatible)
-        return entries[0] if len(entries) == 1 else {"memories": entries, "count": len(entries)}
+        return (
+            entries[0]
+            if len(entries) == 1
+            else {"memories": entries, "count": len(entries)}
+        )
 
     except Exception as e:
         return {"error": f"Failed to retrieve memory: {str(e)}"}
-
 
 
 # DORMANT — saves ~50 tokens/prompt. Uncomment @mcp.tool() to reactivate.
@@ -3245,7 +4335,10 @@ def delete_memory(id: str) -> dict:
         id: The memory ID to delete (from search results). Comma-separated for batch delete.
     """
     if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
     try:
         ids = [i.strip() for i in id.split(",") if i.strip()]
         if not ids:
@@ -3268,11 +4361,14 @@ def delete_memory(id: str) -> dict:
         return {"error": f"Failed to delete memory: {str(e)}"}
 
 
-
-
 # DORMANT (Session 86) — zero usage across 86 sessions, observation data accessible via search_knowledge(mode="all")
 # Re-add @mcp.tool() and @crash_proof to reactivate, then restart MCP server.
-def timeline(anchor_id: str = "", anchor_time: str = "", window_minutes: int = 10, limit: int = 20) -> dict:
+def timeline(
+    anchor_id: str = "",
+    anchor_time: str = "",
+    window_minutes: int = 10,
+    limit: int = 20,
+) -> dict:
     """Get chronological observations around a point in time.
 
     Useful for understanding what happened before/after an error.
@@ -3288,7 +4384,11 @@ def timeline(anchor_id: str = "", anchor_time: str = "", window_minutes: int = 1
 
     count = observations.count()
     if count == 0:
-        return {"results": [], "total_observations": 0, "message": "No observations yet."}
+        return {
+            "results": [],
+            "total_observations": 0,
+            "message": "No observations yet.",
+        }
 
     # Determine anchor time
     anchor_epoch = None
@@ -3334,7 +4434,11 @@ def timeline(anchor_id: str = "", anchor_time: str = "", window_minutes: int = 1
         return {"results": [], "error": "Timeline query failed"}
 
     if not results or not results.get("documents"):
-        return {"results": [], "window": f"±{window_minutes}min", "anchor": anchor_epoch}
+        return {
+            "results": [],
+            "window": f"±{window_minutes}min",
+            "anchor": anchor_epoch,
+        }
 
     # Build entries and sort chronologically
     entries = []
@@ -3380,7 +4484,10 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
     """
     _ensure_initialized()
     if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
     normalized, error_hash = error_signature(error_text)
     strategy_hash = fnv1a_hash(strategy_id)
     chain_id = f"{error_hash}_{strategy_hash}"
@@ -3401,17 +4508,19 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
 
     fix_outcomes.upsert(
         documents=[normalized],
-        metadatas=[{
-            "error_hash": error_hash,
-            "strategy_id": strategy_id,
-            "chain_id": chain_id,
-            "outcome": "pending",
-            "confidence": str(round(confidence, 4)),
-            "attempts": str(attempts),
-            "successes": str(successes),
-            "timestamp": str(time.time()),
-            "last_outcome_time": "",
-        }],
+        metadatas=[
+            {
+                "error_hash": error_hash,
+                "strategy_id": strategy_id,
+                "chain_id": chain_id,
+                "outcome": "pending",
+                "confidence": str(round(confidence, 4)),
+                "attempts": str(attempts),
+                "successes": str(successes),
+                "timestamp": str(time.time()),
+                "last_outcome_time": "",
+            }
+        ],
         ids=[chain_id],
     )
 
@@ -3436,13 +4545,20 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
     """
     _ensure_initialized()
     if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
     if outcome not in ("success", "failure"):
         return {"error": "outcome must be 'success' or 'failure'"}
 
     try:
         existing = fix_outcomes.get(ids=[chain_id])
-        if not existing or not existing.get("documents") or len(existing["documents"]) == 0:
+        if (
+            not existing
+            or not existing.get("documents")
+            or len(existing["documents"]) == 0
+        ):
             return {"error": f"No record found for chain_id: {chain_id}"}
 
         meta = existing["metadatas"][0] if existing.get("metadatas") else {}
@@ -3458,14 +4574,16 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
 
         fix_outcomes.update(
             ids=[chain_id],
-            metadatas=[{
-                **meta,
-                "outcome": outcome,
-                "confidence": str(round(confidence, 4)),
-                "successes": str(successes),
-                "banned": str(banned),
-                "last_outcome_time": str(time.time()),
-            }],
+            metadatas=[
+                {
+                    **meta,
+                    "outcome": outcome,
+                    "confidence": str(round(confidence, 4)),
+                    "successes": str(successes),
+                    "banned": str(banned),
+                    "last_outcome_time": str(time.time()),
+                }
+            ],
         )
 
         _touch_memory_timestamp()
@@ -3494,7 +4612,10 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
     """
     _ensure_initialized()
     if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
     top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
     normalized, error_hash = error_signature(error_text)
 
@@ -3590,7 +4711,9 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
                 obs_formatted = format_summaries(obs_results)
                 if obs_formatted:
                     result["observations"] = obs_formatted
-                    result["observation_note"] = "No fix history found. Showing related observations."
+                    result["observation_note"] = (
+                        "No fix history found. Showing related observations."
+                    )
         except Exception:
             pass
 
@@ -3661,9 +4784,13 @@ def health_check() -> dict:
         "total_memories": total_count,
         "last_write": last_write,
         "embedding_model": "loaded" if _embedding_fn is not None else "not_loaded",
-        "lancedb": "connected" if (_lance_db is not None and not _lance_degraded) else ("degraded" if _lance_degraded else "not_connected"),
+        "lancedb": "connected"
+        if (_lance_db is not None and not _lance_degraded)
+        else ("degraded" if _lance_degraded else "not_connected"),
         "tags_db": "ok" if os.path.exists(TAGS_DB_PATH) else "missing",
-        "disk_usage_mb": round(disk_bytes / (1024 * 1024), 2) if disk_bytes >= 0 else -1,
+        "disk_usage_mb": round(disk_bytes / (1024 * 1024), 2)
+        if disk_bytes >= 0
+        else -1,
         "initialized": _initialized,
     }
 
@@ -3698,7 +4825,10 @@ def suggest_promotions(top_k: int = 5) -> dict:
             continue
 
     if not candidates:
-        return {"clusters": [], "message": "No promotable memories found (need type:error, type:learning, or type:correction tags)."}
+        return {
+            "clusters": [],
+            "message": "No promotable memories found (need type:error, type:learning, or type:correction tags).",
+        }
 
     # Get embeddings for clustering
     candidate_ids = [c["id"] for c in candidates]
@@ -3797,13 +4927,15 @@ def suggest_promotions(top_k: int = 5) -> dict:
         recency_bonus = max(0, 1 - avg_age / 365)
         score = (member_count * 2) + recency_bonus
 
-        scored_clusters.append({
-            "suggested_rule": best_preview[:200],
-            "supporting_ids": member_id_list,
-            "count": member_count,
-            "score": round(score, 3),
-            "avg_age_days": round(avg_age, 1),
-        })
+        scored_clusters.append(
+            {
+                "suggested_rule": best_preview[:200],
+                "supporting_ids": member_id_list,
+                "count": member_count,
+                "score": round(score, 3),
+                "avg_age_days": round(avg_age, 1),
+            }
+        )
 
     # Sort by score descending and take top_k
     scored_clusters.sort(key=lambda x: x["score"], reverse=True)
@@ -3852,7 +4984,11 @@ def list_stale_memories(days: int = 60, top_k: int = 20) -> dict:
             )
 
         if not old_memories or not old_memories.get("ids"):
-            return {"results": [], "total_memories": count, "message": "No memories found matching criteria."}
+            return {
+                "results": [],
+                "total_memories": count,
+                "message": "No memories found matching criteria.",
+            }
 
         ids = old_memories["ids"]
         docs = old_memories.get("documents") or []
@@ -3893,14 +5029,16 @@ def list_stale_memories(days: int = 60, top_k: int = 20) -> dict:
                 if len(doc) > 100:
                     preview += "..."
 
-            stale.append({
-                "id": mid,
-                "preview": preview[:100],
-                "age_days": age_days,
-                "retrieval_count": retrieval_count,
-                "last_retrieved": meta.get("last_retrieved", "never"),
-                "tags": meta.get("tags", ""),
-            })
+            stale.append(
+                {
+                    "id": mid,
+                    "preview": preview[:100],
+                    "age_days": age_days,
+                    "retrieval_count": retrieval_count,
+                    "last_retrieved": meta.get("last_retrieved", "never"),
+                    "tags": meta.get("tags", ""),
+                }
+            )
 
         # Sort by age descending (oldest first)
         stale.sort(key=lambda x: x["age_days"], reverse=True)
@@ -3916,7 +5054,9 @@ def list_stale_memories(days: int = 60, top_k: int = 20) -> dict:
         return {"error": f"Failed to list stale memories: {str(e)}"}
 
 
-def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3) -> dict:
+def cluster_knowledge(
+    min_cluster_size: int = 3, distance_threshold: float = 0.3
+) -> dict:
     """Group related memories into semantic clusters using vector distance queries.
 
     Uses a union-find algorithm over neighbor queries to discover
@@ -3928,7 +5068,9 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
         distance_threshold: Max cosine distance to consider memories related (default 0.3, range 0.05-0.8)
     """
     min_cluster_size = max(2, min(min_cluster_size, 20))
-    distance_threshold = _validate_distance_threshold(distance_threshold, default=0.3, min_val=0.05, max_val=0.8)
+    distance_threshold = _validate_distance_threshold(
+        distance_threshold, default=0.3, min_val=0.05, max_val=0.8
+    )
 
     count = collection.count()
     if count == 0:
@@ -3952,7 +5094,11 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
 
     n = len(ids)
     if n < min_cluster_size:
-        return {"clusters": [], "total_memories": n, "message": f"Not enough memories ({n}) for clustering."}
+        return {
+            "clusters": [],
+            "total_memories": n,
+            "message": f"Not enough memories ({n}) for clustering.",
+        }
 
     # Build id -> index mapping
     id_to_idx = {mid: i for i, mid in enumerate(ids)}
@@ -3997,7 +5143,9 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
                 continue
 
             neighbor_ids = neighbors["ids"][0]
-            neighbor_dists = neighbors["distances"][0] if neighbors.get("distances") else []
+            neighbor_dists = (
+                neighbors["distances"][0] if neighbors.get("distances") else []
+            )
 
             for j, nid in enumerate(neighbor_ids):
                 if nid == ids[i]:
@@ -4038,41 +5186,92 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
 
             # Collect content words for topic label
             doc = docs[i] if i < len(docs) and docs[i] else ""
-            words = re.findall(r'[a-zA-Z_]{4,}', doc.lower())
+            words = re.findall(r"[a-zA-Z_]{4,}", doc.lower())
             all_words.extend(words)
 
         # Common tags: tags appearing in >30% of cluster members
         tag_counts = Counter(all_tags)
-        common_tags = [tag for tag, cnt in tag_counts.most_common(10)
-                       if cnt >= max(2, len(members) * 0.3)]
+        common_tags = [
+            tag
+            for tag, cnt in tag_counts.most_common(10)
+            if cnt >= max(2, len(members) * 0.3)
+        ]
 
         # Topic label: top 3 most frequent meaningful words (exclude stop words)
-        stop_words = {"this", "that", "with", "from", "have", "been", "were", "will",
-                      "would", "could", "should", "their", "there", "they", "which",
-                      "when", "what", "where", "than", "then", "also", "about", "into",
-                      "more", "some", "such", "only", "other", "each", "just", "like",
-                      "over", "very", "after", "before", "between", "under", "again",
-                      "does", "done", "make", "made", "most", "much", "must", "need",
-                      "none", "true", "false"}
+        stop_words = {
+            "this",
+            "that",
+            "with",
+            "from",
+            "have",
+            "been",
+            "were",
+            "will",
+            "would",
+            "could",
+            "should",
+            "their",
+            "there",
+            "they",
+            "which",
+            "when",
+            "what",
+            "where",
+            "than",
+            "then",
+            "also",
+            "about",
+            "into",
+            "more",
+            "some",
+            "such",
+            "only",
+            "other",
+            "each",
+            "just",
+            "like",
+            "over",
+            "very",
+            "after",
+            "before",
+            "between",
+            "under",
+            "again",
+            "does",
+            "done",
+            "make",
+            "made",
+            "most",
+            "much",
+            "must",
+            "need",
+            "none",
+            "true",
+            "false",
+        }
         word_counts = Counter(w for w in all_words if w not in stop_words)
         top_words = [w for w, _ in word_counts.most_common(3)]
         topic = " / ".join(top_words) if top_words else "misc"
 
         # Sample preview: first member's content snippet
         sample_idx = members[0]
-        sample_doc = docs[sample_idx] if sample_idx < len(docs) and docs[sample_idx] else ""
+        sample_doc = (
+            docs[sample_idx] if sample_idx < len(docs) and docs[sample_idx] else ""
+        )
         sample_preview = sample_doc[:SUMMARY_LENGTH].replace("\n", " ")
         if len(sample_doc) > SUMMARY_LENGTH:
             sample_preview += "..."
 
-        result_clusters.append({
-            "cluster_id": f"cluster_{len(result_clusters)}",
-            "topic": topic,
-            "size": len(members),
-            "common_tags": common_tags,
-            "member_ids": member_ids,
-            "sample_preview": sample_preview,
-        })
+        result_clusters.append(
+            {
+                "cluster_id": f"cluster_{len(result_clusters)}",
+                "topic": topic,
+                "size": len(members),
+                "common_tags": common_tags,
+                "member_ids": member_ids,
+                "sample_preview": sample_preview,
+            }
+        )
 
     # Sort by size descending, cap at 20
     result_clusters.sort(key=lambda x: x["size"], reverse=True)
@@ -4089,6 +5288,58 @@ def cluster_knowledge(min_cluster_size: int = 3, distance_threshold: float = 0.3
             "distance_threshold": distance_threshold,
         },
     }
+
+
+def _bootstrap_clusters() -> None:
+    """One-time: assign all existing memories to clusters.
+
+    Run with: python memory_server.py --bootstrap-clusters
+    O(n) with centroid cache in memory — safe even for thousands of memories.
+    """
+    _ensure_initialized()
+    if not _cluster_store:
+        print("Bootstrap: cluster store unavailable", file=_sys.stderr)
+        return
+    if not collection:
+        print("Bootstrap: collection unavailable", file=_sys.stderr)
+        return
+
+    count = collection.count()
+    print(f"Bootstrap: assigning clusters to {count} memories...", file=_sys.stderr)
+
+    all_data = collection.get(
+        limit=count, include=["metadatas", "documents", "embeddings"]
+    )
+    if not all_data or not all_data.get("ids"):
+        print("Bootstrap: no memories found", file=_sys.stderr)
+        return
+
+    ids = all_data["ids"]
+    docs = all_data.get("documents") or []
+    embeddings = all_data.get("embeddings") or []
+    processed = 0
+
+    for i, doc_id in enumerate(ids):
+        doc = docs[i] if i < len(docs) else ""
+        if not doc:
+            continue
+        try:
+            if i < len(embeddings) and embeddings[i]:
+                import numpy as np
+
+                vec = np.array(embeddings[i], dtype=np.float32)
+            else:
+                vec = _embed_text(doc)
+            cid = _cluster_store.assign(vec, doc)
+            if cid:
+                collection.update(ids=[doc_id], metadatas=[{"cluster_id": cid}])
+                processed += 1
+        except Exception as e:
+            print(f"Bootstrap: failed for {doc_id}: {e}", file=_sys.stderr)
+
+    print(
+        f"Bootstrap: done — {processed}/{len(ids)} memories assigned", file=_sys.stderr
+    )
 
 
 def memory_health_report() -> dict:
@@ -4228,9 +5479,7 @@ def memory_health_report() -> dict:
     else:
         diversity_score = 0.1
 
-    health_score = int(
-        recent_score * 40 + retrieval_score * 30 + diversity_score * 30
-    )
+    health_score = int(recent_score * 40 + retrieval_score * 30 + diversity_score * 30)
     health_score = max(0, min(100, health_score))
 
     if health_score > 70:
@@ -4384,10 +5633,13 @@ def _gate_effectiveness_report() -> dict:
     Returns suggestions for gates that may need tuning.
     """
     import glob as _glob
+
     state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
     # Also check ramdisk
     ramdisk_dir = f"/run/user/{os.getuid()}/claude-hooks"
-    search_dirs = [ramdisk_dir, state_dir] if os.path.isdir(ramdisk_dir) else [state_dir]
+    search_dirs = (
+        [ramdisk_dir, state_dir] if os.path.isdir(ramdisk_dir) else [state_dir]
+    )
 
     effectiveness = {}
     for sdir in search_dirs:
@@ -4399,7 +5651,11 @@ def _gate_effectiveness_report() -> dict:
                 ge = data.get("gate_effectiveness", {})
                 for gate, stats in ge.items():
                     if gate not in effectiveness:
-                        effectiveness[gate] = {"blocks": 0, "overrides": 0, "prevented": 0}
+                        effectiveness[gate] = {
+                            "blocks": 0,
+                            "overrides": 0,
+                            "prevented": 0,
+                        }
                     for k in ("blocks", "overrides", "prevented"):
                         effectiveness[gate][k] += stats.get(k, 0)
             except Exception:
@@ -4415,7 +5671,9 @@ def _gate_effectiveness_report() -> dict:
         overrides = stats["overrides"]
         prevented = stats["prevented"]
         total_resolved = prevented + overrides
-        eff_pct = round(100 * prevented / total_resolved) if total_resolved > 0 else None
+        eff_pct = (
+            round(100 * prevented / total_resolved) if total_resolved > 0 else None
+        )
         results[gate] = {
             "blocks": blocks,
             "overrides": overrides,
@@ -4428,16 +5686,21 @@ def _gate_effectiveness_report() -> dict:
     return {
         "gates": results,
         "suggestions": suggestions,
-        "message": f"Analyzed {len(results)} gates" + (f", {len(suggestions)} need attention" if suggestions else ""),
+        "message": f"Analyzed {len(results)} gates"
+        + (f", {len(suggestions)} need attention" if suggestions else ""),
     }
 
 
 # DORMANT — saves ~180 tokens/prompt. Uncomment @mcp.tool() to reactivate.
 # @mcp.tool()
 @crash_proof
-def maintenance(action: str, top_k: int | None = None, days: int | None = None,
-                min_cluster_size: int | None = None,
-                distance_threshold: float | None = None) -> dict:
+def maintenance(
+    action: str,
+    top_k: int | None = None,
+    days: int | None = None,
+    min_cluster_size: int | None = None,
+    distance_threshold: float | None = None,
+) -> dict:
     """Run a maintenance action on the memory system.
 
     Available actions:
@@ -4460,7 +5723,10 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
         distance_threshold: Max cosine distance for clustering (used by cluster).
     """
     if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode", "degraded": True}
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
     if action == "promotions":
         return suggest_promotions(top_k=top_k if top_k is not None else 5)
     elif action == "stale":
@@ -4471,7 +5737,9 @@ def maintenance(action: str, top_k: int | None = None, days: int | None = None,
     elif action == "cluster":
         return cluster_knowledge(
             min_cluster_size=min_cluster_size if min_cluster_size is not None else 3,
-            distance_threshold=distance_threshold if distance_threshold is not None else 0.3,
+            distance_threshold=distance_threshold
+            if distance_threshold is not None
+            else 0.3,
         )
     elif action == "health":
         return memory_health_report()
@@ -4561,7 +5829,15 @@ def _parse_transcript_actions(transcript_path: str, max_actions: int = 5) -> lis
                 # Extract the most informative field from input
                 hint = ""
                 if isinstance(tool_input, dict):
-                    for key in ("file_path", "command", "pattern", "query", "path", "content", "prompt"):
+                    for key in (
+                        "file_path",
+                        "command",
+                        "pattern",
+                        "query",
+                        "path",
+                        "content",
+                        "prompt",
+                    ):
                         val = tool_input.get(key, "")
                         if val:
                             hint = str(val)[:80].replace("\n", " ")
@@ -4652,7 +5928,8 @@ def get_teammate_context(agent_name: str = "", max_actions: int = 5) -> dict:
     # Filter if agent_name provided
     if agent_name:
         matched = [
-            sa for sa in active_subagents
+            sa
+            for sa in active_subagents
             if agent_name.lower() in sa.get("agent_type", "").lower()
             or agent_name.lower() in sa.get("agent_id", "").lower()
         ]
@@ -4773,12 +6050,22 @@ def _dispatch_request(req):
             tags = _normalize_tags(tags)
             tags = _inject_project_tag(tags)
             if not content or len(content.strip()) < MIN_CONTENT_LENGTH:
-                return {"ok": True, "result": {"saved": False, "reason": "content too short"}}
+                return {
+                    "ok": True,
+                    "result": {"saved": False, "reason": "content too short"},
+                }
             # Dedup check
             dedup = _check_dedup(content, tags)
             if dedup and dedup.get("blocked"):
-                return {"ok": True, "result": {"saved": False, "reason": "deduplicated",
-                        "existing_id": dedup["existing_id"], "distance": dedup["distance"]}}
+                return {
+                    "ok": True,
+                    "result": {
+                        "saved": False,
+                        "reason": "deduplicated",
+                        "existing_id": dedup["existing_id"],
+                        "distance": dedup["distance"],
+                    },
+                }
             # Cap metadata
             if len(context) > 500:
                 context = context[:497] + "..."
@@ -4786,7 +6073,11 @@ def _dispatch_request(req):
                 tags = tags[:497] + "..."
             # Append soft-dupe tag if borderline
             if dedup and dedup.get("soft_dupe_tag"):
-                tags = f"{tags},{dedup['soft_dupe_tag']}" if tags else dedup["soft_dupe_tag"]
+                tags = (
+                    f"{tags},{dedup['soft_dupe_tag']}"
+                    if tags
+                    else dedup["soft_dupe_tag"]
+                )
             doc_id = generate_id(content)
             timestamp = datetime.now().isoformat()
             preview = content[:SUMMARY_LENGTH].replace("\n", " ")
@@ -4795,11 +6086,18 @@ def _dispatch_request(req):
             now = time.time()
             collection.upsert(
                 documents=[content],
-                metadatas=[{
-                    "context": context, "tags": tags, "timestamp": timestamp,
-                    "session_time": now, "preview": preview,
-                    "primary_source": "", "related_urls": "", "source_method": "auto_remember",
-                }],
+                metadatas=[
+                    {
+                        "context": context,
+                        "tags": tags,
+                        "timestamp": timestamp,
+                        "session_time": now,
+                        "preview": preview,
+                        "primary_source": "",
+                        "related_urls": "",
+                        "source_method": "auto_remember",
+                    }
+                ],
                 ids=[doc_id],
             )
             tag_index.add_tags(doc_id, tags)
@@ -4846,9 +6144,9 @@ def _dispatch_request(req):
                 batch_size = 100
                 for i in range(0, len(docs), batch_size):
                     col.upsert(
-                        documents=docs[i:i + batch_size],
-                        metadatas=metas[i:i + batch_size] if metas else None,
-                        ids=ids[i:i + batch_size],
+                        documents=docs[i : i + batch_size],
+                        metadatas=metas[i : i + batch_size] if metas else None,
+                        ids=ids[i : i + batch_size],
                     )
                 return {"ok": True, "result": len(docs)}
             return {"ok": False, "error": "upsert requires documents and ids"}
@@ -4858,7 +6156,7 @@ def _dispatch_request(req):
             if ids:
                 batch_size = 100
                 for i in range(0, len(ids), batch_size):
-                    col.delete(ids=ids[i:i + batch_size])
+                    col.delete(ids=ids[i : i + batch_size])
                 return {"ok": True, "result": len(ids)}
             return {"ok": False, "error": "delete requires ids"}
 
@@ -4894,7 +6192,10 @@ def _bind_uds_socket():
             probe.connect(SOCKET_PATH)
             # Connection succeeded — another server is live
             probe.close()
-            print("[UDS] Another server is live on socket, skipping UDS bind", file=_sys.stderr)
+            print(
+                "[UDS] Another server is live on socket, skipping UDS bind",
+                file=_sys.stderr,
+            )
             return None
         except (ConnectionRefusedError, FileNotFoundError, OSError):
             # Stale socket — safe to unlink
@@ -4919,7 +6220,10 @@ def _start_socket_server():
     try:
         srv = _bind_uds_socket()
         if srv is None:
-            print("[UDS] Skipping UDS server (another instance owns the socket)", file=_sys.stderr)
+            print(
+                "[UDS] Skipping UDS server (another instance owns the socket)",
+                file=_sys.stderr,
+            )
             return
         _socket_server = srv
     except OSError as e:
@@ -4932,7 +6236,9 @@ def _start_socket_server():
         while True:
             try:
                 conn, _ = srv.accept()
-                t = threading.Thread(target=_handle_socket_client, args=(conn,), daemon=True)
+                t = threading.Thread(
+                    target=_handle_socket_client, args=(conn,), daemon=True
+                )
                 t.start()
             except socket.timeout:
                 # Proactive watchdog: detect deleted socket file
@@ -4944,7 +6250,10 @@ def _start_socket_server():
                         pass
                     new_srv = _bind_uds_socket()
                     if new_srv is None:
-                        print("[UDS] Another server took the socket, exiting accept loop", file=_sys.stderr)
+                        print(
+                            "[UDS] Another server took the socket, exiting accept loop",
+                            file=_sys.stderr,
+                        )
                         return
                     try:
                         srv = new_srv
@@ -4964,7 +6273,10 @@ def _start_socket_server():
                 time.sleep(1)
                 new_srv = _bind_uds_socket()
                 if new_srv is None:
-                    print("[UDS] Another server took the socket, exiting accept loop", file=_sys.stderr)
+                    print(
+                        "[UDS] Another server took the socket, exiting accept loop",
+                        file=_sys.stderr,
+                    )
                     return
                 srv = new_srv
                 _socket_server = srv
@@ -5003,8 +6315,14 @@ if __name__ == "__main__":
     # Defer _ensure_initialized() to first tool call — mcp.run() must start
     # immediately so Claude Code's MCP handshake doesn't timeout (~25s model load).
     _start_socket_server()
+    if _args.bootstrap_clusters:
+        _bootstrap_clusters()
+        _sys.exit(0)
+    _mode = "sse" if _args.sse else "stdio"
+    if _args.sse:
+        _sys.stderr.write(f"[MCP] Starting SSE transport on {_SSE_HOST}:{_args.port}\n")
     try:
-        mcp.run()
+        mcp.run(transport=_mode)
     except Exception as e:
-        print(f"[MCP] Fatal: {e}", file=_sys.stderr)
+        _sys.stderr.write(f"[MCP] Fatal: {e}\n")
         _sys.exit(1)

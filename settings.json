@@ -10,6 +10,7 @@
     ],
     "defaultMode": "default"
   },
+  "model": "sonnet",
   "hooks": {
     "PreToolUse": [
       {
@@ -73,6 +74,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/integrity_check.py\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/toroidal/session_capture_hook.py\"",
+            "timeout": 3
           }
         ]
       }
@@ -216,6 +222,16 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/toroidal/idle_prompt_hook.sh\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "ConfigChange": [
@@ -246,6 +262,7 @@
     "skill-creator@claude-plugins-official": false,
     "code-simplifier@claude-plugins-official": false
   },
+  "effortLevel": "high",
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "disabled_hooks": {
@@ -287,6 +304,5 @@
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
   ],
-  "effortLevel": "high",
-  "model": "sonnet"
+  "voiceEnabled": true
 }

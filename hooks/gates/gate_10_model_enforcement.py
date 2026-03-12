@@ -2,8 +2,9 @@
 
 Enforces model profiles for sub-agent spawns via two mechanisms:
 
-1. **Agent tool** (primary): Sets tool_input["model"] directly to enforce
-   the active profile model before the agent spawns.
+1. **Agent tool** (primary): Reads agent .md frontmatter, verifies model:
+   matches active profile. If profile changed mid-session, rewrites
+   frontmatter atomically before the agent spawns.
 
 2. **Task tool** (legacy): Blocks Task calls without explicit model param.
    Enforces profile-based model via tool_input["model"] override.
@@ -14,16 +15,17 @@ when budget_degradation=ON in config.json.
 Advisory warnings: Warns when model seems mismatched for agent type.
 """
 
+import fcntl
 import os
+import re
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
 from shared.model_profiles import (
-    MODEL_PROFILES,
-    AGENT_ROLE_MAP,
-    RECOMMENDED_MODELS,
-    MODEL_SUGGESTIONS,
+    MODEL_PROFILES, AGENT_ROLE_MAP,
+    RECOMMENDED_MODELS, MODEL_SUGGESTIONS,
     get_model_for_agent,
 )
 
@@ -36,9 +38,66 @@ MODEL_GUIDANCE = (
     "sonnet (analysis/testing), opus (complex implementation)"
 )
 
+_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
+_MODEL_LINE_RE = re.compile(r"^model:\s*(.+)$", re.MULTILINE)
+
+_AGENTS_DIR = os.path.join(os.path.expanduser("~"), ".claude", "agents")
+
+
+def _read_agent_frontmatter_model(agent_name):
+    """Read the model: value from an agent's .md frontmatter. Returns (model, fpath)."""
+    fpath = os.path.join(_AGENTS_DIR, f"{agent_name}.md")
+    if not os.path.isfile(fpath):
+        return None, fpath
+    try:
+        with open(fpath, "r") as f:
+            content = f.read()
+        fm_match = _FRONTMATTER_RE.match(content)
+        if not fm_match:
+            return None, fpath
+        model_match = _MODEL_LINE_RE.search(fm_match.group(1))
+        if not model_match:
+            return None, fpath
+        return model_match.group(1).strip(), fpath
+    except OSError:
+        return None, fpath
+
+
+def _patch_agent_frontmatter(fpath, target_model):
+    """Atomically rewrite model: in agent .md frontmatter with file locking."""
+    try:
+        with open(fpath, "r") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            content = f.read()
+            fcntl.flock(f, fcntl.LOCK_UN)
+    except OSError:
+        return False
+
+    fm_match = _FRONTMATTER_RE.match(content)
+    if not fm_match:
+        return False
+
+    frontmatter = fm_match.group(1)
+    new_frontmatter = _MODEL_LINE_RE.sub(f"model: {target_model}", frontmatter)
+    new_content = f"---\n{new_frontmatter}\n---\n" + content[fm_match.end():]
+
+    agents_dir = os.path.dirname(fpath)
+    fd, tmp_path = tempfile.mkstemp(dir=agents_dir, suffix=".md.tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(new_content)
+        os.rename(tmp_path, fpath)
+        return True
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        return False
+
 
 def _check_agent_tool(tool_input, state):
-    """Handle Agent tool calls: enforce model profile via tool_input["model"]."""
+    """Handle Agent tool calls: verify/patch frontmatter model."""
     subagent_type = tool_input.get("subagent_type", "")
     description = tool_input.get("description", "agent task")
 
@@ -48,7 +107,6 @@ def _check_agent_tool(tool_input, state):
     # Get active profile
     try:
         from shared.state import get_live_toggle
-
         profile_name = get_live_toggle("model_profile", "balanced") or "balanced"
     except Exception:
         profile_name = "balanced"
@@ -64,11 +122,8 @@ def _check_agent_tool(tool_input, state):
     # Budget degradation for Agent tool
     try:
         from shared.state import get_live_toggle
-
         budget_on = get_live_toggle("budget_degradation", False)
-        budget_limit = (
-            int(get_live_toggle("session_token_budget", 0) or 0) if budget_on else 0
-        )
+        budget_limit = int(get_live_toggle("session_token_budget", 0) or 0) if budget_on else 0
         if budget_on and budget_limit > 0:
             subagent_tokens = state.get("subagent_total_tokens", 0)
             session_tokens = state.get("session_token_estimate", 0)
@@ -76,12 +131,9 @@ def _check_agent_tool(tool_input, state):
             usage_pct = used / budget_limit
 
             state["budget_tier"] = (
-                "dead"
-                if usage_pct >= 0.95
-                else "critical"
-                if usage_pct >= 0.80
-                else "low_compute"
-                if usage_pct >= 0.40
+                "dead" if usage_pct >= 0.95
+                else "critical" if usage_pct >= 0.80
+                else "low_compute" if usage_pct >= 0.40
                 else "normal"
             )
 
@@ -115,16 +167,29 @@ def _check_agent_tool(tool_input, state):
     except Exception:
         pass  # Budget check is fail-open
 
-    # Enforce model directly (model param restored in Claude Code 2.1.72)
-    tool_input["model"] = target_model
-    print(
-        f"[{GATE_NAME}] PROFILE '{profile_name}': {subagent_type} -> {target_model} ({description})",
-        file=sys.stderr,
-    )
+    # Read current frontmatter model
+    current_model, fpath = _read_agent_frontmatter_model(subagent_type)
+
+    if current_model and current_model != target_model:
+        # Profile changed mid-session or budget degraded -- patch frontmatter
+        patched = _patch_agent_frontmatter(fpath, target_model)
+        if patched:
+            print(
+                f"[{GATE_NAME}] PROFILE '{profile_name}': patched {subagent_type}.md "
+                f"{current_model}->{target_model} ({description})",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"[{GATE_NAME}] WARNING: Failed to patch {subagent_type}.md "
+                f"({current_model}->{target_model})",
+                file=sys.stderr,
+            )
 
     # Track usage
+    effective_model = target_model if current_model else "unknown"
     model_usage = state.setdefault("model_agent_usage", {})
-    usage_key = f"{subagent_type}:{target_model}"
+    usage_key = f"{subagent_type}:{effective_model}"
     model_usage[usage_key] = model_usage.get(usage_key, 0) + 1
 
     return GateResult(blocked=False, gate_name=GATE_NAME)
@@ -152,11 +217,8 @@ def _check_task_tool(tool_input, state):
     budget_tier = "normal"
     try:
         from shared.state import get_live_toggle
-
         budget_on = get_live_toggle("budget_degradation", False)
-        budget_limit = (
-            int(get_live_toggle("session_token_budget", 0) or 0) if budget_on else 0
-        )
+        budget_limit = int(get_live_toggle("session_token_budget", 0) or 0) if budget_on else 0
         if budget_on and budget_limit > 0:
             subagent_tokens = state.get("subagent_total_tokens", 0)
             session_tokens = state.get("session_token_estimate", 0)
@@ -209,7 +271,6 @@ def _check_task_tool(tool_input, state):
     # Step 1c: Role-based profile enforcement
     try:
         from shared.state import get_live_toggle
-
         profile_name = get_live_toggle("model_profile", "balanced") or "balanced"
         profile = MODEL_PROFILES.get(profile_name, MODEL_PROFILES["balanced"])
         role = AGENT_ROLE_MAP.get(subagent_type)

@@ -3,6 +3,7 @@
 
 Imports test modules (tests run at import time), then prints summary.
 """
+
 import sys
 import os
 
@@ -25,6 +26,9 @@ from tests import test_integration
 from tests import test_analytics
 from tests import test_shared_deep
 from tests import test_project_detection
+from tests import test_pmi
+from tests import test_clustering
+from tests import test_counterfactual
 
 # Restore sideband backup
 if harness._SIDEBAND_BACKUP is not None:
@@ -33,14 +37,20 @@ if harness._SIDEBAND_BACKUP is not None:
 
 # Self-check: results list should only contain PASS/FAIL/SKIP
 # Use startswith to avoid false matches on test names containing "FAIL"/"PASS"
-test_sc_pass = sum(1 for r in harness.RESULTS if r.strip().startswith("PASS") or r.strip().startswith("SKIP"))
+test_sc_pass = sum(
+    1
+    for r in harness.RESULTS
+    if r.strip().startswith("PASS") or r.strip().startswith("SKIP")
+)
 test_sc_fail = sum(1 for r in harness.RESULTS if r.strip().startswith("FAIL"))
 harness.test("SC: passed tests show PASS", test_sc_pass == harness.PASS)
 harness.test("SC: failed tests show FAIL", test_sc_fail == harness.FAIL)
 
 # SUMMARY
 print("\n" + "=" * 70)
-print(f"  RESULTS: {harness.PASS} passed, {harness.FAIL} failed, {harness.PASS + harness.FAIL} total")
+print(
+    f"  RESULTS: {harness.PASS} passed, {harness.FAIL} failed, {harness.PASS + harness.FAIL} total"
+)
 print("=" * 70)
 
 if harness.FAIL > 0:

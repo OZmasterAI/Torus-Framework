@@ -124,3 +124,9 @@ hooks/.circuit_breaker.json
 
 # Skill library runtime logs
 skill-library/.usage_log.jsonl
+
+# Toroidal Teams runtime state
+channels/
+data/
+toroidal/sessions.json
+results.tsv

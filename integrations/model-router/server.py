@@ -15,11 +15,13 @@ scheduler = Scheduler(registry)
 
 
 async def handle_health(request):
-    return web.json_response({
-        "status": "ok",
-        "models": len(registry.models),
-        "healthy": len(registry.healthy_models()),
-    })
+    return web.json_response(
+        {
+            "status": "ok",
+            "models": len(registry.models),
+            "healthy": len(registry.healthy_models()),
+        }
+    )
 
 
 async def handle_models(request):
@@ -65,8 +67,12 @@ async def handle_fan_out(request):
         return web.json_response({"error": "prompt required"}, status=400)
 
     results = await fan_out(
-        prompt, registry, n=n, models=models,
-        timeout=timeout, max_tokens=max_tokens,
+        prompt,
+        registry,
+        n=n,
+        models=models,
+        timeout=timeout,
+        max_tokens=max_tokens,
     )
     return web.json_response(results)
 
@@ -82,8 +88,11 @@ async def handle_compare(request):
         return web.json_response({"error": "prompt required"}, status=400)
 
     result = await compare(
-        prompt, registry, models=models,
-        timeout=timeout, max_tokens=max_tokens,
+        prompt,
+        registry,
+        models=models,
+        timeout=timeout,
+        max_tokens=max_tokens,
     )
     path = save_results(result, label="compare")
     result["saved_to"] = path
@@ -93,8 +102,8 @@ async def handle_compare(request):
 async def handle_research(request):
     body = await request.json()
     topic = body.get("topic", "")
-    n = body.get("n", 5)
-    timeout = body.get("timeout", 20.0)
+    n = body.get("n")  # None = all models
+    timeout = body.get("timeout", 45.0)
 
     if not topic:
         return web.json_response({"error": "topic required"}, status=400)
@@ -110,18 +119,22 @@ async def handle_ping(request):
     results = await fan_out("Say OK", registry, timeout=10.0, max_tokens=16)
     summary = []
     for r in results:
-        summary.append({
-            "name": r.get("name", "unknown"),
-            "ok": not r.get("error"),
-            "latency_ms": r.get("latency_ms", 0),
-            "error": r.get("error"),
-        })
+        summary.append(
+            {
+                "name": r.get("name", "unknown"),
+                "ok": not r.get("error"),
+                "latency_ms": r.get("latency_ms", 0),
+                "error": r.get("error"),
+            }
+        )
     summary.sort(key=lambda s: (not s["ok"], s["latency_ms"]))
-    return web.json_response({
-        "total": len(summary),
-        "healthy": sum(1 for s in summary if s["ok"]),
-        "results": summary,
-    })
+    return web.json_response(
+        {
+            "total": len(summary),
+            "healthy": sum(1 for s in summary if s["ok"]),
+            "results": summary,
+        }
+    )
 
 
 async def handle_add_schedule(request):
@@ -135,7 +148,9 @@ async def handle_add_schedule(request):
     if not prompt or not cron:
         return web.json_response({"error": "prompt and cron required"}, status=400)
 
-    sched = scheduler.add_schedule(prompt, cron, models=models, n=n, expires_in=expires_in)
+    sched = scheduler.add_schedule(
+        prompt, cron, models=models, n=n, expires_in=expires_in
+    )
     return web.json_response(sched.to_dict())
 
 

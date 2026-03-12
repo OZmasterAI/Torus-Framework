@@ -1,0 +1,24 @@
+{
+  "session_count": 414,
+  "project": "torus-framework",
+  "feature": "model-swaps",
+  "framework_version": "v2.8.0",
+  "what_was_done": "Swapped models across model-router + OpenClaw (hunter-alpha, healer-alpha, nemotron-super-120b). Fixed OpenClaw stuck session (bad tool calls from Nemotron). Mapped TG bot voice stack for Healer Alpha integration.",
+  "known_issues": [
+    "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
+    "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
+    "Cognitive-upgrade has eclipse-rebase line in ARCHITECTURE.md/USAGE_GUIDE.md — resolves on merge to Cognitive",
+    "Security findings from external audit pending fix (memory id:65cab6b931e40aeb)",
+    "Memory server now SSE — must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
+    "hooks/ has stale files + 110MB audit trail needing rotation (memory id:ffcf1efe1be2b6ba)",
+    "OpenClaw only supports text/image input types — audio/video cause config validation failure"
+  ],
+  "next_steps": [
+    "Healer Alpha integration into TG bot voice pipeline (handle_voice() in bot.py line 471)",
+    "Memory reference/working separation — Option B + cherry-pick decay (memory id:f528502bc2f65f4b)",
+    "Hooks cleanup: delete stale files + add audit trail rotation (memory id:ffcf1efe1be2b6ba)",
+    "Fix external audit security findings (memory id:65cab6b931e40aeb)",
+    "Toroidal Teams v2 — inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)",
+    "Memory stale purge — 2,706 entries, run maintenance(action='stale')"
+  ]
+}

@@ -22,6 +22,7 @@ from shared.gate_helpers import extract_file_path, safe_tool_input
 
 GATE_NAME = "GATE 13: WORKSPACE ISOLATION"
 CLAIMS_FILE = os.path.join(os.path.dirname(__file__), "..", ".file_claims.json")
+COCLAIMS_FILE = os.path.join(os.path.dirname(__file__), "..", ".file_coclaims.json")
 STALE_THRESHOLD = 600  # 10 minutes (reduced from 30m — claims refresh each Edit, 10m covers active agents)
 
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
@@ -39,6 +40,27 @@ def _read_claims():
             finally:
                 fcntl.flock(f, fcntl.LOCK_UN)
         return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError, ValueError):
+        return {}
+
+
+def _read_coclaims():
+    """Read co-claims file. Returns dict of {filepath: {sessions: [...], expires: float}}."""
+    if not os.path.exists(COCLAIMS_FILE):
+        return {}
+    try:
+        with open(COCLAIMS_FILE, "r") as f:
+            fcntl.flock(f, fcntl.LOCK_SH)
+            try:
+                data = json.load(f)
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+        now = time.time()
+        return {
+            fp: info
+            for fp, info in data.items()
+            if isinstance(info, dict) and info.get("expires", 0) > now
+        }
     except (json.JSONDecodeError, OSError, ValueError):
         return {}
 
@@ -93,6 +115,19 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
                 and claimed_by != session_id
                 and age_seconds < STALE_THRESHOLD
             ):
+                # Check co-claims before blocking
+                coclaims = _read_coclaims()
+                coclaim = coclaims.get(file_path)
+                if coclaim and isinstance(coclaim, dict):
+                    authorized = coclaim.get("sessions", [])
+                    if session_id in authorized and claimed_by in authorized:
+                        return GateResult(
+                            blocked=False,
+                            gate_name=GATE_NAME,
+                            message=f"[{GATE_NAME}] Co-claim: '{file_path}' shared between '{claimed_by}' and '{session_id}'",
+                            severity="info",
+                        )
+
                 age_minutes = int(age_seconds / 60)
                 msg = (
                     f"[{GATE_NAME}] BLOCKED: File '{file_path}' is currently being "
