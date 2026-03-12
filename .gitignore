@@ -114,9 +114,11 @@ integrations/tts-voices/
 # Model router runtime config (contains API keys)
 integrations/model-router/router_config.toml
 
-# Dormant skills (private/project-specific)
+# Dormant (private/project-specific)
 dormant/skills/market/
 dormant/skills/trade/
+dormant/teams/
+dormant/voice-web/
 
 # Runtime state (operational data, not source)
 hooks/.experience_archive.csv
