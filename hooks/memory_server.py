@@ -1516,12 +1516,8 @@ def search_knowledge(
             recency_weight=recency_weight,
             match_all=match_all,
             counterfactual=counterfactual,
+            memory_type=memory_type,
         )
-        # Filter by memory_type if requested
-        if memory_type and result.get("results"):
-            result["results"] = [
-                r for r in result["results"] if r.get("memory_type") == memory_type
-            ]
         # Track search result IDs for implicit feedback (fail-open)
         try:
             _last_search_ids = [

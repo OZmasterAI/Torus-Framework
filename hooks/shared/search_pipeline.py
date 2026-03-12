@@ -81,6 +81,7 @@ class SearchPipeline:
         recency_weight=0.15,
         match_all=False,
         counterfactual=False,
+        memory_type="",
     ):
         """Full search pipeline — 10 steps.
 
@@ -156,6 +157,7 @@ class SearchPipeline:
         # ── Step 2: Primary retrieval ──
         actual_k = min(top_k * 2, count)
         format_summaries = h.get("format_summaries", lambda x: [])
+        _where = {"memory_type": memory_type} if memory_type else None
 
         if mode == "tags":
             tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)
@@ -176,6 +178,7 @@ class SearchPipeline:
                 query_texts=[query],
                 n_results=actual_k,
                 include=["metadatas", "distances"],
+                where=_where,
             )
             lance_summaries = format_summaries(lance_results)
             formatted = (
@@ -189,6 +192,7 @@ class SearchPipeline:
                 query_texts=[query],
                 n_results=actual_k,
                 include=["metadatas", "distances"],
+                where=_where,
             )
             formatted = format_summaries(results)
 
