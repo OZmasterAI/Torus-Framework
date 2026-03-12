@@ -8,14 +8,14 @@
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
     "Security findings from external audit pending fix (memory id:65cab6b931e40aeb)",
-    "Memory server now SSE — must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
-    "layered-memory branch has memory-v2 merge — needs merge into Toroidal-teams or main"
+    "Memory server now SSE \u2014 must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
+    "layered-memory branch has memory-v2 merge \u2014 needs merge into Toroidal-teams or main"
   ],
   "next_steps": [
-    "Merge layered-memory into Toroidal-teams (or main) to activate memory v2",
-    "Decide: Option 2 (own runtime) vs Option 3 (hybrid enhance Plans A+B) — comparison in memory 06c94153eda79164",
-    "Memory stale purge — 2,766 entries, run maintenance(action='stale')",
-    "Fix external audit security findings (memory id:65cab6b931e40aeb)",
-    "Toroidal Teams v2 — inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)"
-  ]
+    "Decide: Option 2 (own runtime) vs Option 3 (hybrid enhance Plans A+B) \u2014 comparison in memory 06c94153eda79164",
+    "Memory stale purge \u2014 2,769 entries, run maintenance(action='stale')",
+    "Toroidal Teams v2 \u2014 inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)",
+    "Tune memory_type classifier after a few sessions of real usage \u2014 561 intentionally unclassified, re-run backfill_memory_type.py after changes"
+  ],
+  "last_response_preview": "Telegram bot restarted \u2014 PID 3697777, fresh at ~0% memory. Was at 8.1% (~2GB) after 2 days of runtime."
 }
