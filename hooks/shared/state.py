@@ -20,12 +20,14 @@ import glob
 import json
 import logging
 import os
+import subprocess
 import time
 
 _DISK_STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 
 try:
     from shared.ramdisk import get_state_dir, is_ramdisk_available
+
     STATE_DIR = get_state_dir()
 except ImportError:
     STATE_DIR = _DISK_STATE_DIR
@@ -134,62 +136,64 @@ def default_state():
         "verification_scores": {},
         "successful_strategies": {},
         # v2.1.9 fields (enhanced tracking)
-        "tool_stats": {},           # Per-tool call counts {tool_name: {"count": N}}
-        "edit_streak": {},          # Consecutive edits per file without verification
+        "tool_stats": {},  # Per-tool call counts {tool_name: {"count": N}}
+        "edit_streak": {},  # Consecutive edits per file without verification
         "last_test_exit_code": None,  # Exit code from most recent test run
-        "gate_timing_stats": {},    # Per-gate timing: {gate_name: {count, total_ms, min_ms, max_ms}}
+        "gate_timing_stats": {},  # Per-gate timing: {gate_name: {count, total_ms, min_ms, max_ms}}
         "rate_window_timestamps": [],  # Rolling window of tool call timestamps for Gate 11
-        "tool_call_counts": {},     # Per-tool call counts
-        "total_tool_calls": 0,      # Total tool calls this session
+        "tool_call_counts": {},  # Per-tool call counts
+        "total_tool_calls": 0,  # Total tool calls this session
         # v2.4.2 fields (subagent visibility)
-        "active_subagents": [],     # Currently running: [{agent_id, agent_type, transcript_path, start_ts}]
-        "subagent_total_tokens": 0, # Cumulative tokens from completed subagents
-        "subagent_history": [],     # Completed: [{agent_id, agent_type, tokens, duration_s}]
+        "active_subagents": [],  # Currently running: [{agent_id, agent_type, transcript_path, start_ts}]
+        "subagent_total_tokens": 0,  # Cumulative tokens from completed subagents
+        "subagent_history": [],  # Completed: [{agent_id, agent_type, tokens, duration_s}]
         # v2.4.2 fields (confidence gate)
         "session_test_baseline": False,  # Has any test been run this session?
         # confidence_warnings: removed in refactor1 (replaced by confidence_warnings_per_file)
         # v3 fields (causal chain enforcement)
-        "recent_test_failure": None,     # {pattern, timestamp, command} when tests fail; None when passing
-        "fix_history_queried": 0,        # Timestamp of last query_fix_history call
-        "fixing_error": False,           # True when actively fixing a detected error
+        "recent_test_failure": None,  # {pattern, timestamp, command} when tests fail; None when passing
+        "fix_history_queried": 0,  # Timestamp of last query_fix_history call
+        "fixing_error": False,  # True when actively fixing a detected error
         # v3 fields (code quality gate)
         "code_quality_warnings_per_file": {},  # Gate 16: {filepath: warn_count}
         # v3 fields (previously undocumented — used by gates/tracker via .get() defaults)
-        "gate4_exemptions": {},              # Gate 4: {filename: count} exempt files from memory-first check
-        "model_agent_usage": {},            # Gate 10: {agent_type: usage_count}
+        "gate4_exemptions": {},  # Gate 4: {filename: count} exempt files from memory-first check
+        "model_agent_usage": {},  # Gate 10: {agent_type: usage_count}
         # gate12_warn_count: removed in refactor1 (Gate 12 merged into Gate 6)
-        "confidence_warnings_per_file": {}, # Gate 14: {filepath: warn_count}
-        "confidence_warned_signals": [],    # Gate 14: signals already warned this session
-        "verification_timestamps": {},      # Gate 6: {filepath: last_verified_ts}
-        "last_test_command": "",            # Gate 3: last test command run (hint display)
-        "files_edited": [],                 # tracker: files edited this session
-        "session_duration_nudge_hour": 0,   # tracker: last milestone hour nudged (1/2/3)
-        "auto_remember_count": 0,           # tracker: auto-remember calls this session
+        "confidence_warnings_per_file": {},  # Gate 14: {filepath: warn_count}
+        "confidence_warned_signals": [],  # Gate 14: signals already warned this session
+        "verification_timestamps": {},  # Gate 6: {filepath: last_verified_ts}
+        "last_test_command": "",  # Gate 3: last test command run (hint display)
+        "files_edited": [],  # tracker: files edited this session
+        "session_duration_nudge_hour": 0,  # tracker: last milestone hour nudged (1/2/3)
+        "auto_remember_count": 0,  # tracker: auto-remember calls this session
         # v3.1 fields (self-evolving framework)
-        "gate_effectiveness": {},            # {gate_name: {blocks: N, overrides: N, prevented: N}}
-        "gate_block_outcomes": [],           # [{gate, tool, file, timestamp, resolved_by}] capped at 100
-        "session_token_estimate": 0,         # Estimated total tokens this session
-        "gate_tune_overrides": {},           # {gate_name: {param: value}} — written by boot.py auto-tune
+        "gate_effectiveness": {},  # {gate_name: {blocks: N, overrides: N, prevented: N}}
+        "gate_block_outcomes": [],  # [{gate, tool, file, timestamp, resolved_by}] capped at 100
+        "session_token_estimate": 0,  # Estimated total tokens this session
+        "gate_tune_overrides": {},  # {gate_name: {param: value}} — written by boot.py auto-tune
         # v3.2 fields (error recovery — deferred items)
-        "deferred_items": [],               # [{strategy, error_signature, fail_count, file, deferred_at}] capped at 50
+        "deferred_items": [],  # [{strategy, error_signature, fail_count, file, deferred_at}] capped at 50
         # v3.3 fields (security profiles)
-        "security_profile": "balanced",     # Active risk profile: "strict" | "balanced" | "permissive"
+        "security_profile": "balanced",  # Active risk profile: "strict" | "balanced" | "permissive"
         # v3.4 fields (mentor system — A+B+D+E)
-        "mentor_last_verdict": "proceed",        # Last mentor verdict: "proceed"|"advise"|"warn"|"escalate"
-        "mentor_last_score": 1.0,                # Weighted signal score 0.0-1.0 (1.0 = healthy)
-        "mentor_escalation_count": 0,            # Consecutive escalations (resets on proceed/advise)
-        "mentor_signals": [],                    # Recent Signal list from last evaluation
-        "mentor_warned_this_cycle": False,       # Prevents duplicate warnings in same PostToolUse
+        "mentor_last_verdict": "proceed",  # Last mentor verdict: "proceed"|"advise"|"warn"|"escalate"
+        "mentor_last_score": 1.0,  # Weighted signal score 0.0-1.0 (1.0 = healthy)
+        "mentor_escalation_count": 0,  # Consecutive escalations (resets on proceed/advise)
+        "mentor_signals": [],  # Recent Signal list from last evaluation
+        "mentor_warned_this_cycle": False,  # Prevents duplicate warnings in same PostToolUse
         # v3.4 fields (analytics awareness — Upgrades C+F)
-        "analytics_last_used": {},              # {tool_name: timestamp} per analytics MCP tool
-        "analytics_last_queried": 0,            # Timestamp of last any mcp__analytics__ call
-        "analytics_warn_count": 0,              # Gate 6 F-track: separate counter, threshold 15
-        "mentor_chain_pattern": "",              # Detected chain pattern: "churn"|"stuck"|"healthy"|""
-        "mentor_chain_score": 1.0,               # Outcome chain score 0.0-1.0
-        "mentor_memory_match": None,             # Historical match from memory mentor (dict or None)
-        "mentor_historical_context": "",         # Human-readable historical context string
+        "analytics_last_used": {},  # {tool_name: timestamp} per analytics MCP tool
+        "analytics_last_queried": 0,  # Timestamp of last any mcp__analytics__ call
+        "analytics_warn_count": 0,  # Gate 6 F-track: separate counter, threshold 15
+        "mentor_chain_pattern": "",  # Detected chain pattern: "churn"|"stuck"|"healthy"|""
+        "mentor_chain_score": 1.0,  # Outcome chain score 0.0-1.0
+        "mentor_memory_match": None,  # Historical match from memory mentor (dict or None)
+        "mentor_historical_context": "",  # Human-readable historical context string
         # v3.5 fields (domain mastery)
-        "active_domain": "",                       # Currently active domain name (or empty)
+        "active_domain": "",  # Currently active domain name (or empty)
+        # v3.6 fields (branch-change detection)
+        "_last_branch": "",  # Last known git branch — used to reset mentor state on switch
     }
 
 
@@ -202,80 +206,352 @@ def get_state_schema():
     Used by dashboard for state visualization and documentation.
     """
     return {
-        "_version": {"type": "int", "description": "State schema version", "category": "meta"},
-        "files_read": {"type": "list", "description": "Recently read file paths", "category": "gate1", "max_size": MAX_FILES_READ},
-        "memory_last_queried": {"type": "float", "description": "Timestamp of last memory query", "category": "gate4"},
-        "pending_verification": {"type": "list", "description": "Files with unverified edits", "category": "gate5", "max_size": MAX_PENDING_VERIFICATION},
-        "last_test_run": {"type": "float", "description": "Timestamp of last test run", "category": "gate3"},
-        "verified_fixes": {"type": "list", "description": "Files with verified fixes", "category": "gate6", "max_size": MAX_VERIFIED_FIXES},
-        "session_start": {"type": "float", "description": "Session start timestamp", "category": "session"},
+        "_version": {
+            "type": "int",
+            "description": "State schema version",
+            "category": "meta",
+        },
+        "files_read": {
+            "type": "list",
+            "description": "Recently read file paths",
+            "category": "gate1",
+            "max_size": MAX_FILES_READ,
+        },
+        "memory_last_queried": {
+            "type": "float",
+            "description": "Timestamp of last memory query",
+            "category": "gate4",
+        },
+        "pending_verification": {
+            "type": "list",
+            "description": "Files with unverified edits",
+            "category": "gate5",
+            "max_size": MAX_PENDING_VERIFICATION,
+        },
+        "last_test_run": {
+            "type": "float",
+            "description": "Timestamp of last test run",
+            "category": "gate3",
+        },
+        "verified_fixes": {
+            "type": "list",
+            "description": "Files with verified fixes",
+            "category": "gate6",
+            "max_size": MAX_VERIFIED_FIXES,
+        },
+        "session_start": {
+            "type": "float",
+            "description": "Session start timestamp",
+            "category": "session",
+        },
         # edits_locked: removed in refactor1
-        "tool_call_count": {"type": "int", "description": "Total tool calls this session", "category": "metrics"},
-        "unlogged_errors": {"type": "list", "description": "Errors not saved to memory", "category": "gate6", "max_size": MAX_UNLOGGED_ERRORS},
-        "error_pattern_counts": {"type": "dict", "description": "Error pattern frequencies", "category": "gate6", "max_size": MAX_ERROR_PATTERNS},
-        "pending_chain_ids": {"type": "list", "description": "Causal chains awaiting outcome", "category": "causal", "max_size": MAX_PENDING_CHAINS},
-        "current_strategy_id": {"type": "str", "description": "Active fix strategy ID", "category": "causal"},
-        "current_error_signature": {"type": "str", "description": "Active error signature hash", "category": "causal"},
-        "active_bans": {"type": "dict", "description": "Banned strategy IDs: {id: {fail_count, first_failed, last_failed}}", "category": "gate9", "max_size": MAX_ACTIVE_BANS},
-        "last_exit_plan_mode": {"type": "float", "description": "Timestamp of last plan mode exit", "category": "gate6"},
-        "error_windows": {"type": "list", "description": "Time-windowed error tracking", "category": "gate6"},
-        "skill_usage": {"type": "dict", "description": "Skill invocation counts", "category": "skills"},
-        "recent_skills": {"type": "list", "description": "Recently used skills", "category": "skills"},
-        "gate6_warn_count": {"type": "int", "description": "Gate 6 warning escalation counter", "category": "gate6"},
-        "verification_scores": {"type": "dict", "description": "Partial verification scores per file", "category": "gate5"},
-        "successful_strategies": {"type": "dict", "description": "Strategy success counts", "category": "gate9"},
-        "tool_stats": {"type": "dict", "description": "Per-tool call statistics", "category": "metrics"},
-        "edit_streak": {"type": "dict", "description": "Consecutive edits per file without verification", "category": "gate5", "max_size": MAX_EDIT_STREAK},
-        "last_test_exit_code": {"type": "int", "description": "Exit code from most recent test", "category": "gate3"},
-        "gate_timing_stats": {"type": "dict", "description": "Per-gate timing metrics", "category": "metrics"},
-        "rate_window_timestamps": {"type": "list", "description": "Rolling window for rate limiting", "category": "gate11"},
-        "tool_call_counts": {"type": "dict", "description": "Per-tool call counts", "category": "metrics"},
-        "total_tool_calls": {"type": "int", "description": "Total tool calls this session", "category": "metrics"},
-        "active_subagents": {"type": "list", "description": "Currently running subagents", "category": "subagents"},
-        "subagent_total_tokens": {"type": "int", "description": "Cumulative tokens from completed subagents", "category": "subagents"},
-        "subagent_history": {"type": "list", "description": "Completed subagent records", "category": "subagents"},
-        "session_test_baseline": {"type": "bool", "description": "Whether any test has been run this session", "category": "gate14"},
+        "tool_call_count": {
+            "type": "int",
+            "description": "Total tool calls this session",
+            "category": "metrics",
+        },
+        "unlogged_errors": {
+            "type": "list",
+            "description": "Errors not saved to memory",
+            "category": "gate6",
+            "max_size": MAX_UNLOGGED_ERRORS,
+        },
+        "error_pattern_counts": {
+            "type": "dict",
+            "description": "Error pattern frequencies",
+            "category": "gate6",
+            "max_size": MAX_ERROR_PATTERNS,
+        },
+        "pending_chain_ids": {
+            "type": "list",
+            "description": "Causal chains awaiting outcome",
+            "category": "causal",
+            "max_size": MAX_PENDING_CHAINS,
+        },
+        "current_strategy_id": {
+            "type": "str",
+            "description": "Active fix strategy ID",
+            "category": "causal",
+        },
+        "current_error_signature": {
+            "type": "str",
+            "description": "Active error signature hash",
+            "category": "causal",
+        },
+        "active_bans": {
+            "type": "dict",
+            "description": "Banned strategy IDs: {id: {fail_count, first_failed, last_failed}}",
+            "category": "gate9",
+            "max_size": MAX_ACTIVE_BANS,
+        },
+        "last_exit_plan_mode": {
+            "type": "float",
+            "description": "Timestamp of last plan mode exit",
+            "category": "gate6",
+        },
+        "error_windows": {
+            "type": "list",
+            "description": "Time-windowed error tracking",
+            "category": "gate6",
+        },
+        "skill_usage": {
+            "type": "dict",
+            "description": "Skill invocation counts",
+            "category": "skills",
+        },
+        "recent_skills": {
+            "type": "list",
+            "description": "Recently used skills",
+            "category": "skills",
+        },
+        "gate6_warn_count": {
+            "type": "int",
+            "description": "Gate 6 warning escalation counter",
+            "category": "gate6",
+        },
+        "verification_scores": {
+            "type": "dict",
+            "description": "Partial verification scores per file",
+            "category": "gate5",
+        },
+        "successful_strategies": {
+            "type": "dict",
+            "description": "Strategy success counts",
+            "category": "gate9",
+        },
+        "tool_stats": {
+            "type": "dict",
+            "description": "Per-tool call statistics",
+            "category": "metrics",
+        },
+        "edit_streak": {
+            "type": "dict",
+            "description": "Consecutive edits per file without verification",
+            "category": "gate5",
+            "max_size": MAX_EDIT_STREAK,
+        },
+        "last_test_exit_code": {
+            "type": "int",
+            "description": "Exit code from most recent test",
+            "category": "gate3",
+        },
+        "gate_timing_stats": {
+            "type": "dict",
+            "description": "Per-gate timing metrics",
+            "category": "metrics",
+        },
+        "rate_window_timestamps": {
+            "type": "list",
+            "description": "Rolling window for rate limiting",
+            "category": "gate11",
+        },
+        "tool_call_counts": {
+            "type": "dict",
+            "description": "Per-tool call counts",
+            "category": "metrics",
+        },
+        "total_tool_calls": {
+            "type": "int",
+            "description": "Total tool calls this session",
+            "category": "metrics",
+        },
+        "active_subagents": {
+            "type": "list",
+            "description": "Currently running subagents",
+            "category": "subagents",
+        },
+        "subagent_total_tokens": {
+            "type": "int",
+            "description": "Cumulative tokens from completed subagents",
+            "category": "subagents",
+        },
+        "subagent_history": {
+            "type": "list",
+            "description": "Completed subagent records",
+            "category": "subagents",
+        },
+        "session_test_baseline": {
+            "type": "bool",
+            "description": "Whether any test has been run this session",
+            "category": "gate14",
+        },
         # confidence_warnings: removed in refactor1 (replaced by confidence_warnings_per_file)
-        "recent_test_failure": {"type": "dict", "description": "Error info from most recent test failure", "category": "gate15"},
-        "fix_history_queried": {"type": "float", "description": "Timestamp of last query_fix_history call", "category": "gate15"},
-        "fixing_error": {"type": "bool", "description": "Whether actively fixing a detected error", "category": "gate15"},
-        "code_quality_warnings_per_file": {"type": "dict", "description": "Per-file code quality warning counter", "category": "gate16"},
+        "recent_test_failure": {
+            "type": "dict",
+            "description": "Error info from most recent test failure",
+            "category": "gate15",
+        },
+        "fix_history_queried": {
+            "type": "float",
+            "description": "Timestamp of last query_fix_history call",
+            "category": "gate15",
+        },
+        "fixing_error": {
+            "type": "bool",
+            "description": "Whether actively fixing a detected error",
+            "category": "gate15",
+        },
+        "code_quality_warnings_per_file": {
+            "type": "dict",
+            "description": "Per-file code quality warning counter",
+            "category": "gate16",
+        },
         # v3 fields (previously undocumented)
-        "gate4_exemptions": {"type": "dict", "description": "Exempt files from memory-first check: {filename: count}", "category": "gate4"},
-        "model_agent_usage": {"type": "dict", "description": "Agent type usage counts for model enforcement", "category": "gate10"},
+        "gate4_exemptions": {
+            "type": "dict",
+            "description": "Exempt files from memory-first check: {filename: count}",
+            "category": "gate4",
+        },
+        "model_agent_usage": {
+            "type": "dict",
+            "description": "Agent type usage counts for model enforcement",
+            "category": "gate10",
+        },
         # gate12_warn_count: removed in refactor1 (Gate 12 merged into Gate 6)
-        "confidence_warnings_per_file": {"type": "dict", "description": "Per-file confidence warning counts", "category": "gate14"},
-        "confidence_warned_signals": {"type": "list", "description": "Signals already warned this session by Gate 14", "category": "gate14"},
-        "verification_timestamps": {"type": "dict", "description": "Last verified timestamp per file", "category": "gate6"},
-        "last_test_command": {"type": "str", "description": "Last test command run (shown in Gate 3 hints)", "category": "gate3"},
-        "files_edited": {"type": "list", "description": "Files edited this session (tracker)", "category": "metrics"},
-        "session_duration_nudge_hour": {"type": "int", "description": "Last session-length milestone hour nudged (1/2/3)", "category": "metrics"},
-        "auto_remember_count": {"type": "int", "description": "Auto-remember calls made this session", "category": "metrics"},
+        "confidence_warnings_per_file": {
+            "type": "dict",
+            "description": "Per-file confidence warning counts",
+            "category": "gate14",
+        },
+        "confidence_warned_signals": {
+            "type": "list",
+            "description": "Signals already warned this session by Gate 14",
+            "category": "gate14",
+        },
+        "verification_timestamps": {
+            "type": "dict",
+            "description": "Last verified timestamp per file",
+            "category": "gate6",
+        },
+        "last_test_command": {
+            "type": "str",
+            "description": "Last test command run (shown in Gate 3 hints)",
+            "category": "gate3",
+        },
+        "files_edited": {
+            "type": "list",
+            "description": "Files edited this session (tracker)",
+            "category": "metrics",
+        },
+        "session_duration_nudge_hour": {
+            "type": "int",
+            "description": "Last session-length milestone hour nudged (1/2/3)",
+            "category": "metrics",
+        },
+        "auto_remember_count": {
+            "type": "int",
+            "description": "Auto-remember calls made this session",
+            "category": "metrics",
+        },
         # v3.1 fields (self-evolving framework)
-        "gate_effectiveness": {"type": "dict", "description": "Per-gate effectiveness tracking: {gate: {blocks, overrides, prevented}}", "category": "evolve"},
-        "gate_block_outcomes": {"type": "list", "description": "Recent gate block outcomes for effectiveness analysis", "category": "evolve", "max_size": MAX_GATE_BLOCK_OUTCOMES},
-        "session_token_estimate": {"type": "int", "description": "Estimated total tokens consumed this session", "category": "evolve"},
-        "gate_tune_overrides": {"type": "dict", "description": "Auto-tune threshold overrides per gate: {gate: {param: value}}", "category": "evolve"},
+        "gate_effectiveness": {
+            "type": "dict",
+            "description": "Per-gate effectiveness tracking: {gate: {blocks, overrides, prevented}}",
+            "category": "evolve",
+        },
+        "gate_block_outcomes": {
+            "type": "list",
+            "description": "Recent gate block outcomes for effectiveness analysis",
+            "category": "evolve",
+            "max_size": MAX_GATE_BLOCK_OUTCOMES,
+        },
+        "session_token_estimate": {
+            "type": "int",
+            "description": "Estimated total tokens consumed this session",
+            "category": "evolve",
+        },
+        "gate_tune_overrides": {
+            "type": "dict",
+            "description": "Auto-tune threshold overrides per gate: {gate: {param: value}}",
+            "category": "evolve",
+        },
         # v3.2 fields (error recovery — deferred items)
-        "deferred_items": {"type": "list", "description": "Deferred error recovery items: [{strategy, error_signature, fail_count, file, deferred_at}]", "category": "causal", "max_size": 50},
+        "deferred_items": {
+            "type": "list",
+            "description": "Deferred error recovery items: [{strategy, error_signature, fail_count, file, deferred_at}]",
+            "category": "causal",
+            "max_size": 50,
+        },
         # v3.3 fields (security profiles)
-        "security_profile": {"type": "str", "description": "Active security risk profile: strict | balanced | permissive", "category": "security"},
+        "security_profile": {
+            "type": "str",
+            "description": "Active security risk profile: strict | balanced | permissive",
+            "category": "security",
+        },
         # v3.4 fields (mentor system)
-        "mentor_last_verdict": {"type": "str", "description": "Last mentor verdict: proceed|advise|warn|escalate", "category": "mentor"},
-        "mentor_last_score": {"type": "float", "description": "Weighted mentor signal score 0.0-1.0", "category": "mentor"},
-        "mentor_escalation_count": {"type": "int", "description": "Consecutive escalation count (resets on proceed/advise)", "category": "mentor"},
-        "mentor_signals": {"type": "list", "description": "Recent signals from last mentor evaluation", "category": "mentor"},
-        "mentor_warned_this_cycle": {"type": "bool", "description": "Whether mentor warned in current PostToolUse cycle", "category": "mentor"},
-        "mentor_chain_pattern": {"type": "str", "description": "Detected chain pattern: churn|stuck|healthy|empty", "category": "mentor"},
-        "mentor_chain_score": {"type": "float", "description": "Outcome chain score 0.0-1.0", "category": "mentor"},
-        "mentor_memory_match": {"type": "dict", "description": "Historical match from memory mentor (dict or None)", "category": "mentor"},
-        "mentor_historical_context": {"type": "str", "description": "Human-readable historical context from memory mentor", "category": "mentor"},
+        "mentor_last_verdict": {
+            "type": "str",
+            "description": "Last mentor verdict: proceed|advise|warn|escalate",
+            "category": "mentor",
+        },
+        "mentor_last_score": {
+            "type": "float",
+            "description": "Weighted mentor signal score 0.0-1.0",
+            "category": "mentor",
+        },
+        "mentor_escalation_count": {
+            "type": "int",
+            "description": "Consecutive escalation count (resets on proceed/advise)",
+            "category": "mentor",
+        },
+        "mentor_signals": {
+            "type": "list",
+            "description": "Recent signals from last mentor evaluation",
+            "category": "mentor",
+        },
+        "mentor_warned_this_cycle": {
+            "type": "bool",
+            "description": "Whether mentor warned in current PostToolUse cycle",
+            "category": "mentor",
+        },
+        "mentor_chain_pattern": {
+            "type": "str",
+            "description": "Detected chain pattern: churn|stuck|healthy|empty",
+            "category": "mentor",
+        },
+        "mentor_chain_score": {
+            "type": "float",
+            "description": "Outcome chain score 0.0-1.0",
+            "category": "mentor",
+        },
+        "mentor_memory_match": {
+            "type": "dict",
+            "description": "Historical match from memory mentor (dict or None)",
+            "category": "mentor",
+        },
+        "mentor_historical_context": {
+            "type": "str",
+            "description": "Human-readable historical context from memory mentor",
+            "category": "mentor",
+        },
         # v3.4 fields (analytics awareness — Upgrades C+F)
-        "analytics_last_used": {"type": "dict", "description": "Per-analytics-tool last-used timestamps: {tool_name: timestamp}", "category": "analytics"},
-        "analytics_last_queried": {"type": "float", "description": "Timestamp of last any mcp__analytics__ call", "category": "analytics"},
-        "analytics_warn_count": {"type": "int", "description": "Gate 6 analytics F-track: separate counter, threshold 15", "category": "analytics"},
+        "analytics_last_used": {
+            "type": "dict",
+            "description": "Per-analytics-tool last-used timestamps: {tool_name: timestamp}",
+            "category": "analytics",
+        },
+        "analytics_last_queried": {
+            "type": "float",
+            "description": "Timestamp of last any mcp__analytics__ call",
+            "category": "analytics",
+        },
+        "analytics_warn_count": {
+            "type": "int",
+            "description": "Gate 6 analytics F-track: separate counter, threshold 15",
+            "category": "analytics",
+        },
         # v3.5 fields (domain mastery)
-        "active_domain": {"type": "str", "description": "Currently active domain name (or empty)", "category": "domain"},
+        "active_domain": {
+            "type": "str",
+            "description": "Currently active domain name (or empty)",
+            "category": "domain",
+        },
+        # v3.6 fields (branch-change detection)
+        "_last_branch": {
+            "type": "str",
+            "description": "Last known git branch — resets mentor state on change",
+            "category": "meta",
+        },
     }
 
 
@@ -346,7 +622,9 @@ def _run_migrations(state):
     while version < STATE_VERSION:
         migrate_fn = _MIGRATIONS.get(version)
         if migrate_fn is None:
-            logger.warning("No migration for v%d -> v%d, skipping", version, version + 1)
+            logger.warning(
+                "No migration for v%d -> v%d, skipping", version, version + 1
+            )
             version += 1
             continue
         try:
@@ -371,9 +649,15 @@ def _validate_consistency(state):
     corrections = []
 
     # Deduplicate lists
-    for list_key in ("files_read", "pending_verification", "verified_fixes",
-                     "unlogged_errors", "pending_chain_ids",
-                     "error_windows", "recent_skills"):
+    for list_key in (
+        "files_read",
+        "pending_verification",
+        "verified_fixes",
+        "unlogged_errors",
+        "pending_chain_ids",
+        "error_windows",
+        "recent_skills",
+    ):
         lst = state.get(list_key)
         if isinstance(lst, list):
             # Use dict.fromkeys to preserve order while deduplicating
@@ -381,7 +665,9 @@ def _validate_consistency(state):
             try:
                 deduped = list(dict.fromkeys(lst))
                 if len(deduped) < len(lst):
-                    corrections.append(f"{list_key}: removed {len(lst) - len(deduped)} duplicates")
+                    corrections.append(
+                        f"{list_key}: removed {len(lst) - len(deduped)} duplicates"
+                    )
                     state[list_key] = deduped
             except TypeError:
                 pass  # Items not hashable, skip dedup
@@ -392,8 +678,12 @@ def _validate_consistency(state):
     overlap = pending & verified
     if overlap:
         # Items that are verified should be removed from pending
-        state["pending_verification"] = [p for p in state["pending_verification"] if p not in overlap]
-        corrections.append(f"pending_verification: removed {len(overlap)} items already in verified_fixes")
+        state["pending_verification"] = [
+            p for p in state["pending_verification"] if p not in overlap
+        ]
+        corrections.append(
+            f"pending_verification: removed {len(overlap)} items already in verified_fixes"
+        )
 
     # Cap all lists to MAX_* limits
     _cap_list(state, "files_read", MAX_FILES_READ, corrections)
@@ -406,13 +696,24 @@ def _validate_consistency(state):
         migrated = {}
         for item in bans:
             if isinstance(item, str):
-                migrated[item] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
+                migrated[item] = {
+                    "fail_count": 3,
+                    "first_failed": time.time(),
+                    "last_failed": time.time(),
+                }
         state["active_bans"] = migrated
         bans = migrated
-        corrections.append(f"active_bans: migrated {len(migrated)} entries from list to dict")
+        corrections.append(
+            f"active_bans: migrated {len(migrated)} entries from list to dict"
+        )
     if isinstance(bans, dict) and len(bans) > MAX_ACTIVE_BANS:
-        sorted_keys = sorted(bans, key=lambda k: bans[k].get("last_failed", 0) if isinstance(bans[k], dict) else 0)
-        excess = sorted_keys[:len(bans) - MAX_ACTIVE_BANS]
+        sorted_keys = sorted(
+            bans,
+            key=lambda k: (
+                bans[k].get("last_failed", 0) if isinstance(bans[k], dict) else 0
+            ),
+        )
+        excess = sorted_keys[: len(bans) - MAX_ACTIVE_BANS]
         for k in excess:
             del bans[k]
         state["active_bans"] = bans
@@ -422,16 +723,22 @@ def _validate_consistency(state):
     # Cap error_pattern_counts dict
     pattern_counts = state.get("error_pattern_counts", {})
     if len(pattern_counts) > MAX_ERROR_PATTERNS:
-        sorted_patterns = sorted(pattern_counts.items(), key=lambda x: x[1], reverse=True)
+        sorted_patterns = sorted(
+            pattern_counts.items(), key=lambda x: x[1], reverse=True
+        )
         state["error_pattern_counts"] = dict(sorted_patterns[:MAX_ERROR_PATTERNS])
-        corrections.append(f"error_pattern_counts: trimmed from {len(pattern_counts)} to {MAX_ERROR_PATTERNS}")
+        corrections.append(
+            f"error_pattern_counts: trimmed from {len(pattern_counts)} to {MAX_ERROR_PATTERNS}"
+        )
 
     # Cap edit_streak dict — keep top N by count
     edit_streak = state.get("edit_streak", {})
     if len(edit_streak) > MAX_EDIT_STREAK:
         sorted_streak = sorted(edit_streak.items(), key=lambda x: x[1], reverse=True)
         state["edit_streak"] = dict(sorted_streak[:MAX_EDIT_STREAK])
-        corrections.append(f"edit_streak: trimmed from {len(edit_streak)} to {MAX_EDIT_STREAK}")
+        corrections.append(
+            f"edit_streak: trimmed from {len(edit_streak)} to {MAX_EDIT_STREAK}"
+        )
 
     # Ensure skill_usage is a dict
     if not isinstance(state.get("skill_usage"), dict):
@@ -441,12 +748,16 @@ def _validate_consistency(state):
     # Ensure verification_timestamps is a dict (G06 calls .get() on it — crashes on float/int)
     if not isinstance(state.get("verification_timestamps"), dict):
         state["verification_timestamps"] = {}
-        corrections.append("verification_timestamps: reset to empty dict (was not a dict)")
+        corrections.append(
+            "verification_timestamps: reset to empty dict (was not a dict)"
+        )
 
     # Cap gate_timing_stats dict
     timing = state.get("gate_timing_stats", {})
     if len(timing) > 20:
-        sorted_timing = sorted(timing.items(), key=lambda x: x[1].get("count", 0), reverse=True)
+        sorted_timing = sorted(
+            timing.items(), key=lambda x: x[1].get("count", 0), reverse=True
+        )
         state["gate_timing_stats"] = dict(sorted_timing[:20])
         corrections.append(f"gate_timing_stats: trimmed from {len(timing)} to 20")
 
@@ -479,6 +790,43 @@ def _cap_list(state, key, max_size, corrections):
         state[key] = lst[-max_size:]
 
 
+def _get_current_branch():
+    """Get current git branch name. Returns empty string on failure."""
+    try:
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        return ""
+
+
+def _check_branch_change(state):
+    """Reset mentor state fields when git branch changes.
+
+    Prevents Gate 19 cascade: stale mentor scores from branch A
+    would otherwise block edits on branch B until the anti-cascade
+    limit (3 blocks) triggers a reset.
+    """
+    branch = _get_current_branch()
+    old_branch = state.get("_last_branch", "")
+    if branch and old_branch and branch != old_branch:
+        state["mentor_last_score"] = 1.0
+        state["mentor_escalation_count"] = 0
+        state["mentor_last_verdict"] = "proceed"
+        state["mentor_chain_score"] = 1.0
+        state["gate19_consecutive_blocks"] = 0
+        logger.info("Branch changed %s -> %s: reset mentor state", old_branch, branch)
+    if branch:
+        state["_last_branch"] = branch
+    return state
+
+
 def load_state(session_id="main"):
     """Load state for a specific session/agent with shared file locking.
 
@@ -503,6 +851,8 @@ def load_state(session_id="main"):
                     state = _run_migrations(state)
                     # Validate consistency
                     state = _validate_consistency(state)
+                    # Reset mentor state on branch change (prevents Gate 19 cascade)
+                    state = _check_branch_change(state)
                     return state
                 except (json.JSONDecodeError, IOError):
                     return default_state()
@@ -518,6 +868,7 @@ def load_state(session_id="main"):
                         state[key] = val
                 state = _run_migrations(state)
                 state = _validate_consistency(state)
+                state = _check_branch_change(state)
                 return state
             except (json.JSONDecodeError, IOError):
                 return default_state()
@@ -546,7 +897,9 @@ def save_state(state, session_id="main"):
     # Cap error_pattern_counts dict — keep top N by count
     pattern_counts = state.get("error_pattern_counts", {})
     if len(pattern_counts) > MAX_ERROR_PATTERNS:
-        sorted_patterns = sorted(pattern_counts.items(), key=lambda x: x[1], reverse=True)
+        sorted_patterns = sorted(
+            pattern_counts.items(), key=lambda x: x[1], reverse=True
+        )
         state["error_pattern_counts"] = dict(sorted_patterns[:MAX_ERROR_PATTERNS])
 
     # Cap edit_streak dict — keep top N by count
@@ -561,12 +914,21 @@ def save_state(state, session_id="main"):
         migrated = {}
         for item in bans:
             if isinstance(item, str):
-                migrated[item] = {"fail_count": 3, "first_failed": time.time(), "last_failed": time.time()}
+                migrated[item] = {
+                    "fail_count": 3,
+                    "first_failed": time.time(),
+                    "last_failed": time.time(),
+                }
         state["active_bans"] = migrated
         bans = migrated
     if isinstance(bans, dict) and len(bans) > MAX_ACTIVE_BANS:
-        sorted_keys = sorted(bans, key=lambda k: bans[k].get("last_failed", 0) if isinstance(bans[k], dict) else 0)
-        for k in sorted_keys[:len(bans) - MAX_ACTIVE_BANS]:
+        sorted_keys = sorted(
+            bans,
+            key=lambda k: (
+                bans[k].get("last_failed", 0) if isinstance(bans[k], dict) else 0
+            ),
+        )
+        for k in sorted_keys[: len(bans) - MAX_ACTIVE_BANS]:
             del bans[k]
         state["active_bans"] = bans
 
@@ -578,7 +940,9 @@ def save_state(state, session_id="main"):
     # Cap gate_timing_stats dict — keep only active gates (max 20 entries)
     timing = state.get("gate_timing_stats", {})
     if len(timing) > 20:
-        sorted_timing = sorted(timing.items(), key=lambda x: x[1].get("count", 0), reverse=True)
+        sorted_timing = sorted(
+            timing.items(), key=lambda x: x[1].get("count", 0), reverse=True
+        )
         state["gate_timing_stats"] = dict(sorted_timing[:20])
 
     # Cap canary timestamp lists to prevent unbounded growth (Gate 18)
@@ -639,7 +1003,7 @@ def get_memory_last_queried(state):
 
 
 _live_state_cache = None  # Per-process cache (each hook invocation is a fresh process)
-_config_cache = None      # Per-process cache for config.json toggles
+_config_cache = None  # Per-process cache for config.json toggles
 
 _CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 _CONFIG_PATH = os.path.join(_CLAUDE_DIR, "config.json")

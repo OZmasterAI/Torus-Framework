@@ -50,19 +50,34 @@ class KnowledgeGraph:
             CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_id);
         """)
         self._conn.commit()
+        # Migration: add PMI and co_occurrence_count columns to edges (fail-open)
+        for _col_sql in [
+            "ALTER TABLE edges ADD COLUMN co_occurrence_count INTEGER DEFAULT 0",
+            "ALTER TABLE edges ADD COLUMN pmi REAL",  # NULL = not yet computed
+        ]:
+            try:
+                self._conn.execute(_col_sql)
+                self._conn.commit()
+            except Exception:
+                pass  # Column already exists
 
     # --- Entity operations ---
 
-    def upsert_entity(self, name: str, entity_type: str = "Concept", salience: float = 0.5):
+    def upsert_entity(
+        self, name: str, entity_type: str = "Concept", salience: float = 0.5
+    ):
         """Insert or update an entity, incrementing mention count."""
-        self._conn.execute("""
+        self._conn.execute(
+            """
             INSERT INTO entities (name, type, salience, mention_count)
             VALUES (?, ?, ?, 1)
             ON CONFLICT(name) DO UPDATE SET
                 mention_count = mention_count + 1,
                 last_seen_at = strftime('%s','now'),
                 salience = MAX(salience, ?)
-        """, (name, entity_type, salience, salience))
+        """,
+            (name, entity_type, salience, salience),
+        )
         self._conn.commit()
 
     def entity_count(self) -> int:
@@ -71,38 +86,48 @@ class KnowledgeGraph:
 
     # --- Edge operations ---
 
-    def add_edge(self, from_name: str, to_name: str, relation_type: str = "co_occurs",
-                 strength: float = 0.1):
+    def add_edge(
+        self,
+        from_name: str,
+        to_name: str,
+        relation_type: str = "co_occurs",
+        strength: float = 0.1,
+    ):
         """Create or strengthen an edge between two entities."""
-        self._conn.execute("""
-            INSERT INTO edges (from_id, to_id, relation_type, strength, activation_count)
-            VALUES (?, ?, ?, ?, 1)
+        self._conn.execute(
+            """
+            INSERT INTO edges (from_id, to_id, relation_type, strength, activation_count, co_occurrence_count)
+            VALUES (?, ?, ?, ?, 1, 1)
             ON CONFLICT(from_id, to_id, relation_type) DO UPDATE SET
                 strength = MIN(1.0, strength + ? * (1.0 - strength)),
                 activation_count = activation_count + 1,
+                co_occurrence_count = co_occurrence_count + 1,
                 last_activated = strftime('%s','now')
-        """, (from_name, to_name, relation_type, strength, strength))
+        """,
+            (from_name, to_name, relation_type, strength, strength),
+        )
         self._conn.commit()
 
-    def get_edge_strength(self, from_id: str, to_id: str,
-                          relation_type: Optional[str] = None) -> float:
+    def get_edge_strength(
+        self, from_id: str, to_id: str, relation_type: Optional[str] = None
+    ) -> float:
         """Get edge strength between two nodes. Checks both directions."""
         if relation_type:
             row = self._conn.execute(
                 "SELECT strength FROM edges WHERE from_id=? AND to_id=? AND relation_type=?",
-                (from_id, to_id, relation_type)
+                (from_id, to_id, relation_type),
             ).fetchone()
             if row:
                 return row[0]
             row = self._conn.execute(
                 "SELECT strength FROM edges WHERE from_id=? AND to_id=? AND relation_type=?",
-                (to_id, from_id, relation_type)
+                (to_id, from_id, relation_type),
             ).fetchone()
             return row[0] if row else 0.0
         else:
             row = self._conn.execute(
                 "SELECT MAX(strength) FROM edges WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)",
-                (from_id, to_id, to_id, from_id)
+                (from_id, to_id, to_id, from_id),
             ).fetchone()
             return row[0] if row and row[0] is not None else 0.0
 
@@ -110,20 +135,62 @@ class KnowledgeGraph:
         row = self._conn.execute("SELECT COUNT(*) FROM edges").fetchone()
         return row[0] if row else 0
 
+    def update_pmi(
+        self, from_name: str, to_name: str, relation_type: str, total_memories: int
+    ):
+        """Compute and store PMI for an edge.
+
+        PMI = log2( P(x,y) / (P(x) * P(y)) )
+            = log2( co_count * total_memories / (mention_x * mention_y) )
+
+        Skips silently if entity counts or co_occurrence_count are zero.
+        """
+        if total_memories < 2:
+            return
+        try:
+            row = self._conn.execute(
+                "SELECT co_occurrence_count FROM edges WHERE from_id=? AND to_id=? AND relation_type=?",
+                (from_name, to_name, relation_type),
+            ).fetchone()
+            if not row or row[0] == 0:
+                return
+            co_count = row[0]
+
+            fx = self._conn.execute(
+                "SELECT mention_count FROM entities WHERE name=?", (from_name,)
+            ).fetchone()
+            fy = self._conn.execute(
+                "SELECT mention_count FROM entities WHERE name=?", (to_name,)
+            ).fetchone()
+            if not fx or not fy or fx[0] == 0 or fy[0] == 0:
+                return
+
+            pmi = math.log2((co_count * total_memories) / (fx[0] * fy[0]))
+            self._conn.execute(
+                "UPDATE edges SET pmi=? WHERE from_id=? AND to_id=? AND relation_type=?",
+                (pmi, from_name, to_name, relation_type),
+            )
+            self._conn.commit()
+        except Exception:
+            pass  # PMI computation failure is non-fatal
+
     def strengthen_coretrieval(self, memory_ids: List[str]):
         """Hebbian: strengthen edges between all pairs of co-retrieved memories."""
         if len(memory_ids) < 2:
             return
         for a, b in combinations(memory_ids, 2):
             canonical = (min(a, b), max(a, b))
-            self._conn.execute("""
+            self._conn.execute(
+                """
                 INSERT INTO edges (from_id, to_id, relation_type, strength, activation_count)
                 VALUES (?, ?, 'co_retrieved', 0.1, 1)
                 ON CONFLICT(from_id, to_id, relation_type) DO UPDATE SET
                     strength = MIN(1.0, strength + 0.1 * (1.0 - strength)),
                     activation_count = activation_count + 1,
                     last_activated = strftime('%s','now')
-            """, canonical)
+            """,
+                canonical,
+            )
         self._conn.commit()
 
     # --- Cleanup operations ---
@@ -133,26 +200,30 @@ class KnowledgeGraph:
         # Repoint edges where from_entity is the source
         self._conn.execute(
             "UPDATE OR IGNORE edges SET from_id=? WHERE from_id=?",
-            (to_entity, from_entity))
+            (to_entity, from_entity),
+        )
         # Repoint edges where from_entity is the target
         self._conn.execute(
-            "UPDATE OR IGNORE edges SET to_id=? WHERE to_id=?",
-            (to_entity, from_entity))
+            "UPDATE OR IGNORE edges SET to_id=? WHERE to_id=?", (to_entity, from_entity)
+        )
         # Clean up any orphaned edges (conflicts from OR IGNORE)
-        self._conn.execute("DELETE FROM edges WHERE from_id=? OR to_id=?",
-                           (from_entity, from_entity))
+        self._conn.execute(
+            "DELETE FROM edges WHERE from_id=? OR to_id=?", (from_entity, from_entity)
+        )
         self._conn.commit()
 
     def remove_entity_edges(self, entity_name: str):
         """Remove all edges to/from an entity."""
-        self._conn.execute("DELETE FROM edges WHERE from_id=? OR to_id=?",
-                           (entity_name, entity_name))
+        self._conn.execute(
+            "DELETE FROM edges WHERE from_id=? OR to_id=?", (entity_name, entity_name)
+        )
         self._conn.commit()
 
     def deactivate_entity(self, entity_name: str):
         """Set entity salience to 0 (soft delete for quarantine)."""
-        self._conn.execute("UPDATE entities SET salience=0.0 WHERE name=?",
-                           (entity_name,))
+        self._conn.execute(
+            "UPDATE entities SET salience=0.0 WHERE name=?", (entity_name,)
+        )
         self._conn.commit()
 
     # --- Spreading activation ---
@@ -192,7 +263,12 @@ class KnowledgeGraph:
                 for neighbor_name, edge_strength in neighbors:
                     if neighbor_name in seed_entities:
                         continue  # don't re-activate seeds
-                    spread = source_act * math.exp(-0.2 * hop) * edge_strength / math.sqrt(1 + degree)
+                    spread = (
+                        source_act
+                        * math.exp(-0.2 * hop)
+                        * edge_strength
+                        / math.sqrt(1 + degree)
+                    )
                     if spread < threshold:
                         continue
                     old = activations.get(neighbor_name, 0.0)
@@ -221,23 +297,38 @@ class KnowledgeGraph:
             if name in seed_entities:
                 continue
             if activation >= threshold:
-                results.append({
-                    "name": name,
-                    "activation": activation,
-                    "hops": hops_map.get(name, 0),
-                })
+                results.append(
+                    {
+                        "name": name,
+                        "activation": activation,
+                        "hops": hops_map.get(name, 0),
+                    }
+                )
         results.sort(key=lambda x: x["activation"], reverse=True)
         return results
 
     def _get_neighbors(self, node: str) -> List[Tuple[str, float]]:
-        """Get all neighbors with edge strengths (both directions)."""
+        """Get all neighbors with effective edge weights (PMI-weighted or raw fallback)."""
         rows = self._conn.execute(
-            "SELECT to_id, strength FROM edges WHERE from_id=? AND strength > 0 "
+            "SELECT to_id, strength, pmi, co_occurrence_count FROM edges WHERE from_id=? AND strength > 0 "
             "UNION "
-            "SELECT from_id, strength FROM edges WHERE to_id=? AND strength > 0",
-            (node, node)
+            "SELECT from_id, strength, pmi, co_occurrence_count FROM edges WHERE to_id=? AND strength > 0",
+            (node, node),
         ).fetchall()
-        return rows
+        result = []
+        for neighbor_name, strength, pmi, co_count in rows:
+            co_count = co_count or 0
+            if co_count == 0 or pmi is None:
+                # Legacy edge (no PMI data yet) — use raw strength as fallback
+                effective = strength
+            elif pmi > 0.0:
+                # PMI-weighted: above-chance co-occurrence boosts activation
+                effective = strength * pmi
+            else:
+                # pmi <= 0.0: at-chance or anti-correlated — block this path
+                effective = 0.0
+            result.append((neighbor_name, effective))
+        return result
 
     # --- Edge decay and pattern detection ---
 
@@ -247,6 +338,7 @@ class KnowledgeGraph:
         Returns dict with 'decayed' and 'pruned' counts.
         """
         import time as _time
+
         now = _time.time()
         rows = self._conn.execute(
             "SELECT from_id, to_id, relation_type, strength, last_activated FROM edges"
@@ -260,12 +352,14 @@ class KnowledgeGraph:
             if new_strength < 0.05:
                 self._conn.execute(
                     "DELETE FROM edges WHERE from_id=? AND to_id=? AND relation_type=?",
-                    (from_id, to_id, rel))
+                    (from_id, to_id, rel),
+                )
                 pruned += 1
             else:
                 self._conn.execute(
                     "UPDATE edges SET strength=? WHERE from_id=? AND to_id=? AND relation_type=?",
-                    (new_strength, from_id, to_id, rel))
+                    (new_strength, from_id, to_id, rel),
+                )
                 decayed += 1
         self._conn.commit()
         return {"decayed": decayed, "pruned": pruned}
@@ -278,7 +372,7 @@ class KnowledgeGraph:
         """
         rows = self._conn.execute(
             "SELECT from_id, to_id FROM edges WHERE activation_count >= ?",
-            (min_activation,)
+            (min_activation,),
         ).fetchall()
         # Union-find
         parent: Dict[str, str] = {}
@@ -314,7 +408,8 @@ class KnowledgeGraph:
         for name in names:
             self._conn.execute(
                 "UPDATE entities SET salience = MIN(1.0, salience + ?) WHERE name=?",
-                (delta, name))
+                (delta, name),
+            )
         self._conn.commit()
 
     def close(self):

@@ -8,6 +8,7 @@ CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 PROJECTS_DIR = os.path.join(os.path.expanduser("~"), "projects")
 WORKTREES_DIR = os.path.join(os.path.expanduser("~"), "worktrees")
+AGENTS_DIR = os.path.join(os.path.expanduser("~"), "agents")
 PROJECT_STATE_FILENAME = ".claude-state.json"
 SUBPROJECT_MARKER = ".claude-project"
 
@@ -67,6 +68,17 @@ def detect_project(cwd=None):
             exp_dir = os.path.join(root_dir, exp_name)
             return root, root_dir, exp_name, exp_dir
         return root, root_dir, None, None
+
+    # --- ~/agents/<role>/ ---
+    agents = os.path.realpath(AGENTS_DIR)
+    if cwd.startswith(agents + os.sep):
+        rel = cwd[len(agents) + 1 :]
+        parts = rel.split(os.sep)
+        role = parts[0]
+        if not role:
+            return None, None, None, None
+        role_dir = os.path.join(agents, role)
+        return role, role_dir, None, None
 
     # --- ~/projects/<name>/ ---
     projects = os.path.realpath(PROJECTS_DIR)

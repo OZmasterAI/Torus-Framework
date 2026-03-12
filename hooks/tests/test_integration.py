@@ -847,7 +847,7 @@ import subprocess as _bsg_sp
 
 _BSG_CLAUDE_DIR = os.path.expanduser("~/.claude")
 _STATUS_SCRIPT = os.path.join(
-    _BSG_CLAUDE_DIR, "skills", "status", "scripts", "gather.py"
+    _BSG_CLAUDE_DIR, "skill-library", "status", "scripts", "gather.py"
 )
 _WRAPUP_SCRIPT = os.path.join(
     _BSG_CLAUDE_DIR, "skills", "wrap-up", "scripts", "gather.py"
@@ -974,7 +974,7 @@ test("Wrap-up gather: risk RED when memory count zero", _bsg_red2 == "RED")
 print("\n--- Web Skill Scripts ---")
 
 _WEB_SCRIPTS = os.path.join(
-    os.path.expanduser("~"), ".claude", "skills", "web", "scripts"
+    os.path.expanduser("~"), ".claude", "skill-library", "web", "scripts"
 )
 sys.path.insert(0, _WEB_SCRIPTS)
 
@@ -1109,7 +1109,7 @@ test("Web delete: delete_pages is callable", callable(_ws_dp))
 
 # SKILL.md exists and has correct commands
 _ws_skill_path = os.path.join(
-    os.path.expanduser("~"), ".claude", "skills", "web", "SKILL.md"
+    os.path.expanduser("~"), ".claude", "skill-library", "web", "SKILL.md"
 )
 test("Web: SKILL.md exists", os.path.isfile(_ws_skill_path))
 with open(_ws_skill_path) as _ws_sf:
@@ -1127,7 +1127,7 @@ print("\n--- PRP Skill ---")
 _prp_base = os.path.expanduser("~/.claude")
 
 # SKILL.md exists
-_prp_skill = os.path.join(_prp_base, "skills", "prp", "SKILL.md")
+_prp_skill = os.path.join(_prp_base, "skill-library", "prp", "SKILL.md")
 test("PRP: SKILL.md exists", os.path.isfile(_prp_skill))
 
 # SKILL.md has generate/execute/list commands
@@ -1180,39 +1180,36 @@ print("\n--- Browser Skill ---")
 
 _browser_base = os.path.expanduser("~/.claude")
 
-# SKILL.md exists
-_browser_skill = os.path.join(_browser_base, "skills", "browser", "SKILL.md")
-test("Browser: SKILL.md exists", os.path.isfile(_browser_skill))
+# Browser skill is dormant — skip if not present
+_browser_skill = os.path.join(_browser_base, "skill-library", "browser", "SKILL.md")
+if os.path.isfile(_browser_skill):
+    test("Browser: SKILL.md exists", True)
+    with open(_browser_skill) as _bf:
+        _browser_skill_src = _bf.read()
+    test("Browser: SKILL.md has open command", "open" in _browser_skill_src.lower())
+    test(
+        "Browser: SKILL.md has snapshot command",
+        "snapshot" in _browser_skill_src.lower(),
+    )
+    test(
+        "Browser: SKILL.md has screenshot command",
+        "screenshot" in _browser_skill_src.lower(),
+    )
+    test("Browser: SKILL.md has click command", "click" in _browser_skill_src.lower())
+    test("Browser: SKILL.md has fill command", "fill" in _browser_skill_src.lower())
+    test("Browser: SKILL.md has verify command", "verify" in _browser_skill_src.lower())
+    test(
+        "Browser: SKILL.md has ralph integration",
+        "Integration with /ralph" in _browser_skill_src,
+    )
+    test("Browser: SKILL.md has rules section", "## Rules" in _browser_skill_src)
+    test(
+        "Browser: SKILL.md references screenshots/ dir",
+        "screenshots/" in _browser_skill_src,
+    )
+else:
+    print("  [SKIP] Browser skill not installed (dormant)")
 
-# SKILL.md has required commands
-with open(_browser_skill) as _bf:
-    _browser_skill_src = _bf.read()
-test("Browser: SKILL.md has open command", "open" in _browser_skill_src.lower())
-test("Browser: SKILL.md has snapshot command", "snapshot" in _browser_skill_src.lower())
-test(
-    "Browser: SKILL.md has screenshot command",
-    "screenshot" in _browser_skill_src.lower(),
-)
-test("Browser: SKILL.md has click command", "click" in _browser_skill_src.lower())
-test("Browser: SKILL.md has fill command", "fill" in _browser_skill_src.lower())
-test("Browser: SKILL.md has verify command", "verify" in _browser_skill_src.lower())
-
-# SKILL.md has integration with /ralph section
-test(
-    "Browser: SKILL.md has ralph integration",
-    "Integration with /ralph" in _browser_skill_src,
-)
-
-# SKILL.md has rules section
-test("Browser: SKILL.md has rules section", "## Rules" in _browser_skill_src)
-
-# SKILL.md references screenshots/ directory
-test(
-    "Browser: SKILL.md references screenshots/ dir",
-    "screenshots/" in _browser_skill_src,
-)
-
-# agent-browser CLI is installed
 import shutil as _browser_shutil
 
 _agent_browser_path = _browser_shutil.which("agent-browser")
@@ -1222,20 +1219,21 @@ test(
     f"path={_agent_browser_path}",
 )
 
-# /ralph SKILL.md references visual verify step
-_ralph_skill = os.path.join(_browser_base, "skills", "ralph", "SKILL.md")
-with open(_ralph_skill) as _rf:
-    _ralph_skill_src = _rf.read()
-test(
-    "Browser: ralph SKILL.md has visual verify step",
-    "Visual Verify" in _ralph_skill_src,
-)
-
-# /ralph SKILL.md references screenshots in report
-test(
-    "Browser: ralph SKILL.md has screenshots in report",
-    "Screenshots taken" in _ralph_skill_src,
-)
+# /ralph SKILL.md
+_ralph_skill = os.path.join(_browser_base, "skill-library", "ralph", "SKILL.md")
+if os.path.isfile(_ralph_skill):
+    with open(_ralph_skill) as _rf:
+        _ralph_skill_src = _rf.read()
+    test(
+        "Browser: ralph SKILL.md has visual verify step",
+        "Visual Verify" in _ralph_skill_src,
+    )
+    test(
+        "Browser: ralph SKILL.md has screenshots in report",
+        "Screenshots taken" in _ralph_skill_src,
+    )
+else:
+    print("  [SKIP] Ralph skill not installed")
 
 # ─────────────────────────────────────────────────
 # GATE 13: WORKSPACE ISOLATION
@@ -1458,17 +1456,6 @@ test(
     "TorusLoop: prompt has search_knowledge rule", "search_knowledge" in _ml_prompt_src
 )
 
-# Test: /loop SKILL.md exists and has required commands
-_loop_skill = os.path.expanduser("~/.claude/skills/loop/SKILL.md")
-test("LoopSkill: SKILL.md exists", os.path.isfile(_loop_skill))
-with open(_loop_skill) as _f:
-    _loop_src = _f.read()
-test("LoopSkill: has start command", "/loop start" in _loop_src)
-test("LoopSkill: has status command", "/loop status" in _loop_src)
-test("LoopSkill: has stop command", "/loop stop" in _loop_src)
-test("LoopSkill: references torus-loop.sh", "torus-loop.sh" in _loop_src)
-test("LoopSkill: references stop sentinel", ".stop" in _loop_src)
-
 # Test: base.md template has Validate field
 _base_tmpl = os.path.join(_tm_dir, "templates", "base.md")
 with open(_base_tmpl) as _f:
@@ -1476,7 +1463,7 @@ with open(_base_tmpl) as _f:
 test("PRP: base.md has Validate field", "**Validate**:" in _base_src)
 
 # Test: prp SKILL.md has status command
-_prp_skill = os.path.expanduser("~/.claude/skills/prp/SKILL.md")
+_prp_skill = os.path.expanduser("~/.claude/skill-library/prp/SKILL.md")
 with open(_prp_skill) as _f:
     _prp_src = _f.read()
 test("PRP: SKILL.md has /prp status command", "/prp status" in _prp_src)

@@ -497,6 +497,7 @@ Cross-session            → Sub-agents + memory
 | Team | Purpose | Members |
 |------|---------|---------|
 | default | Inactive legacy | 2 (shutdown) |
+| eclipse-rebase | Rebase ProjectDawn to Eclipse L2 | 5 (lead + 4 specialized) |
 | framework-v2-4-1 | v2.4.1 sprint: dashboard, statusline | 1 builder |
 | sprint-team | Self-improvement sprint | 10 (builders + researchers) |
 | evolution-swarm-268 | Self-evolution swarm | — |

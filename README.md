@@ -7,7 +7,7 @@
     <a href="https://github.com/OZmasterAI/Torus-Framework/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
     <img src="https://img.shields.io/badge/Python-3.10+-green.svg" alt="Python">
     <img src="https://img.shields.io/badge/Platform-Linux-lightgrey.svg" alt="Platform">
-    <img src="https://img.shields.io/badge/Framework-v2.6.5-orange.svg" alt="Version">
+    <img src="https://img.shields.io/badge/Framework-v2.5.8-orange.svg" alt="Version">
   </p>
 </p>
 
@@ -15,7 +15,7 @@
 
 Torus wraps Claude Code with persistent memory, 19 quality gates, automated hooks, and structured workflows — turning it from a stateless CLI into a disciplined, self-improving development partner.
 
-> **213 Python files** · **~88K lines** · **17 active gates** · **7 active skills (+12 library)** · **8 specialized agents** · **5 MCP servers**
+> **151 Python files** · **~76K lines** · **17 active gates** · **36 skills** · **6 specialized agents** · **2 MCP servers**
 
 ---
 
@@ -52,14 +52,12 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
 | **19 Quality Gates** | Mechanical enforcement — read before edit, test before deploy, memory-first, no-destroy, injection defense, and more |
 | **Persistent Memory** | LanceDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations |
 | **Hook Pipeline** | 12 lifecycle events — SessionStart, PreToolUse, PostToolUse, Stop, SubagentStart, PreCompact, and more |
-| **Model Profile Enforcement** | 5 cost profiles (quality/balanced/efficient/lean/budget) — Gate 10 intercepts every Agent spawn and auto-patches the model to match your active profile |
-| **7 Active Skills (+12 Library)** | Slash commands — `/commit`, `/brainstorm`, `/writing-plans`, `/implement`, `/review`, `/test`, `/wrap-up`, plus 12 on-demand skills via MCP skill server |
-| **8 Agents** | builder, debugger, researcher, security, perf-analyzer, stress-tester, explore, plan — with delegation rules and frontmatter-based model control |
-| **5 MCP Servers** | Memory (8 tools) + Analytics (15 tools) + Search (2 tools) + Skills (3 tools) + Web Search, accessible as native Claude tools |
+| **36 Skills** | Slash commands — `/commit`, `/benchmark`, `/security-scan`, `/brainstorm`, `/writing-plans`, `/domain`, and more |
+| **6 Agents** | builder, debugger, researcher, security, perf-analyzer, stress-tester — with delegation rules |
+| **2 MCP Servers** | Memory (8 tools) + Analytics (50 tools), accessible as native Claude tools |
 | **Enforcer Daemon** | Persistent UDS server — gate checks in ~5ms instead of ~134ms inline |
 | **Mentor System** | Real-time quality scoring (0.0–1.0) with deterministic verdicts, no LLM calls |
 | **Session Continuity** | LIVE_STATE.json carries context across sessions automatically |
-| **Voice-Web Interface** | Multi-session tab UI with local TTS (Piper) and STT, WebSocket connections per session |
 | **Telegram Bot** | Remote Claude sessions via Telegram with message mirroring |
 
 ---
@@ -79,10 +77,10 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
                     └──────┬───────┘  └─────┬─────┘  └──┬──────────────┘
                            │                │            │
                  ┌─────────▼──────┐  ┌──────▼──────┐  ┌─▼────────────┐
-                 │  5 MCP Servers │  │ Gate Tiers   │  │ Mentor       │
-                 │  Memory (8)    │  │ T1: Safety   │  │ System       │
-                 │  Analytics(15) │  │ T2: Quality  │  │ 0.0–1.0     │
-                 │  Search+Skill  │  │ T3: Advanced │  │ No LLM      │
+                 │  Memory MCP    │  │ Gate Tiers   │  │ Mentor       │
+                 │  8 tools       │  │ T1: Safety   │  │ System       │
+                 │  LanceDB +     │  │ T2: Quality  │  │ 0.0–1.0     │
+                 │  4-tier search │  │ T3: Advanced │  │ No LLM      │
                  └───────┬────────┘  └─────────────┘  └─┬────────────┘
                          │                               │
            ┌─────────────▼───────────────────────────────▼─────────┐
@@ -99,7 +97,7 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
   └────────┘ └─────────┘  └─────────────────┘ └─────────┘ └──────────┘
 ```
 
-**213 files** · **67 shared modules** · **7 active skills (+12 library)** · **8 agents**
+**285 files** · **67 shared modules** · **36 skills** · **6 agents**
 
 For the full architecture reference, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
@@ -130,7 +128,7 @@ Three tiers of enforcement — safety gates fail-closed, quality gates fail-open
 | 6 | Save To Memory | Warns then blocks when fixes aren't saved |
 | 7 | Critical File Guard | Extra checks for high-risk files |
 | 9 | Strategy Ban | Blocks strategies that failed 3+ times |
-| 10 | Model Profile Enforcement | Intercepts Agent/Task spawns, reads .md frontmatter, auto-patches model to match active profile |
+| 10 | Model Cost Guard | Enforces model selection within budget tier |
 | 11 | Rate Limit | Blocks >60 tool calls/min |
 | 13 | Workspace Isolation | Prevents concurrent file edits across agents |
 | 14 | Confidence Check | Progressive warning → block on unverified edits |
@@ -192,24 +190,15 @@ L0 activates when `transcript_l0: true` in config — pulls raw conversation win
 │   ├── enforcer.py          # Gate engine (17 active gates)
 │   ├── enforcer_daemon.py   # UDS daemon for low-latency gate checks (~5ms)
 │   ├── memory_server.py     # MCP server: LanceDB memory + semantic search
-│   ├── analytics_server.py  # MCP server: 15-tool analytics + gate dashboard
-│   ├── skill_server.py      # MCP server: skill invocation + catalog
-│   ├── search_server.py     # MCP server: terminal history + transcript search
-│   ├── web_search_server.py # MCP server: web search integration
-│   ├── tts_signal.py        # Stop hook: TTS signal for voice-web interface
+│   ├── analytics_server.py  # MCP server: 50-tool analytics + gate dashboard
 │   ├── gates/               # Individual gate implementations
-│   ├── shared/              # 67 shared modules (state, audit, circuit breaker, model_profiles, etc.)
+│   ├── shared/              # 67 shared modules (state, audit, circuit breaker, etc.)
 │   ├── tracker.py           # PostToolUse pipeline (mentor, observations, auto-remember)
 │   └── boot.py              # SessionStart orchestrator
-├── skills/                  # 7 active slash commands (/commit, /brainstorm, etc.)
-├── skill-library/           # 12 on-demand skills via MCP skill server
-├── dormant/                 # 25 archived skills (inactive, preserved for reference)
-├── agents/                  # 8 specialized agent definitions (with model frontmatter)
-├── docs/
-│   └── diagrams/            # 19 architecture diagrams (html/ + png/)
+├── skills/                  # 36 slash commands (/commit, /benchmark, etc.)
+├── agents/                  # 6 specialized agent definitions
 ├── integrations/
 │   ├── telegram-bot/        # Remote Claude via Telegram
-│   ├── voice-web/           # Multi-session voice interface with local TTS
 │   └── terminal-history/    # Session transcript indexer
 └── scripts/                 # Orchestration (torus-loop, torus-wave, cleanup)
 ```
@@ -233,7 +222,7 @@ Copy the example files and customize:
 | Template | Target | Purpose |
 |----------|--------|---------|
 | `config.example.json` | `config.json` | Feature toggles (gates, memory, mentor, telegram) |
-| `mcp.example.json` | `mcp.json` | MCP server paths (memory + analytics + search + skills + web) |
+| `mcp.example.json` | `mcp.json` | MCP server paths (memory + analytics) |
 
 <details>
 <summary><strong>Optional: Telegram Bot</strong></summary>
@@ -252,7 +241,7 @@ python3 ~/.claude/integrations/telegram-bot/bot.py
 <summary><strong>Optional: Web Skill Dependencies</strong></summary>
 
 ```bash
-pip install -r ~/.claude/skill-library/web/requirements.txt
+pip install -r ~/.claude/skills/web/requirements.txt
 ```
 
 </details>

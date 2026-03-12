@@ -19,14 +19,14 @@ from typing import Any, Dict, List, Optional
 TIER_BASE: Dict[int, float] = {1: 1.0, 2: 0.7, 3: 0.4}
 TIER_BASE_DEFAULT = 0.4  # fallback for unknown tiers
 
-# Half-life for exponential decay (days). 45 days → ~50% score at 45d, ~6% at 180d.
-DEFAULT_HALF_LIFE_DAYS: float = 45.0
+# Half-life for exponential decay (days). 15 days → hybrid exp+power-law crossover.
+DEFAULT_HALF_LIFE_DAYS: float = 15.0
 
 # Caps and weights for individual score components
-_MAX_ACCESS_BOOST = 0.20    # log-scaled access boost ceiling
-_RECENCY_BOOST = 0.10       # flat bonus for memories < 7 days old
+_MAX_ACCESS_BOOST = 0.20  # log-scaled access boost ceiling
+_RECENCY_BOOST = 0.10  # flat bonus for memories < 7 days old
 _RECENCY_WINDOW_DAYS = 7
-_MAX_TAG_BONUS = 0.15       # bonus for matching query context tags
+_MAX_TAG_BONUS = 0.15  # bonus for matching query context tags
 
 
 def _parse_timestamp(ts: str) -> Optional[datetime]:
@@ -66,16 +66,15 @@ def _time_decay_factor(
 
     Args:
         age_days: Age of the memory in days
-        half_life: Legacy parameter (accepted for backward compat, ignored in hybrid model)
+        half_life: Half-life in days for exponential phase and crossover point (default 15)
         potentiated: If True, halve the decay rates (LTP-protected memories)
     """
-    exp_rate = 0.0462  # ln(2)/15, gives ~15-day half-life
-    power_exp = 0.5    # power-law exponent
+    crossover = half_life
+    exp_rate = math.log(2) / crossover  # ln(2)/half_life
+    power_exp = 0.5  # power-law exponent
     if potentiated:
         exp_rate *= 0.5
         power_exp *= 0.5
-
-    crossover = 15.0  # days: transition from exponential to power-law
 
     if age_days <= 0:
         return 1.0
@@ -150,9 +149,7 @@ def calculate_relevance_score(
 
     access = _access_boost(retrieval_count)
     recency = _RECENCY_BOOST if age < _RECENCY_WINDOW_DAYS else 0.0
-    tag_bonus = _tag_relevance_bonus(
-        str(memory_entry.get("tags") or ""), query_context
-    )
+    tag_bonus = _tag_relevance_bonus(str(memory_entry.get("tags") or ""), query_context)
 
     return max(0.0, min(1.0, base * decay + access + recency + tag_bonus))
 
@@ -178,7 +175,9 @@ def rank_memories(
     scored = []
     for m in memories:
         entry = dict(m)
-        entry["_relevance_score"] = calculate_relevance_score(m, query_context, half_life_days)
+        entry["_relevance_score"] = calculate_relevance_score(
+            m, query_context, half_life_days
+        )
         scored.append(entry)
     scored.sort(key=lambda x: x["_relevance_score"], reverse=True)
     return scored
