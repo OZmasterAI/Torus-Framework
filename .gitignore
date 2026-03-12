@@ -59,7 +59,6 @@ tui/__pycache__/
 tui/widgets/__pycache__/
 
 # Runtime state files
-LIVE_STATE.json
 stats-cache.json
 
 # Telegram bot plugin
@@ -108,6 +107,7 @@ skill-library/**/scripts/__pycache__/
 # Claude-managed plugin state
 plugins/installed_plugins.json
 plugins/known_marketplaces.json
+plugins/blocklist.json
 plugins/marketplaces/
 integrations/tts-voices/
 
