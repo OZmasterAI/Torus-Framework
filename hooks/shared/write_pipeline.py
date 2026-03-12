@@ -176,6 +176,8 @@ class WritePipeline:
         memory_type = (
             _classify_memory_type(content, tags) if _classify_memory_type else ""
         )
+        _classify_state_type = h.get("classify_state_type")
+        state_type = _classify_state_type(content, tags) if _classify_state_type else ""
 
         # Cluster assignment
         _assigned_cluster_id = ""
@@ -206,6 +208,7 @@ class WritePipeline:
                     "source_observation_ids": source_observation_ids,
                     "cluster_id": _assigned_cluster_id,
                     "memory_type": memory_type,
+                    "state_type": state_type,
                     "quality_score": _q_score,
                 }
             ],
@@ -263,6 +266,7 @@ class WritePipeline:
             "timestamp": timestamp,
             "quality_score": _q_score,
             "memory_type": memory_type,
+            "state_type": state_type,
         }
         if bridge_result:
             result["fix_outcome_bridged"] = True

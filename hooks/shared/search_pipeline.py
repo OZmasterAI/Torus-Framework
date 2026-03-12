@@ -82,6 +82,7 @@ class SearchPipeline:
         match_all=False,
         counterfactual=False,
         memory_type="",
+        state_type="",
     ):
         """Full search pipeline — 10 steps.
 
@@ -157,7 +158,12 @@ class SearchPipeline:
         # ── Step 2: Primary retrieval ──
         actual_k = min(top_k * 2, count)
         format_summaries = h.get("format_summaries", lambda x: [])
-        _where = {"memory_type": memory_type} if memory_type else None
+        _where = {}
+        if memory_type:
+            _where["memory_type"] = memory_type
+        if state_type:
+            _where["state_type"] = state_type
+        _where = _where or None
 
         if mode == "tags":
             tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)

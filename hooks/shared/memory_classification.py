@@ -176,6 +176,89 @@ def classify_memory_type(content: str, tags: str) -> str:
     return ""
 
 
+# ── State Type Classification ────────────────────────────────────────────────
+# High-precision keyword lists — conservative, prefer "" over false positives.
+# Removed: session, active, branch (too ambiguous), rule (too common).
+
+_EPHEMERAL_KEYWORDS = frozenset(
+    {
+        "running",
+        "pid",
+        "port",
+        "alive",
+        "tmux",
+        "process",
+        "listening",
+        "started",
+        "restarted",
+        "connected",
+        "mounted",
+        "socket",
+        "daemon",
+        "localhost",
+        "worktree",
+        "spawned",
+    }
+)
+
+_CONCEPTUAL_KEYWORDS = frozenset(
+    {
+        "decision",
+        "pattern",
+        "architecture",
+        "always",
+        "never",
+        "design",
+        "principle",
+        "standard",
+        "convention",
+        "preference",
+        "correction",
+        "strategy",
+        "policy",
+        "guideline",
+        "invariant",
+        "tradeoff",
+        "deprecated",
+    }
+)
+
+_STATE_CONCEPTUAL_TAGS = {
+    "type:decision",
+    "type:preference",
+    "type:correction",
+    "type:benchmark",
+}
+
+
+def classify_state_type(content: str, tags: str) -> str:
+    """Classify memory as 'ephemeral', 'conceptual', or '' (unclassified).
+
+    Pure function — no side effects. Deterministic keyword scanner.
+    Orthogonal to memory_type (reference/working).
+    """
+    tag_set = (
+        {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
+    )
+    tokens = set(content.lower().split())
+
+    eph_hits = len(tokens & _EPHEMERAL_KEYWORDS)
+    con_hits = len(tokens & _CONCEPTUAL_KEYWORDS)
+
+    # Tag signals boost conceptual
+    if tag_set & _STATE_CONCEPTUAL_TAGS:
+        con_hits += 2
+
+    # auto-captured lowers ephemeral threshold
+    eph_threshold = 1 if "type:auto-captured" in tag_set else 2
+
+    if eph_hits >= eph_threshold and eph_hits > con_hits:
+        return "ephemeral"
+    if con_hits >= 2 and con_hits > eph_hits:
+        return "conceptual"
+    return ""
+
+
 # ── Tag Normalization ─────────────────────────────────────────────────────────
 
 _BARE_TO_DIMENSION = {

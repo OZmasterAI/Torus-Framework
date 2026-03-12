@@ -190,6 +190,7 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("source_observation_ids", pa.string()),
         pa.field("cluster_id", pa.string()),
         pa.field("memory_type", pa.string()),
+        pa.field("state_type", pa.string()),
     ]
 )
 
@@ -480,6 +481,7 @@ def generate_id(content: str) -> str:
 from shared.memory_classification import (
     classify_tier as _classify_tier,
     classify_memory_type as _classify_memory_type,
+    classify_state_type as _classify_state_type,
     salience_score as _salience_score,
     normalize_tags as _normalize_tags,
     inject_project_tag as _mc_inject_project_tag,
@@ -935,6 +937,7 @@ def _init_pipelines():
             "check_dedup": _check_dedup,
             "classify_tier": _classify_tier,
             "classify_memory_type": _classify_memory_type,
+            "classify_state_type": _classify_state_type,
             "extract_citations": _extract_citations,
             "bridge_to_fix_outcomes": _bridge_to_fix_outcomes,
             "touch_memory_timestamp": _touch_memory_timestamp,
@@ -1481,6 +1484,7 @@ def search_knowledge(
     match_all: bool = False,
     counterfactual: bool = False,
     memory_type: str = "",
+    state_type: str = "",
 ) -> dict:
     """Search memory for relevant information. Use before starting any task.
 
@@ -1492,6 +1496,7 @@ def search_knowledge(
         match_all: For tag mode only — if true, all tags must be present (default false).
         counterfactual: Force counterfactual retrieval pass (default false). Behavior depends on counterfactual_mode in config: "always" (every search), "threshold" (weak results only), "opt-in" (this param only).
         memory_type: Filter by memory type ("reference", "working", or "" for all). Default "" returns all.
+        state_type: Filter by state type ("ephemeral", "conceptual", or "" for all). Default "" returns all.
     """
     global _last_search_ids
     _ensure_initialized()
@@ -1517,6 +1522,7 @@ def search_knowledge(
             match_all=match_all,
             counterfactual=counterfactual,
             memory_type=memory_type,
+            state_type=state_type,
         )
         # Track search result IDs for implicit feedback (fail-open)
         try:
