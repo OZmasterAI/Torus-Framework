@@ -189,6 +189,7 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("source_session_id", pa.string()),
         pa.field("source_observation_ids", pa.string()),
         pa.field("cluster_id", pa.string()),
+        pa.field("memory_type", pa.string()),
     ]
 )
 
@@ -478,6 +479,7 @@ def generate_id(content: str) -> str:
 
 from shared.memory_classification import (
     classify_tier as _classify_tier,
+    classify_memory_type as _classify_memory_type,
     salience_score as _salience_score,
     normalize_tags as _normalize_tags,
     inject_project_tag as _mc_inject_project_tag,
@@ -932,6 +934,7 @@ def _init_pipelines():
             "build_project_prefix": _build_project_prefix,
             "check_dedup": _check_dedup,
             "classify_tier": _classify_tier,
+            "classify_memory_type": _classify_memory_type,
             "extract_citations": _extract_citations,
             "bridge_to_fix_outcomes": _bridge_to_fix_outcomes,
             "touch_memory_timestamp": _touch_memory_timestamp,
@@ -1477,6 +1480,7 @@ def search_knowledge(
     recency_weight: float = 0.15,
     match_all: bool = False,
     counterfactual: bool = False,
+    memory_type: str = "",
 ) -> dict:
     """Search memory for relevant information. Use before starting any task.
 
@@ -1487,6 +1491,7 @@ def search_knowledge(
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
         match_all: For tag mode only — if true, all tags must be present (default false).
         counterfactual: Force counterfactual retrieval pass (default false). Behavior depends on counterfactual_mode in config: "always" (every search), "threshold" (weak results only), "opt-in" (this param only).
+        memory_type: Filter by memory type ("reference", "working", or "" for all). Default "" returns all.
     """
     global _last_search_ids
     _ensure_initialized()
@@ -1512,6 +1517,11 @@ def search_knowledge(
             match_all=match_all,
             counterfactual=counterfactual,
         )
+        # Filter by memory_type if requested
+        if memory_type and result.get("results"):
+            result["results"] = [
+                r for r in result["results"] if r.get("memory_type") == memory_type
+            ]
         # Track search result IDs for implicit feedback (fail-open)
         try:
             _last_search_ids = [

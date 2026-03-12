@@ -172,6 +172,10 @@ class WritePipeline:
 
         _classify_tier = h.get("classify_tier")
         tier = _classify_tier(content, tags) if _classify_tier else 2
+        _classify_memory_type = h.get("classify_memory_type")
+        memory_type = (
+            _classify_memory_type(content, tags) if _classify_memory_type else ""
+        )
 
         # Cluster assignment
         _assigned_cluster_id = ""
@@ -201,6 +205,7 @@ class WritePipeline:
                     "source_session_id": source_session_id,
                     "source_observation_ids": source_observation_ids,
                     "cluster_id": _assigned_cluster_id,
+                    "memory_type": memory_type,
                     "quality_score": _q_score,
                 }
             ],
@@ -257,6 +262,7 @@ class WritePipeline:
             "total_memories": collection.count(),
             "timestamp": timestamp,
             "quality_score": _q_score,
+            "memory_type": memory_type,
         }
         if bridge_result:
             result["fix_outcome_bridged"] = True

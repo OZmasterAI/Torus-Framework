@@ -11,6 +11,7 @@ Public API:
 
 import json
 import os
+import re
 
 
 # ── Salience scoring constants ──────────────────────────────────────────────
@@ -127,6 +128,52 @@ def classify_tier(content: str, tags: str) -> int:
     if score <= 0.10:
         return 3
     return 2
+
+
+# ── Memory Type Classification ────────────────────────────────────────────────
+
+_REFERENCE_TAGS = {
+    "type:decision",
+    "type:preference",
+    "type:correction",
+    "type:index",
+    "type:benchmark",
+}
+_REFERENCE_COMBO = {"type:learning"}  # only if also has outcome:success
+_WORKING_TAGS = {"type:auto-captured", "needs-enrichment"}
+_WORKING_ERROR = {"type:error"}  # only if NOT outcome:success
+_SESSION_RE = re.compile(r"session\d+", re.IGNORECASE)
+
+
+def classify_memory_type(content: str, tags: str) -> str:
+    """Classify memory as 'reference', 'working', or '' (unclassified).
+
+    Pure function — no side effects. Used as filter metadata, not for scoring.
+    """
+    tag_set = (
+        {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
+    )
+
+    if tag_set & _REFERENCE_TAGS:
+        return "reference"
+    if tag_set & _REFERENCE_COMBO and "outcome:success" in tag_set:
+        return "reference"
+
+    sal = salience_score(content, tags)
+    if sal >= 0.40:
+        return "reference"
+
+    if tag_set & _WORKING_TAGS:
+        return "working"
+    if tag_set & _WORKING_ERROR and "outcome:success" not in tag_set:
+        return "working"
+    if any(_SESSION_RE.match(t) for t in tag_set):
+        return "working"
+
+    if sal < 0.15 and len(content) < 200:
+        return "working"
+
+    return ""
 
 
 # ── Tag Normalization ─────────────────────────────────────────────────────────
