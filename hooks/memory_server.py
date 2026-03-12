@@ -883,10 +883,8 @@ def _ensure_initialized():
     lance_count = collection.count()
     if tag_index.is_synced(lance_count):
         _tag_count = lance_count
-        _initialized = True
-        return  # Skip rebuild — tag index is current
-
-    _tag_count = tag_index.build_from_lance(collection)
+    else:
+        _tag_count = tag_index.build_from_lance(collection)
 
     # Initialize pipeline instances (fail-open — fall back to inline logic)
     _init_pipelines()

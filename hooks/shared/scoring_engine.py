@@ -26,9 +26,8 @@ from shared.memory_decay import (
     DEFAULT_HALF_LIFE_DAYS,
     _age_days,
     _time_decay_factor,
+    _recency_boost,
     _tag_relevance_bonus,
-    _RECENCY_BOOST,
-    _RECENCY_WINDOW_DAYS,
     _MAX_TAG_BONUS,
 )
 
@@ -129,7 +128,7 @@ def score_result(
         if retrieval_count > 0
         else 0.0
     )
-    recency = _RECENCY_BOOST if age < _RECENCY_WINDOW_DAYS else 0.0
+    recency = _recency_boost(age)
     tag_bonus = _tag_relevance_bonus(str(result.get("tags") or ""), ctx.query_tags)
     graph_bonus = min(_MAX_GRAPH_BONUS, ctx.graph_scores.get(mem_id, 0.0))
     keyword_bonus = _keyword_overlap_bonus(

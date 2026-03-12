@@ -252,11 +252,12 @@ def test_keyword_overlap():
 def test_project_affinity_exactly_2x():
     """Project-matching memory gets exactly 2x boost, not 4x (bug: double application)."""
     ctx = _make_ctx(project="myproject")
+    # Use low base_similarity to avoid score clamping at 1.0 after 2x multiplier
     result_with = _make_result(tier=2, timestamp=_ago_iso(10), tags="project:myproject")
     result_without = _make_result(tier=2, timestamp=_ago_iso(10), tags="")
 
-    s_with = score_result(result_with, 0.4, ctx)
-    s_without = score_result(result_without, 0.4, ctx)
+    s_with = score_result(result_with, 0.2, ctx)
+    s_without = score_result(result_without, 0.2, ctx)
 
     # The ratio should be approximately 2.0 (project_mult), not 4.0
     ratio = s_with / s_without if s_without > 0 else float("inf")
@@ -292,6 +293,7 @@ def test_access_boost_monolith_cap():
 def test_subproject_boost():
     """Subproject matching adds 1.5x multiplier on top of project 2.0x."""
     ctx = _make_ctx(project="torus", server_subproject="hooks")
+    # Use low base_similarity to avoid score clamping at 1.0 after 3x multiplier
     result_both = _make_result(
         tier=2, timestamp=_ago_iso(10), tags="project:torus,subproject:hooks,type:fix"
     )
@@ -300,9 +302,9 @@ def test_subproject_boost():
     )
     result_none = _make_result(tier=2, timestamp=_ago_iso(10), tags="type:fix")
 
-    s_both = score_result(result_both, 0.3, ctx)
-    s_proj = score_result(result_proj_only, 0.3, ctx)
-    s_none = score_result(result_none, 0.3, ctx)
+    s_both = score_result(result_both, 0.05, ctx)
+    s_proj = score_result(result_proj_only, 0.05, ctx)
+    s_none = score_result(result_none, 0.05, ctx)
 
     # project only: 2.0x, project+subproject: 3.0x
     proj_ratio = s_proj / s_none if s_none > 0 else float("inf")
