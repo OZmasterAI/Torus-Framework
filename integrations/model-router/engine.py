@@ -28,8 +28,13 @@ async def fan_out(
         return [{"error": "No models available"}]
 
     tasks = [
-        complete(prompt, m, system_prompt=system_prompt,
-                 max_tokens=max_tokens, timeout=timeout)
+        complete(
+            prompt,
+            m,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
         for m in pool
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -107,8 +112,8 @@ async def compare(
 async def research(
     topic: str,
     registry: Registry,
-    n: int = 5,
-    timeout: float = 20.0,
+    n: Optional[int] = None,
+    timeout: float = 45.0,
 ) -> dict:
     """Fan out a research query with a research-oriented system prompt."""
     system_prompt = (
@@ -118,8 +123,12 @@ async def research(
     )
 
     results = await fan_out(
-        topic, registry, n=n, system_prompt=system_prompt,
-        timeout=timeout, max_tokens=4096,
+        topic,
+        registry,
+        n=n,
+        system_prompt=system_prompt,
+        timeout=timeout,
+        max_tokens=4096,
     )
 
     for r in results:
@@ -127,15 +136,19 @@ async def research(
     results.sort(key=lambda r: r["score"], reverse=True)
 
     successful = [r for r in results if r.get("text")]
+    failed = [r for r in results if not r.get("text")]
 
-    # Synthesize: combine top insights
+    # Synthesize: include all successful responses
     synthesis = ""
     if successful:
         synthesis = f"Research: {topic}\n\n"
-        synthesis += f"Queried {len(results)} models, {len(successful)} responded.\n\n"
-        for i, r in enumerate(successful[:3], 1):
+        synthesis += f"Queried {len(results)} models, {len(successful)} responded"
+        if failed:
+            synthesis += f" ({len(failed)} failed)"
+        synthesis += ".\n\n"
+        for i, r in enumerate(successful, 1):
             synthesis += f"--- {r['name']} (score: {r['score']:.1f}) ---\n"
-            synthesis += r["text"][:1000] + "\n\n"
+            synthesis += r["text"][:2000] + "\n\n"
 
     return {
         "topic": topic,
