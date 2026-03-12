@@ -192,6 +192,15 @@
     var sttPreference = {};  // per-session STT on/off keyed by session name
     var STT_KEY_PREFIX = "torus_stt_enabled_";
     var intentionalClose = false;
+    var SESSION_COLORS = [
+      "#e67e22", "#00b894", "#e17055", "#0984e3",
+      "#6c5ce7", "#2ecc71", "#00cec9", "#d63031"
+    ];
+    function sessionColor(name) {
+      var h = 0;
+      for (var i = 0; i < name.length; i++) h = ((h << 5) - h) + name.charCodeAt(i) | 0;
+      return SESSION_COLORS[Math.abs(h) % SESSION_COLORS.length];
+    }
 
     function getTTS(target) {
       if (!ttsState[target]) {
@@ -336,7 +345,7 @@
             document.getElementById("mic-label").textContent = "No speech API";
           }
         } else if (data.type === "sent") {
-          showFlash("Sent!");
+          showFlash("Sent to " + currentTarget, false, sessionColor(currentTarget));
         } else if (data.type === "error") {
           if (data.text === "Invalid token" || data.text === "Auth timeout") {
             localStorage.removeItem(TOKEN_KEY);
@@ -392,11 +401,11 @@
       }, reconnectDelay);
     }
 
-    function showFlash(text, isError) {
+    function showFlash(text, isError, color) {
       var f = document.getElementById("flash");
       if (flashTimer) clearTimeout(flashTimer);
       f.textContent = text;
-      f.style.background = isError ? "var(--error)" : "var(--success)";
+      f.style.background = isError ? "var(--error)" : (color || "var(--success)");
       f.hidden = false;
       void f.offsetWidth;
       f.classList.add("visible");
