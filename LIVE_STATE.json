@@ -1,20 +1,22 @@
 {
-  "session_count": 419,
+  "session_count": 420,
   "project": "torus-framework",
-  "feature": "memory-type-backfill",
+  "feature": "state-type-classification",
   "framework_version": "v2.8.3",
-  "what_was_done": "Ran memory_type backfill (2,208 classified: 1,644 reference, 564 working, 561 unclassified). Fixed duplicate ID in LanceDB. Untracked plugins/blocklist.json, removed LIVE_STATE.json from gitignore.",
+  "what_was_done": "Implemented state_type C-lite Final (Rule 5b upgrade). Added classify_state_type() to memory_classification.py, state_type column to LanceDB, wired into WritePipeline + SearchPipeline + search_knowledge(). Backfilled 465 entries (26 ephemeral, 439 conceptual, 2,322 unclassified). 64 tests passing.",
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
     "Security findings from external audit pending fix (memory id:65cab6b931e40aeb)",
-    "Memory server now SSE — must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
-    "layered-memory branch has memory-v2 merge — needs merge into Toroidal-teams or main"
+    "Memory server now SSE \u2014 must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
+    "layered-memory branch has memory-v2 merge \u2014 needs merge into Toroidal-teams or main",
+    "MCP server needs restart to pick up state_type changes"
   ],
   "next_steps": [
-    "Decide: Option 2 (own runtime) vs Option 3 (hybrid enhance Plans A+B) — comparison in memory 06c94153eda79164",
-    "Memory stale purge — 2,770 entries, run maintenance(action='stale')",
-    "Toroidal Teams v2 — inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)",
-    "Tune memory_type classifier after real usage — 561 unclassified, re-run backfill_memory_type.py after changes"
+    "Restart MCP server to activate state_type filter in search_knowledge()",
+    "Decide: Option 2 (own runtime) vs Option 3 (hybrid enhance Plans A+B) \u2014 comparison in memory 06c94153eda79164",
+    "Memory stale purge \u2014 2,788 entries, run maintenance(action='stale')",
+    "Toroidal Teams v2 \u2014 inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)",
+    "Tune state_type keyword lists after real usage \u2014 monitor false positives/negatives over next few sessions"
   ]
 }
