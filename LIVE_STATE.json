@@ -1,24 +1,24 @@
 {
-  "session_count": 415,
+  "session_count": 416,
   "project": "torus-framework",
-  "feature": "memory-v2-plan",
+  "feature": "memory-v2-impl",
   "framework_version": "v2.8.2",
-  "what_was_done": "Created memory v2 layered redesign plan with Toroidal Team agent task prompt. Synced github-branch v2.8.2 to OZmasterAI/Torus-Framework. Amended commit msg needs force-push.",
+  "what_was_done": "Memory v2 layered redesign completed by builder-alpha agent (7 commits, 82 tests, 8 modules extracted). Code reviewed, 3 bugs found and fixed. MWP memory_type plan revised to Option C (filter only). Agent task prompt written for MWP implementation.",
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
     "Security findings from external audit pending fix (memory id:65cab6b931e40aeb)",
     "Memory server now SSE — must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
-    "OpenClaw only supports text/image input types — audio/video cause config validation failure",
-    "github-branch v2.8.2 amended commit needs force-push: cd ~/.claude/hooks && git push github github-branch:main --force-with-lease"
+    "github-branch v2.8.2 amended commit needs force-push",
+    "memory-v2-layered branch in /tmp/memory-v2-worktree ready for merge but NOT yet merged"
   ],
   "next_steps": [
-    "Force-push amended v2.8.2 commit to github (one command)",
-    "Memory v2 layered redesign — execute via Toroidal Team agent (plan: docs/plans/memory-v2-layered-redesign.md)",
+    "Merge memory-v2-layered branch into main (review done, all issues fixed, 82 tests pass)",
+    "Execute MWP memory_type Option C (5 tasks, ~2hrs, plan: docs/plans/mwp-memory-type-impl.md)",
+    "Force-push amended v2.8.2 commit to github",
     "Apply memory.md update (draft ready from session 414, needs user review)",
-    "Healer Alpha integration into TG bot voice pipeline (handle_voice() in bot.py line 471)",
-    "Toroidal Teams v2 — inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)",
-    "Memory stale purge — 2,718 entries, run maintenance(action='stale')",
-    "Fix external audit security findings (memory id:65cab6b931e40aeb)"
+    "Memory stale purge — 2,747 entries, run maintenance(action='stale')",
+    "Fix external audit security findings (memory id:65cab6b931e40aeb)",
+    "Toroidal Teams v2 — inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)"
   ]
 }
