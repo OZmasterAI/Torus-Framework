@@ -18,6 +18,27 @@ import re
 from shared.scoring_engine import ScoringContext, score_result
 
 
+def _derive_query_tags(query, results):
+    """Extract query_tags by matching query words against result tags.
+
+    Reproduces the monolith's _rerank_composite heuristic: for each tag in the
+    result set, if any query word (>3 chars) appears within that tag, include it.
+    """
+    if not query or not results:
+        return ""
+    query_lower = query.lower()
+    words = [w for w in query_lower.split() if len(w) > 3]
+    if not words:
+        return ""
+    tags = set()
+    for r in results:
+        for tag in (r.get("tags", "") or "").split(","):
+            tag = tag.strip().lower()
+            if tag and any(w in tag for w in words):
+                tags.add(tag)
+    return ",".join(sorted(tags)) if tags else ""
+
+
 class SearchPipeline:
     """10-step search orchestrator.
 
@@ -240,11 +261,14 @@ class SearchPipeline:
                 _ltp_blend = self.adaptive.get_weights().get("ltp_blend", 0.3)
 
             _server_project = h.get("server_project", "") or ""
+            _server_subproject = h.get("server_subproject", "") or ""
+            _query_tags = _derive_query_tags(query, formatted)
             _scoring_ctx = ScoringContext(
                 ltp_factors=_ltp_factors,
                 graph_scores=_graph_scores,
-                query_tags="",
+                query_tags=_query_tags,
                 project=_server_project,
+                server_subproject=_server_subproject,
                 query=query,
                 ltp_blend=_ltp_blend,
             )

@@ -26,13 +26,17 @@ from shared.memory_decay import (
     DEFAULT_HALF_LIFE_DAYS,
     _age_days,
     _time_decay_factor,
-    _access_boost,
     _tag_relevance_bonus,
     _RECENCY_BOOST,
     _RECENCY_WINDOW_DAYS,
-    _MAX_ACCESS_BOOST,
     _MAX_TAG_BONUS,
 )
+
+# Search-specific access boost (matches monolith's _apply_access_boost / _rerank_composite).
+# memory_decay.py uses higher values (0.05/0.20) for replay/consolidation ranking —
+# search scoring intentionally uses more conservative coefficients.
+_SEARCH_ACCESS_COEFF = 0.008
+_SEARCH_ACCESS_CAP = 0.03
 
 # Graph proximity cap (from _rerank_composite)
 _MAX_GRAPH_BONUS = 0.06
@@ -52,6 +56,7 @@ class ScoringContext:
     graph_scores: Dict[str, float]  # id -> graph proximity score
     query_tags: str  # comma-separated query context tags
     project: str  # current project name
+    server_subproject: str = ""  # current subproject name
     query: str = ""  # raw query string for keyword overlap
     ltp_blend: float = 0.3  # from AdaptiveWeights
     half_life: float = DEFAULT_HALF_LIFE_DAYS  # decay half-life
@@ -116,7 +121,14 @@ def score_result(
 
     # ── Additive signals (each computed exactly once) ──
     retrieval_count = int(result.get("retrieval_count") or 0)
-    access = _access_boost(retrieval_count)
+    access = (
+        min(
+            _SEARCH_ACCESS_CAP,
+            _SEARCH_ACCESS_COEFF * math.log1p(max(0, retrieval_count)),
+        )
+        if retrieval_count > 0
+        else 0.0
+    )
     recency = _RECENCY_BOOST if age < _RECENCY_WINDOW_DAYS else 0.0
     tag_bonus = _tag_relevance_bonus(str(result.get("tags") or ""), ctx.query_tags)
     graph_bonus = min(_MAX_GRAPH_BONUS, ctx.graph_scores.get(mem_id, 0.0))
@@ -129,6 +141,8 @@ def score_result(
     tags_str = result.get("tags", "")
     if ctx.project and f"project:{ctx.project}" in tags_str:
         project_mult = 2.0
+    if ctx.server_subproject and f"subproject:{ctx.server_subproject}" in tags_str:
+        project_mult *= 1.5
 
     composite = (
         blended + access + recency + tag_bonus + graph_bonus + keyword_bonus

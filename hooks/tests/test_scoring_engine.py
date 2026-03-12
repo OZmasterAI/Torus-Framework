@@ -9,7 +9,12 @@ import math
 import pytest
 from datetime import datetime, timezone, timedelta
 
-from shared.scoring_engine import ScoringContext, score_result
+from shared.scoring_engine import (
+    ScoringContext,
+    score_result,
+    _SEARCH_ACCESS_CAP,
+    _SEARCH_ACCESS_COEFF,
+)
 
 
 def _now_iso():
@@ -43,6 +48,7 @@ def _make_ctx(**overrides):
         graph_scores={},
         query_tags="",
         project="test",
+        server_subproject="",
         query="",
         ltp_blend=0.3,
         half_life=15.0,
@@ -81,12 +87,12 @@ def test_score_deterministic():
 
 
 def test_access_counted_once():
-    """retrieval_count=100 should add ~0.15 (single access boost), not ~0.26 (triple)."""
+    """retrieval_count=100 should add ~0.03 (capped), not triple-counted."""
     result = _make_result(tier=2, timestamp=_now_iso(), retrieval_count=100)
     ctx = _make_ctx()
     score = score_result(result, base_similarity=0.5, ctx=ctx)
-    # Access boost: min(0.15, 0.04 * log1p(100)) = min(0.15, 0.04*4.615) = 0.15
-    # If triple-counted, it would push score much higher
+    # Access boost: min(0.03, 0.008 * log1p(100)) = min(0.03, 0.037) = 0.03
+    # With monolith-matching cap of 0.03, score stays conservative
     assert score < 0.95, (
         f"Score too high ({score}) — access may be counted multiple times"
     )
@@ -255,3 +261,91 @@ def test_project_affinity_exactly_2x():
     # The ratio should be approximately 2.0 (project_mult), not 4.0
     ratio = s_with / s_without if s_without > 0 else float("inf")
     assert 1.8 < ratio < 2.3, f"Project boost ratio should be ~2.0, got {ratio}"
+
+
+# ── Test 12: Access boost uses monolith-matching coefficients ────────
+
+
+def test_access_boost_monolith_cap():
+    """Access boost capped at 0.03 (monolith), not 0.20 (memory_decay replay)."""
+    assert _SEARCH_ACCESS_CAP == 0.03, f"Cap should be 0.03, got {_SEARCH_ACCESS_CAP}"
+    assert _SEARCH_ACCESS_COEFF == 0.008, (
+        f"Coeff should be 0.008, got {_SEARCH_ACCESS_COEFF}"
+    )
+
+    # retrieval_count=100: 0.008 * log1p(100) = 0.008 * 4.615 = 0.0369 → capped at 0.03
+    result_high = _make_result(tier=2, timestamp=_ago_iso(10), retrieval_count=100)
+    result_zero = _make_result(tier=2, timestamp=_ago_iso(10), retrieval_count=0)
+    ctx = _make_ctx()
+    s_high = score_result(result_high, 0.5, ctx)
+    s_zero = score_result(result_zero, 0.5, ctx)
+    access_delta = s_high - s_zero
+    assert access_delta <= 0.035, (
+        f"Access delta {access_delta} exceeds cap 0.03 — regression"
+    )
+    assert access_delta > 0, "Access boost should be positive for rc=100"
+
+
+# ── Test 13: Subproject 1.5x boost ──────────────────────────────────
+
+
+def test_subproject_boost():
+    """Subproject matching adds 1.5x multiplier on top of project 2.0x."""
+    ctx = _make_ctx(project="torus", server_subproject="hooks")
+    result_both = _make_result(
+        tier=2, timestamp=_ago_iso(10), tags="project:torus,subproject:hooks,type:fix"
+    )
+    result_proj_only = _make_result(
+        tier=2, timestamp=_ago_iso(10), tags="project:torus,type:fix"
+    )
+    result_none = _make_result(tier=2, timestamp=_ago_iso(10), tags="type:fix")
+
+    s_both = score_result(result_both, 0.3, ctx)
+    s_proj = score_result(result_proj_only, 0.3, ctx)
+    s_none = score_result(result_none, 0.3, ctx)
+
+    # project only: 2.0x, project+subproject: 3.0x
+    proj_ratio = s_proj / s_none if s_none > 0 else float("inf")
+    both_ratio = s_both / s_none if s_none > 0 else float("inf")
+    assert 1.8 < proj_ratio < 2.3, f"Project ratio should be ~2.0, got {proj_ratio}"
+    assert 2.7 < both_ratio < 3.3, f"Both ratio should be ~3.0, got {both_ratio}"
+
+
+# ── Test 14: query_tags derive function ─────────────────────────────
+
+
+def test_derive_query_tags():
+    """_derive_query_tags extracts matching tags from result set."""
+    from shared.search_pipeline import _derive_query_tags
+
+    results = [
+        {"tags": "type:fix,area:backend,priority:high"},
+        {"tags": "type:learning,area:frontend"},
+        {"tags": "type:error,outcome:failed"},
+    ]
+
+    # "fix backend" → "fix" (3 chars, skipped), "backend" matches "area:backend"
+    tags = _derive_query_tags("fix backend error", results)
+    assert "area:backend" in tags, f"Should find area:backend, got: {tags}"
+    assert "type:error" in tags, f"Should find type:error, got: {tags}"
+
+    # Words ≤3 chars are skipped
+    tags_short = _derive_query_tags("fix err", results)
+    assert tags_short == "", f"Short words should be skipped, got: {tags_short}"
+
+    # Empty inputs
+    assert _derive_query_tags("", results) == ""
+    assert _derive_query_tags("something", []) == ""
+
+
+def test_query_tags_affect_scoring():
+    """Non-empty query_tags should increase score for matching results."""
+    ts = _ago_iso(10)
+    result = _make_result(tier=2, timestamp=ts, tags="type:fix,area:backend")
+
+    ctx_with = _make_ctx(query_tags="type:fix,area:backend")
+    ctx_without = _make_ctx(query_tags="")
+
+    s_with = score_result(result, 0.5, ctx_with)
+    s_without = score_result(result, 0.5, ctx_without)
+    assert s_with > s_without, f"query_tags should boost score: {s_with} vs {s_without}"
