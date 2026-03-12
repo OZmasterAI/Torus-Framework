@@ -1,25 +1,23 @@
 {
-  "session_count": 416,
+  "session_count": 417,
   "project": "torus-framework",
   "feature": "memory-v2-impl",
   "framework_version": "v2.8.2",
-  "what_was_done": "Memory v2 layered redesign completed by builder-alpha agent (7 commits, 82 tests, 8 modules extracted). Code reviewed, 3 bugs found and fixed. MWP memory_type plan revised to Option C (filter only). Agent task prompt written for MWP implementation.",
+  "what_was_done": "Shadow tested v2 vs live server (Kendall tau 0.918→0.959). Restored linear recency ramp. Implemented MWP memory_type Option C (classify+filter). Upgraded to LanceDB WHERE pre-filter. Fixed pipeline init bug. 92 tests pass.",
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
     "Security findings from external audit pending fix (memory id:65cab6b931e40aeb)",
-    "Memory server now SSE \u2014 must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
-    "github-branch v2.8.2 amended commit needs force-push",
+    "Memory server now SSE — must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
     "memory-v2-layered branch in /tmp/memory-v2-worktree ready for merge but NOT yet merged"
   ],
   "next_steps": [
-    "Merge memory-v2-layered branch into main (review done, all issues fixed, 82 tests pass)",
-    "Execute MWP memory_type Option C (5 tasks, ~2hrs, plan: docs/plans/mwp-memory-type-impl.md)",
+    "Merge memory-v2-layered branch into main (review done, all issues fixed, 92 tests pass)",
     "Force-push amended v2.8.2 commit to github",
     "Apply memory.md update (draft ready from session 414, needs user review)",
-    "Memory stale purge \u2014 2,747 entries, run maintenance(action='stale')",
+    "Memory stale purge — 2,747 entries, run maintenance(action='stale')",
     "Fix external audit security findings (memory id:65cab6b931e40aeb)",
-    "Toroidal Teams v2 \u2014 inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)"
+    "Toroidal Teams v2 — inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)"
   ],
-  "last_response_preview": "Looks solid. Checking against the plan:\n\n| Task | Plan | Done? |\n|------|------|-------|\n| 1. Schema column | `pa.field(\"memory_type\", pa.string())` after cluster_id | Yes, line 192 |\n| 2. classify_memory_type() | Pure function in memory_classification.py | Yes, lines 133-176 |\n| 3. Wire into WritePipeline | Classify at write time, include in upsert dict | Yes, lines 175-178 + 208 |\n| 4. Filter in search_knowledge() | Post-filter by memory_type param | Yes, lines 1480 + 1520-1524 |\n| 5. Tests | "
+  "last_response_preview": "Wrap-up complete. Shadow testing validated v2 parity. Linear recency ramp restored. MWP memory_type Option C implemented with LanceDB pre-filter. 92 tests passing on memory-v2-layered branch."
 }
