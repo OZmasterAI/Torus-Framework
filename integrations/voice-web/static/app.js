@@ -239,9 +239,9 @@
   // Prevent context menu on long press
   micBtn.addEventListener("contextmenu", function (e) { e.preventDefault(); });
 
-  // Control key toggle (press to start, press again to stop)
+  // Right arrow key toggle (press to start, press again to stop)
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Control" && !e.repeat) {
+    if (e.key === "ArrowRight" && !e.repeat) {
       e.preventDefault();
       if (isListening) {
         stopListening();
