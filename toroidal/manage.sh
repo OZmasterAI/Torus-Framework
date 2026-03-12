@@ -100,7 +100,7 @@ cmd_resume() {
 
     echo "Resuming $ROLE (session: $SESSION_ID, model: $MODEL)"
     tmux new-session -d -s "$ROLE" -c "$AGENT_DIR" \
-        "AGENT_ROLE=$ROLE CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude --resume $SESSION_ID --model $MODEL"
+        "AGENT_ROLE=$ROLE CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude --dangerously-skip-permissions --resume $SESSION_ID --model $MODEL"
 
     "$HOME/.claude/toroidal/session_register.sh" "$ROLE" "$SESSION_ID" "$MODEL" "active"
     echo "$ROLE resumed. Attach with: tmux attach -t $ROLE"
