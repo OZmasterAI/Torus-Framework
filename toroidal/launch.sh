@@ -45,7 +45,7 @@ export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
 # Launch tmux session from agent directory
 echo "Launching $ROLE (model: $MODEL) from $AGENT_DIR"
 tmux new-session -d -s "$ROLE" -c "$AGENT_DIR" \
-    "AGENT_ROLE=$ROLE CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude --model $MODEL"
+    "AGENT_ROLE=$ROLE CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude --dangerously-skip-permissions --model $MODEL"
 
 # Register with placeholder — real session ID will be captured by SessionStart hook
 SESSION_ID="tt-${ROLE}-$(date +%s)"
