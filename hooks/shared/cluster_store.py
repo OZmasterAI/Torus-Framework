@@ -88,7 +88,7 @@ class ClusterStore:
 
     def __init__(self, db_path: str, threshold: float = CLUSTER_THRESHOLD):
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._threshold = threshold
         self._create_tables()
