@@ -1594,6 +1594,8 @@ _adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
 _cluster_store = None  # _ClusterStore instance (initialized lazily)
 CLUSTER_THRESHOLD = 0.7  # cosine similarity threshold for cluster assignment
 _last_search_ids = []  # IDs from last search_knowledge call (for implicit feedback)
+_search_pipeline = None  # SearchPipeline instance (initialized lazily)
+_write_pipeline = None  # WritePipeline instance (initialized lazily)
 
 # --- Counterfactual retrieval client (lazy init) ---
 _cf_client = None
@@ -2090,7 +2092,95 @@ def _ensure_initialized():
         return  # Skip rebuild — tag index is current
 
     _tag_count = tag_index.build_from_lance(collection)
+
+    # Initialize pipeline instances (fail-open — fall back to inline logic)
+    _init_pipelines()
+
     _initialized = True
+
+
+def _init_pipelines():
+    """Create SearchPipeline + WritePipeline instances with current globals."""
+    global _search_pipeline, _write_pipeline
+    try:
+        from shared.search_pipeline import SearchPipeline
+        from shared.write_pipeline import WritePipeline
+
+        _config = _read_config_toggles()
+        _search_helpers = {
+            "format_summaries": format_summaries,
+            "lance_keyword_search": _lance_keyword_search,
+            "merge_results": _merge_results,
+            "detect_query_mode": _detect_query_mode,
+            "search_observations_internal": _search_observations_internal,
+            "get_expanded_tags": _get_expanded_tags,
+            "tag_ids_to_summaries": _tag_ids_to_summaries,
+            "generate_counterfactual_query": _generate_counterfactual_query,
+            "touch_memory_timestamp": _touch_memory_timestamp,
+            "validate_top_k": _validate_top_k,
+            "fix_outcomes": fix_outcomes,
+            "cluster_store": _cluster_store,
+            "server_project": _SERVER_PROJECT,
+            "server_subproject": _SERVER_SUBPROJECT,
+            "embed_text": _embed_text,
+        }
+        _search_pipeline = SearchPipeline(
+            collection=collection,
+            tag_index=tag_index,
+            graph=_knowledge_graph,
+            ltp=_ltp_tracker,
+            adaptive=_adaptive_weights,
+            config=_config,
+            helpers=_search_helpers,
+        )
+        _write_helpers = {
+            "normalize_tags": _normalize_tags,
+            "inject_project_tag": _inject_project_tag,
+            "build_project_prefix": _build_project_prefix,
+            "check_dedup": _check_dedup,
+            "classify_tier": _classify_tier,
+            "extract_citations": _extract_citations,
+            "bridge_to_fix_outcomes": _bridge_to_fix_outcomes,
+            "touch_memory_timestamp": _touch_memory_timestamp,
+            "generate_id": generate_id,
+            "embed_text": _embed_text,
+            "cluster_store": _cluster_store,
+            "noise_regexes": NOISE_REGEXES,
+            "min_content_length": MIN_CONTENT_LENGTH,
+            "summary_length": SUMMARY_LENGTH,
+            "server_project": _SERVER_PROJECT,
+            "server_subproject": _SERVER_SUBPROJECT,
+        }
+        _write_pipeline = WritePipeline(
+            collection=collection,
+            tag_index=tag_index,
+            graph=_knowledge_graph,
+            config=_config,
+            helpers=_write_helpers,
+        )
+    except Exception as e:
+        print(f"[MCP] Pipeline init failed (will use inline): {e}", file=_sys.stderr)
+
+
+def _read_config_toggles():
+    """Read config toggles from config.json (with LIVE_STATE.json fallback)."""
+    _config_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
+    try:
+        if os.path.isfile(_config_path):
+            with open(_config_path, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    _live_state_path = os.path.join(
+        os.path.expanduser("~"), ".claude", "LIVE_STATE.json"
+    )
+    try:
+        if os.path.isfile(_live_state_path):
+            with open(_live_state_path, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
 
 
 # ──────────────────────────────────────────────────
@@ -2681,12 +2771,40 @@ def search_knowledge(
         match_all: For tag mode only — if true, all tags must be present (default false).
         counterfactual: Force counterfactual retrieval pass (default false). Behavior depends on counterfactual_mode in config: "always" (every search), "threshold" (weak results only), "opt-in" (this param only).
     """
+    global _last_search_ids
     _ensure_initialized()
     if _lance_degraded:
         return {
             "error": "LanceDB unavailable — running in degraded mode",
             "degraded": True,
         }
+
+    # Delegate to SearchPipeline (with inline fallback)
+    if _search_pipeline is not None:
+        # Refresh config toggles (they may change between calls)
+        _search_pipeline.config = _read_config_toggles()
+        # Refresh mutable helpers that may change
+        _search_pipeline.h["fix_outcomes"] = fix_outcomes
+        _search_pipeline.h["server_project"] = _SERVER_PROJECT
+        _search_pipeline.h["server_subproject"] = _SERVER_SUBPROJECT
+        result = _search_pipeline.search(
+            query,
+            top_k=top_k,
+            mode=mode,
+            recency_weight=recency_weight,
+            match_all=match_all,
+            counterfactual=counterfactual,
+        )
+        # Track search result IDs for implicit feedback (fail-open)
+        try:
+            _last_search_ids = [
+                r.get("id", "") for r in result.get("results", [])[:10] if r.get("id")
+            ]
+        except Exception:
+            _last_search_ids = []
+        return result
+
+    # ── Inline fallback (pipeline not initialized) ──
     recency_weight = max(0.0, min(1.0, recency_weight))
     top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
     count = collection.count()
@@ -3495,7 +3613,6 @@ def search_knowledge(
         result["tag_expanded"] = True
 
     # Track search result IDs for implicit feedback (fail-open)
-    global _last_search_ids
     try:
         _last_search_ids = [r.get("id", "") for r in formatted[:10] if r.get("id")]
     except Exception:
@@ -3779,7 +3896,34 @@ def remember_this(
         source_session_id: Session ID to record provenance (auto-detected if omitted)
         source_observation_ids: Comma-separated observation IDs this knowledge was derived from
     """
+    global _tag_cooccurrence_dirty
     _ensure_initialized()
+    if _lance_degraded:
+        return {
+            "error": "LanceDB unavailable — running in degraded mode",
+            "degraded": True,
+        }
+
+    # Delegate to WritePipeline (with inline fallback)
+    if _write_pipeline is not None:
+        # Refresh mutable helpers
+        _write_pipeline.h["cluster_store"] = _cluster_store
+        _write_pipeline.h["server_project"] = _SERVER_PROJECT
+        _write_pipeline.h["server_subproject"] = _SERVER_SUBPROJECT
+        result = _write_pipeline.write(
+            content,
+            context=context,
+            tags=tags,
+            force=force,
+            source_session_id=source_session_id,
+            source_observation_ids=source_observation_ids,
+        )
+        # Mark tag co-occurrence as dirty if tags changed
+        if tags:
+            _tag_cooccurrence_dirty = True
+        return result
+
+    # ── Inline fallback (pipeline not initialized) ──
     # Auto-detect source session ID from most recent JSONL session file
     if not source_session_id:
         try:
@@ -3995,7 +4139,6 @@ def remember_this(
         pass  # Graph population failure must not break memory storage
 
     # Mark tag co-occurrence matrix as dirty (new tags may change co-occurrence rates)
-    global _tag_cooccurrence_dirty
     if tags:
         _tag_cooccurrence_dirty = True
 
