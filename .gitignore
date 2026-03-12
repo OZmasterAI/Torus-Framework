@@ -118,7 +118,6 @@ integrations/model-router/router_config.toml
 dormant/skills/market/
 dormant/skills/trade/
 dormant/teams/
-dormant/voice-web/
 
 # Runtime state (operational data, not source)
 hooks/.experience_archive.csv
