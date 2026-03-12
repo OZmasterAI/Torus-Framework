@@ -3023,60 +3023,64 @@ def search_knowledge(
     except Exception:
         pass  # Tag expansion failure must not break search
 
-    # Keyword overlap reranker — gives keyword signal to all modes
+    # ── Unified scoring: single score_result() replaces 6 stages (fail-open) ──
     try:
-        formatted = _rerank_keyword_overlap(formatted, query)
-    except Exception:
-        pass  # Reranker failure must not break search
+        from shared.scoring_engine import ScoringContext, score_result as _score_result
 
-    # Apply recency boost and re-sort
-    if recency_weight > 0:
-        formatted = _apply_recency_boost(formatted, recency_weight)
-
-    # Apply tier boost: tier 1 (+0.05), tier 3 (-0.02)
-    try:
-        formatted = _apply_tier_boost(formatted)
-    except Exception:
-        pass  # Tier boost failure must not break search
-
-    # Apply access-count boost: tiebreaker for frequently-retrieved memories (max +0.03)
-    try:
-        formatted = _apply_access_boost(formatted)
-    except Exception:
-        pass  # Access boost failure must not break search
-
-    # Apply LTP-aware relevance scoring: re-score using 4-level decay factor (fail-open)
-    try:
+        # Batch-fetch LTP factors
+        _ltp_factors = {}
         if _ltp_tracker:
-            from shared.memory_decay import calculate_relevance_score
-
             for entry in formatted:
                 mem_id = entry.get("id", "")
                 if mem_id:
-                    ltp_factor = _ltp_tracker.get_decay_factor(mem_id)
-                else:
-                    ltp_factor = 1.0
-                ltp_score = calculate_relevance_score(entry, ltp_factor=ltp_factor)
-                # Blend: vector relevance + LTP-decay score (adaptive weight)
-                _ltp_blend = 0.3
-                if _adaptive_weights:
-                    _ltp_blend = _adaptive_weights.get_weights().get("ltp_blend", 0.3)
-                raw_rel = entry.get("relevance", 0.5)
-                entry["relevance"] = round(
-                    raw_rel * (1 - _ltp_blend) + ltp_score * _ltp_blend, 4
-                )
-                entry["ltp_factor"] = ltp_factor
-            formatted.sort(key=lambda x: x.get("relevance", 0), reverse=True)
-    except Exception:
-        pass  # LTP scoring failure must not break search
+                    try:
+                        _ltp_factors[mem_id] = _ltp_tracker.get_decay_factor(mem_id)
+                    except Exception:
+                        pass
 
-    # Composite reranker: final re-sort with tag overlap + graph proximity (fail-open)
-    try:
-        formatted = _rerank_composite(
-            formatted, query, top_k, knowledge_graph=_knowledge_graph
+        # Batch-fetch graph proximity scores
+        _graph_scores = {}
+        if _knowledge_graph:
+            top_ids = {r.get("id") for r in formatted[:5] if r.get("id")}
+            for entry in formatted:
+                mem_id = entry.get("id", "")
+                if mem_id:
+                    try:
+                        neighbors = _knowledge_graph.get_neighbors(mem_id)
+                        if neighbors:
+                            connected = len(set(neighbors) & top_ids - {mem_id})
+                            if connected > 0:
+                                _graph_scores[mem_id] = connected * 0.03
+                    except Exception:
+                        pass
+
+        # Build scoring context
+        _ltp_blend = 0.3
+        if _adaptive_weights:
+            _ltp_blend = _adaptive_weights.get_weights().get("ltp_blend", 0.3)
+
+        _scoring_ctx = ScoringContext(
+            ltp_factors=_ltp_factors,
+            graph_scores=_graph_scores,
+            query_tags="",
+            project=_SERVER_PROJECT or "",
+            query=query,
+            ltp_blend=_ltp_blend,
         )
+
+        # Score all results in one pass
+        for entry in formatted:
+            base_sim = entry.get("relevance", 0) or entry.get("fts_score", 0) or 0
+            entry["relevance"] = _score_result(entry, base_sim, _scoring_ctx)
+            # Preserve ltp_factor for downstream use
+            mem_id = entry.get("id", "")
+            if mem_id in _ltp_factors:
+                entry["ltp_factor"] = _ltp_factors[mem_id]
+
+        # Single sort
+        formatted.sort(key=lambda x: x.get("relevance", 0), reverse=True)
     except Exception:
-        pass  # Composite reranker failure must not break search
+        pass  # Scoring engine failure = fall through with original order
 
     # Trim to requested top_k after expansion
     formatted = formatted[:top_k]
