@@ -24,8 +24,8 @@ DEFAULT_HALF_LIFE_DAYS: float = 15.0
 
 # Caps and weights for individual score components
 _MAX_ACCESS_BOOST = 0.20  # log-scaled access boost ceiling
-_RECENCY_BOOST = 0.10  # flat bonus for memories < 7 days old
-_RECENCY_WINDOW_DAYS = 7
+_RECENCY_MAX = 0.15  # peak recency bonus (at age=0)
+_RECENCY_HORIZON_DAYS = 365  # linear ramp reaches 0 at this age
 _MAX_TAG_BONUS = 0.15  # bonus for matching query context tags
 
 
@@ -49,6 +49,17 @@ def _age_days(timestamp_str: str) -> float:
     if dt is None:
         return 0.0
     return max(0.0, (now - dt).total_seconds() / 86400.0)
+
+
+def _recency_boost(age_days: float) -> float:
+    """Linear recency ramp: full bonus at age=0, zero at horizon.
+
+    Replaces the binary step function (was: +0.10 if <7 days, else 0).
+    Linear ramp gives proportional credit to 7-365 day old memories.
+    """
+    if age_days >= _RECENCY_HORIZON_DAYS:
+        return 0.0
+    return _RECENCY_MAX * max(0.0, 1.0 - age_days / _RECENCY_HORIZON_DAYS)
 
 
 def _time_decay_factor(
@@ -148,7 +159,7 @@ def calculate_relevance_score(
         decay = decay ** (ltp_factor / 0.5)
 
     access = _access_boost(retrieval_count)
-    recency = _RECENCY_BOOST if age < _RECENCY_WINDOW_DAYS else 0.0
+    recency = _recency_boost(age)
     tag_bonus = _tag_relevance_bonus(str(memory_entry.get("tags") or ""), query_context)
 
     return max(0.0, min(1.0, base * decay + access + recency + tag_bonus))

@@ -189,6 +189,7 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("source_session_id", pa.string()),
         pa.field("source_observation_ids", pa.string()),
         pa.field("cluster_id", pa.string()),
+        pa.field("memory_type", pa.string()),
     ]
 )
 
@@ -286,317 +287,22 @@ def _embed_text(text):
     return _embed_texts([text])[0]
 
 
-def _lance_retry(fn, retries=3, base_delay=0.1):
-    """Retry a LanceDB write operation on OSError (file lock contention).
-
-    Exponential backoff: 0.1s, 0.3s, 0.9s (1.3s max total).
-    Only catches OSError — other exceptions propagate immediately.
-    """
-    for attempt in range(retries):
-        try:
-            return fn()
-        except OSError:
-            if attempt < retries - 1:
-                delay = base_delay * (3**attempt)
-                time.sleep(delay)
-            else:
-                raise
+from shared.lance_collection import (
+    LanceCollection as _LanceCollectionBase,
+    lance_retry as _lance_retry,
+)
 
 
-class LanceCollection:
-    """LanceDB table wrapper with a familiar API surface.
-
-    Provides query, get, upsert, update, delete, count methods.
-
-    LanceDB cosine distance: 0 = identical, 2 = opposite (range 0-2).
-    LanceDB cosine distance: 0 = identical, 2 = opposite (same range).
-    No conversion needed — distance semantics match directly.
-    """
-
-    def __init__(self, table, schema, name):
-        self._table = table
-        self._schema = schema
-        self._name = name
-        # Build set of known column names for metadata handling
-        self._meta_cols = {f.name for f in schema} - {"id", "text", "vector"}
-
-    def count(self):
-        """Return number of rows in the table."""
-        try:
-            return self._table.count_rows()
-        except Exception:
-            return 0
-
-    def query(self, query_texts=None, n_results=5, include=None, where=None):
-        """Semantic search. Returns nested results.
-
-        Result format: {"ids": [[...]], "documents": [[...]], "metadatas": [[...]], "distances": [[...]]}
-        """
-        if include is None:
-            include = ["metadatas", "distances"]
-        text = query_texts[0] if query_texts else ""
-        vector = _embed_text(text)
-
-        try:
-            q = self._table.search(vector).distance_type("cosine").limit(n_results)
-            if where:
-                sql_where = self._translate_where(where)
-                if sql_where:
-                    q = q.where(sql_where, prefilter=True)
-            rows = q.to_list()
-        except Exception:
-            rows = []
-
-        ids = [[r["id"] for r in rows]]
-        result = {"ids": ids}
-
-        if "documents" in include:
-            result["documents"] = [[r.get("text", "") for r in rows]]
-        if "distances" in include:
-            result["distances"] = [[r.get("_distance", 1.0) for r in rows]]
-        if "metadatas" in include:
-            result["metadatas"] = [[self._row_to_meta(r) for r in rows]]
-        if "embeddings" in include:
-            result["embeddings"] = [[r.get("vector", []) for r in rows]]
-
-        return result
-
-    def get(self, ids=None, where=None, limit=None, offset=0, include=None):
-        """Fetch by IDs or filter. Returns flat results.
-
-        Result format: {"ids": [...], "documents": [...], "metadatas": [...]}
-        """
-        if include is None:
-            include = ["metadatas", "documents"]
-
-        try:
-            if ids is not None and len(ids) > 0:
-                # Fetch by specific IDs
-                escaped = ", ".join(f"'{i}'" for i in ids)
-                sql = f"id IN ({escaped})"
-                rows = (
-                    self._table.search()
-                    .where(sql, prefilter=True)
-                    .limit(len(ids) + 10)
-                    .to_list()
-                )
-                # Preserve requested order
-                id_order = {i: idx for idx, i in enumerate(ids)}
-                rows.sort(key=lambda r: id_order.get(r["id"], 999999))
-            elif where:
-                sql_where = self._translate_where(where)
-                q = self._table.search().where(sql_where, prefilter=True)
-                if limit:
-                    q = q.limit(limit)
-                else:
-                    q = q.limit(10000)  # practical cap
-                rows = q.to_list()
-            elif limit:
-                rows = self._table.search().limit(limit).to_list()
-                if offset and offset > 0:
-                    rows = rows[offset:]
-            else:
-                rows = self._table.search().limit(10000).to_list()
-        except Exception:
-            rows = []
-
-        result = {"ids": [r["id"] for r in rows]}
-
-        if "documents" in include:
-            result["documents"] = [r.get("text", "") for r in rows]
-        if "metadatas" in include:
-            result["metadatas"] = [self._row_to_meta(r) for r in rows]
-        if "embeddings" in include:
-            result["embeddings"] = [r.get("vector", []) for r in rows]
-
-        return result
-
-    def upsert(self, documents=None, metadatas=None, ids=None):
-        """Upsert records using LanceDB merge_insert."""
-        if not ids or not documents:
-            return
-        records = []
-        vectors = _embed_texts(documents)
-        for i, doc_id in enumerate(ids):
-            doc = documents[i] if i < len(documents) else ""
-            meta = metadatas[i] if metadatas and i < len(metadatas) else {}
-            record = self._build_record(doc_id, doc, vectors[i], meta)
-            records.append(record)
-
-        try:
-            _lance_retry(
-                lambda: (
-                    self._table.merge_insert("id")
-                    .when_matched_update_all()
-                    .when_not_matched_insert_all()
-                    .execute(records)
-                )
-            )
-        except Exception as e:
-            # Fallback: try add (for new tables or if merge_insert fails)
-            try:
-                self._table.add(records)
-            except Exception:
-                print(f"[Lance] upsert failed for {self._name}: {e}", file=_sys.stderr)
-
-    def update(self, ids=None, metadatas=None, documents=None):
-        """Update metadata and/or documents for existing records.
-
-        API: collection.update(ids=[...], metadatas=[...], documents=[...])
-        LanceDB: fetch existing, merge, re-upsert (merge_insert pattern).
-        """
-        if not ids:
-            return
-        try:
-            # Fetch existing records
-            escaped = ", ".join(f"'{i}'" for i in ids)
-            existing = (
-                self._table.search()
-                .where(f"id IN ({escaped})", prefilter=True)
-                .limit(len(ids) + 10)
-                .to_list()
-            )
-            existing_map = {r["id"]: r for r in existing}
-
-            records = []
-            for i, doc_id in enumerate(ids):
-                old = existing_map.get(doc_id, {})
-                meta = metadatas[i] if metadatas and i < len(metadatas) else {}
-                doc = (
-                    documents[i]
-                    if documents and i < len(documents)
-                    else old.get("text", "")
-                )
-                vector = old.get("vector", [0.0] * _EMBEDDING_DIM)
-
-                # If document changed, re-embed
-                if (
-                    documents
-                    and i < len(documents)
-                    and documents[i] != old.get("text", "")
-                ):
-                    vector = _embed_text(documents[i])
-
-                # Merge: old metadata + new metadata
-                merged_meta = self._row_to_meta(old)
-                merged_meta.update(meta)
-
-                record = self._build_record(doc_id, doc, vector, merged_meta)
-                records.append(record)
-
-            if records:
-                _lance_retry(
-                    lambda: (
-                        self._table.merge_insert("id")
-                        .when_matched_update_all()
-                        .when_not_matched_insert_all()
-                        .execute(records)
-                    )
-                )
-        except Exception as e:
-            print(f"[Lance] update failed for {self._name}: {e}", file=_sys.stderr)
-
-    def delete(self, ids=None):
-        """Delete records by IDs."""
-        if not ids:
-            return
-        try:
-            escaped = ", ".join(f"'{i}'" for i in ids)
-            _lance_retry(lambda: self._table.delete(f"id IN ({escaped})"))
-        except Exception as e:
-            print(f"[Lance] delete failed for {self._name}: {e}", file=_sys.stderr)
-
-    def _build_record(self, doc_id, text, vector, meta):
-        """Build a typed record dict matching the Arrow schema."""
-        record = {
-            "id": str(doc_id),
-            "text": str(text) if text else "",
-            "vector": vector
-            if vector and len(vector) == _EMBEDDING_DIM
-            else [0.0] * _EMBEDDING_DIM,
-        }
-        # Fill metadata columns from schema
-        for col_name in self._meta_cols:
-            field = self._schema.field(col_name)
-            val = meta.get(col_name)
-            if pa.types.is_float64(field.type):
-                try:
-                    record[col_name] = float(val) if val is not None else 0.0
-                except (ValueError, TypeError):
-                    record[col_name] = 0.0
-            elif pa.types.is_int32(field.type):
-                try:
-                    record[col_name] = int(val) if val is not None else 0
-                except (ValueError, TypeError):
-                    record[col_name] = 0
-            else:
-                record[col_name] = str(val) if val is not None else ""
-        return record
-
-    def _row_to_meta(self, row):
-        """Extract metadata dict from a LanceDB row (exclude id, text, vector, _distance)."""
-        meta = {}
-        for col_name in self._meta_cols:
-            val = row.get(col_name)
-            if val is not None:
-                meta[col_name] = val
-        return meta
-
-    @staticmethod
-    def _translate_where(where):
-        """Translate where-clause dict to a LanceDB SQL filter string.
-
-        Examples:
-            {"session_time": {"$lt": 123.4}} → "session_time < 123.4"
-            {"error_hash": "abc"} → "error_hash = 'abc'"
-            {"$and": [...]} → "(clause1) AND (clause2)"
-        """
-        if not where or not isinstance(where, dict):
-            return ""
-
-        parts = []
-        for key, val in where.items():
-            if key == "$and":
-                sub_parts = []
-                for sub in val:
-                    translated = LanceCollection._translate_where(sub)
-                    if translated:
-                        sub_parts.append(f"({translated})")
-                if sub_parts:
-                    parts.append(" AND ".join(sub_parts))
-            elif key == "$or":
-                sub_parts = []
-                for sub in val:
-                    translated = LanceCollection._translate_where(sub)
-                    if translated:
-                        sub_parts.append(f"({translated})")
-                if sub_parts:
-                    parts.append(" OR ".join(sub_parts))
-            elif isinstance(val, dict):
-                # Operator clause: {"$lt": X}, {"$gte": X}, etc.
-                op_map = {
-                    "$lt": "<",
-                    "$lte": "<=",
-                    "$gt": ">",
-                    "$gte": ">=",
-                    "$eq": "=",
-                    "$ne": "!=",
-                }
-                for op, sql_op in op_map.items():
-                    if op in val:
-                        v = val[op]
-                        if isinstance(v, str):
-                            parts.append(f"{key} {sql_op} '{v}'")
-                        else:
-                            parts.append(f"{key} {sql_op} {v}")
-            else:
-                # Exact match: {"error_hash": "abc"}
-                if isinstance(val, str):
-                    parts.append(f"{key} = '{val}'")
-                else:
-                    parts.append(f"{key} = {val}")
-
-        return " AND ".join(parts)
+# Thin wrapper to inject embedding functions at construction time
+def _make_lance_collection(table, schema, name):
+    return _LanceCollectionBase(
+        table,
+        schema,
+        name,
+        embed_text=_embed_text,
+        embed_texts=_embed_texts,
+        embedding_dim=_EMBEDDING_DIM,
+    )
 
 
 def _init_lancedb():
@@ -666,7 +372,7 @@ def _init_lancedb():
                             )
             except Exception:
                 tbl = _lance_db.create_table(name, schema=schema)
-            return LanceCollection(tbl, schema, name)
+            return _make_lance_collection(tbl, schema, name)
 
         collection = _open_or_create("knowledge", _KNOWLEDGE_SCHEMA)
         fix_outcomes = _open_or_create("fix_outcomes", _FIX_OUTCOMES_SCHEMA)
@@ -771,256 +477,24 @@ def generate_id(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
-# ── Auto Tier Classification (Salience-Scored) ──────────────────────────────
-# Tier 1 = high-value (score >= 0.35)
-# Tier 2 = standard (0.10 < score < 0.35)
-# Tier 3 = low-value (score <= 0.10)
-#
-# Salience signals (inspired by thermal-memory):
-#   Decision change  25% — redirected approach or strategy
-#   Human-originated 20% — corrections, preferences, direct feedback
-#   Hard-won         15% — debugging, multiple attempts, root cause
-#   Recurrence       15% — topic tagged as recurring or pattern
-#   Real-world impact 15% — production, shipped, breaking, deployed
-#   Connective density 10% — many tags = connects to many areas
-
-_TIER3_TAGS = {"type:auto-captured", "priority:low"}
-
-_DECISION_KW = (
-    "decision",
-    "chose",
-    "switched to",
-    "instead of",
-    "trade-off",
-    "went with",
-    "picked",
-    "selected approach",
-    "design:",
+from shared.memory_classification import (
+    classify_tier as _classify_tier,
+    classify_memory_type as _classify_memory_type,
+    salience_score as _salience_score,
+    normalize_tags as _normalize_tags,
+    inject_project_tag as _mc_inject_project_tag,
+    build_project_prefix as _mc_build_project_prefix,
 )
-_HARDWON_KW = (
-    "root cause",
-    "finally fixed",
-    "after debugging",
-    "tracked down",
-    "hard to find",
-    "subtle bug",
-    "race condition",
-)
-_IMPACT_KW = (
-    "production",
-    "shipped",
-    "deployed",
-    "breaking",
-    "outage",
-    "user-facing",
-    "live system",
-)
-_HUMAN_TAGS = {"type:correction", "type:preference"}
-_DECISION_TAGS = {"type:decision"}
-_FIX_TAGS = {"type:fix"}
-_RECURRENCE_TAGS = {"type:learning", "outcome:success"}
-
-
-def _salience_score(content: str, tags: str) -> float:
-    """Calculate salience score (0.0-1.0) from content and tags."""
-    tag_set = (
-        {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
-    )
-    lower = content.lower()
-    score = 0.0
-
-    # Decision change (25%)
-    if tag_set & _DECISION_TAGS or any(kw in lower for kw in _DECISION_KW):
-        score += 0.25
-
-    # Human-originated (20%)
-    if tag_set & _HUMAN_TAGS:
-        score += 0.20
-
-    # Hard-won (15%)
-    if tag_set & _FIX_TAGS or any(kw in lower for kw in _HARDWON_KW):
-        score += 0.15
-
-    # Recurrence (15%)
-    if tag_set & _RECURRENCE_TAGS:
-        score += 0.15
-
-    # Real-world impact (15%)
-    if "priority:critical" in tag_set or "priority:high" in tag_set:
-        score += 0.15
-    elif any(kw in lower for kw in _IMPACT_KW):
-        score += 0.15
-
-    # Connective density (10%) — more tags = more connections
-    if len(tag_set) >= 5:
-        score += 0.10
-    elif len(tag_set) >= 3:
-        score += 0.05
-
-    return min(score, 1.0)
-
-
-def _classify_tier(content: str, tags: str) -> int:
-    """Classify a memory into tier 1 (high), 2 (standard), or 3 (low).
-
-    Pure function — no side effects.  Called during remember_this() to
-    assign a tier before upsert.  Uses salience scoring with 6 weighted
-    signals inspired by thermal-memory.
-    """
-    tag_set = (
-        {t.strip().lower() for t in tags.split(",") if t.strip()} if tags else set()
-    )
-
-    # Tier 3 fast path — low-value indicators
-    if tag_set & _TIER3_TAGS:
-        return 3
-
-    score = _salience_score(content, tags)
-
-    # Short content with no salience signals = low value
-    if len(content) < 50 and score <= 0.10:
-        return 3
-
-    # High-signal tags get a floor — trust explicit tagging
-    _HIGH_SIGNAL_TAGS = {
-        "type:fix",
-        "type:decision",
-        "type:correction",
-        "type:preference",
-        "priority:critical",
-    }
-    if tag_set & _HIGH_SIGNAL_TAGS:
-        return 1
-
-    if score >= 0.25:
-        return 1
-    if score <= 0.10:
-        return 3
-    return 2
-
-
-# ── Tag Normalization ─────────────────────────────────────────────────────────
-# Auto-corrects bare dimension values to canonical "dimension:value" format.
-# Non-destructive: unknown tags pass through unchanged.
-
-_BARE_TO_DIMENSION = {
-    # type dimension
-    "fix": "type:fix",
-    "error": "type:error",
-    "learning": "type:learning",
-    "feature": "type:feature",
-    "feature-request": "type:feature-request",
-    "correction": "type:correction",
-    "decision": "type:decision",
-    "auto-captured": "type:auto-captured",
-    "preference": "type:preference",
-    "audit": "type:audit",
-    # priority dimension
-    "critical": "priority:critical",
-    "high": "priority:high",
-    "medium": "priority:medium",
-    "low": "priority:low",
-    # outcome dimension
-    "success": "outcome:success",
-    "failed": "outcome:failed",
-}
-
-
-def _normalize_tags(tags: str) -> str:
-    """Normalize tags to canonical dimension:value format.
-
-    Non-destructive — unknown tags pass through unchanged.
-    Examples:
-        "fix,high,framework" -> "type:fix,priority:high,framework"
-        "type:fix,critical"  -> "type:fix,priority:critical"
-        ""                   -> ""
-    """
-    if not tags:
-        return tags
-    parts = [t.strip() for t in tags.split(",") if t.strip()]
-    normalized = []
-    for tag in parts:
-        lower = tag.lower()
-        # Already dimensioned (contains ":") — pass through as-is
-        if ":" in tag:
-            normalized.append(tag)
-        elif lower in _BARE_TO_DIMENSION:
-            normalized.append(_BARE_TO_DIMENSION[lower])
-        else:
-            normalized.append(tag)
-    return ",".join(normalized)
 
 
 def _inject_project_tag(tags):
-    """Auto-append project:<name> and subproject:<name> tags if applicable."""
-    if not _SERVER_PROJECT:
-        return tags
-    proj_tag = f"project:{_SERVER_PROJECT}"
-    if proj_tag not in (tags or ""):
-        tags = f"{tags},{proj_tag}" if tags else proj_tag
-    if _SERVER_SUBPROJECT:
-        sub_tag = f"subproject:{_SERVER_SUBPROJECT}"
-        if sub_tag not in (tags or ""):
-            tags = f"{tags},{sub_tag}" if tags else sub_tag
-    return tags
+    return _mc_inject_project_tag(tags, _SERVER_PROJECT, _SERVER_SUBPROJECT)
 
 
 def _build_project_prefix():
-    """Build '[project #N]' or '[project/sub #N]' prefix from project state."""
-    if not _SERVER_PROJECT:
-        return ""
-    eff_dir = _SERVER_SUBPROJECT_DIR or _SERVER_PROJECT_DIR
-    eff_name = (
-        f"{_SERVER_PROJECT}/{_SERVER_SUBPROJECT}"
-        if _SERVER_SUBPROJECT
-        else _SERVER_PROJECT
+    return _mc_build_project_prefix(
+        _SERVER_PROJECT, _SERVER_SUBPROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT_DIR
     )
-    session_num = "?"
-    if eff_dir:
-        state_file = os.path.join(eff_dir, ".claude-state.json")
-        try:
-            with open(state_file) as f:
-                state = json.load(f)
-            session_num = state.get("session_count", "?")
-        except Exception:
-            pass
-    return f"[{eff_name} #{session_num}] "
-
-
-def _migrate_previews():
-    """LEGACY: Preview backfill no longer needed — handled during LanceDB migration.
-    Returns 0 (no-op).
-    """
-    return 0
-
-
-_TIER_BACKFILL_MARKER = os.path.join(os.path.dirname(__file__), ".tier_backfill_done")
-
-
-def _backfill_tiers():
-    """LEGACY: Tier backfill no longer needed — handled during LanceDB migration.
-    Returns 0 (no-op).
-    """
-    return 0
-
-
-_EMBEDDING_MIGRATION_MARKER = os.path.join(
-    os.path.dirname(__file__), ".embedding_migration_done"
-)
-_COLLECTION_NAMES = [
-    "knowledge",
-    "fix_outcomes",
-    "observations",
-    "web_pages",
-    "quarantine",
-]
-
-
-def _migrate_embeddings():
-    """LEGACY: Embedding migration no longer needed — LanceDB stores vectors natively.
-    Returns 0 (no-op).
-    """
-    return 0
 
 
 # ──────────────────────────────────────────────────
@@ -1161,424 +635,21 @@ def _extract_citations(content: str, context: str) -> dict:
         return defaults
 
 
-# ──────────────────────────────────────────────────
-# FTS5 Hybrid Search Index
-# ──────────────────────────────────────────────────
-import sqlite3
-import re
+from shared.tag_index import TagIndex
 
 
-class TagIndex:
-    """Minimal SQLite tag index for boolean AND/OR tag search.
-
-    LanceDB is the source of truth; this is a derived read-optimized cache.
-    Keyword search is handled by LanceDB native FTS (BM25).
-    """
-
-    def __init__(self, db_path=":memory:"):
-        self.db_path = db_path
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._lock = threading.Lock()
-        if db_path != ":memory:":
-            self.conn.execute("PRAGMA journal_mode=WAL")
-        self._create_tables()
-
-    def _create_tables(self):
-        c = self.conn
-        c.execute("""CREATE TABLE IF NOT EXISTS tags (
-            memory_id TEXT,
-            tag TEXT
-        )""")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_tags_mid ON tags(memory_id)")
-        c.execute(
-            "CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)"
-        )
-        c.commit()
-
-    def is_synced(self, lance_count):
-        """Check if tag index is in sync with LanceDB by entry count."""
-        row = self.conn.execute(
-            "SELECT value FROM sync_meta WHERE key='sync_count'"
-        ).fetchone()
-        if row is None:
-            return False
-        return int(row[0]) == lance_count
-
-    def _update_sync_count(self, count):
-        self.conn.execute(
-            "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('sync_count', ?)",
-            (str(count),),
-        )
-        self.conn.commit()
-
-    def reset_and_rebuild(self, lance_collection):
-        """Drop all tables and rebuild from LanceDB (corruption recovery)."""
-        self.conn.execute("DROP TABLE IF EXISTS tags")
-        self.conn.execute("DROP TABLE IF EXISTS sync_meta")
-        self.conn.commit()
-        self._create_tables()
-        return self.build_from_lance(lance_collection)
-
-    def build_from_lance(self, lance_collection):
-        """Rebuild tags table from LanceDB. Returns entry count."""
-        count = lance_collection.count()
-        if count == 0:
-            return 0
-        all_data = lance_collection.get(limit=count, include=["metadatas"])
-        if not all_data or not all_data.get("ids"):
-            return 0
-        ids = all_data["ids"]
-        metas = all_data.get("metadatas", [])
-
-        with self._lock:
-            self.conn.execute("DELETE FROM tags")
-            rows = []
-            for i, mid in enumerate(ids):
-                meta = metas[i] if i < len(metas) else {}
-                tags_str = meta.get("tags", "") if meta else ""
-                if tags_str:
-                    for tag in tags_str.split(","):
-                        tag = tag.strip()
-                        if tag:
-                            rows.append((mid, tag))
-            self.conn.executemany("INSERT INTO tags VALUES (?, ?)", rows)
-            self._update_sync_count(len(ids))
-        return len(ids)
-
-    def add_tags(self, memory_id, tags_str):
-        """Add/update tags for a single memory (called on remember_this)."""
-        if not tags_str:
-            return
-        with self._lock:
-            self.conn.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
-            rows = [(memory_id, t.strip()) for t in tags_str.split(",") if t.strip()]
-            self.conn.executemany("INSERT INTO tags VALUES (?, ?)", rows)
-            # Increment sync count
-            row = self.conn.execute(
-                "SELECT value FROM sync_meta WHERE key='sync_count'"
-            ).fetchone()
-            if row:
-                self._update_sync_count(int(row[0]) + 1)
-            else:
-                self.conn.commit()
-
-    def remove(self, memory_id):
-        """Remove tags for a memory (used by dedup sweep)."""
-        with self._lock:
-            self.conn.execute("DELETE FROM tags WHERE memory_id = ?", (memory_id,))
-            self.conn.commit()
-
-    def tag_search(self, tags_list, match_all=False, top_k=15):
-        """Boolean tag search. Returns list of memory_id strings."""
-        if not tags_list:
-            return []
-        placeholders = ",".join("?" * len(tags_list))
-        with self._lock:
-            if match_all:
-                sql = f"""SELECT memory_id FROM tags
-                    WHERE tag IN ({placeholders})
-                    GROUP BY memory_id HAVING COUNT(DISTINCT tag) = ?
-                    LIMIT ?"""
-                rows = self.conn.execute(
-                    sql, (*tags_list, len(tags_list), top_k)
-                ).fetchall()
-            else:
-                sql = f"""SELECT DISTINCT memory_id FROM tags
-                    WHERE tag IN ({placeholders})
-                    LIMIT ?"""
-                rows = self.conn.execute(sql, (*tags_list, top_k)).fetchall()
-        return [r[0] for r in rows]
+from shared.search_helpers import detect_query_mode
 
 
 def _detect_query_mode(query, routing="default"):
-    """Route queries to the appropriate search engine.
-
-    Args:
-        query:   The search query string.
-        routing: Routing strategy — "default" (current heuristics),
-                 "fast" (expanded FTS5 keyword routing),
-                 "full_hybrid" (both engines for all queries).
-
-    Returns one of: 'tags', 'keyword', 'semantic', 'hybrid'.
-    """
-    q = query.strip()
-    ql = q.lower()
-
-    # Tag queries: always FTS5 regardless of routing
-    if ql.startswith("tag:") or ql.startswith("tags:"):
-        return "tags"
-
-    # Full Hybrid: everything else goes through both engines
-    if routing == "full_hybrid":
-        return "hybrid"
-
-    # Keyword: quoted phrases or boolean operators
-    if '"' in q or " AND " in q or " OR " in q:
-        return "keyword"
-
-    words = q.split()
-
-    # Keyword: 1-2 word queries (likely identifiers or exact terms)
-    if len(words) <= 2:
-        return "keyword"
-
-    # Fast mode: catch technical 3-4 word queries for FTS5
-    if routing == "fast" and len(words) <= 4:
-        # Underscores or dots → identifiers (gate_timing, memory_server.py)
-        if any("_" in w or "." in w for w in words):
-            return "keyword"
-        # CamelCase → class/module names (LanceDB, FTS5Index)
-        if any(c.isupper() for w in words for c in w[1:]):
-            return "keyword"
-
-    # Semantic: questions or long natural language
-    if ql.endswith("?") or ql.startswith(
-        ("how ", "why ", "what ", "when ", "where ", "which ")
-    ):
-        return "semantic"
-    if len(words) >= 5:
-        return "semantic"
-
-    # Hybrid: 3-4 word ambiguous queries
-    return "hybrid"
+    return detect_query_mode(query, routing)
 
 
-def _apply_recency_boost(results, recency_weight=0.15):
-    """Apply temporal recency boost to search results.
-
-    Adjusts relevance scores so newer entries rank slightly higher.
-    adjusted_relevance = raw_relevance + (recency_weight * max(0, 1 - age_days/365))
-
-    Args:
-        results: List of result dicts with optional 'relevance' and 'timestamp' fields
-        recency_weight: How much to boost recent results (0.0-1.0, default 0.15)
-    Returns:
-        Results list re-sorted by adjusted relevance
-    """
-    if not results or recency_weight <= 0:
-        return results
-
-    now = datetime.now()
-    for entry in results:
-        raw_relevance = entry.get("relevance", 0) or entry.get("fts_score", 0) or 0
-        timestamp_str = entry.get("timestamp", "")
-        boost = 0.0
-        if timestamp_str:
-            try:
-                entry_time = datetime.fromisoformat(timestamp_str)
-                age_days = max(0, (now - entry_time).total_seconds() / 86400)
-                boost = recency_weight * max(0, 1 - age_days / 365)
-            except (ValueError, TypeError):
-                pass  # No boost if timestamp parsing fails
-        entry["_adjusted_relevance"] = raw_relevance + boost
-
-    results.sort(key=lambda x: x.get("_adjusted_relevance", 0), reverse=True)
-
-    # Clean up internal key
-    for entry in results:
-        entry.pop("_adjusted_relevance", None)
-
-    return results
-
-
-_TIER_BOOST = {1: 0.05, 2: 0.0, 3: -0.02}
-
-
-def _apply_tier_boost(results):
-    """Boost high-value (tier 1) memories and penalise low-value (tier 3).
-
-    Reads tier from each entry's metadata.  Entries without a tier field
-    default to tier 2 (no change).  Re-sorts by adjusted relevance.
-    """
-    if not results:
-        return results
-    for entry in results:
-        raw = entry.get("relevance", 0) or 0
-        tier = entry.get("tier", 2)
-        if not isinstance(tier, int):
-            try:
-                tier = int(tier)
-            except (ValueError, TypeError):
-                tier = 2
-        _tb = _TIER_BOOST.get(tier, 0.0)
-        if _adaptive_weights:
-            _aw = _adaptive_weights.get_weights()
-            if tier == 1:
-                _tb = _aw.get("tier_boost_t1", 0.05)
-            elif tier == 3:
-                _tb = _aw.get("tier_boost_t3", -0.02)
-        entry["_tier_adjusted"] = raw + _tb
-    results.sort(key=lambda x: x.get("_tier_adjusted", 0), reverse=True)
-    for entry in results:
-        entry.pop("_tier_adjusted", None)
-    return results
-
-
-_ACCESS_BOOST_CAP = 0.03
-
-
-def _apply_access_boost(results):
-    """Tiebreaker boost for frequently-retrieved memories (max +0.03).
-
-    Log-scaled so diminishing returns: 1 retrieval ≈ +0.01, 10 ≈ +0.02, 50+ ≈ +0.03.
-    """
-    if not results:
-        return results
-    import math
-
-    for entry in results:
-        raw = entry.get("relevance", 0) or 0
-        rc = int(entry.get("retrieval_count", 0))
-        boost = min(_ACCESS_BOOST_CAP, 0.008 * math.log1p(rc)) if rc > 0 else 0.0
-        entry["_access_adjusted"] = raw + boost
-    results.sort(key=lambda x: x.get("_access_adjusted", 0), reverse=True)
-    for entry in results:
-        entry.pop("_access_adjusted", None)
-    return results
-
-
-_STOPWORDS = {"the", "a", "an", "is", "it", "to", "in", "of", "and", "for"}
-
-
-def _rerank_keyword_overlap(results, query, boost_weight=0.05):
-    """Post-retrieval reranker: boost results that contain exact query terms.
-
-    Adds boost_weight * (matched_terms / total_terms) to each result's relevance.
-    Works on all search modes, giving keyword signal to semantic-only results.
-    """
-    if not results or not query or boost_weight <= 0:
-        return results
-    terms = [w.lower() for w in query.split() if w.lower() not in _STOPWORDS]
-    if not terms:
-        return results
-    total = len(terms)
-    for entry in results:
-        text = (entry.get("preview", "") + " " + entry.get("tags", "")).lower()
-        matched = sum(1 for t in terms if t in text)
-        if matched > 0:
-            entry["relevance"] = entry.get("relevance", 0) + boost_weight * (
-                matched / total
-            )
-    results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
-    return results
-
-
-def _rerank_composite(results, query, top_k, knowledge_graph=None):
-    """Composite reranker: tag overlap + graph proximity + tier + access count.
-
-    Runs after existing boosts as a final re-sort pass. Fail-open.
-    """
-    if not results or len(results) <= 1:
-        return results
-    try:
-        import math
-
-        query_tags = set()
-        query_lower = query.lower()
-        # Extract implicit tags from query words
-        for r in results:
-            for tag in (r.get("tags", "") or "").split(","):
-                tag = tag.strip().lower()
-                if tag and any(w in tag for w in query_lower.split() if len(w) > 3):
-                    query_tags.add(tag)
-
-        for entry in results:
-            raw = entry.get("relevance", 0) or 0
-
-            # Tag overlap with query (0-0.08)
-            entry_tags = set(
-                t.strip().lower()
-                for t in (entry.get("tags", "") or "").split(",")
-                if t.strip()
-            )
-            tag_overlap = (
-                len(entry_tags & query_tags) / max(len(query_tags), 1)
-                if query_tags
-                else 0
-            )
-            tag_bonus = min(0.08, tag_overlap * 0.08)
-
-            # Tier bonus (0-0.05)
-            tier = entry.get("tier", 2)
-            if not isinstance(tier, int):
-                try:
-                    tier = int(tier)
-                except (ValueError, TypeError):
-                    tier = 2
-            tier_bonus = {1: 0.05, 2: 0.0, 3: -0.02}.get(tier, 0.0)
-
-            # Access frequency (0-0.03): log-scaled
-            rc = int(entry.get("retrieval_count", 0) or 0)
-            access_bonus = min(0.03, 0.008 * math.log1p(rc)) if rc > 0 else 0.0
-
-            # Graph proximity (0-0.06): connected to other high-scoring results
-            graph_bonus = 0.0
-            if knowledge_graph and entry.get("id"):
-                try:
-                    neighbors = knowledge_graph.get_neighbors(entry["id"])
-                    top_ids = {
-                        r.get("id")
-                        for r in results[:5]
-                        if r.get("id") != entry.get("id")
-                    }
-                    connected = len(set(neighbors) & top_ids) if neighbors else 0
-                    graph_bonus = min(0.06, connected * 0.03)
-                except Exception:
-                    pass
-
-            entry["_composite_score"] = (
-                raw + tag_bonus + tier_bonus + access_bonus + graph_bonus
-            )
-
-        results.sort(key=lambda x: x.get("_composite_score", 0), reverse=True)
-        for entry in results:
-            entry.pop("_composite_score", None)
-    except Exception:
-        pass  # Reranker failure = return original order
-    return results[:top_k]
+from shared.search_helpers import merge_results
 
 
 def _merge_results(fts_results, lance_summaries, top_k=15):
-    """Merge FTS5 and LanceDB results using Reciprocal Rank Fusion (RRF).
-
-    RRF gives each engine equal weight: score = sum(1/(k+rank)) across engines.
-    Items appearing in both engines naturally score ~2x higher.
-    k=60 is the standard RRF constant (dampens rank position differences).
-    """
-    k = 60  # RRF smoothing constant
-    scores = {}  # memory_id -> rrf_score
-    entries = {}  # memory_id -> best entry dict
-    sources = {}  # memory_id -> set of source names
-
-    # Score vector results by rank
-    for rank, entry in enumerate(lance_summaries, start=1):
-        mid = entry.get("id", "")
-        if not mid:
-            continue
-        scores[mid] = scores.get(mid, 0) + 1 / (k + rank)
-        entries[mid] = dict(entry)
-        sources[mid] = {"semantic"}
-
-    # Score FTS5 results by rank
-    for rank, entry in enumerate(fts_results, start=1):
-        mid = entry.get("id", "")
-        if not mid:
-            continue
-        scores[mid] = scores.get(mid, 0) + 1 / (k + rank)
-        if mid not in entries:
-            entries[mid] = dict(entry)
-        sources.setdefault(mid, set()).add("keyword")
-
-    # Inject RRF score as relevance and set match label
-    for mid, entry in entries.items():
-        entry["relevance"] = scores[mid]
-        entry["match"] = "both" if len(sources[mid]) > 1 else sources[mid].pop()
-
-    results = list(entries.values())
-    results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
-
-    return results[:top_k]
+    return merge_results(fts_results, lance_summaries, top_k)
 
 
 # Lazy initialization — only run when module is used as a server, not when imported
@@ -1592,8 +663,9 @@ _knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None  # LTPTracker instance (initialized lazily)
 _adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
 _cluster_store = None  # _ClusterStore instance (initialized lazily)
-CLUSTER_THRESHOLD = 0.7  # cosine similarity threshold for cluster assignment
 _last_search_ids = []  # IDs from last search_knowledge call (for implicit feedback)
+_search_pipeline = None  # SearchPipeline instance (initialized lazily)
+_write_pipeline = None  # WritePipeline instance (initialized lazily)
 
 # --- Counterfactual retrieval client (lazy init) ---
 _cf_client = None
@@ -1668,326 +740,53 @@ def _generate_counterfactual_query(original_query, initial_results, model_key="h
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
+from shared.search_helpers import (
+    lance_keyword_search as _sh_lance_kw,
+    lance_fts_to_summary,
+)
+
+
 def _lance_fts_to_summary(row):
-    """Convert a LanceDB FTS result row to the standard summary dict format."""
-    entry = {
-        "id": row.get("id", ""),
-        "preview": row.get("preview", row.get("text", "")[:SUMMARY_LENGTH]),
-        "tags": row.get("tags", ""),
-        "timestamp": row.get("timestamp", ""),
-        "fts_score": round(row.get("_score", 0.0), 4),
-    }
-    url = row.get("primary_source", "")
-    if url:
-        entry["url"] = url
-    return entry
+    return lance_fts_to_summary(row, SUMMARY_LENGTH)
 
 
 def _lance_keyword_search(query, top_k=15):
-    """LanceDB native BM25 keyword search. Falls back to empty on error."""
-    if not _lance_fts_ready or collection is None:
-        return []
-    try:
-        rows = collection._table.search(query).limit(top_k).to_list()
-        return [_lance_fts_to_summary(r) for r in rows]
-    except Exception:
-        return []
+    return _sh_lance_kw(query, top_k, collection, _lance_fts_ready, SUMMARY_LENGTH)
 
 
-def _generate_fuzzy_variants(term: str, max_distance: int = 1) -> list:
-    """Generate spelling variants within edit distance for fuzzy matching."""
-    if len(term) <= 2:
-        return [term]
-
-    variants = {term}
-    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_"
-
-    # Deletions (remove one char)
-    for i in range(len(term)):
-        variants.add(term[:i] + term[i + 1 :])
-
-    # Substitutions (replace one char)
-    for i in range(len(term)):
-        for c in alphabet:
-            if c != term[i]:
-                variants.add(term[:i] + c + term[i + 1 :])
-
-    # Transpositions (swap adjacent chars)
-    for i in range(len(term) - 1):
-        variants.add(term[:i] + term[i + 1] + term[i] + term[i + 2 :])
-
-    return list(variants)
+from shared.search_helpers import (
+    fuzzy_keyword_search as _sh_fuzzy,
+    generate_fuzzy_variants as _generate_fuzzy_variants,
+)
 
 
 def _fuzzy_keyword_search(query: str, table_name: str = "knowledge", top_k: int = 10):
-    """Search with fuzzy term expansion for typo tolerance.
+    return _sh_fuzzy(
+        query,
+        table_name,
+        top_k,
+        collections={
+            "knowledge": collection,
+            "observations": observations,
+            "fix_outcomes": fix_outcomes,
+            "web_pages": web_pages,
+        },
+        fts_ready=_lance_fts_ready,
+    )
 
-    Splits query into terms, generates edit-distance-1 variants,
-    queries LanceDB FTS with expanded terms, boosts exact matches 2x.
-    """
-    if not _lance_fts_ready:
-        return []
 
-    global collection, observations, fix_outcomes, web_pages
-    tbl_map = {
-        "knowledge": collection,
-        "observations": observations,
-        "fix_outcomes": fix_outcomes,
-        "web_pages": web_pages,
-    }
-    tbl_coll = tbl_map.get(table_name, collection)
-    if tbl_coll is None:
-        return []
-
-    terms = query.lower().split()
-    if not terms:
-        return []
-
-    # Generate fuzzy variants for each term
-    all_variants = []
-    exact_terms = set(terms)
-    for term in terms:
-        all_variants.extend(_generate_fuzzy_variants(term))
-
-    # Build OR query with all variants (LanceDB FTS supports OR)
-    expanded_query = " OR ".join(set(all_variants))
-
-    try:
-        rows = (
-            tbl_coll._table.search(expanded_query, query_type="fts")
-            .limit(top_k * 2)
-            .to_list()
-        )
-        if not rows:
-            return []
-
-        # Boost exact matches 2x
-        scored_results = []
-        for row in rows:
-            text_lower = str(row.get("text", "")).lower()
-            boost = 1.0
-            for term in exact_terms:
-                if term in text_lower:
-                    boost = 2.0
-                    break
-            scored_results.append(
-                {
-                    "id": str(row.get("id", "")),
-                    "text": str(row.get("text", ""))[:500],
-                    "relevance": float(row.get("_score", 0.5)) * boost,
-                    "tags": str(row.get("tags", "")),
-                    "match_type": "exact" if boost > 1.0 else "fuzzy",
-                }
-            )
-
-        scored_results.sort(key=lambda x: x["relevance"], reverse=True)
-        return scored_results[:top_k]
-    except Exception:
-        return []
+from shared.search_helpers import tag_ids_to_summaries as _sh_tag_ids_to_summaries
 
 
 def _tag_ids_to_summaries(memory_ids, collection_ref=None):
-    """Fetch full metadata from LanceDB for a list of memory IDs."""
-    if not memory_ids:
-        return []
-    coll = collection_ref or collection
-    if coll is None:
-        return []
-    try:
-        data = coll.get(ids=list(memory_ids), include=["metadatas"])
-        results = []
-        for i, mid in enumerate(data.get("ids", [])):
-            meta = data["metadatas"][i] if i < len(data.get("metadatas", [])) else {}
-            entry = {
-                "id": mid,
-                "preview": meta.get("preview", ""),
-                "tags": meta.get("tags", ""),
-                "timestamp": meta.get("timestamp", ""),
-            }
-            url = meta.get("primary_source", "")
-            if url:
-                entry["url"] = url
-            results.append(entry)
-        return results
-    except Exception:
-        return []
+    return _sh_tag_ids_to_summaries(memory_ids, collection_ref or collection)
 
 
-class _ClusterStore:
-    """SQLite-backed centroid store for incremental clustering.
-
-    Stores cluster centroids as normalized float32 numpy arrays (768-dim).
-    Provides fast nearest-centroid lookup via in-memory cache.
-    """
-
-    def __init__(self, db_path: str):
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._create_tables()
-        self._cache = None  # List of (cluster_id, centroid_np, member_count) or None
-
-    def _create_tables(self):
-        self._conn.execute("""
-            CREATE TABLE IF NOT EXISTS clusters (
-                cluster_id TEXT PRIMARY KEY,
-                centroid BLOB NOT NULL,
-                member_count INTEGER DEFAULT 0,
-                label TEXT DEFAULT '',
-                created_at TEXT,
-                updated_at TEXT
-            )
-        """)
-        self._conn.commit()
-
-    def _load_cache(self):
-        import numpy as np
-
-        rows = self._conn.execute(
-            "SELECT cluster_id, centroid, member_count FROM clusters"
-        ).fetchall()
-        self._cache = [
-            (cid, np.frombuffer(blob, dtype=np.float32).copy(), count)
-            for cid, blob, count in rows
-        ]
-
-    def assign(self, vec_list: list, content: str = "") -> str:
-        """Assign a vector to the nearest cluster or create a new one.
-
-        Args:
-            vec_list: 768-dim embedding as list of floats
-            content: original text (used for label generation)
-
-        Returns cluster_id string.
-        """
-        import numpy as np
-
-        vec = np.array(vec_list, dtype=np.float32)
-        norm = np.linalg.norm(vec)
-        if norm < 1e-10:
-            return ""
-        vec_norm = vec / norm
-
-        if self._cache is None:
-            self._load_cache()
-
-        best_id = None
-        best_sim = -1.0
-        best_idx = -1
-
-        for i, (cid, c_vec, _count) in enumerate(self._cache):
-            sim = float(np.dot(vec_norm, c_vec))
-            if sim > best_sim:
-                best_sim = sim
-                best_id = cid
-                best_idx = i
-
-        now = datetime.now().isoformat()
-
-        if best_id is not None and best_sim >= CLUSTER_THRESHOLD:
-            # Join existing cluster, update centroid via running mean
-            cid, c_vec, count = self._cache[best_idx]
-            new_count = count + 1
-            new_centroid = (c_vec * count + vec_norm) / new_count
-            c_norm = np.linalg.norm(new_centroid)
-            if c_norm > 1e-10:
-                new_centroid = new_centroid / c_norm
-
-            label_update = ""
-            if new_count % 10 == 0:
-                label_update = _cluster_label(content)
-
-            self._conn.execute(
-                "UPDATE clusters SET centroid=?, member_count=?, updated_at=? WHERE cluster_id=?",
-                (new_centroid.astype(np.float32).tobytes(), new_count, now, best_id),
-            )
-            if label_update:
-                self._conn.execute(
-                    "UPDATE clusters SET label=? WHERE cluster_id=?",
-                    (label_update, best_id),
-                )
-            self._conn.commit()
-            self._cache[best_idx] = (cid, new_centroid, new_count)
-            return best_id
-        else:
-            # Create new cluster
-            new_id = f"cl_{fnv1a_hash(content)}"
-            label = _cluster_label(content)
-            cursor = self._conn.execute(
-                "INSERT OR IGNORE INTO clusters (cluster_id, centroid, member_count, label, created_at, updated_at) "
-                "VALUES (?, ?, 1, ?, ?, ?)",
-                (new_id, vec_norm.astype(np.float32).tobytes(), label, now, now),
-            )
-            self._conn.commit()
-            if self._cache is not None and cursor.rowcount > 0:
-                self._cache.append((new_id, vec_norm, 1))
-            return new_id
-
-    def close(self):
-        self._conn.close()
-
-
-def _cluster_label(content: str) -> str:
-    """Extract top-3 meaningful words from content for a cluster label."""
-    import re as _re_cl
-
-    _stop = {
-        "this",
-        "that",
-        "with",
-        "from",
-        "have",
-        "been",
-        "were",
-        "will",
-        "would",
-        "could",
-        "should",
-        "their",
-        "there",
-        "they",
-        "which",
-        "when",
-        "what",
-        "where",
-        "than",
-        "then",
-        "also",
-        "about",
-        "into",
-        "more",
-        "some",
-        "such",
-        "only",
-        "other",
-        "each",
-        "just",
-        "like",
-        "over",
-        "very",
-        "after",
-        "before",
-        "between",
-        "under",
-        "again",
-        "does",
-        "done",
-        "make",
-        "made",
-        "most",
-        "much",
-        "must",
-        "need",
-        "none",
-        "true",
-        "false",
-    }
-    from collections import Counter
-
-    words = _re_cl.findall(r"[a-zA-Z_]{4,}", content.lower())
-    counts = Counter(w for w in words if w not in _stop)
-    top = [w for w, _ in counts.most_common(3)]
-    return " / ".join(top) if top else "misc"
+from shared.cluster_store import (
+    ClusterStore as _ClusterStore,
+    cluster_label as _cluster_label,
+    CLUSTER_THRESHOLD,
+)
 
 
 def _ensure_initialized():
@@ -2086,101 +885,112 @@ def _ensure_initialized():
     lance_count = collection.count()
     if tag_index.is_synced(lance_count):
         _tag_count = lance_count
-        _initialized = True
-        return  # Skip rebuild — tag index is current
+    else:
+        _tag_count = tag_index.build_from_lance(collection)
 
-    _tag_count = tag_index.build_from_lance(collection)
+    # Initialize pipeline instances (fail-open — fall back to inline logic)
+    _init_pipelines()
+
     _initialized = True
 
 
-# ──────────────────────────────────────────────────
-# Tag Co-occurrence Matrix (lazy-built, cached)
-# ──────────────────────────────────────────────────
-_tag_cooccurrence: dict[str, dict[str, int]] = {}  # tag_a -> {tag_b: count}
-_tag_counts: dict[str, int] = {}  # tag -> total memories with this tag
-_tag_cooccurrence_dirty: bool = True  # rebuild on first use
-_tag_total_memories: int = 0  # total tagged memories (for PMI denominator)
+def _init_pipelines():
+    """Create SearchPipeline + WritePipeline instances with current globals."""
+    global _search_pipeline, _write_pipeline
+    try:
+        from shared.search_pipeline import SearchPipeline
+        from shared.write_pipeline import WritePipeline
+
+        _config = _read_config_toggles()
+        _search_helpers = {
+            "format_summaries": format_summaries,
+            "lance_keyword_search": _lance_keyword_search,
+            "merge_results": _merge_results,
+            "detect_query_mode": _detect_query_mode,
+            "search_observations_internal": _search_observations_internal,
+            "get_expanded_tags": _get_expanded_tags,
+            "tag_ids_to_summaries": _tag_ids_to_summaries,
+            "generate_counterfactual_query": _generate_counterfactual_query,
+            "touch_memory_timestamp": _touch_memory_timestamp,
+            "validate_top_k": _validate_top_k,
+            "fix_outcomes": fix_outcomes,
+            "cluster_store": _cluster_store,
+            "server_project": _SERVER_PROJECT,
+            "server_subproject": _SERVER_SUBPROJECT,
+            "embed_text": _embed_text,
+        }
+        _search_pipeline = SearchPipeline(
+            collection=collection,
+            tag_index=tag_index,
+            graph=_knowledge_graph,
+            ltp=_ltp_tracker,
+            adaptive=_adaptive_weights,
+            config=_config,
+            helpers=_search_helpers,
+        )
+        _write_helpers = {
+            "normalize_tags": _normalize_tags,
+            "inject_project_tag": _inject_project_tag,
+            "build_project_prefix": _build_project_prefix,
+            "check_dedup": _check_dedup,
+            "classify_tier": _classify_tier,
+            "classify_memory_type": _classify_memory_type,
+            "extract_citations": _extract_citations,
+            "bridge_to_fix_outcomes": _bridge_to_fix_outcomes,
+            "touch_memory_timestamp": _touch_memory_timestamp,
+            "generate_id": generate_id,
+            "embed_text": _embed_text,
+            "cluster_store": _cluster_store,
+            "noise_regexes": NOISE_REGEXES,
+            "min_content_length": MIN_CONTENT_LENGTH,
+            "summary_length": SUMMARY_LENGTH,
+            "server_project": _SERVER_PROJECT,
+            "server_subproject": _SERVER_SUBPROJECT,
+        }
+        _write_pipeline = WritePipeline(
+            collection=collection,
+            tag_index=tag_index,
+            graph=_knowledge_graph,
+            config=_config,
+            helpers=_write_helpers,
+        )
+    except Exception as e:
+        print(f"[MCP] Pipeline init failed (will use inline): {e}", file=_sys.stderr)
+
+
+def _read_config_toggles():
+    """Read config toggles from config.json (with LIVE_STATE.json fallback)."""
+    _config_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
+    try:
+        if os.path.isfile(_config_path):
+            with open(_config_path, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    _live_state_path = os.path.join(
+        os.path.expanduser("~"), ".claude", "LIVE_STATE.json"
+    )
+    try:
+        if os.path.isfile(_live_state_path):
+            with open(_live_state_path, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+from shared.search_helpers import TagCooccurrence as _TagCooccurrence
+
+_tag_cooccurrence_obj = _TagCooccurrence()
+_tag_cooccurrence_dirty = True  # kept for backward compat (WritePipeline sets this)
 
 
 def _build_tag_cooccurrence():
-    """Build tag co-occurrence matrix from tag index.
-
-    Scans all memory tags, counts how often tag pairs appear together.
-    Called lazily on first search or explicitly via rebuild_tag_index().
-    """
-    global _tag_cooccurrence, _tag_counts, _tag_cooccurrence_dirty, _tag_total_memories
-
-    conn = tag_index.conn
-    rows = conn.execute("SELECT memory_id, tag FROM tags").fetchall()
-
-    # Group tags by memory_id
-    mem_tags: dict[str, set[str]] = {}
-    tag_totals: dict[str, int] = {}
-    for mid, tag in rows:
-        mem_tags.setdefault(mid, set()).add(tag)
-        tag_totals[tag] = tag_totals.get(tag, 0) + 1
-
-    # Build co-occurrence counts
-    cooccur: dict[str, dict[str, int]] = {}
-    for _mid, tagset in mem_tags.items():
-        tags = list(tagset)
-        for i in range(len(tags)):
-            for j in range(len(tags)):
-                if i != j:
-                    cooccur.setdefault(tags[i], {})
-                    cooccur[tags[i]][tags[j]] = cooccur[tags[i]].get(tags[j], 0) + 1
-
-    _tag_cooccurrence = cooccur
-    _tag_counts = tag_totals
-    _tag_total_memories = len(mem_tags)
-    _tag_cooccurrence_dirty = False
+    _tag_cooccurrence_obj.build(tag_index)
 
 
-def _get_expanded_tags(query: str) -> list[str]:
-    """Find tags that co-occur with tags matching the query (>40% rate).
-
-    Checks if query text matches any known tags, then returns co-occurring
-    tags above the 40% co-occurrence threshold.
-    """
-    if _tag_cooccurrence_dirty:
-        _build_tag_cooccurrence()
-
-    if not _tag_counts:
-        return []
-
-    query_lower = query.lower().strip()
-    query_tokens = set(query_lower.split())
-
-    # Match query against known tags (exact or token match, min 4 chars)
-    matched_tags = []
-    for tag in _tag_counts:
-        tag_lower = tag.lower()
-        if len(tag_lower) < 4:
-            continue
-        if tag_lower == query_lower or tag_lower in query_tokens:
-            matched_tags.append(tag)
-
-    if not matched_tags:
-        return []
-
-    # Find co-occurring tags with PMI > 1.0 (2x more likely than chance)
-    expanded = set()
-    matched_set = set(matched_tags)
-    N = _tag_total_memories
-    for tag in matched_tags:
-        if tag not in _tag_cooccurrence:
-            continue
-        count_x = _tag_counts.get(tag, 1)
-        for co_tag, co_count in _tag_cooccurrence[tag].items():
-            if co_tag in matched_set:
-                continue
-            count_y = _tag_counts.get(co_tag, 1)
-            if N > 0 and count_x > 0 and count_y > 0:
-                tag_pmi = math.log2((co_count * N) / (count_x * count_y))
-                if tag_pmi > 1.0:
-                    expanded.add(co_tag)
-
-    return list(expanded)[:15]
+def _get_expanded_tags(query):
+    return _tag_cooccurrence_obj.get_expanded_tags(query, tag_index)
 
 
 def format_results(results) -> list[dict]:
@@ -2670,6 +1480,7 @@ def search_knowledge(
     recency_weight: float = 0.15,
     match_all: bool = False,
     counterfactual: bool = False,
+    memory_type: str = "",
 ) -> dict:
     """Search memory for relevant information. Use before starting any task.
 
@@ -2680,824 +1491,51 @@ def search_knowledge(
         recency_weight: Boost for recent results (0.0-1.0, default 0.15). 0 disables.
         match_all: For tag mode only — if true, all tags must be present (default false).
         counterfactual: Force counterfactual retrieval pass (default false). Behavior depends on counterfactual_mode in config: "always" (every search), "threshold" (weak results only), "opt-in" (this param only).
+        memory_type: Filter by memory type ("reference", "working", or "" for all). Default "" returns all.
     """
+    global _last_search_ids
     _ensure_initialized()
     if _lance_degraded:
         return {
             "error": "LanceDB unavailable — running in degraded mode",
             "degraded": True,
         }
-    recency_weight = max(0.0, min(1.0, recency_weight))
-    top_k = _validate_top_k(top_k, default=15, min_val=1, max_val=500)
-    count = collection.count()
-    if count == 0:
-        return {
-            "results": [],
-            "total_memories": 0,
-            "message": "Memory is empty. Start building knowledge with remember_this().",
-        }
 
-    # Read config toggles once for the pipeline (needed by routing + enrichment)
-    _config_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
-    _ls_toggles = {}
-    try:
-        if os.path.isfile(_config_path):
-            with open(_config_path, "r") as _lsf:
-                _ls_toggles = json.load(_lsf)
-    except Exception:
-        # Fall back to LIVE_STATE.json for backward compat
-        _live_state_path = os.path.join(
-            os.path.expanduser("~"), ".claude", "LIVE_STATE.json"
+    # Delegate to SearchPipeline (with inline fallback)
+    if _search_pipeline is not None:
+        # Refresh config toggles (they may change between calls)
+        _search_pipeline.config = _read_config_toggles()
+        # Refresh mutable helpers that may change
+        _search_pipeline.h["fix_outcomes"] = fix_outcomes
+        _search_pipeline.h["server_project"] = _SERVER_PROJECT
+        _search_pipeline.h["server_subproject"] = _SERVER_SUBPROJECT
+        result = _search_pipeline.search(
+            query,
+            top_k=top_k,
+            mode=mode,
+            recency_weight=recency_weight,
+            match_all=match_all,
+            counterfactual=counterfactual,
+            memory_type=memory_type,
         )
+        # Track search result IDs for implicit feedback (fail-open)
         try:
-            if os.path.isfile(_live_state_path):
-                with open(_live_state_path, "r") as _lsf:
-                    _ls_toggles = json.load(_lsf)
+            _last_search_ids = [
+                r.get("id", "") for r in result.get("results", [])[:10] if r.get("id")
+            ]
         except Exception:
-            pass
-
-    VALID_MODES = {
-        "keyword",
-        "semantic",
-        "hybrid",
-        "tags",
-        "observations",
-        "all",
-        "transcript",
-    }
-    if mode and mode not in VALID_MODES:
-        mode = ""  # Invalid mode falls back to auto-detect
-    if not mode:
-        _routing = _ls_toggles.get("search_routing", "default")
-        mode = _detect_query_mode(query, routing=_routing)
-
-    # Query alias expansion: historical name mappings
-    QUERY_ALIASES = {
-        "torus": "megaman",
-        "megaman": "torus",
-    }
-    query_lower = query.lower()
-    for alias_from, alias_to in QUERY_ALIASES.items():
-        if alias_from in query_lower and alias_to not in query_lower:
-            query = f"{query} {alias_to}"
-            break
-
-    # Handle observations-only mode
-    if mode == "observations":
-        result = _search_observations_internal(query, top_k, recency_weight)
-        result["mode"] = "observations"
-        result["query"] = query
-        result["total_memories"] = count
-        _touch_memory_timestamp()
+            _last_search_ids = []
         return result
 
-    # Handle transcript mode: search L2t FTS5, then read raw L0 JSONL
-    if mode == "transcript":
-        _touch_memory_timestamp()
-        _transcript_enabled = _ls_toggles.get("transcript_l0", False)
-        if not _transcript_enabled:
-            return {
-                "results": [],
-                "mode": "transcript",
-                "query": query,
-                "total_memories": count,
-                "source": "transcript_l0",
-                "disabled": True,
-                "hint": "Enable with transcript_l0: true in config.json",
-            }
-        transcript_results = []
-        try:
-            _term_db = os.path.join(
-                os.path.expanduser("~"),
-                ".claude",
-                "integrations",
-                "terminal-history",
-                "terminal_history.db",
-            )
-            if os.path.isfile(_term_db):
-                _term_dir = os.path.join(
-                    os.path.expanduser("~"),
-                    ".claude",
-                    "integrations",
-                    "terminal-history",
-                )
-                if _term_dir not in _sys.path:
-                    _sys.path.insert(0, _term_dir)
-                from db import search_fts as _t_search_fts
-                from db import get_raw_transcript_window as _get_raw_window
-
-                hits = _t_search_fts(_term_db, query, limit=10)
-                # Deduplicate by session_id, keep best-ranked per session
-                seen_sessions = {}
-                for hit in hits:
-                    sid = hit.get("session_id", "")
-                    if sid and sid not in seen_sessions:
-                        seen_sessions[sid] = hit.get("timestamp", "")
-                # Get raw transcript windows for top 3 sessions
-                for sid, ts in list(seen_sessions.items())[:3]:
-                    window = _get_raw_window(
-                        sid, around_timestamp=ts, window_minutes=10, max_records=30
-                    )
-                    transcript_results.append(window)
-        except Exception:
-            pass
-        return {
-            "results": transcript_results,
-            "mode": "transcript",
-            "query": query,
-            "total_memories": count,
-            "source": "transcript_l0",
-        }
-
-    actual_k = min(top_k * 2, count)  # 2x pool for composite reranking
-
-    if mode == "tags":
-        # Strip tag:/tags: prefix and parse
-        tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)
-        tags_list = [t.strip() for t in tag_query.split(",") if t.strip()]
-        tag_ids = tag_index.tag_search(tags_list, match_all=match_all, top_k=actual_k)
-        formatted = _tag_ids_to_summaries(tag_ids)
-    elif mode == "keyword":
-        formatted = _lance_keyword_search(query, top_k=actual_k)
-    elif mode == "hybrid":
-        # Both engines, merged via RRF
-        fts_results = _lance_keyword_search(query, top_k=actual_k)
-        lance_results = collection.query(
-            query_texts=[query],
-            n_results=actual_k,
-            include=["metadatas", "distances"],
-        )
-        lance_summaries = format_summaries(lance_results)
-        formatted = _merge_results(fts_results, lance_summaries, top_k=actual_k)
-    else:
-        # Semantic (default)
-        results = collection.query(
-            query_texts=[query],
-            n_results=actual_k,
-            include=["metadatas", "distances"],
-        )
-        formatted = format_summaries(results)
-
-    _terminal_l2_always = _ls_toggles.get("terminal_l2_always", True)
-    _tg_l3_always = _ls_toggles.get("tg_l3_always", False)
-    _enrichment_enabled = _ls_toggles.get("context_enrichment", False)
-    _tg_enrichment_enabled = _ls_toggles.get("tg_enrichment", False)
-
-    # Terminal History L2: search based on toggle
-    terminal_l2_count = 0
-    _run_terminal_l2 = _terminal_l2_always or (
-        formatted
-        and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked"))
-    )
-    if _run_terminal_l2:
-        try:
-            _term_db_path_l2 = os.path.join(
-                os.path.expanduser("~"),
-                ".claude",
-                "integrations",
-                "terminal-history",
-                "terminal_history.db",
-            )
-            if os.path.isfile(_term_db_path_l2):
-                _term_dir_l2 = os.path.join(
-                    os.path.expanduser("~"),
-                    ".claude",
-                    "integrations",
-                    "terminal-history",
-                )
-                if _term_dir_l2 not in _sys.path:
-                    _sys.path.insert(0, _term_dir_l2)
-                from db import search_fts as _search_fts
-
-                for tr in _search_fts(_term_db_path_l2, query, limit=5):
-                    _bm25 = abs(float(tr.get("bm25", 0)))
-                    _relevance = min(1.0, _bm25 / 20.0)
-                    _entry = {
-                        "id": f"term_{tr.get('session_id', '?')[:12]}",
-                        "preview": (tr.get("text", "")[:120] + "...")
-                        if len(tr.get("text", "")) > 120
-                        else tr.get("text", ""),
-                        "relevance": round(_relevance, 4),
-                        "source": "terminal_l2",
-                        "timestamp": tr.get("timestamp", ""),
-                    }
-                    if tr.get("tags"):
-                        _entry["tags"] = tr["tags"]
-                    if tr.get("linked_memory_ids"):
-                        _entry["linked_memory_ids"] = tr["linked_memory_ids"]
-                    formatted.append(_entry)
-                    terminal_l2_count += 1
-        except Exception:
-            pass  # Terminal history search is optional
-
-    # L0 Raw Transcript cascade: when toggle is on, pull raw JSONL windows
-    # between L2 (terminal history) and L3 (telegram)
-    transcript_l0_count = 0
-    _transcript_l0_enabled = _ls_toggles.get("transcript_l0", False)
-    if _transcript_l0_enabled and mode not in ("tags", "observations"):
-        # Only cascade if current results are weak (< 0.3) or always-on
-        _l0_weak = not formatted or all(
-            r.get("relevance", 0) < 0.3
-            for r in formatted
-            if not r.get("linked") and not r.get("tag_expanded")
-        )
-        if _l0_weak:
-            try:
-                _term_db_l0 = os.path.join(
-                    os.path.expanduser("~"),
-                    ".claude",
-                    "integrations",
-                    "terminal-history",
-                    "terminal_history.db",
-                )
-                if os.path.isfile(_term_db_l0):
-                    _term_dir_l0 = os.path.join(
-                        os.path.expanduser("~"),
-                        ".claude",
-                        "integrations",
-                        "terminal-history",
-                    )
-                    if _term_dir_l0 not in _sys.path:
-                        _sys.path.insert(0, _term_dir_l0)
-                    from db import search_fts as _l0_search_fts
-                    from db import get_raw_transcript_window as _l0_get_raw_window
-
-                    _l0_hits = _l0_search_fts(_term_db_l0, query, limit=6)
-                    # Deduplicate by session_id
-                    _l0_seen_sessions = {}
-                    for _l0_hit in _l0_hits:
-                        _l0_sid = _l0_hit.get("session_id", "")
-                        if _l0_sid and _l0_sid not in _l0_seen_sessions:
-                            _l0_seen_sessions[_l0_sid] = _l0_hit.get("timestamp", "")
-                    # Get raw transcript windows for top 2 sessions
-                    for _l0_sid, _l0_ts in list(_l0_seen_sessions.items())[:2]:
-                        _l0_window = _l0_get_raw_window(
-                            _l0_sid,
-                            around_timestamp=_l0_ts,
-                            window_minutes=10,
-                            max_records=20,
-                        )
-                        if _l0_window and _l0_window.get("records"):
-                            # Compress into a single result entry
-                            _l0_preview = "; ".join(
-                                r.get("summary", r.get("text", ""))[:80]
-                                for r in _l0_window.get("records", [])[:3]
-                            )
-                            formatted.append(
-                                {
-                                    "id": f"l0_{_l0_sid[:16]}",
-                                    "preview": _l0_preview[:200],
-                                    "relevance": 0.22,
-                                    "source": "transcript_l0",
-                                    "timestamp": _l0_ts,
-                                    "session_id": _l0_sid,
-                                    "record_count": len(_l0_window.get("records", [])),
-                                }
-                            )
-                            transcript_l0_count += 1
-            except Exception:
-                pass  # L0 transcript cascade is optional
-
-    # Tag expansion: find co-occurring tags and merge additional results
-    tag_expanded = False
-    expanded_tags = []
-    try:
-        expanded_tags = _get_expanded_tags(query)
-        if expanded_tags:
-            seen_ids = {r.get("id") for r in formatted if r.get("id")}
-            tag_ids = tag_index.tag_search(
-                expanded_tags, match_all=False, top_k=actual_k
-            )
-            tag_results = _tag_ids_to_summaries(tag_ids)
-            if tag_results:
-                for tr in tag_results:
-                    tid = tr.get("id", "")
-                    if tid and tid not in seen_ids:
-                        tr["tag_expanded"] = True
-                        formatted.append(tr)
-                        seen_ids.add(tid)
-                tag_expanded = True
-
-            # Terminal L2 tag search: find terminal records matching expanded tags
-            try:
-                _term_db_path = os.path.join(
-                    os.path.expanduser("~"),
-                    ".claude",
-                    "integrations",
-                    "terminal-history",
-                    "terminal_history.db",
-                )
-                if os.path.isfile(_term_db_path):
-                    _term_dir = os.path.join(
-                        os.path.expanduser("~"),
-                        ".claude",
-                        "integrations",
-                        "terminal-history",
-                    )
-                    if _term_dir not in _sys.path:
-                        _sys.path.insert(0, _term_dir)
-                    from db import search_by_tags as _search_by_tags
-
-                    _tag_term_results = _search_by_tags(
-                        _term_db_path, expanded_tags, limit=3
-                    )
-                    for ttr in _tag_term_results:
-                        _tid = f"term_tag_{ttr.get('session_id', '?')[:12]}"
-                        if _tid not in seen_ids:
-                            formatted.append(
-                                {
-                                    "id": _tid,
-                                    "preview": (ttr.get("text", "")[:120] + "...")
-                                    if len(ttr.get("text", "")) > 120
-                                    else ttr.get("text", ""),
-                                    "relevance": 0.25,
-                                    "source": "terminal_l2",
-                                    "timestamp": ttr.get("timestamp", ""),
-                                    "tags": ttr.get("tags", ""),
-                                    "tag_expanded": True,
-                                }
-                            )
-                            seen_ids.add(_tid)
-            except Exception:
-                pass  # Terminal tag search is optional
-    except Exception:
-        pass  # Tag expansion failure must not break search
-
-    # Keyword overlap reranker — gives keyword signal to all modes
-    try:
-        formatted = _rerank_keyword_overlap(formatted, query)
-    except Exception:
-        pass  # Reranker failure must not break search
-
-    # Apply recency boost and re-sort
-    if recency_weight > 0:
-        formatted = _apply_recency_boost(formatted, recency_weight)
-
-    # Apply tier boost: tier 1 (+0.05), tier 3 (-0.02)
-    try:
-        formatted = _apply_tier_boost(formatted)
-    except Exception:
-        pass  # Tier boost failure must not break search
-
-    # Apply access-count boost: tiebreaker for frequently-retrieved memories (max +0.03)
-    try:
-        formatted = _apply_access_boost(formatted)
-    except Exception:
-        pass  # Access boost failure must not break search
-
-    # Apply LTP-aware relevance scoring: re-score using 4-level decay factor (fail-open)
-    try:
-        if _ltp_tracker:
-            from shared.memory_decay import calculate_relevance_score
-
-            for entry in formatted:
-                mem_id = entry.get("id", "")
-                if mem_id:
-                    ltp_factor = _ltp_tracker.get_decay_factor(mem_id)
-                else:
-                    ltp_factor = 1.0
-                ltp_score = calculate_relevance_score(entry, ltp_factor=ltp_factor)
-                # Blend: vector relevance + LTP-decay score (adaptive weight)
-                _ltp_blend = 0.3
-                if _adaptive_weights:
-                    _ltp_blend = _adaptive_weights.get_weights().get("ltp_blend", 0.3)
-                raw_rel = entry.get("relevance", 0.5)
-                entry["relevance"] = round(
-                    raw_rel * (1 - _ltp_blend) + ltp_score * _ltp_blend, 4
-                )
-                entry["ltp_factor"] = ltp_factor
-            formatted.sort(key=lambda x: x.get("relevance", 0), reverse=True)
-    except Exception:
-        pass  # LTP scoring failure must not break search
-
-    # Composite reranker: final re-sort with tag overlap + graph proximity (fail-open)
-    try:
-        formatted = _rerank_composite(
-            formatted, query, top_k, knowledge_graph=_knowledge_graph
-        )
-    except Exception:
-        pass  # Composite reranker failure must not break search
-
-    # Trim to requested top_k after expansion
-    formatted = formatted[:top_k]
-
-    # --- Action pattern lookup: check fix_outcomes for error-like queries (fail-open) ---
-    _action_pattern_count = 0
-    try:
-        from shared.action_patterns import is_error_query as _is_error_q
-        from shared.action_patterns import extract_pattern as _extract_ap
-        from shared.action_patterns import format_pattern as _format_ap
-        from shared.action_patterns import rank_patterns as _rank_ap
-
-        if _is_error_q(query) and fix_outcomes is not None:
-            _fo_count = fix_outcomes.count()
-            if _fo_count > 0:
-                _fo_results = fix_outcomes.query(
-                    query_texts=[query],
-                    n_results=min(5, _fo_count),
-                    include=["metadatas", "documents"],
-                )
-                if _fo_results and _fo_results.get("documents"):
-                    _fo_docs = _fo_results["documents"][0]
-                    _fo_metas = (
-                        _fo_results["metadatas"][0]
-                        if _fo_results.get("metadatas")
-                        else []
-                    )
-                    _patterns = []
-                    for _ap_i, _ap_doc in enumerate(_fo_docs):
-                        _ap_meta = _fo_metas[_ap_i] if _ap_i < len(_fo_metas) else {}
-                        if _ap_meta.get("outcome") in ("success", "failed"):
-                            _patterns.append(_extract_ap(_ap_doc, _ap_meta))
-                    _patterns = _rank_ap(_patterns)
-                    for _ap in _patterns[:3]:
-                        if _ap["confidence"] > 0.1:
-                            formatted.insert(
-                                0,
-                                {
-                                    "id": f"ap_{_ap['chain_id'][:12]}",
-                                    "preview": _format_ap(_ap),
-                                    "relevance": 0.95,
-                                    "source": "action_pattern",
-                                    "action_pattern": _ap,
-                                    "timestamp": "",
-                                },
-                            )
-                            _action_pattern_count += 1
-    except (ImportError, ValueError, TypeError, KeyError, AttributeError):
-        pass  # Action pattern failure must not break search
-
-    # "all" mode: also search observations and merge
-    if mode == "all":
-        # Reserve ~1/3 of budget for observations so they actually appear
-        obs_budget = max(3, top_k // 3)
-        knowledge_budget = top_k - obs_budget
-        formatted = formatted[:knowledge_budget]  # Trim knowledge to make room
-        obs_results = _search_observations_internal(query, obs_budget, recency_weight=0)
-        obs_formatted = obs_results.get("results", [])
-        # Label and merge observation results (dedup by ID)
-        seen_ids = {r.get("id") for r in formatted if r.get("id")}
-        for obs in obs_formatted:
-            oid = obs.get("id", "")
-            if oid and oid not in seen_ids:
-                obs["source"] = "observations"
-                formatted.append(obs)
-                seen_ids.add(oid)
-
-    # Auto-fallback: if knowledge returned 0 results and mode was auto-detected, try observations
-    if len(formatted) == 0 and mode not in ("tags", "observations", "all"):
-        obs_results = _search_observations_internal(
-            query, min(top_k, 10), recency_weight=0
-        )
-        obs_formatted = obs_results.get("results", [])
-        if obs_formatted:
-            for obs in obs_formatted:
-                obs["source"] = "observations"
-                obs["fallback"] = True
-            formatted = obs_formatted
-            mode = mode + "+fallback"
-
-    _touch_memory_timestamp()
-
-    # Trim to requested top_k after all merging
-    formatted = formatted[:top_k]
-
-    # --- Hybrid Memory Linking: co-retrieve linked memories ---
-    linked_memories_count = 0
-    try:
-        # Collect linked IDs from resolves: and resolved_by: tags
-        organic_ids = {r.get("id") for r in formatted if r.get("id")}
-        linked_ids = set()
-        for r in formatted:
-            r_tags = r.get("tags", "") or ""
-            for tag in r_tags.split(","):
-                tag = tag.strip()
-                if tag.startswith("resolves:"):
-                    lid = tag.split(":", 1)[1].strip()
-                    if lid and lid not in organic_ids:
-                        linked_ids.add(lid)
-                elif tag.startswith("resolved_by:"):
-                    lid = tag.split(":", 1)[1].strip()
-                    if lid and lid not in organic_ids:
-                        linked_ids.add(lid)
-
-            # Terminal L2 linked_memory_ids: memory IDs linked to terminal records
-            r_linked = r.get("linked_memory_ids", "") or ""
-            if r_linked and r.get("source") == "terminal_l2":
-                for mid in r_linked.split(","):
-                    mid = mid.strip()
-                    if mid and mid not in organic_ids:
-                        linked_ids.add(mid)
-
-        # Batch fetch linked memories
-        if linked_ids:
-            linked_results = collection.get(
-                ids=list(linked_ids),
-                include=["metadatas", "documents"],
-            )
-            if linked_results and linked_results.get("ids"):
-                l_ids = linked_results["ids"]
-                l_metas = linked_results.get("metadatas") or [{}] * len(l_ids)
-                l_docs = linked_results.get("documents") or [""] * len(l_ids)
-                for i, lid in enumerate(l_ids):
-                    meta = l_metas[i] if i < len(l_metas) else {}
-                    doc = l_docs[i] if i < len(l_docs) else ""
-                    preview = meta.get("preview", "") or (
-                        doc[:120] + "..." if doc and len(doc) > 120 else doc
-                    )
-                    formatted.append(
-                        {
-                            "id": lid,
-                            "preview": preview,
-                            "tags": meta.get("tags", ""),
-                            "timestamp": meta.get("timestamp", ""),
-                            "linked": True,
-                        }
-                    )
-                    linked_memories_count += 1
-    except Exception:
-        pass  # Fail-open: linking errors don't break search
-
-    # Telegram L3: search based on toggle
-    tg_fallback_count = 0
-    _run_tg_l3 = _tg_l3_always or (
-        formatted
-        and all(r.get("relevance", 0) < 0.3 for r in formatted if not r.get("linked"))
-    )
-    if _run_tg_l3:
-        try:
-            _tg_search = os.path.join(
-                os.path.expanduser("~"),
-                ".claude",
-                "integrations",
-                "telegram-bot",
-                "search.py",
-            )
-            if os.path.isfile(_tg_search):
-                _tg_result = subprocess.run(
-                    [_sys.executable, _tg_search, query, "--json", "--limit", "5"],
-                    capture_output=True,
-                    text=True,
-                    timeout=8,
-                    stdin=subprocess.DEVNULL,
-                )
-                if _tg_result.returncode == 0 and _tg_result.stdout.strip():
-                    _tg_data = json.loads(_tg_result.stdout)
-                    for tr in _tg_data.get("results", []):
-                        # Normalize BM25: FTS5 rank is negative, more negative = better
-                        _bm25 = abs(float(tr.get("bm25", 0)))
-                        _relevance = min(1.0, _bm25 / 20.0) if _bm25 > 0 else 0.2
-                        formatted.append(
-                            {
-                                "id": f"tg_{tr.get('msg_id', '?')}",
-                                "preview": (tr.get("text", "")[:120] + "...")
-                                if len(tr.get("text", "")) > 120
-                                else tr.get("text", ""),
-                                "relevance": round(_relevance, 4),
-                                "source": "telegram_l3",
-                                "timestamp": tr.get("date", ""),
-                            }
-                        )
-                        tg_fallback_count += 1
-        except Exception:
-            pass  # Telegram fallback is optional
-
-    # Final trim: enforce top_k budget after all sources (L3, linked) have been appended
-    formatted = formatted[:top_k]
-
-    # Session context enrichment: attach conversation context to vector search hits
-    enrichment_count = 0
-    try:
-        if _enrichment_enabled:
-            _term_db = os.path.join(
-                os.path.expanduser("~"),
-                ".claude",
-                "integrations",
-                "terminal-history",
-                "terminal_history.db",
-            )
-            if os.path.isfile(_term_db):
-                # Lazy import to avoid overhead when enrichment is off
-                _term_db_dir = os.path.join(
-                    os.path.expanduser("~"),
-                    ".claude",
-                    "integrations",
-                    "terminal-history",
-                )
-                if _term_db_dir not in _sys.path:
-                    _sys.path.insert(0, _term_db_dir)
-                from db import get_context_by_timestamp as _get_ctx
-
-                for r in list(formatted):
-                    if r.get("linked") or r.get("source", "").startswith("terminal_"):
-                        continue  # Don't enrich already-linked or terminal results
-                    ts = r.get("timestamp", "")
-                    if not ts:
-                        continue
-                    ctx = _get_ctx(_term_db, ts, window_minutes=30, limit=3)
-                    if ctx:
-                        ctx_text = " | ".join(
-                            f"[{c['role']}] {c['text'][:80]}" for c in ctx
-                        )
-                        r["session_context"] = ctx_text[:300]
-                        enrichment_count += 1
-    except Exception:
-        pass  # Enrichment is optional, never break search
-
-    # TG context enrichment: attach Telegram messages around search hit timestamps
-    tg_enrichment_count = 0
-    try:
-        if _tg_enrichment_enabled:
-            _tg_db = os.path.join(
-                os.path.expanduser("~"),
-                ".claude",
-                "integrations",
-                "telegram-bot",
-                "msg_log.db",
-            )
-            if os.path.isfile(_tg_db):
-                _tg_db_dir = os.path.join(
-                    os.path.expanduser("~"), ".claude", "integrations", "telegram-bot"
-                )
-                if _tg_db_dir not in _sys.path:
-                    _sys.path.insert(0, _tg_db_dir)
-                from db import get_context_by_timestamp as _get_tg_ctx
-
-                for r in list(formatted):
-                    if r.get("linked") or r.get("source", "").startswith("telegram_"):
-                        continue  # Don't enrich already-linked or TG results
-                    ts = r.get("timestamp", "")
-                    if not ts:
-                        continue
-                    tg_ctx = _get_tg_ctx(_tg_db, ts, window_minutes=30, limit=3)
-                    if tg_ctx:
-                        tg_ctx_text = " | ".join(
-                            f"[{c['sender']}] {c['text'][:80]}" for c in tg_ctx
-                        )
-                        r["tg_context"] = tg_ctx_text[:300]
-                        tg_enrichment_count += 1
-    except Exception:
-        pass  # TG enrichment is optional, never break search
-
-    # Project boost: 2x relevance for memories tagged with current project
-    # Subproject boost: additional 1.5x for matching subproject
-    if _SERVER_PROJECT and formatted:
-        proj_tag = f"project:{_SERVER_PROJECT}"
-        sub_tag = f"subproject:{_SERVER_SUBPROJECT}" if _SERVER_SUBPROJECT else None
-        for r in formatted:
-            tags_str = r.get("tags") or ""
-            if proj_tag in tags_str:
-                r["relevance"] = r.get("relevance", 0) * 2.0
-            if sub_tag and sub_tag in tags_str:
-                r["relevance"] = r.get("relevance", 0) * 1.5
-        formatted.sort(key=lambda r: r.get("relevance", 0), reverse=True)
-
-    # --- mem2x: LTP access tracking + Hebbian co-retrieval (fail-open) ---
-    try:
-        _mem_ids = [
-            r.get("id") for r in formatted if r.get("id") and not r.get("source")
-        ]
-        if _ltp_tracker and _mem_ids:
-            for mid in _mem_ids[:10]:
-                _ltp_tracker.record_access(mid)
-        if _knowledge_graph and len(_mem_ids) >= 2:
-            _knowledge_graph.strengthen_coretrieval(_mem_ids[:10])
-    except Exception:
-        pass  # LTP/Hebbian failure must not break search
-
-    # --- mem2x: Graph-enriched search via spreading activation (fail-open) ---
-    graph_enriched_count = 0
-    try:
-        if _knowledge_graph and mode not in ("tags", "observations", "transcript"):
-            from shared.entity_extraction import extract_entities
-
-            _query_entities = [e["name"] for e in extract_entities(query)]
-            if _query_entities:
-                _activated = _knowledge_graph.spreading_activation(
-                    _query_entities, max_hops=3
-                )
-                if _activated:
-                    # Look up memories containing activated entities
-                    _seen_ids = {r.get("id") for r in formatted if r.get("id")}
-                    _activated_names = [
-                        a["name"] for a in _activated[:5] if a["activation"] > 0.1
-                    ]
-                    for _aname in _activated_names:
-                        try:
-                            _graph_results = collection.query(
-                                query_texts=[_aname],
-                                n_results=3,
-                                include=["metadatas", "distances"],
-                            )
-                            _graph_summaries = format_summaries(_graph_results)
-                            for gs in _graph_summaries:
-                                gid = gs.get("id", "")
-                                if gid and gid not in _seen_ids:
-                                    gs["graph_enriched"] = True
-                                    _graph_disc = 0.8
-                                    if _adaptive_weights:
-                                        _graph_disc = (
-                                            _adaptive_weights.get_weights().get(
-                                                "graph_discount", 0.8
-                                            )
-                                        )
-                                    gs["relevance"] = (
-                                        gs.get("relevance", 0) * _graph_disc
-                                    )
-                                    formatted.append(gs)
-                                    _seen_ids.add(gid)
-                                    graph_enriched_count += 1
-                        except Exception:
-                            continue
-    except Exception:
-        pass  # Graph enrichment failure must not break search
-
-    # --- Counterfactual retrieval pass (fail-open) ---
-    counterfactual_count = 0
-    try:
-        _cf_enabled = _ls_toggles.get("counterfactual_retrieval", False)
-        _cf_mode = _ls_toggles.get("counterfactual_mode", "always")
-        _cf_model = _ls_toggles.get("counterfactual_model", "haiku")
-        _cf_threshold = _ls_toggles.get("counterfactual_threshold", 0.4)
-        _should_cf = False
-
-        if _cf_enabled:
-            if _cf_mode == "always":
-                _should_cf = True
-            elif _cf_mode == "threshold" and formatted:
-                _best_rel = max((r.get("relevance", 0) for r in formatted), default=0)
-                if _best_rel < _cf_threshold:
-                    _should_cf = True
-            # "opt-in" mode: only explicit param triggers (handled below)
-
-        # Explicit param overrides mode (but respects master toggle)
-        if counterfactual and _cf_enabled:
-            _should_cf = True
-
-        # Never for non-semantic modes
-        if mode in ("tags", "observations", "transcript"):
-            _should_cf = False
-
-        if _should_cf and formatted:
-            _cf_query = _generate_counterfactual_query(
-                query, formatted, model_key=_cf_model
-            )
-            if _cf_query:
-                _seen_ids = {r.get("id") for r in formatted if r.get("id")}
-                _cf_results = collection.query(
-                    query_texts=[_cf_query],
-                    n_results=min(top_k, 5),  # Cap at 5 extra results
-                    include=["metadatas", "distances"],
-                )
-                _cf_summaries = format_summaries(_cf_results)
-                _cf_disc = _ls_toggles.get("counterfactual_discount", 0.8)
-                for cs in _cf_summaries:
-                    cid = cs.get("id", "")
-                    if cid and cid not in _seen_ids:
-                        cs["counterfactual"] = True
-                        cs["cf_query"] = _cf_query
-                        cs["relevance"] = cs.get("relevance", 0) * _cf_disc
-                        formatted.append(cs)
-                        _seen_ids.add(cid)
-                        counterfactual_count += 1
-    except Exception:
-        pass  # Counterfactual failure must not break search
-
-    result = {
-        "results": formatted,
-        "total_memories": count,
-        "query": query,
-        "mode": mode,
+    # Pipeline not initialized — return error
+    return {
+        "error": "Search pipeline not initialized",
+        "results": [],
+        "total_memories": 0,
     }
-    if linked_memories_count > 0:
-        result["linked_memories_count"] = linked_memories_count
-    if tg_fallback_count > 0:
-        result["telegram_l3_count"] = tg_fallback_count
-    if terminal_l2_count > 0:
-        result["terminal_l2_count"] = terminal_l2_count
-    if transcript_l0_count > 0:
-        result["transcript_l0_count"] = transcript_l0_count
-    if enrichment_count > 0:
-        result["enrichment_count"] = enrichment_count
-    if tg_enrichment_count > 0:
-        result["tg_enrichment_count"] = tg_enrichment_count
-    if _action_pattern_count > 0:
-        result["action_pattern_count"] = _action_pattern_count
-    if graph_enriched_count > 0:
-        result["graph_enriched_count"] = graph_enriched_count
-    if counterfactual_count > 0:
-        result["counterfactual_count"] = counterfactual_count
-    if tag_expanded:
-        result["tag_expanded"] = True
 
-    # Track search result IDs for implicit feedback (fail-open)
-    global _last_search_ids
-    try:
-        _last_search_ids = [r.get("id", "") for r in formatted[:10] if r.get("id")]
-    except Exception:
-        _last_search_ids = []
 
-    return result
+# Dead code below removed — inline fallback replaced by SearchPipeline
 
 
 def _extract_error_text(content, context):
@@ -3775,314 +1813,35 @@ def remember_this(
         source_session_id: Session ID to record provenance (auto-detected if omitted)
         source_observation_ids: Comma-separated observation IDs this knowledge was derived from
     """
+    global _tag_cooccurrence_dirty
     _ensure_initialized()
-    # Auto-detect source session ID from most recent JSONL session file
-    if not source_session_id:
-        try:
-            import glob as _glob
-
-            _sessions_pattern = os.path.join(
-                os.path.expanduser("~"),
-                ".claude",
-                "projects",
-                "**",
-                "sessions",
-                "*.jsonl",
-            )
-            _jsonl_files = sorted(
-                _glob.glob(_sessions_pattern, recursive=True),
-                key=os.path.getmtime,
-                reverse=True,
-            )
-            if _jsonl_files:
-                source_session_id = os.path.splitext(os.path.basename(_jsonl_files[0]))[
-                    0
-                ]
-        except Exception:
-            pass  # Session detection failure must not block memory storage
     if _lance_degraded:
         return {
             "error": "LanceDB unavailable — running in degraded mode",
             "degraded": True,
         }
-    # Cap metadata strings to 500 chars
-    if len(context) > 500:
-        context = context[:497] + "..."
-    if len(tags) > 500:
-        tags = tags[:497] + "..."
-    # --- Tag normalization: bare tags → dimensioned tags ---
-    tags = _normalize_tags(tags)
-    tags = _inject_project_tag(tags)
-    # --- Auto-prefix: prepend [project #N] to content ---
-    _prefix = _build_project_prefix()
-    if _prefix and not content.startswith("["):
-        content = _prefix + content
-    # --- Ingestion filter: reject noise ---
-    # force=True skips both noise filter AND dedup (escape hatch for false positives)
-    if len(content.strip()) < MIN_CONTENT_LENGTH:
-        return {
-            "result": "Rejected: content too short (minimum 20 characters)",
-            "rejected": True,
-            "total_memories": collection.count(),
-        }
-    # --- Max content length: keep memories concise (index cards, not textbooks) ---
-    MAX_CONTENT_LENGTH = 800
-    if not force and len(content.strip()) > MAX_CONTENT_LENGTH:
-        return {
-            "result": f"Rejected: content too long ({len(content.strip())} chars, max {MAX_CONTENT_LENGTH}). Distill to key facts only.",
-            "rejected": True,
-            "total_memories": collection.count(),
-        }
 
-    if not force:
-        _content_len = len(content.strip())
-        for noise_re in NOISE_REGEXES:
-            if noise_re.search(content):
-                # Length exemption: substantive content (>85 chars) starting with
-                # noise words is likely a real finding, not package manager output.
-                # Noise output maxes ~81 chars; valid knowledge starts at ~90+.
-                if _content_len > 85:
-                    break
-                return {
-                    "result": f"Rejected: matches noise pattern ('{noise_re.pattern}')",
-                    "rejected": True,
-                    "total_memories": collection.count(),
-                }
-
-    # --- Quality scoring: soft-tag low-quality memories (fail-open) ---
-    _q_score = 0.5  # Default: neutral
-    try:
-        from shared.memory_quality import quality_score, QUALITY_THRESHOLD
-
-        _q_score = quality_score(content)
-        if _q_score < QUALITY_THRESHOLD:
-            _enrichment_tag = "needs-enrichment"
-            tags = f"{tags},{_enrichment_tag}" if tags else _enrichment_tag
-    except Exception:
-        pass  # Quality scoring failure must not block memory storage
-
-    # --- Near-dedup: tiered threshold with soft-dupe tagging ---
-    _soft_dupe_tag = None  # set if in soft zone (0.10-0.15)
-    dedup_result = _check_dedup(content, tags) if not force else None
-    if dedup_result:
-        if dedup_result.get("blocked"):
-            return {
-                "result": "Deduplicated: very similar memory already exists",
-                "deduplicated": True,
-                "existing_id": dedup_result["existing_id"],
-                "distance": dedup_result["distance"],
-                "total_memories": collection.count(),
-            }
-        elif dedup_result.get("soft_dupe_tag"):
-            _soft_dupe_tag = dedup_result["soft_dupe_tag"]
-
-    # Retroactive interference: corrections/fixes suppress similar existing memories (fail-open)
-    try:
-        if (
-            collection
-            and not force
-            and any(t in tags for t in ("type:fix", "type:correction"))
-        ):
-            from shared.memory_replay import compute_interference
-
-            _ri_results = collection.query(
-                query_texts=[content], n_results=3, include=["metadatas", "distances"]
-            )
-            if _ri_results and _ri_results.get("ids") and _ri_results["ids"][0]:
-                _new_mem = {"tier": _classify_tier(content, tags), "tags": tags}
-                for _ri_idx, _ri_id in enumerate(_ri_results["ids"][0]):
-                    _ri_dist = (
-                        _ri_results["distances"][0][_ri_idx]
-                        if _ri_results.get("distances")
-                        else 1.0
-                    )
-                    _ri_sim = max(0, 1.0 - _ri_dist)
-                    _ri_meta = (
-                        _ri_results["metadatas"][0][_ri_idx]
-                        if _ri_results.get("metadatas")
-                        else {}
-                    )
-                    _old_mem = {
-                        "tier": _ri_meta.get("tier", 2),
-                        "tags": _ri_meta.get("tags", ""),
-                    }
-                    _ri_action = compute_interference(_new_mem, _old_mem, _ri_sim)
-                    if _ri_action.get("action") == "suppress":
-                        _new_tier = _ri_action.get("tier_change", 3)
-                        collection.update(
-                            ids=[_ri_id], metadatas=[{**_ri_meta, "tier": _new_tier}]
-                        )
-    except Exception:
-        pass  # Interference failure must not block memory storage
-
-    # Citation URL extraction (fail-open)
-    citation = _extract_citations(content, context)
-    content = citation["clean_content"]
-    primary_source = citation["primary_source"]
-    related_urls = citation["related_urls"]
-    source_method = citation["source_method"]
-
-    doc_id = generate_id(content)
-    timestamp = datetime.now().isoformat()
-
-    # Pre-compute preview for progressive disclosure (stored in metadata)
-    preview = content[:SUMMARY_LENGTH].replace("\n", " ")
-    if len(content) > SUMMARY_LENGTH:
-        preview += "..."
-
-    now = time.time()
-
-    # Append soft-dupe tag if in borderline zone
-    if _soft_dupe_tag:
-        tags = f"{tags},{_soft_dupe_tag}" if tags else _soft_dupe_tag
-
-    # Auto tier classification
-    tier = _classify_tier(content, tags)
-
-    # Incremental cluster assignment (fail-open)
-    _assigned_cluster_id = ""
-    try:
-        if _cluster_store:
-            _cluster_vec = _embed_text(content)
-            _assigned_cluster_id = _cluster_store.assign(_cluster_vec, content)
-    except Exception:
-        pass  # Clustering failure must not block memory storage
-
-    collection.upsert(
-        documents=[content],
-        metadatas=[
-            {
-                "context": context,
-                "tags": tags,
-                "timestamp": timestamp,
-                "session_time": now,
-                "preview": preview,
-                "primary_source": primary_source,
-                "related_urls": related_urls,
-                "source_method": source_method,
-                "tier": tier,
-                "source_session_id": source_session_id,
-                "source_observation_ids": source_observation_ids,
-                "cluster_id": _assigned_cluster_id,
-                "quality_score": _q_score,
-            }
-        ],
-        ids=[doc_id],
-    )
-
-    # Update tag index
-    tag_index.add_tags(doc_id, tags)
-
-    # Knowledge graph: extract entities and co-occurrences, populate graph (fail-open)
-    try:
-        if _knowledge_graph:
-            from shared.entity_extraction import extract_entities, extract_cooccurrences
-
-            _kg_text = f"{content} {context}"
-            _kg_entities = extract_entities(_kg_text)
-            for ent in _kg_entities:
-                _knowledge_graph.upsert_entity(ent["name"], ent["type"])
-            _kg_coocs = extract_cooccurrences(_kg_text)
-            _kg_total = collection.count()
-            for e1, e2 in _kg_coocs:
-                _knowledge_graph.add_edge(e1, e2, "co_occurs")
-                _knowledge_graph.update_pmi(e1, e2, "co_occurs", _kg_total)
-    except Exception:
-        pass  # Graph population failure must not break memory storage
-
-    # Mark tag co-occurrence matrix as dirty (new tags may change co-occurrence rates)
-    global _tag_cooccurrence_dirty
-    if tags:
-        _tag_cooccurrence_dirty = True
-
-    _touch_memory_timestamp()
-
-    # --- Hybrid Memory Linking: resolves:ID → resolved_by:ID bidirectional link ---
-    resolves_id = None
-    link_warning = None
-    try:
-        if tags:
-            resolves_tags = [
-                t.strip() for t in tags.split(",") if t.strip().startswith("resolves:")
-            ]
-            if len(resolves_tags) > 1:
-                link_warning = (
-                    f"Multiple resolves: tags found; using first: {resolves_tags[0]}"
-                )
-            if resolves_tags:
-                resolves_id = resolves_tags[0].split(":", 1)[1].strip()
-                if not resolves_id:
-                    resolves_id = None
-                    link_warning = "resolves: tag has empty ID"
-    except Exception as e:
-        link_warning = f"Tag parse error: {e}"
-        resolves_id = None
-
-    # Validate target exists and create bidirectional link
-    linked_to = None
-    if resolves_id:
-        try:
-            target = collection.get(ids=[resolves_id], include=["metadatas"])
-            if not target or not target.get("ids") or len(target["ids"]) == 0:
-                link_warning = f"resolves:{resolves_id} — target memory not found"
-                resolves_id = None
-            else:
-                # Create bidirectional link: update target's tags with resolved_by:NEW_ID
-                target_meta = target["metadatas"][0] if target.get("metadatas") else {}
-                target_tags = target_meta.get("tags", "") or ""
-                back_link = f"resolved_by:{doc_id}"
-
-                if back_link not in target_tags:
-                    new_tags = (
-                        f"{target_tags},{back_link}" if target_tags else back_link
-                    )
-                    if len(new_tags) > 500:
-                        link_warning = f"Tag overflow (>{500} chars) — skipped resolved_by: back-link on target"
-                    else:
-                        target_meta_updated = dict(target_meta)
-                        target_meta_updated["tags"] = new_tags
-                        collection.update(
-                            ids=[resolves_id], metadatas=[target_meta_updated]
-                        )
-
-                        # Update tag index for updated target tags
-                        try:
-                            tag_index.add_tags(resolves_id, new_tags)
-                        except Exception:
-                            pass  # Tag index sync failure is non-critical
-
-                linked_to = resolves_id
-        except Exception as e:
-            link_warning = f"Linking error: {e}"
-            resolves_id = None
-
-    # Option B bridge: auto-write to fix_outcomes when type:fix tag detected
-    bridge_result = None
-    if tags and "type:fix" in tags:
-        bridge_result = _bridge_to_fix_outcomes(content, context, tags)
-
-    result = {
-        "result": "Memory stored successfully!",
-        "id": doc_id,
-        "total_memories": collection.count(),
-        "timestamp": timestamp,
-        "quality_score": _q_score,
-    }
-    if bridge_result:
-        result["fix_outcome_bridged"] = True
-        result["bridge_chain_id"] = bridge_result.get("chain_id", "")
-
-    # Hybrid linking response fields
-    if linked_to:
-        result["linked_to"] = linked_to
-    if link_warning:
-        result["link_warning"] = link_warning
-    if tags and "type:fix" in tags and not resolves_id and not linked_to:
-        result["hint"] = (
-            "Tip: add a resolves:MEMORY_ID tag to link this fix to the problem memory it resolves"
+    # Delegate to WritePipeline (with inline fallback)
+    if _write_pipeline is not None:
+        # Refresh mutable helpers
+        _write_pipeline.h["cluster_store"] = _cluster_store
+        _write_pipeline.h["server_project"] = _SERVER_PROJECT
+        _write_pipeline.h["server_subproject"] = _SERVER_SUBPROJECT
+        result = _write_pipeline.write(
+            content,
+            context=context,
+            tags=tags,
+            force=force,
+            source_session_id=source_session_id,
+            source_observation_ids=source_observation_ids,
         )
+        # Mark tag co-occurrence as dirty if tags changed
+        if tags:
+            _tag_cooccurrence_dirty = True
+        return result
 
-    return result
+    # Pipeline not initialized — return error
+    return {"error": "Write pipeline not initialized", "total_memories": 0}
 
 
 # DORMANT — saves ~70 tokens/prompt. Uncomment @mcp.tool() to reactivate.
