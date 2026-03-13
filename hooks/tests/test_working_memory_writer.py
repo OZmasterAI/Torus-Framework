@@ -46,6 +46,7 @@ def test(name, condition, detail=""):
 from shared.working_memory_writer import (
     WorkingMemoryWriter,
     _token_estimate,
+    _content_token_estimate,
     TOKEN_CAP,
     OPS_SECTION_TOKEN_CAP,
 )
@@ -330,11 +331,19 @@ state_big = make_tracker_state(
 )
 writer_cap.write_expanded(state_big)
 
-token_count = writer_cap.get_token_estimate()
+# Content tokens (excluding headers) should be under TOKEN_CAP
+content_tokens = _content_token_estimate(state_big, include_context=True)
 test(
-    f"token cap enforced (~{TOKEN_CAP} tokens)",
-    token_count <= TOKEN_CAP + 50,  # +50 tolerance for rounding
-    f"got {token_count} tokens",
+    f"content token cap enforced (~{TOKEN_CAP} content tokens, headers free)",
+    content_tokens <= TOKEN_CAP + 20,  # +20 tolerance for rounding
+    f"got {content_tokens} content tokens",
+)
+# Full file will be larger (headers add ~35 tokens overhead)
+full_tokens = writer_cap.get_token_estimate()
+test(
+    "full file larger than content (overhead is extra)",
+    full_tokens > content_tokens,
+    f"full={full_tokens}, content={content_tokens}",
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
