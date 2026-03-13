@@ -299,7 +299,10 @@ def main():
         if _hooks_dir not in _sys.path:
             _sys.path.insert(0, _hooks_dir)
         from shared.operation_tracker import OperationTracker
-        from shared.working_memory_writer import WorkingMemoryWriter
+        from shared.working_memory_writer import (
+            WorkingMemoryWriter,
+            inject_enforcer_fields,
+        )
 
         _session_id = data.get("session_id", "main")
         _op_tracker = OperationTracker(_session_id)
@@ -331,6 +334,13 @@ def main():
         ):
             _should_expand = True
         if _should_expand:
+            try:
+                from shared.state import load_state as _load_enf
+
+                _enf = _load_enf(session_id=_session_id)
+                inject_enforcer_fields(_tracker_state, _enf)
+            except Exception:
+                pass  # Enrichment is best-effort
             _writer.write_expanded(_tracker_state)
             _tracker_state["expand_written_at_turn"] = _total_turns
             _op_tracker._save_state(_tracker_state)

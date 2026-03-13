@@ -64,12 +64,16 @@ def main():
     # so working-memory.md carries full decisions/chains/errors through the clear
     try:
         from shared.operation_tracker import OperationTracker
-        from shared.working_memory_writer import WorkingMemoryWriter
+        from shared.working_memory_writer import (
+            WorkingMemoryWriter,
+            inject_enforcer_fields,
+        )
 
         _op_tracker = OperationTracker(session_id)
         _tracker_state = _op_tracker.get_state()
         _tracker_state["_session_id"] = session_id
         if not _tracker_state.get("expand_written", False):
+            inject_enforcer_fields(_tracker_state, state)
             _rules_dir = os.path.join(os.path.expanduser("~"), ".claude", "rules")
             _writer = WorkingMemoryWriter(_rules_dir)
             _writer.write_expanded(_tracker_state)

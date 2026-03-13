@@ -272,7 +272,7 @@ test(
 test("Key Decisions subsection present", "### Key Decisions" in content_exp)
 test("Decision text captured", "Option 3 confirmed" in content_exp)
 test("Causal Chain section present", "### Causal Chain" in content_exp)
-test("Unresolved section present", "### Unresolved" in content_exp)
+test("Errors section present", "### Errors" in content_exp)
 test("expand_written flag set", writer_exp._expand_written is True)
 
 # write_status after write_expanded should include context

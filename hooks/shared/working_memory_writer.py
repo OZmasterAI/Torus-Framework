@@ -46,6 +46,19 @@ def _get_branch() -> str:
         return "unknown"
 
 
+def inject_enforcer_fields(tracker_state: dict, enforcer_state: dict) -> None:
+    """Inject enforcer state fields into tracker_state for context section.
+
+    The context section needs data from both operation tracker and enforcer state.
+    Prefixed with _ to avoid collisions with tracker's own fields.
+    """
+    tracker_state["_error_pattern_counts"] = enforcer_state.get(
+        "error_pattern_counts", {}
+    )
+    tracker_state["_edit_streak"] = enforcer_state.get("edit_streak", {})
+    tracker_state["_files_read"] = enforcer_state.get("files_read", [])
+
+
 # ── Section builders ──────────────────────────────────────────────────────────
 
 
@@ -158,29 +171,43 @@ def _build_context_section(tracker_state: dict) -> str:
         lines.append("### Causal Chain")
         lines.append("- (too few operations)")
 
-    # Unresolved errors
+    # Errors — from error_pattern_counts (enforcer state) + unresolved ops
+    error_counts = tracker_state.get("_error_pattern_counts", {})
     unresolved = tracker_state.get("unresolved_errors", [])
-    lines.append("### Unresolved")
-    if unresolved:
+    lines.append("### Errors")
+    if error_counts or unresolved:
+        for pattern, count in sorted(
+            error_counts.items(), key=lambda x: x[1], reverse=True
+        )[:5]:
+            lines.append(f"- {pattern}: {count}x")
         for e in unresolved[-3:]:
             lines.append(f"- {e[:100]}")
     else:
         lines.append("- (none)")
 
-    # Files modified
-    completed = tracker_state.get("completed_ops", [])
-    modified = []
-    for op in completed:
-        if op.get("type") == "write":
-            for f in op.get("files", []):
-                if f not in modified:
-                    modified.append(f)
-
-    lines.append("### Files Modified This Session")
-    if modified:
-        for f in modified[-8:]:
-            lines.append(f"- {f}")
+    # Hot Files — merge edit counts + read counts per file
+    edit_streak = tracker_state.get("_edit_streak", {})
+    files_read_list = tracker_state.get("_files_read", [])
+    # Count reads per file
+    read_counts = {}
+    for f in files_read_list:
+        read_counts[f] = read_counts.get(f, 0) + 1
+    # Merge all files that were either edited or read
+    all_files = set(edit_streak.keys()) | set(read_counts.keys())
+    if all_files:
+        hot = []
+        for f in all_files:
+            edits = edit_streak.get(f, 0)
+            reads = read_counts.get(f, 0)
+            hot.append((f, edits, reads))
+        # Sort by total activity (edits + reads), show top 8
+        hot.sort(key=lambda x: x[1] + x[2], reverse=True)
+        lines.append("### Hot Files")
+        for f, edits, reads in hot[:8]:
+            name = os.path.basename(f)
+            lines.append(f"- {name}: {edits}e {reads}r")
     else:
+        lines.append("### Hot Files")
         lines.append("- (none)")
 
     return "\n".join(lines) + "\n"
