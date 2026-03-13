@@ -115,7 +115,7 @@ def _format_op_line(op: dict) -> str:
 
 def _build_context_section(tracker_state: dict) -> str:
     """Build the Context section (+200-350 tokens). Written at threshold."""
-    lines = ["## Context"]
+    lines = ["## Context (expanded at threshold)"]
 
     # Key decisions
     decisions = tracker_state.get("decisions", [])

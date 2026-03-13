@@ -264,7 +264,10 @@ writer_exp.write_expanded(state_exp)
 with open(os.path.join(tmpdir_exp, "working-memory.md")) as f:
     content_exp = f.read()
 
-test("Context section header present after write_expanded", "## Context" in content_exp)
+test(
+    "Context section header present after write_expanded",
+    "## Context (expanded at threshold)" in content_exp,
+)
 test("Key Decisions subsection present", "### Key Decisions" in content_exp)
 test("Decision text captured", "Option 3 confirmed" in content_exp)
 test("Unresolved section present", "### Unresolved" in content_exp)
@@ -275,7 +278,8 @@ writer_exp.write_status(state_exp)
 with open(os.path.join(tmpdir_exp, "working-memory.md")) as f:
     content_after_status = f.read()
 test(
-    "write_status preserves context after expand", "## Context" in content_after_status
+    "write_status preserves context after expand",
+    "## Context (expanded at threshold)" in content_after_status,
 )
 
 # clear_expand resets flag
@@ -385,7 +389,10 @@ test("session id in header", "Session" in content_fmt)
 test("branch in header", "Branch:" in content_fmt)
 test("## Status header present", "## Status\n" in content_fmt)
 test("## Operations header present", "## Operations\n" in content_fmt)
-test("## Context header present after expand", "## Context\n" in content_fmt)
+test(
+    "## Context header present after expand",
+    "## Context (expanded at threshold)\n" in content_fmt,
+)
 test("op lines start with dash", "- [Op" in content_fmt)
 test(
     "outcome in brackets",
