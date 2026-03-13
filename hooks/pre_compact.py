@@ -84,6 +84,18 @@ def main():
             file=sys.stderr,
         )
 
+    # Start 5-turn countdown to clear working-summary.md after compaction
+    try:
+        _tracker_state["summary_clear_countdown"] = 5
+        _tracker_state["summary_threshold_fired"] = False  # Reset for next cycle
+        _op_tracker._save_state(_tracker_state)
+        print(
+            "[PreCompact] Working summary countdown started (5 turns)",
+            file=sys.stderr,
+        )
+    except Exception:
+        pass  # Non-blocking
+
     # Extract snapshot metrics
     tool_call_count = state.get("tool_call_count", 0)
     files_read_count = len(state.get("files_read", []))

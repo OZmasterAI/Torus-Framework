@@ -337,6 +337,53 @@ def main():
     except Exception:
         pass  # Working memory failures must never crash the hook
 
+    # --- Context threshold: read real context % from statusline snapshot ---
+    try:
+        _SUMMARY_THRESHOLD_PCT = 65  # Fire at 65% context usage
+
+        _snapshot_path = os.path.join(_HOOKS_DIR, ".statusline_snapshot.json")
+        _context_pct = 0
+        if os.path.exists(_snapshot_path):
+            with open(_snapshot_path) as _sf:
+                _snap = json.load(_sf)
+            _context_pct = _snap.get("context_pct", 0)
+
+        _threshold_fired = _tracker_state.get("summary_threshold_fired", False)
+
+        if _context_pct >= _SUMMARY_THRESHOLD_PCT and not _threshold_fired:
+            # Fire threshold: warn user + set flag for gate 21
+            print(
+                f"<working-memory-warning>[WORKING MEMORY] Context at ~{_context_pct}%. "
+                f"Run /working-summary to save context before compaction, "
+                f"then consider /clear.</working-memory-warning>"
+            )
+            _tracker_state["summary_threshold_fired"] = True
+            _op_tracker._save_state(_tracker_state)
+    except Exception:
+        pass  # Threshold detection failures must never crash the hook
+
+    # --- Summary clear countdown (5 turns post-compaction) ---
+    try:
+        _countdown = _tracker_state.get("summary_clear_countdown", -1)
+        if _countdown > 0:
+            _tracker_state["summary_clear_countdown"] = _countdown - 1
+            _op_tracker._save_state(_tracker_state)
+        elif _countdown == 0:
+            # Clear working-summary.md to stub
+            _summary_path = os.path.join(_rules_dir, "working-summary.md")
+            _stub = (
+                "# Working Summary (Claude-written at context threshold)\n"
+                "<!-- This file is auto-managed. Claude writes it at ~65% context. "
+                "Do not edit manually. -->\n"
+                "(awaiting threshold)\n"
+            )
+            with open(_summary_path, "w") as f:
+                f.write(_stub)
+            _tracker_state["summary_clear_countdown"] = -1  # Deactivate
+            _op_tracker._save_state(_tracker_state)
+    except Exception:
+        pass  # Countdown failures must never crash the hook
+
     # --- Capture phase (append observation to queue) ---
 
     try:

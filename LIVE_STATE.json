@@ -1,9 +1,9 @@
 {
-  "session_count": 420,
+  "session_count": 421,
   "project": "torus-framework",
-  "feature": "state-type-classification",
+  "feature": "voice-web-routing-fix",
   "framework_version": "v2.8.3",
-  "what_was_done": "Implemented state_type C-lite Final (Rule 5b upgrade). Added classify_state_type() to memory_classification.py, state_type column to LanceDB, wired into WritePipeline + SearchPipeline + search_knowledge(). Backfilled 465 entries (26 ephemeral, 439 conceptual, 2,322 unclassified). 64 tests passing.",
+  "what_was_done": "Fixed voice-web tmux routing bug (colon suffix forces session-name resolution), added per-session color pills and colored Sent flash to voice-web UI",
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
@@ -18,5 +18,6 @@
     "Memory stale purge \u2014 2,788 entries, run maintenance(action='stale')",
     "Toroidal Teams v2 \u2014 inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)",
     "Tune state_type keyword lists after real usage \u2014 monitor false positives/negatives over next few sessions"
-  ]
+  ],
+  "last_response_preview": "```\ntmux new-session -s name\n```\n\nOr detached (background):\n\n```\ntmux new -d -s name\n```"
 }
