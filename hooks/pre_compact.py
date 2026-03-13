@@ -14,7 +14,9 @@ import sys
 import time
 from datetime import datetime
 
-CAPTURE_QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".capture_queue.jsonl")
+CAPTURE_QUEUE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".capture_queue.jsonl"
+)
 
 TOOL_CATEGORIES = {
     "read_only": {"Read", "Grep", "Glob", "WebSearch", "WebFetch"},
@@ -34,7 +36,9 @@ def _categorize_tools(tool_stats):
             categories["write"] += count
         elif tool_name in TOOL_CATEGORIES.get("execution", set()):
             categories["execution"] += count
-        elif tool_name.startswith("mcp__memory__") or tool_name.startswith("mcp_memory_"):
+        elif tool_name.startswith("mcp__memory__") or tool_name.startswith(
+            "mcp_memory_"
+        ):
             categories["memory"] += count
         else:
             categories["other"] += count
@@ -53,7 +57,32 @@ def main():
     # Load enforcer state for this session
     sys.path.insert(0, os.path.dirname(__file__))
     from shared.state import load_state
+
     state = load_state(session_id=session_id)
+
+    # EXPAND_AFTER_CLEAR_WARNING — force-write expanded context before compaction
+    # so working-memory.md carries full decisions/chains/errors through the clear
+    try:
+        from shared.operation_tracker import OperationTracker
+        from shared.working_memory_writer import WorkingMemoryWriter
+
+        _op_tracker = OperationTracker(session_id)
+        _tracker_state = _op_tracker.get_state()
+        _tracker_state["_session_id"] = session_id
+        if not _tracker_state.get("expand_written", False):
+            _rules_dir = os.path.join(os.path.expanduser("~"), ".claude", "rules")
+            _writer = WorkingMemoryWriter(_rules_dir)
+            _writer.write_expanded(_tracker_state)
+            _op_tracker._save_state(_tracker_state)
+            print(
+                "[PreCompact] Working memory expanded before compaction",
+                file=sys.stderr,
+            )
+    except Exception as e:
+        print(
+            f"[PreCompact] Working memory expand failed (non-blocking): {e}",
+            file=sys.stderr,
+        )
 
     # Extract snapshot metrics
     tool_call_count = state.get("tool_call_count", 0)
@@ -67,7 +96,9 @@ def main():
     tool_call_rate = round((tool_call_count / session_elapsed) * 60, 1)  # calls/min
     edit_count = pending_count + verified_count
     edit_rate = round((edit_count / session_elapsed) * 60, 1)  # edits/min
-    velocity_tier = "high" if tool_call_rate > 40 else ("normal" if tool_call_rate > 10 else "low")
+    velocity_tier = (
+        "high" if tool_call_rate > 40 else ("normal" if tool_call_rate > 10 else "low")
+    )
 
     # Extract enriched state data (error and chain tracking)
     error_pattern_counts = state.get("error_pattern_counts", {})
@@ -78,7 +109,9 @@ def main():
     tool_stats = state.get("tool_stats", {})
 
     # Log snapshot to stderr (visible in Claude Code hook output)
-    error_patterns_summary = f"{len(error_pattern_counts)} patterns" if error_pattern_counts else "none"
+    error_patterns_summary = (
+        f"{len(error_pattern_counts)} patterns" if error_pattern_counts else "none"
+    )
     chains_summary = f"{len(pending_chain_ids)} active" if pending_chain_ids else "none"
     bans_summary = f"{len(active_bans)} active" if active_bans else "none"
 
@@ -104,13 +137,17 @@ def main():
         f"{pending_count} pending, "
         f"{verified_count} verified, "
         f"{elapsed:.0f}s elapsed",
-        f"Velocity: {tool_call_rate} calls/min, {edit_rate} edits/min ({velocity_tier})"
+        f"Velocity: {tool_call_rate} calls/min, {edit_rate} edits/min ({velocity_tier})",
     ]
 
     # Add enriched state data
     if error_pattern_counts:
-        top_errors = sorted(error_pattern_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-        error_summary = "; ".join([f"{pattern}: {count}" for pattern, count in top_errors])
+        top_errors = sorted(
+            error_pattern_counts.items(), key=lambda x: x[1], reverse=True
+        )[:3]
+        error_summary = "; ".join(
+            [f"{pattern}: {count}" for pattern, count in top_errors]
+        )
         document_parts.append(f"Error patterns: {error_summary}")
 
     if pending_chain_ids:
@@ -123,13 +160,19 @@ def main():
         document_parts.append(f"Gate 6 warnings: {gate6_warn_count}")
 
     if error_windows:
-        recent_errors = len([w for w in error_windows if time.time() - w.get("last_seen", 0) < 300])  # last 5 minutes
+        recent_errors = len(
+            [w for w in error_windows if time.time() - w.get("last_seen", 0) < 300]
+        )  # last 5 minutes
         if recent_errors > 0:
             document_parts.append(f"Recent errors (5m): {recent_errors}")
 
     if tool_stats:
-        top_tools = sorted(tool_stats.items(), key=lambda x: x[1].get("count", 0), reverse=True)[:3]
-        tools_summary = ", ".join(f"{tool}:{stats.get('count', 0)}" for tool, stats in top_tools)
+        top_tools = sorted(
+            tool_stats.items(), key=lambda x: x[1].get("count", 0), reverse=True
+        )[:3]
+        tools_summary = ", ".join(
+            f"{tool}:{stats.get('count', 0)}" for tool, stats in top_tools
+        )
         document_parts.append(f"Top tools: {tools_summary}")
 
     # Tool category breakdown
@@ -161,7 +204,9 @@ def main():
 
     # High churn files (edit_streak >= 4)
     edit_streak = state.get("edit_streak", {})
-    high_churn = {f: c for f, c in edit_streak.items() if isinstance(c, (int, float)) and c >= 4}
+    high_churn = {
+        f: c for f, c in edit_streak.items() if isinstance(c, (int, float)) and c >= 4
+    }
     if high_churn:
         churn_items = sorted(high_churn.items(), key=lambda x: x[1], reverse=True)
         churn_summary = ", ".join(f"{f} ({c}x)" for f, c in churn_items)
@@ -180,7 +225,12 @@ def main():
     # Skill usage (only surface in long sessions to avoid noise)
     skill_usage = state.get("skill_usage", {})
     if session_elapsed > 1800 and skill_usage:  # 30+ min AND skills were used
-        skills_summary = ", ".join(f"/{k} ({v}x)" for k, v in sorted(skill_usage.items(), key=lambda x: x[1], reverse=True)[:5])
+        skills_summary = ", ".join(
+            f"/{k} ({v}x)"
+            for k, v in sorted(skill_usage.items(), key=lambda x: x[1], reverse=True)[
+                :5
+            ]
+        )
         document_parts.append(f"Skills used: {skills_summary}")
     elif session_elapsed > 1800 and not skill_usage:
         document_parts.append("NOTE: Long session with no skill invocations")
@@ -218,7 +268,9 @@ def main():
         "edit_rate": edit_rate,
         "velocity_tier": velocity_tier,
         "session_elapsed_seconds": round(session_elapsed, 0),
-        "tool_stats_snapshot": {k: v.get("count", 0) for k, v in tool_stats.items()} if tool_stats else {},
+        "tool_stats_snapshot": {k: v.get("count", 0) for k, v in tool_stats.items()}
+        if tool_stats
+        else {},
         "tool_categories": tool_categories if tool_categories else {},
         "tool_mix_sentiment": tool_mix_sentiment if tool_categories else "unknown",
         "high_churn_count": len(high_churn),
@@ -243,23 +295,26 @@ def main():
     # Save to memory via UDS socket so post-compaction context is richer
     try:
         import socket as _socket
+
         sock_path = os.path.join(os.path.dirname(__file__), ".memory.sock")
         if os.path.exists(sock_path):
             sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
             sock.settimeout(2)
             sock.connect(sock_path)
-            msg = json.dumps({
-                "method": "add_observation",
-                "document": document,
-                "metadata": {
-                    "tool_name": "PreCompact",
-                    "session_id": session_id,
-                    "timestamp": timestamp,
-                    "snapshot_type": "pre_compact",
-                    "trajectory": trajectory,
-                },
-                "id": f"precompact_{obs_id}",
-            })
+            msg = json.dumps(
+                {
+                    "method": "add_observation",
+                    "document": document,
+                    "metadata": {
+                        "tool_name": "PreCompact",
+                        "session_id": session_id,
+                        "timestamp": timestamp,
+                        "snapshot_type": "pre_compact",
+                        "trajectory": trajectory,
+                    },
+                    "id": f"precompact_{obs_id}",
+                }
+            )
             sock.sendall(msg.encode() + b"\n")
             sock.close()
     except Exception:
@@ -270,7 +325,10 @@ def main():
     pending_verif = state.get("pending_verification", [])
     if files_edited or pending_verif:
         active_files = list(set(files_edited[-10:] + pending_verif[-5:]))
-        print(f"[PreCompact] Active files: {', '.join(os.path.basename(f) for f in active_files)}", file=sys.stderr)
+        print(
+            f"[PreCompact] Active files: {', '.join(os.path.basename(f) for f in active_files)}",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":
