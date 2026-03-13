@@ -271,6 +271,7 @@ test(
 )
 test("Key Decisions subsection present", "### Key Decisions" in content_exp)
 test("Decision text captured", "Option 3 confirmed" in content_exp)
+test("Causal Chain section present", "### Causal Chain" in content_exp)
 test("Unresolved section present", "### Unresolved" in content_exp)
 test("expand_written flag set", writer_exp._expand_written is True)
 
@@ -299,6 +300,62 @@ writer_exp2.write_expanded(state_exp2)
 test(
     "write_expanded sets expand_written=True in tracker_state",
     state_exp2["expand_written"] is True,
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Section 4b: Causal chain detection
+# ─────────────────────────────────────────────────────────────────────────────
+print("\n--- WorkingMemoryWriter: Causal chain ---")
+
+# Ops that share files should be linked
+writer_cc, tmpdir_cc = make_writer()
+linked_ops = [
+    make_op(
+        1, "read", "Read state module", "success", files=["/hooks/shared/state.py"]
+    ),
+    make_op(
+        2, "write", "Edit state module", "success", files=["/hooks/shared/state.py"]
+    ),
+    make_op(
+        3, "verify", "Test state module", "success", files=["/hooks/shared/state.py"]
+    ),
+]
+state_cc = make_tracker_state(
+    completed_ops=linked_ops,
+    decisions=["Use new state format"],
+    current_op_type="read",
+    current_op_id=4,
+)
+writer_cc.write_expanded(state_cc)
+with open(os.path.join(tmpdir_cc, "working-memory.md")) as f:
+    content_cc = f.read()
+
+test(
+    "Causal chain shows linked ops",
+    "Op1" in content_cc and "Op2" in content_cc and "→" in content_cc,
+)
+
+# Ops with no file overlap should not be linked
+writer_cc2, tmpdir_cc2 = make_writer()
+unlinked_ops = [
+    make_op(1, "read", "Read config", "success", files=["/config.json"]),
+    make_op(2, "write", "Edit tests", "success", files=["/tests/test_foo.py"]),
+    make_op(3, "read", "Read docs", "success", files=["/docs/plan.md"]),
+]
+state_cc2 = make_tracker_state(
+    completed_ops=unlinked_ops,
+    decisions=["Test decision"],
+    current_op_type="read",
+    current_op_id=4,
+)
+writer_cc2.write_expanded(state_cc2)
+with open(os.path.join(tmpdir_cc2, "working-memory.md")) as f:
+    content_cc2 = f.read()
+
+test(
+    "Unlinked ops show no chain",
+    "no linked operations" in content_cc2
+    or "→" not in content_cc2.split("### Causal Chain")[1].split("###")[0],
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
