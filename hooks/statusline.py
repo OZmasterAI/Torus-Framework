@@ -23,14 +23,25 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.memory_socket import is_worker_available, count as socket_count, WorkerUnavailable
+from shared.memory_socket import (
+    is_worker_available,
+    count as socket_count,
+    WorkerUnavailable,
+)
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
 
 # State files may live on tmpfs ramdisk for performance
 try:
-    from shared.ramdisk import get_state_dir, is_ramdisk_available, RAMDISK_DIR, TMPFS_AUDIT_DIR, BACKUP_AUDIT_DIR
+    from shared.ramdisk import (
+        get_state_dir,
+        is_ramdisk_available,
+        RAMDISK_DIR,
+        TMPFS_AUDIT_DIR,
+        BACKUP_AUDIT_DIR,
+    )
+
     STATE_FILE_DIR = get_state_dir()
     _HAS_RAMDISK = True
 except ImportError:
@@ -56,23 +67,29 @@ EXPECTED_HOOK_EVENTS = 13
 BAR_WIDTH = 10
 
 # ANSI color codes for health bar
-COLOR_CYAN = "\033[96m"     # 100%        — perfect health
-COLOR_GREEN = "\033[92m"    # 90-99%      — healthy
+COLOR_CYAN = "\033[96m"  # 100%        — perfect health
+COLOR_GREEN = "\033[92m"  # 90-99%      — healthy
 COLOR_ORANGE = "\033[38;5;208m"  # 75-89% — warning
-COLOR_YELLOW = "\033[93m"   # 50-74%      — degraded
-COLOR_RED = "\033[91m"      # <50%        — critical
+COLOR_YELLOW = "\033[93m"  # 50-74%      — degraded
+COLOR_RED = "\033[91m"  # <50%        — critical
 COLOR_DARK_ORANGE = "\033[38;5;166m"  # dark orange — Opus model bracket
 COLOR_RESET = "\033[0m"
 
 
 DORMANT_GATES = {"gate_08_temporal.py"}
 
+
 def count_gates():
     """Count active gate_*.py files in the gates directory (excludes dormant/merged)."""
     if not os.path.isdir(GATES_DIR):
         return 0
-    return len([f for f in os.listdir(GATES_DIR)
-                if f.startswith("gate_") and f.endswith(".py") and f not in DORMANT_GATES])
+    return len(
+        [
+            f
+            for f in os.listdir(GATES_DIR)
+            if f.startswith("gate_") and f.endswith(".py") and f not in DORMANT_GATES
+        ]
+    )
 
 
 def get_memory_count():
@@ -133,6 +150,7 @@ def get_session_number():
     """
     try:
         from boot_pkg.util import detect_project, load_project_state
+
         _proj_name, _proj_dir, _sub_name, _sub_dir = detect_project()
         _eff_dir = _sub_dir or _proj_dir
         if _eff_dir:
@@ -159,6 +177,7 @@ def get_project_name():
     """
     try:
         from boot_pkg.util import detect_project
+
         _proj_name, _proj_dir, _sub_name, _sub_dir = detect_project()
         if _proj_name:
             if _sub_name:
@@ -204,6 +223,7 @@ def count_hook_events():
 def _load_session_state(session_id=None):
     """Load session state file. Uses session_id if provided, else most recent."""
     import glob as globmod
+
     if session_id:
         specific = os.path.join(STATE_FILE_DIR, f"state_{session_id}.json")
         if os.path.exists(specific):
@@ -344,7 +364,12 @@ def get_active_mode():
             name = f.read().strip()
         if name:
             # Use short abbreviations for known modes
-            abbrevs = {"coding": "code", "review": "rev", "debug": "dbg", "docs": "docs"}
+            abbrevs = {
+                "coding": "code",
+                "review": "rev",
+                "debug": "dbg",
+                "docs": "docs",
+            }
             return abbrevs.get(name, name[:6])
         return None
     except (FileNotFoundError, OSError):
@@ -412,7 +437,9 @@ def get_ramdisk_health():
         if os.path.isdir(TMPFS_AUDIT_DIR):
             for f in os.listdir(TMPFS_AUDIT_DIR):
                 try:
-                    tmpfs_audit_size += os.path.getsize(os.path.join(TMPFS_AUDIT_DIR, f))
+                    tmpfs_audit_size += os.path.getsize(
+                        os.path.join(TMPFS_AUDIT_DIR, f)
+                    )
                 except OSError:
                     pass
 
@@ -545,10 +572,13 @@ def get_git_branch(session_id=None):
         pass
     # Cache miss — run git
     import subprocess
+
     try:
         result = subprocess.run(
             ["git", "branch", "--show-current"],
-            capture_output=True, text=True, timeout=2
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         branch = result.stdout.strip() if result.returncode == 0 else None
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -569,8 +599,8 @@ def format_health_bar(pct):
     2 gradient segments (left=fg, right=bg) via U+258C. 10 chars = 20 segments.
     Positional gradient reversed from CTX: red(0%) → green(100%).
     """
-    chars = 10       # physical character width
-    segments = 20    # logical segments (2 per char via fg/bg)
+    chars = 10  # physical character width
+    segments = 20  # logical segments (2 per char via fg/bg)
     filled = round(pct / 100 * segments)
     filled = max(0, min(segments, filled))
 
@@ -625,8 +655,8 @@ COLOR_DARK_GRAY = "\033[38;5;238m"
 # Smooth gradient using 256-color ANSI — matches Anthropic console style
 # Each entry is (threshold_pct, ansi_256_color_code)
 _CTX_GRADIENT = [
-    (0,  82),   # bright green
-    (15, 76),   # green
+    (0, 82),  # bright green
+    (15, 76),  # green
     (25, 112),  # yellow-green
     (35, 148),  # light yellow-green
     (45, 184),  # yellow
@@ -660,16 +690,16 @@ _BG_DARK = "\033[48;5;236m"
 
 # HP gradient: reversed — red(0%) → green(100%), so full health = green end
 _HP_GRADIENT = [
-    (0,  196),  # red
-    (8,  202),  # dark orange
+    (0, 196),  # red
+    (8, 202),  # dark orange
     (15, 208),  # orange
     (25, 214),  # light orange
     (35, 220),  # golden yellow
     (45, 184),  # yellow
     (55, 148),  # light yellow-green
     (65, 112),  # yellow-green
-    (75, 76),   # green
-    (85, 82),   # bright green
+    (75, 76),  # green
+    (85, 82),  # bright green
 ]
 
 
@@ -698,16 +728,16 @@ def format_context_bar(pct, cmp_count=0):
     (left half = foreground, right half = background). 10 chars = 20 segments.
     Compaction threshold marked at ~93%.
     """
-    chars = 10       # physical character width (matches HP bar)
-    segments = 20    # logical segments (2 per char via fg/bg)
+    chars = 10  # physical character width (matches HP bar)
+    segments = 20  # logical segments (2 per char via fg/bg)
     filled = round(pct / 100 * segments)
     filled = max(0, min(segments, filled))
     comp_seg = round(COMPACTION_THRESHOLD / 100 * segments)  # ~18
 
     bar = ""
     for i in range(chars):
-        left = 2 * i        # left sub-segment index
-        right = 2 * i + 1   # right sub-segment index
+        left = 2 * i  # left sub-segment index
+        right = 2 * i + 1  # right sub-segment index
         left_pct = (left / segments) * 100
         right_pct = (right / segments) * 100
         left_filled = left < filled
@@ -741,7 +771,6 @@ def format_context_bar(pct, cmp_count=0):
 
 MEMORY_TS_FILE = os.path.join(HOOKS_DIR, ".memory_last_queried")
 CTX_CACHE_FILE = "/tmp/statusline-ctx-cache"
-
 
 
 def get_memory_freshness():
@@ -795,7 +824,9 @@ def get_compression_count(current_pct, session_id=""):
     # Write current state
     try:
         with open(CTX_CACHE_FILE, "w") as f:
-            json.dump({"pct": current_pct, "compressions": count, "session_id": session_id}, f)
+            json.dump(
+                {"pct": current_pct, "compressions": count, "session_id": session_id}, f
+            )
     except OSError:
         pass
     return count
@@ -885,10 +916,10 @@ def main():
         model_color = COLOR_DARK_ORANGE
     elif "sonnet" in model_lower:
         model_short = "Sonnet"
-        model_color = "\033[94m"   # blue
+        model_color = "\033[94m"  # blue
     elif "haiku" in model_lower:
         model_short = "Haiku"
-        model_color = "\033[97m"   # white
+        model_color = "\033[97m"  # white
     else:
         model_short = model_name.split()[-1] if model_name else "Claude"
         model_color = COLOR_CYAN
@@ -958,7 +989,9 @@ def main():
         line1_parts.append(rd_str)
 
     # ── LINE 2: Health bar + context bar + session metrics ──
-    ctx_pct_val = int(context_pct) if isinstance(context_pct, (int, float)) else 0
+    ctx_pct_val = (
+        max(0, int(context_pct)) if isinstance(context_pct, (int, float)) else 0
+    )
     cmp_count = get_compression_count(ctx_pct_val, session_id)
     ctx_bar = format_context_bar(ctx_pct_val, cmp_count)
 
@@ -1147,6 +1180,7 @@ if __name__ == "__main__":
     except Exception:
         # Fail-open: output minimal line on crash
         import traceback
+
         try:
             with open("/tmp/statusline_crash.log", "w") as _ef:
                 traceback.print_exc(file=_ef)
