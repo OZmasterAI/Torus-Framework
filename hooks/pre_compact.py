@@ -88,6 +88,8 @@ def main():
     try:
         _tracker_state["summary_clear_countdown"] = 5
         _tracker_state["summary_threshold_fired"] = False  # Reset for next cycle
+        _tracker_state["context_warning_shown"] = False  # Reset so warning fires again
+        _tracker_state["summary_warning_shown"] = False  # Reset stop hook state
         _op_tracker._save_state(_tracker_state)
         print(
             "[PreCompact] Working summary countdown started (5 turns)",
