@@ -142,7 +142,7 @@ def _build_context_section(tracker_state: dict) -> str:
     completed = tracker_state.get("completed_ops", [])
     modified = []
     for op in completed:
-        if op.get("type") in ("write", "verify"):
+        if op.get("type") == "write":
             for f in op.get("files", []):
                 if f not in modified:
                     modified.append(f)
