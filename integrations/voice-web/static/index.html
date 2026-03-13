@@ -265,8 +265,11 @@
           bar.innerHTML = "";
           data.sessions.forEach(function(name) {
             var tab = document.createElement("button");
+            var color = sessionColor(name);
             tab.className = "tab" + (name === currentTarget ? " active" : "");
             tab.textContent = name;
+            tab.style.borderColor = color;
+            if (name === currentTarget) { tab.style.background = color; tab.style.color = "white"; }
             tab.addEventListener("click", function() { selectSession(name); });
             bar.appendChild(tab);
           });
@@ -300,7 +303,12 @@
       updateSpeakerUI();
       var tabs = document.querySelectorAll("#session-tabs .tab");
       tabs.forEach(function(t) {
-        t.classList.toggle("active", t.textContent === name);
+        var isActive = t.textContent === name;
+        var c = sessionColor(t.textContent);
+        t.classList.toggle("active", isActive);
+        t.style.background = isActive ? c : "";
+        t.style.color = isActive ? "white" : "";
+        t.style.borderColor = c;
       });
       // Load per-session voice
       var saved = localStorage.getItem(voiceKeyFor(name)) || "en-US-GuyNeural";
