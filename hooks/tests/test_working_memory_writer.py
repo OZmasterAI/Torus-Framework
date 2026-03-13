@@ -62,14 +62,16 @@ def make_writer(tmpdir=None):
     return WorkingMemoryWriter(tmpdir), tmpdir
 
 
-def make_op(op_id, op_type="read", purpose="test op", outcome="success", files=None):
+def make_op(
+    op_id, op_type="read", purpose="test op", outcome="success", files=None, tools=None
+):
     return {
         "id": op_id,
         "type": op_type,
         "purpose": purpose,
         "outcome": outcome,
         "files": files or [f"/tmp/file_{op_id}.py"],
-        "tools": ["Read"],
+        "tools": tools or ["Read"],
         "start_turn": 1,
         "end_turn": 3,
     }
@@ -307,17 +309,27 @@ test(
 # ─────────────────────────────────────────────────────────────────────────────
 print("\n--- WorkingMemoryWriter: Causal chain ---")
 
-# Ops that share files should be linked
+# Ops where earlier op has write tool and shares files should chain
 writer_cc, tmpdir_cc = make_writer()
 linked_ops = [
     make_op(
         1, "read", "Read state module", "success", files=["/hooks/shared/state.py"]
     ),
     make_op(
-        2, "write", "Edit state module", "success", files=["/hooks/shared/state.py"]
+        2,
+        "write",
+        "Edit state module",
+        "success",
+        files=["/hooks/shared/state.py"],
+        tools=["Edit"],
     ),
     make_op(
-        3, "verify", "Test state module", "success", files=["/hooks/shared/state.py"]
+        3,
+        "verify",
+        "Test state module",
+        "success",
+        files=["/hooks/shared/state.py"],
+        tools=["Bash"],
     ),
 ]
 state_cc = make_tracker_state(
@@ -331,15 +343,26 @@ with open(os.path.join(tmpdir_cc, "working-memory.md")) as f:
     content_cc = f.read()
 
 test(
-    "Causal chain shows linked ops",
-    "Op1" in content_cc and "Op2" in content_cc and "→" in content_cc,
+    "Causal chain shows write-linked ops",
+    "Op2→Op3" in content_cc and "state.py" in content_cc,
+)
+test(
+    "Read-only op not in chain (Op1 has no write tool)",
+    "Op1→Op2" not in content_cc,
 )
 
 # Ops with no file overlap should not be linked
 writer_cc2, tmpdir_cc2 = make_writer()
 unlinked_ops = [
     make_op(1, "read", "Read config", "success", files=["/config.json"]),
-    make_op(2, "write", "Edit tests", "success", files=["/tests/test_foo.py"]),
+    make_op(
+        2,
+        "write",
+        "Edit tests",
+        "success",
+        files=["/tests/test_foo.py"],
+        tools=["Edit"],
+    ),
     make_op(3, "read", "Read docs", "success", files=["/docs/plan.md"]),
 ]
 state_cc2 = make_tracker_state(
@@ -356,6 +379,69 @@ test(
     "Unlinked ops show no chain",
     "no linked operations" in content_cc2
     or "→" not in content_cc2.split("### Causal Chain")[1].split("###")[0],
+)
+
+# Read-only ops on same file should NOT form chain
+writer_cc3, tmpdir_cc3 = make_writer()
+read_only_ops = [
+    make_op(1, "read", "Read state", "success", files=["/hooks/shared/state.py"]),
+    make_op(2, "read", "Read state again", "success", files=["/hooks/shared/state.py"]),
+]
+state_cc3 = make_tracker_state(
+    completed_ops=read_only_ops,
+    decisions=[],
+    current_op_type="read",
+    current_op_id=3,
+)
+writer_cc3.write_expanded(state_cc3)
+with open(os.path.join(tmpdir_cc3, "working-memory.md")) as f:
+    content_cc3 = f.read()
+
+test(
+    "Read-only ops on same file don't chain",
+    "no linked operations" in content_cc3,
+)
+
+# Multi-file chain: display shows Op{first}→Op{last} with all files
+writer_cc4, tmpdir_cc4 = make_writer()
+multi_chain_ops = [
+    make_op(
+        1,
+        "write",
+        "Edit errors",
+        "success",
+        files=["/errors.py", "/state.py"],
+        tools=["Edit"],
+    ),
+    make_op(
+        2,
+        "write",
+        "Edit state",
+        "success",
+        files=["/state.py", "/writer.py"],
+        tools=["Edit"],
+    ),
+    make_op(3, "read", "Read writer", "success", files=["/writer.py"]),
+]
+state_cc4 = make_tracker_state(
+    completed_ops=multi_chain_ops,
+    decisions=[],
+    current_op_type="read",
+    current_op_id=4,
+)
+writer_cc4.write_expanded(state_cc4)
+with open(os.path.join(tmpdir_cc4, "working-memory.md")) as f:
+    content_cc4 = f.read()
+
+test(
+    "Multi-op chain shows first→last",
+    "Op1→Op3" in content_cc4,
+)
+test(
+    "Multi-op chain shows all files",
+    "errors.py" in content_cc4
+    and "state.py" in content_cc4
+    and "writer.py" in content_cc4,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────

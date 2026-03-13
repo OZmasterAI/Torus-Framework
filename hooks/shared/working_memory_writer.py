@@ -142,7 +142,8 @@ def _build_context_section(tracker_state: dict) -> str:
     else:
         lines.append("- (none captured)")
 
-    # Causal chain — link ops that share files (A wrote → B read/wrote same files)
+    # Causal chain — link ops where earlier op wrote a file that later op touches
+    _WRITE_TOOLS = {"Edit", "Write", "NotebookEdit"}
     completed = tracker_state.get("completed_ops", [])
     if len(completed) >= 2:
         chains = []
@@ -150,7 +151,9 @@ def _build_context_section(tracker_state: dict) -> str:
         for prev_op, next_op in zip(completed, completed[1:]):
             prev_files = set(prev_op.get("files", []))
             next_files = set(next_op.get("files", []))
-            if prev_files & next_files:  # File overlap = causal link
+            prev_tools = set(prev_op.get("tools", []))
+            # Require file overlap AND earlier op has a write tool
+            if prev_files & next_files and prev_tools & _WRITE_TOOLS:
                 current_chain.append(next_op)
             else:
                 if len(current_chain) >= 2:
@@ -162,8 +165,19 @@ def _build_context_section(tracker_state: dict) -> str:
         if chains:
             lines.append("### Causal Chain")
             for chain in chains[-2:]:  # Show at most 2 chains
-                parts = [f"Op{op['id']} ({op.get('purpose', '')[:30]})" for op in chain]
-                lines.append(f"- {' → '.join(parts)}")
+                first_id = chain[0]["id"]
+                last_id = chain[-1]["id"]
+                # Collect unique files across chain, preserve order
+                seen = set()
+                chain_files = []
+                for op in chain:
+                    for f in op.get("files", []):
+                        name = os.path.basename(f)
+                        if name not in seen:
+                            seen.add(name)
+                            chain_files.append(name)
+                files_str = " → ".join(chain_files)
+                lines.append(f"- Op{first_id}→Op{last_id} ({files_str})")
         else:
             lines.append("### Causal Chain")
             lines.append("- (no linked operations detected)")
