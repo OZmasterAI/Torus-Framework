@@ -165,6 +165,64 @@ with open(os.path.join(tmpdir3, "working-memory.md")) as f:
 test("last completed op shown in status", "Op1: explore" in content3)
 test("last completed op outcome shown", "[success]" in content3)
 
+# Bookkeeping filter — last op skips bookkeeping files
+writer4, tmpdir4 = make_writer()
+state4 = make_tracker_state(
+    completed_ops=[
+        make_op(1, "write", "implementing feature", "success", files=["/tmp/real.py"]),
+        make_op(
+            2, "write", "write summary", "success", files=["/rules/working-summary.md"]
+        ),
+    ],
+)
+writer4.write_status(state4)
+with open(os.path.join(tmpdir4, "working-memory.md")) as f:
+    content4 = f.read()
+
+test("bookkeeping filter skips working-summary.md", "Op1: write" in content4)
+test("bookkeeping filter does not show skipped op", "Op2: write" not in content4)
+
+# Bookkeeping filter — all ops are bookkeeping → Last: (none)
+writer5, tmpdir5 = make_writer()
+state5 = make_tracker_state(
+    completed_ops=[
+        make_op(
+            1,
+            "read",
+            "read snapshot",
+            "success",
+            files=["/hooks/.statusline_snapshot.json"],
+        ),
+        make_op(
+            2, "write", "write summary", "success", files=["/rules/working-summary.md"]
+        ),
+    ],
+)
+writer5.write_status(state5)
+with open(os.path.join(tmpdir5, "working-memory.md")) as f:
+    content5 = f.read()
+
+test("all bookkeeping ops → Last: (none)", "Last: (none)" in content5)
+
+# Bookkeeping filter — mixed files (real + bookkeeping) NOT filtered
+writer6, tmpdir6 = make_writer()
+state6 = make_tracker_state(
+    completed_ops=[
+        make_op(
+            1,
+            "write",
+            "edit real and summary",
+            "success",
+            files=["/tmp/real.py", "/rules/working-summary.md"],
+        ),
+    ],
+)
+writer6.write_status(state6)
+with open(os.path.join(tmpdir6, "working-memory.md")) as f:
+    content6 = f.read()
+
+test("mixed files op NOT filtered", "Op1: write" in content6)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 2: Operations section with multiple ops
 # ─────────────────────────────────────────────────────────────────────────────

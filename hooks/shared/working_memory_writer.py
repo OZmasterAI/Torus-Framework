@@ -62,6 +62,20 @@ def inject_enforcer_fields(tracker_state: dict, enforcer_state: dict) -> None:
 # ── Section builders ──────────────────────────────────────────────────────────
 
 
+_BOOKKEEPING_FILES = {
+    "working-summary.md",
+    "working-memory.md",
+    "LIVE_STATE.json",
+    ".statusline_snapshot.json",
+}
+
+
+def _is_bookkeeping_op(op: dict) -> bool:
+    """Return True if all files in an op are bookkeeping files."""
+    files = op.get("files", [])
+    return bool(files) and all(os.path.basename(f) in _BOOKKEEPING_FILES for f in files)
+
+
 def _build_status_section(tracker_state: dict) -> str:
     """Build the Status section (~40 tokens)."""
     session_id = tracker_state.get("_session_id", "")
@@ -81,9 +95,14 @@ def _build_status_section(tracker_state: dict) -> str:
     else:
         active_line = "Active: (none)"
 
-    # Last completed op
+    # Last completed op — skip bookkeeping files
+    last = None
     if completed:
-        last = completed[-1]
+        for op in reversed(completed):
+            if not _is_bookkeeping_op(op):
+                last = op
+                break
+    if last:
         last_id = last.get("id", "?")
         last_type = last.get("type", "?")
         last_purpose = last.get("purpose", "")[:50]
