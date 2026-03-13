@@ -43,7 +43,12 @@ def test(name, condition, detail=""):
 
 # ── Import under test ─────────────────────────────────────────────────────────
 
-from shared.working_memory_writer import WorkingMemoryWriter, _token_estimate, TOKEN_CAP
+from shared.working_memory_writer import (
+    WorkingMemoryWriter,
+    _token_estimate,
+    TOKEN_CAP,
+    OPS_SECTION_TOKEN_CAP,
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -185,9 +190,9 @@ test("Op1 purpose shown", "Session orient" in content_ops)
 test("Op2 purpose shown", "Added state_type" in content_ops)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Section 3: FIFO eviction — more than 7-8 ops
+# Section 3: FIFO eviction — token-based (~500 tokens cap)
 # ─────────────────────────────────────────────────────────────────────────────
-print("\n--- WorkingMemoryWriter: FIFO eviction ---")
+print("\n--- WorkingMemoryWriter: FIFO eviction (token-based) ---")
 
 writer_fifo, tmpdir_fifo = make_writer()
 many_ops = [
@@ -200,10 +205,23 @@ writer_fifo.write_operations(state_fifo)
 with open(os.path.join(tmpdir_fifo, "working-memory.md")) as f:
     content_fifo = f.read()
 
-# With 15 ops each ~80 chars, the ops section should be capped
+# Extract just the Operations section to check token budget
+ops_start = content_fifo.find("## Operations")
+ops_end = content_fifo.find("\n##", ops_start + 1)
+if ops_end == -1:
+    ops_end = len(content_fifo)
+ops_section = content_fifo[ops_start:ops_end]
+ops_tokens = _token_estimate(ops_section)
+
+# With 15 ops each ~80 chars (~20 tokens), the ops section should be capped
 ops_section_size = content_fifo.count("[Op")
 test(
-    "FIFO eviction caps number of displayed ops",
+    "FIFO eviction caps ops section under token budget",
+    ops_tokens <= OPS_SECTION_TOKEN_CAP,
+    f"ops section is {ops_tokens} tokens (cap={OPS_SECTION_TOKEN_CAP}), {ops_section_size} ops",
+)
+test(
+    "FIFO eviction removes some ops (15 input, fewer output)",
     ops_section_size < 15,
     f"found {ops_section_size} ops in file",
 )
