@@ -310,17 +310,29 @@ def main():
         _writer = WorkingMemoryWriter(_rules_dir)
         _writer.write_status(_tracker_state)
 
-        # Check threshold for expand section
+        # Check threshold for expand section (Option 3: keep until replaced)
+        # First write at threshold, then refresh every N turns to stay current
         _total_turns = _tracker_state.get("total_turns", 0)
         _total_ops = _tracker_state.get("total_ops", 0)
         _expand_written = _tracker_state.get("expand_written", False)
+        _expand_turn = _tracker_state.get("expand_written_at_turn", 0)
         _EXPAND_TRIGGER_TURN = 60
         _EXPAND_TRIGGER_OP_COUNT = 10
+        _EXPAND_REFRESH_INTERVAL = 60
+        _should_expand = False
         if not _expand_written and (
             _total_turns > _EXPAND_TRIGGER_TURN or _total_ops > _EXPAND_TRIGGER_OP_COUNT
         ):
+            _should_expand = True
+        elif (
+            _expand_written
+            and _expand_turn > 0
+            and (_total_turns - _expand_turn >= _EXPAND_REFRESH_INTERVAL)
+        ):
+            _should_expand = True
+        if _should_expand:
             _writer.write_expanded(_tracker_state)
-            # Persist expand_written=True back to tracker state file
+            _tracker_state["expand_written_at_turn"] = _total_turns
             _op_tracker._save_state(_tracker_state)
     except Exception:
         pass  # Working memory failures must never crash the hook
