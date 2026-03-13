@@ -857,6 +857,21 @@ def main():
     lines_removed = cost_data.get("total_lines_removed", 0) or 0
     context_pct = ctx_data.get("used_percentage", 0) or 0
 
+    # ── EARLY SNAPSHOT: write context_pct immediately for threshold system ──
+    # If statusline crashes during rendering, this ensures _check_context_threshold()
+    # still reads fresh context_pct. Full snapshot overwrites at end of main().
+    try:
+        _snap_path = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
+        _snap_tmp = _snap_path + ".tmp"
+        _early_pct = (
+            max(0, int(context_pct)) if isinstance(context_pct, (int, float)) else 0
+        )
+        with open(_snap_tmp, "w") as _f:
+            json.dump({"ts": time.time(), "context_pct": _early_pct}, _f)
+        os.replace(_snap_tmp, _snap_path)
+    except OSError:
+        pass
+
     # Token counts — session totals
     total_in_tok = ctx_data.get("total_input_tokens", 0) or 0
     total_out_tok = ctx_data.get("total_output_tokens", 0) or 0
