@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 # ── Token budget constants ────────────────────────────────────────────────────
 
-TOKEN_CAP = 800  # Estimated max tokens for the whole file
-OPS_SECTION_TOKEN_CAP = 500  # Max tokens for the Operations section (FIFO eviction)
+TOKEN_CAP = 800  # Content token budget (headers/structural overhead excluded)
+OPS_SECTION_TOKEN_CAP = 500  # Content token budget for op lines only (header excluded)
 CHARS_PER_TOKEN = 4  # Rough estimate: 1 token ≈ 4 chars
 
 
@@ -83,12 +83,15 @@ def _build_status_section(tracker_state: dict) -> str:
 
 
 def _build_operations_section(tracker_state: dict) -> str:
-    """Build the Operations section, FIFO evict oldest when over OPS_SECTION_TOKEN_CAP."""
+    """Build the Operations section, FIFO evict oldest when over OPS_SECTION_TOKEN_CAP.
+
+    Token budget counts only op content lines — the '## Operations' header is free overhead.
+    """
     completed = tracker_state.get("completed_ops", [])
     if not completed:
         return "## Operations\n(none yet)\n"
 
-    # Format all ops, then FIFO evict oldest until under token cap
+    # Format all ops, then FIFO evict oldest until content fits under token cap
     lines = [_format_op_line(op) for op in completed]
     while lines and _token_estimate("\n".join(lines)) > OPS_SECTION_TOKEN_CAP:
         lines.pop(0)  # Evict oldest
@@ -152,6 +155,39 @@ def _build_context_section(tracker_state: dict) -> str:
         lines.append("- (none)")
 
     return "\n".join(lines) + "\n"
+
+
+def _content_token_estimate(tracker_state: dict, include_context: bool = False) -> int:
+    """Estimate tokens for content only (excludes structural headers).
+
+    Content = status lines + op lines + context body.
+    Headers like '## Status', '## Operations', '# Working Memory...' are free overhead.
+    """
+    tokens = 0
+
+    # Status content: Active + Last lines
+    status = _build_status_section(tracker_state)
+    # Strip the "## Status\n" header, count only the Active/Last lines
+    status_lines = [l for l in status.split("\n") if l and not l.startswith("## ")]
+    tokens += _token_estimate("\n".join(status_lines))
+
+    # Operations content: op summary lines only
+    completed = tracker_state.get("completed_ops", [])
+    if completed:
+        lines = [_format_op_line(op) for op in completed]
+        tokens += _token_estimate("\n".join(lines))
+
+    # Context content: decision/error/file lines only
+    if include_context:
+        context = _build_context_section(tracker_state)
+        context_lines = [
+            l
+            for l in context.split("\n")
+            if l and not l.startswith("## ") and not l.startswith("### ")
+        ]
+        tokens += _token_estimate("\n".join(context_lines))
+
+    return tokens
 
 
 def _build_full_file(
