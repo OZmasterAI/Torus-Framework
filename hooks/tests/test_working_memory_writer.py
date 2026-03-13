@@ -195,9 +195,16 @@ test("Op2 purpose shown", "Added state_type" in content_ops)
 print("\n--- WorkingMemoryWriter: FIFO eviction (token-based) ---")
 
 writer_fifo, tmpdir_fifo = make_writer()
+# Use 25 ops with verbose text to ensure we exceed 500-token ops section cap
 many_ops = [
-    make_op(i, "read", f"Op {i} purpose text here for testing", "success")
-    for i in range(1, 16)
+    make_op(
+        i,
+        "write",
+        f"Implemented feature {i} with detailed changes across multiple modules and comprehensive test coverage",
+        "success",
+        files=[f"/src/components/module_{i}.py", f"/tests/unit/test_module_{i}.py"],
+    )
+    for i in range(1, 26)
 ]
 state_fifo = make_tracker_state(completed_ops=many_ops)
 writer_fifo.write_operations(state_fifo)
@@ -212,27 +219,27 @@ if ops_end == -1:
     ops_end = len(content_fifo)
 ops_section = content_fifo[ops_start:ops_end]
 ops_tokens = _token_estimate(ops_section)
+ops_count = ops_section.count("[Op")
 
-# With 15 ops each ~80 chars (~20 tokens), the ops section should be capped
-ops_section_size = content_fifo.count("[Op")
 test(
     "FIFO eviction caps ops section under token budget",
     ops_tokens <= OPS_SECTION_TOKEN_CAP,
-    f"ops section is {ops_tokens} tokens (cap={OPS_SECTION_TOKEN_CAP}), {ops_section_size} ops",
+    f"ops section is {ops_tokens} tokens (cap={OPS_SECTION_TOKEN_CAP}), {ops_count} ops",
 )
 test(
-    "FIFO eviction removes some ops (15 input, fewer output)",
-    ops_section_size < 15,
-    f"found {ops_section_size} ops in file",
+    "FIFO eviction removes some ops (25 input, fewer output)",
+    ops_count < 25,
+    f"found {ops_count} ops in ops section",
 )
 test(
     "Newest ops retained",
-    f"Op{15}:" in content_fifo or f"Op15" in content_fifo,
-    f"Op15 not found in content",
+    "Op25:" in ops_section,
+    f"Op25 not found in ops section",
 )
 test(
-    "Oldest ops evicted when too many",
-    not ("Op1:" in content_fifo and "Op15:" in content_fifo) or ops_section_size <= 10,
+    "Oldest ops evicted",
+    "Op1:" not in ops_section,
+    f"Op1 should have been evicted",
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
