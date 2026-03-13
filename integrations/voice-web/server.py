@@ -87,10 +87,11 @@ async def is_tmux_session_alive(target):
 
 
 async def _send_keys(target, text):
-    rc, _, stderr = await _run(["tmux", "send-keys", "-t", target, "-l", text])
+    sess = target if ":" in target else target + ":"
+    rc, _, stderr = await _run(["tmux", "send-keys", "-t", sess, "-l", text])
     if rc != 0:
         raise TmuxError(f"send-keys failed: {stderr[:200]}")
-    rc2, _, stderr2 = await _run(["tmux", "send-keys", "-t", target, "Enter"])
+    rc2, _, stderr2 = await _run(["tmux", "send-keys", "-t", sess, "Enter"])
     if rc2 != 0:
         raise TmuxError(f"send-keys Enter failed: {stderr2[:200]}")
 
