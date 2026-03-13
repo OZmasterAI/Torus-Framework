@@ -293,8 +293,8 @@ class WorkingMemoryWriter:
         """
         try:
             content = _build_full_file(tracker_state, include_context=True)
-            # Enforce token cap — if over, trim operations section
-            if _token_estimate(content) > TOKEN_CAP:
+            # Enforce token cap on content only (headers are free overhead)
+            if _content_token_estimate(tracker_state, include_context=True) > TOKEN_CAP:
                 content = self._trim_to_cap(tracker_state)
             _atomic_write(self._output_path, content)
             self._expand_written = True
@@ -320,16 +320,18 @@ class WorkingMemoryWriter:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _trim_to_cap(self, tracker_state: dict) -> str:
-        """Build content that fits within TOKEN_CAP by reducing ops count."""
+        """Build content that fits within TOKEN_CAP by reducing ops count.
+
+        Token cap applies to content only — headers are free overhead.
+        """
         # Try with full context first, then reduce ops
         state = dict(tracker_state)
         completed = list(state.get("completed_ops", []))
 
         while completed:
             state["completed_ops"] = completed
-            content = _build_full_file(state, include_context=True)
-            if _token_estimate(content) <= TOKEN_CAP:
-                return content
+            if _content_token_estimate(state, include_context=True) <= TOKEN_CAP:
+                return _build_full_file(state, include_context=True)
             # Evict oldest op
             completed = completed[1:]
 
