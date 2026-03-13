@@ -368,77 +368,7 @@ test(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Section 9: Decision detection
-# ─────────────────────────────────────────────────────────────────────────────
-print("\n--- OperationTracker: Decision detection ---")
-
-tracker_d = make_tracker()
-tracker_d.process_tool_call(
-    "Read",
-    {"file_path": "/tmp/a.py"},
-    assistant_text="I decided to use Option 3 for this feature.",
-)
-state_d = tracker_d.get_state()
-decisions = state_d.get("decisions", [])
-test(
-    "decision 'decided' phrase captured",
-    len(decisions) > 0 and any("Option 3" in d for d in decisions),
-    f"decisions={decisions}",
-)
-
-tracker_d2 = make_tracker()
-tracker_d2.process_tool_call(
-    "Read",
-    {"file_path": "/tmp/a.py"},
-    assistant_text="I'll go with the hybrid approach for better performance.",
-)
-state_d2 = tracker_d2.get_state()
-decisions2 = state_d2.get("decisions", [])
-test(
-    'decision "I\'ll go with" phrase captured',
-    len(decisions2) > 0,
-    f"decisions={decisions2}",
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Section 10: FIFO for decisions — cap at 5
-# ─────────────────────────────────────────────────────────────────────────────
-print("\n--- OperationTracker: Decision FIFO (cap at 5) ---")
-
-tracker_fifo = make_tracker()
-phrases = [
-    "I decided to use approach A.",
-    "I decided to use approach B.",
-    "I decided to use approach C.",
-    "I decided to use approach D.",
-    "I decided to use approach E.",
-    "I decided to use approach F.",  # This should evict A
-]
-for i, phrase in enumerate(phrases):
-    tracker_fifo.process_tool_call(
-        "Read", {"file_path": f"/tmp/file_{i}.py"}, assistant_text=phrase
-    )
-
-state_fifo = tracker_fifo.get_state()
-decisions_fifo = state_fifo.get("decisions", [])
-test(
-    "decisions capped at 5",
-    len(decisions_fifo) <= 5,
-    f"len={len(decisions_fifo)}, decisions={decisions_fifo}",
-)
-test(
-    "oldest decision evicted (FIFO)",
-    not any("approach A" in d for d in decisions_fifo),
-    f"decisions={decisions_fifo}",
-)
-test(
-    "newest decision retained",
-    any("approach F" in d for d in decisions_fifo),
-    f"decisions={decisions_fifo}",
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Section 11: State persistence — write + reload
+# Section 9: State persistence — write + reload
 # ─────────────────────────────────────────────────────────────────────────────
 print("\n--- OperationTracker: State persistence ---")
 
@@ -446,7 +376,7 @@ session_persist = f"test-persist-{os.getpid()}"
 tracker_s = OperationTracker(session_persist)
 tracker_s.process_tool_call("Read", {"file_path": "/tmp/persist_test.py"})
 tracker_s.process_tool_call(
-    "Read", {"file_path": "/tmp/second.py"}, assistant_text="I decided to persist this."
+    "Read", {"file_path": "/tmp/second.py"}, assistant_text="Persisting state test."
 )
 
 # Force save and reload
@@ -461,11 +391,6 @@ test(
     "state file persisted to disk/ramdisk",
     state_after.get("total_turns", 0) == state_before.get("total_turns", 0),
     f"before={state_before.get('total_turns')}, after={state_after.get('total_turns')}",
-)
-test(
-    "decisions persisted across reload",
-    state_after.get("decisions") == state_before.get("decisions"),
-    f"before={state_before.get('decisions')}, after={state_after.get('decisions')}",
 )
 
 # ─────────────────────────────────────────────────────────────────────────────

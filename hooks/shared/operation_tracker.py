@@ -36,9 +36,6 @@ BOUNDARY_THRESHOLD = 0.5
 # Temporal gap threshold in seconds
 TEMPORAL_GAP_SECONDS = 30
 
-# Max decisions kept (FIFO)
-MAX_DECISIONS = 5
-
 # ── Tool phase classification ─────────────────────────────────────────────────
 
 _TOOL_PHASE = {
@@ -63,19 +60,6 @@ def _classify_phase(tool_name: str) -> str:
 
 _INTENT_RE = re.compile(
     r"(?:I'll|Let me|Now\b|Next\b|Moving on to|moving on to)",
-    re.IGNORECASE,
-)
-
-# ── Decision detection regex ──────────────────────────────────────────────────
-
-_DECISION_RE = re.compile(
-    r"(?:decided|confirmed|chosen|selected|I'll go with)",
-    re.IGNORECASE,
-)
-
-# Sentence extraction — grab the sentence containing the decision keyword
-_SENTENCE_RE = re.compile(
-    r"[^.!?\n]{0,120}(?:decided|confirmed|chosen|selected|I'll go with)[^.!?\n]{0,120}",
     re.IGNORECASE,
 )
 
@@ -112,7 +96,6 @@ def _default_state() -> dict:
         "total_turns": 0,
         "total_ops": 0,
         "expand_written": False,
-        "decisions": [],
         "unresolved_errors": [],
         "completed_ops": [],
         "summary_threshold_fired": False,
@@ -220,25 +203,6 @@ def _extract_purpose(assistant_text: str, op_type: str, files: list) -> str:
         names = [os.path.basename(f) for f in files[:2]]
         return f"{op_type} on {', '.join(names)}"
     return f"{op_type} operation"
-
-
-# ── Decision extraction ───────────────────────────────────────────────────────
-
-
-def _extract_decisions(assistant_text: str) -> list:
-    """Extract decision sentences from assistant text."""
-    if not assistant_text or not _DECISION_RE.search(assistant_text):
-        return []
-    matches = _SENTENCE_RE.findall(assistant_text)
-    # Clean and deduplicate
-    seen = set()
-    result = []
-    for m in matches:
-        m = m.strip()
-        if m and m not in seen:
-            seen.add(m)
-            result.append(m[:200])
-    return result
 
 
 # ── Outcome inference ─────────────────────────────────────────────────────────
@@ -349,16 +313,6 @@ class OperationTracker:
 
         # Extract files involved in this call
         new_files = _extract_files(tool_input)
-
-        # Extract decisions from assistant text
-        new_decisions = _extract_decisions(assistant_text)
-        if new_decisions:
-            decisions = state.get("decisions", [])
-            decisions.extend(new_decisions)
-            # FIFO cap at MAX_DECISIONS
-            if len(decisions) > MAX_DECISIONS:
-                decisions = decisions[-MAX_DECISIONS:]
-            state["decisions"] = decisions
 
         # ── Boundary scoring ──────────────────────────────────────────────────
 
