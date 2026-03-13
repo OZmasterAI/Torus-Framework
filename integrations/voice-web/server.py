@@ -32,7 +32,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 PIPER_VOICES_DIR = os.path.join(os.path.dirname(_HERE), "tts-voices", "piper-voices")
 PIPER_PREFIX = "piper:"
 _piper_models = {}  # name -> onnx_path
-_piper_cache = {}   # name -> loaded PiperVoice (lazy)
+_piper_cache = {}  # name -> loaded PiperVoice (lazy)
 
 
 def _scan_piper_voices():
@@ -69,10 +69,16 @@ class TmuxError(Exception):
 
 async def _run(cmd):
     proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
-    return proc.returncode, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+    return (
+        proc.returncode,
+        stdout.decode(errors="replace"),
+        stderr.decode(errors="replace"),
+    )
 
 
 async def is_tmux_session_alive(target):
@@ -103,7 +109,6 @@ async def send_to_tmux(message, target="claude-bot"):
     await _send_keys(target, message)
 
 
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -121,6 +126,7 @@ CONFIG = load_config()
 
 # --- Routes ---
 
+
 async def list_tmux_sessions():
     """Get list of active tmux session names."""
     rc, stdout, _ = await _run(["tmux", "list-sessions", "-F", "#S"])
@@ -132,11 +138,13 @@ async def list_tmux_sessions():
 async def health(request):
     """Health check — also reports tmux session status."""
     sessions = await list_tmux_sessions()
-    return JSONResponse({
-        "status": "ok",
-        "tmux_sessions": sessions,
-        "tmux_alive": len(sessions) > 0,
-    })
+    return JSONResponse(
+        {
+            "status": "ok",
+            "tmux_sessions": sessions,
+            "tmux_alive": len(sessions) > 0,
+        }
+    )
 
 
 async def tmux_sessions(request):
@@ -210,26 +218,39 @@ async def tts_endpoint(request):
 
     # Route: Piper (local) vs edge-tts (cloud)
     if voice.startswith(PIPER_PREFIX):
-        piper_name = voice[len(PIPER_PREFIX):]
+        piper_name = voice[len(PIPER_PREFIX) :]
         cache_path = os.path.join(TTS_CACHE_DIR, f"{cache_key}.wav")
 
         if not os.path.exists(cache_path):
             pv = _get_piper_voice(piper_name)
             if not pv:
-                return JSONResponse({"ok": False, "error": f"Piper voice '{piper_name}' not found"}, status_code=404)
+                return JSONResponse(
+                    {"ok": False, "error": f"Piper voice '{piper_name}' not found"},
+                    status_code=404,
+                )
             try:
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, _piper_synthesize, pv, text, cache_path)
-                logger.info("Piper TTS generated: %d chars, voice=%s", len(text), piper_name)
+                await loop.run_in_executor(
+                    None, _piper_synthesize, pv, text, cache_path
+                )
+                logger.info(
+                    "Piper TTS generated: %d chars, voice=%s", len(text), piper_name
+                )
             except Exception as e:
                 logger.error("Piper TTS error: %s", e)
-                return JSONResponse({"ok": False, "error": "TTS failed"}, status_code=500)
+                return JSONResponse(
+                    {"ok": False, "error": "TTS failed"}, status_code=500
+                )
 
         with open(cache_path, "rb") as f:
             audio = f.read()
-        return Response(audio, media_type="audio/wav", headers={
-            "Cache-Control": "public, max-age=300",
-        })
+        return Response(
+            audio,
+            media_type="audio/wav",
+            headers={
+                "Cache-Control": "public, max-age=300",
+            },
+        )
 
     # Edge-TTS (cloud)
     cache_path = os.path.join(TTS_CACHE_DIR, f"{cache_key}.mp3")
@@ -246,9 +267,13 @@ async def tts_endpoint(request):
     with open(cache_path, "rb") as f:
         audio = f.read()
 
-    return Response(audio, media_type="audio/mpeg", headers={
-        "Cache-Control": "public, max-age=300",
-    })
+    return Response(
+        audio,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "public, max-age=300",
+        },
+    )
 
 
 async def tts_voices(request):
@@ -259,10 +284,16 @@ async def tts_voices(request):
 
     voices = await edge_tts.list_voices()
     # Filter to English voices
-    en_voices = [{"name": v["ShortName"], "gender": v["Gender"]} for v in voices if v["Locale"].startswith("en-")]
+    en_voices = [
+        {"name": v["ShortName"], "gender": v["Gender"]}
+        for v in voices
+        if v["Locale"].startswith("en-")
+    ]
 
     # Include Piper voices
-    piper_voices = [{"name": f"{PIPER_PREFIX}{name}"} for name in sorted(_piper_models.keys())]
+    piper_voices = [
+        {"name": f"{PIPER_PREFIX}{name}"} for name in sorted(_piper_models.keys())
+    ]
 
     return JSONResponse({"ok": True, "voices": en_voices, "piper_voices": piper_voices})
 
@@ -327,10 +358,12 @@ async def ws_endpoint(websocket: WebSocket):
                 continue
 
             if len(text) > max_len:
-                await websocket.send_json({
-                    "type": "error",
-                    "text": f"Message too long ({len(text)} > {max_len})",
-                })
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "text": f"Message too long ({len(text)} > {max_len})",
+                    }
+                )
                 continue
 
             target = raw.get("target") or default_target
@@ -345,7 +378,7 @@ async def ws_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "error", "text": str(e)})
 
     except WebSocketDisconnect as e:
-        logger.info("Client disconnected (code=%s)", getattr(e, 'code', 'unknown'))
+        logger.info("Client disconnected (code=%s)", getattr(e, "code", "unknown"))
     except Exception as e:
         logger.exception("WebSocket exception: %s", e)
         try:
@@ -357,19 +390,25 @@ async def ws_endpoint(websocket: WebSocket):
 
 # --- No-cache static files ---
 
+
 class NoCacheStaticFiles(StaticFiles):
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             original_send = send
+
             async def no_cache_send(message):
                 if message.get("type") == "http.response.start":
                     headers = list(message.get("headers", []))
-                    headers.append((b"cache-control", b"no-cache, no-store, must-revalidate"))
+                    headers.append(
+                        (b"cache-control", b"no-cache, no-store, must-revalidate")
+                    )
                     message["headers"] = headers
                 await original_send(message)
+
             await super().__call__(scope, receive, no_cache_send)
         else:
             await super().__call__(scope, receive, send)
+
 
 # --- App ---
 
@@ -397,7 +436,9 @@ if __name__ == "__main__":
         ssl_kwargs = {"ssl_certfile": ssl_cert, "ssl_keyfile": ssl_key}
         logger.info("HTTPS enabled (cert: %s)", ssl_cert)
     else:
-        logger.warning("SSL certs not found — running without HTTPS! Web Speech API won't work on Safari.")
+        logger.warning(
+            "SSL certs not found — running without HTTPS! Web Speech API won't work on Safari."
+        )
 
     uvicorn.run(
         app,
