@@ -337,30 +337,9 @@ def main():
     except Exception:
         pass  # Working memory failures must never crash the hook
 
-    # --- Context threshold: read real context % from statusline snapshot ---
-    try:
-        _SUMMARY_THRESHOLD_PCT = 65  # Fire at 65% context usage
-
-        _snapshot_path = os.path.join(_HOOKS_DIR, ".statusline_snapshot.json")
-        _context_pct = 0
-        if os.path.exists(_snapshot_path):
-            with open(_snapshot_path) as _sf:
-                _snap = json.load(_sf)
-            _context_pct = _snap.get("context_pct", 0)
-
-        _threshold_fired = _tracker_state.get("summary_threshold_fired", False)
-
-        if _context_pct >= _SUMMARY_THRESHOLD_PCT and not _threshold_fired:
-            # Fire threshold: warn user + set flag for gate 21
-            print(
-                f"<working-memory-warning>[WORKING MEMORY] Context at ~{_context_pct}%. "
-                f"Run /working-summary to save context before compaction, "
-                f"then consider /clear.</working-memory-warning>"
-            )
-            _tracker_state["summary_threshold_fired"] = True
-            _op_tracker._save_state(_tracker_state)
-    except Exception:
-        pass  # Threshold detection failures must never crash the hook
+    # --- Context threshold detection moved to PostToolUse (tracker_pkg/orchestrator.py) ---
+    # Old UserPromptSubmit detection removed — PostToolUse fires mid-turn with
+    # one-time stdout warning visible to Claude. See context-warning-option-b-impl.md.
 
     # --- Summary clear countdown (5 turns post-compaction) ---
     try:

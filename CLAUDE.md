@@ -34,7 +34,6 @@ memory → /brainstorm → /writing-plans → /implement → /test → /review �
 6. **Model selection** — Gate 10 enforces model_profile from config.json. Do not override.
 7. **Gate awareness** — Gates enforce Edit/Write/Bash/Task automatically. Read/Glob/Grep are ungated — self-enforce rule 5.
 8. **Ask before acting** — Never push, deploy, delete, or take irreversible actions beyond what the user explicitly requested. Ask first.
-9. **Working summary** — When you see `<working-memory-warning>`, immediately run /working-summary before continuing other work. Do not dismiss or defer.
 
 ## SESSION START (Non-Negotiable)
 1. Read LIVE_STATE.json

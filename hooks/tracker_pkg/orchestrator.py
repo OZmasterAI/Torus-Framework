@@ -693,6 +693,56 @@ def handle_post_tool_use(
     except Exception as _wm_err:
         _log_debug(f"working memory update failed (non-blocking): {_wm_err}")
 
+    # ── Context threshold warning (fires once to stdout) ──
+    try:
+        if "_op_tracker" not in dir():
+            from shared.operation_tracker import OperationTracker
+
+            _op_tracker = OperationTracker(session_id)
+        _op_state = _op_tracker.get_state()
+        _check_context_threshold(_op_state)
+        if _op_state.get("context_warning_shown") or _op_state.get(
+            "summary_threshold_fired"
+        ):
+            _op_tracker._save_state(_op_state)
+    except Exception as _ctx_err:
+        _log_debug(f"context threshold check failed (non-blocking): {_ctx_err}")
+
+
+# ── Context threshold detection ────────────────────────────────────────
+_CONTEXT_THRESHOLD_PCT = 65
+_SNAPSHOT_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), ".statusline_snapshot.json"
+)
+
+
+def _check_context_threshold(op_state, snapshot_path=None):
+    """Check context % and print one-time warning to stdout if >= 65%.
+
+    Reads .statusline_snapshot.json for context_pct. Sets
+    summary_threshold_fired + context_warning_shown flags in op_state.
+    Prints to stdout (visible to Claude mid-turn). Fires exactly once.
+    Fail-open: exceptions are silently caught.
+    """
+    if op_state.get("context_warning_shown"):
+        return  # Already warned this session
+    try:
+        _path = snapshot_path or _SNAPSHOT_PATH
+        if not os.path.exists(_path):
+            return
+        with open(_path) as f:
+            snap = json.load(f)
+        pct = snap.get("context_pct", 0)
+        if pct >= _CONTEXT_THRESHOLD_PCT:
+            print(
+                f"[# WARNING # CONTEXT {pct}%] Complete your work, "
+                f"then write /working-summary as your final action this turn."
+            )
+            op_state["summary_threshold_fired"] = True
+            op_state["context_warning_shown"] = True
+    except Exception:
+        pass  # Fail-open
+
 
 def main():
     """Main entry point — fail-open: always exits 0."""

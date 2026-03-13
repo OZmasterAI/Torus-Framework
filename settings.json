@@ -179,6 +179,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/tgbot_response.py\"",
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/context_threshold_stop.py\"",
+            "timeout": 3
           }
         ]
       }
