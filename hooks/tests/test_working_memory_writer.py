@@ -257,6 +257,20 @@ test(
 writer_exp.clear_expand()
 test("clear_expand resets flag", writer_exp._expand_written is False)
 
+# write_expanded sets expand_written in tracker_state dict (for persistence)
+writer_exp2, tmpdir_exp2 = make_writer()
+state_exp2 = make_tracker_state(
+    completed_ops=[make_op(1, "read", "Session orient")],
+    decisions=["Use Option 3"],
+    expand_written=False,
+)
+test("expand_written starts False in state", state_exp2["expand_written"] is False)
+writer_exp2.write_expanded(state_exp2)
+test(
+    "write_expanded sets expand_written=True in tracker_state",
+    state_exp2["expand_written"] is True,
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 5: Token cap enforcement (~800)
 # ─────────────────────────────────────────────────────────────────────────────
