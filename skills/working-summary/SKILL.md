@@ -46,4 +46,5 @@ when the user says "working summary", "write summary", "save context".
 3. **VERIFY SIZE** — Check that the written file is 2000-10000 chars (500-2500 tokens).
    If under 2000 chars, add more detail. If over 10000 chars, trim to essentials.
 
-4. **CONFIRM** — Print: "[WORKING SUMMARY] Written (N chars). Context preserved for compaction."
+4. **CONFIRM** — Read `.statusline_snapshot.json` to get `context_pct`, then print:
+   `[## WARNING ## {context_pct}% CONTEXT] Summary ({N} chars). Context preserved for /clear!`
