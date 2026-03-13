@@ -171,10 +171,13 @@ def _content_token_estimate(tracker_state: dict, include_context: bool = False) 
     status_lines = [l for l in status.split("\n") if l and not l.startswith("## ")]
     tokens += _token_estimate("\n".join(status_lines))
 
-    # Operations content: op summary lines only
+    # Operations content: op summary lines only (with same FIFO eviction as build)
     completed = tracker_state.get("completed_ops", [])
     if completed:
         lines = [_format_op_line(op) for op in completed]
+        # Apply same FIFO eviction as _build_operations_section
+        while lines and _token_estimate("\n".join(lines)) > OPS_SECTION_TOKEN_CAP:
+            lines.pop(0)
         tokens += _token_estimate("\n".join(lines))
 
     # Context content: decision/error/file lines only
