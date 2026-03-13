@@ -8,21 +8,16 @@ Fires on SessionEnd to:
 
 Fail-open: always exits 0.
 """
-
 import glob
 import json
 import os
 import subprocess
 import sys
 import time
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shared.memory_socket import (
-    is_worker_available,
-    flush_queue as socket_flush,
-    backup as socket_backup,
-    WorkerUnavailable,
-)
+from shared.memory_socket import is_worker_available, flush_queue as socket_flush, backup as socket_backup, WorkerUnavailable
 from boot_pkg.util import detect_project, load_project_state, save_project_state
 
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -37,7 +32,6 @@ def _get_capture_queue():
     """Return the active capture queue path (ramdisk or disk fallback)."""
     try:
         from shared.ramdisk import get_capture_queue
-
         return get_capture_queue()
     except ImportError:
         return os.path.join(HOOKS_DIR, ".capture_queue.jsonl")
@@ -47,7 +41,6 @@ def _find_state_dir():
     """Return the active state directory (ramdisk or disk)."""
     try:
         from shared.ramdisk import get_state_dir
-
         return get_state_dir()
     except ImportError:
         return HOOKS_DIR
@@ -88,7 +81,6 @@ def _read_last_assistant_message():
     candidates = []
     try:
         from shared.ramdisk import TMPFS_STATE_DIR
-
         candidates.append(os.path.join(TMPFS_STATE_DIR, ".last_assistant_message"))
     except ImportError:
         pass
@@ -108,6 +100,7 @@ def _read_last_assistant_message():
         except OSError:
             continue
     return ""
+
 
 
 def _format_duration(start_ts):
@@ -155,9 +148,7 @@ def _build_metrics_section(state):
     files_edited = state.get("files_edited", [])
     verified = state.get("verified_fixes", [])
     pending = state.get("pending_verification", [])
-    lines.append(
-        f"- **Files Modified**: {len(files_edited)} ({len(verified)} verified, {len(pending)} pending)"
-    )
+    lines.append(f"- **Files Modified**: {len(files_edited)} ({len(verified)} verified, {len(pending)} pending)")
 
     errors_str = _format_errors(state.get("error_pattern_counts", {}))
     lines.append(f"- **Errors**: {errors_str}")
@@ -173,9 +164,7 @@ def _build_metrics_section(state):
     subagent_history = state.get("subagent_history", [])
     sub_tokens = state.get("subagent_total_tokens", 0)
     if subagent_history:
-        lines.append(
-            f"- **Subagents**: {len(subagent_history)} launched, {sub_tokens:,} tokens"
-        )
+        lines.append(f"- **Subagents**: {len(subagent_history)} launched, {sub_tokens:,} tokens")
 
     if files_edited:
         lines.append("")
@@ -191,6 +180,7 @@ def _build_metrics_section(state):
             lines.append(f"- ... and {len(files_edited) - 15} more")
 
     return "\n".join(lines)
+
 
 
 def _extract_transcript_excerpt(transcript_path, max_turns=40):
@@ -234,13 +224,7 @@ def _extract_transcript_excerpt(transcript_path, max_turns=40):
                 # Strip system-reminder tags to reduce noise
                 if "<system-reminder>" in content:
                     import re as _re
-
-                    content = _re.sub(
-                        r"<system-reminder>.*?</system-reminder>",
-                        "",
-                        content,
-                        flags=_re.DOTALL,
-                    )
+                    content = _re.sub(r"<system-reminder>.*?</system-reminder>", "", content, flags=_re.DOTALL)
                 content = content.strip()
                 if content:
                     turns.append(f"[{role}]: {content[:500]}")
@@ -270,88 +254,22 @@ def _haiku_summarize(transcript_excerpt, metrics_text, session_num):
         f"## Conversation (last turns)\n{transcript_excerpt}"
     )
     cmd = [
-        "claude",
-        "-p",
-        prompt,
-        "--model",
-        "claude-haiku-4-5-20251001",
-        "--output-format",
-        "text",
+        "claude", "-p", prompt,
+        "--model", "claude-haiku-4-5-20251001",
+        "--output-format", "text",
     ]
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
     env["TORUS_BOT_SESSION"] = "1"  # Skip hooks in subprocess
     try:
         result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            env=env,
-            cwd=CLAUDE_DIR,
+            cmd, capture_output=True, text=True, timeout=30,
+            env=env, cwd=CLAUDE_DIR,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
         print(f"[SESSION_END] Haiku summarize failed: {e}", file=sys.stderr)
     return ""
-
-
-def _spawn_background_haiku(
-    excerpt, metrics_text, session_num, is_project, project_dir
-):
-    """Spawn a detached process that calls Haiku and writes what_was_done to LIVE_STATE.json.
-
-    The background script runs independently — the hook exits immediately.
-    """
-    # Inline Python script that the background process will execute
-    script = f"""
-import json, os, subprocess, sys, time
-
-CLAUDE_DIR = os.path.expanduser("~/.claude")
-LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
-
-prompt = (
-    "You are summarizing Session {session_num} of a software project. "
-    "Based on the conversation excerpt and metrics below, write 3-5 concise bullet points "
-    "describing what was accomplished. Focus on outcomes, not process. "
-    "Start each bullet with a dash. No preamble, just the bullets.\\n\\n"
-    "## Metrics\\n" + {json.dumps(metrics_text)} + "\\n\\n"
-    "## Conversation (last turns)\\n" + {json.dumps(excerpt)}
-)
-
-cmd = ["claude", "-p", prompt, "--model", "claude-haiku-4-5-20251001", "--output-format", "text"]
-env = {{k: v for k, v in os.environ.items() if k != "CLAUDECODE"}}
-env["TORUS_BOT_SESSION"] = "1"
-
-try:
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env, cwd=CLAUDE_DIR)
-    if result.returncode == 0 and result.stdout.strip():
-        summary = result.stdout.strip()[:200]
-        # Atomically update LIVE_STATE.json
-        try:
-            with open(LIVE_STATE_FILE) as f:
-                state = json.load(f)
-        except Exception:
-            state = {{}}
-        state["what_was_done"] = summary
-        tmp = LIVE_STATE_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(state, f, indent=2)
-            f.write("\\n")
-        os.replace(tmp, LIVE_STATE_FILE)
-except Exception:
-    pass  # Best-effort — if it fails, next session boots with placeholder
-"""
-    try:
-        subprocess.Popen(
-            [sys.executable, "-c", script],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,  # Detach from parent — survives hook kill
-        )
-    except Exception as e:
-        print(f"[SESSION_END] Failed to spawn background Haiku: {e}", file=sys.stderr)
 
 
 def _update_config(key, value):
@@ -403,23 +321,15 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
         if wrapup_ran:
             # /wrap-up already wrote narrative — just update session_metrics in config.json
             _update_config("session_metrics", metrics_section)
-            print(
-                "[SESSION_END] Wrap-up detected — updated session_metrics in config.json",
-                file=sys.stderr,
-            )
+            print("[SESSION_END] Wrap-up detected — updated session_metrics in config.json", file=sys.stderr)
         else:
-            # /wrap-up didn't run — spawn Haiku auto-summary as background process
-            # so it doesn't block the hook (5s timeout vs 15s Haiku call)
+            # /wrap-up didn't run — try Haiku auto-summary
             excerpt = _extract_transcript_excerpt(transcript_path)
-            if excerpt:
-                _spawn_background_haiku(
-                    excerpt, metrics_section, session_num, _is_project, project_dir
-                )
-                what_was_done = "Haiku auto-summary pending..."
-                print(
-                    "[SESSION_END] Haiku auto-summary spawned in background",
-                    file=sys.stderr,
-                )
+            haiku_summary = _haiku_summarize(excerpt, metrics_section, session_num) if excerpt else ""
+
+            if haiku_summary:
+                what_was_done = haiku_summary[:200]
+                print("[SESSION_END] Haiku auto-summary generated", file=sys.stderr)
             else:
                 what_was_done = (
                     "Auto-generated — no transcript available. "
@@ -432,10 +342,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
         last_msg = _read_last_assistant_message()
         last_response_preview = last_msg[:500] if last_msg else None
         if last_msg:
-            print(
-                f"[SESSION_END] Captured last_assistant_message ({len(last_msg)} chars)",
-                file=sys.stderr,
-            )
+            print(f"[SESSION_END] Captured last_assistant_message ({len(last_msg)} chars)", file=sys.stderr)
 
         if _is_project:
             # Project session: write everything to .claude-state.json, don't touch LIVE_STATE.json
@@ -448,10 +355,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
             if last_response_preview is not None:
                 proj_state["last_response_preview"] = last_response_preview
             save_project_state(project_dir, proj_state)
-            print(
-                f"[SESSION_END] Project state written: {project_dir}/.claude-state.json (session {proj_state['session_count']})",
-                file=sys.stderr,
-            )
+            print(f"[SESSION_END] Project state written: {project_dir}/.claude-state.json (session {proj_state['session_count']})", file=sys.stderr)
         else:
             # Framework/hub session: write everything to LIVE_STATE.json (original behavior)
             if what_was_done is not None:
@@ -465,21 +369,11 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 f.write("\n")
             os.replace(tmp, LIVE_STATE_FILE)
 
-        mode = (
-            "project state"
-            if _is_project
-            else (
-                "updated session_metrics"
-                if wrapup_ran
-                else "wrote what_was_done + session_metrics"
-            )
-        )
+        mode = "project state" if _is_project else ("updated session_metrics" if wrapup_ran else "wrote what_was_done + session_metrics")
         print(f"[SESSION_END] LIVE_STATE.json updated ({mode})", file=sys.stderr)
 
     except Exception as e:
-        print(
-            f"[SESSION_END] Handoff generation failed (non-fatal): {e}", file=sys.stderr
-        )
+        print(f"[SESSION_END] Handoff generation failed (non-fatal): {e}", file=sys.stderr)
 
 
 def session_summary(state=None):
@@ -502,7 +396,7 @@ def session_summary(state=None):
 
         print(
             f"[SESSION_END] Metrics: {reads}R {edits}W | {errors} errors | {verified}V {pending}P",
-            file=sys.stderr,
+            file=sys.stderr
         )
 
         return {
@@ -510,7 +404,7 @@ def session_summary(state=None):
             "edits": edits,
             "errors": errors,
             "verified": verified,
-            "pending": pending,
+            "pending": pending
         }
     except Exception as e:
         print(f"[SESSION_END] Summary error (non-fatal): {e}", file=sys.stderr)
@@ -532,22 +426,14 @@ def flush_capture_queue():
     try:
         if is_worker_available(retries=2, delay=0.3):
             flushed = socket_flush()
-            print(
-                f"[SESSION_END] Flushed {flushed} observations via UDS", file=sys.stderr
-            )
+            print(f"[SESSION_END] Flushed {flushed} observations via UDS", file=sys.stderr)
             return
     except (WorkerUnavailable, RuntimeError) as e:
-        print(
-            f"[SESSION_END] UDS flush failed ({e}), deferring {line_count} observations to next boot",
-            file=sys.stderr,
-        )
+        print(f"[SESSION_END] UDS flush failed ({e}), deferring {line_count} observations to next boot", file=sys.stderr)
         return
 
     # Worker unavailable — defer queue to next boot
-    print(
-        f"[SESSION_END] Worker unavailable, deferring {line_count} observations to next boot",
-        file=sys.stderr,
-    )
+    print(f"[SESSION_END] Worker unavailable, deferring {line_count} observations to next boot", file=sys.stderr)
 
 
 def backup_database():
@@ -595,126 +481,116 @@ def increment_session_count(metrics=None):
     print(f"[SESSION_END] Session {state['session_count']} complete", file=sys.stderr)
 
 
+def _run_background(data_path):
+    """Background mode: handles all slow operations with no time pressure."""
+    try:
+        with open(data_path) as f:
+            ctx = json.load(f)
+    except Exception:
+        return
+    finally:
+        try:
+            os.unlink(data_path)
+        except OSError:
+            pass
+
+    transcript_path = ctx.get("transcript_path", "")
+    project_name = ctx.get("project_name")
+    project_dir = ctx.get("project_dir")
+    session_data = ctx.get("session_data", {})
+    state = _load_latest_state()
+
+    try:
+        generate_handoff(state, transcript_path=transcript_path,
+                         project_name=project_name, project_dir=project_dir)
+    except Exception as e:
+        print(f"[SESSION_END:bg] Handoff error: {e}", file=sys.stderr)
+
+    try:
+        flush_capture_queue()
+    except Exception as e:
+        print(f"[SESSION_END:bg] Flush error: {e}", file=sys.stderr)
+
+    try:
+        backup_database()
+    except Exception as e:
+        print(f"[SESSION_END:bg] Backup error: {e}", file=sys.stderr)
+
+    try:
+        from scripts.flush_audit import flush as flush_audit
+        flushed, freed = flush_audit()
+        if flushed > 0:
+            print(f"[SESSION_END:bg] Audit flush: {flushed} files, {freed / 1024 / 1024:.1f}MB freed", file=sys.stderr)
+    except Exception as e:
+        print(f"[SESSION_END:bg] Audit flush failed: {e}", file=sys.stderr)
+
+    try:
+        _tg_notify = False
+        try:
+            with open(LIVE_STATE_FILE) as _f:
+                _tg_notify = json.load(_f).get("tg_session_notify", False)
+        except Exception:
+            pass
+        _tg_hook = os.path.join(CLAUDE_DIR, "integrations", "telegram-bot", "hooks", "on_session_end.py")
+        if _tg_notify and os.path.isfile(_tg_hook):
+            subprocess.run([sys.executable, _tg_hook], timeout=30,
+                           capture_output=False, stdin=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+    try:
+        _term_hook = os.path.join(CLAUDE_DIR, "integrations", "terminal-history", "hooks", "on_session_end.py")
+        if os.path.isfile(_term_hook):
+            subprocess.run([sys.executable, _term_hook], timeout=30,
+                           capture_output=False, input=json.dumps(session_data), text=True)
+    except Exception:
+        pass
+
+    print("[SESSION_END:bg] Background work complete", file=sys.stderr)
+
+
 def main():
     try:
-        # Bot subprocess sessions are lightweight — skip heavy lifecycle ops
         if os.environ.get("TORUS_BOT_SESSION") == "1":
             print("[SESSION_END] Bot session — skipping lifecycle ops", file=sys.stderr)
             sys.exit(0)
 
-        # Read stdin (session data — includes session_id, transcript_path, reason)
+        if len(sys.argv) >= 3 and sys.argv[1] == "--background":
+            _run_background(sys.argv[2])
+            sys.exit(0)
+
+        # === FAST PATH (must complete within 5s hook timeout) ===
         try:
             _session_data = json.loads(sys.stdin.read())
         except (json.JSONDecodeError, ValueError):
             _session_data = {}
         transcript_path = _session_data.get("transcript_path", "")
 
-        # Detect project from session cwd
         _cwd = _session_data.get("cwd")
-        _project_name, _project_dir, _subproject_name, _subproject_dir = detect_project(
-            _cwd
-        )
+        _project_name, _project_dir, _subproject_name, _subproject_dir = detect_project(_cwd)
         _effective_name = _subproject_name or _project_name
         _effective_dir = _subproject_dir or _project_dir
 
-        # Load state once, share across functions
         state = _load_latest_state()
-
-        # Get session summary metrics
         metrics = {}
         try:
             metrics = session_summary(state)
         except Exception as e:
             print(f"[SESSION_END] Summary error (non-fatal): {e}", file=sys.stderr)
 
-        # Update LIVE_STATE.json with metrics and auto-summary (before flush, while state is fresh)
-        try:
-            generate_handoff(
-                state,
-                transcript_path=transcript_path,
-                project_name=_effective_name,
-                project_dir=_effective_dir,
-            )
-        except Exception as e:
-            print(f"[SESSION_END] Handoff error (non-fatal): {e}", file=sys.stderr)
-
-        flush_capture_queue()
-        backup_database()
-
-        # Flush old ramdisk audit logs to disk (compressed)
-        try:
-            from scripts.flush_audit import flush as flush_audit
-
-            flushed, freed = flush_audit()
-            if flushed > 0:
-                print(
-                    f"[SESSION_END] Audit flush: {flushed} files, {freed / 1024 / 1024:.1f}MB freed",
-                    file=sys.stderr,
-                )
-        except Exception as e:
-            print(f"[SESSION_END] Audit flush failed (non-fatal): {e}", file=sys.stderr)
-
-        # Telegram Bot: post session summary + notify user (backgrounded, gated by toggle)
-        try:
-            _tg_notify = False
-            try:
-                with open(LIVE_STATE_FILE) as _f:
-                    _tg_notify = json.load(_f).get("tg_session_notify", False)
-            except Exception:
-                pass
-            _tg_hook = os.path.join(
-                CLAUDE_DIR, "integrations", "telegram-bot", "hooks", "on_session_end.py"
-            )
-            if _tg_notify and os.path.isfile(_tg_hook):
-                subprocess.Popen(
-                    [sys.executable, _tg_hook],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
-        except Exception:
-            pass  # Telegram integration is optional, never block session end
-
-        # Terminal History: index this session's conversation (backgrounded)
-        try:
-            _term_hook = os.path.join(
-                CLAUDE_DIR,
-                "integrations",
-                "terminal-history",
-                "hooks",
-                "on_session_end.py",
-            )
-            if os.path.isfile(_term_hook):
-                subprocess.Popen(
-                    [sys.executable, _term_hook],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
-        except Exception:
-            pass  # Terminal history integration is optional, never block session end
-
-        # Stop enforcer daemon if running
         _pid_path = os.path.join(HOOKS_DIR, ".enforcer.pid")
         if os.path.exists(_pid_path):
             try:
                 import signal
-
                 _pid = int(open(_pid_path).read().strip())
                 os.kill(_pid, signal.SIGTERM)
-                print(
-                    f"[SESSION_END] Enforcer daemon stopped (PID {_pid})",
-                    file=sys.stderr,
-                )
+                print(f"[SESSION_END] Enforcer daemon stopped (PID {_pid})", file=sys.stderr)
             except (ValueError, OSError, ProcessLookupError):
                 pass
             try:
                 os.unlink(_pid_path)
             except OSError:
                 pass
-            # Clean up stale socket too
             _sock_path = os.path.join(HOOKS_DIR, ".enforcer.sock")
             try:
                 if os.path.exists(_sock_path):
@@ -722,11 +598,32 @@ def main():
             except OSError:
                 pass
 
-        # Only bump global session_count for framework sessions
         if _project_dir is None:
             increment_session_count(metrics)
         elif metrics:
             _update_config("last_session_metrics", metrics)
+
+        # === SPAWN BACKGROUND PROCESS for slow ops ===
+        ctx = {
+            "transcript_path": transcript_path,
+            "project_name": _effective_name,
+            "project_dir": _effective_dir,
+            "session_data": _session_data,
+        }
+        fd, data_path = tempfile.mkstemp(prefix="session_end_", suffix=".json", dir=HOOKS_DIR)
+        with os.fdopen(fd, "w") as f:
+            json.dump(ctx, f)
+
+        log_path = os.path.join(HOOKS_DIR, ".session_end_bg.log")
+        subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "--background", data_path],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=open(log_path, "a"),
+            start_new_session=True,
+        )
+        print("[SESSION_END] Background process spawned for slow ops", file=sys.stderr)
+
     except Exception as e:
         print(f"[SESSION_END] Error (non-fatal): {e}", file=sys.stderr)
     sys.exit(0)
