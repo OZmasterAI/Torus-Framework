@@ -1,23 +1,24 @@
 {
-  "session_count": 421,
+  "session_count": 422,
   "project": "torus-framework",
-  "feature": "voice-web-routing-fix",
+  "feature": "sprint-memory-optimization",
   "framework_version": "v2.8.3",
-  "what_was_done": "Fixed voice-web tmux routing bug (colon suffix forces session-name resolution), added per-session color pills and colored Sent flash to voice-web UI",
+  "what_was_done": "Ran toroidal sprint agents (memory/gates/refactor/tests). Memory sprint: 6 perf optimizations (socket O(n), scoring pre-compute, session ID cache, path cache, DRY timestamp, UDS cap). Full audit found SQL injection in lance_collection.py, quality_score schema gap.",
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
-    "Security findings from external audit pending fix (memory id:65cab6b931e40aeb)",
-    "Memory server now SSE \u2014 must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
-    "layered-memory branch has memory-v2 merge \u2014 needs merge into Toroidal-teams or main",
-    "MCP server needs restart to pick up state_type changes"
+    "CRITICAL: SQL injection in lance_collection.py — unsanitized IDs in WHERE clauses (audit F-01)",
+    "HIGH: quality_score silently dropped on every write — missing from _KNOWLEDGE_SCHEMA (audit F-04)",
+    "Memory server now SSE — must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
+    "layered-memory branch has memory-v2 merge — needs merge into Toroidal-teams or main",
+    "Sprint agents left uncommitted changes on global install (gate_01, gate_03 from sprint-gates)"
   ],
   "next_steps": [
-    "Restart MCP server to activate state_type filter in search_knowledge()",
-    "Decide: Option 2 (own runtime) vs Option 3 (hybrid enhance Plans A+B) \u2014 comparison in memory 06c94153eda79164",
-    "Memory stale purge \u2014 2,788 entries, run maintenance(action='stale')",
-    "Toroidal Teams v2 \u2014 inbox messaging + enhancements (doc: docs/plans/toroidal-teams-v2-enhancements.md)",
-    "Tune state_type keyword lists after real usage \u2014 monitor false positives/negatives over next few sessions"
-  ],
-  "last_response_preview": "```\ntmux new-session -s name\n```\n\nOr detached (background):\n\n```\ntmux new -d -s name\n```"
+    "Review and merge sprint branches: sprint/memory, sprint/gates, sprint/refactor, sprint/tests",
+    "Fix SQL injection in lance_collection.py (audit F-01 — critical)",
+    "Add quality_score to _KNOWLEDGE_SCHEMA (audit F-04)",
+    "Fix LTP tracker batching — 54ms/search wasted on 10x JSON saves (perf B3)",
+    "Revert uncommitted global changes from sprint-gates agent (gate_01, gate_03)",
+    "Memory stale purge — 2,828 entries, run maintenance(action='stale')"
+  ]
 }
