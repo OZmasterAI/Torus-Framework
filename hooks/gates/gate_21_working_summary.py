@@ -38,8 +38,9 @@ def _get_summary_size():
         return 0
 
 
-def check(tool_name, tool_input, state, event_type="PreToolUse",
-          _summary_size_override=None):
+def check(
+    tool_name, tool_input, state, event_type="PreToolUse", _summary_size_override=None
+):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
@@ -71,8 +72,11 @@ def check(tool_name, tool_input, state, event_type="PreToolUse",
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check if summary has been written (>2000 chars)
-    size = (_summary_size_override if _summary_size_override is not None
-            else _get_summary_size())
+    size = (
+        _summary_size_override
+        if _summary_size_override is not None
+        else _get_summary_size()
+    )
     if size >= MIN_SUMMARY_CHARS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 

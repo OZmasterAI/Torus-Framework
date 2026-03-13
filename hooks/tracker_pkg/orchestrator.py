@@ -669,6 +669,30 @@ def handle_post_tool_use(
     # Promote complete: delete enforcer sideband (tracker is now the source of truth)
     delete_enforcer_sideband(session_id)
 
+    # ── Working Memory — operation tracker + boundary-triggered file update ──
+    try:
+        from shared.operation_tracker import OperationTracker
+        from shared.working_memory_writer import WorkingMemoryWriter
+
+        _op_tracker = OperationTracker(session_id)
+        _had_error = bool(state.get("fixing_error")) or bool(
+            _extract_error_pattern(tool_response) if tool_response else False
+        )
+        _result = _op_tracker.process_tool_call(
+            tool_name,
+            tool_input,
+            assistant_text=state.get("_last_assistant_text", ""),
+            had_error=_had_error,
+        )
+        if _result.get("boundary_detected"):
+            _rules_dir = os.path.join(os.path.expanduser("~"), ".claude", "rules")
+            _writer = WorkingMemoryWriter(_rules_dir)
+            _tracker_state = _op_tracker.get_state()
+            _tracker_state["_session_id"] = session_id
+            _writer.write_operations(_tracker_state)
+    except Exception as _wm_err:
+        _log_debug(f"working memory update failed (non-blocking): {_wm_err}")
+
 
 def main():
     """Main entry point — fail-open: always exits 0."""
