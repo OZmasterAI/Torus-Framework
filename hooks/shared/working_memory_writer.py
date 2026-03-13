@@ -129,6 +129,35 @@ def _build_context_section(tracker_state: dict) -> str:
     else:
         lines.append("- (none captured)")
 
+    # Causal chain — link ops that share files (A wrote → B read/wrote same files)
+    completed = tracker_state.get("completed_ops", [])
+    if len(completed) >= 2:
+        chains = []
+        current_chain = [completed[0]]
+        for prev_op, next_op in zip(completed, completed[1:]):
+            prev_files = set(prev_op.get("files", []))
+            next_files = set(next_op.get("files", []))
+            if prev_files & next_files:  # File overlap = causal link
+                current_chain.append(next_op)
+            else:
+                if len(current_chain) >= 2:
+                    chains.append(current_chain)
+                current_chain = [next_op]
+        if len(current_chain) >= 2:
+            chains.append(current_chain)
+
+        if chains:
+            lines.append("### Causal Chain")
+            for chain in chains[-2:]:  # Show at most 2 chains
+                parts = [f"Op{op['id']} ({op.get('purpose', '')[:30]})" for op in chain]
+                lines.append(f"- {' → '.join(parts)}")
+        else:
+            lines.append("### Causal Chain")
+            lines.append("- (no linked operations detected)")
+    else:
+        lines.append("### Causal Chain")
+        lines.append("- (too few operations)")
+
     # Unresolved errors
     unresolved = tracker_state.get("unresolved_errors", [])
     lines.append("### Unresolved")
