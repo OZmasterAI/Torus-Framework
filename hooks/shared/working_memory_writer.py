@@ -133,15 +133,6 @@ def _build_context_section(tracker_state: dict) -> str:
     """Build the Context section (+200-350 tokens). Written at threshold."""
     lines = ["## Context (expanded at threshold)"]
 
-    # Key decisions
-    decisions = tracker_state.get("decisions", [])
-    lines.append("### Key Decisions")
-    if decisions:
-        for d in decisions[-5:]:
-            lines.append(f"- {d[:120]}")
-    else:
-        lines.append("- (none captured)")
-
     # Causal chain — link ops where earlier op wrote a file that later op touches
     _WRITE_TOOLS = {"Edit", "Write", "NotebookEdit"}
     completed = tracker_state.get("completed_ops", [])

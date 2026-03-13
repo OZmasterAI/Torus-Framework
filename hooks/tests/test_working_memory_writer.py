@@ -271,8 +271,8 @@ test(
     "Context section header present after write_expanded",
     "## Context (expanded at threshold)" in content_exp,
 )
-test("Key Decisions subsection present", "### Key Decisions" in content_exp)
-test("Decision text captured", "Option 3 confirmed" in content_exp)
+test("Key Decisions removed (LLM covers this)", "### Key Decisions" not in content_exp)
+test("Decision text not in context (removed)", "Option 3 confirmed" not in content_exp)
 test("Causal Chain section present", "### Causal Chain" in content_exp)
 test("Errors section present", "### Errors" in content_exp)
 test("expand_written flag set", writer_exp._expand_written is True)
