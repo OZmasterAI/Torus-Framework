@@ -1,4 +1,5 @@
 """Error detection and pattern tracking for PostToolUse."""
+
 import time
 
 
@@ -6,24 +7,34 @@ def _extract_error_pattern(tool_response):
     """Extract the primary error pattern from test output.
 
     Looks for common error signatures in test output and returns the first match.
-    Returns "unknown" if no pattern found.
+    Returns None if no pattern found.
     """
     if isinstance(tool_response, dict):
         output = tool_response.get("stdout", "") + tool_response.get("stderr", "")
     elif isinstance(tool_response, str):
         output = tool_response
     else:
-        return "unknown"
+        return None
 
     ERROR_SIGS = [
-        "Traceback", "SyntaxError:", "ImportError:", "ModuleNotFoundError:",
-        "TypeError:", "ValueError:", "KeyError:", "AttributeError:",
-        "AssertionError:", "NameError:", "FAILED", "npm ERR!", "fatal:",
+        "Traceback",
+        "SyntaxError:",
+        "ImportError:",
+        "ModuleNotFoundError:",
+        "TypeError:",
+        "ValueError:",
+        "KeyError:",
+        "AttributeError:",
+        "AssertionError:",
+        "NameError:",
+        "FAILED",
+        "npm ERR!",
+        "fatal:",
     ]
     for sig in ERROR_SIGS:
         if sig in output:
             return sig
-    return "unknown"
+    return None
 
 
 def _deduplicate_error_window(state, pattern):
@@ -49,21 +60,32 @@ def _deduplicate_error_window(state, pattern):
         windows.sort(key=lambda w: w["last_seen"])
         windows.pop(0)
 
-    windows.append({
-        "pattern": pattern,
-        "first_seen": now,
-        "last_seen": now,
-        "count": 1,
-    })
+    windows.append(
+        {
+            "pattern": pattern,
+            "first_seen": now,
+            "last_seen": now,
+            "count": 1,
+        }
+    )
 
 
 def _detect_errors(tool_input, tool_response, state):
     """Scan Bash output for error patterns, track in state."""
     ERROR_PATTERNS = [
-        "Traceback", "SyntaxError:", "ImportError:", "ModuleNotFoundError:",
-        "Permission denied", "npm ERR!", "fatal:", "error[E", "FAILED",
-        "command not found", "No such file or directory",
-        "ConnectionRefusedError", "OSError:",
+        "Traceback",
+        "SyntaxError:",
+        "ImportError:",
+        "ModuleNotFoundError:",
+        "Permission denied",
+        "npm ERR!",
+        "fatal:",
+        "error[E",
+        "FAILED",
+        "command not found",
+        "No such file or directory",
+        "ConnectionRefusedError",
+        "OSError:",
     ]
     # Handle both string and dict tool_response defensively
     if isinstance(tool_response, dict):
