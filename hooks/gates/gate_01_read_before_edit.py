@@ -19,8 +19,22 @@ GATE_NAME = "GATE 1: READ BEFORE EDIT"
 
 # File extensions that require read-before-edit
 GUARDED_EXTENSIONS = {
-    ".py", ".js", ".ts", ".jsx", ".tsx", ".rs", ".go", ".java",
-    ".c", ".cpp", ".rb", ".php", ".sh", ".sql", ".tf", ".ipynb",
+    ".py",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".rs",
+    ".go",
+    ".java",
+    ".c",
+    ".cpp",
+    ".rb",
+    ".php",
+    ".sh",
+    ".sql",
+    ".tf",
+    ".ipynb",
 }
 
 # Files/patterns always allowed to write without reading
@@ -42,7 +56,7 @@ def _stem_normalize(filepath):
     # Strip test prefixes
     for prefix in ("test_", "test"):
         if stem.startswith(prefix):
-            stem = stem[len(prefix):]
+            stem = stem[len(prefix) :]
             break
     # Strip test suffixes
     for suffix in ("_test", "_spec", ".test", ".spec"):
@@ -71,6 +85,8 @@ def _is_related_read(read_path, edit_path):
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
+    """Block Edit/Write/NotebookEdit on code files unless the file was Read first this session.
+    New files and non-code extensions are exempt. Severity: error (Tier 1 fail-closed)."""
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
