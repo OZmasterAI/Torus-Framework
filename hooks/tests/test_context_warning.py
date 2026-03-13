@@ -69,16 +69,16 @@ class TestContextThresholdDetection:
 
 
 class TestStopHookWarning:
-    """Stop hook should verify summary was written and print formatted warning."""
+    """Stop hook should verify summary was written and return formatted warning."""
 
-    def test_no_output_when_threshold_not_fired(self, capsys):
+    def test_no_output_when_threshold_not_fired(self):
         from context_threshold_stop import check_and_warn
 
         op_state = {"summary_threshold_fired": False}
-        check_and_warn(op_state, summary_size=0, context_pct=30)
-        assert capsys.readouterr().err == ""
+        msg = check_and_warn(op_state, summary_size=0, context_pct=30)
+        assert msg is None
 
-    def test_success_message_when_summary_written(self, capsys):
+    def test_success_message_when_summary_written(self):
         from context_threshold_stop import check_and_warn
 
         op_state = {
@@ -86,15 +86,14 @@ class TestStopHookWarning:
             "context_warning_shown": True,
             "summary_warning_shown": False,
         }
-        check_and_warn(op_state, summary_size=4200, context_pct=67)
-        err = capsys.readouterr().err
-        assert "## WARNING ##" in err
-        assert "67%" in err
-        assert "4,200" in err
-        assert "/clear" in err
+        msg = check_and_warn(op_state, summary_size=4200, context_pct=67)
+        assert "## WARNING ##" in msg
+        assert "67%" in msg
+        assert "4,200" in msg
+        assert "/clear" in msg
         assert op_state["summary_warning_shown"]
 
-    def test_error_message_when_summary_not_written(self, capsys):
+    def test_error_message_when_summary_not_written(self):
         from context_threshold_stop import check_and_warn
 
         op_state = {
@@ -102,23 +101,22 @@ class TestStopHookWarning:
             "context_warning_shown": True,
             "summary_warning_shown": False,
         }
-        check_and_warn(op_state, summary_size=100, context_pct=67)
-        err = capsys.readouterr().err
-        assert "!! WARNING !!" in err
-        assert "no summary written" in err.lower()
+        msg = check_and_warn(op_state, summary_size=100, context_pct=67)
+        assert "!! WARNING !!" in msg
+        assert "no summary written" in msg.lower()
 
-    def test_no_output_when_summary_small_but_threshold_not_fired(self, capsys):
+    def test_no_output_when_summary_small_but_threshold_not_fired(self):
         from context_threshold_stop import check_and_warn
 
         op_state = {"summary_threshold_fired": False}
-        check_and_warn(op_state, summary_size=100, context_pct=50)
-        assert capsys.readouterr().err == ""
+        msg = check_and_warn(op_state, summary_size=100, context_pct=50)
+        assert msg is None
 
 
 class TestStopHookClearReminder:
     """Stop hook should remind user to /clear on subsequent turns."""
 
-    def test_clear_reminder_when_summary_written_context_still_high(self, capsys):
+    def test_clear_reminder_when_summary_written_context_still_high(self):
         from context_threshold_stop import check_and_warn
 
         op_state = {
@@ -126,12 +124,11 @@ class TestStopHookClearReminder:
             "context_warning_shown": True,
             "summary_warning_shown": True,
         }
-        check_and_warn(op_state, summary_size=4200, context_pct=72)
-        err = capsys.readouterr().err
-        assert "/clear not run" in err
-        assert "72%" in err
+        msg = check_and_warn(op_state, summary_size=4200, context_pct=72)
+        assert "/clear not run" in msg
+        assert "72%" in msg
 
-    def test_no_clear_reminder_on_first_fire(self, capsys):
+    def test_no_clear_reminder_on_first_fire(self):
         from context_threshold_stop import check_and_warn
 
         op_state = {
@@ -139,12 +136,11 @@ class TestStopHookClearReminder:
             "context_warning_shown": True,
             "summary_warning_shown": False,
         }
-        check_and_warn(op_state, summary_size=4200, context_pct=67)
-        err = capsys.readouterr().err
-        assert "## WARNING ##" in err  # First time = summary confirmation
-        assert "/clear not run" not in err
+        msg = check_and_warn(op_state, summary_size=4200, context_pct=67)
+        assert "## WARNING ##" in msg  # First time = summary confirmation
+        assert "/clear not run" not in msg
 
-    def test_no_reminder_after_clear(self, capsys):
+    def test_no_reminder_after_clear(self):
         from context_threshold_stop import check_and_warn
 
         op_state = {
@@ -152,16 +148,16 @@ class TestStopHookClearReminder:
             "context_warning_shown": True,
             "summary_warning_shown": True,
         }
-        check_and_warn(
+        msg = check_and_warn(
             op_state, summary_size=4200, context_pct=10
         )  # Low = /clear was run
-        assert capsys.readouterr().err == ""
+        assert msg is None
         # Flags should be reset
         assert not op_state["summary_threshold_fired"]
         assert not op_state["context_warning_shown"]
         assert not op_state["summary_warning_shown"]
 
-    def test_flags_reset_when_context_drops(self, capsys):
+    def test_flags_reset_when_context_drops(self):
         from context_threshold_stop import check_and_warn
 
         op_state = {
@@ -169,6 +165,7 @@ class TestStopHookClearReminder:
             "context_warning_shown": True,
             "summary_warning_shown": True,
         }
-        check_and_warn(op_state, summary_size=4200, context_pct=30)
+        msg = check_and_warn(op_state, summary_size=4200, context_pct=30)
+        assert msg is None
         assert not op_state["summary_threshold_fired"]
         assert not op_state["summary_warning_shown"]

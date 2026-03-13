@@ -705,6 +705,15 @@ def handle_post_tool_use(
             "summary_threshold_fired"
         ):
             _op_tracker._save_state(_op_state)
+            # Sync to enforcer state so Gate 21 can see the flag
+            try:
+                _enf_state = load_state(session_id=session_id)
+                _enf_state["summary_threshold_fired"] = _op_state.get(
+                    "summary_threshold_fired", False
+                )
+                save_state(_enf_state, session_id=session_id)
+            except Exception:
+                pass  # Fail-open: gate sync is best-effort
     except Exception as _ctx_err:
         _log_debug(f"context threshold check failed (non-blocking): {_ctx_err}")
 

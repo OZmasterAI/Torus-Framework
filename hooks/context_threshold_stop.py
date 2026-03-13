@@ -9,7 +9,9 @@ Three states:
 2. First fire (summary NOT written): "[!! WARNING !!] Context at {pct}% but no summary written!"
 3. Subsequent turns (/clear not run): "[# WARNING #] /clear not run! {pct}% CONTEXT!"
 
-Prints to stderr (visible in user's terminal).
+Output: JSON with systemMessage (shown to user) on stdout.
+Stop hook stderr is only visible in verbose mode (Ctrl+O), so we use
+the systemMessage JSON field instead for user-visible warnings.
 Fail-open: always exits 0.
 """
 
@@ -48,15 +50,18 @@ def _get_context_pct():
 
 
 def check_and_warn(op_state, summary_size=None, context_pct=None):
-    """Check threshold + summary state, print warning to stderr.
+    """Check threshold + summary state, return warning message.
 
     Args:
         op_state: Operation tracker state dict (read + mutated).
         summary_size: Override for testing (bytes). None = read from file.
         context_pct: Override for testing. None = read from snapshot.
+
+    Returns:
+        Warning message string, or None if no warning needed.
     """
     if not op_state.get("summary_threshold_fired"):
-        return
+        return None
 
     pct = context_pct if context_pct is not None else _get_context_pct()
     size = summary_size if summary_size is not None else _get_summary_size()
@@ -66,29 +71,21 @@ def check_and_warn(op_state, summary_size=None, context_pct=None):
         op_state["summary_threshold_fired"] = False
         op_state["context_warning_shown"] = False
         op_state["summary_warning_shown"] = False
-        return
+        return None
 
     # Subsequent turns: /clear not run reminder
     if op_state.get("summary_warning_shown"):
-        print(
-            f"[# WARNING #] /clear not run! {pct}% CONTEXT!",
-            file=sys.stderr,
-        )
-        return
+        return f"[# WARNING #] /clear not run! {pct}% CONTEXT!"
 
     # First fire: summary verification
     if size >= MIN_SUMMARY_CHARS:
-        print(
-            f"[## WARNING ## {pct}% CONTEXT] Summary ({size:,} chars). "
-            f"Context preserved for /clear!",
-            file=sys.stderr,
-        )
         op_state["summary_warning_shown"] = True
-    else:
-        print(
-            f"[!! WARNING !!] Context at {pct}% but no summary written!",
-            file=sys.stderr,
+        return (
+            f"[## WARNING ## {pct}% CONTEXT] Summary ({size:,} chars). "
+            f"Context preserved for /clear!"
         )
+    else:
+        return f"[!! WARNING !!] Context at {pct}% but no summary written!"
 
 
 _CONTEXT_THRESHOLD_PCT = 65
@@ -102,15 +99,31 @@ def main():
 
     session_id = payload.get("session_id", "main")
 
+    warning_msg = None
     try:
         from shared.operation_tracker import OperationTracker
+        from shared.state import load_state, save_state
 
         op_tracker = OperationTracker(session_id)
         op_state = op_tracker.get_state()
-        check_and_warn(op_state)
+        warning_msg = check_and_warn(op_state)
         op_tracker._save_state(op_state)
+        # Sync summary_threshold_fired to enforcer state for Gate 21
+        try:
+            enf_state = load_state(session_id=session_id)
+            enf_state["summary_threshold_fired"] = op_state.get(
+                "summary_threshold_fired", False
+            )
+            save_state(enf_state, session_id=session_id)
+        except Exception:
+            pass  # Fail-open
     except Exception:
         pass  # Fail-open
+
+    # Output JSON with systemMessage so user sees the warning
+    # (Stop hook stderr is only visible in verbose mode)
+    if warning_msg:
+        print(json.dumps({"systemMessage": warning_msg}))
 
 
 if __name__ == "__main__":

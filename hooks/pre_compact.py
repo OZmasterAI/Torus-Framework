@@ -91,6 +91,15 @@ def main():
         _tracker_state["context_warning_shown"] = False  # Reset so warning fires again
         _tracker_state["summary_warning_shown"] = False  # Reset stop hook state
         _op_tracker._save_state(_tracker_state)
+        # Sync reset to enforcer state so Gate 21 unblocks
+        try:
+            from shared.state import load_state as _load_enf, save_state as _save_enf
+
+            _enf = _load_enf(session_id=session_id)
+            _enf["summary_threshold_fired"] = False
+            _save_enf(_enf, session_id=session_id)
+        except Exception:
+            pass
         print(
             "[PreCompact] Working summary countdown started (5 turns)",
             file=sys.stderr,
