@@ -28,7 +28,7 @@ import json
 import os
 import time
 from collections import Counter, defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 # ---------------------------------------------------------------------------
@@ -46,49 +46,18 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 
-def extract_file_path(tool_input: dict, tool_name: str = "") -> str:
-    """Extract the primary file path from a tool_input dict.
-
-    Handles Edit, Write, Read, NotebookEdit, Glob (path field), and
-    Bash (heuristic: first quoted path argument).
-
-    Parameters
-    ----------
-    tool_input : dict
-        The tool_input dict from a hook payload or audit entry.
-    tool_name : str
-        Name of the tool (helps disambiguate).
-
-    Returns
-    -------
-    str
-        Extracted file path, or empty string if none found.
-    """
-    if not isinstance(tool_input, dict):
+try:
+    from shared.gate_helpers import extract_file_path
+except ImportError:
+    def extract_file_path(tool_input: dict, tool_name: str = "") -> str:
+        """Fallback extract_file_path — prefer shared.gate_helpers."""
+        if not isinstance(tool_input, dict):
+            return ""
+        for key in ("file_path", "path", "notebook_path"):
+            val = tool_input.get(key, "")
+            if isinstance(val, str) and val.strip():
+                return val.strip()
         return ""
-
-    # Direct path fields (Edit, Write, Read, NotebookEdit)
-    for key in ("file_path", "path", "notebook_path"):
-        val = tool_input.get(key, "")
-        if isinstance(val, str) and val.strip():
-            return val.strip()
-
-    # Bash: try to extract path from command
-    command = tool_input.get("command", "")
-    if isinstance(command, str) and command:
-        import re
-        # Match quoted paths or paths starting with /
-        m = re.search(r'(?:^|\s)(/[^\s"\']+\.(?:py|js|ts|json|md|yaml|yml|sh))', command)
-        if m:
-            return m.group(1)
-
-    return ""
-
-
-# ---------------------------------------------------------------------------
-# Audit log scanning
-# ---------------------------------------------------------------------------
-
 
 def _scan_audit_entries(lookback_days: int = 7) -> List[dict]:
     """Scan audit log files and return entries within the lookback window.

@@ -22,7 +22,7 @@ Audit log entries are JSONL with keys:
 
 import gzip
 import json
-import math
+import statistics as _statistics
 import os
 import re
 import glob as _glob
@@ -989,11 +989,9 @@ def compare_sessions_metrics(
 
 def _stddev(values: List[float]) -> float:
     """Population standard deviation."""
-    n = len(values)
-    if n < 2:
+    if len(values) < 2:
         return 0.0
-    mean = sum(values) / n
-    return math.sqrt(sum((v - mean) ** 2 for v in values) / n)
+    return _statistics.pstdev(values)
 
 
 def _compare_gate_trends(current: Dict, history: List[Dict]) -> Dict[str, Dict]:

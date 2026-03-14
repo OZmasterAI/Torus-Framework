@@ -8,7 +8,7 @@ patterns, gate block rates, error frequencies, and memory query gaps to
 surface anomalous session behavior.
 """
 
-import math
+import statistics as _statistics
 import time
 from typing import Dict, List, Optional, Tuple
 
@@ -46,12 +46,9 @@ def compute_baseline(
 
 def _stddev(values: List[float]) -> float:
     """Population standard deviation of a list of floats."""
-    n = len(values)
-    if n == 0:
+    if not values:
         return 0.0
-    mean = sum(values) / n
-    variance = sum((v - mean) ** 2 for v in values) / n
-    return math.sqrt(variance)
+    return _statistics.pstdev(values)
 
 
 def detect_anomalies(

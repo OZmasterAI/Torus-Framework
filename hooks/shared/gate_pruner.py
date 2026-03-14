@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 _HOOKS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _EFFECTIVENESS_PATH = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
@@ -77,13 +77,16 @@ class PruneRecommendation:
 
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
-def _load_json(path: str) -> dict:
-    try:
-        with open(path, "r") as fh:
-            data = json.load(fh)
-        return data if isinstance(data, dict) else {}
-    except (OSError, json.JSONDecodeError, ValueError):
-        return {}
+try:
+    from shared.gate_helpers import load_json_safe as _load_json
+except ImportError:
+    def _load_json(path: str) -> dict:
+        try:
+            with open(path, "r") as fh:
+                data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError, ValueError):
+            return {}
 
 
 # ── Core analysis ─────────────────────────────────────────────────────────────
