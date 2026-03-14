@@ -857,16 +857,21 @@ def main():
     lines_removed = cost_data.get("total_lines_removed", 0) or 0
     context_pct = ctx_data.get("used_percentage", 0) or 0
 
-    # ── Context window override: recalculate % if real window differs from reported ──
+    # ── Context window override: recalculate % from actual tokens ──
     # Claude Code reports context_window_size=200000 even on 1M plans.
-    # config.json "context_window_override" corrects this.
-    reported_window = ctx_data.get("context_window_size", 200000)
+    # config.json "context_window_override" computes real % from token counts.
     try:
         with open(os.path.join(CLAUDE_DIR, "config.json")) as _cf:
             _override = json.load(_cf).get("context_window_override", 0)
-        if _override and reported_window and _override != reported_window:
-            context_pct = context_pct * (reported_window / _override)
-    except Exception:
+        if _override and _override != ctx_data.get("context_window_size", 0):
+            _cur = ctx_data.get("current_usage") or {}
+            _actual = (
+                (_cur.get("cache_read_input_tokens") or 0)
+                + (_cur.get("cache_creation_input_tokens") or 0)
+                + (_cur.get("input_tokens") or 0)
+            )
+            context_pct = _actual / _override * 100
+    except (OSError, ValueError, KeyError):
         pass
 
     # ── EARLY SNAPSHOT: write context_pct immediately for threshold system ──
