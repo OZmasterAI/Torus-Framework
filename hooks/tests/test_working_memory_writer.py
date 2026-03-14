@@ -179,8 +179,9 @@ writer4.write_status(state4)
 with open(os.path.join(tmpdir4, "working-memory.md")) as f:
     content4 = f.read()
 
-test("bookkeeping filter skips working-summary.md", "Op1: write" in content4)
-test("bookkeeping filter does not show skipped op", "Op2: write" not in content4)
+status4 = content4.split("## Status")[1].split("##")[0]  # Extract Status section only
+test("bookkeeping filter skips working-summary.md", "Op1: write" in status4)
+test("bookkeeping filter does not show skipped op in Last", "Op2" not in status4)
 
 # Bookkeeping filter — all ops are bookkeeping → Last: (none)
 writer5, tmpdir5 = make_writer()

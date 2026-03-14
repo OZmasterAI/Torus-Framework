@@ -1,9 +1,9 @@
 {
-  "session_count": 424,
+  "session_count": 427,
   "project": "torus-framework",
-  "feature": "working-summary-standalone",
+  "feature": "working-memory-refinement",
   "framework_version": "v2.8.3",
-  "what_was_done": "Audited sprint agent contamination (reverted batch_processor, deleted stale files). Verified working-summary impl matches plan (8/8 tasks, 24/24 tests). Built standalone claude-working-memory repo with 3 installers, pushed to GitHub as MIT. Diagnosed session_end.py hook timeout (Haiku 15s > 5s limit).",
+  "what_was_done": "Added bookkeeping file filter to Status section (_BOOKKEEPING_FILES set, _is_bookkeeping_op). Added Key Code + User Corrections sections to /working-summary skill template. Tested compaction canary (rules/ and CLAUDE.md) — confirmed compaction ignores in-context instructions. Enabled 1M context (CLAUDE_CODE_MODEL env vars in .bashrc).",
   "known_issues": [
     "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
     "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
@@ -15,11 +15,13 @@
     "test_lance_collection.py: 12 tests mock _fetch_all_entries but actual function is _safe_fetch_all"
   ],
   "next_steps": [
+    "Remove canary line from CLAUDE.md and delete rules/compaction-test.md",
+    "Verify 1M context is active after restart (check context_pct at high token counts)",
     "Fix session_end.py hook timeout — background heavy ops (Haiku call, flush, backup)",
     "Review and merge sprint branches: sprint/memory, sprint/gates, sprint/refactor, sprint/tests",
     "Fix 12 failing tests in test_lance_collection.py (wrong mock target)",
     "Fix SQL injection in lance_collection.py (audit F-01 — critical)",
-    "Add quality_score to _KNOWLEDGE_SCHEMA (audit F-04)",
-    "Memory stale purge — 2,841 entries, run maintenance(action='stale')"
+    "Port working-memory improvements to standalone claude-working-memory plugin",
+    "Memory stale purge — 2,858 entries, run maintenance(action='stale')"
   ]
 }

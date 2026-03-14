@@ -325,6 +325,10 @@ GATE_DEPENDENCIES = {
         ],
         "writes": [],
     },
+    "gate_21_working_summary": {
+        "reads": ["summary_threshold_fired"],
+        "writes": [],
+    },
 }
 
 
@@ -361,6 +365,7 @@ GATE_TOOL_MAP = {
     },  # + MCP tools checked internally
     "gates.gate_18_canary": None,  # Universal — observes all tool calls
     "gates.gate_19_hindsight": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_21_working_summary": {"Edit", "Write", "NotebookEdit", "Bash", "Task"},
 }
 
 
