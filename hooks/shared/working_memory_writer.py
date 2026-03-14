@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 # ── Token budget constants ────────────────────────────────────────────────────
 
-TOKEN_CAP = 800  # Content token budget (headers/structural overhead excluded)
-OPS_SECTION_TOKEN_CAP = 500  # Content token budget for op lines only (header excluded)
+TOKEN_CAP = 1200  # Content token budget (headers/structural overhead excluded)
+OPS_SECTION_TOKEN_CAP = 650  # Content token budget for op lines only (header excluded)
 CHARS_PER_TOKEN = 4  # Rough estimate: 1 token ≈ 4 chars
 
 
