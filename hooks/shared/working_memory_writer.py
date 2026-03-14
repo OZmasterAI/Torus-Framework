@@ -3,10 +3,10 @@
 Reads operation tracker state and writes rules/working-memory.md with three sections:
 
   Status     (~40 tokens)  — current op, last op. Updated every turn.
-  Operations (+60-80/op)   — completed op summaries, FIFO eviction at ~500 tokens.
-  Context    (+200-350)    — key decisions, unresolved errors. Written at threshold.
+  Operations (+60-80/op)   — completed op summaries, FIFO eviction at ~650 tokens.
+  Context    (+300-510)    — causal chains, errors, hot files. Written at threshold.
 
-Total file cap: ~800 tokens (estimated as len(text) / 4).
+Total file cap: ~1200 tokens (estimated as len(text) / 4).
 Atomic writes: tmp + os.replace() — safe against concurrent UserPromptSubmit/PostToolUse.
 """
 
@@ -228,8 +228,7 @@ def _build_context_section(tracker_state: dict) -> str:
         hot.sort(key=lambda x: x[1] + x[2], reverse=True)
         lines.append("### Hot Files")
         for f, edits, reads in hot[:8]:
-            name = os.path.basename(f)
-            lines.append(f"- {name}: {edits}e {reads}r")
+            lines.append(f"- {f}: {edits}e {reads}r")
     else:
         lines.append("### Hot Files")
         lines.append("- (none)")
