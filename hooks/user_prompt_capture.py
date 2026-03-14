@@ -333,6 +333,13 @@ def main():
             and (_total_turns - _expand_turn >= _EXPAND_REFRESH_INTERVAL)
         ):
             _should_expand = True
+        elif (
+            _expand_written
+            and _tracker_state.get("summary_threshold_fired", False)
+            and not _tracker_state.get("_threshold_expand_done", False)
+        ):
+            _should_expand = True  # Final refresh when 65% warning fires
+            _tracker_state["_threshold_expand_done"] = True
         if _should_expand:
             try:
                 from shared.state import load_state as _load_enf
