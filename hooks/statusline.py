@@ -857,6 +857,18 @@ def main():
     lines_removed = cost_data.get("total_lines_removed", 0) or 0
     context_pct = ctx_data.get("used_percentage", 0) or 0
 
+    # ── Context window override: recalculate % if real window differs from reported ──
+    # Claude Code reports context_window_size=200000 even on 1M plans.
+    # config.json "context_window_override" corrects this.
+    reported_window = ctx_data.get("context_window_size", 200000)
+    try:
+        with open(os.path.join(CLAUDE_DIR, "config.json")) as _cf:
+            _override = json.load(_cf).get("context_window_override", 0)
+        if _override and reported_window and _override != reported_window:
+            context_pct = context_pct * (reported_window / _override)
+    except Exception:
+        pass
+
     # ── EARLY SNAPSHOT: write context_pct immediately for threshold system ──
     # If statusline crashes during rendering, this ensures _check_context_threshold()
     # still reads fresh context_pct. Full snapshot overwrites at end of main().
