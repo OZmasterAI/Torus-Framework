@@ -101,6 +101,11 @@ class LanceCollection:
 
         return result
 
+    @staticmethod
+    def _sanitize_id(i):
+        """Escape single quotes to prevent filter injection."""
+        return str(i).replace("'", "''")
+
     def get(self, ids=None, where=None, limit=None, offset=0, include=None):
         """Fetch by IDs or filter. Returns flat results.
 
@@ -112,7 +117,7 @@ class LanceCollection:
         try:
             if ids is not None and len(ids) > 0:
                 # Fetch by specific IDs
-                escaped = ", ".join(f"'{i}'" for i in ids)
+                escaped = ", ".join(f"'{self._sanitize_id(i)}'" for i in ids)
                 sql = f"id IN ({escaped})"
                 rows = (
                     self._table.search()
@@ -193,7 +198,7 @@ class LanceCollection:
             return
         try:
             # Fetch existing records
-            escaped = ", ".join(f"'{i}'" for i in ids)
+            escaped = ", ".join(f"'{self._sanitize_id(i)}'" for i in ids)
             existing = (
                 self._table.search()
                 .where(f"id IN ({escaped})", prefilter=True)
@@ -247,7 +252,7 @@ class LanceCollection:
         if not ids:
             return
         try:
-            escaped = ", ".join(f"'{i}'" for i in ids)
+            escaped = ", ".join(f"'{self._sanitize_id(i)}'" for i in ids)
             lance_retry(lambda: self._table.delete(f"id IN ({escaped})"))
         except Exception as e:
             print(f"[Lance] delete failed for {self._name}: {e}", file=sys.stderr)
