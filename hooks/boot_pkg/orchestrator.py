@@ -1,4 +1,5 @@
 """Boot sequence orchestrator — main() entry point."""
+
 import json
 import os
 import subprocess
@@ -7,32 +8,47 @@ import sys
 from datetime import datetime
 
 from boot_pkg.util import (
-    CLAUDE_DIR, read_file, load_live_state,
-    detect_project, load_project_state, scan_all_project_states,
+    CLAUDE_DIR,
+    read_file,
+    load_live_state,
+    detect_project,
+    load_project_state,
+    scan_all_project_states,
     scan_subproject_states,
 )
 from boot_pkg.memory import (
-    inject_memories_via_socket, _write_sideband_timestamp,
-    socket_available, socket_flush, socket_remember,
+    inject_memories_via_socket,
+    _write_sideband_timestamp,
+    socket_available,
+    socket_flush,
+    socket_remember,
 )
 from boot_pkg.context import (
-    _extract_recent_errors, _extract_test_status, _extract_verification_quality,
-    _extract_session_duration, _extract_tool_activity,
-    _extract_gate_effectiveness_suggestions, _extract_gate_blocks,
+    _extract_recent_errors,
+    _extract_test_status,
+    _extract_verification_quality,
+    _extract_session_duration,
+    _extract_tool_activity,
+    _extract_gate_effectiveness_suggestions,
+    _extract_gate_blocks,
     _extract_git_context,
 )
 from boot_pkg.maintenance import (
-    reset_enforcement_state, _rotate_audit_logs, sync_agent_models,
+    reset_enforcement_state,
+    _rotate_audit_logs,
+    sync_agent_models,
 )
 
 try:
     from shared.ramdisk import ensure_ramdisk as _ramdisk_ensure, get_capture_queue
+
     _HAS_RAMDISK_MODULE = True
 except ImportError:
     _HAS_RAMDISK_MODULE = False
 
 try:
     from shared.gate_health import get_gate_health_report as _get_gate_health_report
+
     _HAS_GATE_HEALTH = True
 except ImportError:
     _HAS_GATE_HEALTH = False
@@ -48,6 +64,7 @@ def main():
     _boot_cwd = None
     try:
         import select
+
         if select.select([sys.stdin], [], [], 0)[0]:
             _stdin_data = json.loads(sys.stdin.read())
             _boot_cwd = _stdin_data.get("cwd")
@@ -55,10 +72,14 @@ def main():
         pass
 
     # Detect if we're in a project under ~/projects/
-    _project_name, _project_dir, _subproject_name, _subproject_dir = detect_project(_boot_cwd)
+    _project_name, _project_dir, _subproject_name, _subproject_dir = detect_project(
+        _boot_cwd
+    )
     _is_project_session = _project_name is not None
     _effective_dir = _subproject_dir or _project_dir
-    _effective_name = f"{_project_name}/{_subproject_name}" if _subproject_name else _project_name
+    _effective_name = (
+        f"{_project_name}/{_subproject_name}" if _subproject_name else _project_name
+    )
 
     now = datetime.now()
     hour = now.hour
@@ -69,7 +90,12 @@ def main():
         try:
             ramdisk_ok = _ramdisk_ensure()
             if ramdisk_ok:
-                print("  [BOOT] Ramdisk initialized at /run/user/{}/claude-hooks".format(os.getuid()), file=sys.stderr)
+                print(
+                    "  [BOOT] Ramdisk initialized at /run/user/{}/claude-hooks".format(
+                        os.getuid()
+                    ),
+                    file=sys.stderr,
+                )
         except Exception:
             pass  # Ramdisk failure is non-fatal
 
@@ -94,7 +120,9 @@ def main():
         _project_state = load_project_state(_effective_dir)
         if _project_state:
             session_num = _project_state.get("session_count", 1)
-            summary = (_project_state.get("what_was_done", "") or "No prior session data")[:100]
+            summary = (
+                _project_state.get("what_was_done", "") or "No prior session data"
+            )[:100]
         else:
             # First session for this project/subproject — don't inherit framework state
             session_num = 1
@@ -109,11 +137,15 @@ def main():
     _domain_behavior = ""
     try:
         from shared.domain_registry import (
-            get_active_domain, get_domain_context_for_injection,
+            get_active_domain,
+            get_domain_context_for_injection,
         )
+
         _domain_name = get_active_domain()
         if _domain_name:
-            _domain_mastery, _domain_behavior = get_domain_context_for_injection(_domain_name)
+            _domain_mastery, _domain_behavior = get_domain_context_for_injection(
+                _domain_name
+            )
     except Exception:
         pass  # Domain system is non-fatal
 
@@ -136,7 +168,13 @@ def main():
     gates_dir = os.path.join(CLAUDE_DIR, "hooks", "gates")
     gate_count = 0
     if os.path.isdir(gates_dir):
-        gate_count = len([f for f in os.listdir(gates_dir) if f.startswith("gate_") and f.endswith(".py")])
+        gate_count = len(
+            [
+                f
+                for f in os.listdir(gates_dir)
+                if f.startswith("gate_") and f.endswith(".py")
+            ]
+        )
 
     # Check if UDS worker (memory_server.py) is available
     _worker_available = False
@@ -160,6 +198,7 @@ def main():
             if os.path.exists(_sock_path):
                 try:
                     import socket as _sock
+
                     _s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
                     _s.settimeout(1)
                     _s.connect(_sock_path)
@@ -182,13 +221,43 @@ def main():
     except Exception:
         pass  # Daemon startup is optional, never block boot
 
+    # Auto-start memory SSE server for MCP connection
+    try:
+        _mem_server_path = os.path.join(CLAUDE_DIR, "hooks", "memory_server.py")
+        if os.path.isfile(_mem_server_path):
+            _mem_sse_running = False
+            try:
+                import socket as _sock
+
+                _s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+                _s.settimeout(1)
+                _s.connect(("127.0.0.1", 8741))
+                _s.close()
+                _mem_sse_running = True
+            except Exception:
+                pass
+            if not _mem_sse_running:
+                subprocess.Popen(
+                    [sys.executable, _mem_server_path, "--sse"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                print("  [BOOT] Memory SSE server started (port 8741)", file=sys.stderr)
+            else:
+                print("  [BOOT] Memory SSE server already running", file=sys.stderr)
+    except Exception:
+        pass  # Memory server startup is optional, never block boot
+
     # Watchdog: verify LanceDB directory exists
     db_size_warning = None
     _mem_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
     _lance_dir = os.path.join(_mem_dir, "lancedb")
     try:
         if not os.path.isdir(_lance_dir):
-            db_size_warning = "LanceDB directory missing — memory database may not be initialized"
+            db_size_warning = (
+                "LanceDB directory missing — memory database may not be initialized"
+            )
     except OSError:
         pass
 
@@ -203,12 +272,17 @@ def main():
     # Telegram L2 memory: search Saved Messages for relevant context
     tg_memories = []
     try:
-        _tg_hook = os.path.join(CLAUDE_DIR, "integrations", "telegram-bot", "hooks", "on_session_start.py")
+        _tg_hook = os.path.join(
+            CLAUDE_DIR, "integrations", "telegram-bot", "hooks", "on_session_start.py"
+        )
         if os.path.isfile(_tg_hook):
             _tg_query = f"{project_name} {live_state.get('feature', '')}"
             _tg_result = subprocess.run(
                 [sys.executable, _tg_hook, _tg_query[:200]],
-                capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                stdin=subprocess.DEVNULL,
             )
             if _tg_result.returncode == 0 and _tg_result.stdout.strip():
                 _tg_data = json.loads(_tg_result.stdout)
@@ -257,27 +331,39 @@ def main():
         if uncommitted > 0:
             git_line += f" ({uncommitted} uncommitted)"
         dashboard += f"\n|  {git_line:<66}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     if time_warning:
         dashboard += f"\n|  {time_warning:<67}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     if db_size_warning:
         dashboard += f"\n|  DB WATCHDOG: {db_size_warning:<54}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     if active_tasks:
-        dashboard += "\n|  ACTIVE TASKS:                                                     |"
+        dashboard += (
+            "\n|  ACTIVE TASKS:                                                     |"
+        )
         for task in active_tasks[:3]:
             dashboard += f"\n|    - {task:<63}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     if injected:
         dashboard += f"\n|  MEMORY CONTEXT ({len(injected)} relevant):{'':>42}|"
         for line in injected:
             dashboard += f"\n|    {line:<64}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     if tg_memories:
         dashboard += f"\n|  TELEGRAM L2 ({len(tg_memories)} relevant):{'':>43}|"
@@ -286,54 +372,78 @@ def main():
             if len(tm.get("text", "")) > 60:
                 preview += ".."
             dashboard += f"\n|    {preview:<64}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     if recent_errors:
-        dashboard += "\n|  RECENT ERRORS (from last session):                               |"
+        dashboard += (
+            "\n|  RECENT ERRORS (from last session):                               |"
+        )
         for err in recent_errors:
             dashboard += f"\n|    - {err:<61}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     # Test status from last session
     if test_status:
-        status_icon = "PASS" if test_status["passed"] else ("FAIL" if test_status["passed"] is not None else "??")
+        status_icon = (
+            "PASS"
+            if test_status["passed"]
+            else ("FAIL" if test_status["passed"] is not None else "??")
+        )
         fw = test_status["framework"]
         mins = test_status["minutes_ago"]
         test_line = f"Last test: {status_icon} ({fw}, {mins}m ago)"
         dashboard += f"\n|  {test_line:<66}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     # Verification quality from last session
     if verification:
         vq_line = f"VERIFICATION: {verification['verified']} verified, {verification['pending']} pending"
         dashboard += f"\n|  {vq_line:<66}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     # Session duration from last session
     if session_duration:
         dur_line = f"Session duration: {session_duration}"
         dashboard += f"\n|  {dur_line:<66}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     # Tool activity from last session
     if tool_summary:
         activity_line = f"Tool activity: {tool_call_count} calls ({tool_summary})"
         dashboard += f"\n|  {activity_line:<66}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     # Gate block stats from audit log
     if gate_blocks > 0:
         block_line = f"Gate blocks today: {gate_blocks}"
         dashboard += f"\n|  {block_line:<66}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     # Gate effectiveness suggestions (self-evolving)
     if gate_suggestions:
-        dashboard += "\n|  GATE EFFECTIVENESS (auto-tune):                                   |"
+        dashboard += (
+            "\n|  GATE EFFECTIVENESS (auto-tune):                                   |"
+        )
         for gs in gate_suggestions:
             gs_display = gs[:62]
             dashboard += f"\n|    {gs_display:<64}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     # Hub mode: show all project states when launched from ~/.claude/
     if not _is_project_session:
@@ -364,7 +474,9 @@ def main():
         else:
             dom_label += " (no mastery yet)"
         dashboard += f"\n|  {dom_label:<66}|"
-        dashboard += "\n|--------------------------------------------------------------------|"
+        dashboard += (
+            "\n|--------------------------------------------------------------------|"
+        )
 
     dashboard += """
 |  TIP: Query memory about your task before starting work.           |
@@ -382,7 +494,10 @@ def main():
             _degraded = len(_health.get("degraded_gates", []))
             _score = _health.get("health_score", 100)
             _avg_ms = _health.get("routing_stats", {}).get("avg_routing_ms", 0)
-            print(f"[BOOT] Gates: {_gate_count} tracked, {_degraded} degraded, health {_score}/100, avg {_avg_ms:.1f}ms", file=sys.stderr)
+            print(
+                f"[BOOT] Gates: {_gate_count} tracked, {_degraded} degraded, health {_score}/100, avg {_avg_ms:.1f}ms",
+                file=sys.stderr,
+            )
         except Exception:
             pass  # Gate health is non-critical
 
@@ -394,10 +509,16 @@ def main():
         # Project/subproject sessions: use project state exclusively, never leak LIVE_STATE
         if _project_state:
             PROJECT_CONTEXT_KEYS = {
-                "session_count", "project_name", "feature",
-                "what_was_done", "next_steps", "known_issues",
+                "session_count",
+                "project_name",
+                "feature",
+                "what_was_done",
+                "next_steps",
+                "known_issues",
             }
-            filtered = {k: v for k, v in _project_state.items() if k in PROJECT_CONTEXT_KEYS}
+            filtered = {
+                k: v for k, v in _project_state.items() if k in PROJECT_CONTEXT_KEYS
+            }
             filtered["project"] = _effective_name
         else:
             # First session — minimal context
@@ -419,9 +540,13 @@ def main():
     elif live_state:
         # Framework/hub sessions: use LIVE_STATE.json
         CONTEXT_KEYS = {
-            "session_count", "project", "feature",
-            "framework_version", "what_was_done",
-            "next_steps", "known_issues",
+            "session_count",
+            "project",
+            "feature",
+            "framework_version",
+            "what_was_done",
+            "next_steps",
+            "known_issues",
         }
         filtered = {k: v for k, v in live_state.items() if k in CONTEXT_KEYS}
         if "what_was_done" in filtered:
@@ -438,21 +563,29 @@ def main():
         if git_context["uncommitted_count"] > 0:
             git_info += f", {git_context['uncommitted_count']} uncommitted files"
         if git_context["recent_commits"]:
-            git_info += f"\nRecent commits: {'; '.join(git_context['recent_commits'][:3])}"
+            git_info += (
+                f"\nRecent commits: {'; '.join(git_context['recent_commits'][:3])}"
+            )
         context_parts.append(git_info)
     if active_tasks:
         context_parts.append(f"Active tasks: {', '.join(active_tasks[:5])}")
     if injected:
         context_parts.append(f"Relevant memories: {'; '.join(injected)}")
     if tg_memories:
-        tg_summaries = [f"[{tm.get('date', '?')}] {tm.get('text', '')[:100]}" for tm in tg_memories]
+        tg_summaries = [
+            f"[{tm.get('date', '?')}] {tm.get('text', '')[:100]}" for tm in tg_memories
+        ]
         context_parts.append(f"Telegram L2 memories: {'; '.join(tg_summaries)}")
     if _domain_name:
         context_parts.append(f"Active domain: {_domain_name}")
         if _domain_mastery:
-            context_parts.append(f"<domain-mastery domain=\"{_domain_name}\">\n{_domain_mastery}\n</domain-mastery>")
+            context_parts.append(
+                f'<domain-mastery domain="{_domain_name}">\n{_domain_mastery}\n</domain-mastery>'
+            )
         if _domain_behavior:
-            context_parts.append(f"<domain-behavior domain=\"{_domain_name}\">\n{_domain_behavior}\n</domain-behavior>")
+            context_parts.append(
+                f'<domain-behavior domain="{_domain_name}">\n{_domain_behavior}\n</domain-behavior>'
+            )
     context_parts.append(
         "PROTOCOL: Present session number, brief summary, completed list (what was done last session), "
         "and remaining list (what's next) in ONE message. "
@@ -469,15 +602,21 @@ def main():
     if gate_overrides:
         try:
             from shared.state import load_state, save_state
+
             _tune_state = load_state(session_id="main")
             _tune_state["gate_tune_overrides"] = gate_overrides
             save_state(_tune_state, session_id="main")
-            print(f"  [BOOT] Auto-tune: {len(gate_overrides)} gate threshold(s) adjusted", file=sys.stderr)
+            print(
+                f"  [BOOT] Auto-tune: {len(gate_overrides)} gate threshold(s) adjusted",
+                file=sys.stderr,
+            )
         except Exception:
             pass  # Boot must never crash
 
     # Clean up workspace isolation claims (fresh session = fresh claims)
-    claims_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".file_claims.json")
+    claims_file = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), ".file_claims.json"
+    )
     try:
         if os.path.exists(claims_file):
             os.remove(claims_file)
@@ -486,17 +625,36 @@ def main():
 
     # Flush stale capture queue from previous session (crash recovery)
     try:
-        capture_queue = get_capture_queue() if _HAS_RAMDISK_MODULE else os.path.join(os.path.dirname(os.path.dirname(__file__)), ".capture_queue.jsonl")
-        if _worker_available and os.path.exists(capture_queue) and os.path.getsize(capture_queue) > 0:
+        capture_queue = (
+            get_capture_queue()
+            if _HAS_RAMDISK_MODULE
+            else os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), ".capture_queue.jsonl"
+            )
+        )
+        if (
+            _worker_available
+            and os.path.exists(capture_queue)
+            and os.path.getsize(capture_queue) > 0
+        ):
             flushed = socket_flush()
-            print(f"  [BOOT] Flushed {flushed} stale observations via UDS", file=sys.stderr)
+            print(
+                f"  [BOOT] Flushed {flushed} stale observations via UDS",
+                file=sys.stderr,
+            )
     except Exception:
         pass  # Boot must never crash
 
     # Ingest auto-remember queue from previous session
     try:
-        auto_queue = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".auto_remember_queue.jsonl")
-        if _worker_available and os.path.exists(auto_queue) and os.path.getsize(auto_queue) > 0:
+        auto_queue = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), ".auto_remember_queue.jsonl"
+        )
+        if (
+            _worker_available
+            and os.path.exists(auto_queue)
+            and os.path.getsize(auto_queue) > 0
+        ):
             # Atomically read and clear
             tmp_path = auto_queue + ".ingesting"
             os.replace(auto_queue, tmp_path)
@@ -521,10 +679,12 @@ def main():
             except OSError:
                 pass
             if ingested > 0:
-                print(f"  [BOOT] Ingested {ingested} auto-remember entries via UDS", file=sys.stderr)
+                print(
+                    f"  [BOOT] Ingested {ingested} auto-remember entries via UDS",
+                    file=sys.stderr,
+                )
     except Exception:
         pass  # Boot must never crash
 
     # Sideband timestamp removed — Gate 4 should only pass when Claude
     # actually queries memory, not auto-satisfied at boot
-
