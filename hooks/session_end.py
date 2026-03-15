@@ -407,8 +407,9 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 pass
 
             auto_summary = ""
+            _haiku_overwrite = False
             if excerpt:
-                if _summary_mode == "daemon":
+                if _summary_mode in ("daemon", "daemon+haiku"):
                     auto_summary = _daemon_summarize(
                         excerpt, metrics_section, session_num
                     )
@@ -417,7 +418,11 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                         auto_summary = _haiku_summarize(
                             excerpt, metrics_section, session_num
                         )
-                else:
+                    elif _summary_mode == "daemon+haiku":
+                        _haiku_overwrite = (
+                            True  # daemon succeeded, queue haiku overwrite
+                        )
+                elif _summary_mode == "haiku":
                     auto_summary = _haiku_summarize(
                         excerpt, metrics_section, session_num
                     )
@@ -483,6 +488,56 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
             )
         )
         print(f"[SESSION_END] LIVE_STATE.json updated ({mode})", file=sys.stderr)
+
+        # daemon+haiku: spawn detached Haiku to overwrite summary
+        if _haiku_overwrite and excerpt:
+            try:
+                _state_file = (
+                    os.path.join(project_dir, ".claude-state.json")
+                    if _is_project
+                    else LIVE_STATE_FILE
+                )
+                _overwrite_script = (
+                    "import json, subprocess, os, sys\n"
+                    f"excerpt = {repr(excerpt)}\n"
+                    f"metrics = {repr(metrics_section)}\n"
+                    f"session_num = {repr(session_num)}\n"
+                    f"state_file = {repr(_state_file)}\n"
+                    "env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}\n"
+                    "env['TORUS_BOT_SESSION'] = '1'\n"
+                    "prompt = (f'You are summarizing Session {session_num} of a software project. '\n"
+                    "  'Based on the conversation excerpt and metrics below, write 3-5 concise bullet points '\n"
+                    "  'describing what was accomplished. Focus on outcomes, not process. '\n"
+                    "  'Start each bullet with a dash. No preamble, just the bullets.\\n\\n'\n"
+                    "  f'## Metrics\\n{metrics}\\n\\n'\n"
+                    "  f'## Conversation (last turns)\\n{excerpt}')\n"
+                    "try:\n"
+                    "  r = subprocess.run(['claude', '-p', prompt, '--model', 'claude-haiku-4-5-20251001',\n"
+                    "    '--output-format', 'text'], capture_output=True, text=True, timeout=30,\n"
+                    "    env=env, cwd=os.path.expanduser('~/.claude'))\n"
+                    "  if r.returncode == 0 and r.stdout.strip():\n"
+                    "    s = json.load(open(state_file))\n"
+                    "    s['what_was_done'] = r.stdout.strip()[:200]\n"
+                    "    tmp = state_file + '.haiku.tmp'\n"
+                    "    with open(tmp, 'w') as f:\n"
+                    "      json.dump(s, f, indent=2); f.write('\\n')\n"
+                    "    os.replace(tmp, state_file)\n"
+                    "    print('[SESSION_END:haiku] Overwrote summary', file=sys.stderr)\n"
+                    "except Exception as e:\n"
+                    "  print(f'[SESSION_END:haiku] Failed: {e}', file=sys.stderr)\n"
+                )
+                subprocess.Popen(
+                    [sys.executable, "-c", _overwrite_script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=open(os.path.join(HOOKS_DIR, ".session_end_bg.log"), "a"),
+                    start_new_session=True,
+                )
+                print(
+                    "[SESSION_END] Haiku overwrite spawned (detached)",
+                    file=sys.stderr,
+                )
+            except Exception:
+                pass  # Haiku overwrite is best-effort
 
     except Exception as e:
         print(
