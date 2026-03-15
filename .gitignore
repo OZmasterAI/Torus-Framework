@@ -4,6 +4,7 @@ integrations/voice-web/piper-voices/*.onnx.json
 
 # Credentials & secrets
 .credentials.json
+hooks/.env
 
 # Session & runtime state
 history.jsonl
@@ -16,6 +17,9 @@ hooks/.auto_remember_queue.jsonl
 hooks/.auto_remember_queue.jsonl.ingesting
 hooks/.file_claims.json
 hooks/.statusline_snapshot.json
+hooks/.statusline_snapshot_*.json
+hooks/.summarizer.sock
+hooks/.summarizer.pid
 hooks/.tg_mirror_cursor.json
 hooks/.auto_commit_staged.txt
 hooks/.audit_trail.jsonl
