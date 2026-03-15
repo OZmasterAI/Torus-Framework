@@ -1085,33 +1085,63 @@ def cleanup_all_states():
 EFFECTIVENESS_FILE = os.path.join(_DISK_STATE_DIR, ".gate_effectiveness.json")
 
 
-def update_gate_effectiveness(gate: str, field: str):
-    """Atomically increment a gate effectiveness counter in the persistent file.
+def update_gate_effectiveness(gate: str, field: str, session_id=None):
+    """Atomically increment a gate effectiveness counter in a session-namespaced file.
 
     Fields: "blocks", "overrides", "prevented".
     Uses _DISK_STATE_DIR (not ramdisk) so data survives reboots.
+    When session_id is provided, writes to .gate_effectiveness_{sid}.json.
     """
     try:
+        eff_path = session_namespaced_path(EFFECTIVENESS_FILE, session_id)
         data = {}
-        if os.path.exists(EFFECTIVENESS_FILE):
-            with open(EFFECTIVENESS_FILE) as f:
+        if os.path.exists(eff_path):
+            with open(eff_path) as f:
                 data = json.load(f)
         ge = data.setdefault(gate, {"blocks": 0, "overrides": 0, "prevented": 0})
         ge[field] = ge.get(field, 0) + 1
-        tmp = EFFECTIVENESS_FILE + ".tmp"
+        tmp = eff_path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2)
-        os.replace(tmp, EFFECTIVENESS_FILE)
+        os.replace(tmp, eff_path)
     except Exception:
         pass  # fail-open — don't break enforcement over stats
 
 
-def load_gate_effectiveness():
-    """Load the persistent gate effectiveness data."""
+def load_gate_effectiveness(session_id=None):
+    """Load gate effectiveness data. Merges all session-namespaced files.
+
+    When session_id is given, returns only that session's data.
+    When None, merges all .gate_effectiveness*.json files for aggregate view.
+    """
+    if session_id:
+        eff_path = session_namespaced_path(EFFECTIVENESS_FILE, session_id)
+        try:
+            if os.path.exists(eff_path):
+                with open(eff_path) as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {}
+    # Merge all effectiveness files
+    merged = {}
     try:
-        if os.path.exists(EFFECTIVENESS_FILE):
-            with open(EFFECTIVENESS_FILE) as f:
-                return json.load(f)
+        import glob as _glob
+
+        pattern = os.path.join(_DISK_STATE_DIR, ".gate_effectiveness*.json")
+        for path in _glob.glob(pattern):
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                for gate, counts in data.items():
+                    mg = merged.setdefault(
+                        gate, {"blocks": 0, "overrides": 0, "prevented": 0}
+                    )
+                    for k, v in counts.items():
+                        if isinstance(v, int):
+                            mg[k] = mg.get(k, 0) + v
+            except Exception:
+                continue
     except Exception:
         pass
-    return {}
+    return merged

@@ -88,11 +88,12 @@ def _resolve_gate_block_outcomes(tool_name, tool_input, state):
                 mem_ts = state.get("memory_last_queried", 0)
                 fix_ts = state.get("fix_history_queried", 0)
                 block_ts = outcome.get("timestamp", 0)
+                _sid = state.get("_session_id", "")
                 if mem_ts > block_ts or fix_ts > block_ts:
-                    update_gate_effectiveness(gate, "prevented")
+                    update_gate_effectiveness(gate, "prevented", _sid)
                     outcome["resolved_by"] = "prevented"
                 else:
-                    update_gate_effectiveness(gate, "overrides")
+                    update_gate_effectiveness(gate, "overrides", _sid)
                     outcome["resolved_by"] = "override"
             remaining.append(outcome)
 
@@ -104,7 +105,9 @@ def _resolve_gate_block_outcomes(tool_name, tool_input, state):
         for o in remaining:
             if (now - o.get("timestamp", 0)) >= 1800:
                 if o.get("resolved_by") is None and o.get("gate", "") in COMMAND_GATES:
-                    update_gate_effectiveness(o["gate"], "prevented")
+                    update_gate_effectiveness(
+                        o["gate"], "prevented", state.get("_session_id", "")
+                    )
                 # Discard — too old
             else:
                 keep.append(o)
