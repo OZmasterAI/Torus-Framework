@@ -15,7 +15,7 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
    - Use promotion_candidates from gathered data to check for recurring patterns
    - If any topic appears 3+ times, suggest promoting to CLAUDE.md as a new rule
    - Present promotion suggestions to user for approval — never auto-promote
-3. **UPDATE STATE** — Detect if this is a project or subproject session. If cwd is under `~/projects/<project>/<sub>/` and `<sub>/` contains `.claude-project`, write to `<sub>/.claude-state.json`. Otherwise if cwd is under `~/projects/<project>/`, write to `{project_dir}/.claude-state.json`. If no (framework/hub session), write to `~/.claude/LIVE_STATE.json`. Write with:
+3. **UPDATE STATE** — Run `python3 -c "import sys; sys.path.insert(0, '$HOME/.claude/hooks'); from boot_pkg.util import detect_project; n,d,s,sd = detect_project(); print(sd or d or '')"` to detect project root. If it returns a path, write to `{path}/.claude-state.json`. If empty (framework/hub session), write to `~/.claude/LIVE_STATE.json`. This covers `~/projects/`, `~/agents/`, and `~/worktrees/` automatically. Write with:
    - Updated session count
    - `feature` — short keyword tag for current work area (e.g. "session-isolation", "github-sync", "none")
    - `what_was_done` — max ~200 chars, action verbs only, no metrics/explanations (full details go to remember_this)
