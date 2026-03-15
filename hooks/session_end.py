@@ -578,25 +578,8 @@ def main():
         except Exception as e:
             print(f"[SESSION_END] Summary error (non-fatal): {e}", file=sys.stderr)
 
-        _pid_path = os.path.join(HOOKS_DIR, ".enforcer.pid")
-        if os.path.exists(_pid_path):
-            try:
-                import signal
-                _pid = int(open(_pid_path).read().strip())
-                os.kill(_pid, signal.SIGTERM)
-                print(f"[SESSION_END] Enforcer daemon stopped (PID {_pid})", file=sys.stderr)
-            except (ValueError, OSError, ProcessLookupError):
-                pass
-            try:
-                os.unlink(_pid_path)
-            except OSError:
-                pass
-            _sock_path = os.path.join(HOOKS_DIR, ".enforcer.sock")
-            try:
-                if os.path.exists(_sock_path):
-                    os.unlink(_sock_path)
-            except OSError:
-                pass
+        # Enforcer daemon is shared across sessions — don't kill on exit.
+        # Boot.py handles restart if needed.
 
         if _project_dir is None:
             increment_session_count(metrics)
