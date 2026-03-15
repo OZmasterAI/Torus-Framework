@@ -74,22 +74,8 @@ def main():
         _tracker_state["_session_id"] = session_id
         if not _tracker_state.get("expand_written", False):
             inject_enforcer_fields(_tracker_state, state)
-            _cwd = data.get("cwd", "")
-            _rules_dir = os.path.join(os.path.expanduser("~"), ".claude", "rules")
-            if _cwd and os.path.realpath(_cwd) != os.path.realpath(
-                os.path.expanduser("~/.claude")
-            ):
-                try:
-                    from boot_pkg.util import detect_project
-
-                    _pname, _pdir, _sname, _sdir = detect_project(_cwd)
-                    _target = _sdir or _pdir
-                    if _target:
-                        _rules_dir = os.path.join(_target, ".claude", "rules")
-                        os.makedirs(_rules_dir, exist_ok=True)
-                except Exception:
-                    pass
-            _writer = WorkingMemoryWriter(_rules_dir)
+            _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+            _writer = WorkingMemoryWriter(_hooks_dir)
             _writer.write_expanded(_tracker_state)
             _op_tracker._save_state(_tracker_state)
             print(

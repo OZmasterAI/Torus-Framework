@@ -592,6 +592,17 @@ def main():
         "Ask: 'Continue or New task?' "
         "If user says continue, ask which item to tackle — do NOT auto-start work."
     )
+    # Inject working-memory and working-summary (hook-injected, not auto-loaded from rules/)
+    _hooks_dir_inject = os.path.join(CLAUDE_DIR, "hooks")
+    for _inject_file in ["working-memory.md", "working-summary.md"]:
+        _inject_path = os.path.join(_hooks_dir_inject, _inject_file)
+        try:
+            with open(_inject_path) as _f:
+                _inject_content = _f.read().strip()
+                if _inject_content:
+                    context_parts.append(_inject_content)
+        except OSError:
+            pass  # File missing at first session — skip silently
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))
 

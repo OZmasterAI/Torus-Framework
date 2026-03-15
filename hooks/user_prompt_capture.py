@@ -309,23 +309,9 @@ def main():
         _tracker_state = _op_tracker.get_state()
         _tracker_state["_session_id"] = _session_id
 
-        # Resolve rules dir: use project/worktree dir if not main session
-        _cwd = data.get("cwd", "")
-        _rules_dir = os.path.join(os.path.expanduser("~"), ".claude", "rules")
-        if _cwd and os.path.realpath(_cwd) != os.path.realpath(
-            os.path.expanduser("~/.claude")
-        ):
-            try:
-                from boot_pkg.util import detect_project
-
-                _pname, _pdir, _sname, _sdir = detect_project(_cwd)
-                _target = _sdir or _pdir
-                if _target:
-                    _rules_dir = os.path.join(_target, ".claude", "rules")
-                    os.makedirs(_rules_dir, exist_ok=True)
-            except Exception:
-                pass  # Fall back to global
-        _writer = WorkingMemoryWriter(_rules_dir)
+        # Write to hooks dir (hook-injected, not rules/ auto-loaded)
+        _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+        _writer = WorkingMemoryWriter(_hooks_dir)
         _writer.write_status(_tracker_state)
 
         # Check threshold for expand section (Option 3: keep until replaced)
@@ -399,6 +385,23 @@ def main():
     except Exception:
         pass  # Detection failures must never crash the hook
 
+    # --- Inject working-memory + working-summary after context drop (/clear or compaction) ---
+    try:
+        if _tracker_state.get("context_drop_detected", False):
+            for _inject_file in ["working-memory.md", "working-summary.md"]:
+                _inject_path = os.path.join(
+                    os.path.expanduser("~"), ".claude", "hooks", _inject_file
+                )
+                try:
+                    with open(_inject_path) as _f:
+                        _content = _f.read().strip()
+                        if _content:
+                            print(_content)
+                except OSError:
+                    pass  # File missing — skip silently
+    except Exception:
+        pass  # Injection failures must never crash the hook
+
     # --- Summary clear countdown (5 turns post-compaction) ---
     try:
         _countdown = _tracker_state.get("summary_clear_countdown", -1)
@@ -407,7 +410,7 @@ def main():
             _op_tracker._save_state(_tracker_state)
         elif _countdown == 0:
             # Clear working-summary.md to stub
-            _summary_path = os.path.join(_rules_dir, "working-summary.md")
+            _summary_path = os.path.join(_hooks_dir, "working-summary.md")
             _stub = (
                 "# Working Summary (Claude-written at context threshold)\n"
                 "<!-- This file is auto-managed. Claude writes it at ~65% context. "
