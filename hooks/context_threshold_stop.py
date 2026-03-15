@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 SUMMARY_PATH = os.path.join(
-    os.path.expanduser("~"), ".claude", "rules", "working-summary.md"
+    os.path.expanduser("~"), ".claude", "hooks", "working-summary.md"
 )
 MIN_SUMMARY_CHARS = 2000
 SNAPSHOT_PATH = os.path.join(

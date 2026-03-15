@@ -10,8 +10,6 @@
     ],
     "defaultMode": "default"
   },
-  "model": "claude-opus-4-6",
-  "effortLevel": "max",
   "hooks": {
     "PreToolUse": [
       {
@@ -140,6 +138,18 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/pre_compact.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/post_compact.py\"",
             "timeout": 3
           }
         ]

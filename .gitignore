@@ -6,6 +6,10 @@ integrations/voice-web/piper-voices/*.onnx.json
 .credentials.json
 hooks/.env
 
+# Auto-generated working memory (hook-injected, not for GitHub)
+hooks/working-memory.md
+hooks/working-summary.md
+
 # Session & runtime state
 history.jsonl
 hooks/state_*.json
