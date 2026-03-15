@@ -22,14 +22,19 @@ STAGED_TRACKER = os.path.join(CLAUDE_DIR, "hooks", ".auto_commit_staged.txt")
 MAX_FILES_IN_MSG = 3
 
 
-def _get_co_author():
-    """Read current model from statusline snapshot, fall back to generic."""
+def _get_co_author(session_id=None):
+    """Read current model from session-namespaced statusline snapshot."""
     try:
         snap_path = os.path.join(CLAUDE_DIR, "hooks", ".statusline_snapshot.json")
+        if session_id:
+            try:
+                from shared.state import session_namespaced_path
+                snap_path = session_namespaced_path(snap_path, session_id)
+            except ImportError:
+                pass
         with open(snap_path) as f:
             model = json.load(f).get("model", "")
         if model:
-            # e.g. "claude-opus-4-6" → "Claude Opus 4.6"
             name = model.replace("claude-", "").replace("-", " ").title()
             return f"Co-Authored-By: Claude {name} <noreply@anthropic.com>"
     except Exception:
@@ -80,12 +85,14 @@ def stage():
 
 
 def commit():
-    """Commit only files that stage() explicitly tracked.
-
-    This prevents committing unrelated index changes from manual git
-    operations (git rm --cached, git add, etc.) which can create
-    revert commits that undo prior work.
-    """
+    """Commit only files that stage() explicitly tracked."""
+    # Read session_id from stdin for namespaced snapshot
+    _session_id = None
+    try:
+        payload = json.load(sys.stdin)
+        _session_id = payload.get("session_id")
+    except Exception:
+        pass
     # Read tracker — only commit files we explicitly staged
     try:
         with open(STAGED_TRACKER) as f:
@@ -125,7 +132,7 @@ def commit():
         shown = ", ".join(basenames[:MAX_FILES_IN_MSG])
         file_list = f"{shown} +{len(basenames) - MAX_FILES_IN_MSG} more"
 
-    message = f"auto: update {file_list}\n\n{_get_co_author()}"
+    message = f"auto: update {file_list}\n\n{_get_co_author(_session_id)}"
     git("commit", "-m", message)
 
 
