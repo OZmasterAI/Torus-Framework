@@ -46,15 +46,15 @@ def _load_config():
 
 
 def _get_client(config=None):
-    """Create OpenRouter-compatible client using config.json key."""
-    import anthropic
+    """Create OpenRouter-compatible client (OpenAI SDK)."""
+    import openai
 
     if config is None:
         config = _load_config()
     api_key = config.get("openrouter_api_key", "")
     if not api_key or api_key == "your-key-here":
         raise ValueError("openrouter_api_key not set in config.json")
-    return anthropic.Anthropic(
+    return openai.OpenAI(
         api_key=api_key,
         base_url="https://openrouter.ai/api/v1",
     )
@@ -62,12 +62,12 @@ def _get_client(config=None):
 
 def _summarize(client, prompt, max_tokens=DEFAULT_MAX_TOKENS, model=DEFAULT_MODEL):
     """Call the API and return the text response."""
-    response = client.messages.create(
+    response = client.chat.completions.create(
         model=model,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.content[0].text
+    return response.choices[0].message.content
 
 
 def _handle_request(client, raw, config):
