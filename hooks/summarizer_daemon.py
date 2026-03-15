@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Summarizer daemon — persistent Haiku worker for LLM summarization tasks.
+"""Summarizer daemon — persistent worker for LLM summarization tasks.
 
-Listens on a Unix socket, receives summarization requests, calls OpenRouter API
-with a fast model (Haiku-class), returns results. Eliminates claude -p spawn
-overhead (~3-8s) for session_end summaries and working-memory tasks.
+Listens on a Unix socket, receives summarization requests, races multiple
+models via OpenRouter API, returns the fastest non-null result.
 
 Socket: ~/.claude/hooks/.summarizer.sock
 PID:    ~/.claude/hooks/.summarizer.pid
@@ -13,8 +12,15 @@ Usage:
     python3 summarizer_daemon.py --daemon     # background (detach)
 
 Protocol (JSON-over-newline, same as enforcer_daemon):
-    Request:  {"type": "summarize", "prompt": "...", "max_tokens": 200, "model": "..."}
-    Response: {"ok": true, "result": "..."} or {"ok": false, "error": "..."}
+    Request:  {"type": "summarize", "prompt": "...", "max_tokens": 200}
+    Response: {"ok": true, "result": "...", "model": "..."} or {"ok": false, "error": "..."}
+
+Config (config.json):
+    "openrouter_api_key": "sk-key"                           # one key for all
+    "openrouter_api_key": "sk-key-A,sk-key-B"                # comma-separated by model index
+    "summarizer_models": ["model-a", "model-b"]              # race these models
+    "summarizer_models": [{"model": "m", "api_key": "k"}]    # per-model key override
+    "summarizer_model": "model-a"                             # single model fallback
 """
 
 import atexit
@@ -31,10 +37,8 @@ SOCKET_PATH = os.path.join(HOOKS_DIR, ".summarizer.sock")
 PID_FILE = os.path.join(HOOKS_DIR, ".summarizer.pid")
 CONFIG_FILE = os.path.join(CLAUDE_DIR, "config.json")
 
-DEFAULT_MODEL = "anthropic/claude-haiku-4-5-20251001"
-DEFAULT_MAX_TOKENS = (
-    2000  # High to accommodate reasoning models that use hidden thinking tokens
-)
+DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+DEFAULT_MAX_TOKENS = 2000  # High for reasoning models with hidden thinking tokens
 SOCKET_TIMEOUT = 30
 
 
@@ -55,11 +59,12 @@ def _make_client(api_key):
 
 
 def _get_default_client(config):
-    """Create client using the default openrouter_api_key."""
-    api_key = config.get("openrouter_api_key", "")
-    if not api_key or api_key == "your-key-here":
+    """Create client using the first openrouter_api_key. Validates key exists."""
+    raw = config.get("openrouter_api_key", "")
+    keys = [k.strip() for k in raw.split(",") if k.strip()] if raw else []
+    if not keys or keys[0] == "your-key-here":
         raise ValueError("openrouter_api_key not set in config.json")
-    return _make_client(api_key)
+    return _make_client(keys[0])
 
 
 def _summarize(client, prompt, max_tokens=DEFAULT_MAX_TOKENS, model=DEFAULT_MODEL):
@@ -75,29 +80,34 @@ def _summarize(client, prompt, max_tokens=DEFAULT_MAX_TOKENS, model=DEFAULT_MODE
 def _parse_models(config, req):
     """Parse model config into (model_name, client) tuples.
 
-    Config formats:
-      "summarizer_models": ["model-a", "model-b"]           # all use default key
-      "summarizer_models": [{"model": "m", "api_key": "k"}] # per-model keys
-      "summarizer_model": "model-a"                          # single fallback
+    Supports:
+      - Comma-separated keys paired to models by index (wraps around)
+      - Per-model api_key override in object format
+      - Single model fallback
     """
-    default_key = config.get("openrouter_api_key", "")
-    default_client = _make_client(default_key) if default_key else None
+    raw_keys = config.get("openrouter_api_key", "")
+    keys = [k.strip() for k in raw_keys.split(",") if k.strip()] if raw_keys else []
+    default_key = keys[0] if keys else ""
     models_cfg = config.get("summarizer_models", [])
 
     if not models_cfg:
         single = req.get("model", config.get("summarizer_model", DEFAULT_MODEL))
-        return [(single, default_client)]
+        client = _make_client(default_key) if default_key else None
+        return [(single, client)]
 
-    clients = {}  # cache per unique key
+    clients = {}
     result = []
-    for entry in models_cfg:
+    for i, entry in enumerate(models_cfg):
         if isinstance(entry, str):
-            result.append((entry, default_client))
+            key = keys[i % len(keys)] if keys else default_key
+            if key not in clients:
+                clients[key] = _make_client(key) if key else None
+            result.append((entry, clients[key]))
         elif isinstance(entry, dict):
             model = entry.get("model", DEFAULT_MODEL)
-            key = entry.get("api_key", default_key)
+            key = entry.get("api_key", keys[i % len(keys)] if keys else default_key)
             if key not in clients:
-                clients[key] = _make_client(key) if key else default_client
+                clients[key] = _make_client(key) if key else None
             result.append((model, clients[key]))
     return result
 
@@ -115,7 +125,7 @@ def _race_summarize(prompt, max_tokens, model_clients):
                 result[0] = text
                 winner[0] = model
                 event.set()
-        except Exception:
+        except (OSError, ValueError, KeyError, AttributeError):
             pass
 
     threads = [
@@ -146,13 +156,10 @@ def _handle_request(raw, config):
     max_tokens = req.get("max_tokens", DEFAULT_MAX_TOKENS)
     model_clients = _parse_models(config, req)
 
-    try:
-        result, winner_model = _race_summarize(prompt, max_tokens, model_clients)
-        if result:
-            return json.dumps({"ok": True, "result": result, "model": winner_model})
-        return json.dumps({"ok": False, "error": "all models returned null"})
-    except Exception as e:
-        return json.dumps({"ok": False, "error": str(e)[:200]})
+    result, winner_model = _race_summarize(prompt, max_tokens, model_clients)
+    if result:
+        return json.dumps({"ok": True, "result": result, "model": winner_model})
+    return json.dumps({"ok": False, "error": "all models returned null or failed"})
 
 
 def _handle_client(conn, config):
