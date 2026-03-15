@@ -700,7 +700,7 @@ def handle_post_tool_use(
 
             _op_tracker = OperationTracker(session_id)
         _op_state = _op_tracker.get_state()
-        _check_context_threshold(_op_state)
+        _check_context_threshold(_op_state, session_id=session_id)
         if _op_state.get("context_warning_shown") or _op_state.get(
             "summary_threshold_fired"
         ):
@@ -725,7 +725,7 @@ _SNAPSHOT_PATH = os.path.join(
 )
 
 
-def _check_context_threshold(op_state, snapshot_path=None):
+def _check_context_threshold(op_state, snapshot_path=None, session_id=None):
     """Check context % and print one-time warning to stdout if >= 65%.
 
     Reads .statusline_snapshot.json for context_pct. Sets
@@ -736,7 +736,14 @@ def _check_context_threshold(op_state, snapshot_path=None):
     if op_state.get("context_warning_shown"):
         return  # Already warned this session
     try:
-        _path = snapshot_path or _SNAPSHOT_PATH
+        if snapshot_path:
+            _path = snapshot_path
+        elif session_id:
+            from shared.state import session_namespaced_path
+
+            _path = session_namespaced_path(_SNAPSHOT_PATH, session_id)
+        else:
+            _path = _SNAPSHOT_PATH
         if not os.path.exists(_path):
             return
         with open(_path) as f:

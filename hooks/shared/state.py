@@ -52,6 +52,21 @@ MAX_GATE_BLOCK_OUTCOMES = 100
 logger = logging.getLogger(__name__)
 
 
+def session_namespaced_path(base_path, session_id=None):
+    """Generate session-namespaced file path for isolation.
+
+    If session_id is provided and non-empty, inserts _{session_id[:8]} before
+    the file extension. Falls back to base_path if no session_id.
+    """
+    if not session_id:
+        return base_path
+    safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")[:8]
+    if not safe_id:
+        return base_path
+    name, ext = os.path.splitext(base_path)
+    return f"{name}_{safe_id}{ext}"
+
+
 def state_file_for(session_id="main"):
     """Get the state file path for a specific session/agent.
 
@@ -979,27 +994,12 @@ def save_state(state, session_id="main"):
 def get_memory_last_queried(state):
     """Get the most recent memory query timestamp.
 
-    Checks both the per-agent enforcer state AND the global sideband file
-    (written by the MCP server on every memory tool call). Returns the max
-    of both timestamps. The sideband file is always checked because:
-    - The MCP server writes it on every memory tool call
-    - The main session may have a UUID session_id (not "main")
-    - PostToolUse tracker also updates state, but sideband is more reliable
+    Uses the per-session enforcer state field (already session-namespaced).
+    The global sideband file (.memory_last_queried) is NOT used for gate
+    decisions to prevent cross-session contamination in multi-agent setups.
+    The sideband is still written by the MCP server for statusline display.
     """
-    enforcer_ts = state.get("memory_last_queried", 0)
-
-    # Always check sideband — MCP server writes it on every memory tool call
-    sideband_ts = 0
-    try:
-        if os.path.exists(MEMORY_TIMESTAMP_FILE):
-            with open(MEMORY_TIMESTAMP_FILE) as f:
-                data = json.load(f)
-            sideband_ts = data.get("timestamp", 0)
-            # Clamp to current time: prevent future timestamps from permanently bypassing gates
-            sideband_ts = max(0, min(sideband_ts, time.time()))
-    except (json.JSONDecodeError, IOError, OSError):
-        pass
-    return max(enforcer_ts, sideband_ts)
+    return state.get("memory_last_queried", 0)
 
 
 _live_state_cache = None  # Per-process cache (each hook invocation is a fresh process)

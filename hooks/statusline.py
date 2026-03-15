@@ -878,7 +878,10 @@ def main():
     # If statusline crashes during rendering, this ensures _check_context_threshold()
     # still reads fresh context_pct. Full snapshot overwrites at end of main().
     try:
-        _snap_path = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
+        from shared.state import session_namespaced_path as _snp
+
+        _snap_base = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
+        _snap_path = _snp(_snap_base, data.get("session_id"))
         _snap_tmp = _snap_path + ".tmp"
         _early_pct = (
             max(0, int(context_pct)) if isinstance(context_pct, (int, float)) else 0
@@ -1196,7 +1199,14 @@ def main():
         "health_pct": health_pct,
         "uds_ok": uds_ok,
     }
-    snap_path = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
+    try:
+        from shared.state import session_namespaced_path as _snp2
+
+        snap_path = _snp2(
+            os.path.join(HOOKS_DIR, ".statusline_snapshot.json"), session_id
+        )
+    except ImportError:
+        snap_path = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
     snap_tmp = snap_path + ".tmp"
     try:
         with open(snap_tmp, "w") as f:

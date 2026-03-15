@@ -39,17 +39,22 @@ def _get_summary_size():
         return 0
 
 
-def _get_context_pct():
+def _get_context_pct(session_id=None):
     try:
-        if os.path.exists(SNAPSHOT_PATH):
-            with open(SNAPSHOT_PATH) as f:
+        path = SNAPSHOT_PATH
+        if session_id:
+            from shared.state import session_namespaced_path
+
+            path = session_namespaced_path(SNAPSHOT_PATH, session_id)
+        if os.path.exists(path):
+            with open(path) as f:
                 return json.load(f).get("context_pct", 0)
         return 0
     except Exception:
         return 0
 
 
-def check_and_warn(op_state, summary_size=None, context_pct=None):
+def check_and_warn(op_state, summary_size=None, context_pct=None, session_id=None):
     """Check threshold + summary state, return warning message.
 
     Args:
@@ -63,7 +68,7 @@ def check_and_warn(op_state, summary_size=None, context_pct=None):
     if not op_state.get("summary_threshold_fired"):
         return None
 
-    pct = context_pct if context_pct is not None else _get_context_pct()
+    pct = context_pct if context_pct is not None else _get_context_pct(session_id)
     size = summary_size if summary_size is not None else _get_summary_size()
 
     # If context dropped below threshold, /clear was run — reset and stop
@@ -75,17 +80,17 @@ def check_and_warn(op_state, summary_size=None, context_pct=None):
 
     # Subsequent turns: /clear not run reminder
     if op_state.get("summary_warning_shown"):
-        return f"[# WARNING #] /clear not run! {pct}% CONTEXT!"
+        return f"[⚠☠ WARNING ☠⚠] /clear not run! {pct}% CONTEXT!"
 
     # First fire: summary verification
     if size >= MIN_SUMMARY_CHARS:
         op_state["summary_warning_shown"] = True
         return (
-            f"[## WARNING ## {pct}% CONTEXT] Summary ({size:,} chars). "
+            f"[⚠☠ WARNING ☠⚠ {pct}% CONTEXT] Summary ({size:,} chars). "
             f"Context preserved for /clear!"
         )
     else:
-        return f"[!! WARNING !!] Context at {pct}% but no summary written!"
+        return f"[⚠☠ WARNING ☠⚠] Context at {pct}% but no summary written!"
 
 
 _CONTEXT_THRESHOLD_PCT = 65
@@ -106,7 +111,7 @@ def main():
 
         op_tracker = OperationTracker(session_id)
         op_state = op_tracker.get_state()
-        warning_msg = check_and_warn(op_state)
+        warning_msg = check_and_warn(op_state, session_id=session_id)
         op_tracker._save_state(op_state)
         # Sync summary_threshold_fired to enforcer state for Gate 21
         try:
