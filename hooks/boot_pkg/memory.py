@@ -1,4 +1,5 @@
 """Memory injection and sideband timestamp for boot sequence."""
+
 import json
 import os
 import time
@@ -12,7 +13,9 @@ from shared.memory_socket import (
     WorkerUnavailable,
 )
 
-SIDEBAND_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".memory_last_queried")
+SIDEBAND_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), ".memory_last_queried"
+)
 
 
 def _write_sideband_timestamp():
@@ -48,7 +51,7 @@ def _extract_results(results, min_relevance=0.3, max_preview=58):
     return entries
 
 
-def inject_memories_via_socket(handoff_content, live_state, _socket_count=None, _socket_query=None):
+def inject_memories_via_socket(live_state, _socket_count=None, _socket_query=None):
     """Query memories via UDS socket for boot dashboard injection.
 
     Makes two queries:
@@ -91,7 +94,9 @@ def inject_memories_via_socket(handoff_content, live_state, _socket_count=None, 
 
     try:
         results = _query(
-            "knowledge", [search_query], n_results=min(5, cnt),
+            "knowledge",
+            [search_query],
+            n_results=min(5, cnt),
             include=["metadatas", "distances"],
         )
         for mid, display in _extract_results(results):

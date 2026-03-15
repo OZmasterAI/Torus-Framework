@@ -265,7 +265,7 @@ def main():
     injected = []
     if _worker_available:
         try:
-            injected = inject_memories_via_socket(None, live_state)
+            injected = inject_memories_via_socket(live_state)
         except Exception:
             pass  # Memory injection failure must never crash boot
 
