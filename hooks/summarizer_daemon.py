@@ -47,19 +47,19 @@ def _load_config():
         return {}
 
 
-def _get_client(config=None):
+def _make_client(api_key):
     """Create OpenRouter-compatible client (OpenAI SDK)."""
     import openai
 
-    if config is None:
-        config = _load_config()
+    return openai.OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+
+
+def _get_default_client(config):
+    """Create client using the default openrouter_api_key."""
     api_key = config.get("openrouter_api_key", "")
     if not api_key or api_key == "your-key-here":
         raise ValueError("openrouter_api_key not set in config.json")
-    return openai.OpenAI(
-        api_key=api_key,
-        base_url="https://openrouter.ai/api/v1",
-    )
+    return _make_client(api_key)
 
 
 def _summarize(client, prompt, max_tokens=DEFAULT_MAX_TOKENS, model=DEFAULT_MODEL):
@@ -72,7 +72,63 @@ def _summarize(client, prompt, max_tokens=DEFAULT_MAX_TOKENS, model=DEFAULT_MODE
     return response.choices[0].message.content
 
 
-def _handle_request(client, raw, config):
+def _parse_models(config, req):
+    """Parse model config into (model_name, client) tuples.
+
+    Config formats:
+      "summarizer_models": ["model-a", "model-b"]           # all use default key
+      "summarizer_models": [{"model": "m", "api_key": "k"}] # per-model keys
+      "summarizer_model": "model-a"                          # single fallback
+    """
+    default_key = config.get("openrouter_api_key", "")
+    default_client = _make_client(default_key) if default_key else None
+    models_cfg = config.get("summarizer_models", [])
+
+    if not models_cfg:
+        single = req.get("model", config.get("summarizer_model", DEFAULT_MODEL))
+        return [(single, default_client)]
+
+    clients = {}  # cache per unique key
+    result = []
+    for entry in models_cfg:
+        if isinstance(entry, str):
+            result.append((entry, default_client))
+        elif isinstance(entry, dict):
+            model = entry.get("model", DEFAULT_MODEL)
+            key = entry.get("api_key", default_key)
+            if key not in clients:
+                clients[key] = _make_client(key) if key else default_client
+            result.append((model, clients[key]))
+    return result
+
+
+def _race_summarize(prompt, max_tokens, model_clients):
+    """Race multiple models, return first non-null result."""
+    result = [None]
+    winner = [None]
+    event = threading.Event()
+
+    def _call(model, client):
+        try:
+            text = _summarize(client, prompt, max_tokens, model)
+            if text and not event.is_set():
+                result[0] = text
+                winner[0] = model
+                event.set()
+        except Exception:
+            pass
+
+    threads = [
+        threading.Thread(target=_call, args=(m, c), daemon=True)
+        for m, c in model_clients
+    ]
+    for t in threads:
+        t.start()
+    event.wait(timeout=25)
+    return result[0], winner[0]
+
+
+def _handle_request(raw, config):
     """Parse request JSON, dispatch, return response JSON."""
     try:
         req = json.loads(raw)
@@ -88,16 +144,18 @@ def _handle_request(client, raw, config):
         return json.dumps({"ok": False, "error": "empty prompt"})
 
     max_tokens = req.get("max_tokens", DEFAULT_MAX_TOKENS)
-    model = req.get("model", config.get("summarizer_model", DEFAULT_MODEL))
+    model_clients = _parse_models(config, req)
 
     try:
-        result = _summarize(client, prompt, max_tokens, model)
-        return json.dumps({"ok": True, "result": result})
+        result, winner_model = _race_summarize(prompt, max_tokens, model_clients)
+        if result:
+            return json.dumps({"ok": True, "result": result, "model": winner_model})
+        return json.dumps({"ok": False, "error": "all models returned null"})
     except Exception as e:
         return json.dumps({"ok": False, "error": str(e)[:200]})
 
 
-def _handle_client(client, conn, config):
+def _handle_client(conn, config):
     """Handle a single client connection."""
     try:
         conn.settimeout(SOCKET_TIMEOUT)
@@ -109,7 +167,7 @@ def _handle_client(client, conn, config):
             buf += chunk
         if buf:
             raw = buf.split(b"\n", 1)[0].decode("utf-8", errors="replace")
-            response = _handle_request(client, raw, config)
+            response = _handle_request(raw, config)
             conn.sendall(response.encode("utf-8") + b"\n")
     except (socket.timeout, OSError):
         pass
@@ -149,7 +207,7 @@ def main():
     atexit.register(_cleanup)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
-    client = _get_client(config)
+    _get_default_client(config)  # validate key early
     sock = _bind_socket()
 
     sys.stderr.write(
@@ -160,7 +218,7 @@ def main():
         while True:
             conn, _ = sock.accept()
             t = threading.Thread(
-                target=_handle_client, args=(client, conn, config), daemon=True
+                target=_handle_client, args=(conn, config), daemon=True
             )
             t.start()
     except KeyboardInterrupt:
