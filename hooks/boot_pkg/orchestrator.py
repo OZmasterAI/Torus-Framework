@@ -249,6 +249,46 @@ def main():
     except Exception:
         pass  # Memory server startup is optional, never block boot
 
+    # Batch classification at session start
+    try:
+        if _cfg.get("memory_classify_mode") == "batch_start":
+            import lancedb as _lancedb
+
+            sys.path.insert(0, os.path.join(CLAUDE_DIR, "hooks"))
+            from shared.memory_classification import (
+                classify_via_daemon as _classify_via_daemon,
+            )
+
+            _mem_dir_batch = os.path.join(os.path.expanduser("~"), "data", "memory")
+            _lance_path_batch = os.path.join(_mem_dir_batch, "lancedb")
+            _db_batch = _lancedb.connect(_lance_path_batch)
+            _tbl_batch = _db_batch.open_table("knowledge")
+            _rows_batch = (
+                _tbl_batch.search()
+                .where("memory_type = ''", prefilter=True)
+                .limit(200)
+                .to_list()
+            )
+            _classified_batch = 0
+            for _row_b in _rows_batch:
+                _row_id_b = _row_b.get("id", "")
+                if not _row_id_b:
+                    continue
+                _mt_b = _classify_via_daemon(
+                    _row_b.get("document", "")[:500], _row_b.get("tags", "")
+                )
+                if _mt_b:
+                    _tbl_batch.update(
+                        where=f"id = '{_row_id_b}'", values={"memory_type": _mt_b}
+                    )
+                    _classified_batch += 1
+            print(
+                f"  [BOOT] Batch classified {_classified_batch} memories",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass  # Batch classification is non-fatal
+
     # Watchdog: verify LanceDB directory exists
     db_size_warning = None
     _mem_dir = os.path.join(os.path.expanduser("~"), "data", "memory")

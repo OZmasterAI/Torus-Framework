@@ -176,6 +176,16 @@ class WritePipeline:
         memory_type = (
             _classify_memory_type(content, tags) if _classify_memory_type else ""
         )
+        # Semantic classification via daemon for unclassified memories
+        if not memory_type:
+            _classify_mode = h.get("memory_classify_mode", "tags_only")
+            if _classify_mode == "per_save":
+                try:
+                    from shared.memory_classification import classify_via_daemon
+
+                    memory_type = classify_via_daemon(content, tags)
+                except Exception:
+                    pass
         _classify_state_type = h.get("classify_state_type")
         state_type = _classify_state_type(content, tags) if _classify_state_type else ""
 

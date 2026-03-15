@@ -139,7 +139,11 @@ _REFERENCE_TAGS = {
     "type:index",
     "type:benchmark",
 }
-_REFERENCE_COMBO = {"type:learning", "type:fix"}  # only if also has outcome:success
+_REFERENCE_COMBO = {
+    "type:learning",
+    "type:fix",
+    "type:feature",
+}  # only if also has outcome:success
 _WORKING_TAGS = {"type:auto-captured", "needs-enrichment"}
 _WORKING_ERROR = {"type:error"}  # only if NOT outcome:success
 _SESSION_RE = re.compile(r"session\d+", re.IGNORECASE)
@@ -355,3 +359,35 @@ def build_project_prefix(
         except Exception:
             pass
     return f"[{eff_name} #{session_num}] "
+
+
+def classify_via_daemon(content, tags, timeout=3):
+    """Classify memory type via summarizer daemon. Returns 'reference', 'working', or '' on failure."""
+    import socket as _sock
+    import json as _json
+
+    sock_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".summarizer.sock"
+    )
+    try:
+        s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(sock_path)
+        req = (
+            _json.dumps({"type": "classify", "content": content[:500], "tags": tags})
+            + "\n"
+        )
+        s.sendall(req.encode())
+        buf = b""
+        while b"\n" not in buf:
+            chunk = s.recv(1024)
+            if not chunk:
+                break
+            buf += chunk
+        s.close()
+        resp = _json.loads(buf.decode().strip())
+        if resp.get("ok") and resp.get("memory_type") in ("reference", "working"):
+            return resp["memory_type"]
+    except Exception:
+        pass
+    return ""

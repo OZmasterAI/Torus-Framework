@@ -689,6 +689,49 @@ def _run_background(data_path):
     except Exception:
         pass
 
+    # Batch classification at session end
+    try:
+        _cfg_path = os.path.join(CLAUDE_DIR, "config.json")
+        _classify_mode = ""
+        if os.path.isfile(_cfg_path):
+            with open(_cfg_path) as _cf:
+                _classify_mode = json.load(_cf).get("memory_classify_mode", "")
+        if _classify_mode == "batch_end":
+            import lancedb as _lancedb
+            from shared.memory_classification import (
+                classify_via_daemon as _classify_via_daemon,
+            )
+
+            _lance_path = os.path.join(MEMORY_DIR, "lancedb")
+            _db = _lancedb.connect(_lance_path)
+            _tbl = _db.open_table("knowledge")
+            _rows = (
+                _tbl.search()
+                .where("memory_type = ''", prefilter=True)
+                .limit(200)
+                .to_list()
+            )
+            _classified = 0
+            for _row in _rows:
+                _row_id = _row.get("id", "")
+                if not _row_id:
+                    continue
+                _mt = _classify_via_daemon(
+                    _row.get("document", "")[:500], _row.get("tags", "")
+                )
+                if _mt:
+                    _tbl.update(where=f"id = '{_row_id}'", values={"memory_type": _mt})
+                    _classified += 1
+            print(
+                f"[SESSION_END:bg] Batch classified {_classified} memories",
+                file=sys.stderr,
+            )
+    except Exception as _e:
+        print(
+            f"[SESSION_END:bg] Batch classification error (non-fatal): {_e}",
+            file=sys.stderr,
+        )
+
     print("[SESSION_END:bg] Background work complete", file=sys.stderr)
 
 

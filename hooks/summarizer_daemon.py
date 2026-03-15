@@ -146,8 +146,30 @@ def _handle_request(raw, config):
         return json.dumps({"ok": False, "error": "invalid JSON"})
 
     req_type = req.get("type", "")
-    if req_type != "summarize":
+    if req_type not in ("summarize", "classify"):
         return json.dumps({"ok": False, "error": f"unknown type: {req_type}"})
+
+    if req_type == "classify":
+        content = req.get("content", "")
+        tags = req.get("tags", "")
+        if not content:
+            return json.dumps({"ok": False, "error": "empty content"})
+        prompt = (
+            "Classify the following memory as either 'reference' (long-term, reusable knowledge, "
+            "decisions, lessons) or 'working' (ephemeral, session-specific, auto-captured). "
+            "Respond with ONLY one word: reference or working.\n\n"
+            f"Tags: {tags}\nContent: {content}"
+        )
+        try:
+            model_clients = _parse_models(config, req)
+            result, _ = _race_summarize(prompt, 10, model_clients)
+            if result:
+                mt = result.strip().lower().split()[0] if result.strip() else ""
+                if mt in ("reference", "working"):
+                    return json.dumps({"ok": True, "memory_type": mt})
+        except Exception:
+            pass
+        return json.dumps({"ok": False, "error": "classification failed"})
 
     prompt = req.get("prompt", "")
     if not prompt:

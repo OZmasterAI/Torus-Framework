@@ -938,6 +938,7 @@ def _init_pipelines():
             "classify_tier": _classify_tier,
             "classify_memory_type": _classify_memory_type,
             "classify_state_type": _classify_state_type,
+            "memory_classify_mode": _config.get("memory_classify_mode", "tags_only"),
             "extract_citations": _extract_citations,
             "bridge_to_fix_outcomes": _bridge_to_fix_outcomes,
             "touch_memory_timestamp": _touch_memory_timestamp,
