@@ -32,7 +32,9 @@ PID_FILE = os.path.join(HOOKS_DIR, ".summarizer.pid")
 CONFIG_FILE = os.path.join(CLAUDE_DIR, "config.json")
 
 DEFAULT_MODEL = "anthropic/claude-haiku-4-5-20251001"
-DEFAULT_MAX_TOKENS = 300
+DEFAULT_MAX_TOKENS = (
+    2000  # High to accommodate reasoning models that use hidden thinking tokens
+)
 SOCKET_TIMEOUT = 30
 
 
