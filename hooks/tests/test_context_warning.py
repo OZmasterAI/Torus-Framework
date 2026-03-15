@@ -87,7 +87,7 @@ class TestStopHookWarning:
             "summary_warning_shown": False,
         }
         msg = check_and_warn(op_state, summary_size=4200, context_pct=67)
-        assert "## WARNING ##" in msg
+        assert "⚠☠ WARNING ☠⚠" in msg
         assert "67%" in msg
         assert "4,200" in msg
         assert "/clear" in msg
@@ -102,7 +102,7 @@ class TestStopHookWarning:
             "summary_warning_shown": False,
         }
         msg = check_and_warn(op_state, summary_size=100, context_pct=67)
-        assert "!! WARNING !!" in msg
+        assert "⚠☠ WARNING ☠⚠" in msg
         assert "no summary written" in msg.lower()
 
     def test_no_output_when_summary_small_but_threshold_not_fired(self):
@@ -137,7 +137,7 @@ class TestStopHookClearReminder:
             "summary_warning_shown": False,
         }
         msg = check_and_warn(op_state, summary_size=4200, context_pct=67)
-        assert "## WARNING ##" in msg  # First time = summary confirmation
+        assert "⚠☠ WARNING ☠⚠" in msg  # First time = summary confirmation
         assert "/clear not run" not in msg
 
     def test_no_reminder_after_clear(self):

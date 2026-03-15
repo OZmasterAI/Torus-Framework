@@ -10,7 +10,8 @@
     ],
     "defaultMode": "default"
   },
-  "model": "sonnet",
+  "model": "claude-opus-4-6",
+  "effortLevel": "max",
   "hooks": {
     "PreToolUse": [
       {
@@ -267,7 +268,7 @@
     "skill-creator@claude-plugins-official": false,
     "code-simplifier@claude-plugins-official": false
   },
-  "effortLevel": "high",
+  "voiceEnabled": true,
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "disabled_hooks": {
@@ -308,6 +309,5 @@
     "Model cost — haiku for search, sonnet for work, opus for complex",
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
-  ],
-  "voiceEnabled": true
+  ]
 }
