@@ -309,7 +309,22 @@ def main():
         _tracker_state = _op_tracker.get_state()
         _tracker_state["_session_id"] = _session_id
 
+        # Resolve rules dir: use project/worktree dir if not main session
+        _cwd = data.get("cwd", "")
         _rules_dir = os.path.join(os.path.expanduser("~"), ".claude", "rules")
+        if _cwd and os.path.realpath(_cwd) != os.path.realpath(
+            os.path.expanduser("~/.claude")
+        ):
+            try:
+                from boot_pkg.util import detect_project
+
+                _pname, _pdir, _sname, _sdir = detect_project(_cwd)
+                _target = _sdir or _pdir
+                if _target:
+                    _rules_dir = os.path.join(_target, ".claude", "rules")
+                    os.makedirs(_rules_dir, exist_ok=True)
+            except Exception:
+                pass  # Fall back to global
         _writer = WorkingMemoryWriter(_rules_dir)
         _writer.write_status(_tracker_state)
 
