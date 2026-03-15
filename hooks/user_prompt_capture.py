@@ -370,8 +370,34 @@ def main():
         pass  # Working memory failures must never crash the hook
 
     # --- Context threshold detection moved to PostToolUse (tracker_pkg/orchestrator.py) ---
-    # Old UserPromptSubmit detection removed — PostToolUse fires mid-turn with
-    # one-time stdout warning visible to Claude. See context-warning-option-b-impl.md.
+
+    # --- Context drop detection (/clear or compaction) ---
+    try:
+        _prev_pct = _tracker_state.get("last_context_pct", 0)
+        _snap_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), ".statusline_snapshot.json"
+        )
+        try:
+            from shared.state import session_namespaced_path
+
+            _snap_file = session_namespaced_path(_snap_file, data.get("session_id"))
+        except ImportError:
+            pass
+        _cur_pct = 0
+        if os.path.exists(_snap_file):
+            with open(_snap_file) as _sf:
+                _cur_pct = json.load(_sf).get("context_pct", 0)
+        if _cur_pct > 0:
+            _tracker_state["last_context_pct"] = _cur_pct
+            if _prev_pct > 0 and _cur_pct < _prev_pct - 1:
+                _tracker_state["context_drop_detected"] = True
+                _tracker_state["context_drop_from"] = _prev_pct
+                _tracker_state["context_drop_to"] = _cur_pct
+            else:
+                _tracker_state["context_drop_detected"] = False
+            _op_tracker._save_state(_tracker_state)
+    except Exception:
+        pass  # Detection failures must never crash the hook
 
     # --- Summary clear countdown (5 turns post-compaction) ---
     try:
