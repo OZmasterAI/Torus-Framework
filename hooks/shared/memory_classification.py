@@ -139,7 +139,7 @@ _REFERENCE_TAGS = {
     "type:index",
     "type:benchmark",
 }
-_REFERENCE_COMBO = {"type:learning"}  # only if also has outcome:success
+_REFERENCE_COMBO = {"type:learning", "type:fix"}  # only if also has outcome:success
 _WORKING_TAGS = {"type:auto-captured", "needs-enrichment"}
 _WORKING_ERROR = {"type:error"}  # only if NOT outcome:success
 _SESSION_RE = re.compile(r"session\d+", re.IGNORECASE)
