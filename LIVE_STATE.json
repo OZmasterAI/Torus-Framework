@@ -1,16 +1,17 @@
 {
-  "session_count": 437,
+  "session_count": 438,
   "project": "torus-framework",
   "feature": "toroidal-dispatch",
   "framework_version": "v3.0.0",
   "what_was_done": "Verified agent_coordination MCP tool. Wired agent_channel into toroidal dispatch (Option C: SQLite-first + inotify bridge). manage.sh creates tasks via SQLite, bridge_poll in watcher.sh claims and writes flat files for inotify delivery. Live-tested end-to-end.",
   "known_issues": [
-    "hasAvailableSubscription can go stale — check on resume if 1M context missing",
-    "Memory DB at 3060 entries — stale purge recommended"
+    "hasAvailableSubscription can go stale \u2014 check on resume if 1M context missing",
+    "Memory DB at 3060 entries \u2014 stale purge recommended"
   ],
   "next_steps": [
     "Explore document store extension to Memory MCP (Docling + LanceDB documents table)",
     "Rotate OpenRouter API keys (leaked in local git history)",
-    "Memory maintenance — stale purge"
-  ]
+    "Memory maintenance \u2014 stale purge"
+  ],
+  "last_response_preview": "---\n\n## Session 437 Wrap-Up\n\n**Risk: YELLOW** \u2014 `rules/working-memory.md` deleted + 2 untracked files (carried from previous sessions, not from this work).\n\n### What was done\n- Verified `agent_coordination` MCP tool works (all 6 actions)\n- Brainstormed 3 dispatch options, chose Option C (SQLite-first + inotify bridge)\n- Implemented: `manage.sh` cmd_send \u2192 SQLite, `watcher.sh` bridge_poll \u2192 flat files\n- Found and fixed routing bug (`required_role` vs `assigned_to`)\n- Live-tested end-to-end: task "
 }
