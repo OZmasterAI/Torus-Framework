@@ -4077,6 +4077,139 @@ def _cleanup_socket():
 atexit.register(_cleanup_socket)
 
 
+# ──────────────────────────────────────────────────
+# Agent Coordination (agent_channel.py v2 wrapper)
+# ──────────────────────────────────────────────────
+
+
+@mcp.tool()
+@crash_proof
+def agent_coordination(
+    action: str,
+    title: str = "",
+    description: str = "",
+    created_by: str = "",
+    assigned_to: str = "",
+    priority: int = 5,
+    tags: str = "",
+    depends_on: str = "",
+    required_role: str = "",
+    goal: str = "",
+    parent_task_id: str = "",
+    task_id: str = "",
+    result: str = "",
+    role: str = "",
+    tag: str = "",
+    agent_id: str = "",
+    status: str = "",
+    msg_type: str = "info",
+    content: str = "",
+    to_agent: str = "all",
+    since_minutes: int = 60,
+) -> dict:
+    """Unified agent task and messaging coordination.
+
+    Actions:
+      create_task   — Create a task (title, created_by required)
+      list_tasks    — List tasks (optional: status, agent_id, tag)
+      claim_task    — Claim next pending task (agent_id required, optional: role, tag)
+      complete_task — Complete a task (task_id, result required)
+      send_message  — Send a message (content required, optional: to_agent, msg_type)
+      read_messages — Read recent messages (optional: agent_id, since_minutes)
+    """
+    _ac_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    if _ac_path not in _sys.path:
+        _sys.path.insert(0, _ac_path)
+    try:
+        from shared.agent_channel import (
+            create_task as _ac_create,
+            list_tasks as _ac_list,
+            claim_next_task as _ac_claim,
+            complete_task as _ac_complete,
+            post_message as _ac_post,
+            read_messages as _ac_read,
+        )
+    except ImportError as e:
+        return {"error": f"agent_channel import failed: {e}"}
+
+    action = action.strip().lower().replace("-", "_")
+
+    if action == "create_task":
+        if not title:
+            return {"error": "title is required for create_task"}
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+        tid = _ac_create(
+            title=title,
+            description=description or "",
+            created_by=created_by or "main",
+            priority=priority,
+            tags=tag_list,
+            assigned_to=assigned_to or None,
+            depends_on=depends_on or None,
+            required_role=required_role or None,
+            goal=goal or None,
+            parent_task_id=parent_task_id or None,
+            notify=bool(assigned_to),
+        )
+        if tid:
+            return {"task_id": tid, "title": title, "status": "pending"}
+        return {"error": "Failed to create task"}
+
+    elif action == "list_tasks":
+        tasks = _ac_list(
+            status=status or None,
+            agent_id=agent_id or None,
+            tag=tag or None,
+            parent_task_id=parent_task_id or None,
+        )
+        return {"tasks": tasks, "count": len(tasks)}
+
+    elif action == "claim_task":
+        if not agent_id:
+            return {"error": "agent_id is required for claim_task"}
+        task = _ac_claim(agent_id, role=role or None, tag=tag or "")
+        if task:
+            return {"claimed": True, "task": task}
+        return {"claimed": False, "message": "No tasks available"}
+
+    elif action == "complete_task":
+        if not task_id:
+            return {"error": "task_id is required for complete_task"}
+        ok = _ac_complete(task_id, result or "", broadcast=True)
+        return {"completed": ok, "task_id": task_id}
+
+    elif action == "send_message":
+        if not content:
+            return {"error": "content is required for send_message"}
+        ok = _ac_post(
+            from_agent=agent_id or "main",
+            msg_type=msg_type,
+            content=content,
+            to_agent=to_agent,
+        )
+        return {"sent": ok}
+
+    elif action == "read_messages":
+        import time as _ac_time
+
+        since_ts = _ac_time.time() - (since_minutes * 60)
+        msgs = _ac_read(since_ts, agent_id=agent_id or None)
+        return {"messages": msgs, "count": len(msgs)}
+
+    else:
+        return {
+            "error": f"Unknown action: {action}",
+            "valid_actions": [
+                "create_task",
+                "list_tasks",
+                "claim_task",
+                "complete_task",
+                "send_message",
+                "read_messages",
+            ],
+        }
+
+
 if __name__ == "__main__":
     # Defer _ensure_initialized() to first tool call — mcp.run() must start
     # immediately so Claude Code's MCP handshake doesn't timeout (~25s model load).
