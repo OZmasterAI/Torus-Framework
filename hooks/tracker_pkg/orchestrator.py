@@ -685,8 +685,8 @@ def handle_post_tool_use(
             had_error=_had_error,
         )
         if _result.get("boundary_detected"):
-            _rules_dir = os.path.join(os.path.expanduser("~"), ".claude", "rules")
-            _writer = WorkingMemoryWriter(_rules_dir)
+            _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+            _writer = WorkingMemoryWriter(_hooks_dir)
             _tracker_state = _op_tracker.get_state()
             _tracker_state["_session_id"] = session_id
             _writer.write_operations(_tracker_state)

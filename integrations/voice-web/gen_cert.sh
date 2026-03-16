@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CERT_DIR="$(dirname "$0")/certs"
-IP="${1:-95.111.231.121}"
+IP="${1:-YOUR_SERVER_IP}"
 mkdir -p "$CERT_DIR"
 
 openssl req -x509 -newkey rsa:2048 -nodes \
