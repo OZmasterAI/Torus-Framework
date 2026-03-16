@@ -1,12 +1,12 @@
 {
-  "session_count": 436,
+  "session_count": 437,
   "project": "torus-framework",
   "feature": "agent-channel-v2",
   "framework_version": "v3.0.0",
   "what_was_done": "Added agent_coordination MCP tool + /agents skill, restarted memory server. Tool requires fresh Claude Code session to appear in deferred tools.",
   "known_issues": [
-    "hasAvailableSubscription can go stale — check on resume if 1M context missing",
-    "Memory DB at 3041 entries — stale purge recommended",
+    "hasAvailableSubscription can go stale \u2014 check on resume if 1M context missing",
+    "Memory DB at 3041 entries \u2014 stale purge recommended",
     "agent_coordination MCP tool needs Claude Code restart to register"
   ],
   "next_steps": [
@@ -14,6 +14,7 @@
     "Wire agent_channel into manage.sh for toroidal teams dispatch (~15 lines)",
     "Explore document store extension to Memory MCP (Docling + LanceDB documents table)",
     "Rotate OpenRouter API keys (leaked in local git history)",
-    "Memory maintenance — stale purge"
-  ]
+    "Memory maintenance \u2014 stale purge"
+  ],
+  "last_response_preview": "## Session 436 Wrap-Up\n\n**Risk: YELLOW** \u2014 `rules/working-memory.md` deleted (from previous session), not committed. That's intentional from the session 427 migration.\n\n### What was done this session\n- Confirmed memory MCP is working after restart\n- Verified `agent_coordination` tool needs a full Claude Code restart (not just server restart) to register\n- Saved learning to memory\n\n### Saved to memory\n- MCP tool registration requires Claude Code restart, not just server restart\n\n### Commits this "
 }
