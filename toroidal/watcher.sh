@@ -15,6 +15,40 @@ echo "[watcher] Monitoring $CHANNELS_DIR for task files..."
 # Ensure channels dir exists
 mkdir -p "$CHANNELS_DIR"
 
+# Bridge: poll agent_channel SQLite for assigned tasks, write flat files for inotify
+bridge_poll() {
+    while true; do
+        python3 - "$CHANNELS_DIR" <<'PYEOF'
+import sys, os, json, subprocess
+sys.path.insert(0, os.path.expanduser("~/.claude/hooks"))
+from shared.agent_channel import claim_next_task
+channels = sys.argv[1]
+result = subprocess.run(["tmux", "list-sessions", "-F", "#{session_name}"],
+                        capture_output=True, text=True)
+if result.returncode != 0:
+    sys.exit(0)
+for role in result.stdout.strip().split("\n"):
+    if not role or role == "watcher":
+        continue
+    task = claim_next_task(role, role=role)
+    if task:
+        payload = {"task": task["title"], "project": None, "task_id": task["id"]}
+        if task.get("description"):
+            payload["task"] = task["title"] + "\n\n" + task["description"]
+        path = os.path.join(channels, f"task_{role}.json")
+        with open(path, "w") as f:
+            json.dump(payload, f)
+        print(f"[bridge] Wrote task for {role}: {task['id']}")
+PYEOF
+        sleep 2
+    done
+}
+
+bridge_poll &
+BRIDGE_PID=$!
+trap "kill $BRIDGE_PID 2>/dev/null" EXIT
+echo "[watcher] Bridge polling started (PID=$BRIDGE_PID)"
+
 inotifywait -m -e create,moved_to "$CHANNELS_DIR" --format '%f' |
 while read -r file; do
     # Only process task files

@@ -5,7 +5,7 @@
 #   manage.sh list                      — list active agents
 #   manage.sh compact <role>            — send /compact to worker
 #   manage.sh clear <role>              — send /clear to worker
-#   manage.sh send <role> <command>     — send any command to worker
+#   manage.sh send <role> <command> [priority]  — send task to worker (priority 1-10, default 5)
 #   manage.sh suspend <role>            — gracefully suspend (keeps session ID)
 #   manage.sh resume <role>             — resume suspended agent
 
@@ -56,8 +56,19 @@ for role, info in json.load(open('$SESSIONS_FILE')).items():
 cmd_send() {
     local ROLE="$1"
     local CMD="$2"
-    echo "{\"task\":\"$CMD\",\"project\":null}" > "$CHANNELS_DIR/task_${ROLE}.json"
-    echo "Sent to $ROLE: $CMD"
+    local PRIORITY="${3:-5}"
+    python3 - "$CMD" "$ROLE" "$PRIORITY" <<'PYEOF'
+import sys, os
+sys.path.insert(0, os.path.expanduser("~/.claude/hooks"))
+from shared.agent_channel import create_task
+title, role, pri = sys.argv[1], sys.argv[2], int(sys.argv[3])
+tid = create_task(title=title, created_by="manage.sh", assigned_to=role, priority=pri)
+if tid:
+    print(f"Task created: {tid} (priority={pri}, role={role})")
+else:
+    print("ERROR: Failed to create task", file=sys.stderr)
+    sys.exit(1)
+PYEOF
 }
 
 cmd_suspend() {
@@ -113,7 +124,7 @@ case "$ACTION" in
     list)    cmd_list ;;
     compact) cmd_send "${2:?role required}" "/compact" ;;
     clear)   cmd_send "${2:?role required}" "/clear" ;;
-    send)    cmd_send "${2:?role required}" "${3:?command required}" ;;
+    send)    cmd_send "${2:?role required}" "${3:?command required}" "${4:-5}" ;;
     suspend) cmd_suspend "${2:?role required}" ;;
     resume)  cmd_resume "${2:?role required}" ;;
     *)       echo "Unknown action: $ACTION"; exit 1 ;;
