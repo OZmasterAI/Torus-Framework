@@ -9,6 +9,8 @@ hooks/.env
 # Auto-generated working memory (hook-injected, not for GitHub)
 hooks/working-memory.md
 hooks/working-summary.md
+rules/working-memory.md
+rules/working-summary.md
 
 # Session & runtime state
 history.jsonl
@@ -29,6 +31,7 @@ hooks/.auto_commit_staged.txt
 hooks/.audit_trail.jsonl
 hooks/.circuit_breaker_state.json
 hooks/.gate_effectiveness.json
+hooks/.gate_effectiveness_*.json
 hooks/.gate_qtable.json
 hooks/.gate_timings.json
 hooks/__pycache__/
@@ -139,3 +142,21 @@ channels/
 data/
 toroidal/sessions.json
 results.tsv
+
+# Project state files (per-project, auto-generated)
+.claude-state.json
+.claude/rules/working-memory.md
+
+# Session end background logs
+hooks/.session_end_bg.log
+hooks/session_end.py.bak
+
+# Session operations (per-session, ephemeral)
+hooks/operations_*.json
+hooks/operations_*.json.lock
+
+# IDE lock files
+ide/*.lock
+
+# Session state files
+sessions/*.json
