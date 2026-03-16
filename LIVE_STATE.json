@@ -1,15 +1,16 @@
 {
-  "session_count": 434,
+  "session_count": 436,
   "project": "torus-framework",
   "feature": "agent-channel-v2",
   "framework_version": "v3.0.0",
-  "what_was_done": "Rewrote agent_channel.py v2: unified messaging + task coordination, two tables in one DB, atomic claiming, goal ancestry, inbox ack/threading, 70+ tests",
+  "what_was_done": "Added agent_coordination MCP tool + /agents skill, restarted memory server. Tool requires fresh Claude Code session to appear in deferred tools.",
   "known_issues": [
     "hasAvailableSubscription can go stale — check on resume if 1M context missing",
-    "Memory DB at 3038 entries — stale purge recommended"
+    "Memory DB at 3041 entries — stale purge recommended",
+    "agent_coordination MCP tool needs Claude Code restart to register"
   ],
   "next_steps": [
-    "Wire agent_channel tasks into MCP tools (~30 lines in memory_server.py)",
+    "Verify agent_coordination MCP tool works (fresh session needed)",
     "Wire agent_channel into manage.sh for toroidal teams dispatch (~15 lines)",
     "Explore document store extension to Memory MCP (Docling + LanceDB documents table)",
     "Rotate OpenRouter API keys (leaked in local git history)",
