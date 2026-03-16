@@ -279,7 +279,7 @@ print("\n--- Counterfactual Retrieval: Config ---")
 
 import json
 
-_cfg = json.load(open("/home/crab/.claude/config.json"))
+_cfg = json.load(open(os.path.expanduser("~/.claude/config.json")))
 test(
     "CF config: counterfactual_retrieval key present",
     "counterfactual_retrieval" in _cfg,

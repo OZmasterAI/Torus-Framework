@@ -77,8 +77,9 @@ if errors:
         print(f"  {id_}: {len_}")
 else:
     print("All 15 entries 800 chars or less")
-    with open("/home/crab/.claude/scripts/medium_batch_4.json", "w") as f:
+    _out_path = os.path.expanduser("~/.claude/scripts/medium_batch_4.json")
+    with open(_out_path, "w") as f:
         json.dump(batch, f, indent=2)
-    print("Wrote /home/crab/.claude/scripts/medium_batch_4.json")
+    print("Wrote ~/.claude/scripts/medium_batch_4.json")
     for e in batch:
         print(f"  {e['id']}: {len(e['text'])} chars")

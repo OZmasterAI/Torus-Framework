@@ -23,7 +23,7 @@ from shared.gate_result import GateResult
 GATE_NAME = "GATE 16: CODE QUALITY"
 
 # ── ruff integration ──────────────────────────────────────────────────────────
-_RUFF_BIN = shutil.which("ruff") or "/home/crab/.local/bin/ruff"
+_RUFF_BIN = shutil.which("ruff") or os.path.expanduser("~/.local/bin/ruff")
 _RUFF_CONFIG = os.path.join(os.path.dirname(__file__), "..", ".ruff.toml")
 
 
