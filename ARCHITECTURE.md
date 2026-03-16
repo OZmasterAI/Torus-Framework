@@ -50,81 +50,238 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
 ## Directory Layout
 
 ```
+torus-framework/
 ~/.claude/
-├── CLAUDE.md                        # Master rules (~1,321 tokens, injected every prompt)
-├── ARCHITECTURE.md                  # This document
-├── LIVE_STATE.json                  # Machine-readable project state
-├── config.json                      # Runtime toggles
-├── settings.json                    # Hook registration + permissions
-├── mcp.json                         # MCP server config
-│
-├── hooks/                           # Core framework (83 MB total)
-│   ├── enforcer.py                  #   PreToolUse gate dispatcher (651 lines)
-│   ├── enforcer_shim.py             #   Fast UDS proxy ~43ms (113 lines)
-│   ├── enforcer_daemon.py           #   Persistent gate server (232 lines)
-│   ├── boot.py                      #   SessionStart shim (42 lines)
-│   ├── tracker.py                   #   PostToolUse shim (47 lines)
-│   ├── session_end.py               #   SessionEnd handler (599 lines)
-│   ├── statusline.py                #   2-line status display (1,107 lines)
-│   ├── memory_server.py             #   Memory MCP server (4,627 lines)
-│   ├── analytics_server.py          #   Analytics MCP server (2,481 lines, 15 active tools)
-│   ├── test_framework.py            #   Gate test suite (53 lines, orchestrator)
-│   ├── tests/                       # 13 focused test files (29,417 lines)
-│   ├── fuzz_gates.py                #   Gate fuzzer (562 lines)
-│   ├── subagent_context.py          #   SubagentStart context injection (380 lines)
-│   ├── user_prompt_capture.py       #   UserPromptSubmit capture + state warnings (286 lines)
-│   ├── event_logger.py              #   Supplementary event logging (298 lines)
-│   ├── auto_commit.py               #   Two-phase git auto-commit (148 lines)
-│   ├── auto_approve.py              #   Benign tool auto-approval (136 lines)
-│   ├── auto_format.py               #   Python auto-format ruff/black (92 lines)
-│   ├── config_change.py             #   Hot-reload config.json (137 lines)
-│   ├── pre_compact.py               #   PreCompact state snapshot (264 lines)
-│   ├── integrity_check.py           #   SHA256 file verification (97 lines)
-│   ├── failure_recovery.py          #   Tool failure triage (59 lines)
-│   ├── tg_mirror.py                 #   Telegram mirror (127 lines)
-│   ├── tts_signal.py                #   Stop hook: TTS signal for voice-web (101 lines)
-│   ├── stop_cleanup.py              #   Stop event cleanup (46 lines)
-│   ├── setup_ramdisk.sh             #   One-time tmpfs setup (116 lines)
-│   │
-│   ├── gates/                       # Quality gates (17 active, 348 KB)
-│   ├── shared/                      # Infrastructure modules (67 files, ~25K lines)
-│   ├── boot_pkg/                    # Boot pipeline (6 files, 1,241 lines)
-│   ├── tracker_pkg/                 # Tracker pipeline (10 files, 1,552 lines)
-│   ├── benchmarks/                  # Performance benchmarks
-│   │   ├── benchmark_gates.py       #   Gate latency benchmarks (458 lines)
-│   │   └── benchmark_io.py          #   I/O latency benchmarks (162 lines)
-│   ├── audit/                       # Audit log archive (rotated, compressed)
-│   ├── .disk_backup/                # Disk mirror of ramdisk audit logs
-│   │
-│   ├── .audit_trail.jsonl           # 46.3 MB audit trail
-│   ├── .capture_queue.jsonl         # PostToolUse observation queue
-│   ├── .auto_remember_queue.jsonl   # Memory ingestion queue
-│   ├── .gate_effectiveness.json     # Historical gate effectiveness
-│   ├── .gate_qtable.json            # Q-learning gate routing
-│   ├── .gate_timings.json           # Per-gate latency stats (89.5 KB)
-│   ├── .circuit_breaker_state.json  # Per-service failure tracking
-│   ├── .file_claims.json            # Workspace isolation claims
-│   ├── .integrity_hashes.json       # SHA256 framework verification
-│   ├── .memory_last_queried         # Gate 4 sideband timestamp
-│   ├── .enforcer.sock               # Enforcer daemon UDS socket
-│   ├── .chromadb.sock               # Memory server UDS socket (legacy name, talks to LanceDB)
-│   ├── .enforcer.pid                # Daemon process ID
-│   └── state_*.json                 # Per-agent session state (43 files)
-│
-├── skills/                          # 36 skill definitions
-├── agents/                          # 6 agent definitions
-├── teams/                           # 5 team definitions
-├── plugins/                         # 0 installed (cleared)
-├── scripts/                         # External orchestrators
-│   ├── torus-loop.sh                #   Sequential task executor (261 lines)
-│   └── torus-wave.py                #   Parallel wave orchestrator (477 lines)
-├── integrations/
-│   ├── telegram-bot/                # Telegram bot integration
-│   └── terminal-history/            # Terminal history FTS5 indexer
-└── rules/                           # Additional CLAUDE.md rules
-    ├── hooks.md                     # Hook/gate development rules
-    ├── memory.md                    # Memory MCP rules
-    └── framework.md                 # Framework core rules
+├── CLAUDE.md                         Main rules (~587 tokens, every prompt)
+  ├── ARCHITECTURE.md                   Full architecture documentation
+  ├── USAGE_GUIDE.md                    User guide
+  ├── README.md                         GitHub README
+  ├── LICENSE                           MIT License
+  ├── install.sh                        Installation script
+  ├── LIVE_STATE.json                   Session handoff state
+  ├── config.json                       Runtime toggles + API keys
+  ├── config.example.json               Config template
+  ├── settings.json                     Hook registration + permissions
+  ├── settings.local.json               Machine-specific overrides
+  ├── mcp.json                          MCP server config
+  ├── mcp.example.json                  MCP config template
+  ├── keybindings.json                  Custom keybindings
+  ├── shorten_batch.py                  Batch processing utility
+  │
+  ├── rules/                            Claude Code auto-loaded rules (~750 tokens/prompt)
+  │   ├── framework.md                  Gate contract, tiers, state schema (~400 tokens)
+  │   ├── hooks.md                      Hook & gate development rules (~200 tokens)
+  │   └── memory.md                     Memory MCP rules (~150 tokens)
+  │
+  ├── hooks/                            Core framework
+  │   ├── enforcer.py                   PreToolUse gate dispatcher (651 lines)
+  │   ├── enforcer_shim.py              Fast UDS proxy ~5ms (113 lines)
+  │   ├── enforcer_daemon.py            Persistent gate server (232 lines)
+  │   ├── memory_server.py              LanceDB memory MCP server (4,627 lines)
+  │   ├── summarizer_daemon.py          OpenRouter LLM worker, model racing
+  │   ├── boot.py                       SessionStart shim (42 lines)
+  │   ├── tracker.py                    PostToolUse shim (47 lines)
+  │   ├── session_end.py                SessionEnd handler, fast + background
+  │   ├── user_prompt_capture.py        UserPromptSubmit handler
+  │   ├── pre_compact.py                PreCompact handler
+  │   ├── post_compact.py               PostCompact injection handler
+  │   ├── statusline.py                 2-line status display
+  │   ├── auto_commit.py                PostToolUse auto-staging + commit
+  │   ├── auto_format.py                PostToolUse auto-formatting
+  │   ├── auto_approve.py               PermissionRequest handler
+  │   ├── subagent_context.py           SubagentStart context injection
+  │   ├── context_threshold_stop.py     Stop hook context warning
+  │   ├── stop_cleanup.py               Stop hook state capture
+  │   ├── integrity_check.py            SessionStart integrity verification
+  │   ├── tg_mirror.py                  Telegram message mirroring
+  │   ├── tg_mirror_user.py             Telegram user message mirroring
+  │   ├── tts_signal.py                 TTS notification signal
+  │   ├── tgbot_response.py             Telegram bot response hook
+  │   ├── config_change.py              ConfigChange handler
+  │   ├── event_logger.py               Generic event logger
+  │   ├── failure_recovery.py           PostToolUseFailure handler
+  │   ├── analytics_server.py           Health scoring + analytics
+  │   ├── working-memory.md             Machine-generated working memory (injected, not auto-loaded)
+  │   ├── working-summary.md            LLM-written session summary (injected, not auto-loaded)
+  │   │
+  │   ├── gates/                        19 quality gates
+  │   │   ├── gate_01_read_before_edit.py   T1 fail-closed
+  │   │   ├── gate_02_no_destroy.py         T1 fail-closed
+  │   │   ├── gate_03_safety_net.py         T1 fail-closed
+  │   │   ├── gate_04_memory_first.py       Memory freshness check
+  │   │   ├── gate_05_proof_before_fixed.py Verification required
+  │   │   ├── gate_06_save_to_memory.py     Save findings to memory
+  │   │   ├── gate_07_critical_file_guard.py Protected file list
+  │   │   ├── gate_09_strategy_ban.py       Failed strategy prevention
+  │   │   ├── gate_10_model_profile.py      Model selection enforcement
+  │   │   ├── gate_11_rate_limit.py         Tool call rate limiting
+  │   │   ├── gate_13_workspace_isolation.py Worktree file claims
+  │   │   ├── gate_14_confidence_check.py   Test baseline required
+  │   │   ├── gate_15_context_enrichment.py Context injection
+  │   │   ├── gate_16_code_quality.py       Ruff AST linting
+  │   │   ├── gate_17_injection_defense.py  Prompt injection detection
+  │   │   ├── gate_18_budget_guard.py       Token budget enforcement
+  │   │   ├── gate_19_hindsight_gate.py     Mentor escalation
+  │   │   ├── gate_20_self_check.py         Gate self-consistency
+  │   │   └── gate_21_working_summary.py    Summary write enforcement
+  │   │
+  │   ├── shared/                       ~73 shared modules
+  │   │   ├── state.py                  State management (ramdisk + disk)
+  │   │   ├── gate_result.py            GateResult dataclass
+  │   │   ├── gate_router.py            Q-learning gate reordering
+  │   │   ├── gate_registry.py          Gate metadata registry
+  │   │   ├── circuit_breaker.py        Gate circuit breakers
+  │   │   ├── ramdisk.py                Ramdisk fast-path I/O
+  │   │   ├── memory_socket.py          UDS memory server client
+  │   │   ├── memory_classification.py  Reference/working classifier + daemon bridge
+  │   │   ├── lance_collection.py       LanceDB collection wrapper
+  │   │   ├── scoring_engine.py         Memory relevance scoring
+  │   │   ├── search_pipeline.py        Multi-stage search pipeline
+  │   │   ├── search_helpers.py         Search utility functions
+  │   │   ├── write_pipeline.py         Memory write pipeline
+  │   │   ├── tag_index.py              Tag co-occurrence index
+  │   │   ├── cluster_store.py          Memory clustering
+  │   │   ├── working_memory_writer.py  3-layer working memory writer
+  │   │   ├── operation_tracker.py      Per-session operation tracking
+  │   │   ├── audit_log.py              Audit trail logging
+  │   │   ├── error_normalizer.py       Error pattern normalization
+  │   │   ├── observation.py            Auto-observation capture
+  │   │   ├── metrics_collector.py      Performance metrics
+  │   │   ├── health_monitor.py         System health monitoring
+  │   │   ├── anomaly_detector.py       Anomaly detection
+  │   │   ├── gate_correlator.py        Cross-gate correlation
+  │   │   ├── gate_dashboard.py         Gate effectiveness dashboard
+  │   │   ├── gate_pruner.py            Gate effectiveness analysis
+  │   │   ├── gate_helpers.py           Shared gate utilities
+  │   │   ├── pipeline_optimizer.py     Gate ordering optimization
+  │   │   ├── session_analytics.py      Session metrics analysis
+  │   │   ├── health_correlation.py     Health score correlation
+  │   │   ├── code_hotspot.py           File edit frequency tracking
+  │   │   ├── secrets_filter.py         Secret detection + redaction
+  │   │   ├── chain_sdk.py              Causal chain SDK
+  │   │   ├── chain_refinement.py       Chain analysis refinement
+  │   │   ├── ltp_tracker.py            Long-term potentiation
+  │   │   ├── knowledge_graph.py        Memory graph enrichment
+  │   │   └── tool_fingerprint.py       MCP tool supply-chain security
+  │   │
+  │   ├── boot_pkg/                     Session start pipeline
+  │   │   ├── orchestrator.py           Boot orchestrator (daemon start, injection)
+  │   │   ├── context.py                Context extraction
+  │   │   ├── memory.py                 Boot memory injection
+  │   │   └── util.py                   detect_project, LIVE_STATE, state helpers
+  │   │
+  │   ├── tracker_pkg/                  PostToolUse pipeline
+  │   │   ├── orchestrator.py           Tracker orchestrator
+  │   │   ├── verification.py           Gate block outcome resolution
+  │   │   ├── observations.py           Auto-observation capture
+  │   │   ├── auto_remember.py          Auto-save to memory
+  │   │   ├── errors.py                 Error tracking
+  │   │   └── mentor.py                 Deterministic mentoring
+  │   │
+  │   ├── scripts/                      Utility scripts
+  │   │   ├── backfill_memory_type.py
+  │   │   └── backfill_state_type.py
+  │   │
+  │   ├── tests/                        Test suite (~1400+ tests)
+  │   │   ├── test_framework.py         Main gate + shared module tests
+  │   │   ├── test_integration.py       Integration tests
+  │   │   ├── test_shared_core.py       Core shared module tests
+  │   │   ├── test_shared_deep.py       Deep shared module tests
+  │   │   ├── test_working_memory_writer.py
+  │   │   ├── test_operation_tracker.py
+  │   │   ├── test_context_warning.py
+  │   │   ├── test_scoring_engine.py
+  │   │   ├── test_memory_type.py
+  │   │   ├── test_state_type.py
+  │   │   └── ...
+  │   │
+  │   └── benchmarks/                   Performance benchmarks
+  │
+  ├── skills/                           Core skills (Claude-invocable)
+  │   ├── brainstorm/
+  │   ├── commit/
+  │   ├── implement/
+  │   ├── review/
+  │   ├── test/
+  │   ├── working-summary/
+  │   ├── wrap-up/
+  │   ├── writing-plans/
+  │   ├── benchmark -> ../skill-library/benchmark
+  │   ├── learn -> ../skill-library/learn
+  │   └── super-evolve -> ../skill-library/super-evolve
+  │
+  ├── skill-library/                    Extended skill library (~30 skills)
+  │   ├── analyze-errors/
+  │   ├── audit/
+  │   ├── benchmark/
+  │   ├── build/
+  │   ├── causal-chain-analysis/
+  │   ├── chain/
+  │   ├── code-hotspots/
+  │   ├── deep-dive/
+  │   ├── deploy/
+  │   ├── diagnose/
+  │   ├── experiment/
+  │   ├── explore/
+  │   ├── fix/
+  │   ├── learn/
+  │   ├── ralph/
+  │   ├── research/
+  │   ├── sprint/
+  │   ├── status/
+  │   ├── super-evolve/
+  │   ├── super-health/
+  │   └── ...
+  │
+  ├── toroidal/                         Toroidal memory + session capture
+  │   ├── session_capture_hook.py       SessionStart capture
+  │   ├── idle_prompt_hook.sh           Idle prompt handler
+  │   └── sessions.json                 Active session registry
+  │
+  ├── teams/                            Agent team orchestration
+  │   ├── sprint-team/                  Sprint team config + inboxes
+  │   │   ├── config.json
+  │   │   └── inboxes/
+  │   └── evolution-swarm-268/          Evolution swarm config
+  │       └── inboxes/
+  │
+  ├── channels/                         Cross-agent message passing
+  │   └── dead-letter/                  Undeliverable messages
+  │
+  ├── agents/                           Worktree sprint agents (runtime)
+  │   ├── sprint-features/              Feature development worktree
+  │   ├── sprint-gates/                 Gate improvement worktree
+  │   ├── sprint-memory/                Memory system worktree
+  │   ├── sprint-refactor/              Refactoring worktree
+  │   └── sprint-tests/                 Test writing worktree
+  │
+  ├── integrations/                     External integrations
+  │   ├── model-router/                 OpenRouter multi-model MCP
+  │   ├── telegram-bot/                 Telegram bot + mirroring
+  │   ├── terminal-history/             FTS5 session search
+  │   ├── voice-web/                    Voice web interface
+  │   └── tts-voices/                   Piper TTS voices
+  │
+  ├── data/                             Runtime data storage
+  │   ├── memory/                       LanceDB memory database
+  │   └── research/                     Research artifacts
+  │
+  ├── PRPs/                             Prompt-Response Pairs (validation)
+  │   ├── templates/
+  │   └── test-workspace/
+  │
+  ├── docs/                             Documentation
+  │   └── plans/
+  │
+  ├── dormant/                          Archived/inactive features
+  │   ├── agents/
+  │   ├── gates/
+  │   ├── skills/
+  │   ├── modes/
+  │   └── teams/
+  │
+  ├── scripts/                          Shell/Python utilities
+  └── examples/                         Usage examples
 ```
 
 ---
