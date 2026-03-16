@@ -1,7 +1,7 @@
 # Torus Framework — Architecture Map
 
-> **Version:** v2.6 | **Updated:** 2026-03-06 (Session 363)
-> **Stats:** 154 Python files | ~76,942 lines | 17 active gates | 68 shared modules | 37 skills
+> **Version:** v3.0.0 | **Updated:** 2026-03-16 (Session 432)
+> **Stats:** 194 Python files | ~92,816 lines | 19 active gates | 83 shared modules | 42 skills | 3,026 memories
 
 ## Overview
 
@@ -25,7 +25,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
                     ┌──────────────────▼──┐    ┌─────▼──────┐  ┌───▼────────────┐
                     │   SessionStart       │    │ PreToolUse  │  │  PostToolUse   │
                     │   boot.py → boot_pkg │    │ enforcer →  │  │  tracker.py →  │
-                    │   (20-step pipeline) │    │ (17 gates)  │  │  tracker_pkg   │
+                    │   (20-step pipeline) │    │ (19 gates)  │  │  tracker_pkg   │
                     └──────────┬──────────┘    └─────┬───────┘  └───┬────────────┘
                                │                     │              │
               ┌────────────────▼─────────┐     ┌─────▼──────┐  ┌───▼──────────┐
@@ -37,7 +37,7 @@ Torus is a self-improving quality framework for Claude Code. It wraps every tool
               │  - Gate auto-tune         │           │             │
               └──────────────────────────┘     ┌─────▼──────┐  ┌───▼──────────┐
                                                │  Shared/   │  │  Observation │
-                                               │  (67 mods) │  │  Capture     │
+                                               │  (83 mods) │  │  Capture     │
                                                └─────┬──────┘  └───┬──────────┘
                                                      │              │
                             ┌────────────────────────▼──────────────▼──────┐
@@ -334,11 +334,12 @@ torus-framework/
 - Tool-scoped dispatch reduces unnecessary evaluations
 - Tier 1 crash = block; Tier 2+ crash = warn + continue
 - Result caching for non-blocking gates (60s TTL)
+- PostCompact hook injects working-memory and working-summary after compaction
 - Always-allowed tools bypass all gates: Read, Glob, Grep, WebFetch, WebSearch, AskUserQuestion, EnterPlanMode, ExitPlanMode, TaskCreate/Update/List/Get, TeamCreate/Delete, SendMessage, TaskStop, all `mcp__memory__*` and `mcp__analytics__*` tools
 
 ---
 
-## Shared Modules (67 files, ~24,979 lines)
+## Shared Modules (83 files, ~30,000+ lines)
 
 ### State Management (3 modules, ~1,277 lines)
 
@@ -420,6 +421,14 @@ torus-framework/
 |--------|-------|---------|
 | memory_maintenance.py | 847 | Health analysis, age scoring, cleanup candidates (read-only) |
 | memory_socket.py | 195 | UDS client for memory server / LanceDB (avoids segfaults). 5s timeout |
+| memory_classification.py | ~400 | Reference/working/unclassified classifier + daemon semantic bridge |
+| lance_collection.py | ~200 | LanceDB collection wrapper with SQL injection prevention |
+| scoring_engine.py | ~300 | Multi-factor memory relevance scoring |
+| search_pipeline.py | ~400 | Multi-stage search: BM25 → semantic → hybrid → rerank |
+| search_helpers.py | ~150 | Search utility functions |
+| write_pipeline.py | ~300 | Memory write pipeline: dedup, classify, cluster, store |
+| tag_index.py | ~200 | Tag co-occurrence SQLite index |
+| cluster_store.py | ~250 | Memory clustering via embedding similarity |
 | experience_archive.py | 393 | CSV-based fix pattern learning, success rates |
 | model_profiles.py | 101 | 5 model profiles (quality/balanced/efficient/lean/budget), role→model mappings, get_model_for_agent() API |
 
@@ -489,6 +498,13 @@ torus-framework/
 | session_replay.py | 418 | Replay past sessions for debugging and analysis |
 | session_compressor.py | 155 | Session transcript compression for storage efficiency |
 
+### Working Memory (2 modules, ~650 lines)
+
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| working_memory_writer.py | ~400 | 3-layer working memory: status, operations, expanded context |
+| operation_tracker.py | ~250 | Per-session operation tracking with FIFO eviction |
+
 ### Code Quality Analysis (2 modules, ~657 lines)
 
 | Module | Lines | Purpose |
@@ -515,7 +531,7 @@ SessionStart ─→ boot.py ─→ boot_pkg/orchestrator.py (378 lines)
                             ├── memory.py: LanceDB injection via UDS, sideband write
                             └── context.py: error/test/verification/duration extraction
 
-UserPromptSubmit ─→ user_prompt_capture.py (capture to queues)
+UserPromptSubmit ─→ user_prompt_capture.py (capture + context drop injection)
                  ─→ user_prompt_check.sh (pre-flight)
                  ─→ auto_commit.py commit (batch staged changes)
 
@@ -540,7 +556,8 @@ SubagentStop ─→ event_logger.py (log subagent completion)
 
 PermissionRequest ─→ auto_approve.py (auto-approve benign tools)
 
-PreCompact ─→ pre_compact.py (snapshot gate state before context compression)
+PreCompact ─→ pre_compact.py (expand working memory before compaction)
+PostCompact ─→ post_compact.py (inject working-memory + working-summary after compaction)
 
 SessionEnd ─→ session_end.py (flush queues, update LIVE_STATE, increment session_count)
 
@@ -603,6 +620,13 @@ Comprehensive framework analytics — lazy-loaded, no LanceDB dependency. **15 a
 | **Memory & Infra (2)** | memory_health, circuit_states |
 | **Skills & Observations (2)** | skill_health, query_observations |
 | **Behavioral (1)** | rw_ratio |
+
+### Summarizer Daemon (summarizer_daemon.py)
+
+- **Protocol:** JSON-over-newline on Unix socket (.summarizer.sock)
+- **Models:** OpenRouter free tier (nemotron-3-super, arcee-trinity) with model racing
+- **Handlers:** summarize (session summaries), classify (memory type classification)
+- **Auto-start:** boot.py launches on session start if not running
 
 ---
 
@@ -716,6 +740,11 @@ Plugin directory cleared. No plugins currently installed.
 | mentor_outcome_chains | true | Track mentor outcome chains |
 | mentor_memory | true | Mentor pattern/frequency learning |
 | search_routing | "default" | Search mode routing strategy |
+| session_summary_mode | "daemon+haiku" | Session end summary: haiku, daemon, or daemon+haiku |
+| memory_classify_mode | "per_save" | Memory classification: tags_only, per_save, batch_end, batch_start |
+| context_window_override | 1000000 | Override context window for 1M token recalculation |
+| openrouter_api_key | — | OpenRouter API key(s) for summarizer daemon |
+| summarizer_models | [...] | Model list with per-model API key overrides |
 
 ---
 
@@ -741,24 +770,24 @@ Plugin directory cleared. No plugins currently installed.
 
 | Metric | Value |
 |--------|-------|
-| Python files (hooks/) | 154 |
-| Total lines (hooks/) | ~76,942 |
-| Active gates | 17 (+ 2 dormant) |
-| Shared modules | 68 |
-| Top-level hooks | 25 |
+| Python files (hooks/) | 194 |
+| Total lines (hooks/) | ~92,816 |
+| Active gates | 19 (+ 2 dormant) |
+| Shared modules | 83 |
+| Top-level hooks | 28 |
 | Boot pipeline files | 6 (1,241 lines) |
 | Tracker pipeline files | 10 (1,552 lines) |
-| Skills | 37 |
+| Skills | 42 |
 | Plugins | 0 |
 | Agent definitions | 8 |
 | Teams | 5 |
-| MCP servers | 3 (25 active tools: 8 memory, 15 analytics, 2 search) |
+| MCP servers | 4 (memory, analytics, skills, model-router) |
 | External orchestrators | 2 |
 | Integrations | 3 |
 | Session state files | 43 |
-| Total memories | — |
+| Total memories | 3,026 |
 | Largest file | hooks/tests/ (13 files, 29,417 lines) |
 
 ---
 
-*Generated by Torus Framework — Session 363 (2026-03-06)*
+*Generated by Torus Framework — Session 432 (2026-03-16)*
