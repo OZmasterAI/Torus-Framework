@@ -192,6 +192,15 @@
     var sttPreference = {};  // per-session STT on/off keyed by session name
     var STT_KEY_PREFIX = "torus_stt_enabled_";
     var intentionalClose = false;
+    var SESSION_COLORS = [
+      "#e67e22", "#00b894", "#e17055", "#0984e3",
+      "#6c5ce7", "#2ecc71", "#00cec9", "#d63031"
+    ];
+    function sessionColor(name) {
+      var h = 0;
+      for (var i = 0; i < name.length; i++) h = ((h << 5) - h) + name.charCodeAt(i) | 0;
+      return SESSION_COLORS[Math.abs(h) % SESSION_COLORS.length];
+    }
 
     function getTTS(target) {
       if (!ttsState[target]) {
@@ -256,8 +265,11 @@
           bar.innerHTML = "";
           data.sessions.forEach(function(name) {
             var tab = document.createElement("button");
+            var color = sessionColor(name);
             tab.className = "tab" + (name === currentTarget ? " active" : "");
             tab.textContent = name;
+            tab.style.borderColor = color;
+            if (name === currentTarget) { tab.style.background = color; tab.style.color = "white"; }
             tab.addEventListener("click", function() { selectSession(name); });
             bar.appendChild(tab);
           });
@@ -291,7 +303,12 @@
       updateSpeakerUI();
       var tabs = document.querySelectorAll("#session-tabs .tab");
       tabs.forEach(function(t) {
-        t.classList.toggle("active", t.textContent === name);
+        var isActive = t.textContent === name;
+        var c = sessionColor(t.textContent);
+        t.classList.toggle("active", isActive);
+        t.style.background = isActive ? c : "";
+        t.style.color = isActive ? "white" : "";
+        t.style.borderColor = c;
       });
       // Load per-session voice
       var saved = localStorage.getItem(voiceKeyFor(name)) || "en-US-GuyNeural";
@@ -336,7 +353,7 @@
             document.getElementById("mic-label").textContent = "No speech API";
           }
         } else if (data.type === "sent") {
-          showFlash("Sent!");
+          showFlash("Sent to " + currentTarget, false, sessionColor(currentTarget));
         } else if (data.type === "error") {
           if (data.text === "Invalid token" || data.text === "Auth timeout") {
             localStorage.removeItem(TOKEN_KEY);
@@ -392,11 +409,11 @@
       }, reconnectDelay);
     }
 
-    function showFlash(text, isError) {
+    function showFlash(text, isError, color) {
       var f = document.getElementById("flash");
       if (flashTimer) clearTimeout(flashTimer);
       f.textContent = text;
-      f.style.background = isError ? "var(--error)" : "var(--success)";
+      f.style.background = isError ? "var(--error)" : (color || "var(--success)");
       f.hidden = false;
       void f.offsetWidth;
       f.classList.add("visible");

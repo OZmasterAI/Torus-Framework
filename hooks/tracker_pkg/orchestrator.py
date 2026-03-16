@@ -669,6 +669,96 @@ def handle_post_tool_use(
     # Promote complete: delete enforcer sideband (tracker is now the source of truth)
     delete_enforcer_sideband(session_id)
 
+    # ── Working Memory — operation tracker + boundary-triggered file update ──
+    try:
+        from shared.operation_tracker import OperationTracker
+        from shared.working_memory_writer import WorkingMemoryWriter
+
+        _op_tracker = OperationTracker(session_id)
+        _had_error = bool(state.get("fixing_error")) or bool(
+            _extract_error_pattern(tool_response) if tool_response else False
+        )
+        _result = _op_tracker.process_tool_call(
+            tool_name,
+            tool_input,
+            assistant_text=state.get("_last_assistant_text", ""),
+            had_error=_had_error,
+        )
+        if _result.get("boundary_detected"):
+            _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+            _writer = WorkingMemoryWriter(_hooks_dir)
+            _tracker_state = _op_tracker.get_state()
+            _tracker_state["_session_id"] = session_id
+            _writer.write_operations(_tracker_state)
+    except Exception as _wm_err:
+        _log_debug(f"working memory update failed (non-blocking): {_wm_err}")
+
+    # ── Context threshold warning (fires once to stdout) ──
+    try:
+        if "_op_tracker" not in dir():
+            from shared.operation_tracker import OperationTracker
+
+            _op_tracker = OperationTracker(session_id)
+        _op_state = _op_tracker.get_state()
+        _check_context_threshold(_op_state, session_id=session_id)
+        if _op_state.get("context_warning_shown") or _op_state.get(
+            "summary_threshold_fired"
+        ):
+            _op_tracker._save_state(_op_state)
+            # Sync to enforcer state so Gate 21 can see the flag
+            try:
+                _enf_state = load_state(session_id=session_id)
+                _enf_state["summary_threshold_fired"] = _op_state.get(
+                    "summary_threshold_fired", False
+                )
+                save_state(_enf_state, session_id=session_id)
+            except Exception:
+                pass  # Fail-open: gate sync is best-effort
+    except Exception as _ctx_err:
+        _log_debug(f"context threshold check failed (non-blocking): {_ctx_err}")
+
+
+# ── Context threshold detection ────────────────────────────────────────
+_CONTEXT_THRESHOLD_PCT = 65
+_SNAPSHOT_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), ".statusline_snapshot.json"
+)
+
+
+def _check_context_threshold(op_state, snapshot_path=None, session_id=None):
+    """Check context % and print one-time warning to stdout if >= 65%.
+
+    Reads .statusline_snapshot.json for context_pct. Sets
+    summary_threshold_fired + context_warning_shown flags in op_state.
+    Prints to stdout (visible to Claude mid-turn). Fires exactly once.
+    Fail-open: exceptions are silently caught.
+    """
+    if op_state.get("context_warning_shown"):
+        return  # Already warned this session
+    try:
+        if snapshot_path:
+            _path = snapshot_path
+        elif session_id:
+            from shared.state import session_namespaced_path
+
+            _path = session_namespaced_path(_SNAPSHOT_PATH, session_id)
+        else:
+            _path = _SNAPSHOT_PATH
+        if not os.path.exists(_path):
+            return
+        with open(_path) as f:
+            snap = json.load(f)
+        pct = snap.get("context_pct", 0)
+        if pct >= _CONTEXT_THRESHOLD_PCT:
+            print(
+                f"[# WARNING # CONTEXT {pct}%] Complete your work, "
+                f"then write /working-summary as your final action this turn."
+            )
+            op_state["summary_threshold_fired"] = True
+            op_state["context_warning_shown"] = True
+    except Exception:
+        pass  # Fail-open
+
 
 def main():
     """Main entry point — fail-open: always exits 0."""

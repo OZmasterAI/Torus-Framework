@@ -82,6 +82,8 @@ def _detect_test_framework(state):
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
+    """Block Bash deploy commands (docker push, kubectl apply, git push to main, etc.) unless tests
+    passed within the last 30 minutes. Severity: error (Tier 1 fail-closed)."""
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
 

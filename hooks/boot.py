@@ -4,6 +4,7 @@
 All imports are re-exported so that existing consumers (test_framework.py)
 continue to work with `from boot import X` and `patch("boot.X")`.
 """
+
 import os
 import sys
 
@@ -28,14 +29,16 @@ from boot_pkg.context import (  # noqa: E402, F401
 from boot_pkg.orchestrator import main as _main  # noqa: E402, F401
 
 
-def inject_memories_via_socket(handoff_content, live_state):
+def inject_memories_via_socket(live_state):
     """Wrapper that passes shim-level socket_count/socket_query for test patching.
 
     Tests use patch("boot.socket_count") which replaces the name in this module.
     This wrapper reads from this module's globals (patchable) and passes them
     to the real implementation.
     """
-    return _inject_impl(handoff_content, live_state, _socket_count=socket_count, _socket_query=socket_query)
+    return _inject_impl(
+        live_state, _socket_count=socket_count, _socket_query=socket_query
+    )
 
 
 if __name__ == "__main__":

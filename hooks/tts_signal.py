@@ -32,23 +32,42 @@ PENDING_PREFIX = "/tmp/voice-tts-pending-"
 def _strip_markdown(text):
     """Strip markdown formatting that doesn't speak well in TTS."""
     # Remove code blocks first (before inline code)
-    text = re.sub(r'```[\s\S]*?```', '', text)
+    text = re.sub(r"```[\s\S]*?```", "", text)
     # Bold / italic
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.+?)\*", r"\1", text)
     # Inline code
-    text = re.sub(r'`(.+?)`', r'\1', text)
+    text = re.sub(r"`(.+?)`", r"\1", text)
     # Headings
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
     # Bullet lists
-    text = re.sub(r'^[-*]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^[-*]\s+", "", text, flags=re.MULTILINE)
     # Numbered lists
-    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^\d+\.\s+", "", text, flags=re.MULTILINE)
     # Horizontal rules
-    text = re.sub(r'---+', '', text)
+    text = re.sub(r"---+", "", text)
     # Collapse excessive newlines
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def _get_my_tmux_session():
+    """Return the tmux session name this Claude instance is running in."""
+    tmux_env = os.environ.get("TMUX", "")
+    if not tmux_env:
+        return None
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["tmux", "display-message", "-p", "#S"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        return result.stdout.strip() if result.returncode == 0 else None
+    except Exception:
+        return None
 
 
 def main():
@@ -58,7 +77,9 @@ def main():
         data = {}
 
     # Find any pending marker (e.g. /tmp/voice-tts-pending-claude)
-    pending_files = [f for f in os.listdir("/tmp") if f.startswith("voice-tts-pending-")]
+    pending_files = [
+        f for f in os.listdir("/tmp") if f.startswith("voice-tts-pending-")
+    ]
     if not pending_files:
         sys.exit(0)
 
@@ -70,10 +91,18 @@ def main():
     if not cleaned:
         sys.exit(0)
 
+    # Only write to targets that match our tmux session
+    my_session = _get_my_tmux_session()
+
     # Write signal for each pending target and consume marker
     for pf in pending_files:
         pending_path = os.path.join("/tmp", pf)
         target = pf.replace("voice-tts-pending-", "")
+
+        # Skip targets that belong to a different tmux session
+        if my_session and target != my_session:
+            continue
+
         signal_file = f"/tmp/voice-tts-signal-{target}.json"
 
         # Consume the pending marker

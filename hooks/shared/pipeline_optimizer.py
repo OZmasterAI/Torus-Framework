@@ -121,14 +121,17 @@ _GATE_STATE_DEPS: Dict[str, Dict[str, List[str]]] = {
 # ---------------------------------------------------------------------------
 
 
-def _load_json(path: str) -> dict:
-    """Load JSON file; return empty dict on any failure."""
-    try:
-        with open(path, "r") as fh:
-            data = json.load(fh)
-        return data if isinstance(data, dict) else {}
-    except (OSError, json.JSONDecodeError, ValueError):
-        return {}
+try:
+    from shared.gate_helpers import load_json_safe as _load_json
+except ImportError:
+    def _load_json(path: str) -> dict:
+        """Load JSON file; return empty dict on any failure."""
+        try:
+            with open(path, "r") as fh:
+                data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError, ValueError):
+            return {}
 
 
 def _load_effectiveness() -> Dict[str, Dict[str, int]]:

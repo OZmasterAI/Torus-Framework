@@ -7,12 +7,28 @@ Based on Cisco research on MCP tool poisoning / rug-pull attacks where
 a trusted tool's description or parameters are silently mutated after
 initial trust establishment.
 """
+
 import hashlib
 import json
 import os
 import time
 
-FINGERPRINT_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".tool_fingerprints.json")
+_FINGERPRINT_BASE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), ".tool_fingerprints.json"
+)
+FINGERPRINT_FILE = _FINGERPRINT_BASE  # backward compat
+
+
+def _fp_path(session_id=None):
+    """Get session-namespaced fingerprint file path."""
+    if session_id:
+        try:
+            from shared.state import session_namespaced_path
+
+            return session_namespaced_path(_FINGERPRINT_BASE, session_id)
+        except ImportError:
+            pass
+    return _FINGERPRINT_BASE
 
 
 def fingerprint_tool(tool_name, description="", parameters=None):
@@ -38,12 +54,13 @@ def fingerprint_tool(tool_name, description="", parameters=None):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _load_fingerprints():
+def _load_fingerprints(session_id=None):
     """Load fingerprint store from disk. Returns empty dict on missing/corrupt file."""
-    if not os.path.exists(FINGERPRINT_FILE):
+    path = _fp_path(session_id)
+    if not os.path.exists(path):
         return {}
     try:
-        with open(FINGERPRINT_FILE, "r") as f:
+        with open(path, "r") as f:
             data = json.load(f)
         if isinstance(data, dict):
             return data
@@ -52,22 +69,19 @@ def _load_fingerprints():
     return {}
 
 
-def _save_fingerprints(data):
-    """Atomically write fingerprint store to disk.
-
-    Args:
-        data: dict mapping tool names to fingerprint records.
-    """
-    tmp = FINGERPRINT_FILE + ".tmp"
+def _save_fingerprints(data, session_id=None):
+    """Atomically write fingerprint store to disk."""
+    path = _fp_path(session_id)
+    tmp = path + ".tmp"
     try:
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2)
-        os.replace(tmp, FINGERPRINT_FILE)
+        os.replace(tmp, path)
     except OSError:
         pass
 
 
-def register_tool(tool_name, description="", parameters=None):
+def register_tool(tool_name, description="", parameters=None, session_id=None):
     """Register or update a tool fingerprint.
 
     If the tool is new, it is recorded. If it already exists, its hash is
@@ -77,16 +91,13 @@ def register_tool(tool_name, description="", parameters=None):
         tool_name: Name of the MCP tool.
         description: Tool description string.
         parameters: Tool parameter schema (dict or None).
+        session_id: Optional session ID for namespaced storage.
 
     Returns:
         tuple: (is_new: bool, changed: bool, old_hash: str|None, new_hash: str)
-            - is_new: True if this tool was not previously registered.
-            - changed: True if the fingerprint differs from the stored one.
-            - old_hash: Previous hash, or None if the tool is new.
-            - new_hash: The freshly computed hash.
     """
     new_hash = fingerprint_tool(tool_name, description, parameters)
-    store = _load_fingerprints()
+    store = _load_fingerprints(session_id)
 
     if tool_name not in store:
         store[tool_name] = {
@@ -95,7 +106,7 @@ def register_tool(tool_name, description="", parameters=None):
             "last_seen": time.time(),
             "change_count": 0,
         }
-        _save_fingerprints(store)
+        _save_fingerprints(store, session_id)
         return (True, False, None, new_hash)
 
     record = store[tool_name]
@@ -108,7 +119,7 @@ def register_tool(tool_name, description="", parameters=None):
         record["change_count"] = record.get("change_count", 0) + 1
         record["previous_hash"] = old_hash
 
-    _save_fingerprints(store)
+    _save_fingerprints(store, session_id)
     return (False, changed, old_hash, new_hash)
 
 

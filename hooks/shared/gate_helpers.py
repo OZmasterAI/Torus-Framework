@@ -5,12 +5,13 @@ Extracts repeated patterns from gate files into reusable functions:
 - Test file detection
 - Tool input normalization
 - Gate early-return helpers
+- JSON file loading (fail-open)
 
 All functions are pure, stateless, and safe to call from any context.
 
 Public API
 ----------
-  extract_file_path(tool_input)           -> str
+  extract_file_path(tool_input, tool_name) -> str
   is_test_file(file_path)                 -> bool
   stem_normalize(file_path)               -> str
   is_related_file(path_a, path_b)         -> bool
@@ -19,19 +20,21 @@ Public API
   is_edit_tool(tool_name)                 -> bool
   file_extension(file_path)               -> str
   elapsed_since(timestamp)                -> float
-  is_stale(timestamp, window_seconds)     -> bool
+  is_stale(timestamp, window_seconds)      -> bool
+  load_json_safe(path)                     -> dict
 
 Usage
 -----
     from shared.gate_helpers import (
         extract_file_path, is_test_file, safe_tool_input,
-        is_edit_tool, elapsed_since, is_stale,
+        is_edit_tool, elapsed_since, is_stale, load_json_safe,
     )
 """
 
+import json
 import os
+import re
 import time
-from typing import Optional
 
 
 # ---------------------------------------------------------------------------
@@ -39,24 +42,35 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 
 
-def extract_file_path(tool_input: dict) -> str:
+def extract_file_path(tool_input: dict, tool_name: str = "") -> str:
     """Extract the primary file path from a tool_input dict.
 
-    Checks file_path, notebook_path, and path fields in order.
-    Returns empty string if no path found or input is not a dict.
+    Handles Edit, Write, Read, NotebookEdit, Glob (path field), and
+    Bash (heuristic: first absolute path argument with a known extension).
 
     Args:
         tool_input: The tool_input dict from a hook payload.
+        tool_name: Name of the tool (helps disambiguate Bash heuristic).
 
     Returns:
         The extracted file path string, or "".
     """
     if not isinstance(tool_input, dict):
         return ""
+    # Direct path fields (Edit, Write, Read, NotebookEdit, Glob)
     for key in ("file_path", "notebook_path", "path"):
         val = tool_input.get(key, "")
         if isinstance(val, str) and val.strip():
             return val.strip()
+    # Bash: heuristic - first absolute path with a known extension
+    command = tool_input.get("command", "")
+    if isinstance(command, str) and command:
+        m = re.search(
+            r'(?:^|\s)(/[^\s"\']+\.(?:py|js|ts|json|md|yaml|yml|sh))',
+            command,
+        )
+        if m:
+            return m.group(1)
     return ""
 
 
@@ -106,12 +120,12 @@ def stem_normalize(file_path: str) -> str:
     # Strip test prefixes
     for prefix in ("test_", "test"):
         if stem.startswith(prefix):
-            stem = stem[len(prefix):]
+            stem = stem[len(prefix) :]
             break
     # Strip test suffixes
     for suffix in ("_test", "_spec", ".test", ".spec"):
         if stem.endswith(suffix):
-            stem = stem[:-len(suffix)]
+            stem = stem[: -len(suffix)]
             break
     return stem.lower()
 
@@ -195,6 +209,30 @@ def file_extension(file_path: str) -> str:
     if not file_path:
         return ""
     return os.path.splitext(file_path)[1].lower()
+
+
+# ---------------------------------------------------------------------------
+# JSON loading
+# ---------------------------------------------------------------------------
+
+
+def load_json_safe(path: str) -> dict:
+    """Load a JSON file and return a dict; return {} on any failure.
+
+    Fail-open: I/O errors and malformed JSON both return {}.
+
+    Args:
+        path: Absolute path to the JSON file.
+
+    Returns:
+        Parsed dict, or {} if the file is missing, unreadable, or not a dict.
+    """
+    try:
+        with open(path, "r") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
 
 
 # ---------------------------------------------------------------------------

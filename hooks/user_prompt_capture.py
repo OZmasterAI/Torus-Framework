@@ -16,12 +16,12 @@ import time
 # --- Detection patterns (ported from user_prompt_check.sh) ---
 
 _CORRECTION_RE = re.compile(
-    r'(^no,|wrong|actually,|that\'s not right|that\'s incorrect|try again)',
+    r"(^no,|wrong|actually,|that\'s not right|that\'s incorrect|try again)",
     re.IGNORECASE,
 )
 
 _FEATURE_REQ_RE = re.compile(
-    r'(can you|i wish|is there a way|would it be possible)',
+    r"(can you|i wish|is there a way|would it be possible)",
     re.IGNORECASE,
 )
 
@@ -29,7 +29,7 @@ _FEATURE_REQ_RE = re.compile(
 # Matches: "bye", "done", "gn", "goodnight", "end session", "wrap up", "save progress"
 # Avoids: "done with this file", "I'm done editing" (requires word boundary + short prompt or end-of-string)
 _SESSION_END_RE = re.compile(
-    r'(?:^|\s)(?:bye|goodbye|goodnight|gn|see ya|end session|wrap[ -]?up|save progress)(?:\s*[.!]*\s*$)',
+    r"(?:^|\s)(?:bye|goodbye|goodnight|gn|see ya|end session|wrap[ -]?up|save progress)(?:\s*[.!]*\s*$)",
     re.IGNORECASE,
 )
 # "done" alone or "i'm done" / "im done" / "we're done" — but NOT "done with X"
@@ -41,19 +41,19 @@ _DONE_RE = re.compile(
 # --- Sentiment detection patterns ---
 
 _FRUSTRATION_RE = re.compile(
-    r'\b(again|still|ugh|sigh|wrong|not working|broken|doesn\'t work|won\'t work)\b',
+    r"\b(again|still|ugh|sigh|wrong|not working|broken|doesn\'t work|won\'t work)\b",
     re.IGNORECASE,
 )
 _CONFIDENCE_RE = re.compile(
-    r'\b(great|perfect|nice|works|good|awesome|excellent|fixed)\b',
+    r"\b(great|perfect|nice|works|good|awesome|excellent|fixed)\b",
     re.IGNORECASE,
 )
 _UNCERTAINTY_RE = re.compile(
-    r'\b(hmm|maybe|wonder|not sure|try|might|could)\b',
+    r"\b(hmm|maybe|wonder|not sure|try|might|could)\b",
     re.IGNORECASE,
 )
 # 3+ consecutive uppercase words (e.g. "THIS IS WRONG")
-_ALL_CAPS_RE = re.compile(r'(?:\b[A-Z]{2,}\b[\s]+){2,}\b[A-Z]{2,}\b')
+_ALL_CAPS_RE = re.compile(r"(?:\b[A-Z]{2,}\b[\s]+){2,}\b[A-Z]{2,}\b")
 
 # URL detection for auto-indexing into LanceDB web_pages
 _URL_RE = re.compile(r'https?://[^\s<>"\')\]]+', re.IGNORECASE)
@@ -78,9 +78,15 @@ def detect_sentiment(text: str) -> str:
 
 # Frustration severity weights (keyword -> base score)
 _FRUSTRATION_WEIGHTS = {
-    "again": 0.3, "still": 0.35, "ugh": 0.4, "sigh": 0.3,
-    "wrong": 0.4, "not working": 0.5, "broken": 0.5,
-    "doesn't work": 0.5, "won't work": 0.5,
+    "again": 0.3,
+    "still": 0.35,
+    "ugh": 0.4,
+    "sigh": 0.3,
+    "wrong": 0.4,
+    "not working": 0.5,
+    "broken": 0.5,
+    "doesn't work": 0.5,
+    "won't work": 0.5,
 }
 
 
@@ -96,8 +102,8 @@ def compute_frustration_score(text: str) -> float:
     if not matched_weights:
         score = 0.0
     else:
-        score = max(matched_weights)                    # strongest signal = base
-        score += 0.1 * (len(matched_weights) - 1)      # additional matches add 0.1 each
+        score = max(matched_weights)  # strongest signal = base
+        score += 0.1 * (len(matched_weights) - 1)  # additional matches add 0.1 each
     if _ALL_CAPS_RE.search(text):
         score += 0.3
     return min(round(score, 2), 1.0)
@@ -105,10 +111,14 @@ def compute_frustration_score(text: str) -> float:
 
 # --- Capture constants ---
 
-CAPTURE_QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".capture_queue.jsonl")
+CAPTURE_QUEUE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".capture_queue.jsonl"
+)
 
 DEDUP_WINDOW = 30  # seconds — skip identical prompts within this window
-_LAST_PROMPT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".prompt_last_hash")
+_LAST_PROMPT_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".prompt_last_hash"
+)
 
 
 def _is_duplicate_prompt(prompt_text):
@@ -119,7 +129,10 @@ def _is_duplicate_prompt(prompt_text):
         if os.path.exists(_LAST_PROMPT_FILE):
             with open(_LAST_PROMPT_FILE) as f:
                 data = json.load(f)
-            if data.get("hash") == prompt_hash and now - data.get("ts", 0) < DEDUP_WINDOW:
+            if (
+                data.get("hash") == prompt_hash
+                and now - data.get("ts", 0) < DEDUP_WINDOW
+            ):
                 return True
         # Update last hash
         with open(_LAST_PROMPT_FILE, "w") as f:
@@ -141,10 +154,23 @@ def _auto_index_urls(urls):
     for url in urls:
         # Skip common non-page URLs (images, videos, API endpoints, etc.)
         lower = url.lower().rstrip("/")
-        if any(lower.endswith(ext) for ext in (
-            ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
-            ".mp4", ".mp3", ".wav", ".pdf", ".zip", ".tar.gz",
-        )):
+        if any(
+            lower.endswith(ext)
+            for ext in (
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".gif",
+                ".svg",
+                ".webp",
+                ".mp4",
+                ".mp3",
+                ".wav",
+                ".pdf",
+                ".zip",
+                ".tar.gz",
+            )
+        ):
             continue
 
         try:
@@ -167,12 +193,19 @@ def _collect_state_warnings():
     try:
         # 1. Uncommitted changes
         import subprocess
+
         r = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
             cwd=os.path.expanduser("~/.claude"),
         )
-        modified = [l for l in r.stdout.strip().split("\n") if l.strip() and not l.startswith("??")]
+        modified = [
+            l
+            for l in r.stdout.strip().split("\n")
+            if l.strip() and not l.startswith("??")
+        ]
         if modified:
             warnings.append(f"uncommitted changes ({len(modified)} files)")
 
@@ -189,9 +222,11 @@ def _collect_state_warnings():
 
         # 3. Open causal chains
         import glob as _glob
+
         state_files = sorted(
             _glob.glob(os.path.join(_HOOKS_DIR, "state_*.json")),
-            key=os.path.getmtime, reverse=True,
+            key=os.path.getmtime,
+            reverse=True,
         )
         if state_files:
             with open(state_files[0]) as f:
@@ -255,6 +290,139 @@ def main():
             _auto_index_urls(urls)
     except Exception:
         pass  # Index failures must never crash the hook
+
+    # --- Working memory: update Status section every turn ---
+    try:
+        import sys as _sys
+
+        _hooks_dir = os.path.dirname(os.path.abspath(__file__))
+        if _hooks_dir not in _sys.path:
+            _sys.path.insert(0, _hooks_dir)
+        from shared.operation_tracker import OperationTracker
+        from shared.working_memory_writer import (
+            WorkingMemoryWriter,
+            inject_enforcer_fields,
+        )
+
+        _session_id = data.get("session_id", "main")
+        _op_tracker = OperationTracker(_session_id)
+        _tracker_state = _op_tracker.get_state()
+        _tracker_state["_session_id"] = _session_id
+
+        # Write to hooks dir (hook-injected, not rules/ auto-loaded)
+        _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+        _writer = WorkingMemoryWriter(_hooks_dir)
+        _writer.write_status(_tracker_state)
+
+        # Check threshold for expand section (Option 3: keep until replaced)
+        # First write at threshold, then refresh every N turns to stay current
+        _total_turns = _tracker_state.get("total_turns", 0)
+        _total_ops = _tracker_state.get("total_ops", 0)
+        _expand_written = _tracker_state.get("expand_written", False)
+        _expand_turn = _tracker_state.get("expand_written_at_turn", 0)
+        _EXPAND_TRIGGER_TURN = 60
+        _EXPAND_TRIGGER_OP_COUNT = 10
+        _EXPAND_REFRESH_INTERVAL = 60
+        _should_expand = False
+        if not _expand_written and (
+            _total_turns > _EXPAND_TRIGGER_TURN or _total_ops > _EXPAND_TRIGGER_OP_COUNT
+        ):
+            _should_expand = True
+        elif (
+            _expand_written
+            and _expand_turn > 0
+            and (_total_turns - _expand_turn >= _EXPAND_REFRESH_INTERVAL)
+        ):
+            _should_expand = True
+        elif (
+            _expand_written
+            and _tracker_state.get("summary_threshold_fired", False)
+            and not _tracker_state.get("_threshold_expand_done", False)
+        ):
+            _should_expand = True  # Final refresh when 65% warning fires
+            _tracker_state["_threshold_expand_done"] = True
+        if _should_expand:
+            try:
+                from shared.state import load_state as _load_enf
+
+                _enf = _load_enf(session_id=_session_id)
+                inject_enforcer_fields(_tracker_state, _enf)
+            except Exception:
+                pass  # Enrichment is best-effort
+            _writer.write_expanded(_tracker_state)
+            _tracker_state["expand_written_at_turn"] = _total_turns
+            _op_tracker._save_state(_tracker_state)
+    except Exception:
+        pass  # Working memory failures must never crash the hook
+
+    # --- Context threshold detection moved to PostToolUse (tracker_pkg/orchestrator.py) ---
+
+    # --- Context drop detection (/clear or compaction) ---
+    try:
+        _prev_pct = _tracker_state.get("last_context_pct", 0)
+        _snap_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), ".statusline_snapshot.json"
+        )
+        try:
+            from shared.state import session_namespaced_path
+
+            _snap_file = session_namespaced_path(_snap_file, data.get("session_id"))
+        except ImportError:
+            pass
+        _cur_pct = 0
+        if os.path.exists(_snap_file):
+            with open(_snap_file) as _sf:
+                _cur_pct = json.load(_sf).get("context_pct", 0)
+        if _cur_pct > 0:
+            _tracker_state["last_context_pct"] = _cur_pct
+            if _prev_pct > 0 and _cur_pct < _prev_pct - 1:
+                _tracker_state["context_drop_detected"] = True
+                _tracker_state["context_drop_from"] = _prev_pct
+                _tracker_state["context_drop_to"] = _cur_pct
+            else:
+                _tracker_state["context_drop_detected"] = False
+            _op_tracker._save_state(_tracker_state)
+    except Exception:
+        pass  # Detection failures must never crash the hook
+
+    # --- Inject working-memory + working-summary after context drop (/clear or compaction) ---
+    try:
+        if _tracker_state.get("context_drop_detected", False):
+            for _inject_file in ["working-memory.md", "working-summary.md"]:
+                _inject_path = os.path.join(
+                    os.path.expanduser("~"), ".claude", "hooks", _inject_file
+                )
+                try:
+                    with open(_inject_path) as _f:
+                        _content = _f.read().strip()
+                        if _content:
+                            print(_content)
+                except OSError:
+                    pass  # File missing — skip silently
+    except Exception:
+        pass  # Injection failures must never crash the hook
+
+    # --- Summary clear countdown (5 turns post-compaction) ---
+    try:
+        _countdown = _tracker_state.get("summary_clear_countdown", -1)
+        if _countdown > 0:
+            _tracker_state["summary_clear_countdown"] = _countdown - 1
+            _op_tracker._save_state(_tracker_state)
+        elif _countdown == 0:
+            # Clear working-summary.md to stub
+            _summary_path = os.path.join(_hooks_dir, "working-summary.md")
+            _stub = (
+                "# Working Summary (Claude-written at context threshold)\n"
+                "<!-- This file is auto-managed. Claude writes it at ~65% context. "
+                "Do not edit manually. -->\n"
+                "(awaiting threshold)\n"
+            )
+            with open(_summary_path, "w") as f:
+                f.write(_stub)
+            _tracker_state["summary_clear_countdown"] = -1  # Deactivate
+            _op_tracker._save_state(_tracker_state)
+    except Exception:
+        pass  # Countdown failures must never crash the hook
 
     # --- Capture phase (append observation to queue) ---
 

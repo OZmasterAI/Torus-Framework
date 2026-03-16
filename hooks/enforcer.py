@@ -325,6 +325,10 @@ GATE_DEPENDENCIES = {
         ],
         "writes": [],
     },
+    "gate_21_working_summary": {
+        "reads": ["summary_threshold_fired"],
+        "writes": [],
+    },
 }
 
 
@@ -361,6 +365,7 @@ GATE_TOOL_MAP = {
     },  # + MCP tools checked internally
     "gates.gate_18_canary": None,  # Universal — observes all tool calls
     "gates.gate_19_hindsight": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_21_working_summary": {"Edit", "Write", "NotebookEdit", "Bash", "Task"},
 }
 
 
@@ -637,7 +642,7 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 block_counts = state.setdefault("gate_block_counts", {})
                 block_counts[gate_short] = block_counts.get(gate_short, 0) + 1
                 # Track gate effectiveness (self-evolving) — persistent across sessions
-                update_gate_effectiveness(gate_short, "blocks")
+                update_gate_effectiveness(gate_short, "blocks", session_id)
                 try:
                     _mc_block(gate_short)
                 except Exception:

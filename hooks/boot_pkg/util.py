@@ -82,22 +82,28 @@ def detect_project(cwd=None):
 
     # --- ~/projects/<name>/ ---
     projects = os.path.realpath(PROJECTS_DIR)
-    if not cwd.startswith(projects + os.sep):
-        return None, None, None, None
-    # Extract path components after PROJECTS_DIR
-    rel = cwd[len(projects) + 1 :]
-    parts = rel.split(os.sep)
-    name = parts[0]
-    if not name:
-        return None, None, None, None
-    project_dir = os.path.join(projects, name)
-    # Check for subproject: needs 2+ components and marker file
-    if len(parts) >= 2 and parts[1]:
-        sub_name = parts[1]
-        sub_dir = os.path.join(project_dir, sub_name)
-        if os.path.isfile(os.path.join(sub_dir, SUBPROJECT_MARKER)):
-            return name, project_dir, sub_name, sub_dir
-    return name, project_dir, None, None
+    if cwd.startswith(projects + os.sep):
+        rel = cwd[len(projects) + 1 :]
+        parts = rel.split(os.sep)
+        name = parts[0]
+        if name:
+            project_dir = os.path.join(projects, name)
+            if len(parts) >= 2 and parts[1]:
+                sub_name = parts[1]
+                sub_dir = os.path.join(project_dir, sub_name)
+                if os.path.isfile(os.path.join(sub_dir, SUBPROJECT_MARKER)):
+                    return name, project_dir, sub_name, sub_dir
+            return name, project_dir, None, None
+
+    # --- Fallback: any dir with .git ancestor (stop at $HOME) ---
+    d = cwd
+    home = os.path.realpath(os.path.expanduser("~"))
+    while d != os.sep and d != home:
+        if os.path.isdir(os.path.join(d, ".git")):
+            return os.path.basename(d), d, None, None
+        d = os.path.dirname(d)
+
+    return None, None, None, None
 
 
 def load_project_state(project_dir):

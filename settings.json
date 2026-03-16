@@ -10,7 +10,6 @@
     ],
     "defaultMode": "default"
   },
-  "model": "sonnet",
   "hooks": {
     "PreToolUse": [
       {
@@ -144,6 +143,18 @@
         ]
       }
     ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/post_compact.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "matcher": "",
@@ -178,6 +189,11 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/tgbot_response.py\"",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/context_threshold_stop.py\"",
             "timeout": 3
           }
         ]
@@ -262,7 +278,7 @@
     "skill-creator@claude-plugins-official": false,
     "code-simplifier@claude-plugins-official": false
   },
-  "effortLevel": "high",
+  "voiceEnabled": true,
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "disabled_hooks": {
@@ -303,6 +319,5 @@
     "Model cost — haiku for search, sonnet for work, opus for complex",
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
-  ],
-  "voiceEnabled": true
+  ]
 }
