@@ -1,27 +1,18 @@
 {
-  "session_count": 431,
+  "session_count": 434,
   "project": "torus-framework",
-  "feature": "openTorus-container",
-  "framework_version": "v2.8.3",
-  "what_was_done": "Built openTorus+OpenClaw Podman container. Reviewed Sonnet-generated code (335 tests pass), fixed 6 bugs. Created Containerfile, container-start.sh, run-container.sh. Container running on port 18790, responding on Telegram.",
+  "feature": "agent-channel-v2",
+  "framework_version": "v3.0.0",
+  "what_was_done": "Rewrote agent_channel.py v2: unified messaging + task coordination, two tables in one DB, atomic claiming, goal ancestry, inbox ack/threading, 70+ tests",
   "known_issues": [
-    "MCP config lives in ~/.claude.json mcpServers, NOT settings.local.json enabledMcpjsonServers (memory id:5da37caef1c345ce)",
-    "test_framework.py import error: test_integration.py line 748 ModuleNotFoundError for 'index'",
-    "CRITICAL: SQL injection in lance_collection.py \u2014 unsanitized IDs in WHERE clauses (audit F-01)",
-    "HIGH: quality_score silently dropped on every write \u2014 missing from _KNOWLEDGE_SCHEMA (audit F-04)",
-    "Memory server now SSE \u2014 must run ~/.claude/hooks/memory_sse.sh start BEFORE launching Claude",
-    "layered-memory branch has memory-v2 merge \u2014 needs merge into Toroidal-teams or main",
-    "session_end.py hook timeout: _haiku_summarize() spawns 15s subprocess inside 5s hook limit \u2014 needs backgrounding",
-    "test_lance_collection.py: 12 tests mock _fetch_all_entries but actual function is _safe_fetch_all",
-    "openTorus container agent not aware of openTorus docs \u2014 workspace docs present but Nemotron 120B may not read them without explicit bootstrap"
+    "hasAvailableSubscription can go stale — check on resume if 1M context missing",
+    "Memory DB at 3038 entries — stale purge recommended"
   ],
   "next_steps": [
-    "Build OpenClaw plugin bridge for openTorus gate enforcement inside container",
-    "Wire openTorus MCP memory server as OpenClaw plugin",
-    "Fix SQL injection in lance_collection.py (audit F-01 \u2014 critical)",
-    "Fix session_end.py hook timeout \u2014 background heavy ops",
-    "Review and merge sprint branches: sprint/memory, sprint/gates, sprint/refactor, sprint/tests",
-    "Fix 12 failing tests in test_lance_collection.py (wrong mock target)",
-    "Memory stale purge \u2014 2,874 entries"
+    "Wire agent_channel tasks into MCP tools (~30 lines in memory_server.py)",
+    "Wire agent_channel into manage.sh for toroidal teams dispatch (~15 lines)",
+    "Explore document store extension to Memory MCP (Docling + LanceDB documents table)",
+    "Rotate OpenRouter API keys (leaked in local git history)",
+    "Memory maintenance — stale purge"
   ]
 }

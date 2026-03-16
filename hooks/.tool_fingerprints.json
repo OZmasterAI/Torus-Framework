@@ -2,7 +2,20 @@
   "__test_reg_tool__": {
     "hash": "c9bc51fad9bd71895c2a6c32d28d7d751f8478f3794f9fedddc4e25427fdea26",
     "first_seen": 1772162201.958426,
-    "last_seen": 1773371327.837925,
+    "last_seen": 1773674297.9537532,
+    "change_count": 0
+  },
+  "brand_new_tool": {
+    "hash": "8f24bf32c02a9e29a09f82feb758056e6ddb75acbe44f5e5ce63374cc4ea69b6",
+    "first_seen": 1773649216.2234073,
+    "last_seen": 1773674283.0890393,
+    "change_count": 47,
+    "previous_hash": "98503b08ac62692d2f7036d0b2fcae0c2cc1f64edc889bdb1977db6000f3a456"
+  },
+  "stable_tool": {
+    "hash": "15ac82726cdd1080baf02d14a6f20733718ca4348af1a7b1d8778ee402f761ed",
+    "first_seen": 1773649216.2261112,
+    "last_seen": 1773674283.0904741,
     "change_count": 0
   }
 }
