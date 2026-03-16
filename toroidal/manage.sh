@@ -62,7 +62,7 @@ import sys, os
 sys.path.insert(0, os.path.expanduser("~/.claude/hooks"))
 from shared.agent_channel import create_task
 title, role, pri = sys.argv[1], sys.argv[2], int(sys.argv[3])
-tid = create_task(title=title, created_by="manage.sh", assigned_to=role, priority=pri)
+tid = create_task(title=title, created_by="manage.sh", assigned_to=role, required_role=role, priority=pri)
 if tid:
     print(f"Task created: {tid} (priority={pri}, role={role})")
 else:
