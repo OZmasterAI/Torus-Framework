@@ -1,18 +1,20 @@
 {
-  "session_count": 448,
+  "session_count": 452,
   "project": "torus-framework",
-  "feature": "tap-protocol",
+  "feature": "tap-persistent",
   "framework_version": "v3.0.0",
-  "what_was_done": "Built TAP (Toroidal Agent Protocol) from scratch. Researched coding agents (Codex/Goose/Pi/herm), compared ACP. Designed+implemented 10 modules, 43 tests. Live-tested with real Claude Code. Decoupled into standalone package, published to github.com/OZmasterAI/tap-protocol. manage.sh compat bridge wired in.",
+  "what_was_done": "Implemented TAP persistent mode (Hybrid C): stream-json + resume fallback. 76/76 tests. Created TAP branch. Extracted Claude Code agent-teams to /projects/TestingAgents/ for forking. Synced persistent mode to torus copy.",
   "known_issues": [
     "hasAvailableSubscription can go stale — check on resume if 1M context missing",
-    "Memory DB at 3076 entries — stale purge recommended",
-    "TAP persistent mode (long-lived Claude pipe) not yet implemented — only ephemeral works with real Claude"
+    "Memory DB at 3100 entries — stale purge recommended",
+    "TAP watchdog + fallback not wired into heartbeat loop yet (methods exist, not auto-called)",
+    "/remote-control triggers compaction even at 20% context (different context window on claude.ai)"
   ],
   "next_steps": [
-    "TAP: implement persistent agent mode (long-lived claude subprocess with streaming input)",
+    "TestingAgents: modify agent-teams to add TAP features (SQLite storage, JSON-RPC, multi-CLI, persistent mode)",
+    "TAP: wire watchdog + auto-fallback into daemon heartbeat loop",
     "TAP: build TUI dashboard for live agent monitoring",
-    "TAP: Pi adapter testing with real pi CLI",
+    "TAP: push persistent mode to github.com/OZmasterAI/tap-protocol",
     "Memory maintenance — stale purge",
     "Rotate OpenRouter API keys (leaked in local git history)"
   ]
