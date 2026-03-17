@@ -197,6 +197,7 @@ class TAPDaemon:
             "agent_id": agent_id,
             "alive": agent.alive,
             "state": agent.state,
+            "mode": agent.mode,
             "context_pct": 0.0,
             "uptime_s": agent.uptime_s,
             "current_task_id": agent.current_task_id,
@@ -212,6 +213,8 @@ class TAPDaemon:
             "tokens_used": 0,
             "tokens_max": 0,
             "model": agent.model,
+            "mode": agent.mode,
+            "session_id": agent.session_id,
             "active_task": agent.current_task_id,
         }
 
@@ -226,6 +229,8 @@ class TAPDaemon:
                     "state": a.state,
                     "persistent": a.persistent,
                     "alive": a.alive,
+                    "mode": a.mode,
+                    "degraded_reason": a.degraded_reason,
                     "uptime_s": a.uptime_s,
                     "current_task_id": a.current_task_id,
                 }

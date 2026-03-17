@@ -9,6 +9,11 @@ DEFAULT_MODEL = "sonnet"
 DEFAULT_PRIORITY = 5
 MAX_AGENTS = 20
 DEFAULT_ADAPTER = "claude"
+WATCHDOG_TIMEOUT = int(os.environ.get("TAP_WATCHDOG_TIMEOUT", "30"))
+
+# Agent modes
+MODE_STREAMING = "streaming"
+MODE_EPHEMERAL = "ephemeral"
 
 # Agent states
 STATE_READY = "ready"

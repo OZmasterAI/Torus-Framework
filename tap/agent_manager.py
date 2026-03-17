@@ -9,7 +9,15 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .adapters.base import BaseAdapter
-from .constants import STATE_DEAD, STATE_IDLE, STATE_READY, STATE_WORKING
+from .constants import (
+    MODE_EPHEMERAL,
+    MODE_STREAMING,
+    STATE_DEAD,
+    STATE_IDLE,
+    STATE_READY,
+    STATE_WORKING,
+    WATCHDOG_TIMEOUT,
+)
 
 
 @dataclass
@@ -26,6 +34,11 @@ class ManagedAgent:
     started_at: float = field(default_factory=time.time)
     last_heartbeat: float = field(default_factory=time.time)
     current_task_id: str | None = None
+    mode: str = MODE_STREAMING
+    session_id: str | None = None
+    degraded_reason: str | None = None
+    _result_received: bool = field(default=False, repr=False)
+    _last_result_time: float | None = field(default=None, repr=False)
 
     @property
     def alive(self) -> bool:
@@ -138,8 +151,8 @@ class AgentManager:
     def send_prompt(self, agent_id: str, prompt: str) -> bool:
         """Send a prompt to an agent's stdin. Returns True on success.
 
-        For ephemeral agents (e.g. `claude -p`), closes stdin after writing
-        to signal EOF — the agent processes the prompt and exits.
+        For streaming persistent agents: sends NDJSON, keeps stdin open.
+        For ephemeral agents: sends plain text, closes stdin to signal EOF.
         """
         agent = self.get(agent_id)
         if agent is None or not agent.alive:
@@ -149,9 +162,12 @@ class AgentManager:
             formatted = agent.adapter.format_input(prompt)
             agent.process.stdin.write(formatted)
             agent.process.stdin.flush()
-            if not agent.persistent:
+            if agent.mode == MODE_EPHEMERAL or not agent.persistent:
                 # Ephemeral: close stdin to signal EOF (claude -p needs this)
                 agent.process.stdin.close()
+            # Reset watchdog state for new turn
+            agent._result_received = False
+            agent._last_result_time = None
             agent.state = STATE_WORKING
             agent.touch()
             return True
@@ -223,6 +239,79 @@ class AgentManager:
         if result:
             agent.state = STATE_IDLE
         return result
+
+    def _check_watchdog(self, agent_id: str) -> bool:
+        """Check if a persistent streaming agent's turn has timed out.
+
+        Returns True if the agent received a result message and has been
+        silent for longer than WATCHDOG_TIMEOUT seconds.
+        """
+        agent = self.get(agent_id)
+        if agent is None:
+            return False
+        if not agent._result_received:
+            return False
+        if agent._last_result_time is None:
+            return False
+        return (time.time() - agent._last_result_time) > WATCHDOG_TIMEOUT
+
+    def _fallback_to_ephemeral(self, agent_id: str) -> bool:
+        """Fallback a persistent streaming agent to ephemeral resume mode.
+
+        Saves session_id, kills dead process, respawns in ephemeral mode
+        with --resume if session_id was captured.
+        """
+        agent = self.get(agent_id)
+        if agent is None:
+            return False
+
+        saved_session_id = agent.session_id
+        saved_role = agent.role
+        saved_model = agent.model
+
+        # Kill old process if still around
+        if agent.alive:
+            try:
+                agent.process.terminate()
+                agent.process.wait(timeout=3)
+            except (subprocess.TimeoutExpired, OSError):
+                agent.process.kill()
+                try:
+                    agent.process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
+
+        # Respawn with ephemeral adapter
+        if self._adapter_factory:
+            adapter = self._adapter_factory(model=saved_model, persistent=False)
+        else:
+            return False
+
+        cmd = adapter.spawn_cmd()
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+
+        new_agent = ManagedAgent(
+            agent_id=agent_id,
+            role=saved_role,
+            model=saved_model,
+            persistent=True,  # still logically persistent, just degraded
+            adapter=adapter,
+            process=proc,
+            mode=MODE_EPHEMERAL,
+            session_id=saved_session_id,
+            degraded_reason="streaming process died, fell back to ephemeral",
+        )
+
+        with self._lock:
+            self._agents[agent_id] = new_agent
+        return True
 
     def _cleanup(self, agent_id: str) -> None:
         """Remove an agent from the registry."""

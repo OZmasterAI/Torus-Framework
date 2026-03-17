@@ -81,14 +81,19 @@ def cmd_status(args):
             return
         print(
             f"{'AGENT':<20} {'ROLE':<15} {'MODEL':<10} "
-            f"{'STATE':<10} {'PERSISTENT':<12} {'TASK'}"
+            f"{'STATE':<10} {'MODE':<12} {'TASK'}"
         )
         print("-" * 85)
         for a in agents:
             task = (a.get("current_task_id") or "-")[:8]
+            mode = a.get(
+                "mode", "ephemeral" if not a.get("persistent") else "streaming"
+            )
+            degraded = a.get("degraded_reason")
+            mode_display = f"{mode}*" if degraded else mode
             print(
                 f"{a['agent_id']:<20} {a['role']:<15} {a['model']:<10} "
-                f"{a['state']:<10} {'yes' if a['persistent'] else 'no':<12} {task}"
+                f"{a['state']:<10} {mode_display:<12} {task}"
             )
 
 
@@ -97,10 +102,14 @@ def _print_agent_status(resp):
     print(f"Agent:    {resp.get('agent_id', '?')}")
     print(f"Alive:    {resp.get('alive', '?')}")
     print(f"State:    {resp.get('state', '?')}")
+    print(f"Mode:     {resp.get('mode', '?')}")
     print(f"Uptime:   {resp.get('uptime_s', 0):.1f}s")
     print(f"Context:  {resp.get('context_pct', 0):.1f}%")
     task = resp.get("current_task_id") or "none"
     print(f"Task:     {task}")
+    degraded = resp.get("degraded_reason")
+    if degraded:
+        print(f"Degraded: {degraded}")
 
 
 def cmd_broadcast(args):
