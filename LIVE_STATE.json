@@ -1,5 +1,5 @@
 {
-  "session_count": 438,
+  "session_count": 439,
   "project": "torus-framework",
   "feature": "toroidal-dispatch",
   "framework_version": "v3.0.0",
@@ -13,5 +13,5 @@
     "Rotate OpenRouter API keys (leaked in local git history)",
     "Memory maintenance \u2014 stale purge"
   ],
-  "last_response_preview": "---\n\n## Session 437 Wrap-Up\n\n**Risk: YELLOW** \u2014 `rules/working-memory.md` deleted + 2 untracked files (carried from previous sessions, not from this work).\n\n### What was done\n- Verified `agent_coordination` MCP tool works (all 6 actions)\n- Brainstormed 3 dispatch options, chose Option C (SQLite-first + inotify bridge)\n- Implemented: `manage.sh` cmd_send \u2192 SQLite, `watcher.sh` bridge_poll \u2192 flat files\n- Found and fixed routing bug (`required_role` vs `assigned_to`)\n- Live-tested end-to-end: task "
+  "last_response_preview": "**pts/2** (root, from Mar 16 19:51) has terminated. Down to **2 root SSH sessions** now (pts/0 and pts/1)."
 }
