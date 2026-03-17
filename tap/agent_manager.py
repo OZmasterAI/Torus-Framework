@@ -136,7 +136,11 @@ class AgentManager:
         return dead
 
     def send_prompt(self, agent_id: str, prompt: str) -> bool:
-        """Send a prompt to an agent's stdin. Returns True on success."""
+        """Send a prompt to an agent's stdin. Returns True on success.
+
+        For ephemeral agents (e.g. `claude -p`), closes stdin after writing
+        to signal EOF — the agent processes the prompt and exits.
+        """
         agent = self.get(agent_id)
         if agent is None or not agent.alive:
             return False
@@ -145,6 +149,9 @@ class AgentManager:
             formatted = agent.adapter.format_input(prompt)
             agent.process.stdin.write(formatted)
             agent.process.stdin.flush()
+            if not agent.persistent:
+                # Ephemeral: close stdin to signal EOF (claude -p needs this)
+                agent.process.stdin.close()
             agent.state = STATE_WORKING
             agent.touch()
             return True
