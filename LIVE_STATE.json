@@ -1,17 +1,19 @@
 {
-  "session_count": 447,
+  "session_count": 448,
   "project": "torus-framework",
-  "feature": "toroidal-dispatch",
+  "feature": "tap-protocol",
   "framework_version": "v3.0.0",
-  "what_was_done": "Verified agent_coordination MCP tool. Wired agent_channel into toroidal dispatch (Option C: SQLite-first + inotify bridge). manage.sh creates tasks via SQLite, bridge_poll in watcher.sh claims and writes flat files for inotify delivery. Live-tested end-to-end.",
+  "what_was_done": "Built TAP (Toroidal Agent Protocol) from scratch. Researched coding agents (Codex/Goose/Pi/herm), compared ACP. Designed+implemented 10 modules, 43 tests. Live-tested with real Claude Code. Decoupled into standalone package, published to github.com/OZmasterAI/tap-protocol. manage.sh compat bridge wired in.",
   "known_issues": [
-    "hasAvailableSubscription can go stale \u2014 check on resume if 1M context missing",
-    "Memory DB at 3060 entries \u2014 stale purge recommended"
+    "hasAvailableSubscription can go stale — check on resume if 1M context missing",
+    "Memory DB at 3076 entries — stale purge recommended",
+    "TAP persistent mode (long-lived Claude pipe) not yet implemented — only ephemeral works with real Claude"
   ],
   "next_steps": [
-    "Explore document store extension to Memory MCP (Docling + LanceDB documents table)",
-    "Rotate OpenRouter API keys (leaked in local git history)",
-    "Memory maintenance \u2014 stale purge"
-  ],
-  "last_response_preview": "4"
+    "TAP: implement persistent agent mode (long-lived claude subprocess with streaming input)",
+    "TAP: build TUI dashboard for live agent monitoring",
+    "TAP: Pi adapter testing with real pi CLI",
+    "Memory maintenance — stale purge",
+    "Rotate OpenRouter API keys (leaked in local git history)"
+  ]
 }
