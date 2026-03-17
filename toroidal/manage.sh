@@ -67,6 +67,11 @@ cmd_send() {
     local ROLE="$1"
     local CMD="$2"
     local PRIORITY="${3:-5}"
+    # Try TAP first
+    if _tap_available; then
+        python3 -m tap.compat send "$ROLE" "$CMD" "$PRIORITY"
+        return
+    fi
     python3 - "$CMD" "$ROLE" "$PRIORITY" <<'PYEOF'
 import sys, os
 sys.path.insert(0, os.path.expanduser("~/.claude/hooks"))
@@ -83,6 +88,11 @@ PYEOF
 
 cmd_suspend() {
     local ROLE="$1"
+    # Try TAP first
+    if _tap_available; then
+        python3 -m tap.compat suspend "$ROLE"
+        return
+    fi
     # Get Claude session ID before killing
     local SESSION_ID
     SESSION_ID=$(jq -r ".\"$ROLE\".session_id // \"unknown\"" "$SESSIONS_FILE")
@@ -103,6 +113,13 @@ cmd_suspend() {
 
 cmd_resume() {
     local ROLE="$1"
+    # Try TAP first
+    if _tap_available; then
+        local MODEL
+        MODEL=$(jq -r ".\"$ROLE\".model // \"sonnet\"" "$SESSIONS_FILE" 2>/dev/null || echo "sonnet")
+        python3 -m tap.compat resume "$ROLE" "$MODEL"
+        return
+    fi
     local SESSION_ID
     SESSION_ID=$(jq -r ".\"$ROLE\".session_id // empty" "$SESSIONS_FILE")
     local MODEL
