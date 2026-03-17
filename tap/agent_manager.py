@@ -171,6 +171,52 @@ class AgentManager:
         except (OSError, ValueError):
             return None
 
+    def read_all_output(self, agent_id: str, timeout: float = 30.0) -> str | None:
+        """Read all output lines until timeout or process exits. Returns final result."""
+        agent = self.get(agent_id)
+        if agent is None:
+            return None
+
+        import select
+
+        result = None
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            if not agent.alive:
+                # Process exited — drain remaining output
+                try:
+                    remaining = agent.process.stdout.read()
+                    if remaining:
+                        for line in remaining.splitlines():
+                            parsed = agent.adapter.parse_output(line)
+                            if parsed:
+                                result = parsed
+                except (OSError, ValueError):
+                    pass
+                break
+
+            try:
+                remaining_time = max(0.1, deadline - time.time())
+                ready, _, _ = select.select(
+                    [agent.process.stdout], [], [], min(remaining_time, 1.0)
+                )
+                if ready:
+                    line = agent.process.stdout.readline()
+                    if line:
+                        agent.touch()
+                        parsed = agent.adapter.parse_output(line)
+                        if parsed:
+                            result = parsed
+                    else:
+                        break  # EOF
+            except (OSError, ValueError):
+                break
+
+        if result:
+            agent.state = STATE_IDLE
+        return result
+
     def _cleanup(self, agent_id: str) -> None:
         """Remove an agent from the registry."""
         with self._lock:
