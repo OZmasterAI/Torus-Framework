@@ -14,7 +14,17 @@ set -uo pipefail
 CHANNELS_DIR="$HOME/.claude/channels"
 SESSIONS_FILE="$HOME/.claude/toroidal/sessions.json"
 
+# TAP daemon detection — use TAP when available, fall back to tmux
+_tap_available() {
+    python3 -m tap.compat is_running 2>/dev/null
+}
+
 cmd_status() {
+    # Try TAP first
+    if _tap_available; then
+        python3 -m tap.compat status
+        return
+    fi
     echo "=== Toroidal Teams Status ==="
     if [ ! -f "$SESSIONS_FILE" ]; then
         echo "No sessions registered."
