@@ -1,5 +1,5 @@
 {
-  "session_count": 439,
+  "session_count": 447,
   "project": "torus-framework",
   "feature": "toroidal-dispatch",
   "framework_version": "v3.0.0",
@@ -13,5 +13,5 @@
     "Rotate OpenRouter API keys (leaked in local git history)",
     "Memory maintenance \u2014 stale purge"
   ],
-  "last_response_preview": "**pts/2** (root, from Mar 16 19:51) has terminated. Down to **2 root SSH sessions** now (pts/0 and pts/1)."
+  "last_response_preview": "4"
 }
