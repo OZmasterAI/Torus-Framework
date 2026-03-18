@@ -27,6 +27,20 @@ from tracker_pkg.verification import (
 )
 from tracker_pkg.auto_remember import _auto_remember_event
 
+# Tool profile evolution (AutoAgent-inspired online adaptation)
+try:
+    from shared.tool_profiles import (
+        load_profiles as _load_tool_profiles,
+        save_profiles as _save_tool_profiles,
+        record_success as _tp_record_success,
+        record_failure as _tp_record_failure,
+        PROFILED_TOOLS as _TP_PROFILED_TOOLS,
+    )
+
+    _TOOL_PROFILES_AVAILABLE = True
+except ImportError:
+    _TOOL_PROFILES_AVAILABLE = False
+
 # Gate 17 injection scanning — imported here to run on PostToolUse results
 try:
     from gates.gate_17_injection_defense import (
@@ -298,6 +312,69 @@ def _handle_gate17_scan(tool_name, tool_response, state):
                     pass
     except Exception as e:
         _log_debug(f"Gate 17 scan failed (non-blocking): {e}")
+
+
+def _update_tool_profile(tool_name, tool_input, tool_response, state):
+    """Update tool profile based on observed outcome (AutoAgent-inspired).
+
+    Tracks success/failure patterns per tool. When a new failure pattern
+    is discovered, saves it to memory for cross-session learning.
+    Fail-open: any exception here is logged and swallowed.
+    """
+    if not _TOOL_PROFILES_AVAILABLE:
+        return
+    if tool_name not in _TP_PROFILED_TOOLS:
+        return
+    try:
+        profiles = _load_tool_profiles()
+
+        # Determine if this was a success or failure
+        is_error = False
+        error_text = ""
+        if isinstance(tool_response, dict):
+            is_error = tool_response.get("is_error", False)
+            error_text = tool_response.get("stderr", "") or tool_response.get(
+                "error", ""
+            )
+            if not error_text and is_error:
+                error_text = tool_response.get("stdout", "")
+        elif isinstance(tool_response, str):
+            # Check for gate blocks and hook errors in string responses
+            if any(
+                marker in tool_response
+                for marker in (
+                    "BLOCKED:",
+                    "[GATE",
+                    "hook error:",
+                    "Error:",
+                    "error:",
+                    "Permission denied",
+                    "No such file",
+                )
+            ):
+                is_error = True
+                error_text = tool_response
+
+        if is_error and error_text:
+            result = _tp_record_failure(profiles, tool_name, tool_input, error_text)
+            if result and result.get("is_new"):
+                # New failure pattern discovered — auto-remember
+                _auto_remember_event(
+                    f"Tool profile: {tool_name} new failure — {result['signature'][:80]}",
+                    context=f"tool profile evolution, context: {json.dumps(result.get('context', {}))[:100]}",
+                    tags="type:auto-captured,area:framework,tool-profile",
+                    critical=False,
+                    state=state,
+                )
+                _log_debug(
+                    f"Tool profile: new failure for {tool_name}: {result['signature'][:60]}"
+                )
+        else:
+            _tp_record_success(profiles, tool_name, tool_input)
+
+        _save_tool_profiles(profiles)
+    except Exception as e:
+        _log_debug(f"Tool profile update failed (non-blocking): {e}")
 
 
 def _handle_bash(tool_input, tool_response, state):
@@ -639,6 +716,9 @@ def handle_post_tool_use(
         state["analytics_last_used"] = alu
 
     _capture_observation(tool_name, tool_input, tool_response, session_id, state)
+
+    # ── Tool Profile Evolution (AutoAgent-inspired) — fail-open ──
+    _update_tool_profile(tool_name, tool_input, tool_response, state)
 
     # ── Mentor System (A+D+E+F) — all toggle-gated, all fail-open ──
     _run_mentor_system(tool_name, tool_input, tool_response, state)
