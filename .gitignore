@@ -45,6 +45,9 @@ skills/**/scripts/__pycache__/
 hooks/agent_channel.db
 hooks/agent_channel.db.lock
 memory/chroma_db/
+data/conversations.db
+data/conversations.db-wal
+data/conversations.db-shm
 
 # Audit logs (large, rotated)
 hooks/audit/

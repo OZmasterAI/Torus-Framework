@@ -273,6 +273,23 @@ def main():
             "before the session ends.</session_ending>"
         )
 
+    # --- DAG: record user message + /clear interception (Task 4 + Task 7) ---
+    try:
+        from shared.dag import get_session_dag
+
+        _dag = get_session_dag(data.get("session_id", "main"))
+        # /clear interception: create new branch before Claude clears
+        if prompt.strip() == "/clear":
+            _dag.new_branch(f"clear-{int(time.time())}")
+        else:
+            _dag.add_node(
+                parent_id=_dag.get_head(),
+                role="user",
+                content=prompt[:2000],
+            )
+    except Exception:
+        pass  # Fail-open — DAG failures must never crash the hook
+
     # --- State-based warnings + compact baseline ---
     warnings = _collect_state_warnings()
     baseline = "RULES: verify before asserting, ask before acting."

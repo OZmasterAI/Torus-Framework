@@ -155,7 +155,13 @@ async def tmux_sessions(request):
         return JSONResponse({"ok": False, "error": "Invalid token"}, status_code=401)
 
     sessions = await list_tmux_sessions()
-    return JSONResponse({"ok": True, "sessions": sessions})
+    return JSONResponse(
+        {
+            "ok": True,
+            "sessions": sessions,
+            "default_target": CONFIG.get("tmux_target", "claude"),
+        }
+    )
 
 
 async def last_response(request):

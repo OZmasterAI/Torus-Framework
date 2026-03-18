@@ -277,11 +277,13 @@
             tab.addEventListener("click", function() { selectSession(name); });
             bar.appendChild(tab);
           });
-          // Auto-select: restore persisted session on first load, preserve on reconnect
+          // Auto-select: restore persisted > server default > first in list
           if (!hasSelectedSession) {
             var savedSess = localStorage.getItem(SESSION_KEY);
             if (savedSess && data.sessions.indexOf(savedSess) !== -1) {
               selectSession(savedSess);
+            } else if (data.default_target && data.sessions.indexOf(data.default_target) !== -1) {
+              selectSession(data.default_target);
             } else if (data.sessions.length > 0) {
               selectSession(data.sessions[0]);
             }
