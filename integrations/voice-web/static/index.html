@@ -277,8 +277,16 @@
             tab.addEventListener("click", function() { selectSession(name); });
             bar.appendChild(tab);
           });
-          // Auto-select first if no current target or current no longer exists
-          if (!currentTarget || data.sessions.indexOf(currentTarget) === -1) {
+          // Auto-select: restore persisted session on first load, preserve on reconnect
+          if (!hasSelectedSession) {
+            var savedSess = localStorage.getItem(SESSION_KEY);
+            if (savedSess && data.sessions.indexOf(savedSess) !== -1) {
+              selectSession(savedSess);
+            } else if (data.sessions.length > 0) {
+              selectSession(data.sessions[0]);
+            }
+          } else if (currentTarget && data.sessions.indexOf(currentTarget) === -1) {
+            // Current session disappeared — switch to first available
             if (data.sessions.length > 0) selectSession(data.sessions[0]);
           }
         }).catch(function() {});
@@ -290,6 +298,8 @@
         sttPreference[currentTarget] = isListening;
       }
       currentTarget = name;
+      hasSelectedSession = true;
+      localStorage.setItem(SESSION_KEY, name);
       // Restore STT for new session
       var sttWanted = sttPreference[name] !== undefined ? sttPreference[name] : localStorage.getItem(STT_KEY_PREFIX + name) === "true";
       if (sttWanted && !isListening) {
@@ -322,6 +332,13 @@
         for (var i = 0; i < sel.options.length; i++) {
           sel.options[i].selected = (sel.options[i].value === saved);
         }
+      }
+      // Play any queued TTS from this session
+      var pendingTs = getTTS(name);
+      if (pendingTs.pendingText) {
+        var pending = pendingTs.pendingText;
+        pendingTs.pendingText = null;
+        speakText(pending, name);
       }
       log("session: " + name);
     }
@@ -430,7 +447,7 @@
     function sendMessage() {
       var ta = document.getElementById("transcript");
       var text = ta.value.trim();
-      if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+      if (!text || !ws || ws.readyState !== WebSocket.OPEN || !currentTarget) return;
       ws.send(JSON.stringify({ type: "message", text: text, target: currentTarget }));
       ta.value = "";
       if (recognition && isListening) {
@@ -699,8 +716,13 @@
         fetch(url).then(function(r) { return r.json(); }).then(function(data) {
           if (data.ok && data.text && data.text !== ts.lastSpokenText) {
             ts.lastSpokenText = data.text;
+            localStorage.setItem(LAST_SPOKEN_KEY_PREFIX + target, data.text);
             stopTTSPoll(target);
-            speakText(data.text, target);
+            if (target === currentTarget) {
+              speakText(data.text, target);
+            } else {
+              ts.pendingText = data.text;
+            }
           }
         }).catch(function() {});
       }, 2000);

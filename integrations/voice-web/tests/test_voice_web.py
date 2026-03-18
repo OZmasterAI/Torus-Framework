@@ -63,6 +63,7 @@ class MockWebSocket:
 
     def enqueue_disconnect(self):
         from starlette.websockets import WebSocketDisconnect
+
         self._receive_queue.put_nowait(WebSocketDisconnect())
 
 
@@ -70,24 +71,24 @@ class TestHealth(unittest.TestCase):
     def setUp(self):
         self._patcher = patch.dict(server.CONFIG, TEST_CONFIG, clear=True)
         self._patcher.start()
-        self._tmux_patch = patch("server.is_tmux_session_alive", new_callable=AsyncMock)
-        self.mock_alive = self._tmux_patch.start()
+        self._tmux_patch = patch("server.list_tmux_sessions", new_callable=AsyncMock)
+        self.mock_sessions = self._tmux_patch.start()
 
     def tearDown(self):
         self._tmux_patch.stop()
         self._patcher.stop()
 
     def test_health_returns_ok(self):
-        self.mock_alive.return_value = True
+        self.mock_sessions.return_value = ["claude-bot"]
         request = MagicMock()
         resp = _run(server.health(request))
         body = json.loads(resp.body)
         assert body["status"] == "ok"
         assert body["tmux_alive"] is True
-        assert body["tmux_target"] == "claude-bot"
+        assert "claude-bot" in body["tmux_sessions"]
 
     def test_health_tmux_dead(self):
-        self.mock_alive.return_value = False
+        self.mock_sessions.return_value = []
         request = MagicMock()
         resp = _run(server.health(request))
         body = json.loads(resp.body)
@@ -219,14 +220,18 @@ class TestSendToTmux(unittest.TestCase):
     """Test the fire-and-forget send_to_tmux function."""
 
     def test_send_calls_send_keys(self):
-        with patch("server.is_tmux_session_alive", new_callable=AsyncMock) as mock_alive, \
-             patch("server._send_keys", new_callable=AsyncMock) as mock_keys:
+        with (
+            patch("server.is_tmux_session_alive", new_callable=AsyncMock) as mock_alive,
+            patch("server._send_keys", new_callable=AsyncMock) as mock_keys,
+        ):
             mock_alive.return_value = True
             _run(server.send_to_tmux("hello world", target="claude-bot"))
             mock_keys.assert_called_once_with("claude-bot", "hello world")
 
     def test_send_raises_when_tmux_dead(self):
-        with patch("server.is_tmux_session_alive", new_callable=AsyncMock) as mock_alive:
+        with patch(
+            "server.is_tmux_session_alive", new_callable=AsyncMock
+        ) as mock_alive:
             mock_alive.return_value = False
             with self.assertRaises(TmuxError) as ctx:
                 _run(server.send_to_tmux("hello", target="claude-bot"))
