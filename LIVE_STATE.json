@@ -1,21 +1,22 @@
 {
-  "session_count": 452,
+  "session_count": 473,
   "project": "torus-framework",
-  "feature": "tap-persistent",
+  "feature": "dag-shadow-storage",
   "framework_version": "v3.0.0",
-  "what_was_done": "Implemented TAP persistent mode (Hybrid C): stream-json + resume fallback. 76/76 tests. Created TAP branch. Extracted Claude Code agent-teams to /projects/TestingAgents/ for forking. Synced persistent mode to torus copy.",
+  "what_was_done": "Built shadow DAG conversation storage (Phase 1+2). SQLite DAG with branching, fed from hooks. Memory bidirectional wiring. 4 new skills (/trace-memory, /recall, /tag-branch, /clear-topic). Fixed working-summary.md path migration. 46+154 tests pass.",
   "known_issues": [
     "hasAvailableSubscription can go stale — check on resume if 1M context missing",
-    "Memory DB at 3100 entries — stale purge recommended",
-    "TAP watchdog + fallback not wired into heartbeat loop yet (methods exist, not auto-called)",
-    "/remote-control triggers compaction even at 20% context (different context window on claude.ai)"
+    "Memory DB at 3185 entries — stale purge recommended",
+    "TAP watchdog + fallback not wired into heartbeat loop yet",
+    "DAG: Task 0 untested — does UserPromptSubmit fire on /clear? Manual test needed",
+    "test_framework.py harness: 17 pre-existing failures (gate count drift, import)"
   ],
   "next_steps": [
-    "TestingAgents: modify agent-teams to add TAP features (SQLite storage, JSON-RPC, multi-CLI, persistent mode)",
+    "DAG: test /clear interception (Task 0) — type /clear, check if DAG creates branch",
+    "DAG: use for 2-3 sessions, verify nodes populate correctly",
+    "DAG: merge dag-claude branch into TAP when stable",
+    "TestingAgents: modify agent-teams to add TAP features",
     "TAP: wire watchdog + auto-fallback into daemon heartbeat loop",
-    "TAP: build TUI dashboard for live agent monitoring",
-    "TAP: push persistent mode to github.com/OZmasterAI/tap-protocol",
-    "Memory maintenance — stale purge",
-    "Rotate OpenRouter API keys (leaked in local git history)"
+    "Memory maintenance — stale purge (3185 entries)"
   ]
 }
