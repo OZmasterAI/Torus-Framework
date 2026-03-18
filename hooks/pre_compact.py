@@ -111,6 +111,22 @@ def main():
     except Exception:
         pass  # Non-blocking
 
+    # Task 19: include DAG branch label in pre-compact snapshot
+    _dag_branch_label = ""
+    try:
+        sys.path.insert(0, os.path.dirname(__file__))
+        from shared.dag import get_session_dag
+
+        _dag = get_session_dag(session_id)
+        _dag_branch_label = _dag.get_branch_label()
+        if _dag_branch_label:
+            print(
+                f"[PreCompact] DAG branch task: {_dag_branch_label}",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass  # Fail-open
+
     # Extract snapshot metrics
     tool_call_count = state.get("tool_call_count", 0)
     files_read_count = len(state.get("files_read", []))

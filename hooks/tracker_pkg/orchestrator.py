@@ -161,6 +161,15 @@ def _handle_causal_chain(tool_name, tool_input, tool_response, state):
                 pending = state.setdefault("pending_chain_ids", [])
                 if chain_id not in pending:
                     pending.append(chain_id)
+                # Task 14: tag chain with DAG context
+                try:
+                    from shared.dag_memory import get_dag_context_for_chain
+
+                    _dag_ctx = get_dag_context_for_chain()
+                    if _dag_ctx:
+                        state["chain_dag_context"] = _dag_ctx
+                except Exception:
+                    pass
         except Exception as e:
             _log_debug(f"record_attempt tracking failed: {e}")
 

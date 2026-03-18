@@ -336,6 +336,102 @@ class ConversationDAG:
             summary = summary[:1500] + "\n..."
         return summary
 
+    # --- Phase 2: search, labels, resolve ---
+
+    def search_nodes(self, query, max_results=10, role_filter=None, branch_id=None):
+        """Search node content by keyword (LIKE). Returns matching nodes."""
+        sql = "SELECT id, parent_id, role, content, model, provider, timestamp, token_count, metadata FROM nodes WHERE content LIKE ?"
+        params = [f"%{query}%"]
+        if role_filter:
+            sql += " AND role = ?"
+            params.append(role_filter)
+        sql += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(max_results)
+        rows = self._db.execute(sql, params).fetchall()
+        results = [self._row_to_dict(r) for r in rows]
+        if branch_id:
+            # Filter to nodes reachable from this branch's head
+            branch_nodes = set()
+            row = self._db.execute(
+                "SELECT head_node_id FROM branches WHERE id = ?", (branch_id,)
+            ).fetchone()
+            if row and row[0]:
+                for anc in self.get_ancestors(row[0]):
+                    branch_nodes.add(anc["id"])
+            results = [n for n in results if n["id"] in branch_nodes]
+        return results
+
+    def label_branch(self, branch_id, label):
+        """Set a task label on a branch (stored in name field as 'name:label')."""
+        row = self._db.execute(
+            "SELECT name FROM branches WHERE id = ?", (branch_id,)
+        ).fetchone()
+        if not row:
+            return
+        base_name = row[0].split(":")[0]  # Strip existing label
+        self._db.execute(
+            "UPDATE branches SET name = ? WHERE id = ?",
+            (f"{base_name}:{label}", branch_id),
+        )
+        self._db.commit()
+
+    def get_branch_label(self, branch_id=None):
+        """Get the task label for a branch (or current branch)."""
+        bid = branch_id or self._branch_id
+        row = self._db.execute(
+            "SELECT name FROM branches WHERE id = ?", (bid,)
+        ).fetchone()
+        if not row:
+            return ""
+        parts = row[0].split(":", 1)
+        return parts[1] if len(parts) > 1 else ""
+
+    def resolve_branch(self, branch_id):
+        """Mark a branch as resolved by prefixing name with 'resolved/'."""
+        row = self._db.execute(
+            "SELECT name FROM branches WHERE id = ?", (branch_id,)
+        ).fetchone()
+        if not row:
+            return
+        name = row[0]
+        if not name.startswith("resolved/"):
+            self._db.execute(
+                "UPDATE branches SET name = ? WHERE id = ?",
+                (f"resolved/{name}", branch_id),
+            )
+            self._db.commit()
+
+    def is_branch_resolved(self, branch_id):
+        """Check if a branch is marked as resolved."""
+        row = self._db.execute(
+            "SELECT name FROM branches WHERE id = ?", (branch_id,)
+        ).fetchone()
+        return row[0].startswith("resolved/") if row else False
+
+    def get_active_branches(self):
+        """Return non-resolved branches."""
+        return [
+            b for b in self.list_branches() if not b["name"].startswith("resolved/")
+        ]
+
+    def trace_node(self, node_id, context_lines=3):
+        """Return a formatted conversation excerpt around a node."""
+        ancestors = self.get_ancestors(node_id)
+        if not ancestors:
+            return ""
+        # Find the target node's index
+        idx = next((i for i, a in enumerate(ancestors) if a["id"] == node_id), -1)
+        if idx == -1:
+            return ""
+        start = max(0, idx - context_lines)
+        end = min(len(ancestors), idx + context_lines + 1)
+        lines = []
+        for a in ancestors[start:end]:
+            marker = ">>>" if a["id"] == node_id else "   "
+            content = a["content"][:150]
+            lines.append(f"{marker} [{a['role']}] {content}")
+        return "\n".join(lines)
+
     def close(self):
         self._db.close()
 

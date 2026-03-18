@@ -379,3 +379,157 @@ class TestDAGWithHooks:
             branches = dag.list_branches()
             assert len(branches) == 2
             dag.close()
+
+
+# --- Phase 2: search, labels, resolve, trace ---
+
+
+class TestDAGSearch:
+    def test_search_nodes_by_keyword(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            dag.add_node("", "user", "fix the authentication bug")
+            dag.add_node(dag.get_head(), "assistant", "I'll look at the auth module")
+            dag.add_node(dag.get_head(), "user", "now deploy to staging")
+            results = dag.search_nodes("auth")
+            assert len(results) == 2  # both mention auth
+            dag.close()
+
+    def test_search_nodes_role_filter(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            dag.add_node("", "user", "fix the auth bug")
+            dag.add_node(dag.get_head(), "assistant", "looking at auth module")
+            results = dag.search_nodes("auth", role_filter="user")
+            assert len(results) == 1
+            assert results[0]["role"] == "user"
+            dag.close()
+
+    def test_search_nodes_no_results(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            dag.add_node("", "user", "hello world")
+            results = dag.search_nodes("nonexistent")
+            assert len(results) == 0
+            dag.close()
+
+    def test_search_nodes_max_results(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            parent = ""
+            for i in range(10):
+                parent = dag.add_node(parent, "user", f"message about topic {i}")
+            results = dag.search_nodes("topic", max_results=3)
+            assert len(results) == 3
+            dag.close()
+
+
+class TestDAGBranchLabels:
+    def test_label_branch(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            bid = dag.current_branch_id()
+            dag.label_branch(bid, "auth-fix")
+            assert dag.get_branch_label(bid) == "auth-fix"
+            dag.close()
+
+    def test_label_branch_replaces_existing(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            bid = dag.current_branch_id()
+            dag.label_branch(bid, "old-label")
+            dag.label_branch(bid, "new-label")
+            assert dag.get_branch_label(bid) == "new-label"
+            dag.close()
+
+    def test_get_branch_label_empty(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            assert dag.get_branch_label() == ""
+            dag.close()
+
+    def test_get_branch_label_current(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            dag.label_branch(dag.current_branch_id(), "my-task")
+            assert dag.get_branch_label() == "my-task"
+            dag.close()
+
+
+class TestDAGResolve:
+    def test_resolve_branch(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            bid = dag.current_branch_id()
+            dag.resolve_branch(bid)
+            assert dag.is_branch_resolved(bid)
+            dag.close()
+
+    def test_resolve_branch_idempotent(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            bid = dag.current_branch_id()
+            dag.resolve_branch(bid)
+            dag.resolve_branch(bid)  # Should not double-prefix
+            branches = dag.list_branches()
+            name = [b["name"] for b in branches if b["id"] == bid][0]
+            assert name.count("resolved/") == 1
+            dag.close()
+
+    def test_get_active_branches(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            dag.add_node("", "user", "hello")
+            old = dag.current_branch_id()
+            dag.new_branch("active-branch")
+            dag.resolve_branch(old)
+            active = dag.get_active_branches()
+            assert len(active) == 1
+            assert active[0]["name"] == "active-branch"
+            dag.close()
+
+    def test_is_branch_resolved_false(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            assert not dag.is_branch_resolved(dag.current_branch_id())
+            dag.close()
+
+
+class TestDAGTrace:
+    def test_trace_node(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            n1 = dag.add_node("", "user", "first message")
+            n2 = dag.add_node(n1, "assistant", "first reply")
+            n3 = dag.add_node(n2, "user", "second message")
+            n4 = dag.add_node(n3, "assistant", "second reply")
+            trace = dag.trace_node(n3)
+            assert ">>>" in trace  # target node marked
+            assert "second message" in trace
+            assert "[user]" in trace
+            dag.close()
+
+    def test_trace_node_not_found(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            assert dag.trace_node("nd_nonexistent") == ""
+            dag.close()
+
+    def test_trace_node_context_lines(self):
+        """trace_node uses get_ancestors (root→node), so 'after' only includes
+        nodes that are ancestors of the target — not siblings/children."""
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, "test.db"))
+            parent = ""
+            nodes = []
+            for i in range(10):
+                role = "user" if i % 2 == 0 else "assistant"
+                parent = dag.add_node(parent, role, f"msg {i}")
+                nodes.append(parent)
+            # nodes[5] is the last in its ancestor chain (ancestors = 0..5)
+            # context_lines=1 → 1 before + target = 2 lines
+            trace = dag.trace_node(nodes[5], context_lines=1)
+            lines = trace.strip().split("\n")
+            assert len(lines) == 2  # 1 before + target (no nodes after in chain)
+            assert ">>>" in lines[-1]  # target is last
+            dag.close()

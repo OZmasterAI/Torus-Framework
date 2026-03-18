@@ -1,4 +1,5 @@
 """Auto-remember queue and capture queue management."""
+
 import json
 import os
 import time
@@ -7,7 +8,10 @@ from tracker_pkg import _log_debug
 
 # Auto-remember imports (fail-open: if UDS unavailable, queue to disk)
 try:
-    from shared.memory_socket import remember as socket_remember, is_worker_available as _uds_available
+    from shared.memory_socket import (
+        remember as socket_remember,
+        is_worker_available as _uds_available,
+    )
 except ImportError:
     socket_remember = None
     _uds_available = lambda: False
@@ -18,10 +22,23 @@ AUTO_REMEMBER_QUEUE = os.path.join(_HOOKS_DIR, ".auto_remember_queue.jsonl")
 MAX_AUTO_REMEMBER_PER_SESSION = 10
 
 # Auto-capture constants — expanded to include read/search/skill tools
-CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "Skill", "WebSearch", "WebFetch", "Task"}
+CAPTURABLE_TOOLS = {
+    "Bash",
+    "Edit",
+    "Write",
+    "NotebookEdit",
+    "Read",
+    "Glob",
+    "Grep",
+    "Skill",
+    "WebSearch",
+    "WebFetch",
+    "Task",
+}
 
 try:
     from shared.ramdisk import get_capture_queue
+
     CAPTURE_QUEUE = get_capture_queue()
 except ImportError:
     CAPTURE_QUEUE = os.path.join(_HOOKS_DIR, ".capture_queue.jsonl")
@@ -44,6 +61,18 @@ def _auto_remember_event(content, context="", tags="", critical=False, state=Non
             return  # Rate limit hit
         state["auto_remember_count"] = count + 1
 
+        # Task 16: enrich tags with DAG node reference
+        try:
+            from shared.dag_memory import get_dag_head_tag
+
+            _dag_head = get_dag_head_tag()
+            if _dag_head:
+                tags = (
+                    f"{tags},dag_node:{_dag_head}" if tags else f"dag_node:{_dag_head}"
+                )
+        except Exception:
+            pass  # DAG enrichment is fail-open
+
         if critical and socket_remember is not None:
             try:
                 if _uds_available():
@@ -53,10 +82,14 @@ def _auto_remember_event(content, context="", tags="", critical=False, state=Non
                 pass  # Fall through to queue
 
         # Queue for boot-time ingestion
-        entry = json.dumps({
-            "content": content, "context": context, "tags": tags,
-            "timestamp": time.time(),
-        })
+        entry = json.dumps(
+            {
+                "content": content,
+                "context": context,
+                "tags": tags,
+                "timestamp": time.time(),
+            }
+        )
         with open(AUTO_REMEMBER_QUEUE, "a") as f:
             f.write(entry + "\n")
     except Exception:
@@ -92,7 +125,7 @@ def _cap_queue_file():
         # Keep all high-priority (capped at 150), fill rest from recent
         high = high[-150:]
         remaining_budget = 300 - len(high)
-        kept = high + rest[-max(remaining_budget, 50):]
+        kept = high + rest[-max(remaining_budget, 50) :]
 
         with open(CAPTURE_QUEUE + ".tmp", "w") as f:
             f.writelines(kept)
