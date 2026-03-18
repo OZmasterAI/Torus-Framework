@@ -16,7 +16,7 @@ HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def main():
     for fname in ["working-memory.md", "working-summary.md"]:
-        path = os.path.join(HOOKS_DIR, fname)
+        path = os.path.join(os.path.expanduser("~"), ".claude", "rules", fname)
         try:
             with open(path) as f:
                 content = f.read().strip()

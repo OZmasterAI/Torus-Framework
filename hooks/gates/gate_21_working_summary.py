@@ -20,7 +20,7 @@ from shared.exemptions import is_exempt_base as is_exempt
 GATE_NAME = "GATE 21: WORKING SUMMARY"
 
 SUMMARY_PATH = os.path.join(
-    os.path.expanduser("~"), ".claude", "hooks", "working-summary.md"
+    os.path.expanduser("~"), ".claude", "rules", "working-summary.md"
 )
 MIN_SUMMARY_CHARS = 2000
 
