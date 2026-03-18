@@ -192,6 +192,9 @@
     var sttPreference = {};  // per-session STT on/off keyed by session name
     var STT_KEY_PREFIX = "torus_stt_enabled_";
     var intentionalClose = false;
+    var SESSION_KEY = "torus_selected_session";
+    var hasSelectedSession = false;
+    var LAST_SPOKEN_KEY_PREFIX = "torus_tts_last_";
     var SESSION_COLORS = [
       "#e67e22", "#00b894", "#e17055", "#0984e3",
       "#6c5ce7", "#2ecc71", "#00cec9", "#d63031"
@@ -208,8 +211,9 @@
           enabled: false,
           poller: null,
           speaking: false,
-          lastSpokenText: "",
-          source: null
+          lastSpokenText: localStorage.getItem(LAST_SPOKEN_KEY_PREFIX + target) || "",
+          source: null,
+          pendingText: null
         };
       }
       return ttsState[target];
