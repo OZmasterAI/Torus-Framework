@@ -1,138 +1,311 @@
 # /experiment — Autoresearch-Style Experiment Loop
 
 ## When to use
-When the user says "experiment", "autoresearch", "optimize metric", "run experiments",
-or wants unattended metric-driven optimization on a specific target.
+When the user says "experiment", "autoresearch", "optimize metric", "optimize skill",
+"improve skill", "run experiments", or wants unattended metric-driven optimization.
 
 ## Commands
 - `/experiment start <program.md>` — Run the experiment loop
 - `/experiment start <program.md> --max N` — Limit to N iterations (default 10)
+- `/experiment start <program.md> --runs N` — Run skill N times per iteration for statistical eval (default 10)
+- `/experiment start <program.md> --interval Nm` — Auto-restart every N minutes for overnight runs (default: off)
 - `/experiment start <program.md> --forever` — Never stop (run until manual kill or user interrupt)
-- `/experiment start <program.md> --no-confirm` — Skip the "Ready?" prompt (for automated runs)
-- `/experiment start <program.md> --timeout Ns` — Kill individual runs exceeding N seconds (default: no timeout)
-- `/experiment status` — Show results.tsv for current branch
+- `/experiment start <program.md> --no-confirm` — Skip the "Ready?" prompt
+- `/experiment start <program.md> --timeout Ns` — Kill individual runs exceeding N seconds
+- `/experiment status` — Show results and dashboard for current experiment
 - `/experiment resume` — Resume from last experiment on current branch
+
+## Mode Detection
+
+The skill operates in two modes based on program.md content:
+
+**Metric Mode** (original): program.md has a `Metric` section with a numeric metric command.
+Use for: code optimization, performance tuning, training loops.
+
+**Eval Mode** (v2): program.md has an `Eval` section with binary yes/no criteria.
+Use for: skill prompt optimization, output quality improvement, content generation.
+
+---
+
+## program.md Format
+
+### Metric Mode (unchanged)
+```markdown
+# Goal
+Optimize X
+
+# Metric
+- Run: `command to run`
+- Extract: `grep pattern`
+- Direction: lower|higher
+
+# What You CAN Edit
+- file1.py
+- file2.py
+
+# Constraints
+- Test: `pytest tests/`
+```
+
+### Eval Mode (new)
+```markdown
+# Goal
+Improve the /my-skill skill to produce better outputs
+
+# Skill
+- Name: my-skill
+- Path: ~/.claude/skills/my-skill/SKILL.md
+- Test prompt: "Generate a diagram of a REST API flow"
+
+# Eval
+Binary criteria — each scored yes(1) or no(0) per run:
+- Is all text legible and grammatically correct?
+- Does the output use the correct color palette (pastels, no neon)?
+- Is the layout linear (left-to-right or top-to-bottom)?
+- Is the output free of unnecessary numbering or ordinals?
+
+# What You CAN Edit
+- ~/.claude/skills/my-skill/SKILL.md
+
+# Constraints
+- Do not change the skill's core purpose
+- Do not remove existing functionality
+- Keep the SKILL.md under 3000 tokens
+```
+
+---
 
 ## Phase 0: SETUP
 
-1. **Read program.md**: Parse Goal, Metric, editable files, constraints
-2. **Create worktree**: Use `EnterWorktree` to create an isolated worktree on branch `experiment/{tag}` (tag = user-provided or date-based). All subsequent file edits, commands, and git operations run **inside the worktree** — the main working tree stays untouched.
-3. **Init results.tsv**: Create with header row:
-   ```
-   commit	metric	duration_s	status	description
-   ```
-4. **Pre-flight checks**:
-   - Run the test command from Constraints. Note pass/fail as `baseline_test_status`.
-   - If tests fail: warn "Pre-existing test failures detected" but continue (experiments track *relative* improvement, not absolute pass)
-5. **Run baseline**: Execute the metric command, extract the number
-6. **Validate metric**: If extract returns empty/NaN, STOP and report: "Metric extraction failed — check your Run and Extract commands in program.md." Do not proceed with a broken baseline.
-7. **Log baseline** to results.tsv:
-   ```
-   {commit}	{metric_value}	{duration_s}	baseline	unmodified baseline
-   ```
-8. **Set best**: `best_metric = baseline_value`
-9. **Confirm**: Show baseline, test status, and ask "Starting experiment loop. Ready?" (skip if `--no-confirm`)
+1. **Read program.md**: Detect mode (Metric vs Eval) based on sections present
+2. **Create worktree**: Use `EnterWorktree` to create an isolated worktree on branch `experiment/{tag}`. All edits run inside the worktree — main working tree stays untouched.
+3. **Parse eval criteria** (Eval Mode only):
+   - Extract each criterion as a binary question
+   - Validate: every criterion MUST be answerable with yes/no. Reject criteria with scales, ranges, or subjective qualifiers ("somewhat", "mostly", "about")
+   - Count: `criteria_count = len(criteria)`
+   - Max score per iteration: `max_score = runs * criteria_count`
+4. **Init tracking**:
+   - Metric Mode: Create `results.tsv` with header `commit	metric	duration_s	status	description`
+   - Eval Mode: Create `experiment_log.jsonl` for detailed per-run results
+5. **Pre-flight checks**:
+   - Run test command from Constraints (if specified). Note pass/fail as `baseline_test_status`
+   - If tests fail: warn but continue (experiments track relative improvement)
+6. **Run baseline**:
+   - Metric Mode: Execute metric command, extract the number
+   - Eval Mode: Run the skill `--runs` times (default 10) using subagent, evaluate each output against all binary criteria, compute aggregate score
+7. **Validate baseline**:
+   - Metric Mode: If extract returns empty/NaN, STOP with error
+   - Eval Mode: If all runs score 0 on all criteria, STOP with error — criteria may be broken
+8. **Log baseline**:
+   - Metric Mode: Append to results.tsv
+   - Eval Mode: Log to experiment_log.jsonl:
+     ```json
+     {"iteration": 0, "type": "baseline", "score": 32, "max": 40, "pct": 80.0, "runs": [...], "timestamp": "..."}
+     ```
+9. **Set best**: `best_score = baseline_score`
+10. **Display dashboard** (see Phase 5)
+11. **Confirm**: Show baseline score and ask "Starting experiment loop. Ready?" (skip if `--no-confirm`)
+
+---
 
 ## Phase 1: EXPERIMENT LOOP
 
 Repeat until stop condition (Phase 2):
 
-### a. PLAN CHANGE
-- Look at results.tsv history — what's been tried, what worked
-- Read the editable files from program.md
-- Propose a single, focused change (one idea per iteration)
-- Prefer small changes over large rewrites
+### a. PLAN MUTATION
+- Review experiment history — what mutations were tried, which improved scores
+- Read the current editable file (SKILL.md or code files)
+- Propose a single, focused mutation to the prompt/code
+- Prefer small targeted changes over large rewrites
+- Focus on criteria with lowest pass rates from previous iteration
 
 ### b. IMPLEMENT
 - Edit only files listed in "What You CAN Edit"
 - Keep changes minimal and reversible
+- Save a copy of the pre-mutation file: `cp SKILL.md SKILL.md.bak`
 
 ### c. TEST GUARD
-- Run the test command from Constraints (if specified)
-- If `baseline_test_status` was failing: check that no *new* tests fail (compare failure set, not absolute pass)
-- If `baseline_test_status` was passing: all tests must still pass
-- On failure: if the error is trivially fixable (syntax error, missing import, typo), attempt **one** fix and re-run the test. If it still fails: revert with `git checkout -- .`, log as crash, increment failure counter, skip to next iteration
+- Run test command from Constraints (if specified)
+- On failure: attempt ONE fix, re-run. Still fails → revert from .bak, log as crash, skip to next iteration
 
 ### d. MEASURE
-- Redirect output to a log file: `{metric_command} > /tmp/experiment-run.log 2>&1`
-- Extract the metric value by grepping the log file using the extract pattern
-- Record `duration_s` (wall-clock seconds for the run)
-- If `--timeout` is set and the run exceeds the timeout, kill the process and treat as crash
+
+**Metric Mode** (unchanged):
+- Run metric command, extract value, record duration
+
+**Eval Mode** (v2 — subagent-based N-run evaluation):
+
+For each run `i` in `1..N`:
+1. **Spawn subagent** (type: general-purpose) with prompt:
+   ```
+   Run the skill /{skill_name} with this test prompt: "{test_prompt}"
+   Return ONLY the skill's output, nothing else.
+   ```
+2. **Collect output** from subagent
+3. **Evaluate output** against each binary criterion. For each criterion, ask yourself:
+   - Does this output satisfy: "{criterion}"?
+   - Answer: 1 (yes) or 0 (no)
+   - NO PARTIAL CREDIT. No "mostly yes". Binary only.
+4. **Record per-run result**:
+   ```json
+   {"run": i, "scores": [1, 1, 0, 1], "total": 3, "max": 4}
+   ```
+
+After all N runs:
+- `iteration_score = sum(all run totals)`
+- `iteration_max = N * criteria_count`
+- `iteration_pct = (iteration_score / iteration_max) * 100`
 
 ### e. DECIDE
-Compare to `best_metric` using the direction from program.md:
-- **Keep**: New metric is better → `best_metric = new_metric`
-- **Simplification win**: New metric is equal AND code is shorter/simpler → keep (this counts as an improvement)
-- **Discard**: New metric is worse, or equal with no simplification → `git checkout -- .` to revert
+
+**Metric Mode**: Compare to `best_metric` using direction from program.md
+
+**Eval Mode**:
+- **Keep**: `iteration_score > best_score`
+- **Simplification win**: `iteration_score == best_score` AND SKILL.md is shorter/cleaner → keep
+- **Discard**: `iteration_score <= best_score` with no simplification → revert from .bak
 
 ### f. LOG
-Append to results.tsv:
-```
-{commit}	{metric_value}	{duration_s}	{keep|discard|crash}	{short description of what was tried}
+
+**Metric Mode**: Append to results.tsv (unchanged)
+
+**Eval Mode**: Append to experiment_log.jsonl:
+```json
+{
+  "iteration": N,
+  "score": 37,
+  "max": 40,
+  "pct": 92.5,
+  "best_score": 37,
+  "status": "keep",
+  "mutation": "Added explicit color constraint: pastels only, no saturation > 60%",
+  "per_criterion": [
+    {"criterion": "Is all text legible?", "pass_rate": "10/10"},
+    {"criterion": "Correct color palette?", "pass_rate": "9/10"},
+    {"criterion": "Linear layout?", "pass_rate": "8/10"},
+    {"criterion": "No numbering?", "pass_rate": "10/10"}
+  ],
+  "runs": [...],
+  "duration_s": 45,
+  "timestamp": "2026-03-18T12:00:00Z"
+}
 ```
 
 ### g. COMMIT
-- If keep: `git add {files from program.md "What You CAN Edit"} results.tsv && git commit -m "experiment: {description}"`
-- If discard: no commit (files already reverted)
+- If keep: `git add {editable files} experiment_log.jsonl && git commit -m "experiment: {mutation} (score: {score}/{max})"`
+- If discard: restore from .bak, no commit
 - If crash: `git commit --allow-empty -m "experiment(crash): {description}"`
 
 ### h. SAVE TO MEMORY
 Every 3 iterations:
 ```
-remember_this("Experiment {tag} iteration {N}: best={best_metric}, tried={description}, result={keep|discard}", "experiment loop", "type:learning,area:framework,experiment")
+remember_this("Experiment {tag} iter {N}: best={best_score}/{max} ({pct}%). Tried: {mutation}. Result: {status}. Weakest criterion: {weakest}.", "experiment loop", "type:learning,experiment,autoresearch")
 ```
+
+---
 
 ## Phase 2: STOP CONDITIONS
 
 Any of these triggers a full stop:
 - **Max iterations reached** (default 10, disabled with `--forever`)
 - **3 consecutive crashes** (something is fundamentally broken)
-- **Metric plateau**: 3 consecutive discards with <0.1% change from best (disabled with `--forever`)
+- **Score plateau**: 3 consecutive discards with <1% change (disabled with `--forever`)
+- **Perfect score**: `iteration_score == iteration_max` for 2 consecutive iterations (skill is optimized)
 - **User interrupt**: User sends any message
 
-In `--forever` mode, only crashes (3 consecutive) and user interrupt can stop the loop. This is for overnight/unattended runs where you want maximum exploration.
+When `--interval` is set and a stop condition fires (except user interrupt or perfect score):
+- Save state to `experiment_state.json` in worktree
+- Wait for interval duration
+- Resume from saved state with a fresh approach (different mutation strategy)
+- This enables overnight unattended runs
+
+---
 
 ## Phase 3: REPORT
 
-Display summary:
-```
-Experiment: {tag}
-Iterations: {N}/{max}
-Baseline:   {baseline_metric}
-Best:       {best_metric} ({improvement}% improvement)
-Kept:       {keep_count}
-Discarded:  {discard_count}
-Crashed:    {crash_count}
+### Metric Mode (unchanged)
+Display results.tsv summary with baseline, best, improvement%.
 
-Results:
-commit   metric     status   description
--------  ---------  -------  -----------
-a1b2c3d  {value}    baseline unmodified baseline
-b2c3d4e  {value}    keep     {description}
-...
+### Eval Mode
+Display dashboard:
+```
+═══════════════════════════════════════════════════════
+  EXPERIMENT: {tag}     Skill: /{skill_name}
+═══════════════════════════════════════════════════════
+  Iterations:  {N}/{max}        Runs/iter: {runs}
+  Baseline:    {baseline_score}/{max} ({baseline_pct}%)
+  Best:        {best_score}/{max} ({best_pct}%)
+  Improvement: +{delta} ({improvement}%)
+═══════════════════════════════════════════════════════
+
+  Per-Criterion Pass Rates (best iteration):
+  ✓ Is all text legible?           10/10 (100%)
+  ✓ Correct color palette?         9/10  (90%)
+  ◐ Linear layout?                 8/10  (80%)  ← weakest
+  ✓ No numbering?                 10/10 (100%)
+
+  Iteration History:
+  #   Score   Status    Mutation
+  ─── ─────── ──────── ─────────────────────────────
+  0   32/40   baseline (unmodified)
+  1   34/40   keep     Added explicit color constraint
+  2   33/40   discard  Tried removing layout hints
+  3   37/40   keep     Added "left-to-right flow" rule
+  4   37/40   discard  Attempted icon style change
+  5   39/40   keep     Reinforced linear constraint
+═══════════════════════════════════════════════════════
 ```
 
 Save final summary to memory:
 ```
-remember_this("Experiment {tag} complete: {N} iterations, baseline={baseline} → best={best} ({improvement}%). Kept {k}, discarded {d}, crashed {c}.", "experiment result", "type:learning,area:framework,experiment,outcome:success")
+remember_this("Experiment {tag} complete: {N} iters, baseline={baseline}/{max} → best={best}/{max} (+{improvement}%). Weakest: {weakest_criterion}. Key mutation: {best_mutation}.", "experiment result", "type:learning,experiment,autoresearch,outcome:success")
 ```
+
+---
 
 ## Phase 4: CLEANUP
 
-After reporting results:
-1. **If improvements were kept**: Ask the user if they want to merge the experiment branch back (e.g., `git merge experiment/{tag}`) or keep it for review.
-2. **Keep worktree alive**: Do NOT remove the worktree automatically. Tell the user where it is so they can browse files, run tests, or inspect results.
-3. **Cleanup on request only**: When the user explicitly asks to clean up, run `git worktree remove <worktree_path>` (use `--force` if needed) and optionally `git branch -d experiment/{tag}`.
+1. **If improvements kept**: Ask user to merge experiment branch or keep for review
+2. **Keep worktree alive**: Do NOT auto-remove. Tell user where it is.
+3. **Cleanup on request only**: `git worktree remove <path>` + `git branch -d experiment/{tag}`
+
+---
+
+## Phase 5: DASHBOARD (real-time)
+
+During the experiment loop, display after each iteration:
+
+```
+  ┌─────────────────────────────────────┐
+  │ Experiment: {tag}  Iter: {N}/{max}  │
+  │ Score: {score}/{max} ({pct}%)       │
+  │ Best:  {best}/{max} ({best_pct}%)   │
+  │ Status: {keep|discard|crash}        │
+  │                                     │
+  │ ████████████████░░░░ 80% baseline   │
+  │ ██████████████████░░ 90% current    │
+  │ ███████████████████░ 95% best       │
+  │                                     │
+  │ Weakest: {criterion} ({rate})       │
+  │ Next: planning mutation...          │
+  └─────────────────────────────────────┘
+```
+
+Progress bars use block characters: █ for filled, ░ for empty, scaled to terminal width.
+
+---
 
 ## Rules
 - NEVER edit files not listed in program.md's "What You CAN Edit"
 - NEVER skip the test guard — if tests break, it's a crash
 - NEVER continue past stop conditions
-- One change per iteration — keep experiments isolated and comparable
-- Simpler is better — equal metric + less code = keep (simplification win)
+- One mutation per iteration — keep experiments isolated and comparable
+- Simpler is better — equal score + less code = keep (simplification win)
 - Revert cleanly on discard — working tree must match last kept commit
-- results.tsv is tab-separated, never comma-separated
-- Redirect experiment output to `/tmp/experiment-run.log` — grep for metrics, don't flood context
-- On crash: read the traceback. If trivially fixable (syntax, import, typo), attempt ONE fix and re-run before reverting
 - ALL work happens inside the worktree — never modify the main working tree
 - Keep worktree alive after experiment — only clean up when user explicitly requests it
+- Binary evals ONLY — no scales, no partial credit, no "mostly"
+- Eval criteria must be yes/no questions. Reject anything else at parse time.
+- Each subagent run is independent — no state leaks between runs
+- Log everything to experiment_log.jsonl — this is the research asset
+- Focus mutations on weakest criteria — don't fix what's already passing
