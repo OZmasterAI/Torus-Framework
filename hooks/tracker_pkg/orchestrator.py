@@ -797,6 +797,23 @@ def handle_post_tool_use(
     except Exception as _ctx_err:
         _log_debug(f"context threshold check failed (non-blocking): {_ctx_err}")
 
+    # ── DAG: record tool call (Task 6) ──
+    try:
+        from shared.dag import get_session_dag
+
+        _dag = get_session_dag(session_id)
+        _dag.add_node(
+            parent_id=_dag.get_head(),
+            role="tool",
+            content=json.dumps({
+                "tool_name": tool_name,
+                "tool_input": str(tool_input)[:500],
+                "tool_response": str(tool_response)[:1000],
+            }),
+        )
+    except Exception:
+        pass  # Fail-open
+
 
 # ── Context threshold detection ────────────────────────────────────────
 _CONTEXT_THRESHOLD_PCT = 65

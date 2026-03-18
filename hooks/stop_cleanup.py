@@ -28,6 +28,7 @@ def _get_last_msg_path():
         return _LAST_MSG_PATH
     try:
         from shared.ramdisk import TMPFS_STATE_DIR
+
         if os.path.isdir(TMPFS_STATE_DIR):
             _LAST_MSG_PATH = os.path.join(TMPFS_STATE_DIR, ".last_assistant_message")
             return _LAST_MSG_PATH
@@ -62,6 +63,21 @@ def main():
 
     # Capture last_assistant_message for session handoff
     _capture_last_message(payload)
+
+    # DAG: record assistant message (Task 5)
+    try:
+        msg = payload.get("last_assistant_message", "")
+        if msg:
+            from shared.dag import get_session_dag
+
+            _dag = get_session_dag(payload.get("session_id", "main"))
+            _dag.add_node(
+                parent_id=_dag.get_head(),
+                role="assistant",
+                content=msg[:2000],
+            )
+    except Exception:
+        pass  # Fail-open
 
     session_id = payload.get("session_id", "main")
     state = load_state(session_id=session_id)
