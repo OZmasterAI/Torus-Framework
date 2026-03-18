@@ -1,22 +1,23 @@
 {
-  "session_count": 473,
+  "session_count": 475,
   "project": "torus-framework",
-  "feature": "dag-shadow-storage",
+  "feature": "voice-web-routing",
   "framework_version": "v3.0.0",
-  "what_was_done": "Built shadow DAG conversation storage (Phase 1+2). SQLite DAG with branching, fed from hooks. Memory bidirectional wiring. 4 new skills (/trace-memory, /recall, /tag-branch, /clear-topic). Fixed working-summary.md path migration. 46+154 tests pass.",
+  "what_was_done": "Voice-web diagnostics + partial fix. Fixed 4 bugs (null target guard, session persistence, TTS background queue, stale replay). Fixed 3 test failures (config.json + TestHealth mocks). Added default_target to /tmux-sessions endpoint. Routing to tmux still unresolved — user reports messages land in CLI not tmux despite send-keys succeeding in test.",
   "known_issues": [
+    "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane. send-keys works in isolation but user sees different behavior. Needs server-side logging + iPad-side debugging.",
     "hasAvailableSubscription can go stale — check on resume if 1M context missing",
-    "Memory DB at 3185 entries — stale purge recommended",
+    "Memory DB at 3190 entries — stale purge recommended",
     "TAP watchdog + fallback not wired into heartbeat loop yet",
-    "DAG: Task 0 untested — does UserPromptSubmit fire on /clear? Manual test needed",
+    "DAG: Task 0 untested — does UserPromptSubmit fire on /clear?",
     "test_framework.py harness: 17 pre-existing failures (gate count drift, import)"
   ],
   "next_steps": [
-    "DAG: test /clear interception (Task 0) — type /clear, check if DAG creates branch",
-    "DAG: use for 2-3 sessions, verify nodes populate correctly",
-    "DAG: merge dag-claude branch into TAP when stable",
+    "Voice-web: add server-side logging (log target + tmux send-keys result per message). Test from iPad with logs tailing. Check if $TMUX env var matters for send-keys resolution.",
+    "Voice-web: ask user to confirm which Claude instance receives messages — compare PIDs",
+    "DAG: test /clear interception, use for 2-3 sessions, merge when stable",
     "TestingAgents: modify agent-teams to add TAP features",
     "TAP: wire watchdog + auto-fallback into daemon heartbeat loop",
-    "Memory maintenance — stale purge (3185 entries)"
+    "Memory maintenance — stale purge (3190 entries)"
   ]
 }
