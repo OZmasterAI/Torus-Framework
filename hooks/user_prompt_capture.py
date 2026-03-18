@@ -390,7 +390,7 @@ def main():
         if _tracker_state.get("context_drop_detected", False):
             for _inject_file in ["working-memory.md", "working-summary.md"]:
                 _inject_path = os.path.join(
-                    os.path.expanduser("~"), ".claude", "hooks", _inject_file
+                    os.path.expanduser("~"), ".claude", "rules", _inject_file
                 )
                 try:
                     with open(_inject_path) as _f:
@@ -410,7 +410,9 @@ def main():
             _op_tracker._save_state(_tracker_state)
         elif _countdown == 0:
             # Clear working-summary.md to stub
-            _summary_path = os.path.join(_hooks_dir, "working-summary.md")
+            _summary_path = os.path.join(
+                os.path.expanduser("~"), ".claude", "rules", "working-summary.md"
+            )
             _stub = (
                 "# Working Summary (Claude-written at context threshold)\n"
                 "<!-- This file is auto-managed. Claude writes it at ~65% context. "
