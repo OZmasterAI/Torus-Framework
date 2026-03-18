@@ -11,10 +11,17 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.dag import ConversationDAG
-from shared.dag_hooks import DAGHookRegistry, ON_NODE_ADDED, ON_BRANCH_SWITCH, ON_BRANCH_CREATED, ON_BRANCH_RESET
+from shared.dag_hooks import (
+    DAGHookRegistry,
+    ON_NODE_ADDED,
+    ON_BRANCH_SWITCH,
+    ON_BRANCH_CREATED,
+    ON_BRANCH_RESET,
+)
 
 
 # --- Task 1: DAG core ---
+
 
 class TestDAGCore:
     def test_create_and_add_node(self):
@@ -146,7 +153,9 @@ class TestDAGCore:
     def test_node_metadata(self):
         with tempfile.TemporaryDirectory() as d:
             dag = ConversationDAG(os.path.join(d, "test.db"))
-            nid = dag.add_node("", "user", "fix bug", metadata={"memory_ids": ["abc123"]})
+            nid = dag.add_node(
+                "", "user", "fix bug", metadata={"memory_ids": ["abc123"]}
+            )
             node = dag.get_node(nid)
             assert "abc123" in node["metadata"].get("memory_ids", [])
             dag.close()
@@ -188,7 +197,9 @@ class TestDAGCore:
         with tempfile.TemporaryDirectory() as d:
             dag = ConversationDAG(os.path.join(d, "test.db"))
             n1 = dag.add_node("", "user", "read file")
-            n2 = dag.add_node(n1, "tool", json.dumps({"tool_name": "Read", "result": "ok"}))
+            n2 = dag.add_node(
+                n1, "tool", json.dumps({"tool_name": "Read", "result": "ok"})
+            )
             n3 = dag.add_node(n2, "assistant", "done")
             summary = dag.build_summary()
             assert "tool(Read)" in summary
@@ -225,7 +236,9 @@ class TestDAGCore:
         with tempfile.TemporaryDirectory() as d:
             dag = ConversationDAG(os.path.join(d, "test.db"))
             u = dag.add_node("", "user", "hello")
-            a = dag.add_node(u, "assistant", "hi there", model="opus-4", provider="anthropic")
+            a = dag.add_node(
+                u, "assistant", "hi there", model="opus-4", provider="anthropic"
+            )
             assert dag.get_head() == a
             node = dag.get_node(a)
             assert node["model"] == "opus-4"
@@ -235,16 +248,23 @@ class TestDAGCore:
         with tempfile.TemporaryDirectory() as d:
             dag = ConversationDAG(os.path.join(d, "test.db"))
             u = dag.add_node("", "user", "read file.py")
-            t = dag.add_node(u, "tool", json.dumps({
-                "tool_name": "Read",
-                "tool_input": {"file_path": "/tmp/file.py"},
-                "tool_response": "content here",
-            }))
+            t = dag.add_node(
+                u,
+                "tool",
+                json.dumps(
+                    {
+                        "tool_name": "Read",
+                        "tool_input": {"file_path": "/tmp/file.py"},
+                        "tool_response": "content here",
+                    }
+                ),
+            )
             assert dag.get_node(t)["role"] == "tool"
             dag.close()
 
 
 # --- Task 2: DAG hooks ---
+
 
 class TestDAGHooks:
     def test_hook_fires(self):
@@ -266,7 +286,7 @@ class TestDAGHooks:
     def test_hook_fail_open(self):
         """Handler exceptions should not propagate."""
         reg = DAGHookRegistry()
-        reg.register(ON_NODE_ADDED, lambda d: 1/0, name="crasher")
+        reg.register(ON_NODE_ADDED, lambda d: 1 / 0, name="crasher")
         reg.register(ON_NODE_ADDED, lambda d: d.update({"reached": True}), name="after")
         data = {}
         reg.fire(ON_NODE_ADDED, data)  # Should not raise
@@ -292,6 +312,7 @@ class TestDAGHooks:
 
 
 # --- Task 3: DAG hooks wired into DAG core ---
+
 
 class TestDAGWithHooks:
     def test_add_node_fires_hook(self):

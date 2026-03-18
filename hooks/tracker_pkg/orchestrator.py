@@ -805,11 +805,13 @@ def handle_post_tool_use(
         _dag.add_node(
             parent_id=_dag.get_head(),
             role="tool",
-            content=json.dumps({
-                "tool_name": tool_name,
-                "tool_input": str(tool_input)[:500],
-                "tool_response": str(tool_response)[:1000],
-            }),
+            content=json.dumps(
+                {
+                    "tool_name": tool_name,
+                    "tool_input": str(tool_input)[:500],
+                    "tool_response": str(tool_response)[:1000],
+                }
+            ),
         )
     except Exception:
         pass  # Fail-open

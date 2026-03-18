@@ -643,6 +643,22 @@ def main():
                     context_parts.append(_inject_content)
         except OSError:
             pass  # File missing at first session — skip silently
+    # DAG: inject branch context on session start (Task 9)
+    try:
+        sys.path.insert(0, os.path.join(CLAUDE_DIR, "hooks"))
+        from shared.dag import get_session_dag
+
+        _dag = get_session_dag("main")
+        _dag_info = _dag.current_branch_info()
+        if _dag_info["msg_count"] > 0:
+            context_parts.append(
+                f"DAG: branch={_dag_info['name']} | "
+                f"{_dag_info['msg_count']} messages | "
+                f"{_dag_info['total_branches']} branches"
+            )
+    except Exception:
+        pass  # Fail-open
+
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))
 
