@@ -160,16 +160,3 @@ ide/*.lock
 
 # Session state files
 sessions/*.json
-
-# Hook runtime state directory
-hooks/.state/
-
-# Python cache (TAP)
-tap/__pycache__/
-tap/**/__pycache__/
-
-# Stale backup
-settings.pre-hooks.json
-
-# Live state example (template, not tracked)
-LIVE_STATE.example.json
