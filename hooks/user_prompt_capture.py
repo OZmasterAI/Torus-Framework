@@ -407,7 +407,7 @@ def main():
         if _tracker_state.get("context_drop_detected", False):
             for _inject_file in ["working-memory.md", "working-summary.md"]:
                 _inject_path = os.path.join(
-                    os.path.expanduser("~"), ".claude", "rules", _inject_file
+                    os.path.expanduser("~"), ".claude", "hooks", _inject_file
                 )
                 try:
                     with open(_inject_path) as _f:
@@ -428,7 +428,7 @@ def main():
         elif _countdown == 0:
             # Clear working-summary.md to stub
             _summary_path = os.path.join(
-                os.path.expanduser("~"), ".claude", "rules", "working-summary.md"
+                os.path.expanduser("~"), ".claude", "hooks", "working-summary.md"
             )
             _stub = (
                 "# Working Summary (Claude-written at context threshold)\n"
