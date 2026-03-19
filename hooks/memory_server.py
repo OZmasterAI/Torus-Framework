@@ -838,6 +838,7 @@ def _ensure_initialized():
         _lance_fts_ready = True
     except Exception:
         pass  # FTS is optional — keyword search degrades gracefully
+    _t_fts = time.monotonic()
 
     # Initialize knowledge graph and LTP tracker (fail-open)
     try:
@@ -916,6 +917,11 @@ def _ensure_initialized():
     # Initialize pipeline instances (fail-open — fall back to inline logic)
     _init_pipelines()
 
+    _t_done = time.monotonic()
+    print(
+        f"[MCP] Startup: model={_t_model - _t_total:.1f}s  fts={_t_fts - _t_model:.1f}s  rest={_t_done - _t_fts:.1f}s  total={_t_done - _t_total:.1f}s",
+        file=_sys.stderr,
+    )
     _initialized = True
 
 
