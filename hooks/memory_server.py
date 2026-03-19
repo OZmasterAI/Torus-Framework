@@ -336,8 +336,9 @@ def _init_lancedb():
             _embedding_fn = SentenceTransformer(
                 _EMBEDDING_MODEL, trust_remote_code=True
             )
+            _embedding_fn.half()  # FP32 → FP16: halves RAM (~5.3GB → ~2.7GB), ~0% quality loss
             print(
-                f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim)",
+                f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim, FP16)",
                 file=_sys.stderr,
             )
         except Exception as ef_err:
@@ -809,9 +810,29 @@ def _ensure_initialized():
         _initialized = True
         return
 
-    # Build LanceDB native FTS index on text column
+    # Build LanceDB native FTS index on text column (incremental if possible)
     try:
-        collection._table.create_fts_index("text", replace=True)
+        _fts_count_path = os.path.join(MEMORY_DIR, ".fts_last_count")
+        _current_rows = collection._table.count_rows()
+        _last_count = 0
+        if os.path.exists(_fts_count_path):
+            try:
+                _last_count = int(open(_fts_count_path).read().strip())
+            except (ValueError, OSError):
+                pass
+        if _last_count == 0 or _current_rows == 0:
+            # No prior index or empty table — full build needed
+            collection._table.create_fts_index("text", replace=True)
+        elif _current_rows != _last_count:
+            # New rows since last index — incremental optimize
+            try:
+                collection._table.optimize()
+            except Exception:
+                # optimize failed — fall back to full rebuild
+                collection._table.create_fts_index("text", replace=True)
+        # else: row count unchanged — skip entirely
+        with open(_fts_count_path, "w") as f:
+            f.write(str(_current_rows))
         _lance_fts_ready = True
     except Exception:
         pass  # FTS is optional — keyword search degrades gracefully
