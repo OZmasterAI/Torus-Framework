@@ -1,23 +1,22 @@
 {
-  "session_count": 477,
+  "session_count": 480,
   "project": "torus-framework",
-  "feature": "dag-memory-layer",
+  "feature": "memory-server-optimization",
   "framework_version": "v3.0.0",
-  "what_was_done": "Continued DAG memory layer session. Explored codebuff (multi-agent AI coding CLI, Bun/TS) and kilocode — cloned both to ~/projects/. Compared DAG vs terminal_history.db (DAG supersedes it). Compared DAG memory layer vs LanceDB memory system side-by-side.",
+  "what_was_done": "Optimized memory server: FP16 embedding (~5.3GB→~2.7GB RAM), incremental FTS index (skip/optimize vs full rebuild). Researched NVIDIA/nomic alternatives, decided to keep current model. Audited voice-web + telegram-bot stacks. Confirmed L2/L0/Enrich cascade wired.",
   "known_issues": [
     "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
     "Dual-write activates next session (MCP server needs restart to pick up write_pipeline changes)",
     "hasAvailableSubscription can go stale — check on resume if 1M context missing",
-    "Memory DB at 3211 entries — stale purge recommended",
     "TAP watchdog + fallback not wired into heartbeat loop yet",
     "test_framework.py harness: 17 pre-existing failures (gate count drift, import)"
   ],
   "next_steps": [
+    "Verify FP16 + incremental FTS on next MCP restart — check RAM with ps and log output",
     "DAG: verify dual-write works after MCP restart — check knowledge table for source:dual-write entries",
     "DAG: verify auto-promotion fires at session end — check knowledge table for source:dag entries",
     "DAG: test /clear interception — does it create a new branch?",
-    "Explore codebuff + kilocode codebases — compare agent architectures to torus",
     "Voice-web: add server-side logging, test from iPad",
-    "Memory maintenance — stale purge (3211 entries)"
+    "Memory maintenance — stale purge (3228 entries)"
   ]
 }
