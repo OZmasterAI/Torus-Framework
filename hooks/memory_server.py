@@ -4108,6 +4108,88 @@ atexit.register(_cleanup_socket)
 
 
 # ──────────────────────────────────────────────────
+# SSE Health Watchdog — detect runaway threads/CPU and self-restart
+# ──────────────────────────────────────────────────
+
+_WATCHDOG_INTERVAL = 30  # seconds between checks
+_WATCHDOG_CPU_THRESHOLD = 80.0  # % CPU averaged over interval
+_WATCHDOG_THREAD_THRESHOLD = 20  # max active threads before alarm
+_WATCHDOG_STRIKES_TO_RESTART = 3  # consecutive bad checks before restart
+
+
+def _start_sse_watchdog():
+    """Monitor process health and self-restart if SSE transport degrades.
+
+    Detects: accumulated dead SSE connections causing thread buildup and CPU spin.
+    Action: logs warning, then graceful self-restart via os.execv after N strikes.
+    """
+    import resource
+
+    _strikes = 0
+    _last_cpu = time.monotonic()
+    _last_usage = resource.getrusage(resource.RUSAGE_SELF)
+
+    def _watchdog_loop():
+        nonlocal _strikes, _last_cpu, _last_usage
+
+        while True:
+            time.sleep(_WATCHDOG_INTERVAL)
+            try:
+                # Measure CPU usage over the interval
+                now = time.monotonic()
+                usage = resource.getrusage(resource.RUSAGE_SELF)
+                elapsed = now - _last_cpu
+                if elapsed < 1:
+                    continue
+                cpu_time = (usage.ru_utime - _last_usage.ru_utime) + (
+                    usage.ru_stime - _last_usage.ru_stime
+                )
+                cpu_pct = (cpu_time / elapsed) * 100.0
+                _last_cpu = now
+                _last_usage = usage
+
+                # Count active threads
+                thread_count = threading.active_count()
+
+                unhealthy = (
+                    cpu_pct > _WATCHDOG_CPU_THRESHOLD
+                    or thread_count > _WATCHDOG_THREAD_THRESHOLD
+                )
+
+                if unhealthy:
+                    _strikes += 1
+                    _sys.stderr.write(
+                        f"[WATCHDOG] Strike {_strikes}/{_WATCHDOG_STRIKES_TO_RESTART}: "
+                        f"CPU={cpu_pct:.1f}% threads={thread_count}\n"
+                    )
+                else:
+                    if _strikes > 0:
+                        _sys.stderr.write(
+                            f"[WATCHDOG] Recovered: CPU={cpu_pct:.1f}% threads={thread_count}\n"
+                        )
+                    _strikes = 0
+
+                if _strikes >= _WATCHDOG_STRIKES_TO_RESTART:
+                    _sys.stderr.write(
+                        f"[WATCHDOG] Self-restarting: {_strikes} consecutive strikes "
+                        f"(CPU={cpu_pct:.1f}% threads={thread_count})\n"
+                    )
+                    with open("/tmp/memory_server_debug.log", "a") as f:
+                        f.write(
+                            f"[{datetime.now().isoformat()}] PID={os.getpid()} "
+                            f"WATCHDOG restart: CPU={cpu_pct:.1f}% threads={thread_count}\n"
+                        )
+                    # Graceful restart: exec replaces process in-place
+                    os.execv(_sys.executable, [_sys.executable] + _sys.argv)
+            except Exception as e:
+                _sys.stderr.write(f"[WATCHDOG] Error: {e}\n")
+
+    t = threading.Thread(target=_watchdog_loop, daemon=True, name="sse-watchdog")
+    t.start()
+    _sys.stderr.write("[WATCHDOG] SSE health monitor started\n")
+
+
+# ──────────────────────────────────────────────────
 # Agent Coordination (agent_channel.py v2 wrapper)
 # ──────────────────────────────────────────────────
 
@@ -4260,6 +4342,7 @@ if __name__ == "__main__":
     _mode = "sse" if _args.sse else "stdio"
     if _args.sse:
         _sys.stderr.write(f"[MCP] Starting SSE transport on {_SSE_HOST}:{_args.port}\n")
+        _start_sse_watchdog()
     with open(_dbg_log, "a") as _f:
         _f.write(
             f"[{datetime.now().isoformat()}] PID={os.getpid()} calling mcp.run(transport={_mode})\n"
