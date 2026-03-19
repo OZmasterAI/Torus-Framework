@@ -69,12 +69,16 @@ def main():
         msg = payload.get("last_assistant_message", "")
         if msg:
             from shared.dag import get_session_dag
+            from boot_pkg.util import detect_project
 
             _dag = get_session_dag(payload.get("session_id", "main"))
+            _dag_proj, _, _dag_subproj, _ = detect_project()
             _dag.add_node(
                 parent_id=_dag.get_head(),
                 role="assistant",
                 content=msg[:2000],
+                project=_dag_proj,
+                subproject=_dag_subproj,
             )
     except Exception:
         pass  # Fail-open

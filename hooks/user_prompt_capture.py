@@ -276,16 +276,24 @@ def main():
     # --- DAG: record user message + /clear interception (Task 4 + Task 7) ---
     try:
         from shared.dag import get_session_dag
+        from boot_pkg.util import detect_project
 
         _dag = get_session_dag(data.get("session_id", "main"))
+        _dag_proj, _, _dag_subproj, _ = detect_project()
         # /clear interception: create new branch before Claude clears
         if prompt.strip() == "/clear":
-            _dag.new_branch(f"clear-{int(time.time())}")
+            _dag.new_branch(
+                f"clear-{int(time.time())}",
+                project=_dag_proj,
+                subproject=_dag_subproj,
+            )
         else:
             _dag.add_node(
                 parent_id=_dag.get_head(),
                 role="user",
                 content=prompt[:2000],
+                project=_dag_proj,
+                subproject=_dag_subproj,
             )
     except Exception:
         pass  # Fail-open — DAG failures must never crash the hook

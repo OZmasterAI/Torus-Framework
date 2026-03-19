@@ -809,8 +809,10 @@ def handle_post_tool_use(
     # ── DAG: record tool call (Task 6) ──
     try:
         from shared.dag import get_session_dag
+        from boot_pkg.util import detect_project
 
         _dag = get_session_dag(session_id)
+        _dag_proj, _, _dag_subproj, _ = detect_project()
         _dag.add_node(
             parent_id=_dag.get_head(),
             role="tool",
@@ -821,6 +823,8 @@ def handle_post_tool_use(
                     "tool_response": str(tool_response)[:1000],
                 }
             ),
+            project=_dag_proj,
+            subproject=_dag_subproj,
         )
     except Exception:
         pass  # Fail-open
