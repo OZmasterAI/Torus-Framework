@@ -6,11 +6,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux git curl jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Create user matching host uid
+# Create crab user matching host uid (node image already has uid 1000 as 'node')
 ARG HOST_UID=1000
 ARG HOST_GID=1000
-RUN groupadd -g ${HOST_GID} crab 2>/dev/null || true && \
-    useradd -m -u ${HOST_UID} -g ${HOST_GID} -s /bin/bash crab 2>/dev/null || true
+RUN userdel -r node 2>/dev/null || true && \
+    groupadd -g ${HOST_GID} crab 2>/dev/null || true && \
+    useradd -m -u ${HOST_UID} -g ${HOST_GID} -s /bin/bash crab
 
 # Install Claude Code globally
 RUN npm install -g @anthropic-ai/claude-code@latest

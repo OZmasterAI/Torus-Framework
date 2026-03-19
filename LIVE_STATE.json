@@ -1,20 +1,19 @@
 {
-  "session_count": 493,
+  "session_count": 494,
   "project": "torus-framework",
   "feature": "container-agents",
   "framework_version": "v3.0.0",
-  "what_was_done": "Restarted memory server with watchdog fix applied. Verified _initializing flag at 6 code locations. MCP handshake needs fresh session (client reconnect issue, not server). Server running PID 312509.",
+  "what_was_done": "Built and launched Docker evolution sprint container. Fixed Dockerfile user creation (node UID conflict), fixed GID issue (newgrp docker changed effective GID). Container running but Claude Code auth fails — needs API key env var instead of OAuth.",
   "known_issues": [
-    "CRITICAL: voice-web routing \u2014 messages go to CLI instance instead of tmux pane",
-    "hasAvailableSubscription can go stale \u2014 check on resume if 1M context missing",
-    "TAP watchdog + fallback not wired into heartbeat loop yet",
-    "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session"
+    "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
+    "Docker sprint: Claude Code needs ANTHROPIC_API_KEY env var — OAuth is interactive-only",
+    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session",
+    "TAP watchdog + fallback not wired into heartbeat loop yet"
   ],
   "next_steps": [
-    "Verify watchdog logs show 'Init in progress, skipping strike' after restart",
-    "Save watchdog fix to memory (remember_this)",
-    "Launch container agents \u2014 user's priority",
-    "Commit watchdog fix + session changes"
-  ],
-  "last_response_preview": "Committed. Here's the wrap-up:\n\n---\n\n**Session 491 Summary**\n\n**Done:**\n- Verified `_initializing` flag at all 6 code locations in `memory_server.py`\n- Restarted memory server (PID 312509) \u2014 watchdog fix applied\n- Discovered MCP SSE reconnect issue: Claude Code client skips `initialize` handshake on reconnect, needs fresh session\n\n**Committed:** `92f26f2` \u2014 watchdog init fix + state\n\n**Risk: YELLOW** \u2014 Memory save skipped (MCP down for this session). Save the watchdog fix to memory next session."
+    "Fix Docker sprint auth — add ANTHROPIC_API_KEY to run-sprint.sh, relaunch",
+    "Save Docker fixes to memory (Dockerfile UID, GID, auth learnings)",
+    "Verify sprint is running autonomously after auth fix",
+    "Save watchdog fix to memory (still pending from session 491)"
+  ]
 }
