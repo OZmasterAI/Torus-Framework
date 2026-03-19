@@ -1,9 +1,9 @@
 {
-  "session_count": 476,
+  "session_count": 477,
   "project": "torus-framework",
   "feature": "dag-memory-layer",
   "framework_version": "v3.0.0",
-  "what_was_done": "DAG Memory Layer (Option 3): B+C model (per-session branching, project scoping), full SQLite memory system (knowledge/observations/fix_outcomes/node_edges/embeddings + FTS5), dual-write (write_pipeline Step 6b), merged search (search_pipeline Step 2b), auto-promotion (session_end), Python cosine embeddings. 34 new tests, 5437/5454 harness.",
+  "what_was_done": "Continued DAG memory layer session. Explored codebuff (multi-agent AI coding CLI, Bun/TS) and kilocode — cloned both to ~/projects/. Compared DAG vs terminal_history.db (DAG supersedes it). Compared DAG memory layer vs LanceDB memory system side-by-side.",
   "known_issues": [
     "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
     "Dual-write activates next session (MCP server needs restart to pick up write_pipeline changes)",
@@ -16,7 +16,7 @@
     "DAG: verify dual-write works after MCP restart — check knowledge table for source:dual-write entries",
     "DAG: verify auto-promotion fires at session end — check knowledge table for source:dag entries",
     "DAG: test /clear interception — does it create a new branch?",
-    "DAG: use for 2-3 sessions, verify per-session branches populate correctly",
+    "Explore codebuff + kilocode codebases — compare agent architectures to torus",
     "Voice-web: add server-side logging, test from iPad",
     "Memory maintenance — stale purge (3211 entries)"
   ]
