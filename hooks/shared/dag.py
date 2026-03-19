@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS branches (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     head_node_id TEXT DEFAULT '',
-    forked_from TEXT DEFAULT ''
+    forked_from TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}'
 );
 """
 
@@ -55,6 +56,12 @@ class ConversationDAG:
         # Migration: add metadata column if missing
         try:
             self._db.execute("ALTER TABLE nodes ADD COLUMN metadata TEXT DEFAULT '{}'")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            self._db.execute(
+                "ALTER TABLE branches ADD COLUMN metadata TEXT DEFAULT '{}'"
+            )
         except sqlite3.OperationalError:
             pass  # Column already exists
 
@@ -96,11 +103,18 @@ class ConversationDAG:
         provider="",
         token_count=0,
         metadata=None,
+        project=None,
+        subproject=None,
     ):
         """Insert a node and advance the branch head. Returns node ID."""
         nid = _gen_id("nd_")
         ts = int(time.time() * 1000)
-        meta_json = json.dumps(metadata) if metadata else "{}"
+        meta = metadata or {}
+        if project:
+            meta["project"] = project
+        if subproject:
+            meta["subproject"] = subproject
+        meta_json = json.dumps(meta)
         self._db.execute(
             "INSERT INTO nodes (id, parent_id, role, content, model, provider, "
             "timestamp, token_count, metadata) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -204,13 +218,18 @@ class ConversationDAG:
         if self._hooks:
             self._hooks.fire("on_branch_reset", {"branch_id": self._branch_id})
 
-    def new_branch(self, name):
+    def new_branch(self, name, project=None, subproject=None):
         """Create a fresh branch (empty head), record fork point from current head."""
         head = self.get_head()
         bid = _gen_id("br_")
+        meta = {}
+        if project:
+            meta["project"] = project
+        if subproject:
+            meta["subproject"] = subproject
         self._db.execute(
-            "INSERT INTO branches (id, name, head_node_id, forked_from) VALUES (?,?,?,?)",
-            (bid, name, "", head),
+            "INSERT INTO branches (id, name, head_node_id, forked_from, metadata) VALUES (?,?,?,?,?)",
+            (bid, name, "", head, json.dumps(meta) if meta else "{}"),
         )
         self._db.commit()
         self._branch_id = bid
@@ -221,16 +240,23 @@ class ConversationDAG:
                     "branch_id": bid,
                     "name": name,
                     "forked_from": head,
+                    "project": project,
+                    "subproject": subproject,
                 },
             )
         return bid
 
-    def branch_from(self, from_node_id, name):
+    def branch_from(self, from_node_id, name, project=None, subproject=None):
         """Create branch continuing from an existing node (inherits history)."""
         bid = _gen_id("br_")
+        meta = {}
+        if project:
+            meta["project"] = project
+        if subproject:
+            meta["subproject"] = subproject
         self._db.execute(
-            "INSERT INTO branches (id, name, head_node_id, forked_from) VALUES (?,?,?,?)",
-            (bid, name, from_node_id, from_node_id),
+            "INSERT INTO branches (id, name, head_node_id, forked_from, metadata) VALUES (?,?,?,?,?)",
+            (bid, name, from_node_id, from_node_id, json.dumps(meta) if meta else "{}"),
         )
         self._db.commit()
         self._branch_id = bid
@@ -263,15 +289,37 @@ class ConversationDAG:
                 },
             )
 
-    def list_branches(self):
-        """Return all branches as dicts."""
+    def list_branches(self, project_scope=None):
+        """Return branches as dicts, optionally scoped to a project hierarchy.
+
+        project_scope: if set, only return branches where metadata.project matches.
+        Hub (None) sees all branches.
+        A project scope also includes its subprojects.
+        """
         rows = self._db.execute(
-            "SELECT id, name, head_node_id, forked_from FROM branches"
+            "SELECT id, name, head_node_id, forked_from, metadata FROM branches"
         ).fetchall()
-        return [
-            {"id": r[0], "name": r[1], "head_node_id": r[2], "forked_from": r[3]}
-            for r in rows
-        ]
+        results = []
+        for r in rows:
+            meta = {}
+            try:
+                meta = json.loads(r[4]) if r[4] else {}
+            except (json.JSONDecodeError, TypeError):
+                pass
+            if project_scope:
+                branch_project = meta.get("project", "")
+                if branch_project != project_scope:
+                    continue
+            results.append(
+                {
+                    "id": r[0],
+                    "name": r[1],
+                    "head_node_id": r[2],
+                    "forked_from": r[3],
+                    "metadata": meta,
+                }
+            )
+        return results
 
     def current_branch_id(self):
         return self._branch_id
@@ -338,19 +386,32 @@ class ConversationDAG:
 
     # --- Phase 2: search, labels, resolve ---
 
-    def search_nodes(self, query, max_results=10, role_filter=None, branch_id=None):
-        """Search node content by keyword (LIKE). Returns matching nodes."""
+    def search_nodes(
+        self,
+        query,
+        max_results=10,
+        role_filter=None,
+        branch_id=None,
+        project_scope=None,
+    ):
+        """Search node content by keyword (LIKE). Returns matching nodes.
+
+        project_scope: filter to nodes with matching project in metadata.
+        Hub (None) searches all nodes.
+        """
         sql = "SELECT id, parent_id, role, content, model, provider, timestamp, token_count, metadata FROM nodes WHERE content LIKE ?"
         params = [f"%{query}%"]
         if role_filter:
             sql += " AND role = ?"
             params.append(role_filter)
+        if project_scope:
+            sql += " AND json_extract(metadata, '$.project') = ?"
+            params.append(project_scope)
         sql += " ORDER BY timestamp DESC LIMIT ?"
-        params.append(max_results)
+        params.append(str(max_results))
         rows = self._db.execute(sql, params).fetchall()
         results = [self._row_to_dict(r) for r in rows]
         if branch_id:
-            # Filter to nodes reachable from this branch's head
             branch_nodes = set()
             row = self._db.execute(
                 "SELECT head_node_id FROM branches WHERE id = ?", (branch_id,)
