@@ -1,22 +1,21 @@
 {
-  "session_count": 487,
+  "session_count": 488,
   "project": "torus-framework",
   "feature": "mcp-connection-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed MCP memory server connection: config had type:stdio but server runs SSE on port 8741. Updated mcp.json to type:sse with url. User restarted \u2014 verify connection next session.",
+  "what_was_done": "Fixed mcp.json double-encoding (root cause of MCP failure). Added SSE health watchdog to memory_server.py (3-strike CPU/thread monitor with os.execv self-restart). Killed 28K zombies from stale Next.js container.",
   "known_issues": [
-    "CRITICAL: voice-web routing \u2014 messages go to CLI instance instead of tmux pane",
-    "hasAvailableSubscription can go stale \u2014 check on resume if 1M context missing",
+    "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
+    "hasAvailableSubscription can go stale — check on resume if 1M context missing",
     "TAP watchdog + fallback not wired into heartbeat loop yet",
     "test_framework.py harness: 17 pre-existing failures (gate count drift, import)",
-    "ps/pgrep hang on this box \u2014 use /proc/{pid}/status directly"
+    "ps/pgrep hang on this box — use /proc/{pid}/status directly"
   ],
   "next_steps": [
-    "Verify memory MCP tools register after mcp.json SSE fix \u2014 search_knowledge test",
-    "Check startup timing log on next MCP restart \u2014 verify FTS skip/optimize works",
-    "DAG: verify auto-promotion fires at session end \u2014 check knowledge table for source:dag entries",
-    "DAG: test /clear interception \u2014 does it create a new branch?",
-    "Memory maintenance \u2014 stale purge (3232 entries)"
-  ],
-  "last_response_preview": "---\n\n**Session 485 Wrap-up**\n\n**What was done:**\n- Diagnosed MCP memory server not connecting \u2014 `mcp.json` had `type: \"stdio\"` but server runs in SSE mode on port 8741\n- Guided manual fix: updated config to `type: \"sse\"` with `url: \"http://localhost:8741/sse\"`\n\n**Risk: YELLOW** \u2014 Memory tools weren't available this session (the fix needs a fresh restart to verify). Couldn't save to memory.\n\n**Next session priority:**\n1. **Verify memory MCP tools register** \u2014 `search_knowledge` test right away\n2."
+    "Verify memory MCP tools register after session restart — search_knowledge test",
+    "Check startup timing log — verify FTS skip/optimize works on 17GB LanceDB",
+    "DAG: verify auto-promotion fires at session end — check knowledge table for source:dag entries",
+    "DAG: test /clear interception — does it create a new branch?",
+    "Memory maintenance — stale purge (3232 entries)"
+  ]
 }
