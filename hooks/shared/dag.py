@@ -35,6 +35,63 @@ CREATE TABLE IF NOT EXISTS branches (
     forked_from TEXT DEFAULT '',
     metadata TEXT DEFAULT '{}'
 );
+
+CREATE TABLE IF NOT EXISTS knowledge (
+    id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    context TEXT DEFAULT '',
+    tags TEXT DEFAULT '',
+    tier INTEGER DEFAULT 1,
+    memory_type TEXT DEFAULT '',
+    state_type TEXT DEFAULT '',
+    cluster_id TEXT DEFAULT '',
+    retrieval_count INTEGER DEFAULT 0,
+    quality_score REAL DEFAULT 0.0,
+    source_node_id TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS observations (
+    id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    tags TEXT DEFAULT '',
+    tier INTEGER DEFAULT 0,
+    retrieval_count INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS fix_outcomes (
+    id TEXT PRIMARY KEY,
+    chain_id TEXT NOT NULL,
+    error_description TEXT NOT NULL,
+    strategy TEXT DEFAULT '',
+    outcome TEXT DEFAULT '',
+    node_id TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_fix_chain ON fix_outcomes(chain_id);
+
+CREATE TABLE IF NOT EXISTS node_edges (
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    edge_type TEXT NOT NULL,
+    weight REAL DEFAULT 1.0,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (source_id, target_id, edge_type)
+);
+
+CREATE TABLE IF NOT EXISTS embeddings (
+    id TEXT PRIMARY KEY,
+    source_table TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    vector BLOB NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_emb_source ON embeddings(source_table, source_id);
 """
 
 
@@ -65,8 +122,52 @@ class ConversationDAG:
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # FTS5 full-text indexes + sync triggers
+        self._init_fts5()
+
         self._hooks = None
         self._branch_id = self._init_branch()
+
+    def _init_fts5(self):
+        """Create FTS5 virtual tables and sync triggers if they don't exist."""
+        try:
+            self._db.executescript("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+                    content, role UNINDEXED,
+                    content=nodes, content_rowid=rowid
+                );
+                CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+                    content, tags,
+                    content=knowledge, content_rowid=rowid
+                );
+            """)
+            # Sync triggers — wrap each in try/except since IF NOT EXISTS
+            # isn't supported for triggers in all SQLite versions
+            for sql in [
+                """CREATE TRIGGER nodes_fts_ai AFTER INSERT ON nodes BEGIN
+                    INSERT INTO nodes_fts(rowid, content, role)
+                    VALUES (new.rowid, new.content, new.role);
+                END""",
+                """CREATE TRIGGER nodes_fts_ad AFTER DELETE ON nodes BEGIN
+                    INSERT INTO nodes_fts(nodes_fts, rowid, content, role)
+                    VALUES ('delete', old.rowid, old.content, old.role);
+                END""",
+                """CREATE TRIGGER knowledge_fts_ai AFTER INSERT ON knowledge BEGIN
+                    INSERT INTO knowledge_fts(rowid, content, tags)
+                    VALUES (new.rowid, new.content, new.tags);
+                END""",
+                """CREATE TRIGGER knowledge_fts_ad AFTER DELETE ON knowledge BEGIN
+                    INSERT INTO knowledge_fts(knowledge_fts, rowid, content, tags)
+                    VALUES ('delete', old.rowid, old.content, old.tags);
+                END""",
+            ]:
+                try:
+                    self._db.execute(sql)
+                except sqlite3.OperationalError:
+                    pass  # Trigger already exists
+            self._db.commit()
+        except Exception:
+            pass  # FTS5 not available — keyword search falls back to LIKE
 
     def _init_branch(self):
         """Pick or create the active branch."""

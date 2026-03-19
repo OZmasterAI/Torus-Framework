@@ -709,6 +709,22 @@ def _run_background(data_path):
     except Exception as e:
         print(f"[SESSION_END:bg] Audit flush failed: {e}", file=sys.stderr)
 
+    # DAG auto-promotion: promote high-value conversation nodes to SQLite knowledge
+    try:
+        from shared.dag import get_session_dag
+        from shared.dag_memory_layer import DAGMemoryLayer, promote_nodes
+
+        _dag = get_session_dag("main")
+        _dag_layer = DAGMemoryLayer(_dag)
+        _promoted = promote_nodes(_dag, _dag_layer)
+        if _promoted:
+            print(
+                f"[SESSION_END:bg] DAG auto-promoted {len(_promoted)} nodes to knowledge",
+                file=sys.stderr,
+            )
+    except Exception as e:
+        print(f"[SESSION_END:bg] DAG promotion failed: {e}", file=sys.stderr)
+
     try:
         _tg_notify = False
         try:

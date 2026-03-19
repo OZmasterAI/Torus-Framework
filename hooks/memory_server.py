@@ -950,6 +950,7 @@ def _init_pipelines():
             "summary_length": SUMMARY_LENGTH,
             "server_project": _SERVER_PROJECT,
             "server_subproject": _SERVER_SUBPROJECT,
+            "embed_text": _embed_text,
         }
         _write_pipeline = WritePipeline(
             collection=collection,
@@ -4214,12 +4215,16 @@ if __name__ == "__main__":
     # Debug log for MCP init diagnosis (added session 469)
     _dbg_log = "/tmp/memory_server_debug.log"
     with open(_dbg_log, "a") as _f:
-        _f.write(f"[{datetime.now().isoformat()}] PID={os.getpid()} args={_sys.argv} starting\n")
+        _f.write(
+            f"[{datetime.now().isoformat()}] PID={os.getpid()} args={_sys.argv} starting\n"
+        )
     # Defer _ensure_initialized() to first tool call — mcp.run() must start
     # immediately so Claude Code's MCP handshake doesn't timeout (~25s model load).
     _start_socket_server()
     with open(_dbg_log, "a") as _f:
-        _f.write(f"[{datetime.now().isoformat()}] PID={os.getpid()} socket server done\n")
+        _f.write(
+            f"[{datetime.now().isoformat()}] PID={os.getpid()} socket server done\n"
+        )
     if _args.bootstrap_clusters:
         _bootstrap_clusters()
         _sys.exit(0)
@@ -4227,12 +4232,15 @@ if __name__ == "__main__":
     if _args.sse:
         _sys.stderr.write(f"[MCP] Starting SSE transport on {_SSE_HOST}:{_args.port}\n")
     with open(_dbg_log, "a") as _f:
-        _f.write(f"[{datetime.now().isoformat()}] PID={os.getpid()} calling mcp.run(transport={_mode})\n")
+        _f.write(
+            f"[{datetime.now().isoformat()}] PID={os.getpid()} calling mcp.run(transport={_mode})\n"
+        )
     try:
         mcp.run(transport=_mode)
     except Exception as e:
         with open(_dbg_log, "a") as _f:
             import traceback
+
             _f.write(f"[{datetime.now().isoformat()}] PID={os.getpid()} FATAL: {e}\n")
             _f.write(traceback.format_exc() + "\n")
         _sys.stderr.write(f"[MCP] Fatal: {e}\n")

@@ -202,6 +202,43 @@ class SearchPipeline:
             )
             formatted = format_summaries(results)
 
+        # ── Step 2b: Merge SQLite DAG memory layer results ──
+        try:
+            from shared.dag import get_session_dag
+            from shared.dag_memory_layer import DAGMemoryLayer
+
+            _dag = get_session_dag("main")
+            _dag_layer = DAGMemoryLayer(_dag)
+            # Try semantic search if embed_text is available, else keyword
+            _embed_fn = h.get("embed_text")
+            if _embed_fn and mode in ("semantic", "hybrid", ""):
+                _sqlite_results = _dag_layer.semantic_search(
+                    query, top_k=top_k, embed_fn=_embed_fn
+                )
+            else:
+                _sqlite_results = _dag_layer.search(query, top_k=top_k, mode="keyword")
+            if _sqlite_results:
+                _existing = {r.get("content", "")[:100] for r in formatted}
+                for sr in _sqlite_results:
+                    if sr["content"][:100] not in _existing:
+                        formatted.append(
+                            {
+                                "id": sr["id"],
+                                "content": sr["content"],
+                                "preview": sr["content"][:200],
+                                "tags": sr.get("tags", ""),
+                                "tier": sr.get("tier", 1),
+                                "retrieval_count": sr.get("retrieval_count", 0),
+                                "timestamp": sr.get("created_at", ""),
+                                "source": "dag_sqlite",
+                                "relevance": sr.get("quality_score", 0.5),
+                            }
+                        )
+                        _existing.add(sr["content"][:100])
+                        _dag_layer.increment_retrieval(sr["id"])
+        except Exception:
+            pass  # Fail-open: SQLite search failure must not block LanceDB results
+
         # ── Step 3: Cascade (L2, L0, L3 after scoring) ──
         terminal_l2_count = self._cascade_terminal_l2(formatted, query, config)
         transcript_l0_count = self._cascade_transcript_l0(

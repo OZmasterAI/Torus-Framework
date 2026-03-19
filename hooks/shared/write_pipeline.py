@@ -228,6 +228,38 @@ class WritePipeline:
         # Update tag index
         tag_index.add_tags(doc_id, tags)
 
+        # Step 6b: Dual-write to SQLite DAG memory layer (+ embed if available)
+        try:
+            from shared.dag import get_session_dag
+            from shared.dag_memory_layer import DAGMemoryLayer
+
+            _dag = get_session_dag("main")
+            _dag_layer = DAGMemoryLayer(_dag)
+            _dag_result = _dag_layer.store(
+                content=content,
+                tags=f"{tags},source:dual-write" if tags else "source:dual-write",
+                tier=tier,
+                memory_type=memory_type,
+                state_type=state_type,
+                context=context,
+                quality_score=_q_score,
+                cluster_id=_assigned_cluster_id,
+            )
+            # Embed into SQLite if embedding function is available (MCP server context)
+            if _dag_result.get("stored"):
+                _embed = h.get("embed_text")
+                if _embed:
+                    try:
+                        _vec = _embed(content)
+                        if _vec and len(_vec) > 0:
+                            _dag_layer.store_embedding(
+                                _dag_result["id"], "knowledge", _vec
+                            )
+                    except Exception:
+                        pass
+        except Exception:
+            pass  # Fail-open: SQLite write failure must not block LanceDB
+
         # Knowledge graph population
         try:
             if self.graph:
