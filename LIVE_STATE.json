@@ -1,22 +1,20 @@
 {
   "session_count": 489,
   "project": "torus-framework",
-  "feature": "mcp-connection-fix",
+  "feature": "docker-evolution-sprint",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed mcp.json double-encoding (root cause of MCP failure). Added SSE health watchdog to memory_server.py (3-strike CPU/thread monitor with os.execv self-restart). Killed 28K zombies from stale Next.js container.",
+  "what_was_done": "Built Docker-based isolated evolution sprint. Created ~/.claude/docker/ (Dockerfile, entrypoint.sh, prepare-worktree.sh, run-sprint.sh, sprint-prompt.md). Worktree at ~/agents/evolution-sprint/ — 25 skills, 11 agents, AGENT_TEAMS=1, security_profile=refactor, analytics MCP. Cold-restarted memory server.",
   "known_issues": [
-    "CRITICAL: voice-web routing \u2014 messages go to CLI instance instead of tmux pane",
-    "hasAvailableSubscription can go stale \u2014 check on resume if 1M context missing",
+    "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
+    "hasAvailableSubscription can go stale — check on resume if 1M context missing",
     "TAP watchdog + fallback not wired into heartbeat loop yet",
-    "test_framework.py harness: 17 pre-existing failures (gate count drift, import)",
-    "ps/pgrep hang on this box \u2014 use /proc/{pid}/status directly"
+    "MCP SSE sessions can go stale — restart Claude session to reconnect"
   ],
   "next_steps": [
-    "Verify memory MCP tools register after session restart \u2014 search_knowledge test",
-    "Check startup timing log \u2014 verify FTS skip/optimize works on 17GB LanceDB",
-    "DAG: verify auto-promotion fires at session end \u2014 check knowledge table for source:dag entries",
-    "DAG: test /clear interception \u2014 does it create a new branch?",
-    "Memory maintenance \u2014 stale purge (3232 entries)"
-  ],
-  "last_response_preview": "**Session 487 Wrap-up**\n\n**Done:**\n- Fixed `mcp.json` double-encoding (root cause of MCP tools not registering \u2014 session 485 wrote JSON-in-a-string)\n- Added SSE health watchdog to `memory_server.py` \u2014 3-strike self-restart on CPU/thread degradation\n- Cleared 28K zombie processes (`sudo docker restart b20af86a129b`)\n\n**Risk: YELLOW** \u2014 Memory tools couldn't be queried this session (the thing we were fixing). Needs verification next session.\n\n**Next session:**\n1. Verify memory MCP tools register ("
+    "Launch evolution sprint: bash ~/.claude/docker/run-sprint.sh",
+    "Watch sprint: docker exec -it evolution-sprint tmux attach -t sprint",
+    "Review sprint results: cd ~/agents/evolution-sprint && git log --oneline",
+    "Merge good changes from evolution-sprint branch back to dag-claude",
+    "Memory server cold-restarted — verify tools register in new session"
+  ]
 }

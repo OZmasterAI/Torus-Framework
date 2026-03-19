@@ -32,22 +32,19 @@ else
 fi
 echo ""
 
-# Load sprint prompt if provided
-SPRINT_PROMPT="${SPRINT_PROMPT:-}"
-if [ -f "$HOME/.claude/docker/sprint-prompt.md" ]; then
-    SPRINT_PROMPT=$(cat "$HOME/.claude/docker/sprint-prompt.md")
-fi
+# Build sprint prompt command
+PROMPT_FILE="$HOME/.claude/docker/sprint-prompt.md"
 
 echo "=== Starting tmux session 'sprint' ==="
-echo "Attach from host: docker exec -it evolution-sprint tmux attach -t sprint"
+echo "Attach from host: docker attach evolution-sprint tmux attach -t sprint"
 echo ""
 
 # Start Claude Code inside tmux so the user can attach and watch
 tmux new-session -d -s sprint -x 200 -y 50
 
-if [ -n "$SPRINT_PROMPT" ]; then
-    # Send the sprint prompt to Claude Code
-    tmux send-keys -t sprint "claude --dangerously-skip-permissions -p \"$SPRINT_PROMPT\"" Enter
+if [ -f "$PROMPT_FILE" ]; then
+    # Pipe prompt from file to avoid shell escaping issues
+    tmux send-keys -t sprint "cat $PROMPT_FILE | claude --dangerously-skip-permissions -p -" Enter
 else
     # Interactive mode
     tmux send-keys -t sprint "claude --dangerously-skip-permissions" Enter
