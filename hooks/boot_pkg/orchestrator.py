@@ -643,19 +643,21 @@ def main():
                     context_parts.append(_inject_content)
         except OSError:
             pass  # File missing at first session — skip silently
-    # DAG: inject branch context on session start (Task 9)
+    # DAG: create per-session branch + inject context (B+C model)
     try:
         sys.path.insert(0, os.path.join(CLAUDE_DIR, "hooks"))
         from shared.dag import get_session_dag
 
         _dag = get_session_dag("main")
+        # Create a new branch for this session with project scoping
+        _dag.start_session_branch(
+            session_num,
+            project=_project_name,
+            subproject=_subproject_name,
+        )
         _dag_info = _dag.current_branch_info()
-        if _dag_info["msg_count"] > 0:
-            context_parts.append(
-                f"DAG: branch={_dag_info['name']} | "
-                f"{_dag_info['msg_count']} messages | "
-                f"{_dag_info['total_branches']} branches"
-            )
+        _dag_total = _dag._db.execute("SELECT COUNT(*) FROM branches").fetchone()[0]
+        context_parts.append(f"DAG: branch={_dag_info['name']} | {_dag_total} branches")
     except Exception:
         pass  # Fail-open
 

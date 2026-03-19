@@ -493,6 +493,21 @@ class ConversationDAG:
             lines.append(f"{marker} [{a['role']}] {content}")
         return "\n".join(lines)
 
+    def start_session_branch(self, session_num, project=None, subproject=None):
+        """Create a new branch for a session. Called once at SessionStart.
+
+        Branch name encodes the hierarchy: 'session-476', 'chainovi/session-12',
+        'chainovi/frontend/session-3'.
+        """
+        parts = []
+        if project:
+            parts.append(project)
+        if subproject:
+            parts.append(subproject)
+        parts.append(f"session-{session_num}")
+        name = "/".join(parts)
+        return self.new_branch(name, project=project, subproject=subproject)
+
     def close(self):
         self._db.close()
 
@@ -506,8 +521,8 @@ _lock = threading.Lock()
 def get_session_dag(session_id="main"):
     """Return a cached ConversationDAG instance for the given session.
 
-    All sessions share the same DB file — session_id is reserved for future
-    per-session branch isolation.
+    All sessions share the same DB file (B+C model). Session isolation is
+    achieved via per-session branches with project/subproject metadata.
     """
     with _lock:
         if session_id not in _instances:
