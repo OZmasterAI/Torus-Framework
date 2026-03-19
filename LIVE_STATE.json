@@ -1,9 +1,9 @@
 {
-  "session_count": 482,
+  "session_count": 486,
   "project": "torus-framework",
-  "feature": "memory-server-optimization",
+  "feature": "mcp-connection-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Verified post-restart: dual-write working (source:dual-write entries found), FP16 RAM ~4.1GB (down from ~5.3GB). Added startup timing instrumentation to memory_server.py (model/fts/total). Will show on next restart.",
+  "what_was_done": "Fixed MCP memory server connection: config had type:stdio but server runs SSE on port 8741. Updated mcp.json to type:sse with url. User restarted — verify connection next session.",
   "known_issues": [
     "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
     "hasAvailableSubscription can go stale — check on resume if 1M context missing",
@@ -12,10 +12,10 @@
     "ps/pgrep hang on this box — use /proc/{pid}/status directly"
   ],
   "next_steps": [
+    "Verify memory MCP tools register after mcp.json SSE fix — search_knowledge test",
     "Check startup timing log on next MCP restart — verify FTS skip/optimize works",
     "DAG: verify auto-promotion fires at session end — check knowledge table for source:dag entries",
     "DAG: test /clear interception — does it create a new branch?",
-    "Voice-web: add server-side logging, test from iPad",
-    "Memory maintenance — stale purge (3230 entries)"
+    "Memory maintenance — stale purge (3232 entries)"
   ]
 }
