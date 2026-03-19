@@ -57,7 +57,20 @@ for agent in "${DORMANT_AGENTS[@]}"; do
     fi
 done
 
-# ── 3. Flip AGENT_TEAMS to 1 ──
+# ── 3. Copy gitignored files that the worktree doesn't get ──
+echo ""
+echo "--- Copying gitignored config files ---"
+LIVE="$HOME/.claude"
+for f in config.json mcp.json; do
+    if [ -f "$LIVE/$f" ] && [ ! -f "$WORKTREE/$f" ]; then
+        cp "$LIVE/$f" "$WORKTREE/$f"
+        echo "  Copied: $f"
+    elif [ -f "$WORKTREE/$f" ]; then
+        echo "  Already exists: $f"
+    fi
+done
+
+# ── 4. Flip AGENT_TEAMS to 1 ──
 echo ""
 echo "--- Enabling experimental agent teams ---"
 if [ -f "$WORKTREE/settings.json" ]; then
@@ -74,7 +87,7 @@ print('  CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = 1')
 "
 fi
 
-# ── 4. Set security_profile to refactor ──
+# ── 5. Set security_profile to refactor ──
 echo ""
 echo "--- Setting security_profile to refactor ---"
 if [ -f "$WORKTREE/config.json" ]; then
@@ -89,7 +102,7 @@ print('  security_profile = refactor')
 "
 fi
 
-# ── 5. Re-enable analytics MCP server ──
+# ── 6. Re-enable analytics MCP server ──
 echo ""
 echo "--- Re-enabling analytics MCP server ---"
 # Add analytics to mcp.json in the worktree
@@ -111,7 +124,7 @@ print('  analytics MCP server added to mcp.json')
 "
 fi
 
-# ── 6. Summary ──
+# ── 7. Summary ──
 echo ""
 echo "=== Worktree Ready ==="
 echo "Skills: $(ls -d $WORKTREE/skills/*/SKILL.md 2>/dev/null | wc -l)"
