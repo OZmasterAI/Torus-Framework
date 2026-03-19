@@ -802,7 +802,9 @@ def _ensure_initialized():
     global _knowledge_graph, _ltp_tracker, _adaptive_weights, _cluster_store
     if _initialized:
         return
+    _t_total = time.monotonic()
     _init_lancedb()
+    _t_model = time.monotonic()
     if collection is None:
         print(
             "[MCP] LanceDB unavailable — starting in degraded mode.", file=_sys.stderr
