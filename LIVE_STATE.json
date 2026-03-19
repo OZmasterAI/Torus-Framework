@@ -1,19 +1,20 @@
 {
-  "session_count": 494,
+  "session_count": 495,
   "project": "torus-framework",
   "feature": "container-agents",
   "framework_version": "v3.0.0",
-  "what_was_done": "Built and launched Docker evolution sprint container. Fixed Dockerfile user creation (node UID conflict), fixed GID issue (newgrp docker changed effective GID). Container running but Claude Code auth fails — needs API key env var instead of OAuth.",
+  "what_was_done": "Built and launched Docker evolution sprint container. Fixed Dockerfile user creation (node UID conflict), fixed GID issue (newgrp docker changed effective GID). Container running but Claude Code auth fails \u2014 needs API key env var instead of OAuth.",
   "known_issues": [
-    "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
-    "Docker sprint: Claude Code needs ANTHROPIC_API_KEY env var — OAuth is interactive-only",
-    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session",
+    "CRITICAL: voice-web routing \u2014 messages go to CLI instance instead of tmux pane",
+    "Docker sprint: Claude Code needs ANTHROPIC_API_KEY env var \u2014 OAuth is interactive-only",
+    "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session",
     "TAP watchdog + fallback not wired into heartbeat loop yet"
   ],
   "next_steps": [
-    "Fix Docker sprint auth — add ANTHROPIC_API_KEY to run-sprint.sh, relaunch",
+    "Fix Docker sprint auth \u2014 add ANTHROPIC_API_KEY to run-sprint.sh, relaunch",
     "Save Docker fixes to memory (Dockerfile UID, GID, auth learnings)",
     "Verify sprint is running autonomously after auth fix",
     "Save watchdog fix to memory (still pending from session 491)"
-  ]
+  ],
+  "last_response_preview": "---\n\n**Session 494 Summary**\n\n**Done:**\n- Fixed Dockerfile \u2014 `userdel node` before creating `crab` (UID 1000 conflict)\n- Fixed `run-sprint.sh` \u2014 `id -g -r` for real GID (newgrp docker changed effective GID to 988)\n- Added web research guidance to sprint-prompt.md (arxiv, github)\n- Built image and launched container (running, PID 2c199e0aee38)\n- Added crab to docker group\n\n**Blocked:**\n- Claude Code auth inside container \u2014 OAuth is interactive, needs `ANTHROPIC_API_KEY` env var\n- Memory MCP stale"
 }
