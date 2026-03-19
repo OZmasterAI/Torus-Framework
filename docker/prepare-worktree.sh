@@ -3,14 +3,25 @@
 set -euo pipefail
 
 WORKTREE="/home/crab/agents/evolution-sprint"
-
-if [ ! -d "$WORKTREE" ]; then
-    echo "ERROR: Worktree not found at $WORKTREE"
-    exit 1
-fi
+SOURCE_BRANCH="${1:-dag-claude}"
+REPO_DIR="$HOME/.claude"
 
 echo "=== Preparing Evolution Sprint Worktree ==="
+echo "Source branch: $SOURCE_BRANCH"
 echo "Path: $WORKTREE"
+echo ""
+
+# ── 0. Fresh worktree from source branch ──
+echo "--- Creating fresh worktree ---"
+if [ -d "$WORKTREE" ]; then
+    echo "  Removing stale worktree..."
+    cd "$REPO_DIR"
+    git worktree remove --force "$WORKTREE" 2>/dev/null || rm -rf "$WORKTREE"
+    git branch -D evolution-sprint 2>/dev/null || true
+fi
+cd "$REPO_DIR"
+git worktree add -b evolution-sprint "$WORKTREE" "$SOURCE_BRANCH"
+echo "  Created from $SOURCE_BRANCH at $(cd "$WORKTREE" && git rev-parse --short HEAD)"
 echo ""
 
 # ── 1. Activate dormant skills ──

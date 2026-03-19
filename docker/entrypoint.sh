@@ -14,10 +14,12 @@ if [ ! -f "$HOME/.claude/settings.json" ]; then
     exit 1
 fi
 
-if [ ! -f "$HOME/.claude.json" ]; then
-    echo "ERROR: ~/.claude.json not mounted (OAuth credentials missing)"
+# API key required for headless operation (OAuth is interactive-only)
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    echo "ERROR: ANTHROPIC_API_KEY not set. Pass it via docker run -e."
     exit 1
 fi
+echo "Auth: API key present (${ANTHROPIC_API_KEY:0:10}...)"
 
 echo "Framework mounted: $(ls $HOME/.claude/hooks/gates/gate_*.py 2>/dev/null | wc -l) gates"
 echo "Skills: $(ls -d $HOME/.claude/skills/*/SKILL.md 2>/dev/null | wc -l)"
