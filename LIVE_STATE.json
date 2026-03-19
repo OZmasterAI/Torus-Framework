@@ -1,17 +1,18 @@
 {
-  "session_count": 496,
+  "session_count": 497,
   "project": "torus-framework",
   "feature": "container-agents",
   "framework_version": "v3.0.0",
-  "what_was_done": "Investigated memory MCP showing uninitialized. Root cause: watchdog self-restart (os.execv) killed server during post-init CPU spikes, resetting all globals. health_check doesn't trigger lazy init so it reported not_connected. Fix: removed os.execv from watchdog — now logs-only, no restart. Confirmed DAG and memory are already well-separated (different processes, different storage, fail-open coupling).",
+  "what_was_done": "Investigated memory MCP showing uninitialized. Root cause: watchdog self-restart (os.execv) killed server during post-init CPU spikes, resetting all globals. health_check doesn't trigger lazy init so it reported not_connected. Fix: removed os.execv from watchdog \u2014 now logs-only, no restart. Confirmed DAG and memory are already well-separated (different processes, different storage, fail-open coupling).",
   "known_issues": [
-    "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
-    "Docker sprint: Claude Code needs ANTHROPIC_API_KEY env var — OAuth is interactive-only",
-    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session"
+    "CRITICAL: voice-web routing \u2014 messages go to CLI instance instead of tmux pane",
+    "Docker sprint: Claude Code needs ANTHROPIC_API_KEY env var \u2014 OAuth is interactive-only",
+    "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session"
   ],
   "next_steps": [
     "Save watchdog removal fix to memory (MCP was down at session end)",
-    "Fix Docker sprint auth — add ANTHROPIC_API_KEY to run-sprint.sh, relaunch",
+    "Fix Docker sprint auth \u2014 add ANTHROPIC_API_KEY to run-sprint.sh, relaunch",
     "Verify memory server stability without watchdog restarts over multiple sessions"
-  ]
+  ],
+  "last_response_preview": "Committed. Session wrapped up:\n\n**Done this session:**\n- Investigated memory MCP \"uninitialized\" \u2014 root cause was watchdog `os.execv` restart storm, not DAG\n- Confirmed DAG and memory are already well-separated (no action needed)\n- Removed `os.execv` self-restart from watchdog \u2014 now logs-only with strike reset\n\n**Next session:**\n- Save this fix to memory (MCP was down when we tried)\n- Verify stability without watchdog restarts over time"
 }
