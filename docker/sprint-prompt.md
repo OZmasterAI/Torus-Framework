@@ -44,6 +44,7 @@ In addition to teams, use sub-agents (Agent tool) for:
 - Analytics MCP: gate_dashboard, health_monitor, session_analytics, anomaly_detector
 - Skills: /super-evolve, /diagnose, /introspect, /benchmark, /refactor, /review, /test, /security-scan, /super-health, /report, /brainstorm, /writing-plans, /implement, /commit
 - Standard: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch
+- Web Research: Use WebSearch and WebFetch liberally for external knowledge. Useful sites: arxiv.org (papers, techniques), github.com (implementations, patterns), docs for libraries you use. Research before building.
 - Never leave a tool unused if it can help
 
 ## The 7 Focus Areas (prioritized)
