@@ -19,7 +19,7 @@ echo ""
 echo "[2/4] Building Docker image..."
 docker build \
     --build-arg HOST_UID=$(id -u) \
-    --build-arg HOST_GID=$(id -g) \
+    --build-arg HOST_GID=$(id -g -r) \
     -t "$IMAGE_NAME" \
     "$SCRIPT_DIR"
 echo ""
