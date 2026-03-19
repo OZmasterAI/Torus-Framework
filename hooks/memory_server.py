@@ -4186,16 +4186,15 @@ def _start_sse_watchdog():
 
                 if _strikes >= _WATCHDOG_STRIKES_TO_RESTART:
                     _sys.stderr.write(
-                        f"[WATCHDOG] Self-restarting: {_strikes} consecutive strikes "
-                        f"(CPU={cpu_pct:.1f}% threads={thread_count})\n"
+                        f"[WATCHDOG] High load: {_strikes} consecutive strikes "
+                        f"(CPU={cpu_pct:.1f}% threads={thread_count}) — logging only\n"
                     )
                     with open("/tmp/memory_server_debug.log", "a") as f:
                         f.write(
                             f"[{datetime.now().isoformat()}] PID={os.getpid()} "
-                            f"WATCHDOG restart: CPU={cpu_pct:.1f}% threads={thread_count}\n"
+                            f"WATCHDOG high load: CPU={cpu_pct:.1f}% threads={thread_count}\n"
                         )
-                    # Graceful restart: exec replaces process in-place
-                    os.execv(_sys.executable, [_sys.executable] + _sys.argv)
+                    _strikes = 0  # reset after logging
             except Exception as e:
                 _sys.stderr.write(f"[WATCHDOG] Error: {e}\n")
 
