@@ -1,19 +1,19 @@
 {
-  "session_count": 490,
+  "session_count": 492,
   "project": "torus-framework",
-  "feature": "watchdog-init-fix",
+  "feature": "container-agents",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed memory server watchdog restart storm. Root cause: watchdog counted CPU strikes during 53s model loading, triggering os.execv restart loops (8 restarts/day). Added _initializing flag to memory_server.py — watchdog skips strikes during init. Server needs restart to apply.",
+  "what_was_done": "Restarted memory server with watchdog fix applied. Verified _initializing flag at 6 code locations. MCP handshake needs fresh session (client reconnect issue, not server). Server running PID 312509.",
   "known_issues": [
     "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
     "hasAvailableSubscription can go stale — check on resume if 1M context missing",
-    "TAP watchdog + fallback not wired into heartbeat loop yet"
+    "TAP watchdog + fallback not wired into heartbeat loop yet",
+    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session"
   ],
   "next_steps": [
-    "Restart memory server to apply watchdog fix (kill PID, Claude auto-reconnects)",
-    "Verify watchdog logs show 'Init in progress, skipping strike' instead of strikes",
-    "Save fix to memory once MCP is back up",
-    "Launch evolution sprint: bash ~/.claude/docker/run-sprint.sh",
+    "Verify watchdog logs show 'Init in progress, skipping strike' after restart",
+    "Save watchdog fix to memory (remember_this)",
+    "Launch container agents — user's priority",
     "Commit watchdog fix + session changes"
   ]
 }

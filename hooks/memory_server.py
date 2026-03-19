@@ -661,6 +661,7 @@ _preview_migrated = False
 tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
+_initializing = False  # True during _ensure_initialized() — watchdog skips strikes
 _lance_fts_ready = False  # True once LanceDB FTS index is built
 _knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None  # LTPTracker instance (initialized lazily)
@@ -800,8 +801,10 @@ def _ensure_initialized():
     """
     global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
     global _knowledge_graph, _ltp_tracker, _adaptive_weights, _cluster_store
+    global _initializing
     if _initialized:
         return
+    _initializing = True
     _t_total = time.monotonic()
     _init_lancedb()
     _t_model = time.monotonic()
@@ -810,6 +813,7 @@ def _ensure_initialized():
             "[MCP] LanceDB unavailable — starting in degraded mode.", file=_sys.stderr
         )
         _initialized = True
+        _initializing = False
         return
 
     # Build LanceDB native FTS index on text column (incremental if possible)
@@ -923,6 +927,7 @@ def _ensure_initialized():
         file=_sys.stderr,
     )
     _initialized = True
+    _initializing = False
 
 
 def _init_pipelines():
@@ -4155,6 +4160,16 @@ def _start_sse_watchdog():
                     cpu_pct > _WATCHDOG_CPU_THRESHOLD
                     or thread_count > _WATCHDOG_THREAD_THRESHOLD
                 )
+
+                # Skip strike counting during model loading / init
+                if _initializing or not _initialized:
+                    if unhealthy:
+                        _sys.stderr.write(
+                            f"[WATCHDOG] Init in progress, skipping strike: "
+                            f"CPU={cpu_pct:.1f}% threads={thread_count}\n"
+                        )
+                    _strikes = 0
+                    continue
 
                 if unhealthy:
                     _strikes += 1
