@@ -1,19 +1,20 @@
 {
-  "session_count": 492,
+  "session_count": 493,
   "project": "torus-framework",
   "feature": "container-agents",
   "framework_version": "v3.0.0",
   "what_was_done": "Restarted memory server with watchdog fix applied. Verified _initializing flag at 6 code locations. MCP handshake needs fresh session (client reconnect issue, not server). Server running PID 312509.",
   "known_issues": [
-    "CRITICAL: voice-web routing — messages go to CLI instance instead of tmux pane",
-    "hasAvailableSubscription can go stale — check on resume if 1M context missing",
+    "CRITICAL: voice-web routing \u2014 messages go to CLI instance instead of tmux pane",
+    "hasAvailableSubscription can go stale \u2014 check on resume if 1M context missing",
     "TAP watchdog + fallback not wired into heartbeat loop yet",
-    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session"
+    "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session"
   ],
   "next_steps": [
     "Verify watchdog logs show 'Init in progress, skipping strike' after restart",
     "Save watchdog fix to memory (remember_this)",
-    "Launch container agents — user's priority",
+    "Launch container agents \u2014 user's priority",
     "Commit watchdog fix + session changes"
-  ]
+  ],
+  "last_response_preview": "Committed. Here's the wrap-up:\n\n---\n\n**Session 491 Summary**\n\n**Done:**\n- Verified `_initializing` flag at all 6 code locations in `memory_server.py`\n- Restarted memory server (PID 312509) \u2014 watchdog fix applied\n- Discovered MCP SSE reconnect issue: Claude Code client skips `initialize` handshake on reconnect, needs fresh session\n\n**Committed:** `92f26f2` \u2014 watchdog init fix + state\n\n**Risk: YELLOW** \u2014 Memory save skipped (MCP down for this session). Save the watchdog fix to memory next session."
 }
