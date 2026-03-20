@@ -1,15 +1,15 @@
 {
   "session_count": 502,
   "project": "torus-framework",
-  "feature": "changelog-review",
+  "feature": "permissions-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Reviewed Claude Code v2.1.80-81 changelogs. Fixed permissions \u2014 tilde paths don't match, added absolute paths. Confirmed rate_limits statusline field is null on API billing. Removed debug dump from statusline.py.",
+  "what_was_done": "Verified crash_proof deployed and DAG dual-write active after restart. Cleared memory server blocking issue. Added single-level glob permissions (*) — still prompting with ** only.",
   "known_issues": [
     "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session",
     "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions"
   ],
   "next_steps": [
-    "Verify absolute path permissions work after restart (Edit/Write to ~/.claude/ without prompt)",
+    "Verify single-level glob permissions fix after restart (Edit/Write to ~/.claude/ without prompt)",
     "Fix dag_memory.py line 360 bug (wrong query() call \u2014 silently failing)",
     "Save session 497 details to memory (gap for 498-499 too)",
     "Run #28 enforcer daemon SIGHUP (only gate-blocked task skipped)"
