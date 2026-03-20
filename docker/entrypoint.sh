@@ -15,51 +15,67 @@ else
     echo "Auth: OAuth credentials present"
 fi
 
-# ── Workspace: shallow clone from mounted repo ──
+# ── Copy framework into ~/.claude (skip heavy dirs) ──
 REPO_MOUNT="/mnt/repo"
-WORKSPACE="$HOME/workspace"
-if [ -d "$REPO_MOUNT/.git" ]; then
-    echo ""
-    echo "--- Creating workspace ---"
-    rm -rf "$WORKSPACE"
-    git clone --depth 1 --single-branch "file://$REPO_MOUNT" "$WORKSPACE" 2>&1 | tail -1
-    echo "  Path: $WORKSPACE"
-fi
-echo ""
-
-# ── Copy lightweight framework parts into ~/.claude ──
 CONF="$HOME/.claude"
 if [ -d "$REPO_MOUNT" ]; then
-    echo "--- Loading framework into ~/.claude ---"
-    for d in skills agents rules dormant skill-library; do
-        if [ -d "$REPO_MOUNT/$d" ]; then
-            cp -r "$REPO_MOUNT/$d" "$CONF/$d"
-            echo "  Copied: $d/"
-        fi
-    done
-    # Copy individual config files
-    for f in CLAUDE.md config.json; do
-        if [ -f "$REPO_MOUNT/$f" ]; then
-            cp "$REPO_MOUNT/$f" "$CONF/$f"
-            echo "  Copied: $f"
-        fi
-    done
+    echo ""
+    echo "--- Loading framework ---"
+    # rsync everything except the multi-GB junk dirs
+    rsync -a --exclude='projects' --exclude='integrations' --exclude='debug' \
+        --exclude='file-history' --exclude='paste-cache' --exclude='plugins' \
+        --exclude='.git' --exclude='__pycache__' \
+        "$REPO_MOUNT/" "$CONF/"
+    echo "  Gates: $(ls $CONF/hooks/gates/gate_*.py 2>/dev/null | wc -l)"
     echo "  Skills: $(ls -d $CONF/skills/*/SKILL.md 2>/dev/null | wc -l)"
     echo "  Agents: $(ls $CONF/agents/*.md 2>/dev/null | wc -l)"
 fi
-echo ""
 
+# ── Fix settings.json for Docker: disable plugins, strip statusLine ──
+echo ""
+echo "--- Patching config for Docker ---"
+python3 -c "
+import json
+with open('$CONF/settings.json', 'r') as f:
+    data = json.load(f)
+# Disable all LSP plugins (not installed in container)
+data['enabledPlugins'] = {k: False for k in data.get('enabledPlugins', {})}
+# Remove statusLine (needs deps that may not be available)
+data.pop('statusLine', None)
+with open('$CONF/settings.json', 'w') as f:
+    json.dump(data, f, indent=2)
+print('  Plugins: all disabled')
+print('  StatusLine: removed')
+"
+
+# ── Strip MCP to memory-only (stdio servers may hang) ──
+cat > "$CONF/mcp.json" << 'MCPEOF'
+{
+  "mcpServers": {
+    "memory": {
+      "type": "sse",
+      "url": "http://localhost:8741/sse"
+    }
+  }
+}
+MCPEOF
+echo "  MCP: memory (SSE) only"
+
+# ── Check memory server ──
+echo ""
+if curl -s --max-time 3 http://127.0.0.1:8741/sse > /dev/null 2>&1; then
+    echo "Memory server: REACHABLE"
+else
+    echo "Memory server: NOT reachable (host :8741)"
+fi
+
+echo ""
 echo "=== Ready ==="
 echo ""
 
 # ── Launch tmux session ──
 tmux new-session -d -s sprint -x 200 -y 50
-
-if [ -d "$WORKSPACE" ]; then
-    tmux send-keys -t sprint "cd $WORKSPACE" Enter
-fi
-
-tmux send-keys -t sprint "claude --dangerously-skip-permissions" Enter
+tmux send-keys -t sprint "cd $CONF && claude --dangerously-skip-permissions" Enter
 
 echo "Sprint session started. Container will stay alive."
 echo "Attach: docker exec -it evolution-sprint tmux attach -t sprint"

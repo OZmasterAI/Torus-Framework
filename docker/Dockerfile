@@ -3,7 +3,7 @@ FROM node:25-bookworm-slim
 # System deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv \
-    tmux git curl jq \
+    tmux git curl jq rsync \
     && rm -rf /var/lib/apt/lists/*
 
 # Create crab user matching host uid (node image already has uid 1000 as 'node')
