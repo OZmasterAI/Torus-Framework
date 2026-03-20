@@ -19,6 +19,7 @@ Usage (called by Claude Code as a PermissionRequest hook):
 """
 
 import json
+import os
 import re
 import sys
 
@@ -27,21 +28,21 @@ import sys
 # Each tuple: (compiled regex, human-readable reason for the deny message)
 # ---------------------------------------------------------------------------
 DENY_PATTERNS = [
-    (re.compile(r"\brm\s+-rf\b"),           "rm -rf is blocked"),
-    (re.compile(r"\brm\s+-r\s+/"),          "recursive delete at root is blocked"),
-    (re.compile(r"\beval\b"),               "eval is blocked"),
-    (re.compile(r"\bsudo\b"),               "sudo is blocked"),
-    (re.compile(r"\|\s*bash\b"),            "piping to bash is blocked"),
-    (re.compile(r"\|\s*sh\b"),              "piping to sh is blocked"),
-    (re.compile(r"git\s+push\s+--force"),   "force push is blocked"),
-    (re.compile(r"git\s+push\s+-f\b"),      "force push is blocked"),
-    (re.compile(r"curl.*\|.*bash"),         "curl-pipe-bash is blocked"),
-    (re.compile(r"curl.*\|.*sh\b"),         "curl-pipe-sh is blocked"),
-    (re.compile(r"\bchmod\s+777\b"),        "chmod 777 is blocked"),
-    (re.compile(r"\bdd\s+if="),             "dd is blocked"),
-    (re.compile(r"\bmkfs\b"),               "mkfs is blocked"),
-    (re.compile(r">\s*/dev/sd"),            "writing to block device is blocked"),
-    (re.compile(r":\(\)\{.*:\|:&\s*\};:"),  "fork bomb is blocked"),
+    (re.compile(r"\brm\s+-rf\b"), "rm -rf is blocked"),
+    (re.compile(r"\brm\s+-r\s+/"), "recursive delete at root is blocked"),
+    (re.compile(r"\beval\b"), "eval is blocked"),
+    (re.compile(r"\bsudo\b"), "sudo is blocked"),
+    (re.compile(r"\|\s*bash\b"), "piping to bash is blocked"),
+    (re.compile(r"\|\s*sh\b"), "piping to sh is blocked"),
+    (re.compile(r"git\s+push\s+--force"), "force push is blocked"),
+    (re.compile(r"git\s+push\s+-f\b"), "force push is blocked"),
+    (re.compile(r"curl.*\|.*bash"), "curl-pipe-bash is blocked"),
+    (re.compile(r"curl.*\|.*sh\b"), "curl-pipe-sh is blocked"),
+    (re.compile(r"\bchmod\s+777\b"), "chmod 777 is blocked"),
+    (re.compile(r"\bdd\s+if="), "dd is blocked"),
+    (re.compile(r"\bmkfs\b"), "mkfs is blocked"),
+    (re.compile(r">\s*/dev/sd"), "writing to block device is blocked"),
+    (re.compile(r":\(\)\{.*:\|:&\s*\};:"), "fork bomb is blocked"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -55,24 +56,51 @@ SAFE_TOOLS = {"Read", "Glob", "Grep", "WebFetch", "WebSearch"}
 # ---------------------------------------------------------------------------
 SAFE_COMMAND_PREFIXES = [
     # Read-only git commands
-    "git status", "git diff", "git log", "git branch",
-    "git show", "git stash list",
+    "git status",
+    "git diff",
+    "git log",
+    "git branch",
+    "git show",
+    "git stash list",
     # System info / inspection
-    "ls", "pwd", "cat", "head", "tail", "wc", "date",
-    "whoami", "which", "echo", "env",
+    "ls",
+    "pwd",
+    "cat",
+    "head",
+    "tail",
+    "wc",
+    "date",
+    "whoami",
+    "which",
+    "echo",
+    "env",
     # Testing frameworks
-    "pytest", "python -m pytest", "python3 -m pytest",
-    "npm test", "cargo test", "go test",
+    "pytest",
+    "python -m pytest",
+    "python3 -m pytest",
+    "npm test",
+    "cargo test",
+    "go test",
     # Diagnostic / read-only commands
-    "find . -name", "find . -type",
-    "grep -r", "grep -rn",
-    "ps aux", "ps -ef",
-    "df -h", "du -sh",
-    "curl -I", "curl --head",
-    "file", "stat", "type",
+    "find . -name",
+    "find . -type",
+    "grep -r",
+    "grep -rn",
+    "ps aux",
+    "ps -ef",
+    "df -h",
+    "du -sh",
+    "curl -I",
+    "curl --head",
+    "file",
+    "stat",
+    "type",
     # Python introspection
-    "python3 -c", "python -c",
-    "pip list", "pip show", "pip freeze",
+    "python3 -c",
+    "python -c",
+    "pip list",
+    "pip show",
+    "pip freeze",
 ]
 
 
@@ -125,6 +153,15 @@ def main():
     if tool_name in SAFE_TOOLS:
         make_decision("allow")
         return
+
+    # --- Edit/Write to ~/.claude/: auto-approve (own config directory) ---
+    if tool_name in ("Edit", "Write", "NotebookEdit"):
+        file_path = tool_input.get("file_path", "")
+        home = os.path.expanduser("~")
+        claude_dir = os.path.join(home, ".claude")
+        if file_path.startswith(claude_dir + os.sep) or file_path == claude_dir:
+            make_decision("allow")
+            return
 
     # --- Everything else: no output (fall through to user prompt) ---
 
