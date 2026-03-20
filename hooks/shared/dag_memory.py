@@ -331,7 +331,8 @@ def enrich_summary_with_memory(summary, session_id="main"):
     if not _DUAL_WRITE:
         return summary
     try:
-        from shared.memory_socket import query
+        from shared.dag import get_session_dag
+        from shared.dag_memory_layer import DAGMemoryLayer
 
         # Extract words >4 chars as topic candidates
         words = set(
@@ -357,11 +358,10 @@ def enrich_summary_with_memory(summary, session_id="main"):
 
         # Query memory with top topics
         topic_query = " ".join(list(words)[:5])
-        result = query(topic_query, top_k=3)
-        if not result or not result.get("results"):
+        layer = DAGMemoryLayer(get_session_dag(session_id))
+        hits = layer.search(topic_query, top_k=3)
+        if not hits:
             return summary
-
-        hits = result["results"][:3]
 
         # Hebbian co-retrieval: strengthen edges between all pairs of retrieved nodes
         try:
