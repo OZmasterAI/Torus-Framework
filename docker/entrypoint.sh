@@ -27,8 +27,26 @@ if [ -d "$REPO_MOUNT/.git" ]; then
 fi
 echo ""
 
-# ~/.claude is baked into the image as bare minimum (no hooks, no plugins, no MCP)
-echo "Config: bare minimum (no hooks, no plugins, no MCP)"
+# ── Copy lightweight framework parts into ~/.claude ──
+CONF="$HOME/.claude"
+if [ -d "$REPO_MOUNT" ]; then
+    echo "--- Loading framework into ~/.claude ---"
+    for d in skills agents rules dormant skill-library; do
+        if [ -d "$REPO_MOUNT/$d" ]; then
+            cp -r "$REPO_MOUNT/$d" "$CONF/$d"
+            echo "  Copied: $d/"
+        fi
+    done
+    # Copy individual config files
+    for f in CLAUDE.md config.json; do
+        if [ -f "$REPO_MOUNT/$f" ]; then
+            cp "$REPO_MOUNT/$f" "$CONF/$f"
+            echo "  Copied: $f"
+        fi
+    done
+    echo "  Skills: $(ls -d $CONF/skills/*/SKILL.md 2>/dev/null | wc -l)"
+    echo "  Agents: $(ls $CONF/agents/*.md 2>/dev/null | wc -l)"
+fi
 echo ""
 
 echo "=== Ready ==="
