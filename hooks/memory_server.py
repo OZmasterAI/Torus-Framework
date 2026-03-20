@@ -270,12 +270,15 @@ _TABLE_SCHEMAS = {
 }
 
 
-def _embed_texts(texts):
-    """Embed a list of texts using the loaded SentenceTransformer model.
+# Thread pool for embedding inference — keeps uvicorn event loop responsive.
+# Single worker because SentenceTransformer isn't thread-safe.
+_embed_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="embed"
+)
 
-    Returns list of lists of floats (768-dim vectors).
-    Falls back to zero vectors if embedding model is unavailable.
-    """
+
+def _embed_texts_sync(texts):
+    """Synchronous embedding — runs in _embed_executor, NOT on the event loop."""
     if _embedding_fn is None:
         return [[0.0] * _EMBEDDING_DIM for _ in texts]
     try:
@@ -283,6 +286,23 @@ def _embed_texts(texts):
         return [v.tolist() for v in vectors]
     except Exception:
         return [[0.0] * _EMBEDDING_DIM for _ in texts]
+
+
+def _embed_texts(texts):
+    """Embed texts. Safe to call from sync or async context.
+
+    When called from the main thread (uvicorn event loop), submits to
+    the thread pool so the event loop stays responsive.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop and loop.is_running():
+        # We're on the event loop — offload to thread pool
+        future = _embed_executor.submit(_embed_texts_sync, texts)
+        return future.result(timeout=30)
+    return _embed_texts_sync(texts)
 
 
 def _embed_text(text):
