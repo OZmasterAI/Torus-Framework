@@ -20,8 +20,8 @@ import sys
 import time
 from itertools import combinations
 
-# Dual-write disabled — DAG is SQLite-only, no memory_socket calls
-_DUAL_WRITE = False
+# Dual-write enabled — DAG writes to both SQLite and memory server
+_DUAL_WRITE = True
 
 # Heuristic patterns for extracting learnings from assistant messages
 _LEARNING_PATTERNS = [
