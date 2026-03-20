@@ -851,21 +851,6 @@ def main():
     except (json.JSONDecodeError, EOFError, ValueError):
         data = {}
 
-    # DEBUG: dump raw stdin keys to check for rate_limits field
-    try:
-        with open(os.path.join(HOOKS_DIR, ".statusline_raw_keys.json"), "w") as _dbg:
-            json.dump(
-                {
-                    "top_keys": sorted(data.keys()),
-                    "rate_limits": data.get("rate_limits"),
-                },
-                _dbg,
-                indent=2,
-                default=str,
-            )
-    except Exception:
-        pass
-
     # Extract session info (correct nested paths)
     cost_data = data.get("cost", {}) or {}
     ctx_data = data.get("context_window", {}) or {}
