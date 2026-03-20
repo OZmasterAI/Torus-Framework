@@ -9,6 +9,8 @@ Phase 2 Tasks 12, 13, 14, 15, 16:
 - dag_node tags on memory entries (reverse link)
 
 All functions are fail-open. Import errors and exceptions are caught.
+
+Dual-write to memory server disabled — DAG stores locally in SQLite only.
 """
 
 import json
@@ -16,6 +18,9 @@ import os
 import re
 import sys
 import time
+
+# Dual-write disabled — DAG is SQLite-only, no memory_socket calls
+_DUAL_WRITE = False
 
 # Heuristic patterns for extracting learnings from assistant messages
 _LEARNING_PATTERNS = [
@@ -54,6 +59,8 @@ def on_node_added_extract(data):
     if _assistant_node_count % _EXTRACT_EVERY_N != 0:
         return  # Throttle
 
+    if not _DUAL_WRITE:
+        return
     try:
         from shared.dag import get_session_dag
 
@@ -81,6 +88,8 @@ def save_compaction_summary(session_id="main"):
 
     Called from post_compact.py after build_summary().
     """
+    if not _DUAL_WRITE:
+        return
     try:
         from shared.dag import get_session_dag
         from shared.memory_socket import remember
@@ -133,6 +142,8 @@ def enrich_summary_with_memory(summary, session_id="main"):
 
     Extracts key topics from the summary, queries memory, appends top hits.
     """
+    if not _DUAL_WRITE:
+        return summary
     try:
         from shared.memory_socket import query
 
