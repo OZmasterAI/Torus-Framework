@@ -10,8 +10,12 @@
       "mcp__memory__remember_this",
       "Edit(~/.claude/**)",
       "Write(~/.claude/**)",
+      "Edit(/home/crab/.claude/**)",
+      "Write(/home/crab/.claude/**)",
       "Edit(~/.vscode/**)",
-      "Write(~/.vscode/**)"
+      "Write(~/.vscode/**)",
+      "Edit(/home/crab/.vscode/**)",
+      "Write(/home/crab/.vscode/**)"
     ],
     "defaultMode": "default"
   },
