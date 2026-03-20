@@ -24,8 +24,14 @@ if [ -d "$REPO_MOUNT" ]; then
     # rsync everything except the multi-GB junk dirs
     rsync -a --exclude='projects' --exclude='integrations' --exclude='debug' \
         --exclude='file-history' --exclude='paste-cache' --exclude='plugins' \
-        --exclude='.git' --exclude='__pycache__' \
+        --exclude='__pycache__' \
         "$REPO_MOUNT/" "$CONF/"
+    # Copy model-router separately (rest of integrations/ is 1.5GB junk)
+    if [ -d "$REPO_MOUNT/integrations/model-router" ]; then
+        mkdir -p "$CONF/integrations"
+        cp -r "$REPO_MOUNT/integrations/model-router" "$CONF/integrations/"
+        echo "  Model router: copied"
+    fi
     echo "  Gates: $(ls $CONF/hooks/gates/gate_*.py 2>/dev/null | wc -l)"
     echo "  Skills: $(ls -d $CONF/skills/*/SKILL.md 2>/dev/null | wc -l)"
     echo "  Agents: $(ls $CONF/agents/*.md 2>/dev/null | wc -l)"
@@ -48,7 +54,7 @@ print('  Plugins: all disabled')
 print('  StatusLine: removed')
 "
 
-# ── Strip MCP to memory-only (stdio servers may hang) ──
+# ── Project MCP: memory only (model-router/skills/web-search come from .claude.json) ──
 cat > "$CONF/mcp.json" << 'MCPEOF'
 {
   "mcpServers": {
@@ -59,7 +65,7 @@ cat > "$CONF/mcp.json" << 'MCPEOF'
   }
 }
 MCPEOF
-echo "  MCP: memory (SSE) only"
+echo "  MCP: memory + model-router + skills + web-search"
 
 # ── Check memory server ──
 echo ""
