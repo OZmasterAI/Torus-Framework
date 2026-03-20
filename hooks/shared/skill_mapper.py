@@ -28,6 +28,9 @@ from typing import Dict, List, Set, Tuple, Optional, Any
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
+SKILL_LIBRARY_DIR = os.path.join(CLAUDE_DIR, "skill-library")
+# Both dirs searched; skill-library takes priority on name conflicts.
+ALL_SKILL_DIRS = [SKILL_LIBRARY_DIR, SKILLS_DIR]
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
 SHARED_DIR = os.path.join(HOOKS_DIR, "shared")
 
@@ -102,16 +105,23 @@ class SkillMapper:
         self._scan_skills()
 
     def _scan_skills(self) -> None:
-        """Scan skills directory and build metadata for each skill."""
-        if not os.path.isdir(SKILLS_DIR):
-            return
+        """Scan both skill directories and build metadata for each skill.
 
-        for skill_dir in sorted(glob.glob(os.path.join(SKILLS_DIR, "*"))):
-            if not os.path.isdir(skill_dir):
+        Searches skill-library/ then skills/. skill-library/ takes priority;
+        if a skill name appears in both, only the skill-library/ version is used.
+        """
+        seen: set = set()
+        for base_dir in ALL_SKILL_DIRS:
+            if not os.path.isdir(base_dir):
                 continue
-
-            skill_name = os.path.basename(skill_dir)
-            self._analyze_skill(skill_name, skill_dir)
+            for skill_dir in sorted(glob.glob(os.path.join(base_dir, "*"))):
+                if not os.path.isdir(skill_dir):
+                    continue
+                skill_name = os.path.basename(skill_dir)
+                if skill_name.startswith(".") or skill_name in seen:
+                    continue
+                seen.add(skill_name)
+                self._analyze_skill(skill_name, skill_dir)
 
     def _analyze_skill(self, skill_name: str, skill_dir: str) -> None:
         """Analyze a single skill directory."""

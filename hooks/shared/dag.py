@@ -7,10 +7,12 @@ Schema matches go_sdk_agent's dag.go: nodes + branches tables.
 All public methods are fail-open — exceptions are caught and logged to stderr.
 """
 
+import datetime
 import json
 import os
 import secrets
 import sqlite3
+import sys
 import time
 import threading
 
@@ -52,6 +54,7 @@ CREATE TABLE IF NOT EXISTS knowledge (
     updated_at TEXT NOT NULL,
     metadata TEXT DEFAULT '{}'
 );
+CREATE INDEX IF NOT EXISTS idx_knowledge_source ON knowledge(source_node_id);
 
 CREATE TABLE IF NOT EXISTS observations (
     id TEXT PRIMARY KEY,
@@ -91,12 +94,18 @@ CREATE TABLE IF NOT EXISTS embeddings (
     vector BLOB NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_edges_target ON node_edges(target_id);
+
 CREATE INDEX IF NOT EXISTS idx_emb_source ON embeddings(source_table, source_id);
 """
 
 
 def _gen_id(prefix="nd_"):
     return prefix + secrets.token_hex(8)
+
+
+def _now_iso():
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 class ConversationDAG:
@@ -108,7 +117,18 @@ class ConversationDAG:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA busy_timeout=5000")
         self._db.execute("PRAGMA synchronous=NORMAL")
+        self._db.execute("PRAGMA cache_size=-64000")  # 64MB page cache
+        self._db.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
+        self._db.execute("PRAGMA temp_store=MEMORY")
         self._db.executescript(_DAG_SCHEMA)
+        # Index for DAG-to-memory promotion lookups
+        try:
+            self._db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_knowledge_source ON knowledge(source_node_id)"
+            )
+            self._db.commit()
+        except sqlite3.OperationalError:
+            pass
 
         # Migration: add metadata column if missing
         try:
@@ -163,11 +183,12 @@ class ConversationDAG:
             ]:
                 try:
                     self._db.execute(sql)
-                except sqlite3.OperationalError:
-                    pass  # Trigger already exists
+                except sqlite3.OperationalError as e:
+                    if "already exists" not in str(e):
+                        print(f"[DAG] FTS5 trigger error: {e}", file=sys.stderr)
             self._db.commit()
-        except Exception:
-            pass  # FTS5 not available — keyword search falls back to LIKE
+        except Exception as e:
+            print(f"[DAG] FTS5 init failed: {e}", file=sys.stderr)  # falls back to LIKE
 
     def _init_branch(self):
         """Pick or create the active branch."""
@@ -609,7 +630,357 @@ class ConversationDAG:
         name = "/".join(parts)
         return self.new_branch(name, project=project, subproject=subproject)
 
+    # --- Graph traversal ---
+
+    def find_related(self, node_id, max_hops=3):
+        """Return all nodes reachable from node_id within max_hops steps.
+
+        Traverses both upward (via parent_id) and downward (via children)
+        using recursive CTEs.  Returns a list of node dicts ordered by hop
+        distance, then by timestamp.  The seed node itself is excluded.
+        Fail-open -- returns [] on any error.
+        """
+        try:
+            rows = self._db.execute(
+                """
+                WITH RECURSIVE
+                upward(id, hops) AS (
+                    SELECT parent_id, 1
+                    FROM nodes WHERE id = ? AND parent_id != ''
+                    UNION
+                    SELECT n.parent_id, u.hops + 1
+                    FROM nodes n
+                    JOIN upward u ON n.id = u.id
+                    WHERE u.hops < ? AND n.parent_id != ''
+                ),
+                downward(id, hops) AS (
+                    SELECT id, 1
+                    FROM nodes WHERE parent_id = ?
+                    UNION
+                    SELECT n.id, d.hops + 1
+                    FROM nodes n
+                    JOIN downward d ON n.parent_id = d.id
+                    WHERE d.hops < ?
+                ),
+                combined(id, hops) AS (
+                    SELECT id, hops FROM upward
+                    UNION
+                    SELECT id, hops FROM downward
+                )
+                SELECT DISTINCT n.id, n.parent_id, n.role, n.content,
+                       n.model, n.provider, n.timestamp, n.token_count,
+                       n.metadata, MIN(c.hops) AS hops
+                FROM nodes n
+                JOIN combined c ON n.id = c.id
+                GROUP BY n.id
+                ORDER BY hops, n.timestamp
+                """,
+                (node_id, max_hops, node_id, max_hops),
+            ).fetchall()
+            results = []
+            for r in rows:
+                d = self._row_to_dict(r[:9])
+                d["hops"] = r[9]
+                results.append(d)
+            return results
+        except Exception as exc:
+            print(f"[dag] find_related error: {exc}", file=sys.stderr)
+            return []
+
+    def get_path(self, from_id, to_id):
+        """Return the ancestor path between two nodes, if one exists.
+
+        Checks both directions: from_id upward to to_id, and to_id upward
+        to from_id.  Uses a recursive CTE to walk the parent chain.
+        Returns an ordered list of node dicts (from_id first, to_id last),
+        or [] if no direct ancestor path exists.  Fail-open.
+        """
+        try:
+            if from_id == to_id:
+                node = self.get_node(from_id)
+                return [node] if node else []
+
+            def _ancestors_cte(start, stop):
+                rows = self._db.execute(
+                    """
+                    WITH RECURSIVE anc(id, parent_id, role, content, model,
+                                       provider, timestamp, token_count,
+                                       metadata, depth) AS (
+                        SELECT id, parent_id, role, content, model,
+                               provider, timestamp, token_count, metadata, 0
+                        FROM nodes WHERE id = ?
+                        UNION ALL
+                        SELECT n.id, n.parent_id, n.role, n.content, n.model,
+                               n.provider, n.timestamp, n.token_count,
+                               n.metadata, a.depth + 1
+                        FROM nodes n
+                        JOIN anc a ON n.id = a.parent_id
+                        WHERE a.parent_id != ''
+                    )
+                    SELECT id, parent_id, role, content, model,
+                           provider, timestamp, token_count, metadata, depth
+                    FROM anc
+                    ORDER BY depth
+                    """,
+                    (start,),
+                ).fetchall()
+                chain = [self._row_to_dict(r[:9]) for r in rows]
+                ids = [n["id"] for n in chain]
+                if stop not in ids:
+                    return []
+                cut = ids.index(stop)
+                return chain[: cut + 1]
+
+            path = _ancestors_cte(from_id, to_id)
+            if path:
+                return path
+
+            path_rev = _ancestors_cte(to_id, from_id)
+            if path_rev:
+                path_rev.reverse()
+                return path_rev
+
+            return []
+        except Exception as exc:
+            print(f"[dag] get_path error: {exc}", file=sys.stderr)
+            return []
+
+
+    # --- Stats & Metrics (Task #13) ---
+
+    def get_stats(self):
+        """Return comprehensive DAG stats dict."""
+        try:
+            node_count = self._db.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+            branch_count = self._db.execute("SELECT COUNT(*) FROM branches").fetchone()[0]
+            knowledge_count = self._db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+            embedding_count = self._db.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+            edge_count = self._db.execute("SELECT COUNT(*) FROM node_edges").fetchone()[0]
+            observation_count = self._db.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+            fix_count = self._db.execute("SELECT COUNT(*) FROM fix_outcomes").fetchone()[0]
+
+            promotion_count = self._db.execute(
+                "SELECT COUNT(*) FROM nodes WHERE metadata LIKE ? OR metadata LIKE ?",
+                ('%"promoted": true%', '%"promoted":true%'),
+            ).fetchone()[0]
+
+            depths = []
+            heads = self._db.execute(
+                "SELECT head_node_id FROM branches WHERE head_node_id != ''"
+            ).fetchall()
+            for (head,) in heads:
+                depth = len(self.get_ancestors(head))
+                depths.append(depth)
+            avg_branch_depth = sum(depths) / len(depths) if depths else 0.0
+
+            active_branch_count = self._db.execute(
+                "SELECT COUNT(*) FROM branches WHERE name NOT LIKE 'resolved/%'"
+            ).fetchone()[0]
+
+            return {
+                "node_count": node_count,
+                "branch_count": branch_count,
+                "knowledge_count": knowledge_count,
+                "embedding_count": embedding_count,
+                "active_branch_count": active_branch_count,
+                "avg_branch_depth": round(avg_branch_depth, 1),
+                "edge_count": edge_count,
+                "observation_count": observation_count,
+                "fix_count": fix_count,
+                "promotion_count": promotion_count,
+            }
+        except Exception as e:
+            print(f"[DAG] get_stats failed: {e}", file=sys.stderr)
+            return {}
+
+    def get_session_stats(self, branch_id=None):
+        """Return stats for a specific branch/session."""
+        bid = branch_id or self._branch_id
+        try:
+            row = self._db.execute(
+                "SELECT name, head_node_id, forked_from FROM branches WHERE id = ?",
+                (bid,),
+            ).fetchone()
+            if not row:
+                return {}
+            name, head, forked_from = row
+            ancestors = self.get_ancestors(head) if head else []
+            node_count = len(ancestors)
+            roles = {}
+            total_tokens = 0
+            for a in ancestors:
+                roles[a["role"]] = roles.get(a["role"], 0) + 1
+                total_tokens += a.get("token_count", 0)
+
+            knowledge_count = 0
+            if ancestors:
+                node_ids = [a["id"] for a in ancestors]
+                placeholders = ",".join("?" * len(node_ids))
+                knowledge_count = self._db.execute(
+                    f"SELECT COUNT(*) FROM knowledge WHERE source_node_id IN ({placeholders})",
+                    node_ids,
+                ).fetchone()[0]
+
+            return {
+                "branch_id": bid,
+                "name": name,
+                "node_count": node_count,
+                "roles": roles,
+                "total_tokens": total_tokens,
+                "knowledge_count": knowledge_count,
+                "forked_from": forked_from,
+            }
+        except Exception as e:
+            print(f"[DAG] get_session_stats failed: {e}", file=sys.stderr)
+            return {}
+
+    # --- FTS5 Maintenance (Task #11) ---
+
+    def optimize_fts(self):
+        """Run FTS5 optimize command to merge b-tree segments. Call on session close."""
+        try:
+            self._db.execute("INSERT INTO nodes_fts(nodes_fts) VALUES('optimize')")
+            self._db.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES('optimize')")
+            self._db.commit()
+            return True
+        except Exception as e:
+            print(f"[DAG] optimize_fts failed: {e}", file=sys.stderr)
+            return False
+
+    def rebuild_fts(self):
+        """Full FTS5 rebuild - re-index all content. Use sparingly."""
+        try:
+            self._db.execute("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild')")
+            self._db.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES('rebuild')")
+            self._db.commit()
+            return True
+        except Exception as e:
+            print(f"[DAG] rebuild_fts failed: {e}", file=sys.stderr)
+            return False
+
+    # --- Soft Delete & Archival (Task #10) ---
+
+    def _ensure_archive_table(self):
+        """Create archive table if it doesn't exist."""
+        self._db.executescript("""
+            CREATE TABLE IF NOT EXISTS nodes_archive (
+                id TEXT PRIMARY KEY,
+                parent_id TEXT DEFAULT '',
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                model TEXT DEFAULT '',
+                provider TEXT DEFAULT '',
+                timestamp INTEGER NOT NULL,
+                token_count INTEGER DEFAULT 0,
+                metadata TEXT DEFAULT '{}',
+                archived_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS branches_archive (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                head_node_id TEXT DEFAULT '',
+                forked_from TEXT DEFAULT '',
+                metadata TEXT DEFAULT '{}',
+                archived_at TEXT NOT NULL
+            );
+        """)
+
+    def soft_delete_node(self, node_id):
+        """Mark a node as deleted (sets metadata.deleted=true). Does not remove from DB."""
+        try:
+            self.update_metadata(node_id, {"deleted": True, "deleted_at": _now_iso()})
+            return True
+        except Exception as e:
+            print(f"[DAG] soft_delete_node failed: {e}", file=sys.stderr)
+            return False
+
+    def archive_old_sessions(self, days=30):
+        """Move nodes from branches older than days to archive tables.
+
+        Returns count of archived nodes.
+        """
+        try:
+            self._ensure_archive_table()
+            cutoff_ms = int((time.time() - days * 86400) * 1000)
+            now_iso = _now_iso()
+
+            old_branches = self._db.execute(
+                "SELECT b.id, b.name, b.head_node_id, b.forked_from, b.metadata "
+                "FROM branches b "
+                "LEFT JOIN nodes n ON n.id = b.head_node_id "
+                "WHERE COALESCE(n.timestamp, 0) < ? AND COALESCE(n.timestamp, 0) > 0 "
+                "AND b.id != ?",
+                (cutoff_ms, self._branch_id),
+            ).fetchall()
+
+            archived_count = 0
+            for bid, bname, bhead, bforked, bmeta in old_branches:
+                if not bhead:
+                    continue
+                ancestors = self.get_ancestors(bhead)
+                node_ids = [a["id"] for a in ancestors]
+
+                for nid in node_ids:
+                    node = self.get_node(nid)
+                    if not node:
+                        continue
+                    try:
+                        self._db.execute(
+                            "INSERT OR IGNORE INTO nodes_archive "
+                            "(id, parent_id, role, content, model, provider, "
+                            "timestamp, token_count, metadata, archived_at) "
+                            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                            (node["id"], node["parent_id"], node["role"],
+                             node["content"], node["model"], node["provider"],
+                             node["timestamp"], node["token_count"],
+                             json.dumps(node["metadata"]), now_iso),
+                        )
+                        archived_count += 1
+                    except Exception:
+                        continue
+
+                self._db.execute(
+                    "INSERT OR IGNORE INTO branches_archive "
+                    "(id, name, head_node_id, forked_from, metadata, archived_at) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (bid, bname, bhead, bforked, bmeta or "{}", now_iso),
+                )
+
+                if node_ids:
+                    placeholders = ",".join("?" * len(node_ids))
+                    self._db.execute(
+                        f"DELETE FROM nodes WHERE id IN ({placeholders})", node_ids
+                    )
+                self._db.execute("DELETE FROM branches WHERE id = ?", (bid,))
+
+            self._db.commit()
+            return archived_count
+        except Exception as e:
+            print(f"[DAG] archive_old_sessions failed: {e}", file=sys.stderr)
+            return 0
+
+    def purge_archived(self, older_than_days=90):
+        """Permanently delete archived data older than specified days."""
+        try:
+            self._ensure_archive_table()
+            cutoff = (datetime.datetime.now() - datetime.timedelta(days=older_than_days)).strftime("%Y-%m-%dT%H:%M:%S")
+            c1 = self._db.execute(
+                "DELETE FROM nodes_archive WHERE archived_at < ?", (cutoff,)
+            ).rowcount
+            c2 = self._db.execute(
+                "DELETE FROM branches_archive WHERE archived_at < ?", (cutoff,)
+            ).rowcount
+            self._db.commit()
+            return c1 + c2
+        except Exception as e:
+            print(f"[DAG] purge_archived failed: {e}", file=sys.stderr)
+            return 0
+
     def close(self):
+        try:
+            self._db.execute("PRAGMA optimize")
+        except Exception:
+            pass
         self._db.close()
 
 

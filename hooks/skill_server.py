@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Torus Framework — Skill Library MCP Server
 
-On-demand skill loader. Skills live in ~/.claude/skill-library/ and are loaded
-only when invoked, costing zero tokens in the system prompt.
+On-demand skill loader. Skills live in ~/.claude/skill-library/ and
+~/.claude/skills/ and are loaded only when invoked, costing zero tokens
+in the system prompt.
 
 Run standalone: python3 skill_server.py
 Used via MCP: registered via `claude mcp add`
@@ -17,7 +18,11 @@ from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
 
-_SKILL_LIBRARY = os.path.join(os.path.expanduser("~"), ".claude", "skill-library")
+_CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
+_SKILL_LIBRARY = os.path.join(_CLAUDE_DIR, "skill-library")
+_SKILLS_DIR = os.path.join(_CLAUDE_DIR, "skills")
+# Both directories are searched in order; skill-library takes priority on name conflicts.
+_SKILL_DIRS = [_SKILL_LIBRARY, _SKILLS_DIR]
 _USAGE_LOG = os.path.join(_SKILL_LIBRARY, ".usage_log.jsonl")
 
 mcp = FastMCP("skills")
@@ -49,6 +54,35 @@ def _get_description(skill_path: str) -> str:
     return "(no description)"
 
 
+def _find_skill(name: str):
+    """Return (skill_dir, md_path) for the named skill, searching both directories.
+
+    Returns (None, None) if not found.
+    """
+    for base in _SKILL_DIRS:
+        skill_dir = os.path.join(base, name)
+        md_path = os.path.join(skill_dir, "SKILL.md")
+        if os.path.exists(md_path):
+            return skill_dir, md_path
+    return None, None
+
+
+def _all_available_skills():
+    """Return sorted list of all skill names across both directories (deduplicated)."""
+    seen = set()
+    names = []
+    for base in _SKILL_DIRS:
+        if not os.path.isdir(base):
+            continue
+        for d in sorted(os.listdir(base)):
+            if d.startswith("."):
+                continue
+            if os.path.isdir(os.path.join(base, d)) and d not in seen:
+                seen.add(d)
+                names.append(d)
+    return sorted(names)
+
+
 def _log_usage(skill_name: str):
     """Append invocation to usage log."""
     entry = {
@@ -69,27 +103,34 @@ def list_skills() -> dict:
     """List all skills in the skill library with one-line descriptions.
 
     Returns skill names, descriptions, and estimated token counts.
+    Searches both skill-library/ and skills/ directories.
     Use this to discover available skills before invoking one.
     """
     skills = []
-    if not os.path.isdir(_SKILL_LIBRARY):
-        return {"skills": [], "count": 0}
+    seen = set()
 
-    for name in sorted(os.listdir(_SKILL_LIBRARY)):
-        skill_dir = os.path.join(_SKILL_LIBRARY, name)
-        if not os.path.isdir(skill_dir) or name.startswith("."):
+    for base in _SKILL_DIRS:
+        if not os.path.isdir(base):
             continue
-        md_path = os.path.join(skill_dir, "SKILL.md")
-        tokens_est = 0
-        if os.path.exists(md_path):
-            chars = os.path.getsize(md_path)
-            tokens_est = int(chars / 3.8)
-        skills.append({
-            "name": name,
-            "description": _get_description(skill_dir),
-            "tokens_est": tokens_est,
-        })
+        for name in sorted(os.listdir(base)):
+            if name.startswith(".") or name in seen:
+                continue
+            skill_dir = os.path.join(base, name)
+            if not os.path.isdir(skill_dir):
+                continue
+            seen.add(name)
+            md_path = os.path.join(skill_dir, "SKILL.md")
+            tokens_est = 0
+            if os.path.exists(md_path):
+                chars = os.path.getsize(md_path)
+                tokens_est = int(chars / 3.8)
+            skills.append({
+                "name": name,
+                "description": _get_description(skill_dir),
+                "tokens_est": tokens_est,
+            })
 
+    skills.sort(key=lambda s: s["name"])
     return {"skills": skills, "count": len(skills)}
 
 
@@ -99,20 +140,17 @@ def invoke_skill(name: str) -> dict:
     """Load a skill's full instructions for execution.
 
     Args:
-        name: Skill name (directory name in skill-library).
+        name: Skill name (directory name in skill-library or skills).
 
+    Searches both skill-library/ and skills/ directories.
     Returns the complete SKILL.md content. Follow the instructions returned.
     """
-    skill_dir = os.path.join(_SKILL_LIBRARY, name)
-    md_path = os.path.join(skill_dir, "SKILL.md")
+    skill_dir, md_path = _find_skill(name)
 
-    if not os.path.exists(md_path):
-        available = [d for d in os.listdir(_SKILL_LIBRARY)
-                     if os.path.isdir(os.path.join(_SKILL_LIBRARY, d))
-                     and not d.startswith(".")]
+    if md_path is None:
         return {
             "error": f"Skill '{name}' not found",
-            "available": sorted(available),
+            "available": _all_available_skills(),
         }
 
     with open(md_path, "r") as f:

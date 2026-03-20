@@ -59,6 +59,23 @@ def inject_enforcer_fields(tracker_state: dict, enforcer_state: dict) -> None:
     tracker_state["_files_read"] = enforcer_state.get("files_read", [])
 
 
+def inject_dag_fields(tracker_state: dict, dag) -> None:
+    """Inject DAG context into tracker_state for header and context section.
+
+    Prefixed with _dag_ to avoid collisions with tracker's own fields.
+    Fail-open: exceptions are silently caught.
+    """
+    try:
+        binfo = dag.current_branch_info()
+        tracker_state["_dag_branch"] = binfo.get("name", "")
+        tracker_state["_dag_branch_label"] = dag.get_branch_label()
+        tracker_state["_dag_node_count"] = binfo.get("msg_count", 0)
+        tracker_state["_dag_total_branches"] = binfo.get("total_branches", 0)
+    except Exception:
+        pass  # Fail-open
+    tracker_state["_deferred_items"] = enforcer_state.get("deferred_items", [])
+
+
 # ── Section builders ──────────────────────────────────────────────────────────
 
 
@@ -209,6 +226,32 @@ def _build_context_section(tracker_state: dict) -> str:
     else:
         lines.append("- (none)")
 
+    # Deferred items — strategies that failed and were deferred for later
+    deferred = tracker_state.get("_deferred_items", [])
+    if deferred:
+        lines.append("### Deferred")
+        for item in deferred[-3:]:
+            strategy = item.get("strategy", "?")[:40]
+            err_sig = item.get("error_signature", "?")[:30]
+            fails = item.get("fail_count", 0)
+            lines.append(f"- {strategy} ({err_sig}, {fails}x failed)")
+
+    # DAG Branch — active task context
+    dag_branch_ctx = tracker_state.get("_dag_branch", "")
+    dag_label_ctx = tracker_state.get("_dag_branch_label", "")
+    dag_nodes_ctx = tracker_state.get("_dag_node_count", 0)
+    dag_total_ctx = tracker_state.get("_dag_total_branches", 0)
+    if dag_branch_ctx or dag_nodes_ctx:
+        lines.append("### DAG Context")
+        dag_line = f"- Branch: {dag_branch_ctx or 'main'}"
+        if dag_label_ctx:
+            dag_line += f" (task={dag_label_ctx})"
+        if dag_nodes_ctx:
+            dag_line += f", {dag_nodes_ctx} nodes"
+        if dag_total_ctx > 1:
+            dag_line += f", {dag_total_ctx} branches"
+        lines.append(dag_line)
+
     # Hot Files — merge edit counts + read counts per file
     edit_streak = tracker_state.get("_edit_streak", {})
     files_read_list = tracker_state.get("_files_read", [])
@@ -280,10 +323,22 @@ def _build_full_file(
     session_id = tracker_state.get("_session_id", "session")
     branch = tracker_state.get("_branch", _get_branch())
 
+    dag_branch = tracker_state.get("_dag_branch", "")
+    dag_label = tracker_state.get("_dag_branch_label", "")
+    dag_nodes = tracker_state.get("_dag_node_count", 0)
+
+    dag_suffix = ""
+    if dag_branch and dag_branch not in ("main", ""):
+        dag_suffix = f" | DAG: {dag_branch}"
+        if dag_label:
+            dag_suffix += f":{dag_label}"
+    elif dag_nodes > 0:
+        dag_suffix = f" | DAG: {dag_nodes}n"
+
     header = (
         f"# Working Memory (auto-generated — do not edit)\n"
         f"## Session {session_id[:16] if len(session_id) > 16 else session_id}"
-        f" | Branch: {branch}\n\n"
+        f" | Branch: {branch}{dag_suffix}\n\n"
     )
 
     status = _build_status_section(tracker_state)

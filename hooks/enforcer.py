@@ -50,6 +50,16 @@ from shared.metrics_collector import (
     record_gate_latency as _mc_latency,
 )
 
+# Cross-agent file coordination (fail-open import)
+try:
+    from shared.file_lock_registry import acquire_lock as _flr_acquire, is_locked as _flr_is_locked
+    _FILE_LOCK_AVAILABLE = True
+except ImportError:
+    _FILE_LOCK_AVAILABLE = False
+
+# Tools that require file lock coordination
+_FILE_LOCK_TOOLS = {"Edit", "Write", "NotebookEdit"}
+
 
 # -- Gate Result Cache ----------------------------------------------------
 # Lightweight TTL-based cache for non-blocking gate results.
@@ -365,6 +375,7 @@ GATE_TOOL_MAP = {
     },  # + MCP tools checked internally
     "gates.gate_18_canary": None,  # Universal — observes all tool calls
     "gates.gate_19_hindsight": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_20_self_check": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_21_working_summary": {"Edit", "Write", "NotebookEdit", "Bash", "Task"},
 }
 
@@ -508,6 +519,22 @@ def handle_pre_tool_use(tool_name, tool_input, state):
             except Exception as e:
                 print(f"[ENFORCER] G17 scan error: {e}", file=sys.stderr)
         return
+
+    # Cross-agent file lock check (before gates, fail-open)
+    if _FILE_LOCK_AVAILABLE and tool_name in _FILE_LOCK_TOOLS:
+        try:
+            _fp = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+            if _fp:
+                _session = state.get("_session_id", "main")
+                _lock_info = _flr_is_locked(_fp, exclude_session=_session)
+                if _lock_info:
+                    _locker = _lock_info.get("session_id", "unknown")
+                    _msg = f"[FILE LOCK] BLOCKED: File '{_fp}' is locked by session {_locker}"
+                    print(_msg, file=sys.stderr)
+                    sys.exit(2)
+        except Exception as e:
+            # Fail-open: lock registry error must not block edits
+            print(f"[ENFORCER] File lock check error (fail-open): {e}", file=sys.stderr)
 
     gates = _gates_for_tool(tool_name)
 
@@ -761,6 +788,16 @@ def handle_pre_tool_use(tool_name, tool_input, state):
 
     # Write enforcer mutations to sideband (tracker promotes to disk on next PostToolUse)
     write_enforcer_sideband(state, session_id=state.get("_session_id", "main"))
+
+    # Acquire file lock after all gates pass (fail-open)
+    if _FILE_LOCK_AVAILABLE and tool_name in _FILE_LOCK_TOOLS:
+        try:
+            _fp = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+            if _fp:
+                _session = state.get("_session_id", "main")
+                _flr_acquire(_fp, _session)
+        except Exception as e:
+            print(f"[ENFORCER] File lock acquire error (fail-open): {e}", file=sys.stderr)
 
 
 def main():

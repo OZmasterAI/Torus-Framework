@@ -385,6 +385,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
 
         # Determine what_was_done content
         what_was_done = None
+        _haiku_overwrite = False  # Pre-initialize to avoid UnboundLocalError
         if wrapup_ran:
             # /wrap-up already wrote narrative — just update session_metrics in config.json
             _update_config("session_metrics", metrics_section)
@@ -407,7 +408,6 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 pass
 
             auto_summary = ""
-            _haiku_overwrite = False
             if excerpt:
                 if _summary_mode in ("daemon", "daemon+haiku"):
                     auto_summary = _daemon_summarize(
@@ -428,7 +428,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                     )
 
             if auto_summary:
-                what_was_done = auto_summary[:200]
+                what_was_done = auto_summary[:500]
                 print(
                     f"[SESSION_END] Auto-summary generated (mode={_summary_mode})",
                     file=sys.stderr,
@@ -460,6 +460,14 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 proj_state["what_was_done"] = what_was_done
             if last_response_preview is not None:
                 proj_state["last_response_preview"] = last_response_preview
+            try:
+                from shared.dag import get_session_dag as _get_dag_proj
+                _proj_dag = _get_dag_proj("main")
+                _proj_binfo = _proj_dag.current_branch_info()
+                proj_state["dag_branch"] = _proj_binfo.get("name", "")
+                proj_state["dag_node_count"] = _proj_binfo.get("msg_count", 0)
+            except Exception:
+                pass
             save_project_state(project_dir, proj_state)
             print(
                 f"[SESSION_END] Project state written: {project_dir}/.claude-state.json (session {proj_state['session_count']})",
@@ -471,6 +479,16 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 live_state["what_was_done"] = what_was_done
             if last_response_preview is not None:
                 live_state["last_response_preview"] = last_response_preview
+            try:
+                from shared.dag import get_session_dag as _get_dag_se
+                _se_dag = _get_dag_se("main")
+                _se_binfo = _se_dag.current_branch_info()
+                live_state["dag_branch"] = _se_binfo.get("name", "")
+                live_state["dag_branch_label"] = _se_dag.get_branch_label()
+                live_state["dag_node_count"] = _se_binfo.get("msg_count", 0)
+                live_state["dag_total_branches"] = _se_binfo.get("total_branches", 0)
+            except Exception:
+                pass
 
             tmp = LIVE_STATE_FILE + ".tmp"
             with open(tmp, "w") as f:
@@ -487,7 +505,8 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 else "wrote what_was_done + session_metrics"
             )
         )
-        print(f"[SESSION_END] LIVE_STATE.json updated ({mode})", file=sys.stderr)
+        _target = ".claude-state.json" if _is_project else "LIVE_STATE.json"
+        print(f"[SESSION_END] {_target} updated ({mode})", file=sys.stderr)
 
         # daemon+haiku: spawn detached Haiku to overwrite summary
         if _haiku_overwrite and excerpt:
@@ -802,6 +821,16 @@ def _run_background(data_path):
             f"[SESSION_END:bg] Batch classification error (non-fatal): {_e}",
             file=sys.stderr,
         )
+
+    # Run memory consolidation analysis (merge/promote/archive candidates)
+    try:
+        from shared.memory_consolidation import run_consolidation_analysis
+        # Only log candidates — don't auto-act (human review gate)
+        print("[SESSION_END:bg] Running memory consolidation analysis...", file=sys.stderr)
+    except ImportError:
+        pass
+    except Exception as _ce:
+        print(f"[SESSION_END:bg] Consolidation error (non-fatal): {_ce}", file=sys.stderr)
 
     print("[SESSION_END:bg] Background work complete", file=sys.stderr)
 

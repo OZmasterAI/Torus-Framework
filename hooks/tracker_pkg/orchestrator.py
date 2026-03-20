@@ -27,6 +27,27 @@ from tracker_pkg.verification import (
 )
 from tracker_pkg.auto_remember import _auto_remember_event
 
+# Cross-agent file coordination — release locks after Edit/Write (fail-open)
+try:
+    from shared.file_lock_registry import release_lock as _flr_release
+    _FILE_LOCK_AVAILABLE = True
+except ImportError:
+    _FILE_LOCK_AVAILABLE = False
+
+# Learning loop — feeds gate outcomes into adaptive thresholds + tool mastery
+try:
+    from shared.learning_loop import process_gate_result as _ll_process_gate
+    _LEARNING_LOOP_AVAILABLE = True
+except ImportError:
+    _LEARNING_LOOP_AVAILABLE = False
+
+# Skill tracker — records skill invocation outcomes
+try:
+    from shared.skill_tracker import load_skill_data as _st_load, save_skill_data as _st_save, record_skill_invocation as _st_record
+    _SKILL_TRACKER_AVAILABLE = True
+except ImportError:
+    _SKILL_TRACKER_AVAILABLE = False
+
 # Tool profile evolution (AutoAgent-inspired online adaptation)
 try:
     from shared.tool_profiles import (
@@ -571,6 +592,20 @@ def handle_post_tool_use(
     # Gate effectiveness: resolve pending block outcomes
     _resolve_gate_block_outcomes(tool_name, tool_input, state)
 
+    # Feed gate outcomes into learning loop (adaptive thresholds + tool mastery)
+    if _LEARNING_LOOP_AVAILABLE:
+        try:
+            _sideband = read_enforcer_sideband(state.get("_session_id", "main"))
+            for _gr in (_sideband or {}).get("gate_results", []):
+                _ll_process_gate(
+                    gate_name=_gr.get("gate", ""),
+                    gate_blocked=_gr.get("blocked", False),
+                    tool_name=tool_name,
+                    tool_succeeded=True,
+                )
+        except Exception:
+            pass
+
     # Auto-expire fixing_error after 30 minutes of staleness
     # Prevents permanent fixing_error=True when tests never pass
     if state.get("fixing_error", False):
@@ -608,6 +643,15 @@ def handle_post_tool_use(
             tool_input.get("file_path", "") or tool_input.get("notebook_path", ""),
             state.get("_session_id", "main"),
         )
+
+    # Release file lock after successful Edit/Write (fail-open)
+    if _FILE_LOCK_AVAILABLE and tool_name in ("Edit", "Write", "NotebookEdit"):
+        try:
+            _fp = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+            if _fp:
+                _flr_release(_fp, state.get("_session_id", "main"))
+        except Exception:
+            pass  # Fail-open: lock release errors are non-fatal
 
     # Track memory queries
     if is_memory_tool(tool_name):
@@ -650,6 +694,11 @@ def handle_post_tool_use(
                 # Cap at 50 recent entries
                 if len(recent) > 50:
                     state["recent_skills"] = recent[-50:]
+                # Record in skill_tracker for effectiveness analysis
+                if _SKILL_TRACKER_AVAILABLE:
+                    _sd = _st_load()
+                    _st_record(_sd, skill_name)
+                    _st_save(_sd)
         except Exception as e:
             _log_debug(f"skill tracking failed: {e}")
 

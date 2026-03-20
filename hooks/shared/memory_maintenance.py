@@ -382,9 +382,11 @@ def _similarity_groups(entries):
         })
 
     # Count singletons: entries whose tags all appear on only 1 memory
+    # Use full ID lists from tag_to_ids, not truncated member_ids[:10]
     clustered_ids = set()
     for c in clusters:
-        clustered_ids.update(c["member_ids"])
+        tag = c["label"]
+        clustered_ids.update(tag_to_ids.get(tag, []))
     singleton_count = sum(
         1 for e in entries if e["id"] not in clustered_ids
     )

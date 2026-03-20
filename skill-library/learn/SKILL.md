@@ -76,7 +76,7 @@ If the user used `--apply` flag or the findings clearly map to concrete improvem
 Only when the user approves (or `--apply` was given and changes are unambiguous):
 
 For each proposed improvement:
-1. **Plan Mode** — Enter plan mode, write out the specific file changes
+1. **Plan** — Run /brainstorm + /writing-plans to design and plan the specific file changes
 2. **Approval** — Present the plan, wait for user confirmation
 3. **Build** — Follow The Loop: read file → edit → test → prove
 4. **Verify** — Run tests, show output

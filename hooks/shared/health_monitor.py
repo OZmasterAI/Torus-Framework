@@ -155,7 +155,7 @@ def check_memory_health() -> dict:
         result["socket_exists"] = os.path.exists(SOCKET_PATH)
 
         # Quick reachability check (retries=1 to keep health checks fast)
-        available = is_worker_available(retries=1, delay=0.1)
+        available = is_worker_available(retries=2, delay=0.2)
         result["worker_reachable"] = available
 
         if available:
@@ -287,7 +287,7 @@ def check_ramdisk_health() -> dict:
 
         if available:
             # Confirm writability with a quick probe
-            test_path = os.path.join(RAMDISK_DIR, ".health_probe")
+            test_path = os.path.join(TMPFS_STATE_DIR, ".health_probe")
             try:
                 with open(test_path, "w") as fh:
                     fh.write("ok")
@@ -402,13 +402,28 @@ def full_health_check(session_id: str = "default") -> dict:
     global _last_report
     t0 = time.monotonic()
 
-    components = {
-        COMPONENT_GATES: check_gates_health(),
-        COMPONENT_MEMORY: check_memory_health(),
-        COMPONENT_STATE: check_state_health(session_id),
-        COMPONENT_RAMDISK: check_ramdisk_health(),
-        COMPONENT_AUDIT: check_audit_health(),
+    # Run independent health checks in parallel (saves ~200-400ms)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    _check_fns = {
+        COMPONENT_GATES: check_gates_health,
+        COMPONENT_MEMORY: check_memory_health,
+        COMPONENT_STATE: lambda: check_state_health(session_id),
+        COMPONENT_RAMDISK: check_ramdisk_health,
+        COMPONENT_AUDIT: check_audit_health,
     }
+    components = {}
+    try:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(fn): name for name, fn in _check_fns.items()}
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    components[name] = future.result(timeout=5)
+                except Exception as exc:
+                    components[name] = {"status": "error", "error": str(exc)}
+    except Exception:
+        # Fallback to sequential on thread pool failure
+        components = {name: fn() for name, fn in _check_fns.items()}
 
     # Score each component: ok=100, degraded=50, error=0
     _STATUS_SCORES = {"ok": 100, "degraded": 50, "error": 0}

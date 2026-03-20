@@ -4,55 +4,47 @@
 When the user says "create a task", "list tasks", "send message to agent", "what tasks are pending", "assign work", or wants to coordinate agent work.
 
 ## How it works
-This skill wraps the `agent_coordination` MCP tool. Parse the user's intent and call the tool with the right action.
+Use the native task and messaging tools: `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`, `TaskStop`, and `SendMessage`.
 
 ## Actions
 
 ### Create a task
 ```
-agent_coordination(action="create_task", title="...", created_by="main", priority=3, assigned_to="builder", tags="audit,gates", goal="Why this matters")
+TaskCreate(subject="...", owner="builder", priority=3, tags=["audit","gates"], description="Why this matters")
 ```
-- `title` — required
+- `subject` — required (imperative form, e.g. "Fix gate 7")
 - `priority` — 1 (highest) to 9 (lowest), default 5
-- `assigned_to` — agent name, sends notification if set
-- `tags` — comma-separated
-- `goal` — the "why" context
-- `depends_on` — task_id that must be done first
-- `required_role` — only agents with this role can claim it
-- `parent_task_id` — links as subtask, auto-inherits goal
+- `owner` — agent name
+- `tags` — list of strings
+- `description` — the "why" context
 
 ### List tasks
 ```
-agent_coordination(action="list_tasks", status="pending", agent_id="builder", tag="audit")
+TaskList()
 ```
-All filters are optional and combinable.
 
-### Claim a task
+### Get task details
 ```
-agent_coordination(action="claim_task", agent_id="builder", role="builder", tag="gates")
+TaskGet(taskId="...")
 ```
-Atomically grabs the highest-priority pending task matching filters.
 
-### Complete a task
+### Update a task
 ```
-agent_coordination(action="complete_task", task_id="...", result="42 tests passed")
+TaskUpdate(taskId="...", status="completed")
 ```
-Marks done and broadcasts completion to the message channel.
+- `status` — "pending" | "in_progress" | "completed" | "deleted"
 
 ### Send a message
 ```
-agent_coordination(action="send_message", content="Look at gate 16", to_agent="researcher", agent_id="main")
+SendMessage(to="researcher", message="Look at gate 16", summary="Check gate 16")
 ```
-- `to_agent` — "all" for broadcast, or specific agent name
-- `msg_type` — "info", "request", "warning", "discovery", "status"
-
-### Read messages
-```
-agent_coordination(action="read_messages", agent_id="researcher", since_minutes=30)
-```
+- `to` — agent name, or `"*"` for broadcast (use sparingly)
+- `summary` — required 5-10 word preview
 
 ## Steps
-1. Parse what the user wants (create/list/claim/complete/send/read)
-2. Call `agent_coordination` MCP tool with the right action and parameters
-3. Format and display the result
-4. If creating multiple tasks, call sequentially (depends_on needs previous task_id)
+1. `search_knowledge("[task topic]")` — check for prior art or related agent work
+2. Parse what the user wants (create/list/get/update/send)
+3. Call the appropriate native tool with the right parameters
+4. Format and display the result
+5. If creating multiple tasks, call sequentially when tasks depend on each other
+6. `remember_this("[task summary]", "agents coordination", "type:decision")` for significant task plans

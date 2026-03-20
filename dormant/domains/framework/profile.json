@@ -1,0 +1,20 @@
+{
+  "description": "Torus framework development — gates, hooks, enforcer, memory system, skills, boot pipeline",
+  "security_profile": "balanced",
+  "gate_modes": {},
+  "disabled_gates": [],
+  "memory_tags": ["area:framework", "gates", "enforcer", "hooks", "memory-system", "boot-pipeline", "skills"],
+  "l2_keywords": ["gate", "enforcer", "hook", "torus", "framework", "memory_server", "chromadb", "boot_pkg", "skill"],
+  "auto_detect": {
+    "live_state_project": ["torus-framework", "self-healing*", "megaman*"],
+    "live_state_feature": ["*framework*", "*gate*", "*enforcer*", "*hook*"]
+  },
+  "graduation": {
+    "graduated": true,
+    "graduated_at": "2026-02-24T18:15:00Z",
+    "memory_count_at_graduation": 105,
+    "last_refreshed": "2026-02-24T18:15:00Z",
+    "l2_scanned_until": "2026-02-24T18:15:00Z"
+  },
+  "token_budget": 800
+}

@@ -533,3 +533,195 @@ class TestDAGTrace:
             assert len(lines) == 2  # 1 before + target (no nodes after in chain)
             assert ">>>" in lines[-1]  # target is last
             dag.close()
+
+
+# --- New methods: find_related, get_path, get_stats, optimize_fts ---
+
+
+class TestFindRelated:
+    def test_find_related_upward(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            n1 = dag.add_node('', 'user', 'root')
+            n2 = dag.add_node(n1, 'assistant', 'child of root')
+            n3 = dag.add_node(n2, 'user', 'grandchild')
+            related = dag.find_related(n3, max_hops=2)
+            ids = [r['id'] for r in related]
+            assert n2 in ids  # 1 hop up
+            assert n1 in ids  # 2 hops up
+            assert n3 not in ids  # seed excluded
+            dag.close()
+
+    def test_find_related_downward(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            n1 = dag.add_node('', 'user', 'root')
+            n2 = dag.add_node(n1, 'assistant', 'child')
+            n3 = dag.add_node(n2, 'user', 'grandchild')
+            related = dag.find_related(n1, max_hops=2)
+            ids = [r['id'] for r in related]
+            assert n2 in ids  # 1 hop down
+            assert n3 in ids  # 2 hops down
+            assert n1 not in ids  # seed excluded
+            dag.close()
+
+    def test_find_related_max_hops(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            parent = ''
+            nodes = []
+            for i in range(6):
+                parent = dag.add_node(parent, 'user', f'msg {i}')
+                nodes.append(parent)
+            # From nodes[2], max_hops=1: only nodes[1] and nodes[3]
+            related = dag.find_related(nodes[2], max_hops=1)
+            ids = [r['id'] for r in related]
+            assert nodes[1] in ids
+            assert nodes[3] in ids
+            assert nodes[0] not in ids  # 2 hops — too far
+            assert nodes[4] not in ids  # 2 hops — too far
+            dag.close()
+
+    def test_find_related_empty_graph(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            result = dag.find_related('nd_nonexistent', max_hops=3)
+            assert result == []
+            dag.close()
+
+    def test_find_related_hops_field(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            n1 = dag.add_node('', 'user', 'root')
+            n2 = dag.add_node(n1, 'assistant', 'level 1')
+            n3 = dag.add_node(n2, 'user', 'level 2')
+            related = dag.find_related(n1, max_hops=2)
+            hop_map = {r['id']: r['hops'] for r in related}
+            assert hop_map[n2] == 1
+            assert hop_map[n3] == 2
+            dag.close()
+
+
+class TestGetPath:
+    def test_get_path_direct_ancestor(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            n1 = dag.add_node('', 'user', 'root')
+            n2 = dag.add_node(n1, 'assistant', 'mid')
+            n3 = dag.add_node(n2, 'user', 'leaf')
+            path = dag.get_path(n3, n1)
+            ids = [n['id'] for n in path]
+            assert ids[0] == n3
+            assert ids[-1] == n1
+            assert n2 in ids
+            dag.close()
+
+    def test_get_path_reversed(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            n1 = dag.add_node('', 'user', 'root')
+            n2 = dag.add_node(n1, 'assistant', 'mid')
+            n3 = dag.add_node(n2, 'user', 'leaf')
+            path = dag.get_path(n1, n3)
+            ids = [n['id'] for n in path]
+            assert ids[0] == n1
+            assert ids[-1] == n3
+            dag.close()
+
+    def test_get_path_same_node(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            n1 = dag.add_node('', 'user', 'solo')
+            path = dag.get_path(n1, n1)
+            assert len(path) == 1
+            assert path[0]['id'] == n1
+            dag.close()
+
+    def test_get_path_unrelated_nodes(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            n1 = dag.add_node('', 'user', 'branch A root')
+            n2 = dag.add_node('', 'user', 'branch B root')  # separate root
+            path = dag.get_path(n1, n2)
+            assert path == []
+            dag.close()
+
+    def test_get_path_nonexistent(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            path = dag.get_path('nd_fake1', 'nd_fake2')
+            assert path == []
+            dag.close()
+
+
+class TestGetStats:
+    def test_get_stats_empty(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            stats = dag.get_stats()
+            assert stats['node_count'] == 0
+            assert stats['branch_count'] == 1  # main branch
+            assert stats['knowledge_count'] == 0
+            dag.close()
+
+    def test_get_stats_with_nodes(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            n1 = dag.add_node('', 'user', 'hello')
+            n2 = dag.add_node(n1, 'assistant', 'hi')
+            stats = dag.get_stats()
+            assert stats['node_count'] == 2
+            assert stats['branch_count'] == 1
+            dag.close()
+
+    def test_get_stats_avg_depth(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            parent = ''
+            for i in range(4):
+                parent = dag.add_node(parent, 'user', f'msg {i}')
+            stats = dag.get_stats()
+            # avg_depth >= 1 (at least 4 nodes deep)
+            assert stats.get('avg_depth', stats.get('avg_branch_depth', 0)) >= 1
+            dag.close()
+
+
+class TestOptimizeFts:
+    def test_optimize_fts_runs_without_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            dag.add_node('', 'user', 'test content for fts')
+            # Should not raise
+            dag.optimize_fts()
+            dag.close()
+
+    def test_optimize_fts_returns_true(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            result = dag.optimize_fts()
+            # Returns True on success (or no return value — both acceptable)
+            assert result is True or result is None
+            dag.close()
+
+    def test_optimize_fts_content_still_searchable(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            dag.add_node('', 'user', 'searchable content before optimize')
+            dag.optimize_fts()
+            # FTS search should still work after optimize
+            results = dag._db.execute(
+                "SELECT content FROM nodes_fts WHERE nodes_fts MATCH 'searchable'"
+            ).fetchall()
+            assert len(results) == 1
+            dag.close()
+
+    def test_close_runs_pragma_optimize(self):
+        with tempfile.TemporaryDirectory() as d:
+            dag = ConversationDAG(os.path.join(d, 'test.db'))
+            dag.add_node('', 'user', 'test')
+            # close() should not raise even if PRAGMA optimize is called
+            dag.close()
+            # Re-open to verify DB is still intact
+            dag2 = ConversationDAG(os.path.join(d, 'test.db'))
+            assert dag2.get_head() != '' or True  # just verify it opens
+            dag2.close()

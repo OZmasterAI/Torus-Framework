@@ -21,7 +21,7 @@ When the user says "test", "run tests", "write tests", "failing test", "test sui
    - search_knowledge() for similar past failures
    - query_fix_history() if the error pattern has been seen before
 5. **FIX** (if user asks to fix):
-   - Enter Plan Mode if the fix touches multiple files
+   - Run /brainstorm if the fix touches multiple files
    - Make the minimal change needed to fix the failure
    - Re-run the specific failing test to confirm the fix
    - Re-run the full suite to check for regressions

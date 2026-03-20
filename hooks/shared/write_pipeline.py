@@ -1,21 +1,22 @@
 """Write Pipeline — Layer 3 of the Memory v2 Layered Redesign.
 
-Orchestrates the full write flow: validate → normalize → quality score →
-dedup check → classify tier → store → side effects.
+Orchestrates the full write flow: validate → normalize → A-Mem enrich →
+quality score → dedup check → classify tier → store → side effects.
 
 Public API:
     from shared.write_pipeline import WritePipeline
 """
 
 import os
+import re
 import time
 from datetime import datetime
 
 
 class WritePipeline:
-    """7-step write orchestrator.
+    """7-step write orchestrator (with A-Mem enrichment sub-step).
 
-    Coordinates: validation, normalization, quality scoring, dedup,
+    Coordinates: validation, normalization, A-Mem enrichment, quality scoring,
     tier classification, storage, and side effects.
     """
 
@@ -111,6 +112,14 @@ class WritePipeline:
                         "rejected": True,
                         "total_memories": collection.count(),
                     }
+
+        # ── Step 2b: A-Mem enrichment (keywords + context_description) ──
+        _amem_keywords = ""
+        _amem_context_desc = ""
+        try:
+            _amem_keywords, _amem_context_desc = self._amem_enrich(content, context)
+        except Exception:
+            pass
 
         # ── Step 3: Quality score ──
         _q_score = 0.5
@@ -220,6 +229,8 @@ class WritePipeline:
                     "memory_type": memory_type,
                     "state_type": state_type,
                     "quality_score": _q_score,
+                    "keywords": _amem_keywords,
+                    "context_description": _amem_context_desc,
                 }
             ],
             ids=[doc_id],
@@ -280,6 +291,49 @@ class WritePipeline:
         except Exception:
             pass
 
+        # A-Mem linking: create bidirectional linked_memory edges to similar memories
+        try:
+            if self.graph and collection.count() > 1:
+                _amem_results = collection.query(
+                    query_texts=[content],
+                    n_results=6,  # fetch 6 to exclude self
+                    include=["metadatas", "distances"],
+                )
+                if _amem_results and _amem_results.get("ids") and _amem_results["ids"][0]:
+                    _amem_threshold = 0.7
+                    for _amem_idx, _amem_id in enumerate(_amem_results["ids"][0]):
+                        if _amem_id == doc_id:
+                            continue  # skip self
+                        _amem_dist = (
+                            _amem_results["distances"][0][_amem_idx]
+                            if _amem_results.get("distances")
+                            else 1.0
+                        )
+                        # ChromaDB/LanceDB cosine distance: similarity = 1 - distance
+                        _amem_sim = max(0.0, 1.0 - _amem_dist)
+                        if _amem_sim >= _amem_threshold:
+                            # Create bidirectional linked_memory edges
+                            self.graph.add_edge(
+                                doc_id, _amem_id, "linked_memory", strength=_amem_sim
+                            )
+                            self.graph.add_edge(
+                                _amem_id, doc_id, "linked_memory", strength=_amem_sim
+                            )
+        except Exception:
+            pass  # Fail-open: A-Mem linking failure must not block write
+
+        # ── Step 6d: A-Mem evolution — update neighbor tags ──
+        # After inserting a new memory, find top-3 most similar existing memories
+        # and enrich their tags based on shared entities (arxiv 2502.12110 UPDATE).
+        evolved_count = 0
+        if self.config.get("enable_evolution", True):
+            try:
+                evolved_count = self._evolve_neighbors(
+                    doc_id, content, context, tags, collection, tag_index
+                )
+            except Exception:
+                pass  # Fail-open: evolution failure must not block storage
+
         # ── Step 7: Side effects ──
         _touch = h.get("touch_memory_timestamp")
         if _touch:
@@ -309,7 +363,11 @@ class WritePipeline:
             "quality_score": _q_score,
             "memory_type": memory_type,
             "state_type": state_type,
+            "keywords": _amem_keywords,
+            "context_description": _amem_context_desc,
         }
+        if evolved_count > 0:
+            result["evolved_neighbors"] = evolved_count
         if bridge_result:
             result["fix_outcome_bridged"] = True
             result["bridge_chain_id"] = bridge_result.get("chain_id", "")
@@ -325,6 +383,203 @@ class WritePipeline:
         return result
 
     # ── Internal helpers ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _amem_enrich(content, context=""):
+        """A-Mem enrichment: extract keywords and generate context_description.
+
+        Based on arxiv 2502.12110 -- structured memory notes with keywords,
+        categorical tags, and context descriptions for better retrieval.
+
+        Returns:
+            (keywords_str, context_description) -- both strings.
+            keywords_str is comma-separated keyword names.
+            context_description is a 1-sentence summary.
+
+        Backward compatible: callers that do not use these fields are unaffected.
+        """
+        keywords_str = ""
+        context_description = ""
+
+        # --- Extract keywords via entity_extraction ---
+        try:
+            from shared.entity_extraction import extract_entities
+
+            combined_text = f"{content} {context}" if context else content
+            entities = extract_entities(combined_text)
+            if entities:
+                # Deduplicate and take top 10 keywords by name
+                seen = set()
+                keyword_names = []
+                for ent in entities:
+                    name_lower = ent["name"].lower()
+                    if name_lower not in seen:
+                        seen.add(name_lower)
+                        keyword_names.append(ent["name"])
+                # Cap at 10 keywords, join as comma-separated string
+                keywords_str = ",".join(keyword_names[:10])
+                # Cap at 500 chars for metadata safety
+                if len(keywords_str) > 500:
+                    keywords_str = keywords_str[:497] + "..."
+        except Exception:
+            pass
+
+        # --- Generate context_description (1-sentence summary) ---
+        try:
+            context_description = _generate_context_description(content, context)
+        except Exception:
+            pass
+
+        return keywords_str, context_description
+
+    def _evolve_neighbors(self, doc_id, content, context, tags, collection, tag_index):
+        """A-Mem evolution: update top-3 similar neighbors with new context/tags.
+
+        After inserting a new memory, find the most similar existing memories
+        and enrich their tags based on shared entities. This is the core A-Mem
+        UPDATE mechanism -- related memories co-evolve when new information arrives.
+
+        Guards:
+            - enable_evolution config flag (default True)
+            - Max 3 neighbor updates per insert
+            - Minimum similarity threshold of 0.3
+            - Only propagates semantic tags (skips resolves:, source:, cluster:)
+            - Tag string capped at 500 chars
+
+        Returns:
+            int: number of neighbors actually updated
+        """
+        _MAX_UPDATES = 3
+        _MIN_SIMILARITY = 0.3
+        _TAG_CAP = 500
+
+        if not tags or not collection:
+            return 0
+
+        # Extract entities from the new memory
+        try:
+            from shared.entity_extraction import extract_entities
+        except ImportError:
+            return 0
+
+        new_entities = set()
+        _new_text = f"{content} {context}"
+        for ent in extract_entities(_new_text):
+            new_entities.add(ent["name"].lower())
+
+        if not new_entities:
+            return 0
+
+        new_tag_set = set(
+            t.strip() for t in tags.split(",") if t.strip()
+        )
+        if not new_tag_set:
+            return 0
+
+        # Query for top-3 similar existing memories (request 4 to skip self)
+        try:
+            neighbors = collection.query(
+                query_texts=[content],
+                n_results=4,
+                include=["metadatas", "documents", "distances"],
+            )
+        except Exception:
+            return 0
+
+        if not neighbors or not neighbors.get("ids") or not neighbors["ids"][0]:
+            return 0
+
+        updated = 0
+        for idx, neighbor_id in enumerate(neighbors["ids"][0]):
+            if updated >= _MAX_UPDATES:
+                break
+
+            # Skip self
+            if neighbor_id == doc_id:
+                continue
+
+            # Check similarity threshold
+            dist = (
+                neighbors["distances"][0][idx]
+                if neighbors.get("distances")
+                else 1.0
+            )
+            similarity = max(0, 1.0 - dist)
+            if similarity < _MIN_SIMILARITY:
+                continue
+
+            # Get neighbor metadata and document
+            neighbor_meta = (
+                neighbors["metadatas"][0][idx]
+                if neighbors.get("metadatas")
+                else {}
+            )
+            neighbor_doc = (
+                neighbors["documents"][0][idx]
+                if neighbors.get("documents")
+                else ""
+            )
+            neighbor_tags_str = neighbor_meta.get("tags", "") or ""
+            neighbor_context = neighbor_meta.get("context", "") or ""
+
+            # Extract entities from the neighbor
+            neighbor_text = f"{neighbor_doc} {neighbor_context}"
+            neighbor_entities = set()
+            for ent in extract_entities(neighbor_text):
+                neighbor_entities.add(ent["name"].lower())
+
+            # Find shared entities between new memory and neighbor
+            shared_entities = new_entities & neighbor_entities
+            if not shared_entities:
+                continue
+
+            # Determine which new tags should propagate to the neighbor
+            neighbor_tag_set = set(
+                t.strip() for t in neighbor_tags_str.split(",") if t.strip()
+            )
+            # Only propagate semantic tags (not ID-like prefixes)
+            propagatable_tags = set()
+            _skip_prefixes = ("resolves:", "resolved_by:", "source:", "cluster:")
+            for tag in new_tag_set:
+                if tag in neighbor_tag_set:
+                    continue
+                if any(tag.startswith(p) for p in _skip_prefixes):
+                    continue
+                propagatable_tags.add(tag)
+
+            if not propagatable_tags:
+                continue
+
+            # Build the updated tag string
+            merged_tags = neighbor_tags_str
+            for ptag in sorted(propagatable_tags):
+                candidate = f"{merged_tags},{ptag}" if merged_tags else ptag
+                if len(candidate) > _TAG_CAP:
+                    break
+                merged_tags = candidate
+
+            # Only update if tags actually changed
+            if merged_tags == neighbor_tags_str:
+                continue
+
+            # Update the neighbor's metadata
+            updated_meta = dict(neighbor_meta)
+            updated_meta["tags"] = merged_tags
+            try:
+                collection.update(
+                    ids=[neighbor_id],
+                    metadatas=[updated_meta],
+                )
+                # Update tag index for the neighbor
+                try:
+                    tag_index.add_tags(neighbor_id, merged_tags)
+                except Exception:
+                    pass
+                updated += 1
+            except Exception:
+                pass
+
+        return updated
 
     def _detect_session_id(self):
         """Auto-detect source session ID from most recent JSONL session file."""
@@ -462,3 +717,50 @@ class WritePipeline:
                 resolves_id = None
 
         return resolves_id, linked_to, link_warning
+
+
+# ── Module-level helpers ─────────────────────────────────────────────────────────────
+
+# Sentence boundary pattern: split on  followed by capital, or on  / 
+_SENTENCE_END_RE = re.compile(r'(?<=[.!?])\s+(?=[A-Z])')
+
+
+def _generate_context_description(content, context=""):
+    """Generate a 1-sentence context description for A-Mem structured notes.
+
+    Strategy:
+    1. If context is provided and non-trivial, use it directly (already a description).
+    2. Otherwise, extract first sentence from content as the context description.
+    3. Cap at 200 chars for metadata safety.
+    """
+    # If caller provided a context string, prefer it (it is typically a description)
+    if context and len(context.strip()) >= 10:
+        desc = context.strip()
+        # Take first sentence if context is multi-sentence
+        sentences = _SENTENCE_END_RE.split(desc)
+        if sentences:
+            desc = sentences[0].strip()
+        if len(desc) > 200:
+            desc = desc[:197] + "..."
+        return desc
+
+    # Fall back to first sentence of content
+    stripped = content.strip()
+    if not stripped:
+        return ""
+
+    # Remove leading project prefix like [project:xyz]
+    if stripped.startswith("["):
+        bracket_end = stripped.find("]")
+        if bracket_end > 0 and bracket_end < 60:
+            stripped = stripped[bracket_end + 1:].strip()
+
+    sentences = _SENTENCE_END_RE.split(stripped)
+    if sentences:
+        desc = sentences[0].strip()
+    else:
+        desc = stripped
+
+    if len(desc) > 200:
+        desc = desc[:197] + "..."
+    return desc

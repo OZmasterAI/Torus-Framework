@@ -193,6 +193,57 @@ class KnowledgeGraph:
             )
         self._conn.commit()
 
+
+    # --- Memory link traversal (A-Mem interconnected network) ---
+
+    def get_linked_memories(
+        self, memory_id: str, max_depth: int = 2, relation_type: str = "linked_memory"
+    ) -> List[Dict]:
+        """Traverse linked_memory edges from a memory node via BFS.
+
+        Returns list of connected memory IDs with depth and edge strength.
+        Each entry: {"id": str, "depth": int, "strength": float}
+
+        Used by A-Mem interconnected network to surface related memories.
+        """
+        visited: Dict[str, Dict] = {}
+        frontier = [(memory_id, 0, 1.0)]  # (node, depth, cumulative_strength)
+
+        while frontier:
+            node, depth, cum_strength = frontier.pop(0)
+            if node in visited:
+                continue
+            visited[node] = {"depth": depth, "strength": cum_strength}
+
+            if depth >= max_depth:
+                continue
+
+            # Fetch neighbors via linked_memory edges (both directions)
+            rows = self._conn.execute(
+                "SELECT to_id, strength FROM edges "
+                "WHERE from_id=? AND relation_type=? AND strength > 0 "
+                "UNION "
+                "SELECT from_id, strength FROM edges "
+                "WHERE to_id=? AND relation_type=? AND strength > 0",
+                (node, relation_type, node, relation_type),
+            ).fetchall()
+
+            for neighbor_id, edge_strength in rows:
+                if neighbor_id not in visited:
+                    frontier.append(
+                        (neighbor_id, depth + 1, cum_strength * edge_strength)
+                    )
+
+        # Remove the seed node from results
+        visited.pop(memory_id, None)
+
+        results = [
+            {"id": nid, "depth": info["depth"], "strength": round(info["strength"], 4)}
+            for nid, info in visited.items()
+        ]
+        results.sort(key=lambda x: (-x["strength"], x["depth"]))
+        return results
+
     # --- Cleanup operations ---
 
     def transfer_edges(self, from_entity: str, to_entity: str):
@@ -249,26 +300,28 @@ class KnowledgeGraph:
 
         frontier = set(seed_entities)
 
-        for hop in range(1, max_hops + 1):
-            next_frontier = set()
-            for node in frontier:
-                source_act = activations.get(node, 0.0)
-                if source_act < threshold:
-                    continue
+        seed_set = set(seed_entities)
 
-                # Get neighbors
-                neighbors = self._get_neighbors(node)
+        for hop in range(1, max_hops + 1):
+            # Filter frontier to nodes above threshold
+            active_frontier = [n for n in frontier if activations.get(n, 0.0) >= threshold]
+            if not active_frontier:
+                break
+
+            # Batch fetch all neighbors for this hop
+            all_neighbors = self._get_neighbors_batch(active_frontier)
+            decay = math.exp(-0.2 * hop)
+
+            next_frontier = set()
+            for node in active_frontier:
+                source_act = activations.get(node, 0.0)
+                neighbors = all_neighbors.get(node, [])
                 degree = max(1, len(neighbors))
 
                 for neighbor_name, edge_strength in neighbors:
-                    if neighbor_name in seed_entities:
-                        continue  # don't re-activate seeds
-                    spread = (
-                        source_act
-                        * math.exp(-0.2 * hop)
-                        * edge_strength
-                        / math.sqrt(1 + degree)
-                    )
+                    if neighbor_name in seed_set:
+                        continue
+                    spread = source_act * decay * edge_strength / math.sqrt(1 + degree)
                     if spread < threshold:
                         continue
                     old = activations.get(neighbor_name, 0.0)
@@ -281,11 +334,9 @@ class KnowledgeGraph:
             if not frontier:
                 break
 
-            # Normalize if max activation > 2.0
-            max_act = max(activations.values()) if activations else 0
-            if max_act > 2.0:
-                factor = 2.0 / max_act
-                activations = {k: v * factor for k, v in activations.items()}
+            # Normalize activations with tanh to bound PMI-driven accumulation
+            activations = {k: math.tanh(v) if k not in seed_set else v
+                           for k, v in activations.items()}
 
             # Early termination: <5% new entities after hop 3
             if hop >= 3 and len(next_frontier) < 0.05 * len(activations):
@@ -308,11 +359,16 @@ class KnowledgeGraph:
         return results
 
     def _get_neighbors(self, node: str) -> List[Tuple[str, float]]:
-        """Get all neighbors with effective edge weights (PMI-weighted or raw fallback)."""
+        """Get all neighbors with effective edge weights (PMI-weighted or raw fallback).
+        Filters out deactivated entities (salience=0)."""
         rows = self._conn.execute(
-            "SELECT to_id, strength, pmi, co_occurrence_count FROM edges WHERE from_id=? AND strength > 0 "
+            "SELECT e.to_id, e.strength, e.pmi, e.co_occurrence_count FROM edges e "
+            "LEFT JOIN entities ent ON ent.name = e.to_id "
+            "WHERE e.from_id=? AND e.strength > 0 AND COALESCE(ent.salience, 0.5) > 0 "
             "UNION "
-            "SELECT from_id, strength, pmi, co_occurrence_count FROM edges WHERE to_id=? AND strength > 0",
+            "SELECT e.from_id, e.strength, e.pmi, e.co_occurrence_count FROM edges e "
+            "LEFT JOIN entities ent ON ent.name = e.from_id "
+            "WHERE e.to_id=? AND e.strength > 0 AND COALESCE(ent.salience, 0.5) > 0",
             (node, node),
         ).fetchall()
         result = []
@@ -322,12 +378,41 @@ class KnowledgeGraph:
                 # Legacy edge (no PMI data yet) — use raw strength as fallback
                 effective = strength
             elif pmi > 0.0:
-                # PMI-weighted: above-chance co-occurrence boosts activation
-                effective = strength * pmi
+                # PMI-weighted: clamp with tanh to keep effective in [0, strength]
+                effective = strength * math.tanh(pmi / 2.0)
             else:
                 # pmi <= 0.0: at-chance or anti-correlated — block this path
                 effective = 0.0
             result.append((neighbor_name, effective))
+        return result
+
+
+    def _get_neighbors_batch(self, nodes):
+        """Batch neighbor lookup for multiple nodes. More efficient than per-node queries."""
+        if not nodes:
+            return {}
+        placeholders = ",".join("?" for _ in nodes)
+        rows = self._conn.execute(
+            f"SELECT e.from_id, e.to_id, e.strength, e.pmi, e.co_occurrence_count FROM edges e "
+            f"LEFT JOIN entities ent ON ent.name = e.to_id "
+            f"WHERE e.from_id IN ({placeholders}) AND e.strength > 0 AND COALESCE(ent.salience, 0.5) > 0 "
+            f"UNION "
+            f"SELECT e.to_id, e.from_id, e.strength, e.pmi, e.co_occurrence_count FROM edges e "
+            f"LEFT JOIN entities ent ON ent.name = e.from_id "
+            f"WHERE e.to_id IN ({placeholders}) AND e.strength > 0 AND COALESCE(ent.salience, 0.5) > 0",
+            list(nodes) + list(nodes),
+        ).fetchall()
+        result = {n: [] for n in nodes}
+        for source, neighbor, strength, pmi, co_count in rows:
+            co_count = co_count or 0
+            if co_count == 0 or pmi is None:
+                effective = strength
+            elif pmi > 0.0:
+                effective = strength * math.tanh(pmi / 2.0)
+            else:
+                effective = 0.0
+            if source in result:
+                result[source].append((neighbor, effective))
         return result
 
     # --- Edge decay and pattern detection ---
@@ -335,34 +420,49 @@ class KnowledgeGraph:
     def decay_edges(self, half_life_hours: float = 168.0) -> Dict:
         """Apply time-based decay to all edges. Prune edges below 0.05.
 
+        Uses SQL for bulk computation where possible.
         Returns dict with 'decayed' and 'pruned' counts.
         """
         import time as _time
 
         now = _time.time()
+        # Compute decay factor threshold: what age makes strength * factor < 0.05?
+        # For very old edges, prune directly via SQL
+        max_age_hours = half_life_hours * math.log2(1.0 / 0.05)  # ~4.3 half-lives
+        max_age_secs = max_age_hours * 3600
+
+        # Prune edges older than max_age (they'd all decay below 0.05 anyway)
+        pruned = self._conn.execute(
+            "DELETE FROM edges WHERE (? - last_activated) > ?",
+            (now, max_age_secs),
+        ).rowcount
+
+        # Decay remaining edges in-memory (only those that survive the prune)
         rows = self._conn.execute(
             "SELECT from_id, to_id, relation_type, strength, last_activated FROM edges"
         ).fetchall()
-        decayed = 0
-        pruned = 0
+        to_prune = []
+        to_update = []
         for from_id, to_id, rel, strength, last_act in rows:
             hours_since = max(0, (now - float(last_act)) / 3600)
             factor = math.pow(0.5, hours_since / half_life_hours)
             new_strength = strength * factor
             if new_strength < 0.05:
-                self._conn.execute(
-                    "DELETE FROM edges WHERE from_id=? AND to_id=? AND relation_type=?",
-                    (from_id, to_id, rel),
-                )
-                pruned += 1
+                to_prune.append((from_id, to_id, rel))
             else:
-                self._conn.execute(
-                    "UPDATE edges SET strength=? WHERE from_id=? AND to_id=? AND relation_type=?",
-                    (new_strength, from_id, to_id, rel),
-                )
-                decayed += 1
+                to_update.append((new_strength, from_id, to_id, rel))
+        if to_prune:
+            self._conn.executemany(
+                "DELETE FROM edges WHERE from_id=? AND to_id=? AND relation_type=?",
+                to_prune,
+            )
+        if to_update:
+            self._conn.executemany(
+                "UPDATE edges SET strength=? WHERE from_id=? AND to_id=? AND relation_type=?",
+                to_update,
+            )
         self._conn.commit()
-        return {"decayed": decayed, "pruned": pruned}
+        return {"decayed": len(to_update), "pruned": pruned + len(to_prune)}
 
     def get_high_activation_clusters(self, min_activation: int = 5) -> List[set]:
         """Find connected components of edges with activation_count >= threshold.
@@ -411,6 +511,23 @@ class KnowledgeGraph:
                 (delta, name),
             )
         self._conn.commit()
+
+
+    def normalize_entity_name(self, name: str) -> str:
+        """Normalize entity name for consistent matching.
+
+        Lowercases, strips whitespace, collapses internal spaces.
+        """
+        if not name:
+            return ""
+        return " ".join(name.lower().strip().split())
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
 
     def close(self):
         self._conn.close()

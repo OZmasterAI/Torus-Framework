@@ -373,6 +373,9 @@ class SearchPipeline:
         # Hybrid memory linking
         linked_memories_count = self._hybrid_linking(formatted, collection)
 
+        # A-Mem network expansion: traverse linked_memory edges to surface connected knowledge
+        amem_link_count = self._amem_expansion(formatted, collection)
+
         # Telegram L3 cascade (after trim, after linking)
         tg_fallback_count = self._cascade_telegram_l3(formatted, query, config)
 
@@ -429,6 +432,8 @@ class SearchPipeline:
             result["tg_enrichment_count"] = tg_enrichment_count
         if _action_pattern_count > 0:
             result["action_pattern_count"] = _action_pattern_count
+        if amem_link_count > 0:
+            result["amem_link_count"] = amem_link_count
         if graph_enriched_count > 0:
             result["graph_enriched_count"] = graph_enriched_count
         if counterfactual_count > 0:
@@ -734,6 +739,73 @@ class SearchPipeline:
                                 count += 1
         except (ImportError, ValueError, TypeError, KeyError, AttributeError):
             pass
+        return count
+
+    def _amem_expansion(self, formatted, collection):
+        """Expand search results via A-Mem linked_memory edges. Returns count of added results."""
+        count = 0
+        if not self.graph:
+            return 0
+        try:
+            seen_ids = {r.get("id") for r in formatted if r.get("id")}
+            linked_candidates = {}  # id -> strength
+
+            # For each top result, traverse linked_memory edges (max_depth=2)
+            for r in formatted[:5]:
+                mem_id = r.get("id", "")
+                if not mem_id:
+                    continue
+                linked = self.graph.get_linked_memories(mem_id, max_depth=2)
+                for link in linked:
+                    lid = link["id"]
+                    if lid not in seen_ids:
+                        # Keep the strongest link if seen from multiple seeds
+                        old_strength = linked_candidates.get(lid, 0.0)
+                        if link["strength"] > old_strength:
+                            linked_candidates[lid] = link["strength"]
+
+            if not linked_candidates:
+                return 0
+
+            # Fetch the linked memory contents from the collection
+            candidate_ids = list(linked_candidates.keys())[:10]  # cap at 10
+            try:
+                linked_results = collection.get(
+                    ids=candidate_ids,
+                    include=["metadatas", "documents"],
+                )
+            except Exception:
+                return 0
+
+            if linked_results and linked_results.get("ids"):
+                l_ids = linked_results["ids"]
+                l_metas = linked_results.get("metadatas") or [{}] * len(l_ids)
+                l_docs = linked_results.get("documents") or [""] * len(l_ids)
+                for i, lid in enumerate(l_ids):
+                    if lid in seen_ids:
+                        continue
+                    meta = l_metas[i] if i < len(l_metas) else {}
+                    doc = l_docs[i] if i < len(l_docs) else ""
+                    preview = meta.get("preview", "") or (
+                        doc[:120] + "..." if doc and len(doc) > 120 else doc
+                    )
+                    link_strength = linked_candidates.get(lid, 0.0)
+                    formatted.append(
+                        {
+                            "id": lid,
+                            "preview": preview,
+                            "content": doc,
+                            "tags": meta.get("tags", ""),
+                            "timestamp": meta.get("timestamp", ""),
+                            "relevance": link_strength * 0.6,  # discount linked results
+                            "amem_linked": True,
+                            "amem_strength": round(link_strength, 4),
+                        }
+                    )
+                    seen_ids.add(lid)
+                    count += 1
+        except Exception:
+            pass  # Fail-open: A-Mem expansion failure must not block search
         return count
 
     def _hybrid_linking(self, formatted, collection):

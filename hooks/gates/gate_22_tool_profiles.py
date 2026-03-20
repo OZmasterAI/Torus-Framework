@@ -29,6 +29,12 @@ try:
 except ImportError:
     _AVAILABLE = False
 
+try:
+    from shared.tool_mastery import load_mastery, suggest_tool, get_mastery_level, infer_task_type
+    _MASTERY_AVAILABLE = True
+except ImportError:
+    _MASTERY_AVAILABLE = False
+
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
@@ -45,6 +51,19 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     try:
         profiles = load_profiles()
         warnings = get_warnings_for_tool(profiles, tool_name, tool_input)
+
+        # Add mastery-based suggestions
+        if _MASTERY_AVAILABLE:
+            try:
+                mastery = load_mastery()
+                task_type = infer_task_type(state)
+                level = get_mastery_level(mastery, tool_name)
+                if level.get("success_rate", 1.0) < 0.7 and level.get("total_uses", 0) >= 10:
+                    alt = suggest_tool(mastery, task_type, exclude=[tool_name])
+                    if alt:
+                        warnings.append(f"Mastery: {tool_name} has {level['success_rate']:.0%} success for {task_type}; consider {alt}")
+            except Exception:
+                pass
 
         if not warnings:
             return GateResult(blocked=False, gate_name=GATE_NAME)

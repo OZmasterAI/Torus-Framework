@@ -6767,8 +6767,8 @@ from shared.gate_registry import GATE_MODULES as _registry_modules
 # ── Single source of truth ──
 test("Registry: GATE_MODULES is a list", isinstance(_registry_modules, list))
 test(
-    "Registry: has 17 active gates",
-    len(_registry_modules) == 17,
+    "Registry: has 19 active gates",
+    len(_registry_modules) == 19,
     f"got {len(_registry_modules)}",
 )
 test(

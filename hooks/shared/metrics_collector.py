@@ -89,6 +89,9 @@ class _MetricsStore:
             lambda: defaultdict(list)
         )
 
+    _MAX_OBS_PER_KEY = 500  # Max observations per metric+label before trim
+    _MAX_UNIQUE_KEYS = 1000  # Max unique metric+label combos to prevent unbounded growth
+
     def _load(self):
         """Load persisted metrics from ramdisk or disk fallback. Called once."""
         if self._loaded:
@@ -112,6 +115,8 @@ class _MetricsStore:
         self._load()
         lk = _label_key(labels)
         key = f"{metric}|{lk}"
+        if key not in self._data and len(self._data) >= self._MAX_UNIQUE_KEYS:
+            return  # Silently drop to prevent unbounded growth
         entry = self._data.setdefault(key, {
             "metric": metric,
             "type": TYPE_COUNTER,
@@ -145,11 +150,22 @@ class _MetricsStore:
         lk = _label_key(labels)
         now = time.time()
 
-        # Store timed observation for rollup
-        self._timed_obs[metric][lk].append((now, value))
+        # Store timed observation for rollup (capped to prevent OOM)
+        # Check total unique keys across _timed_obs to prevent unbounded growth
+        if lk not in self._timed_obs.get(metric, {}):
+            total_obs_keys = sum(len(v) for v in self._timed_obs.values())
+            if total_obs_keys >= self._MAX_UNIQUE_KEYS:
+                return  # Silently drop to prevent memory leak
+        obs_list = self._timed_obs[metric][lk]
+        obs_list.append((now, value))
+        if len(obs_list) > self._MAX_OBS_PER_KEY:
+            # Keep most recent half (amortized O(1) per append)
+            self._timed_obs[metric][lk] = obs_list[-(self._MAX_OBS_PER_KEY // 2):]
 
         # Update aggregate stats in _data
         key = f"{metric}|{lk}"
+        if key not in self._data and len(self._data) >= self._MAX_UNIQUE_KEYS:
+            return  # Silently drop to prevent unbounded growth
         entry = self._data.get(key)
         if entry is None:
             entry = {

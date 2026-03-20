@@ -13,6 +13,8 @@ ON_NODE_ADDED = "on_node_added"
 ON_BRANCH_SWITCH = "on_branch_switch"
 ON_BRANCH_CREATED = "on_branch_created"
 ON_BRANCH_RESET = "on_branch_reset"
+ON_NODE_PROMOTED = "on_node_promoted"
+ON_BRANCH_LABELED = "on_branch_labeled"
 
 
 class DAGHookRegistry:
@@ -42,6 +44,13 @@ class DAGHookRegistry:
                     f"[DAG hook] {event}/{name} failed: {e}",
                     file=sys.stderr,
                 )
+
+    def unregister(self, event, name):
+        """Remove a handler by event and name. Returns True if found."""
+        handlers = self._handlers.get(event, [])
+        before = len(handlers)
+        self._handlers[event] = [(p, n, fn) for p, n, fn in handlers if n != name]
+        return len(self._handlers[event]) < before
 
     def list_handlers(self, event=None):
         """List registered handlers, optionally filtered by event."""

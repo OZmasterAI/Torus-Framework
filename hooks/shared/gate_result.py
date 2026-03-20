@@ -61,6 +61,18 @@ class GateResult:
         """Returns True if this gate wants user confirmation."""
         return self.escalation == "ask"
 
+    def __eq__(self, other):
+        if not isinstance(other, GateResult):
+            return NotImplemented
+        return (self.blocked == other.blocked
+                and self.gate_name == other.gate_name
+                and self.escalation == other.escalation
+                and self.severity == other.severity
+                and self.message == other.message)
+
+    def __hash__(self):
+        return hash((self.blocked, self.gate_name, self.escalation, self.severity))
+
     def __repr__(self):
         status = "BLOCKED" if self.blocked else "PASS"
         if self.escalation not in ("block", "allow"):

@@ -3,7 +3,7 @@
 ## When to use
 When the user says "brainstorm", "design", "think through", "options for",
 "how should we", or needs to explore approaches before implementing.
-Replaces EnterPlanMode for non-trivial features.
+Use this instead of any plan mode for non-trivial features.
 
 ## Steps
 

@@ -12,6 +12,7 @@ Design constraints:
   - Fail-open: every public function is wrapped in try/except; never raises.
   - Thread-safe: file writes use an atomic rename via a temp file.
   - No external dependencies beyond the Python standard library.
+  - Saves are skipped when no state change occurred (reduces I/O).
 
 Typical usage:
     from shared.circuit_breaker import record_success, record_failure, is_open
@@ -34,13 +35,13 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
-# ── State constants ─────────────────────────────────────────────────────────────
+# -- State constants --
 
 STATE_CLOSED    = "CLOSED"
 STATE_OPEN      = "OPEN"
 STATE_HALF_OPEN = "HALF_OPEN"
 
-# ── Persistence paths ───────────────────────────────────────────────────────────
+# -- Persistence paths --
 
 _RAMDISK_DIR  = "/dev/shm/claude-hooks"
 _RAMDISK_PATH = os.path.join(_RAMDISK_DIR, "circuit_breaker.json")
@@ -48,18 +49,23 @@ _DISK_FALLBACK = os.path.join(
     os.path.expanduser("~"), ".claude", "hooks", ".circuit_breaker.json"
 )
 
-# ── Default configuration ───────────────────────────────────────────────────────
+# -- Default configuration --
 
-DEFAULT_FAILURE_THRESHOLD  = 5   # consecutive failures → OPEN
+DEFAULT_FAILURE_THRESHOLD  = 5   # consecutive failures -> OPEN
 DEFAULT_RECOVERY_TIMEOUT   = 60  # seconds to wait in OPEN before HALF_OPEN
-DEFAULT_SUCCESS_THRESHOLD  = 2   # successes in HALF_OPEN → CLOSED
+DEFAULT_SUCCESS_THRESHOLD  = 2   # successes in HALF_OPEN -> CLOSED
 
-# ── Module-level lock (guards in-process concurrent access) ────────────────────
+# -- Module-level lock (guards in-process concurrent access) --
 
 _lock = threading.Lock()
 
+# -- In-memory TTL cache to reduce disk I/O on hot-path is_open() --
+_cache: Dict[str, Any] = {}       # full state dict
+_cache_ts: float = 0.0             # monotonic timestamp of last load
+_CACHE_TTL: float = 2.0            # seconds before cache expires
 
-# ── Internal helpers ────────────────────────────────────────────────────────────
+
+# -- Internal helpers --
 
 def _get_path() -> str:
     """Return the best available persistence path."""
@@ -72,19 +78,29 @@ def _get_path() -> str:
 
 
 def _load() -> Dict[str, Any]:
-    """Load the persisted circuit-breaker state dict from disk/ramdisk.
+    """Load circuit-breaker state with in-memory TTL cache.
 
+    Returns cached data if within _CACHE_TTL seconds. Reduces disk reads
+    from ~18 per enforcer call (one per gate) to ~1.
     Returns an empty dict on any read/parse error (fail-open).
     """
+    global _cache, _cache_ts
+    now = time.monotonic()
+    if _cache and (now - _cache_ts) < _CACHE_TTL:
+        return _cache
     path = _get_path()
     try:
         if os.path.isfile(path):
             with open(path, "r") as fh:
                 data = json.load(fh)
             if isinstance(data, dict):
+                _cache = data
+                _cache_ts = now
                 return data
     except (OSError, IOError, json.JSONDecodeError, ValueError):
         pass
+    _cache = {}
+    _cache_ts = now
     return {}
 
 
@@ -103,6 +119,10 @@ def _save(data: Dict[str, Any]) -> None:
             with os.fdopen(fd, "w") as fh:
                 json.dump(data, fh, indent=2)
             os.replace(tmp_path, path)
+            # Refresh cache with written data
+            global _cache, _cache_ts
+            _cache = dict(data)
+            _cache_ts = time.monotonic()
         except Exception:
             # Clean up temp file on write failure
             try:
@@ -155,8 +175,11 @@ def _get_or_create(
     return rec
 
 
-def _maybe_recover(rec: Dict[str, Any]) -> None:
-    """Transition OPEN → HALF_OPEN if recovery_timeout has elapsed."""
+def _maybe_recover(rec: Dict[str, Any]) -> bool:
+    """Transition OPEN -> HALF_OPEN if recovery_timeout has elapsed.
+
+    Returns True if a state transition occurred, False otherwise.
+    """
     if rec["state"] == STATE_OPEN:
         opened_at = rec.get("opened_at") or rec.get("last_failure_time", 0) or 0
         elapsed = time.time() - opened_at
@@ -164,9 +187,11 @@ def _maybe_recover(rec: Dict[str, Any]) -> None:
             rec["state"]         = STATE_HALF_OPEN
             rec["failure_count"] = 0
             rec["success_count"] = 0
+            return True
+    return False
 
 
-# ── Public API ──────────────────────────────────────────────────────────────────
+# -- Public API --
 
 def record_success(
     service: str,
@@ -177,7 +202,7 @@ def record_success(
     """Record a successful call for *service*.
 
     - CLOSED    : reset failure_count.
-    - HALF_OPEN : increment success_count; if >= success_threshold → CLOSED.
+    - HALF_OPEN : increment success_count; if >= success_threshold -> CLOSED.
     - OPEN      : no-op (caller should not be calling if open, but be safe).
     """
     try:
@@ -216,7 +241,7 @@ def record_failure(
 ) -> None:
     """Record a failed call for *service*.
 
-    - CLOSED    : increment failure_count; if >= failure_threshold → OPEN.
+    - CLOSED    : increment failure_count; if >= failure_threshold -> OPEN.
     - HALF_OPEN : reset back to OPEN (probe failed).
     - OPEN      : bump total_failures only.
     """
@@ -267,13 +292,14 @@ def is_open(service: str) -> bool:
             if service not in data:
                 return False
             rec = data[service]
-            _maybe_recover(rec)
+            changed = _maybe_recover(rec)
             if rec["state"] == STATE_OPEN:
-                # Still need to persist the possible HALF_OPEN transition
-                _save(data)
+                # Still open after recovery check — persist if recovery changed state
+                if changed:
+                    _save(data)
                 return True
-            if rec["state"] != STATE_CLOSED:
-                # HALF_OPEN counts as not-open (allow the probe through)
+            # CLOSED or HALF_OPEN — only save if recovery transition occurred
+            if changed:
                 _save(data)
             return False
     except Exception:
@@ -291,8 +317,9 @@ def get_state(service: str) -> str:
             if service not in data:
                 return STATE_CLOSED
             rec = data[service]
-            _maybe_recover(rec)
-            _save(data)
+            changed = _maybe_recover(rec)
+            if changed:
+                _save(data)
             return rec["state"]
     except Exception:
         return STATE_CLOSED  # Fail-open
@@ -306,13 +333,14 @@ def get_all_states() -> Dict[str, Dict[str, Any]]:
     try:
         with _lock:
             data = _load()
-            now  = time.time()
+            any_changed = False
             result = {}
             for svc, rec in data.items():
-                _maybe_recover(rec)
+                if _maybe_recover(rec):
+                    any_changed = True
                 result[svc] = dict(rec)  # shallow copy so callers can't mutate
-            if data:
-                _save(data)  # persist any OPEN→HALF_OPEN transitions
+            if any_changed:
+                _save(data)  # persist any OPEN->HALF_OPEN transitions
             return result
     except Exception:
         return {}  # Fail-open
@@ -339,7 +367,7 @@ def reset(service: str) -> None:
         pass  # Fail-open
 
 
-# ── Gate circuit-breaker integration ────────────────────────────────────────────
+# -- Gate circuit-breaker integration --
 #
 # Gate-specific circuit breaker tracks crashes (exceptions) in individual gate
 # modules and temporarily skips them when they crash repeatedly.  This is
@@ -347,15 +375,15 @@ def reset(service: str) -> None:
 #
 # Design:
 #   - Tier 1 safety gates (01-03) are NEVER skipped regardless of crash count.
-#   - 3 crashes within a 5-minute sliding window → circuit OPENS.
+#   - 3 crashes within a 5-minute sliding window -> circuit OPENS.
 #   - After 60-second cooldown the circuit enters HALF_OPEN (one probe allowed).
-#   - A successful probe → circuit CLOSES.  Another crash → re-OPEN.
+#   - A successful probe -> circuit CLOSES.  Another crash -> re-OPEN.
 #   - Gate state is persisted to a dedicated file (survives reboots).
 
-_GATE_CRASH_THRESHOLD = 3    # crashes within window → OPEN
+_GATE_CRASH_THRESHOLD = 3    # crashes within window -> OPEN
 _GATE_CRASH_WINDOW    = 300  # sliding window in seconds (5 minutes)
 _GATE_COOLDOWN        = 60   # seconds in OPEN before HALF_OPEN
-_GATE_SUCCESS_NEEDED  = 1    # successes in HALF_OPEN → CLOSED
+_GATE_SUCCESS_NEEDED  = 1    # successes in HALF_OPEN -> CLOSED
 
 _GATE_STATE_PATH = os.path.join(
     os.path.expanduser("~"), ".claude", "hooks", ".circuit_breaker_state.json"
@@ -370,22 +398,45 @@ _TIER1_GATE_NAMES = {
 
 _gate_lock = threading.Lock()
 
+# -- In-memory TTL cache for gate circuit-breaker state --
+_gate_cache: Dict[str, Any] = {}   # full gate state dict
+_gate_cache_ts: float = 0.0         # monotonic timestamp of last load
+_GATE_CACHE_TTL: float = 5.0        # seconds before gate cache expires
+
 
 def _load_gate_state() -> Dict[str, Any]:
-    """Load gate circuit-breaker state from disk (fail-open)."""
+    """Load gate circuit-breaker state with in-memory TTL cache (fail-open).
+
+    Returns cached data if within _GATE_CACHE_TTL seconds. Reduces disk reads
+    from ~18 per enforcer call (one per gate) to ~1.
+    Returns an empty dict on any read/parse error (fail-open).
+    """
+    global _gate_cache, _gate_cache_ts
+    now = time.monotonic()
+    if _gate_cache and (now - _gate_cache_ts) < _GATE_CACHE_TTL:
+        return _gate_cache
     try:
         if os.path.isfile(_GATE_STATE_PATH):
             with open(_GATE_STATE_PATH, "r") as fh:
                 data = json.load(fh)
             if isinstance(data, dict):
+                _gate_cache = data
+                _gate_cache_ts = now
                 return data
     except (OSError, IOError, json.JSONDecodeError, ValueError):
         pass
+    _gate_cache = {}
+    _gate_cache_ts = now
     return {}
 
 
 def _save_gate_state(data: Dict[str, Any]) -> None:
-    """Atomically save gate circuit-breaker state (fail-open)."""
+    """Atomically save gate circuit-breaker state (fail-open).
+
+    Uses a temp-file + rename for atomicity. Updates the in-memory cache
+    (write-through) so subsequent reads within the TTL see the new state.
+    """
+    global _gate_cache, _gate_cache_ts
     try:
         dir_ = os.path.dirname(_GATE_STATE_PATH)
         os.makedirs(dir_, exist_ok=True)
@@ -394,11 +445,15 @@ def _save_gate_state(data: Dict[str, Any]) -> None:
             with os.fdopen(fd, "w") as fh:
                 json.dump(data, fh, indent=2)
             os.replace(tmp_path, _GATE_STATE_PATH)
+            # Refresh gate cache with written data (write-through)
+            _gate_cache = dict(data)
+            _gate_cache_ts = time.monotonic()
         except Exception:
             try:
                 os.unlink(tmp_path)
             except OSError:
                 pass
+            raise
     except (OSError, IOError, ValueError):
         pass
 
@@ -431,12 +486,17 @@ def _prune_crash_window(rec: Dict[str, Any]) -> None:
     rec["crash_timestamps"] = [t for t in rec["crash_timestamps"] if t >= cutoff]
 
 
-def _gate_maybe_recover(rec: Dict[str, Any]) -> None:
-    """Transition OPEN → HALF_OPEN if cooldown has elapsed."""
+def _gate_maybe_recover(rec: Dict[str, Any]) -> bool:
+    """Transition OPEN -> HALF_OPEN if cooldown has elapsed.
+
+    Returns True if a state transition occurred, False otherwise.
+    """
     if rec["state"] == STATE_OPEN:
         opened_at = rec.get("opened_at") or 0
         if time.time() - opened_at >= _GATE_COOLDOWN:
             rec["state"] = STATE_HALF_OPEN
+            return True
+    return False
 
 
 def should_skip_gate(gate_name: str) -> bool:
@@ -454,12 +514,13 @@ def should_skip_gate(gate_name: str) -> bool:
             if gate_name not in data:
                 return False
             rec = data[gate_name]
-            _gate_maybe_recover(rec)
+            changed = _gate_maybe_recover(rec)
             if rec["state"] == STATE_OPEN:
                 rec["total_skips"] = rec.get("total_skips", 0) + 1
                 _save_gate_state(data)
                 return True
-            if rec["state"] == STATE_HALF_OPEN:
+            # CLOSED or HALF_OPEN — only save if recovery transition occurred
+            if changed:
                 _save_gate_state(data)
             return False
     except Exception:
@@ -472,12 +533,12 @@ def record_gate_result(gate_name: str, success: bool) -> None:
     On crash (success=False):
       - Append timestamp to sliding window.
       - Prune entries outside _GATE_CRASH_WINDOW.
-      - If crash count >= _GATE_CRASH_THRESHOLD → OPEN.
-      - In HALF_OPEN on crash → re-OPEN.
+      - If crash count >= _GATE_CRASH_THRESHOLD -> OPEN.
+      - In HALF_OPEN on crash -> re-OPEN.
 
     On success (success=True):
-      - In HALF_OPEN → CLOSED (probe succeeded).
-      - In CLOSED → no-op (normal operation).
+      - In HALF_OPEN -> CLOSED (probe succeeded).
+      - In CLOSED -> no-op (normal operation, skip save).
 
     Tier 1 gates are tracked but never put into OPEN state (safety invariant).
     Silently swallows all errors (fail-open).
@@ -504,14 +565,16 @@ def record_gate_result(gate_name: str, success: bool) -> None:
                         if len(rec["crash_timestamps"]) >= _GATE_CRASH_THRESHOLD:
                             rec["state"]     = STATE_OPEN
                             rec["opened_at"] = now
+
+                _save_gate_state(data)
             else:
                 # Success: probe in HALF_OPEN closes the circuit
                 if rec["state"] == STATE_HALF_OPEN:
                     rec["state"]            = STATE_CLOSED
                     rec["crash_timestamps"] = []
                     rec["opened_at"]        = None
-
-            _save_gate_state(data)
+                    _save_gate_state(data)
+                # CLOSED success = no-op, skip unnecessary save
     except Exception:
         pass  # Fail-open
 
@@ -527,8 +590,9 @@ def get_gate_circuit_state(gate_name: str) -> str:
             if gate_name not in data:
                 return STATE_CLOSED
             rec = data[gate_name]
-            _gate_maybe_recover(rec)
-            _save_gate_state(data)
+            changed = _gate_maybe_recover(rec)
+            if changed:
+                _save_gate_state(data)
             return rec["state"]
     except Exception:
         return STATE_CLOSED
@@ -555,7 +619,7 @@ def get_all_gate_states() -> Dict[str, Dict[str, Any]]:
         return {}
 
 
-# ── Smoke test / CLI entry point ────────────────────────────────────────────────
+# -- Smoke test / CLI entry point --
 
 if __name__ == "__main__":
     import sys
@@ -585,7 +649,7 @@ if __name__ == "__main__":
     print("Circuit Breaker smoke test")
     print("-" * 40)
 
-    # ── Setup: clean slate ──────────────────────────────────────────────────────
+    # -- Setup: clean slate --
     reset(TEST_SVC)
 
     # 1. Fresh service starts CLOSED
@@ -604,7 +668,7 @@ if __name__ == "__main__":
         record_failure(TEST_SVC)
     assert_eq("4. state stays CLOSED below threshold", get_state(TEST_SVC), STATE_CLOSED)
 
-    # 5. One more failure crosses the threshold → OPEN
+    # 5. One more failure crosses the threshold -> OPEN
     record_failure(TEST_SVC)
     assert_eq("5. state transitions to OPEN at threshold", get_state(TEST_SVC), STATE_OPEN)
 
@@ -624,7 +688,7 @@ if __name__ == "__main__":
     # 9. is_open returns False in HALF_OPEN (allow probe)
     assert_false("9. is_open is False in HALF_OPEN", is_open(TEST_SVC))
 
-    # 10. Enough successes in HALF_OPEN → CLOSED
+    # 10. Enough successes in HALF_OPEN -> CLOSED
     for _ in range(DEFAULT_SUCCESS_THRESHOLD):
         record_success(TEST_SVC)
     assert_eq("10. HALF_OPEN closes after success_threshold successes",
@@ -664,7 +728,18 @@ if __name__ == "__main__":
     assert_true("15. persistence path is /dev/shm/claude-hooks/circuit_breaker.json",
                 _get_path() == _RAMDISK_PATH or os.path.isfile(_get_path()))
 
-    # ── Cleanup ─────────────────────────────────────────────────────────────────
+    # 16. Gate cache: verify TTL caching for gate state
+    reset_gate_circuit("__gate_cache_test__")
+    record_gate_result("__gate_cache_test__", success=False)
+    record_gate_result("__gate_cache_test__", success=False)
+    record_gate_result("__gate_cache_test__", success=False)
+    assert_eq("16. gate cache: circuit opens after 3 crashes",
+              get_gate_circuit_state("__gate_cache_test__"), STATE_OPEN)
+    assert_eq("16b. gate cache: second read returns cached OPEN",
+              get_gate_circuit_state("__gate_cache_test__"), STATE_OPEN)
+    reset_gate_circuit("__gate_cache_test__")
+
+    # -- Cleanup --
     reset(TEST_SVC)
     reset(CUSTOM_SVC)
 

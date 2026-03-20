@@ -314,8 +314,9 @@ _bash_expected = {
     "gates.gate_06_save_fix",
     "gates.gate_11_rate_limit",
     "gates.gate_18_canary",
+    "gates.gate_21_working_summary",
 }
-test("Dispatch: Bash gets 5 gates (02,03,06,11,18)", _bash_names == _bash_expected,
+test("Dispatch: Bash gets 6 gates (02,03,06,11,18,21)", _bash_names == _bash_expected,
      f"got {_bash_names}")
 
 # 4. Edit gets 12 gates (all except 02, 03, 10, 17) — gate 12 merged into 06
@@ -328,7 +329,7 @@ _edit_excluded = {
     "gates.gate_17_injection_defense",
 }
 _edit_expected = {m for m in GATE_MODULES} - _edit_excluded
-test("Dispatch: Edit gets 12 gates (all except 02,03,10,17)", _edit_names == _edit_expected,
+test("Dispatch: Edit gets 15 gates (all except 02,03,10,17)", _edit_names == _edit_expected,
      f"missing={_edit_expected - _edit_names}, extra={_edit_names - _edit_expected}")
 
 # 5. Task gets only relevant gates (04, 06, 10, 11)
@@ -340,8 +341,9 @@ _task_expected = {
     "gates.gate_10_model_enforcement",
     "gates.gate_11_rate_limit",
     "gates.gate_18_canary",
+    "gates.gate_21_working_summary",
 }
-test("Dispatch: Task gets 5 gates (04,06,10,11,18)", _task_names == _task_expected,
+test("Dispatch: Task gets 6 gates (04,06,10,11,18,21)", _task_names == _task_expected,
      f"got {_task_names}")
 
 # 6. Unknown tool gets universal gates only (gate 11, 18)

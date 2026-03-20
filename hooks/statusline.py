@@ -49,6 +49,7 @@ except ImportError:
     _HAS_RAMDISK = False
 GATES_DIR = os.path.join(HOOKS_DIR, "gates")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
+SKILL_LIBRARY_DIR = os.path.join(CLAUDE_DIR, "skill-library")
 MODES_DIR = os.path.join(CLAUDE_DIR, "modes")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
@@ -60,7 +61,7 @@ CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
 EXPECTED_GATES = 17
-EXPECTED_SKILLS = 7
+EXPECTED_SKILLS = 15  # Minimum across both skills/ and skill-library/
 EXPECTED_HOOK_EVENTS = 13
 
 # Health bar characters (legacy — kept for reference)
@@ -199,15 +200,18 @@ def get_project_name():
 
 
 def count_skills():
-    """Count SKILL.md directories in the skills directory."""
-    if not os.path.isdir(SKILLS_DIR):
-        return 0
-    count = 0
-    for entry in os.listdir(SKILLS_DIR):
-        skill_file = os.path.join(SKILLS_DIR, entry, "SKILL.md")
-        if os.path.isfile(skill_file):
-            count += 1
-    return count
+    """Count SKILL.md directories in both skill-library/ and skills/ (deduplicated)."""
+    seen = set()
+    for base_dir in (SKILL_LIBRARY_DIR, SKILLS_DIR):
+        if not os.path.isdir(base_dir):
+            continue
+        for entry in os.listdir(base_dir):
+            if entry in seen:
+                continue
+            skill_file = os.path.join(base_dir, entry, "SKILL.md")
+            if os.path.isfile(skill_file):
+                seen.add(entry)
+    return len(seen)
 
 
 def count_hook_events():

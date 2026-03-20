@@ -11,13 +11,12 @@ When the user says "build", "implement", "create", or wants the full quality wor
 - If memory returns relevant entries, use `get_memory(id)` for full details
 
 ### 2. PLAN
-- Enter Plan Mode (`EnterPlanMode` tool)
-- Explore the codebase: read relevant files, understand existing patterns
+- Run /brainstorm to explore the codebase and understand existing patterns
 - Write a clear plan with:
   - Files to create/modify
   - Approach and rationale
   - Success criteria (what "done" looks like)
-- Exit Plan Mode for user approval before proceeding
+- Present plan for user approval before proceeding
 - Save the plan to memory: `remember_this("Plan: [summary]", "planning [feature]", "type:decision")`
 
 ### 3. TESTS FIRST

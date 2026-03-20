@@ -52,7 +52,7 @@ Write the implementation plan to docs/plans/<feature-slug>-impl.md:
   ## Rollback (if something goes wrong)
 
 ### 5. PRESENT FOR APPROVAL
-Show the task list inline. Ask: "Ready to build? Run /build to execute."
+Show the task list inline. Ask: "Ready to build? Run /implement to execute."
 
 ### 6. SAVE TO MEMORY
 - remember_this("Plan: [feature] — [N tasks, key files]",
@@ -61,4 +61,4 @@ Show the task list inline. Ask: "Ready to build? Run /build to execute."
 ## Output
 - Implementation plan saved to docs/plans/<feature-slug>-impl.md
 - Task list presented inline for user review
-- User approves, then runs /build (or implements manually)
+- User approves, then runs /implement (or implements manually)

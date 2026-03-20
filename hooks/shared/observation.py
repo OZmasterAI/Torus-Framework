@@ -115,7 +115,7 @@ def _compute_priority(tool_name, has_error, exit_code):
         return "medium"
     if tool_name in ("Read", "Glob", "Grep"):
         return "low"
-    if tool_name in ("Bash", "WebSearch", "WebFetch"):
+    if tool_name in ("Bash", "WebSearch", "WebFetch", "Task", "Agent", "Skill"):
         return "medium"
     return "low"
 
@@ -251,7 +251,6 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
         if model:
             document += f" (model={model})"
         context = {"subagent_type": subagent_type, "model": model}
-        priority = "medium"
 
     else:
         document = f"{tool_name}: (uncategorized)"

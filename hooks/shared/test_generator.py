@@ -61,10 +61,10 @@ def _is_shared_module(path: str) -> bool:
 
 
 def _is_skill_module(path: str) -> bool:
-    """Return True if *path* lives inside a skills/ directory."""
+    """Return True if *path* lives inside a skills/ or skill-library/ directory."""
     normalized = os.path.normpath(path)
     parts = normalized.split(os.sep)
-    return "skills" in parts
+    return "skills" in parts or "skill-library" in parts
 
 
 def _classify_function(func_name: str, args: List[str], module_path: str) -> str:

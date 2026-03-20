@@ -28,7 +28,7 @@ FAIL = 0
 RESULTS = []
 
 
-def test(name, condition, detail=""):
+def check(name, condition, detail=""):
     global PASS, FAIL
     if condition:
         PASS += 1
@@ -63,22 +63,22 @@ tracker = make_tracker()
 
 # Fresh tracker: no active op, no completed ops
 state = tracker.get_state()
-test("fresh tracker: op_id starts at 1", state.get("current_op_id") == 1)
-test("fresh tracker: no completed ops", tracker.get_completed_ops() == [])
-test("fresh tracker: active op is None", tracker.get_active_op() is None)
+check("fresh tracker: op_id starts at 1", state.get("current_op_id") == 1)
+check("fresh tracker: no completed ops", tracker.get_completed_ops() == [])
+check("fresh tracker: active op is None", tracker.get_active_op() is None)
 
 # First tool call starts active op
 result = tracker.process_tool_call("Read", {"file_path": "/foo/bar.py"})
 active = tracker.get_active_op()
-test("after first call: active op exists", active is not None)
-test(
+check("after first call: active op exists", active is not None)
+check(
     "after first call: op_type is 'read'",
     active["type"] == "read",
     f"got {active.get('type')}",
 )
-test("after first call: files tracked", "/foo/bar.py" in active.get("files", []))
-test("process_tool_call returns dict", isinstance(result, dict))
-test("boundary_detected key present in result", "boundary_detected" in result)
+check("after first call: files tracked", "/foo/bar.py" in active.get("files", []))
+check("process_tool_call returns dict", isinstance(result, dict))
+check("boundary_detected key present in result", "boundary_detected" in result)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 2: Tool phase classification
@@ -91,7 +91,7 @@ tracker2 = make_tracker()
 for tool in ("Read", "Grep", "Glob"):
     result = tracker2.process_tool_call(tool, {"file_path": "/tmp/x.py"})
     active = tracker2.get_active_op()
-    test(
+    check(
         f"{tool} classified as 'read'",
         active["type"] == "read",
         f"got {active.get('type')}",
@@ -103,7 +103,7 @@ tracker3.process_tool_call("Read", {"file_path": "/tmp/a.py"})
 r = tracker3.process_tool_call("Edit", {"file_path": "/tmp/a.py"})
 # After writing, active op should be 'write' type
 active3 = tracker3.get_active_op()
-test(
+check(
     "Edit classified as 'write'",
     active3["type"] == "write",
     f"got {active3.get('type')}",
@@ -113,7 +113,7 @@ tracker4 = make_tracker()
 tracker4.process_tool_call("Read", {"file_path": "/tmp/a.py"})
 tracker4.process_tool_call("Write", {"file_path": "/tmp/b.py"})
 active4 = tracker4.get_active_op()
-test(
+check(
     "Write classified as 'write'",
     active4["type"] == "write",
     f"got {active4.get('type')}",
@@ -124,7 +124,7 @@ tracker5 = make_tracker()
 tracker5.process_tool_call("Edit", {"file_path": "/tmp/a.py"})
 tracker5.process_tool_call("Bash", {"command": "pytest"})
 active5 = tracker5.get_active_op()
-test(
+check(
     "Bash classified as 'verify'",
     active5["type"] == "verify",
     f"got {active5.get('type')}",
@@ -135,7 +135,7 @@ tracker6 = make_tracker()
 tracker6.process_tool_call("Read", {"file_path": "/tmp/a.py"})
 tracker6.process_tool_call("Task", {"description": "do something"})
 active6 = tracker6.get_active_op()
-test(
+check(
     "Task classified as 'delegate'",
     active6["type"] == "delegate",
     f"got {active6.get('type')}",
@@ -154,7 +154,7 @@ tracker_b1.process_tool_call("Grep", {"pattern": "foo"})
 r = tracker_b1.process_tool_call(
     "Edit", {"file_path": "/tmp/a.py"}, assistant_text="Now let me fix this."
 )
-test(
+check(
     "read->write + intent signal detected as boundary",
     r.get("boundary_detected") is True,
     f"result={r}",
@@ -164,7 +164,7 @@ test(
 tracker_b1b = make_tracker()
 tracker_b1b.process_tool_call("Read", {"file_path": "/tmp/a.py"})
 r_b1b = tracker_b1b.process_tool_call("Edit", {"file_path": "/tmp/a.py"})
-test(
+check(
     "phase transition alone does NOT trigger boundary (0.35 < 0.5)",
     r_b1b.get("boundary_detected") is False,
     f"result={r_b1b}",
@@ -177,7 +177,7 @@ tracker_b2.process_tool_call("Write", {"file_path": "/tmp/b.py"})
 r2 = tracker_b2.process_tool_call(
     "Bash", {"command": "python test.py"}, assistant_text="Now let me run tests."
 )
-test(
+check(
     "write->verify + intent signal detected as boundary",
     r2.get("boundary_detected") is True,
     f"result={r2}",
@@ -187,7 +187,7 @@ test(
 tracker_b3 = make_tracker()
 tracker_b3.process_tool_call("Read", {"file_path": "/tmp/a.py"})
 r3 = tracker_b3.process_tool_call("Read", {"file_path": "/tmp/b.py"})
-test(
+check(
     "read->read: no forced boundary from phase alone",
     # phase alone (0.35) is below threshold (0.5), so no boundary unless other signals fire
     # This is about signal weight, not guaranteed no-boundary
@@ -211,7 +211,7 @@ r_f = tracker_f.process_tool_call(
     assistant_text="",  # No intent signal
 )
 # file scope Jaccard < 0.2 should contribute 0.30 weight
-test(
+check(
     "large file scope change contributes to boundary score",
     "boundary_score" in r_f or "boundary_detected" in r_f,
 )
@@ -227,7 +227,7 @@ tracker_i.process_tool_call("Read", {"file_path": "/tmp/a.py"})
 r_i = tracker_i.process_tool_call(
     "Edit", {"file_path": "/tmp/a.py"}, assistant_text="Now let me implement the fix."
 )
-test(
+check(
     "intent signal 'Now' in assistant text detected",
     r_i.get("boundary_detected") is True,
     f"result={r_i}",
@@ -238,7 +238,7 @@ tracker_i2.process_tool_call("Read", {"file_path": "/tmp/a.py"})
 r_i2 = tracker_i2.process_tool_call(
     "Edit", {"file_path": "/tmp/a.py"}, assistant_text="Moving on to the next task."
 )
-test(
+check(
     "intent signal 'Moving on to' detected",
     r_i2.get("boundary_detected") is True,
     f"result={r_i2}",
@@ -249,7 +249,7 @@ tracker_i3.process_tool_call("Read", {"file_path": "/tmp/a.py"})
 r_i3 = tracker_i3.process_tool_call(
     "Edit", {"file_path": "/tmp/a.py"}, assistant_text="I'll implement this now."
 )
-test(
+check(
     'intent signal "I\'ll" detected',
     r_i3.get("boundary_detected") is True,
     f"result={r_i3}",
@@ -270,7 +270,7 @@ tracker_t._save_state(s)
 r_t = tracker_t.process_tool_call("Read", {"file_path": "/tmp/b.py"})
 # temporal_gap alone (0.15) won't exceed 0.5 threshold on its own
 # but it should be reflected in the score
-test("temporal gap signal computable without error", "boundary_detected" in r_t)
+check("temporal gap signal computable without error", "boundary_detected" in r_t)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 7: Operation completion and outcome inference
@@ -286,7 +286,7 @@ tracker_o1.process_tool_call(
     "Edit", {"file_path": "/tmp/a.py"}, assistant_text="Now let me edit this."
 )
 completed = tracker_o1.get_completed_ops()
-test(
+check(
     "read-only op completes with success outcome",
     len(completed) > 0 and completed[-1]["outcome"] == "success",
     f"completed={completed}",
@@ -301,7 +301,7 @@ tracker_o2.process_tool_call(
     "Read", {"file_path": "/tmp/c.py"}, assistant_text="Now let me check something."
 )
 completed2 = tracker_o2.get_completed_ops()
-test(
+check(
     "writes-only op (no verify) completes with 'partial' outcome",
     len(completed2) > 0 and completed2[-1]["outcome"] == "partial",
     f"completed={completed2}",
@@ -316,7 +316,7 @@ tracker_o3.process_tool_call(
     "Read", {"file_path": "/tmp/b.py"}, assistant_text="Next, let me read something."
 )
 completed3 = tracker_o3.get_completed_ops()
-test(
+check(
     "writes+bash_success op completes with 'success' outcome",
     len(completed3) > 0 and completed3[-1]["outcome"] == "success",
     f"completed={completed3}",
@@ -331,7 +331,7 @@ tracker_o4.process_tool_call(
     "Read", {"file_path": "/tmp/b.py"}, assistant_text="Now let me investigate."
 )
 completed4 = tracker_o4.get_completed_ops()
-test(
+check(
     "error op completes with 'failure' outcome",
     len(completed4) > 0 and completed4[-1]["outcome"] == "failure",
     f"completed={completed4}",
@@ -350,7 +350,7 @@ tracker_p.process_tool_call(
     assistant_text="Let me read the state.py file to understand the patterns.",
 )
 active_p = tracker_p.get_active_op()
-test(
+check(
     "purpose extracted from 'Let me' phrase",
     active_p is not None and len(active_p.get("purpose", "")) > 0,
     f"purpose={active_p.get('purpose') if active_p else 'N/A'}",
@@ -361,7 +361,7 @@ tracker_p2 = make_tracker()
 tracker_p2.process_tool_call("Edit", {"file_path": "/tmp/foo.py"})
 active_p2 = tracker_p2.get_active_op()
 purpose_p2 = active_p2.get("purpose", "")
-test(
+check(
     "fallback purpose contains type or files info",
     len(purpose_p2) > 0,
     f"purpose='{purpose_p2}'",
@@ -387,7 +387,7 @@ tracker_s._save_state(state_before)
 tracker_s2 = OperationTracker(session_persist)
 state_after = tracker_s2.get_state()
 
-test(
+check(
     "state file persisted to disk/ramdisk",
     state_after.get("total_turns", 0) == state_before.get("total_turns", 0),
     f"before={state_before.get('total_turns')}, after={state_after.get('total_turns')}",
@@ -412,12 +412,12 @@ tracker_c.process_tool_call(
 )
 
 completed_c = tracker_c.get_completed_ops()
-test(
+check(
     "multiple completed ops tracked",
     len(completed_c) >= 2,
     f"completed count={len(completed_c)}",
 )
-test(
+check(
     "completed ops have required fields",
     all(
         "id" in op and "type" in op and "outcome" in op and "purpose" in op
@@ -449,13 +449,13 @@ tracker_seq.process_tool_call(
 
 completed_seq = tracker_seq.get_completed_ops()
 ids = [op["id"] for op in completed_seq]
-test(
+check(
     "op_ids are sequential (1, 2, 3...) not double-incremented",
     ids == list(range(1, len(ids) + 1)),
     f"got ids={ids}",
 )
 active_seq = tracker_seq.get_active_op()
-test(
+check(
     "active op_id continues sequence",
     active_seq is not None and active_seq["id"] == len(ids) + 1,
     f"active id={active_seq['id'] if active_seq else 'None'}, expected={len(ids) + 1}",
@@ -471,15 +471,15 @@ tracker_bs.process_tool_call("Read", {"file_path": "/tmp/a.py"})
 result_bs = tracker_bs.process_tool_call(
     "Edit", {"file_path": "/tmp/a.py"}, assistant_text="Now implementing."
 )
-test(
+check(
     "result has boundary_detected bool",
     isinstance(result_bs.get("boundary_detected"), bool),
 )
-test(
+check(
     "result has boundary_score float",
     isinstance(result_bs.get("boundary_score"), (int, float)),
 )
-test(
+check(
     "boundary_score is between 0 and 1 (or slightly above due to weighting)",
     0.0 <= result_bs.get("boundary_score", -1) <= 2.0,
     f"score={result_bs.get('boundary_score')}",

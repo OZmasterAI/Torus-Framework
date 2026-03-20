@@ -35,6 +35,9 @@ from pathlib import Path
 _HOME = os.path.expanduser("~")
 _CLAUDE_DIR = os.path.join(_HOME, ".claude")
 _DEFAULT_SKILLS_DIR = os.path.join(_CLAUDE_DIR, "skills")
+_DEFAULT_SKILL_LIBRARY_DIR = os.path.join(_CLAUDE_DIR, "skill-library")
+# Both directories are checked; skill-library/ takes priority on name conflicts.
+_ALL_SKILL_DIRS = [_DEFAULT_SKILL_LIBRARY_DIR, _DEFAULT_SKILLS_DIR]
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -197,7 +200,10 @@ def _check_metadata_json(skill_path):
 # ── Main API ────────────────────────────────────────────────────────────────
 
 def check_all_skills(skills_dir=None):
-    """Check all skills in the skills directory.
+    """Check all skills in both skill directories.
+
+    Scans skill-library/ and skills/ directories. skill-library/ takes priority
+    when the same skill name exists in both.
 
     Returns a structured health report:
     {
@@ -209,7 +215,12 @@ def check_all_skills(skills_dir=None):
         "script_issues": dict[str, list[str]],  # skill_name -> script error list
     }
     """
-    skills_dir = _normalize_path(skills_dir or _DEFAULT_SKILLS_DIR)
+    # When a custom skills_dir is given, only scan that one directory (legacy mode).
+    # When no dir is given, scan all default directories.
+    if skills_dir is not None:
+        search_dirs = [_normalize_path(skills_dir)]
+    else:
+        search_dirs = [d for d in _ALL_SKILL_DIRS if os.path.isdir(d)]
 
     report = {
         "total_skills": 0,
@@ -220,25 +231,26 @@ def check_all_skills(skills_dir=None):
         "script_issues": {},
     }
 
-    if not os.path.isdir(skills_dir):
-        report["warnings"].append(f"Skills directory not found: {skills_dir}")
-        return report
+    # Collect unique skills across all directories (first occurrence wins).
+    seen_skills: dict = {}  # skill_name -> skill_path
+    for base_dir in search_dirs:
+        if not os.path.isdir(base_dir):
+            report["warnings"].append(f"Skills directory not found: {base_dir}")
+            continue
+        try:
+            for d in sorted(os.listdir(base_dir)):
+                full_path = os.path.join(base_dir, d)
+                if os.path.isdir(full_path) and not d.startswith(".") and d not in seen_skills:
+                    seen_skills[d] = full_path
+        except OSError as e:
+            report["warnings"].append(f"Could not scan skills directory {base_dir}: {e}")
 
-    # Scan all skill directories
-    try:
-        skill_dirs = sorted([
-            d for d in os.listdir(skills_dir)
-            if os.path.isdir(os.path.join(skills_dir, d)) and not d.startswith(".")
-        ])
-    except OSError as e:
-        report["warnings"].append(f"Could not scan skills directory: {e}")
-        return report
-
+    skill_dirs = sorted(seen_skills.keys())
     report["total_skills"] = len(skill_dirs)
 
     # Check each skill
     for skill_name in skill_dirs:
-        skill_path = os.path.join(skills_dir, skill_name)
+        skill_path = seen_skills[skill_name]
         skill_errors = []
 
         # Check structure
@@ -276,32 +288,38 @@ def check_all_skills(skills_dir=None):
 def get_broken_skills(skills_dir=None):
     """Get list of skill directories with critical issues.
 
-    Only returns skills that fail structural checks (missing SKILL.md, etc).
-    Script syntax warnings are not included in this list.
+    Scans both skill-library/ and skills/ directories unless a custom
+    skills_dir is given. Only returns skills that fail structural checks
+    (missing SKILL.md). Script syntax warnings are not included.
 
     Returns: list[str] of skill names
     """
-    skills_dir = _normalize_path(skills_dir or _DEFAULT_SKILLS_DIR)
+    if skills_dir is not None:
+        search_dirs = [_normalize_path(skills_dir)]
+    else:
+        search_dirs = [d for d in _ALL_SKILL_DIRS if os.path.isdir(d)]
 
     broken = []
+    seen: set = set()
 
-    if not os.path.isdir(skills_dir):
-        return broken
-
-    try:
-        skill_dirs = sorted([
-            d for d in os.listdir(skills_dir)
-            if os.path.isdir(os.path.join(skills_dir, d)) and not d.startswith(".")
-        ])
-    except OSError:
-        return broken
-
-    for skill_name in skill_dirs:
-        skill_path = os.path.join(skills_dir, skill_name)
-        is_healthy, _ = _check_skill_structure(skill_path)
-
-        if not is_healthy:
-            broken.append(skill_name)
+    for base_dir in search_dirs:
+        if not os.path.isdir(base_dir):
+            continue
+        try:
+            skill_names = sorted([
+                d for d in os.listdir(base_dir)
+                if os.path.isdir(os.path.join(base_dir, d)) and not d.startswith(".")
+            ])
+        except OSError:
+            continue
+        for skill_name in skill_names:
+            if skill_name in seen:
+                continue
+            seen.add(skill_name)
+            skill_path = os.path.join(base_dir, skill_name)
+            is_healthy, _ = _check_skill_structure(skill_path)
+            if not is_healthy:
+                broken.append(skill_name)
 
     return broken
 
@@ -323,8 +341,21 @@ def get_skill_details(skill_name, skills_dir=None):
         "script_issues": list[str],
     }
     """
-    skills_dir = _normalize_path(skills_dir or _DEFAULT_SKILLS_DIR)
-    skill_path = os.path.join(skills_dir, skill_name)
+    if skills_dir is not None:
+        skills_dir = _normalize_path(skills_dir)
+        skill_path = os.path.join(skills_dir, skill_name)
+    else:
+        # Search both directories, return first match
+        skill_path = None
+        for base_dir in _ALL_SKILL_DIRS:
+            candidate = os.path.join(base_dir, skill_name)
+            if os.path.isdir(candidate):
+                skill_path = candidate
+                skills_dir = base_dir
+                break
+        if skill_path is None:
+            skill_path = os.path.join(_DEFAULT_SKILLS_DIR, skill_name)
+            skills_dir = _DEFAULT_SKILLS_DIR
 
     details = {
         "name": skill_name,
