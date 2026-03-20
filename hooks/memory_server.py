@@ -16,7 +16,9 @@ LanceDB provides optimistic concurrency control (no more segfaults),
 native TS bindings, and built-in BM25 FTS.
 """
 
+import asyncio
 import atexit
+import concurrent.futures
 import functools
 import hashlib
 import json
