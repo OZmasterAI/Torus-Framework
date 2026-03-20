@@ -1,6 +1,6 @@
 {
   "session_count": 503,
-  "session_start_verified": true,
+  "permissions_auto_approve": true,
   "project": "torus-framework",
   "feature": "permissions-fix",
   "framework_version": "v3.0.0",
