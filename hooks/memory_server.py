@@ -111,17 +111,22 @@ else:
 
 
 def crash_proof(fn):
-    """Wrap MCP tool handler so exceptions return error dicts instead of crashing the server."""
+    """Wrap MCP tool: offloads sync body to thread pool, catches exceptions.
+
+    Keeps uvicorn event loop free while embedding inference runs.
+    """
 
     @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
+    async def wrapper(*args, **kwargs):
         try:
-            return fn(*args, **kwargs)
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                _tool_executor, functools.partial(fn, *args, **kwargs)
+            )
         except Exception as e:
             import traceback
-
             tb = traceback.format_exc()
-            print(f"[MCP] {fn.__name__} error: {e}\n{tb}", file=_sys.stderr)
+            _sys.stderr.write(f"[MCP] {fn.__name__} error: {e}\n{tb}\n")
             return {"error": f"{fn.__name__} failed: {type(e).__name__}: {e}"}
 
     return wrapper
@@ -270,15 +275,12 @@ _TABLE_SCHEMAS = {
 }
 
 
-# Thread pool for embedding inference — keeps uvicorn event loop responsive.
-# Single worker because SentenceTransformer isn't thread-safe.
-_embed_executor = concurrent.futures.ThreadPoolExecutor(
-    max_workers=1, thread_name_prefix="embed"
-)
+def _embed_texts(texts):
+    """Embed a list of texts using the loaded SentenceTransformer model.
 
-
-def _embed_texts_sync(texts):
-    """Synchronous embedding — runs in _embed_executor, NOT on the event loop."""
+    Returns list of lists of floats (768-dim vectors).
+    Falls back to zero vectors if embedding model is unavailable.
+    """
     if _embedding_fn is None:
         return [[0.0] * _EMBEDDING_DIM for _ in texts]
     try:
@@ -288,26 +290,16 @@ def _embed_texts_sync(texts):
         return [[0.0] * _EMBEDDING_DIM for _ in texts]
 
 
-def _embed_texts(texts):
-    """Embed texts. Safe to call from sync or async context.
-
-    When called from the main thread (uvicorn event loop), submits to
-    the thread pool so the event loop stays responsive.
-    """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    if loop and loop.is_running():
-        # We're on the event loop — offload to thread pool
-        future = _embed_executor.submit(_embed_texts_sync, texts)
-        return future.result(timeout=30)
-    return _embed_texts_sync(texts)
-
-
 def _embed_text(text):
     """Embed a single text string. Returns list of floats (768-dim)."""
     return _embed_texts([text])[0]
+
+
+# Thread pool for offloading CPU-heavy MCP tool calls off the uvicorn event loop.
+# Single worker serializes access to the non-thread-safe SentenceTransformer model.
+_tool_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="mcp-tool"
+)
 
 
 from shared.lance_collection import (
