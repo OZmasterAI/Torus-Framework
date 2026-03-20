@@ -32,7 +32,7 @@ echo "  Copied from $(cd "$REPO_MOUNT" && git log --oneline -1)"
 
 # ── Strip mcp.json to memory-only (stdio servers hang without full deps) ──
 echo ""
-echo "--- Configuring MCP for Docker ---"
+echo "--- Configuring for Docker ---"
 cat > "$WORK/mcp.json" << 'MCPEOF'
 {
   "mcpServers": {
@@ -43,7 +43,22 @@ cat > "$WORK/mcp.json" << 'MCPEOF'
   }
 }
 MCPEOF
-echo "  MCP: memory (SSE) only — search/analytics stripped (missing deps in container)"
+echo "  MCP: memory (SSE) only — search/analytics stripped"
+
+# ── Strip hooks from settings.json (host hooks need deps not in container) ──
+python3 -c "
+import json
+with open('$WORK/settings.json', 'r') as f:
+    data = json.load(f)
+data.pop('hooks', None)
+data.pop('statusLine', None)
+data['permissions'] = {'allow': [], 'defaultMode': 'default'}
+with open('$WORK/settings.json', 'w') as f:
+    json.dump(data, f, indent=2)
+print('  Hooks: stripped (host hooks need deps not in container)')
+print('  StatusLine: stripped')
+print('  Permissions: reset to default')
+"
 
 # ── Copy gitignored config files from mount ──
 for f in config.json; do
