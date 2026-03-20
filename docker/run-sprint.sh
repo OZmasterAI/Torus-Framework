@@ -36,6 +36,7 @@ docker run -d \
     -v "$REPO_DIR:/mnt/repo:ro" \
     -v "/home/crab/.claude.json:/home/crab/.claude.json:rw" \
     -e "TERM=xterm-256color" \
+    -e "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1" \
     "$IMAGE_NAME"
 
 echo ""
