@@ -1,9 +1,10 @@
 {
-  "session_count": 502,
+  "session_count": 503,
+  "session_start_verified": true,
   "project": "torus-framework",
   "feature": "permissions-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Verified crash_proof deployed and DAG dual-write active after restart. Cleared memory server blocking issue. Added single-level glob permissions (*) — still prompting with ** only.",
+  "what_was_done": "Verified crash_proof deployed and DAG dual-write active after restart. Cleared memory server blocking issue. Added single-level glob permissions (*) \u2014 still prompting with ** only.",
   "known_issues": [
     "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session",
     "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions"
@@ -14,9 +15,9 @@
     "Save session 497 details to memory (gap for 498-499 too)",
     "Run #28 enforcer daemon SIGHUP (only gate-blocked task skipped)"
   ],
-  "last_response_preview": "Two files only:\n\n1. **`internal/config/config.go`** \u2014 add the fields to `AgentConfig` struct\n2. **`cmd/main.go`** \u2014 add `case \"azure\"` and `case \"vertex\"` in `makeProvider()`",
+  "last_response_preview": "**Session 502 Wrap-up**\n\n**Done this session:**\n- Verified crash_proof decorator is deployed (all MCP tools wrapped)\n- Confirmed DAG dual-write active (`_DUAL_WRITE = True`)\n- Cleared memory server blocking from known issues\n- Added single-level glob (`*`) permissions alongside recursive (`**`)\n\n**Risk: YELLOW** \u2014 permissions fix needs restart to verify\n\n**Next session (after restart):**\n1. Verify permissions fix \u2014 Edit/Write to `~/.claude/` should not prompt\n2. Fix `dag_memory.py` line 360 bug\n",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 11607,
-  "dag_total_branches": 41
+  "dag_node_count": 11666,
+  "dag_total_branches": 42
 }
