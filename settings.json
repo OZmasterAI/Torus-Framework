@@ -12,6 +12,8 @@
       "Write(~/.claude/**)",
       "Edit(/home/crab/.claude/**)",
       "Write(/home/crab/.claude/**)",
+      "Edit(/home/crab/.claude/*)",
+      "Write(/home/crab/.claude/*)",
       "Edit(~/.vscode/**)",
       "Write(~/.vscode/**)",
       "Edit(/home/crab/.vscode/**)",
