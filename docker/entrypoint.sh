@@ -48,6 +48,10 @@ with open('$CONF/settings.json', 'r') as f:
 data['enabledPlugins'] = {k: False for k in data.get('enabledPlugins', {})}
 # Remove statusLine (needs deps that may not be available)
 data.pop('statusLine', None)
+# Enable agent teams
+if 'env' not in data:
+    data['env'] = {}
+data['env']['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'] = '1'
 with open('$CONF/settings.json', 'w') as f:
     json.dump(data, f, indent=2)
 print('  Plugins: all disabled')
