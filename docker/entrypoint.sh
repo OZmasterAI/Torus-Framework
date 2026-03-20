@@ -8,97 +8,51 @@ echo "Node: $(node --version)"
 echo "Python: $(python3 --version)"
 echo ""
 
-# ── Verify source repo mount ──
-REPO_MOUNT="/mnt/repo"
-if [ ! -d "$REPO_MOUNT/.git" ]; then
-    echo "ERROR: Repo not mounted at $REPO_MOUNT"
-    exit 1
-fi
-
 # ── Verify OAuth credentials ──
 if [ ! -f "$HOME/.claude.json" ]; then
-    echo "ERROR: ~/.claude.json not mounted (OAuth credentials missing)"
-    exit 1
-fi
-echo "Auth: OAuth credentials present"
-
-# ── Create fresh working copy from mounted repo ──
-echo ""
-echo "--- Creating fresh working copy ---"
-WORK="$HOME/.claude"
-rm -rf "$WORK"
-cp -a "$REPO_MOUNT" "$WORK"
-echo "  Copied from $(cd "$REPO_MOUNT" && git log --oneline -1)"
-
-# ── Strip mcp.json to memory-only (stdio servers hang without full deps) ──
-echo ""
-echo "--- Configuring for Docker ---"
-cat > "$WORK/mcp.json" << 'MCPEOF'
-{
-  "mcpServers": {
-    "memory": {
-      "type": "sse",
-      "url": "http://localhost:8741/sse"
-    }
-  }
-}
-MCPEOF
-echo "  MCP: memory (SSE) only — search/analytics stripped"
-
-# ── Strip hooks from settings.json (host hooks need deps not in container) ──
-python3 -c "
-import json
-with open('$WORK/settings.json', 'r') as f:
-    data = json.load(f)
-data.pop('hooks', None)
-data.pop('statusLine', None)
-data['permissions'] = {'allow': [], 'defaultMode': 'default'}
-with open('$WORK/settings.json', 'w') as f:
-    json.dump(data, f, indent=2)
-print('  Hooks: stripped (host hooks need deps not in container)')
-print('  StatusLine: stripped')
-print('  Permissions: reset to default')
-"
-
-# ── Copy gitignored config files from mount ──
-for f in config.json; do
-    if [ -f "$REPO_MOUNT/$f" ] && [ ! -f "$WORK/$f" ]; then
-        cp "$REPO_MOUNT/$f" "$WORK/$f"
-        echo "  Copied: $f"
-    fi
-done
-
-echo ""
-echo "Framework: $(ls $WORK/hooks/gates/gate_*.py 2>/dev/null | wc -l) gates"
-echo "Skills: $(ls -d $WORK/skills/*/SKILL.md 2>/dev/null | wc -l)"
-echo "Agents: $(ls $WORK/agents/*.md 2>/dev/null | wc -l)"
-echo ""
-
-# ── Verify memory server reachable on host ──
-if curl -s --max-time 3 http://127.0.0.1:8741/sse > /dev/null 2>&1; then
-    echo "Memory server: REACHABLE (host :8741)"
+    echo "WARNING: ~/.claude.json not mounted — you'll need to log in manually"
 else
-    echo "WARNING: Memory server not reachable on :8741"
+    echo "Auth: OAuth credentials present"
+fi
+
+# ── Workspace: copy project code if repo is mounted ──
+REPO_MOUNT="/mnt/repo"
+WORKSPACE="$HOME/workspace"
+if [ -d "$REPO_MOUNT/.git" ]; then
+    echo ""
+    echo "--- Creating workspace from mounted repo ---"
+    rm -rf "$WORKSPACE"
+    cp -a "$REPO_MOUNT" "$WORKSPACE"
+    echo "  Copied from $(cd "$REPO_MOUNT" && git log --oneline -1)"
+    echo "  Path: $WORKSPACE"
 fi
 echo ""
 
-# ── Launch Claude Code in tmux ──
-PROMPT_FILE="$WORK/docker/sprint-prompt.md"
-
-echo "=== Starting tmux session 'sprint' ==="
-echo "Attach: docker exec -it evolution-sprint tmux attach -t sprint"
+# ~/.claude is baked into the image as bare minimum (no hooks, no plugins, no MCP)
+# This avoids the host's heavy hook framework hanging in Docker
+echo "Config: bare minimum (no hooks, no plugins, no MCP)"
 echo ""
 
+echo "=== Ready ==="
+echo "  Run: claude --dangerously-skip-permissions"
+if [ -d "$WORKSPACE" ]; then
+    echo "  Workspace: cd ~/workspace"
+fi
+echo "  Attach: docker exec -it evolution-sprint tmux attach -t sprint"
+echo ""
+
+# ── Launch tmux session ──
 tmux new-session -d -s sprint -x 200 -y 50
 
-if [ -f "$PROMPT_FILE" ]; then
-    tmux send-keys -t sprint "cat $PROMPT_FILE | claude --dangerously-skip-permissions -p -" Enter
-else
-    tmux send-keys -t sprint "claude --dangerously-skip-permissions" Enter
+# Drop into workspace if available
+if [ -d "$WORKSPACE" ]; then
+    tmux send-keys -t sprint "cd $WORKSPACE" Enter
 fi
 
+# Just open a shell — user does OAuth login manually if needed
+tmux send-keys -t sprint "claude --dangerously-skip-permissions" Enter
+
 echo "Sprint session started. Container will stay alive."
-echo "Ctrl+C or 'docker stop' to end."
 
 # Keep container alive
 tail -f /dev/null

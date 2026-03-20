@@ -34,7 +34,7 @@ docker run -d \
     --name "$CONTAINER_NAME" \
     --network host \
     -v "$REPO_DIR:/mnt/repo:ro" \
-    -v "/home/crab/.claude.json:/home/crab/.claude.json:ro" \
+    -v "/home/crab/.claude.json:/home/crab/.claude.json:rw" \
     -e "TERM=xterm-256color" \
     "$IMAGE_NAME"
 

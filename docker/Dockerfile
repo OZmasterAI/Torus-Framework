@@ -16,14 +16,11 @@ RUN userdel -r node 2>/dev/null || true && \
 # Install Claude Code globally
 RUN npm install -g @anthropic-ai/claude-code@latest
 
-# Python deps for hooks/gates/MCP servers (no torch — memory runs on host)
-RUN python3 -m pip install --break-system-packages --no-cache-dir \
-    "mcp>=1.0,<2.0" \
-    "fastmcp>=2.0" \
-    "lancedb>=0.29,<1.0" \
-    "pyarrow>=14.0" \
-    "httpx>=0.28" \
-    "pydantic>=2.0"
+# Bare minimum ~/.claude config — NO hooks, NO plugins, NO MCP
+RUN mkdir -p /home/crab/.claude && \
+    echo '{}' > /home/crab/.claude/settings.json && \
+    echo '{"mcpServers":{}}' > /home/crab/.claude/mcp.json && \
+    chown -R crab:crab /home/crab/.claude
 
 USER crab
 WORKDIR /home/crab
