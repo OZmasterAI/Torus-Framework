@@ -84,6 +84,32 @@ class KnowledgeGraph:
         row = self._conn.execute("SELECT COUNT(*) FROM entities").fetchone()
         return row[0] if row else 0
 
+    def batch_get_entities(self, names):
+        if not names:
+            return {}
+        placeholders = ",".join("?" for _ in names)
+        rows = self._conn.execute(
+            f"SELECT name, type, salience, mention_count, created_at, last_seen_at "
+            f"FROM entities WHERE name IN ({placeholders})", list(names)
+        ).fetchall()
+        return {row[0]: {"name": row[0], "type": row[1], "salience": row[2],
+                "mention_count": row[3], "created_at": row[4], "last_seen_at": row[5]}
+                for row in rows}
+
+    def batch_get_edges(self, entity_ids):
+        if not entity_ids:
+            return []
+        placeholders = ",".join("?" for _ in entity_ids)
+        rows = self._conn.execute(
+            f"SELECT from_id, to_id, relation_type, strength, activation_count, "
+            f"co_occurrence_count, pmi, created_at, last_activated "
+            f"FROM edges WHERE from_id IN ({placeholders}) OR to_id IN ({placeholders})",
+            list(entity_ids) + list(entity_ids)
+        ).fetchall()
+        return [{"from_id": r[0], "to_id": r[1], "relation_type": r[2],
+                 "strength": r[3], "activation_count": r[4], "co_occurrence_count": r[5],
+                 "pmi": r[6], "created_at": r[7], "last_activated": r[8]} for r in rows]
+
     # --- Edge operations ---
 
     def add_edge(

@@ -19,6 +19,13 @@ SOCKET_PATH = os.path.join(
 )
 SOCKET_TIMEOUT = 2  # seconds (kept low to avoid boot timeout — 15s hook limit)
 
+# Per-method timeout overrides (seconds)
+METHOD_TIMEOUTS = {
+    "ping": 1.0, "count": 2.0, "query": 5.0, "search": 5.0,
+    "get": 3.0, "upsert": 3.0, "remember": 3.0, "delete": 3.0,
+    "flush_queue": 5.0, "backup": 10.0,
+}
+
 # ── Circuit-breaker integration ────────────────────────────────────────────────
 # Wraps socket calls so repeated failures open the circuit and short-circuit
 # future calls instead of hammering a dead worker.
@@ -90,7 +97,8 @@ def request(method, collection=None, params=None):
 
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(SOCKET_TIMEOUT)
+        _effective_timeout = METHOD_TIMEOUTS.get(method, SOCKET_TIMEOUT)
+        sock.settimeout(_effective_timeout)
         sock.connect(SOCKET_PATH)
     except (FileNotFoundError, ConnectionRefusedError, OSError) as e:
         _cb_record_failure(_CB_SVC, **_CB_KWARGS)
@@ -103,7 +111,7 @@ def request(method, collection=None, params=None):
         sock.sendall((json.dumps(req) + "\n").encode("utf-8"))
 
         # Read response (accumulate until newline, cap at 10MB)
-        MAX_RESPONSE_SIZE = 10 * 1024 * 1024
+        MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # 50MB
         buf = b""
         while b"\n" not in buf:
             chunk = sock.recv(65536)

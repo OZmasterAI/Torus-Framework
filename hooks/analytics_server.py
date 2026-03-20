@@ -472,7 +472,7 @@ def memory_health() -> dict:
         try:
             import lancedb
             db = lancedb.connect(lance_dir)
-            for table_name in db.table_names():
+            for table_name in db.list_tables():
                 try:
                     tbl = db.open_table(table_name)
                     result["tables"][table_name] = {

@@ -198,6 +198,7 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("cluster_id", pa.string()),
         pa.field("memory_type", pa.string()),
         pa.field("state_type", pa.string()),
+        pa.field("quality_score", pa.float64()),
     ]
 )
 

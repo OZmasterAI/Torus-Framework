@@ -8,10 +8,16 @@ Each observation gets a deterministic ID (obs_{hash}) for dedup.
 
 import hashlib
 import json
+import os
+import threading
 import time
+import uuid
 from datetime import datetime
 
 from shared.secrets_filter import scrub
+
+_obs_lock = threading.Lock()
+_obs_counter = 0
 
 # Import fnv1a_hash for command dedup
 try:
@@ -280,7 +286,11 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
             mentor_chain_score = str(round(mc, 2))
 
     # Generate deterministic ID
-    id_source = f"{document}_{session_id}_{now}"
+    global _obs_counter
+    with _obs_lock:
+        _obs_counter += 1
+        count = _obs_counter
+    id_source = f"{document}_{session_id}_{now}_{os.getpid()}_{count}_{uuid.uuid4().hex[:8]}"
     obs_id = "obs_" + hashlib.sha256(id_source.encode()).hexdigest()[:12]
 
     return {

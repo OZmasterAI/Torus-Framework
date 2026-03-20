@@ -356,14 +356,6 @@ def _similarity_groups(entries):
         }
     """
     # Build inverted index: tag -> list of entry IDs
-    # Skip very generic tags that would create noise clusters
-    _NOISE_TAGS = {
-        "type:fix", "type:error", "type:feature", "type:learning",
-        "type:decision", "outcome:success", "outcome:failed",
-        "priority:high", "priority:medium", "priority:critical",
-        "priority:low", "area:framework", "area:infra",
-    }
-
     tag_to_ids = defaultdict(list)
     for entry in entries:
         for tag in _split_tags(entry["tags"]):

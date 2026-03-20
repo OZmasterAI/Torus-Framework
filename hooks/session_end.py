@@ -741,6 +741,9 @@ def _run_background(data_path):
                 f"[SESSION_END:bg] DAG auto-promoted {len(_promoted)} nodes to knowledge",
                 file=sys.stderr,
             )
+        # FTS5 optimize: merge b-tree segments on session close
+        _dag.optimize_fts()
+        print("[SESSION_END:bg] DAG FTS5 optimized", file=sys.stderr)
     except Exception as e:
         print(f"[SESSION_END:bg] DAG promotion failed: {e}", file=sys.stderr)
 

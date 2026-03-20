@@ -33,7 +33,7 @@ def main():
         sys.exit(1)
 
     db = lancedb.connect(LANCE_DIR)
-    existing_tables = set(db.table_names())
+    existing_tables = set(db.list_tables())
     backup = {}
     total_docs = 0
 
