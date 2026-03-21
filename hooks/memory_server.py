@@ -3566,6 +3566,8 @@ def maintenance(
         return memory_health_report()
     elif action == "rebuild_tags":
         return rebuild_tag_index()
+    elif action == "optimize":
+        return _optimize_tables()
     elif action == "batch_rename":
         return _batch_rename_memories()
     elif action == "gate_effectiveness":
@@ -3579,6 +3581,7 @@ def maintenance(
                 "cluster": "Group related memories into clusters (min_cluster_size, distance_threshold)",
                 "health": "Generate memory health metrics (no params)",
                 "rebuild_tags": "Rebuild tag co-occurrence matrix (no params)",
+                "optimize": "Compact tables and remove orphaned old version files (no params)",
                 "batch_rename": "Rename megaman→torus in all memory content and tags",
                 "gate_effectiveness": "Analyze gate block effectiveness from session state",
             },
@@ -3586,6 +3589,31 @@ def maintenance(
 
 
 # ──────────────────────────────────────────────────
+
+
+def _optimize_tables() -> dict:
+    """Compact all LanceDB tables, prune old versions, recover disk space."""
+    from datetime import timedelta
+    import time
+
+    db = _get_lance_db()
+    results = {}
+    for name in db.list_tables():
+        t = db.open_table(name)
+        before = t.count_rows()
+        start = time.time()
+        t.optimize(cleanup_older_than=timedelta(0), delete_unverified=True)
+        elapsed = time.time() - start
+        after = t.count_rows()
+        results[name] = {
+            "rows_before": before,
+            "rows_after": after,
+            "duration_s": round(elapsed, 1),
+            "rows_ok": before == after,
+        }
+    return {"action": "optimize", "tables": results}
+
+
 # Teammate Transcript Helpers (DORMANT — add @mcp.tool() to activate)
 # ──────────────────────────────────────────────────
 
