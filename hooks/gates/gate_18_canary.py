@@ -33,10 +33,11 @@ CANARY_LOG = "/tmp/gate_canary.jsonl"
 
 # Burst detection: if calls/min in the last BURST_WINDOW_SECONDS exceeds
 # BURST_THRESHOLD_MULTIPLIER × the rolling baseline, flag it.
-BURST_WINDOW_SECONDS = 60          # rolling window for rate calculation
-BURST_BASELINE_WINDOW = 300        # longer window for baseline (5 min)
-BURST_THRESHOLD_MULTIPLIER = 3.0   # 3× baseline = burst
-BURST_MIN_CALLS = 5                # need at least this many calls to detect a burst
+BURST_WINDOW_SECONDS = 60  # rolling window for rate calculation
+BURST_BASELINE_WINDOW = 300  # longer window for baseline (5 min)
+BURST_THRESHOLD_MULTIPLIER = 3.0  # 3× baseline = burst
+BURST_MIN_CALLS = 20  # need enough history before evaluating bursts
+BURST_BASELINE_FLOOR = 5.0  # ignore bursts when baseline < this (early-session noise)
 
 # Repeated sequence detection: flag if the same (tool, input_hash) pair
 # appears this many times in a row without any other tool in between.
@@ -44,6 +45,7 @@ REPEAT_SEQUENCE_THRESHOLD = 5
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _input_size(tool_input):
     """Return byte-length of JSON-serialised tool_input."""
@@ -90,6 +92,7 @@ def _calls_per_minute(timestamps, window_seconds):
 
 
 # ── Main check ───────────────────────────────────────────────────────────────
+
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     """Record every tool call and emit warnings when anomalies are detected.
@@ -145,7 +148,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     recent_seq.append([tool_name, seq_key[1]])
     # Keep only the last REPEAT_SEQUENCE_THRESHOLD + 1 entries
     if len(recent_seq) > REPEAT_SEQUENCE_THRESHOLD + 1:
-        recent_seq = recent_seq[-(REPEAT_SEQUENCE_THRESHOLD + 1):]
+        recent_seq = recent_seq[-(REPEAT_SEQUENCE_THRESHOLD + 1) :]
     state["canary_recent_seq"] = recent_seq
 
     # ── 2. Compute statistics ────────────────────────────────────────────────
@@ -164,10 +167,10 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             f"new tool observed: '{tool_name}' (unique tools seen: {unique_tools})"
         )
 
-    # 3b. Sudden burst
+    # 3b. Sudden burst (only when baseline is established — avoids early-session noise)
     if (
         total_calls >= BURST_MIN_CALLS
-        and baseline_rate > 0
+        and baseline_rate >= BURST_BASELINE_FLOOR
         and current_rate >= baseline_rate * BURST_THRESHOLD_MULTIPLIER
     ):
         warnings.append(
