@@ -48,6 +48,7 @@ class WritePipeline:
         self.config = config or {}
         self.h = helpers or {}
         self._cached_session_id = None
+        self._bg_semaphore = threading.Semaphore(1)  # queue bg threads, 1 at a time
 
     def write(
         self,
@@ -132,23 +133,10 @@ class WritePipeline:
             except Exception:
                 pass
 
-        # ── Extract entities once, reuse everywhere ──
-        _cached_entities = None
-        try:
-            from shared.entity_extraction import extract_entities
-
-            combined_text = f"{content} {context}" if context else content
-            _cached_entities = extract_entities(combined_text)
-        except Exception:
-            _cached_entities = []
-
-        # ── Step 2b: A-Mem enrichment (keywords + context_description) ──
-        _amem_keywords = ""
+        # ── Step 2b: Context description (fast string-only, entities moved to background) ──
         _amem_context_desc = ""
         try:
-            _amem_keywords, _amem_context_desc = self._amem_enrich_cached(
-                content, context, _cached_entities
-            )
+            _amem_context_desc = _generate_context_description(content, context)
         except Exception:
             pass
 
@@ -183,9 +171,6 @@ class WritePipeline:
                 }
             elif dedup_result.get("soft_dupe_tag"):
                 _soft_dupe_tag = dedup_result["soft_dupe_tag"]
-
-        # Retroactive interference
-        self._retroactive_interference(content, tags, force, collection, h)
 
         # Citation extraction
         _extract_citations = h.get("extract_citations")
@@ -257,7 +242,7 @@ class WritePipeline:
             "memory_type": memory_type,
             "state_type": state_type,
             "quality_score": _q_score,
-            "keywords": _amem_keywords,
+            "keywords": "",
             "context_description": _amem_context_desc,
         }
         _upsert_kwargs = {
@@ -281,7 +266,7 @@ class WritePipeline:
             "quality_score": _q_score,
             "memory_type": memory_type,
             "state_type": state_type,
-            "keywords": _amem_keywords,
+            "keywords": "",
             "context_description": _amem_context_desc,
         }
 
@@ -297,7 +282,7 @@ class WritePipeline:
             "quality_score": _q_score,
             "cluster_id": _assigned_cluster_id,
             "cached_vec": _cached_vec,
-            "cached_entities": _cached_entities,
+            "cached_entities": None,
         }
         t = threading.Thread(
             target=self._post_store_background,
@@ -312,11 +297,12 @@ class WritePipeline:
     # ── Background post-store work ────────────────────────────────────────
 
     def _post_store_background(self, args):
-        """Run all fail-open side effects in a background thread."""
-        try:
-            self._bg_inner(args)
-        except Exception as e:
-            _log.debug("write-pipeline background error: %s", e)
+        """Run all fail-open side effects in a background thread (queued)."""
+        with self._bg_semaphore:
+            try:
+                self._bg_inner(args)
+            except Exception as e:
+                _log.debug("write-pipeline background error: %s", e)
 
     def _bg_inner(self, a):
         collection = self.collection
@@ -334,6 +320,38 @@ class WritePipeline:
         cluster_id = a["cluster_id"]
         cached_vec = a["cached_vec"]
         cached_entities = a["cached_entities"]
+
+        # Entity extraction (moved from sync path)
+        try:
+            from shared.entity_extraction import extract_entities
+            combined_text = f"{content} {context}" if context else content
+            cached_entities = extract_entities(combined_text)
+        except Exception:
+            cached_entities = []
+
+        # Update keywords metadata in background
+        if cached_entities:
+            try:
+                seen = set()
+                keyword_names = []
+                for ent in cached_entities:
+                    name_lower = ent["name"].lower()
+                    if name_lower not in seen:
+                        seen.add(name_lower)
+                        keyword_names.append(ent["name"])
+                keywords_str = ",".join(keyword_names[:10])
+                if len(keywords_str) > 500:
+                    keywords_str = keywords_str[:497] + "..."
+                if keywords_str:
+                    collection.update(ids=[doc_id], metadatas=[{"keywords": keywords_str}])
+            except Exception:
+                pass
+
+        # Retroactive interference (moved from sync path)
+        try:
+            self._retroactive_interference(content, tags, False, collection, h, query_vector=cached_vec)
+        except Exception:
+            pass
 
         # DAG dual-write (reuse cached embedding)
         try:
@@ -630,7 +648,7 @@ class WritePipeline:
 
         return hashlib.md5(content.encode()).hexdigest()[:16]
 
-    def _retroactive_interference(self, content, tags, force, collection, h):
+    def _retroactive_interference(self, content, tags, force, collection, h, query_vector=None):
         """Corrections/fixes suppress similar existing memories."""
         try:
             if (
@@ -642,11 +660,12 @@ class WritePipeline:
 
                 _classify_tier = h.get("classify_tier")
 
-                _ri_results = collection.query(
-                    query_texts=[content],
-                    n_results=3,
-                    include=["metadatas", "distances"],
-                )
+                _ri_kwargs = {"n_results": 3, "include": ["metadatas", "distances"]}
+                if query_vector is not None:
+                    _ri_kwargs["query_vector"] = query_vector
+                else:
+                    _ri_kwargs["query_texts"] = [content]
+                _ri_results = collection.query(**_ri_kwargs)
                 if _ri_results and _ri_results.get("ids") and _ri_results["ids"][0]:
                     _new_tier = _classify_tier(content, tags) if _classify_tier else 2
                     _new_mem = {"tier": _new_tier, "tags": tags}

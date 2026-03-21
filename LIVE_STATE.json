@@ -1,5 +1,5 @@
 {
-  "session_count": 509,
+  "session_count": 510,
   "project": "torus-framework",
   "feature": "write-pipeline-perf",
   "framework_version": "v3.0.0",
@@ -15,9 +15,9 @@
     "Identify the 6th MCP server (2 inactive besides analytics)",
     "Memory pruning \u2014 DB at 3392 entries, run maintenance(action='stale')"
   ],
-  "last_response_preview": "Memory server restarted with the new code (PID 136347), already accepting connections. Go ahead and restart Claude Code \u2014 then test `remember_this` speed.",
+  "last_response_preview": "Server restarted. Now exit and resume Claude Code to reconnect, then we'll test speed. The first call will be slow (model load ~37s), second call is the real test.",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 13349,
-  "dag_total_branches": 49
+  "dag_node_count": 13957,
+  "dag_total_branches": 51
 }
