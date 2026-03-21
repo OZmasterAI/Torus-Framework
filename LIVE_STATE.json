@@ -1,5 +1,5 @@
 {
-  "session_count": 511,
+  "session_count": 514,
   "project": "torus-framework",
   "feature": "write-pipeline-perf",
   "framework_version": "v3.0.0",
@@ -12,11 +12,13 @@
   "next_steps": [
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
     "Identify the 6th MCP server (2 inactive besides analytics)",
-    "Memory pruning \u2014 DB at 3425 entries, run maintenance(action='stale')"
+    "Memory pruning \u2014 DB at 3425 entries, run maintenance(action='stale')",
+    "Vault search: add semantic search + metadata queries for ~/vault (needed at 100+ notes)",
+    "Syncthing: set up real-time vault sync between server and main PC"
   ],
-  "last_response_preview": "Risk level: **YELLOW** (backup timed out \u2014 non-critical).\n\n---\n\n**Session 510 Summary**\n\n**Done:**\n- Verified all optimizations live: remember_this <10s (was 3+ min)\n- Added semaphore to fix background thread pile-up (400%+ CPU under rapid calls)\n- Moved entity extraction + retroactive interference to background thread\n- Confirmed read speed unaffected\n\n**Next session:**\n1. Fix gate 2 `rm -r` gap\n2. Identify 6th MCP server\n3. Memory pruning (3,425 entries)",
+  "last_response_preview": "## Obsidian Integration Plan for Claude Code\n\n### Metadata\n\n- **Scope**: Standalone integration \u2014 independent of other projects\n- **Target**: Linux (Ubuntu), `/home/crab`, Framework v3.0.0\n- **Touchpoints**: `/wrap-up` skill, `session_end.py` hook, `mcp.json`, `settings.json`\n\n---\n\n### 1. Prerequisites & Installation\n\n```bash\nmkdir -p ~/Applications\nwget -O ~/Applications/Obsidian.AppImage \"https://github.com/obsidianmd/obsidian-releases/releases/download/v1.12.6/Obsidian-1.12.6.AppImage\"\nchmod ",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 14001,
-  "dag_total_branches": 53
+  "dag_node_count": 15682,
+  "dag_total_branches": 60
 }
