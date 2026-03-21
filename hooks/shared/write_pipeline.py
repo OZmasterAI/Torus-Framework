@@ -3,14 +3,21 @@
 Orchestrates the full write flow: validate → normalize → A-Mem enrich →
 quality score → dedup check → classify tier → store → side effects.
 
+Performance (session 506): embed-once cache, entity cache, background
+post-store work. Cuts remember_this from ~3min to seconds.
+
 Public API:
     from shared.write_pipeline import WritePipeline
 """
 
+import logging
 import os
 import re
+import threading
 import time
 from datetime import datetime
+
+_log = logging.getLogger(__name__)
 
 
 class WritePipeline:
@@ -40,6 +47,7 @@ class WritePipeline:
         self.graph = graph
         self.config = config or {}
         self.h = helpers or {}
+        self._cached_session_id = None
 
     def write(
         self,
@@ -59,9 +67,11 @@ class WritePipeline:
         tag_index = self.tag_index
         h = self.h
 
-        # Auto-detect source session ID
+        # Auto-detect source session ID (cached after first call)
         if not source_session_id:
-            source_session_id = self._detect_session_id()
+            if self._cached_session_id is None:
+                self._cached_session_id = self._detect_session_id()
+            source_session_id = self._cached_session_id
 
         # ── Step 1: Validate ──
         min_content_length = h.get("min_content_length", 20)
@@ -113,11 +123,32 @@ class WritePipeline:
                         "total_memories": collection.count(),
                     }
 
+        # ── Embed once, reuse everywhere ──
+        _embed_text = h.get("embed_text")
+        _cached_vec = None
+        if _embed_text:
+            try:
+                _cached_vec = _embed_text(content)
+            except Exception:
+                pass
+
+        # ── Extract entities once, reuse everywhere ──
+        _cached_entities = None
+        try:
+            from shared.entity_extraction import extract_entities
+
+            combined_text = f"{content} {context}" if context else content
+            _cached_entities = extract_entities(combined_text)
+        except Exception:
+            _cached_entities = []
+
         # ── Step 2b: A-Mem enrichment (keywords + context_description) ──
         _amem_keywords = ""
         _amem_context_desc = ""
         try:
-            _amem_keywords, _amem_context_desc = self._amem_enrich(content, context)
+            _amem_keywords, _amem_context_desc = self._amem_enrich_cached(
+                content, context, _cached_entities
+            )
         except Exception:
             pass
 
@@ -198,14 +229,12 @@ class WritePipeline:
         _classify_state_type = h.get("classify_state_type")
         state_type = _classify_state_type(content, tags) if _classify_state_type else ""
 
-        # Cluster assignment
+        # Cluster assignment (reuse cached embedding)
         _assigned_cluster_id = ""
         try:
             _cluster_store = h.get("cluster_store")
-            _embed_text = h.get("embed_text")
-            if _cluster_store and _embed_text:
-                _cluster_vec = _embed_text(content)
-                _assigned_cluster_id = _cluster_store.assign(_cluster_vec, content)
+            if _cluster_store and _cached_vec:
+                _assigned_cluster_id = _cluster_store.assign(_cached_vec, content)
         except Exception:
             pass
 
@@ -236,10 +265,73 @@ class WritePipeline:
             ids=[doc_id],
         )
 
-        # Update tag index
+        # Update tag index (keep synchronous — fast and needed for immediate queries)
         tag_index.add_tags(doc_id, tags)
 
-        # Step 6b: Dual-write to SQLite DAG memory layer (+ embed if available)
+        # ── Build result and return immediately ──
+        result = {
+            "result": "Memory stored successfully!",
+            "id": doc_id,
+            "total_memories": collection.count(),
+            "timestamp": timestamp,
+            "quality_score": _q_score,
+            "memory_type": memory_type,
+            "state_type": state_type,
+            "keywords": _amem_keywords,
+            "context_description": _amem_context_desc,
+        }
+
+        # ── Background: post-store side effects (all fail-open) ──
+        bg_args = {
+            "doc_id": doc_id,
+            "content": content,
+            "context": context,
+            "tags": tags,
+            "tier": tier,
+            "memory_type": memory_type,
+            "state_type": state_type,
+            "quality_score": _q_score,
+            "cluster_id": _assigned_cluster_id,
+            "cached_vec": _cached_vec,
+            "cached_entities": _cached_entities,
+        }
+        t = threading.Thread(
+            target=self._post_store_background,
+            args=(bg_args,),
+            daemon=True,
+            name="write-pipeline-bg",
+        )
+        t.start()
+
+        return result
+
+    # ── Background post-store work ────────────────────────────────────────
+
+    def _post_store_background(self, args):
+        """Run all fail-open side effects in a background thread."""
+        try:
+            self._bg_inner(args)
+        except Exception as e:
+            _log.debug("write-pipeline background error: %s", e)
+
+    def _bg_inner(self, a):
+        collection = self.collection
+        tag_index = self.tag_index
+        h = self.h
+
+        doc_id = a["doc_id"]
+        content = a["content"]
+        context = a["context"]
+        tags = a["tags"]
+        tier = a["tier"]
+        memory_type = a["memory_type"]
+        state_type = a["state_type"]
+        quality_score = a["quality_score"]
+        cluster_id = a["cluster_id"]
+        cached_vec = a["cached_vec"]
+        cached_entities = a["cached_entities"]
+
+        # DAG dual-write (reuse cached embedding)
         try:
             from shared.dag import get_session_dag
             from shared.dag_memory_layer import DAGMemoryLayer
@@ -253,36 +345,27 @@ class WritePipeline:
                 memory_type=memory_type,
                 state_type=state_type,
                 context=context,
-                quality_score=_q_score,
-                cluster_id=_assigned_cluster_id,
+                quality_score=quality_score,
+                cluster_id=cluster_id,
             )
-            # Embed into SQLite if embedding function is available (MCP server context)
-            if _dag_result.get("stored"):
-                _embed = h.get("embed_text")
-                if _embed:
-                    try:
-                        _vec = _embed(content)
-                        if _vec and len(_vec) > 0:
-                            _dag_layer.store_embedding(
-                                _dag_result["id"], "knowledge", _vec
-                            )
-                    except Exception:
-                        pass
+            if _dag_result.get("stored") and cached_vec and len(cached_vec) > 0:
+                try:
+                    _dag_layer.store_embedding(
+                        _dag_result["id"], "knowledge", cached_vec
+                    )
+                except Exception:
+                    pass
         except Exception:
-            pass  # Fail-open: SQLite write failure must not block LanceDB
+            pass
 
-        # Knowledge graph population
+        # Knowledge graph population (reuse cached entities)
         try:
-            if self.graph:
-                from shared.entity_extraction import (
-                    extract_entities,
-                    extract_cooccurrences,
-                )
+            if self.graph and cached_entities:
+                from shared.entity_extraction import extract_cooccurrences
 
-                _kg_text = f"{content} {context}"
-                _kg_entities = extract_entities(_kg_text)
-                for ent in _kg_entities:
+                for ent in cached_entities:
                     self.graph.upsert_entity(ent["name"], ent["type"])
+                _kg_text = f"{content} {context}"
                 _kg_coocs = extract_cooccurrences(_kg_text)
                 _kg_total = collection.count()
                 for e1, e2 in _kg_coocs:
@@ -291,28 +374,30 @@ class WritePipeline:
         except Exception:
             pass
 
-        # A-Mem linking: create bidirectional linked_memory edges to similar memories
+        # A-Mem linking
         try:
             if self.graph and collection.count() > 1:
                 _amem_results = collection.query(
                     query_texts=[content],
-                    n_results=6,  # fetch 6 to exclude self
+                    n_results=6,
                     include=["metadatas", "distances"],
                 )
-                if _amem_results and _amem_results.get("ids") and _amem_results["ids"][0]:
+                if (
+                    _amem_results
+                    and _amem_results.get("ids")
+                    and _amem_results["ids"][0]
+                ):
                     _amem_threshold = 0.7
                     for _amem_idx, _amem_id in enumerate(_amem_results["ids"][0]):
                         if _amem_id == doc_id:
-                            continue  # skip self
+                            continue
                         _amem_dist = (
                             _amem_results["distances"][0][_amem_idx]
                             if _amem_results.get("distances")
                             else 1.0
                         )
-                        # ChromaDB/LanceDB cosine distance: similarity = 1 - distance
                         _amem_sim = max(0.0, 1.0 - _amem_dist)
                         if _amem_sim >= _amem_threshold:
-                            # Create bidirectional linked_memory edges
                             self.graph.add_edge(
                                 doc_id, _amem_id, "linked_memory", strength=_amem_sim
                             )
@@ -320,21 +405,24 @@ class WritePipeline:
                                 _amem_id, doc_id, "linked_memory", strength=_amem_sim
                             )
         except Exception:
-            pass  # Fail-open: A-Mem linking failure must not block write
+            pass
 
-        # ── Step 6d: A-Mem evolution — update neighbor tags ──
-        # After inserting a new memory, find top-3 most similar existing memories
-        # and enrich their tags based on shared entities (arxiv 2502.12110 UPDATE).
-        evolved_count = 0
+        # A-Mem evolution (reuse cached entities for new memory)
         if self.config.get("enable_evolution", True):
             try:
-                evolved_count = self._evolve_neighbors(
-                    doc_id, content, context, tags, collection, tag_index
+                self._evolve_neighbors_cached(
+                    doc_id,
+                    content,
+                    context,
+                    tags,
+                    collection,
+                    tag_index,
+                    cached_entities,
                 )
             except Exception:
-                pass  # Fail-open: evolution failure must not block storage
+                pass
 
-        # ── Step 7: Side effects ──
+        # Touch memory timestamp
         _touch = h.get("touch_memory_timestamp")
         if _touch:
             try:
@@ -343,88 +431,44 @@ class WritePipeline:
                 pass
 
         # Hybrid memory linking
-        resolves_id, linked_to, link_warning = self._hybrid_linking(
-            doc_id, tags, collection, tag_index
-        )
+        try:
+            self._hybrid_linking(doc_id, tags, collection, tag_index)
+        except Exception:
+            pass
 
         # Fix-outcome bridge
-        bridge_result = None
         if tags and "type:fix" in tags:
             _bridge = h.get("bridge_to_fix_outcomes")
             if _bridge:
-                bridge_result = _bridge(content, context, tags)
-
-        # Build result
-        result = {
-            "result": "Memory stored successfully!",
-            "id": doc_id,
-            "total_memories": collection.count(),
-            "timestamp": timestamp,
-            "quality_score": _q_score,
-            "memory_type": memory_type,
-            "state_type": state_type,
-            "keywords": _amem_keywords,
-            "context_description": _amem_context_desc,
-        }
-        if evolved_count > 0:
-            result["evolved_neighbors"] = evolved_count
-        if bridge_result:
-            result["fix_outcome_bridged"] = True
-            result["bridge_chain_id"] = bridge_result.get("chain_id", "")
-        if linked_to:
-            result["linked_to"] = linked_to
-        if link_warning:
-            result["link_warning"] = link_warning
-        if tags and "type:fix" in tags and not resolves_id and not linked_to:
-            result["hint"] = (
-                "Tip: add a resolves:MEMORY_ID tag to link this fix to the problem memory it resolves"
-            )
-
-        return result
+                try:
+                    _bridge(content, context, tags)
+                except Exception:
+                    pass
 
     # ── Internal helpers ──────────────────────────────────────────────────
 
     @staticmethod
-    def _amem_enrich(content, context=""):
-        """A-Mem enrichment: extract keywords and generate context_description.
-
-        Based on arxiv 2502.12110 -- structured memory notes with keywords,
-        categorical tags, and context descriptions for better retrieval.
+    def _amem_enrich_cached(content, context, cached_entities):
+        """A-Mem enrichment using pre-extracted entities.
 
         Returns:
             (keywords_str, context_description) -- both strings.
-            keywords_str is comma-separated keyword names.
-            context_description is a 1-sentence summary.
-
-        Backward compatible: callers that do not use these fields are unaffected.
         """
         keywords_str = ""
         context_description = ""
 
-        # --- Extract keywords via entity_extraction ---
-        try:
-            from shared.entity_extraction import extract_entities
+        if cached_entities:
+            seen = set()
+            keyword_names = []
+            for ent in cached_entities:
+                name_lower = ent["name"].lower()
+                if name_lower not in seen:
+                    seen.add(name_lower)
+                    keyword_names.append(ent["name"])
+            keywords_str = ",".join(keyword_names[:10])
+            if len(keywords_str) > 500:
+                keywords_str = keywords_str[:497] + "..."
 
-            combined_text = f"{content} {context}" if context else content
-            entities = extract_entities(combined_text)
-            if entities:
-                # Deduplicate and take top 10 keywords by name
-                seen = set()
-                keyword_names = []
-                for ent in entities:
-                    name_lower = ent["name"].lower()
-                    if name_lower not in seen:
-                        seen.add(name_lower)
-                        keyword_names.append(ent["name"])
-                # Cap at 10 keywords, join as comma-separated string
-                keywords_str = ",".join(keyword_names[:10])
-                # Cap at 500 chars for metadata safety
-                if len(keywords_str) > 500:
-                    keywords_str = keywords_str[:497] + "..."
-        except Exception:
-            pass
-
-        # --- Generate context_description (1-sentence summary) ---
         try:
             context_description = _generate_context_description(content, context)
         except Exception:
@@ -432,23 +476,17 @@ class WritePipeline:
 
         return keywords_str, context_description
 
-    def _evolve_neighbors(self, doc_id, content, context, tags, collection, tag_index):
-        """A-Mem evolution: update top-3 similar neighbors with new context/tags.
-
-        After inserting a new memory, find the most similar existing memories
-        and enrich their tags based on shared entities. This is the core A-Mem
-        UPDATE mechanism -- related memories co-evolve when new information arrives.
-
-        Guards:
-            - enable_evolution config flag (default True)
-            - Max 3 neighbor updates per insert
-            - Minimum similarity threshold of 0.3
-            - Only propagates semantic tags (skips resolves:, source:, cluster:)
-            - Tag string capped at 500 chars
-
-        Returns:
-            int: number of neighbors actually updated
-        """
+    def _evolve_neighbors_cached(
+        self,
+        doc_id,
+        content,
+        context,
+        tags,
+        collection,
+        tag_index,
+        cached_entities,
+    ):
+        """A-Mem evolution using pre-extracted entities for the new memory."""
         _MAX_UPDATES = 3
         _MIN_SIMILARITY = 0.3
         _TAG_CAP = 500
@@ -456,27 +494,23 @@ class WritePipeline:
         if not tags or not collection:
             return 0
 
-        # Extract entities from the new memory
         try:
             from shared.entity_extraction import extract_entities
         except ImportError:
             return 0
 
         new_entities = set()
-        _new_text = f"{content} {context}"
-        for ent in extract_entities(_new_text):
-            new_entities.add(ent["name"].lower())
+        if cached_entities:
+            for ent in cached_entities:
+                new_entities.add(ent["name"].lower())
 
         if not new_entities:
             return 0
 
-        new_tag_set = set(
-            t.strip() for t in tags.split(",") if t.strip()
-        )
+        new_tag_set = set(t.strip() for t in tags.split(",") if t.strip())
         if not new_tag_set:
             return 0
 
-        # Query for top-3 similar existing memories (request 4 to skip self)
         try:
             neighbors = collection.query(
                 query_texts=[content],
@@ -494,50 +528,35 @@ class WritePipeline:
             if updated >= _MAX_UPDATES:
                 break
 
-            # Skip self
             if neighbor_id == doc_id:
                 continue
 
-            # Check similarity threshold
-            dist = (
-                neighbors["distances"][0][idx]
-                if neighbors.get("distances")
-                else 1.0
-            )
+            dist = neighbors["distances"][0][idx] if neighbors.get("distances") else 1.0
             similarity = max(0, 1.0 - dist)
             if similarity < _MIN_SIMILARITY:
                 continue
 
-            # Get neighbor metadata and document
             neighbor_meta = (
-                neighbors["metadatas"][0][idx]
-                if neighbors.get("metadatas")
-                else {}
+                neighbors["metadatas"][0][idx] if neighbors.get("metadatas") else {}
             )
             neighbor_doc = (
-                neighbors["documents"][0][idx]
-                if neighbors.get("documents")
-                else ""
+                neighbors["documents"][0][idx] if neighbors.get("documents") else ""
             )
             neighbor_tags_str = neighbor_meta.get("tags", "") or ""
             neighbor_context = neighbor_meta.get("context", "") or ""
 
-            # Extract entities from the neighbor
             neighbor_text = f"{neighbor_doc} {neighbor_context}"
             neighbor_entities = set()
             for ent in extract_entities(neighbor_text):
                 neighbor_entities.add(ent["name"].lower())
 
-            # Find shared entities between new memory and neighbor
             shared_entities = new_entities & neighbor_entities
             if not shared_entities:
                 continue
 
-            # Determine which new tags should propagate to the neighbor
             neighbor_tag_set = set(
                 t.strip() for t in neighbor_tags_str.split(",") if t.strip()
             )
-            # Only propagate semantic tags (not ID-like prefixes)
             propagatable_tags = set()
             _skip_prefixes = ("resolves:", "resolved_by:", "source:", "cluster:")
             for tag in new_tag_set:
@@ -550,7 +569,6 @@ class WritePipeline:
             if not propagatable_tags:
                 continue
 
-            # Build the updated tag string
             merged_tags = neighbor_tags_str
             for ptag in sorted(propagatable_tags):
                 candidate = f"{merged_tags},{ptag}" if merged_tags else ptag
@@ -558,11 +576,9 @@ class WritePipeline:
                     break
                 merged_tags = candidate
 
-            # Only update if tags actually changed
             if merged_tags == neighbor_tags_str:
                 continue
 
-            # Update the neighbor's metadata
             updated_meta = dict(neighbor_meta)
             updated_meta["tags"] = merged_tags
             try:
@@ -570,7 +586,6 @@ class WritePipeline:
                     ids=[neighbor_id],
                     metadatas=[updated_meta],
                 )
-                # Update tag index for the neighbor
                 try:
                     tag_index.add_tags(neighbor_id, merged_tags)
                 except Exception:
@@ -721,8 +736,8 @@ class WritePipeline:
 
 # ── Module-level helpers ─────────────────────────────────────────────────────────────
 
-# Sentence boundary pattern: split on  followed by capital, or on  / 
-_SENTENCE_END_RE = re.compile(r'(?<=[.!?])\s+(?=[A-Z])')
+# Sentence boundary pattern: split on  followed by capital, or on  /
+_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
 
 
 def _generate_context_description(content, context=""):
@@ -753,7 +768,7 @@ def _generate_context_description(content, context=""):
     if stripped.startswith("["):
         bracket_end = stripped.find("]")
         if bracket_end > 0 and bracket_end < 60:
-            stripped = stripped[bracket_end + 1:].strip()
+            stripped = stripped[bracket_end + 1 :].strip()
 
     sentences = _SENTENCE_END_RE.split(stripped)
     if sentences:

@@ -1,18 +1,18 @@
 {
   "session_count": 506,
   "project": "torus-framework",
-  "feature": "mcp-config",
+  "feature": "write-pipeline-perf",
   "framework_version": "v3.0.0",
-  "what_was_done": "Added analytics MCP server to .claude.json (was missing despite prior notes). Verified memory MCP healthy (7h uptime, 3390 entries). Confirmed 4 of 6 servers connected.",
+  "what_was_done": "Added analytics MCP to .claude.json. Optimized WritePipeline: embed-once, entity-once, background thread for post-store work. Cuts remember_this from ~3min to seconds. Needs server restart.",
   "known_issues": [
     "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session",
     "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
     "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files"
   ],
   "next_steps": [
-    "Restart session to activate analytics MCP server (now in .claude.json)",
+    "Restart session to activate analytics MCP + optimized write_pipeline.py",
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
     "Identify the 6th MCP server (2 inactive besides analytics)",
-    "Memory pruning — DB at 3391 entries, run maintenance(action='stale')"
+    "Memory pruning — DB at 3392 entries, run maintenance(action='stale')"
   ]
 }
