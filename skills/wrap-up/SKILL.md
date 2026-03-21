@@ -23,6 +23,11 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
    - known_issues (carry forward + any new ones)
    - next_steps (reprioritized by Claude)
    - Do NOT write improvements_shipped, files_modified, or dormant_agent_teams — those are historical and belong in memory/git only
+3.5. **VAULT SESSION NOTE** — If `~/vault/sessions/` exists:
+   - Write `~/vault/sessions/YYYY-MM-DD-session-NNN.md` with:
+     - Frontmatter: type, tags, created, status, project, feature, session_number, duration, tools_used, files_modified
+     - Body: What Was Done, Decisions, Known Issues, Next Steps (from LIVE_STATE + conversation)
+   - If write fails, warn and continue — never block wrap-up
 4. **GIT COMMIT** — If gathered git.clean is false:
    - `git add` relevant files
    - `git commit` with descriptive message

@@ -54,6 +54,16 @@ memory → /brainstorm → /writing-plans → /implement → /test → /review �
 ## TESTING RULE
 When editing code outside ~/.claude/, write or update tests for changed behavior. Look for existing test runner (package.json scripts, Cargo.toml, Makefile) in the project root.
 
+## OBSIDIAN VAULT
+- Vault at ~/vault — human-readable knowledge layer
+- Use `obsidian search query="topic" format=json` when:
+  - Starting work on a topic
+  - Looking for past decisions/research
+  - User asks "what do we know about X"
+- Use `obsidian daily:append content="..."` for notable events
+- Prefer CLI when Obsidian running, MCP tools when CLI fails
+- Session notes auto-written by /wrap-up and session_end.py — no manual action needed
+
 ## TAGS
 type: error,learning,fix,feature-request,correction,decision,auto-captured,preference
 priority: critical,high,medium,low | area: frontend,backend,infra,framework,testing,docs,git
