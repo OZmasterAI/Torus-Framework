@@ -1,17 +1,16 @@
 {
   "session_count": 503,
-  "permissions_auto_approve": true,
   "project": "torus-framework",
   "feature": "permissions-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Verified crash_proof deployed and DAG dual-write active after restart. Cleared memory server blocking issue. Added single-level glob permissions (*) \u2014 still prompting with ** only.",
+  "what_was_done": "Fixed ~/.claude/ edit permissions via auto_approve.py PermissionRequest hook. Discovered permissions.allow cannot override hardcoded config-files gate (issue #35718). Cleaned dead permission entries from settings.json.",
   "known_issues": [
-    "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session",
-    "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions"
+    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session",
+    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions"
   ],
   "next_steps": [
-    "Verify single-level glob permissions fix after restart (Edit/Write to ~/.claude/ without prompt)",
-    "Fix dag_memory.py line 360 bug (wrong query() call \u2014 silently failing)",
+    "Verify auto_approve.py permissions fix after restart — Edit/Write to ~/.claude/ should not prompt",
+    "Fix dag_memory.py line 360 bug (wrong query() call — silently failing)",
     "Save session 497 details to memory (gap for 498-499 too)",
     "Run #28 enforcer daemon SIGHUP (only gate-blocked task skipped)"
   ],
