@@ -3,21 +3,15 @@
   "project": "torus-framework",
   "feature": "write-pipeline-perf",
   "framework_version": "v3.0.0",
-  "what_was_done": "Added analytics MCP to .claude.json. Optimized WritePipeline: embed-once, entity-once, background thread for post-store work. Cuts remember_this from ~3min to seconds. Needs server restart.",
+  "what_was_done": "Added semaphore to bg thread queue, moved entity extraction + retroactive interference to background. Verified remember_this <10s (was 3+ min). Fixed bg thread pile-up bug (400%+ CPU under rapid calls).",
   "known_issues": [
-    "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session",
-    "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions",
-    "Gate 2 gap: rm -r (without -f) not blocked \u2014 equally destructive on user-owned files"
+    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session",
+    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
+    "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files"
   ],
   "next_steps": [
-    "Restart session to activate analytics MCP + optimized write_pipeline.py",
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
     "Identify the 6th MCP server (2 inactive besides analytics)",
-    "Memory pruning \u2014 DB at 3392 entries, run maintenance(action='stale')"
-  ],
-  "last_response_preview": "Server restarted. Now exit and resume Claude Code to reconnect, then we'll test speed. The first call will be slow (model load ~37s), second call is the real test.",
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 13957,
-  "dag_total_branches": 51
+    "Memory pruning — DB at 3425 entries, run maintenance(action='stale')"
+  ]
 }

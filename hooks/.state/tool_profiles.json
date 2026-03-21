@@ -212,13 +212,9 @@
   "Write": {
     "known_failures": [],
     "preconditions": [],
-    "success_count": 172,
+    "success_count": 173,
     "failure_count": 0,
     "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1773936443.2541096
-      },
       {
         "success": true,
         "ts": 1773936642.571631
@@ -414,10 +410,14 @@
       {
         "success": true,
         "ts": 1774071400.4073985
+      },
+      {
+        "success": true,
+        "ts": 1774071838.5741313
       }
     ],
     "common_errors": [],
-    "last_updated": 1774071400.4074025
+    "last_updated": 1774071838.574135
   },
   "Bash": {
     "known_failures": [
@@ -433,21 +433,9 @@
       }
     ],
     "preconditions": [],
-    "success_count": 4567,
+    "success_count": 4570,
     "failure_count": 66,
     "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1774071132.5180557
-      },
-      {
-        "success": true,
-        "ts": 1774071132.5434434
-      },
-      {
-        "success": true,
-        "ts": 1774071132.8306117
-      },
       {
         "success": true,
         "ts": 1774071132.8415716
@@ -635,6 +623,18 @@
       {
         "success": true,
         "ts": 1774071633.6121247
+      },
+      {
+        "success": true,
+        "ts": 1774071642.5755281
+      },
+      {
+        "success": true,
+        "ts": 1774071784.3612094
+      },
+      {
+        "success": true,
+        "ts": 1774071824.383775
       }
     ],
     "common_errors": [
@@ -644,42 +644,14 @@
         "last_seen": 1773804306.8794246
       }
     ],
-    "last_updated": 1774071633.6121285
+    "last_updated": 1774071824.3837786
   },
   "Read": {
     "known_failures": [],
     "preconditions": [],
-    "success_count": 2990,
+    "success_count": 2997,
     "failure_count": 0,
     "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1774069201.9627466
-      },
-      {
-        "success": true,
-        "ts": 1774069202.0562952
-      },
-      {
-        "success": true,
-        "ts": 1774069202.1300888
-      },
-      {
-        "success": true,
-        "ts": 1774069202.1456058
-      },
-      {
-        "success": true,
-        "ts": 1774069202.159109
-      },
-      {
-        "success": true,
-        "ts": 1774069202.1716318
-      },
-      {
-        "success": true,
-        "ts": 1774069202.187111
-      },
       {
         "success": true,
         "ts": 1774069202.2064064
@@ -851,10 +823,38 @@
       {
         "success": true,
         "ts": 1774071388.9419916
+      },
+      {
+        "success": true,
+        "ts": 1774071793.0081666
+      },
+      {
+        "success": true,
+        "ts": 1774071793.5927901
+      },
+      {
+        "success": true,
+        "ts": 1774071794.471221
+      },
+      {
+        "success": true,
+        "ts": 1774071799.890971
+      },
+      {
+        "success": true,
+        "ts": 1774071800.461371
+      },
+      {
+        "success": true,
+        "ts": 1774071804.975594
+      },
+      {
+        "success": true,
+        "ts": 1774071829.1709647
       }
     ],
     "common_errors": [],
-    "last_updated": 1774071388.9419947
+    "last_updated": 1774071829.1709688
   },
   "NotebookEdit": {
     "known_failures": [],
