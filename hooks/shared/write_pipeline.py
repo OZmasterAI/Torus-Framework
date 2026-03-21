@@ -164,11 +164,13 @@ class WritePipeline:
         except Exception:
             pass
 
-        # ── Step 4: Dedup check ──
+        # ── Step 4: Dedup check (pass cached vector to skip re-embedding) ──
         _soft_dupe_tag = None
         _check_dedup = h.get("check_dedup")
         dedup_result = (
-            _check_dedup(content, tags) if _check_dedup and not force else None
+            _check_dedup(content, tags, query_vector=_cached_vec)
+            if _check_dedup and not force
+            else None
         )
         if dedup_result:
             if dedup_result.get("blocked"):
@@ -238,32 +240,34 @@ class WritePipeline:
         except Exception:
             pass
 
-        # ── Step 6: Store ──
-        collection.upsert(
-            documents=[content],
-            metadatas=[
-                {
-                    "context": context,
-                    "tags": tags,
-                    "timestamp": timestamp,
-                    "session_time": now,
-                    "preview": preview,
-                    "primary_source": primary_source,
-                    "related_urls": related_urls,
-                    "source_method": source_method,
-                    "tier": tier,
-                    "source_session_id": source_session_id,
-                    "source_observation_ids": source_observation_ids,
-                    "cluster_id": _assigned_cluster_id,
-                    "memory_type": memory_type,
-                    "state_type": state_type,
-                    "quality_score": _q_score,
-                    "keywords": _amem_keywords,
-                    "context_description": _amem_context_desc,
-                }
-            ],
-            ids=[doc_id],
-        )
+        # ── Step 6: Store (pass cached vector to skip re-embedding) ──
+        _upsert_meta = {
+            "context": context,
+            "tags": tags,
+            "timestamp": timestamp,
+            "session_time": now,
+            "preview": preview,
+            "primary_source": primary_source,
+            "related_urls": related_urls,
+            "source_method": source_method,
+            "tier": tier,
+            "source_session_id": source_session_id,
+            "source_observation_ids": source_observation_ids,
+            "cluster_id": _assigned_cluster_id,
+            "memory_type": memory_type,
+            "state_type": state_type,
+            "quality_score": _q_score,
+            "keywords": _amem_keywords,
+            "context_description": _amem_context_desc,
+        }
+        _upsert_kwargs = {
+            "documents": [content],
+            "metadatas": [_upsert_meta],
+            "ids": [doc_id],
+        }
+        if _cached_vec:
+            _upsert_kwargs["vectors"] = [_cached_vec]
+        collection.upsert(**_upsert_kwargs)
 
         # Update tag index (keep synchronous — fast and needed for immediate queries)
         tag_index.add_tags(doc_id, tags)

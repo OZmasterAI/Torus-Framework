@@ -125,6 +125,7 @@ def crash_proof(fn):
             )
         except Exception as e:
             import traceback
+
             tb = traceback.format_exc()
             _sys.stderr.write(f"[MCP] {fn.__name__} error: {e}\n{tb}\n")
             return {"error": f"{fn.__name__} failed: {type(e).__name__}: {e}"}
@@ -1778,12 +1779,15 @@ def _bridge_to_fix_outcomes(content, context, tags):
         return None
 
 
-def _check_dedup(content, tags=""):
+def _check_dedup(content, tags="", query_vector=None):
     """Check if content is a near-duplicate of existing knowledge.
 
     Returns None if unique, or a dict:
       - {"blocked": True, "existing_id": ..., "distance": ...} if hard-dedup
       - {"soft_dupe_tag": "possible-dupe:ID"} if in soft zone
+
+    Args:
+        query_vector: Pre-computed embedding vector. Skips re-embedding if provided.
     """
     if _FIX_DEDUP_EXEMPT and "type:fix" in tags:
         return None
@@ -1791,11 +1795,12 @@ def _check_dedup(content, tags=""):
         cnt = collection.count()
         if cnt == 0:
             return None
-        similar = collection.query(
-            query_texts=[content],
-            n_results=1,
-            include=["distances"],
-        )
+        _query_kwargs = {"n_results": 1, "include": ["distances"]}
+        if query_vector is not None:
+            _query_kwargs["query_vector"] = query_vector
+        else:
+            _query_kwargs["query_texts"] = [content]
+        similar = collection.query(**_query_kwargs)
         if (
             similar
             and similar.get("distances")
