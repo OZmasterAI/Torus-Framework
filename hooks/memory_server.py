@@ -109,6 +109,34 @@ if _args.sse:
 else:
     mcp = FastMCP("memory")
 
+# --- SSE reconnect fix ---
+# When Claude Code's SSE connection drops and reconnects, it skips sending the
+# MCP InitializeRequest and jumps straight to tool calls.  The default
+# ServerSession._received_request raises RuntimeError for uninitialized sessions.
+# This patch auto-initializes instead, so reconnects work transparently.
+from mcp.server.session import ServerSession, InitializationState
+import mcp.types as _mcp_types
+
+_original_received_request = ServerSession._received_request
+
+
+async def _patched_received_request(self, responder):
+    """Allow tool requests on uninitialized SSE sessions by auto-initializing."""
+    if self._initialization_state != InitializationState.Initialized and not isinstance(
+        responder.request.root,
+        (_mcp_types.InitializeRequest, _mcp_types.PingRequest),
+    ):
+        _sys.stderr.write(
+            "[MCP] Auto-initializing session on reconnect "
+            f"(got {type(responder.request.root).__name__} before InitializeRequest)\n"
+        )
+        self._initialization_state = InitializationState.Initialized
+    return await _original_received_request(self, responder)
+
+
+ServerSession._received_request = _patched_received_request
+# --- end SSE reconnect fix ---
+
 
 def crash_proof(fn):
     """Wrap MCP tool: offloads sync body to thread pool, catches exceptions.
