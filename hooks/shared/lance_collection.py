@@ -65,17 +65,27 @@ class LanceCollection:
         except Exception:
             return 0
 
-    def query(self, query_texts=None, n_results=5, include=None, where=None):
+    def query(
+        self, query_texts=None, n_results=5, include=None, where=None, query_vector=None
+    ):
         """Semantic search. Returns nested results.
 
         Result format: {"ids": [[...]], "documents": [[...]], "metadatas": [[...]], "distances": [[...]]}
+
+        Args:
+            query_vector: Pre-computed embedding vector. Skips embed_text if provided.
         """
         if include is None:
             include = ["metadatas", "distances"]
-        text = query_texts[0] if query_texts else ""
-        vector = (
-            self._embed_text(text) if self._embed_text else [0.0] * self._embedding_dim
-        )
+        if query_vector is not None:
+            vector = query_vector
+        else:
+            text = query_texts[0] if query_texts else ""
+            vector = (
+                self._embed_text(text)
+                if self._embed_text
+                else [0.0] * self._embedding_dim
+            )
 
         try:
             q = self._table.search(vector).distance_type("cosine").limit(n_results)
@@ -156,16 +166,21 @@ class LanceCollection:
 
         return result
 
-    def upsert(self, documents=None, metadatas=None, ids=None):
-        """Upsert records using LanceDB merge_insert."""
+    def upsert(self, documents=None, metadatas=None, ids=None, vectors=None):
+        """Upsert records using LanceDB merge_insert.
+
+        Args:
+            vectors: Pre-computed embedding vectors. Skips embed_texts if provided.
+        """
         if not ids or not documents:
             return
         records = []
-        vectors = (
-            self._embed_texts(documents)
-            if self._embed_texts
-            else [[0.0] * self._embedding_dim for _ in documents]
-        )
+        if vectors is None:
+            vectors = (
+                self._embed_texts(documents)
+                if self._embed_texts
+                else [[0.0] * self._embedding_dim for _ in documents]
+            )
         for i, doc_id in enumerate(ids):
             doc = documents[i] if i < len(documents) else ""
             meta = metadatas[i] if metadatas and i < len(metadatas) else {}
