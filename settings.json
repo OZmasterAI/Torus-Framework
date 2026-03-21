@@ -7,17 +7,7 @@
     "allow": [
       "mcp__memory__get_memory",
       "mcp__memory__search_knowledge",
-      "mcp__memory__remember_this",
-      "Edit(~/.claude/**)",
-      "Write(~/.claude/**)",
-      "Edit(/home/crab/.claude/**)",
-      "Write(/home/crab/.claude/**)",
-      "Edit(/home/crab/.claude/*)",
-      "Write(/home/crab/.claude/*)",
-      "Edit(~/.vscode/**)",
-      "Write(~/.vscode/**)",
-      "Edit(/home/crab/.vscode/**)",
-      "Write(/home/crab/.vscode/**)"
+      "mcp__memory__remember_this"
     ],
     "defaultMode": "default"
   },
