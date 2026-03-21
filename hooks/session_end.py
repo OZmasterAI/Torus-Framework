@@ -689,6 +689,7 @@ def write_vault_session_note(state, live_state, project_name=None, feature=None)
     if not os.path.isdir(vault_sessions):
         return  # No vault — skip silently
 
+    filepath = ""
     try:
         session_num = live_state.get("session_count", 0)
         date_str = time.strftime("%Y-%m-%d")
@@ -731,21 +732,33 @@ def write_vault_session_note(state, live_state, project_name=None, feature=None)
             "",
             f"# Session {session_num} — {date_str}",
             "",
+            "> [!summary] Quick Stats",
+            f"> **Duration:** {duration} · **Tools:** {total_tools} · **Files:** {len(files_edited)}",
+            "",
+            "---",
+            "",
             "## What Was Done",
             what_was_done,
             "",
         ]
 
         if known_issues:
+            lines.append("---")
+            lines.append("")
             lines.append("## Known Issues")
+            lines.append("")
+            lines.append("> [!bug]")
             for issue in known_issues:
-                lines.append(f"- {issue}")
+                lines.append(f"> - {issue}")
             lines.append("")
 
         if next_steps:
+            lines.append("---")
+            lines.append("")
             lines.append("## Next Steps")
+            lines.append("")
             for step in next_steps:
-                lines.append(f"- {step}")
+                lines.append(f"- [ ] {step}")
             lines.append("")
 
         content = "\n".join(lines)
