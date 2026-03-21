@@ -1,24 +1,18 @@
 {
-  "session_count": 505,
+  "session_count": 506,
   "project": "torus-framework",
-  "feature": "gate-audit-mcp",
+  "feature": "mcp-config",
   "framework_version": "v3.0.0",
-  "what_was_done": "Verified auto_approve.py fix. Audited all 20 gates, found gate 2 rm -r gap. Recovered session 498 to memory. Added analytics MCP to mcp.json. Identified skills + model-router MCPs also need adding.",
+  "what_was_done": "Added analytics MCP server to .claude.json (was missing despite prior notes). Verified memory MCP healthy (7h uptime, 3390 entries). Confirmed 4 of 6 servers connected.",
   "known_issues": [
-    "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session",
-    "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions",
-    "Gate 2 gap: rm -r (without -f) not blocked \u2014 equally destructive on user-owned files"
+    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session",
+    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
+    "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files"
   ],
   "next_steps": [
-    "Restart session to activate analytics MCP server (already in mcp.json)",
-    "Add skills + model-router MCP servers to mcp.json and restart",
+    "Restart session to activate analytics MCP server (now in .claude.json)",
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
-    "Run #28 enforcer daemon SIGHUP (only gate-blocked task skipped)",
-    "Memory pruning \u2014 DB at 3388 entries, run maintenance(action='stale')"
-  ],
-  "last_response_preview": "The agent is confused \u2014 you said \"hi\" and it responded about TUI hangs and compaction tests. That's leftover context from a previous conversation on that branch. It's not responding to your \"hi\", it's continuing an old thread.\n\nRun `/new` or `/clear` in the TUI to start fresh, then try again.\n\nBut the important thing \u2014 **the fix works**. Look at the sidebar:\n\n```\nCTX: 1%\nConfig\n nvidia\n 16.4k/262.1k\n```\n\nThat `262.1k` is the real context window (262,144 from auto-detect), not the old hardcoded 2",
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 11966,
-  "dag_total_branches": 44
+    "Identify the 6th MCP server (2 inactive besides analytics)",
+    "Memory pruning — DB at 3391 entries, run maintenance(action='stale')"
+  ]
 }
