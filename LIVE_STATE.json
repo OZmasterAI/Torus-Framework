@@ -1,17 +1,22 @@
 {
-  "session_count": 510,
+  "session_count": 511,
   "project": "torus-framework",
   "feature": "write-pipeline-perf",
   "framework_version": "v3.0.0",
   "what_was_done": "Added semaphore to bg thread queue, moved entity extraction + retroactive interference to background. Verified remember_this <10s (was 3+ min). Fixed bg thread pile-up bug (400%+ CPU under rapid calls).",
   "known_issues": [
-    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session",
-    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
-    "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files"
+    "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session",
+    "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions",
+    "Gate 2 gap: rm -r (without -f) not blocked \u2014 equally destructive on user-owned files"
   ],
   "next_steps": [
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
     "Identify the 6th MCP server (2 inactive besides analytics)",
-    "Memory pruning — DB at 3425 entries, run maintenance(action='stale')"
-  ]
+    "Memory pruning \u2014 DB at 3425 entries, run maintenance(action='stale')"
+  ],
+  "last_response_preview": "Risk level: **YELLOW** (backup timed out \u2014 non-critical).\n\n---\n\n**Session 510 Summary**\n\n**Done:**\n- Verified all optimizations live: remember_this <10s (was 3+ min)\n- Added semaphore to fix background thread pile-up (400%+ CPU under rapid calls)\n- Moved entity extraction + retroactive interference to background thread\n- Confirmed read speed unaffected\n\n**Next session:**\n1. Fix gate 2 `rm -r` gap\n2. Identify 6th MCP server\n3. Memory pruning (3,425 entries)",
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 14001,
+  "dag_total_branches": 53
 }
