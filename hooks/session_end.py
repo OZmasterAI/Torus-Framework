@@ -462,6 +462,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 proj_state["last_response_preview"] = last_response_preview
             try:
                 from shared.dag import get_session_dag as _get_dag_proj
+
                 _proj_dag = _get_dag_proj("main")
                 _proj_binfo = _proj_dag.current_branch_info()
                 proj_state["dag_branch"] = _proj_binfo.get("name", "")
@@ -481,6 +482,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 live_state["last_response_preview"] = last_response_preview
             try:
                 from shared.dag import get_session_dag as _get_dag_se
+
                 _se_dag = _get_dag_se("main")
                 _se_binfo = _se_dag.current_branch_info()
                 live_state["dag_branch"] = _se_binfo.get("name", "")
@@ -677,6 +679,93 @@ def increment_session_count(metrics=None):
     print(f"[SESSION_END] Session {state['session_count']} complete", file=sys.stderr)
 
 
+def write_vault_session_note(state, live_state, project_name=None, feature=None):
+    """Write a session summary note to ~/vault/sessions/ for Obsidian.
+
+    Fail-open: never blocks session end. Skips if vault doesn't exist
+    or if /wrap-up already wrote the note (collision-safe).
+    """
+    vault_sessions = os.path.join(os.path.expanduser("~"), "vault", "sessions")
+    if not os.path.isdir(vault_sessions):
+        return  # No vault — skip silently
+
+    try:
+        session_num = live_state.get("session_count", 0)
+        date_str = time.strftime("%Y-%m-%d")
+        filename = f"{date_str}-session-{session_num:03d}.md"
+        filepath = os.path.join(vault_sessions, filename)
+
+        if os.path.exists(filepath):
+            print(
+                f"[SESSION_END:vault] Skipped — {filename} exists (/wrap-up wrote it)",
+                file=sys.stderr,
+            )
+            return
+
+        # Extract metadata
+        project = project_name or live_state.get("project", "unknown")
+        feat = feature or live_state.get("feature", "")
+        what_was_done = live_state.get("what_was_done", "No summary available.")
+        known_issues = live_state.get("known_issues", [])
+        next_steps = live_state.get("next_steps", [])
+        duration = _format_duration(state.get("session_start"))
+        total_tools = state.get("total_tool_calls", state.get("tool_call_count", 0))
+        files_edited = state.get("files_edited", [])
+
+        tags = ["session", project]
+        if feat:
+            tags.append(feat)
+
+        lines = [
+            "---",
+            "type: session",
+            f"tags: [{', '.join(tags)}]",
+            f"created: {date_str}",
+            "status: completed",
+            f"project: {project}",
+            f"session_number: {session_num}",
+            f"duration: {duration}",
+            f"tools_used: {total_tools}",
+            f"files_modified: {len(files_edited)}",
+            "---",
+            "",
+            f"# Session {session_num} — {date_str}",
+            "",
+            "## What Was Done",
+            what_was_done,
+            "",
+        ]
+
+        if known_issues:
+            lines.append("## Known Issues")
+            for issue in known_issues:
+                lines.append(f"- {issue}")
+            lines.append("")
+
+        if next_steps:
+            lines.append("## Next Steps")
+            for step in next_steps:
+                lines.append(f"- {step}")
+            lines.append("")
+
+        content = "\n".join(lines)
+
+        # Atomic write: .tmp then os.replace
+        tmp_path = filepath + ".tmp"
+        with open(tmp_path, "w") as f:
+            f.write(content)
+        os.replace(tmp_path, filepath)
+
+        print(f"[SESSION_END:vault] Wrote {filename}", file=sys.stderr)
+    except Exception as e:
+        print(f"[SESSION_END:vault] Failed (non-fatal): {e}", file=sys.stderr)
+        try:
+            if os.path.exists(filepath + ".tmp"):
+                os.unlink(filepath + ".tmp")
+        except Exception:
+            pass
+
+
 def _run_background(data_path):
     """Background mode: handles all slow operations with no time pressure."""
     try:
@@ -705,6 +794,18 @@ def _run_background(data_path):
         )
     except Exception as e:
         print(f"[SESSION_END:bg] Handoff error: {e}", file=sys.stderr)
+
+    # Write Obsidian vault session note (fail-open)
+    try:
+        live_state = _load_live_state()
+        write_vault_session_note(
+            state,
+            live_state,
+            project_name=project_name,
+            feature=live_state.get("feature"),
+        )
+    except Exception as e:
+        print(f"[SESSION_END:bg] Vault note error: {e}", file=sys.stderr)
 
     try:
         flush_capture_queue()
@@ -828,12 +929,17 @@ def _run_background(data_path):
     # Run memory consolidation analysis (merge/promote/archive candidates)
     try:
         from shared.memory_consolidation import run_consolidation_analysis
+
         # Only log candidates — don't auto-act (human review gate)
-        print("[SESSION_END:bg] Running memory consolidation analysis...", file=sys.stderr)
+        print(
+            "[SESSION_END:bg] Running memory consolidation analysis...", file=sys.stderr
+        )
     except ImportError:
         pass
     except Exception as _ce:
-        print(f"[SESSION_END:bg] Consolidation error (non-fatal): {_ce}", file=sys.stderr)
+        print(
+            f"[SESSION_END:bg] Consolidation error (non-fatal): {_ce}", file=sys.stderr
+        )
 
     print("[SESSION_END:bg] Background work complete", file=sys.stderr)
 
