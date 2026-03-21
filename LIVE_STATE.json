@@ -1,24 +1,20 @@
 {
   "session_count": 514,
   "project": "torus-framework",
-  "feature": "write-pipeline-perf",
+  "feature": "obsidian-integration",
   "framework_version": "v3.0.0",
-  "what_was_done": "Added semaphore to bg thread queue, moved entity extraction + retroactive interference to background. Verified remember_this <10s (was 3+ min). Fixed bg thread pile-up bug (400%+ CPU under rapid calls).",
+  "what_was_done": "Built Obsidian vault integration: ~/vault/ with session bridge (session_end.py + /wrap-up), migrated 25 research reports, installed Obsidian + Syncthing, created 4 project notes with callouts/mermaid/dataview",
   "known_issues": [
     "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session",
     "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions",
     "Gate 2 gap: rm -r (without -f) not blocked \u2014 equally destructive on user-owned files"
   ],
   "next_steps": [
+    "User: install Obsidian plugins (obsidian-git, Dataview, Templater, Calendar) + configure obsidian-git auto-commit",
+    "User: finish Syncthing pairing on main PC, open vault in Obsidian",
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
-    "Identify the 6th MCP server (2 inactive besides analytics)",
-    "Memory pruning \u2014 DB at 3425 entries, run maintenance(action='stale')",
-    "Vault search: add semantic search + metadata queries for ~/vault (needed at 100+ notes)",
-    "Syncthing: set up real-time vault sync between server and main PC"
-  ],
-  "last_response_preview": "## Obsidian Integration Plan for Claude Code\n\n### Metadata\n\n- **Scope**: Standalone integration \u2014 independent of other projects\n- **Target**: Linux (Ubuntu), `/home/crab`, Framework v3.0.0\n- **Touchpoints**: `/wrap-up` skill, `session_end.py` hook, `mcp.json`, `settings.json`\n\n---\n\n### 1. Prerequisites & Installation\n\n```bash\nmkdir -p ~/Applications\nwget -O ~/Applications/Obsidian.AppImage \"https://github.com/obsidianmd/obsidian-releases/releases/download/v1.12.6/Obsidian-1.12.6.AppImage\"\nchmod ",
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 15682,
-  "dag_total_branches": 60
+    "Memory pruning \u2014 DB at 3481 entries, run maintenance(action='stale')",
+    "Vault search: add semantic search + metadata queries (deferred until 100+ notes)",
+    "Re-add obsidian-mcp to mcp.json when vault grows (config saved in memory)"
+  ]
 }
