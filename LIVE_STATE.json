@@ -1,22 +1,22 @@
 {
-  "session_count": 503,
-  "project": "torus-framework",
+  "session_count": 504,
+"project": "torus-framework",
   "feature": "permissions-fix",
   "framework_version": "v3.0.0",
   "what_was_done": "Fixed ~/.claude/ edit permissions via auto_approve.py PermissionRequest hook. Discovered permissions.allow cannot override hardcoded config-files gate (issue #35718). Cleaned dead permission entries from settings.json.",
   "known_issues": [
-    "MCP SSE reconnect skips initialize handshake — needs fresh Claude Code session",
-    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions"
+    "MCP SSE reconnect skips initialize handshake \u2014 needs fresh Claude Code session",
+    "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions"
   ],
   "next_steps": [
-    "Verify auto_approve.py permissions fix after restart — Edit/Write to ~/.claude/ should not prompt",
-    "Fix dag_memory.py line 360 bug (wrong query() call — silently failing)",
+    "Verify auto_approve.py permissions fix after restart \u2014 Edit/Write to ~/.claude/ should not prompt",
+    "Fix dag_memory.py line 360 bug (wrong query() call \u2014 silently failing)",
     "Save session 497 details to memory (gap for 498-499 too)",
     "Run #28 enforcer daemon SIGHUP (only gate-blocked task skipped)"
   ],
-  "last_response_preview": "**Session 502 Wrap-up**\n\n**Done this session:**\n- Verified crash_proof decorator is deployed (all MCP tools wrapped)\n- Confirmed DAG dual-write active (`_DUAL_WRITE = True`)\n- Cleared memory server blocking from known issues\n- Added single-level glob (`*`) permissions alongside recursive (`**`)\n\n**Risk: YELLOW** \u2014 permissions fix needs restart to verify\n\n**Next session (after restart):**\n1. Verify permissions fix \u2014 Edit/Write to `~/.claude/` should not prompt\n2. Fix `dag_memory.py` line 360 bug\n",
+  "last_response_preview": "**Session 503 Wrap-up**\n\n**Done:**\n- Fixed `~/.claude/` edit permissions via `auto_approve.py` PermissionRequest hook\n- Discovered `permissions.allow` cannot override hardcoded config-files gate (issue #35718, `//` prefix needed for absolute paths but still blocked by gate)\n- Cleaned dead permission entries from settings.json\n- Saved correction to memory\n\n**Risk: YELLOW** \u2014 auto_approve.py fix needs restart to verify (your call)\n\n**Next session:**\n1. **Verify** auto_approve.py fix \u2014 Edit/Write t",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 11666,
-  "dag_total_branches": 42
+  "dag_node_count": 11900,
+  "dag_total_branches": 43
 }
