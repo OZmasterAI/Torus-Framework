@@ -52,7 +52,11 @@ from shared.metrics_collector import (
 
 # Cross-agent file coordination (fail-open import)
 try:
-    from shared.file_lock_registry import acquire_lock as _flr_acquire, is_locked as _flr_is_locked
+    from shared.file_lock_registry import (
+        acquire_lock as _flr_acquire,
+        is_locked as _flr_is_locked,
+    )
+
     _FILE_LOCK_AVAILABLE = True
 except ImportError:
     _FILE_LOCK_AVAILABLE = False
@@ -508,15 +512,20 @@ def handle_pre_tool_use(tool_name, tool_input, state):
             return
         _ensure_gates_loaded()
         g17_key = "gates.gate_17_injection_defense"
+        g17_label = "gate_17_injection_defense"
         if g17_key in _loaded_gates:
             try:
                 result = _loaded_gates[g17_key].check(
                     tool_name, tool_input, state, event_type="PreToolUse"
                 )
                 if result and result.blocked:
+                    log_gate_decision(g17_label, tool_name, "block", result.message)
                     print(result.message, file=sys.stderr)
                     sys.exit(2)
+                else:
+                    log_gate_decision(g17_label, tool_name, "pass", "")
             except Exception as e:
+                log_gate_decision(g17_label, tool_name, "error", str(e))
                 print(f"[ENFORCER] G17 scan error: {e}", file=sys.stderr)
         return
 
@@ -797,7 +806,9 @@ def handle_pre_tool_use(tool_name, tool_input, state):
                 _session = state.get("_session_id", "main")
                 _flr_acquire(_fp, _session)
         except Exception as e:
-            print(f"[ENFORCER] File lock acquire error (fail-open): {e}", file=sys.stderr)
+            print(
+                f"[ENFORCER] File lock acquire error (fail-open): {e}", file=sys.stderr
+            )
 
 
 def main():
