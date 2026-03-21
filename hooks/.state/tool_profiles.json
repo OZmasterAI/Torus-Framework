@@ -433,21 +433,9 @@
       }
     ],
     "preconditions": [],
-    "success_count": 4086,
+    "success_count": 4089,
     "failure_count": 61,
     "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1774050888.854805
-      },
-      {
-        "success": true,
-        "ts": 1774050888.880864
-      },
-      {
-        "success": true,
-        "ts": 1774050888.9134107
-      },
       {
         "success": true,
         "ts": 1774050888.989451
@@ -635,6 +623,18 @@
       {
         "success": true,
         "ts": 1774051565.2617455
+      },
+      {
+        "success": true,
+        "ts": 1774051586.2988143
+      },
+      {
+        "success": true,
+        "ts": 1774051594.289424
+      },
+      {
+        "success": true,
+        "ts": 1774051596.3626962
       }
     ],
     "common_errors": [
@@ -644,7 +644,7 @@
         "last_seen": 1773804306.8794246
       }
     ],
-    "last_updated": 1774051565.2617507
+    "last_updated": 1774051596.3627014
   },
   "Read": {
     "known_failures": [],
