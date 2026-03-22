@@ -49,6 +49,7 @@ CFG = {}
 def _is_tmux_mode():
     """Check if tg_bot_tmux toggle is enabled in config.json or LIVE_STATE.json."""
     import json as _json
+
     # config.json is canonical for toggles
     try:
         _cfg_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
@@ -69,7 +70,9 @@ def _is_tmux_mode():
 
 def _is_authorized(user_id, chat_id):
     """Check if user or chat is in allowed lists."""
-    return user_id in CFG.get("allowed_users", []) or chat_id in CFG.get("allowed_groups", [])
+    return user_id in CFG.get("allowed_users", []) or chat_id in CFG.get(
+        "allowed_groups", []
+    )
 
 
 def _now_iso():
@@ -81,6 +84,7 @@ async def _mirror_user_message(user_name: str, text: str):
     import json as _json
     import urllib.request
     import urllib.error
+
     cfg_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
     try:
         with open(cfg_path) as f:
@@ -95,9 +99,13 @@ async def _mirror_user_message(user_name: str, text: str):
     escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     html = f"<b>[{user_name}]</b>\n{escaped}"
     for uid in CFG.get("allowed_users", []):
-        payload = _json.dumps({"chat_id": uid, "text": html, "parse_mode": "HTML"}).encode()
+        payload = _json.dumps(
+            {"chat_id": uid, "text": html, "parse_mode": "HTML"}
+        ).encode()
         url = f"https://api.telegram.org/bot{notify_token}/sendMessage"
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(
+            url, data=payload, headers={"Content-Type": "application/json"}
+        )
         try:
             urllib.request.urlopen(req, timeout=5)
         except Exception:
@@ -125,7 +133,9 @@ async def handle_message(update: Update, context):
     if chat.type in ("group", "supergroup"):
         bot_username = context.bot.username
         is_mention = f"@{bot_username}" in text
-        is_reply = msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id
+        is_reply = (
+            msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id
+        )
         if not is_mention and not is_reply:
             return
         # Strip the @mention from the text
@@ -162,7 +172,9 @@ async def handle_message(update: Update, context):
                 return
         else:
             logger.warning("tmux target '%s' not alive", tmux_target)
-            await msg.reply_text(f"tmux session '{tmux_target}' not running. Start it or disable tg_bot_tmux.")
+            await msg.reply_text(
+                f"tmux session '{tmux_target}' not running. Start it or disable tg_bot_tmux."
+            )
             return
     else:
         session_id = get_session_id(SESSIONS_PATH, chat.id)
@@ -196,7 +208,7 @@ async def handle_message(update: Update, context):
         await msg.reply_text(result)
     else:
         for i in range(0, len(result), 4096):
-            await msg.reply_text(result[i:i + 4096])
+            await msg.reply_text(result[i : i + 4096])
 
 
 # ── Voice-to-text (faster-whisper) ─────────────────────────────────────────
@@ -211,8 +223,13 @@ def _get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel
-        logger.info("Loading whisper model '%s' (first voice message)...", _WHISPER_MODEL_SIZE)
-        _whisper_model = WhisperModel(_WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
+
+        logger.info(
+            "Loading whisper model '%s' (first voice message)...", _WHISPER_MODEL_SIZE
+        )
+        _whisper_model = WhisperModel(
+            _WHISPER_MODEL_SIZE, device="cpu", compute_type="int8"
+        )
         logger.info("Whisper model loaded.")
     return _whisper_model
 
@@ -228,13 +245,19 @@ def _transcribe_local(ogg_path: str) -> str:
         without_timestamps=True,
     )
     text = " ".join(seg.text for seg in segments).strip()
-    logger.info("Transcribed %.1fs audio (%s) → %d chars [local]", info.duration, info.language, len(text))
+    logger.info(
+        "Transcribed %.1fs audio (%s) → %d chars [local]",
+        info.duration,
+        info.language,
+        len(text),
+    )
     return text
 
 
 def _transcribe_groq(ogg_path: str) -> str:
     """Transcribe an .ogg voice file using Groq's Whisper API."""
     from groq import Groq
+
     client = Groq(api_key=_GROQ_API_KEY)
     with open(ogg_path, "rb") as f:
         transcription = client.audio.transcriptions.create(
@@ -242,7 +265,11 @@ def _transcribe_groq(ogg_path: str) -> str:
             model="whisper-large-v3-turbo",
             response_format="text",
         )
-    text = transcription.strip() if isinstance(transcription, str) else str(transcription).strip()
+    text = (
+        transcription.strip()
+        if isinstance(transcription, str)
+        else str(transcription).strip()
+    )
     logger.info("Transcribed audio → %d chars [groq]", len(text))
     return text
 
@@ -259,7 +286,10 @@ def _transcribe_ogg(ogg_path: str) -> str:
 
 # ── Text-to-speech (multi-engine: Edge-TTS, Piper, Groq) ──────────────────
 PIPER_VOICES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(_PLUGIN_DIR)), "integrations", "tts-voices", "piper-voices"
+    os.path.dirname(os.path.dirname(_PLUGIN_DIR)),
+    "integrations",
+    "tts-voices",
+    "piper-voices",
 )
 _piper_cache = {}  # voice_name -> loaded PiperVoice
 
@@ -281,11 +311,14 @@ def _load_tts_config():
     """Load TTS settings from config.json."""
     global _tts_engine, _tts_voice, _tts_text_replies
     import json as _json
+
     try:
         with open(_CONFIG_PATH) as f:
             cfg = _json.load(f)
         _tts_engine = cfg.get("tts_engine", "edge")
-        _tts_voice = cfg.get("tts_voice", _TTS_ENGINE_DEFAULTS.get(_tts_engine, "en-US-GuyNeural"))
+        _tts_voice = cfg.get(
+            "tts_voice", _TTS_ENGINE_DEFAULTS.get(_tts_engine, "en-US-GuyNeural")
+        )
         _tts_text_replies = cfg.get("tts_text_replies", False)
     except (FileNotFoundError, ValueError):
         pass
@@ -294,6 +327,7 @@ def _load_tts_config():
 def _save_tts_config():
     """Persist TTS settings to config.json."""
     import json as _json
+
     try:
         with open(_CONFIG_PATH) as f:
             cfg = _json.load(f)
@@ -312,8 +346,17 @@ _load_tts_config()
 async def _audio_to_ogg(input_path: str, ogg_path: str) -> bool:
     """Convert audio file to OGG/Opus via ffmpeg. Returns True on success."""
     import asyncio
+
     proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-y", "-i", input_path, "-c:a", "libopus", "-b:a", "48k", ogg_path,
+        "ffmpeg",
+        "-y",
+        "-i",
+        input_path,
+        "-c:a",
+        "libopus",
+        "-b:a",
+        "48k",
+        ogg_path,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
@@ -344,7 +387,12 @@ async def _tts_edge(text: str, voice: str = "en-US-GuyNeural") -> bytes | None:
         with open(ogg_path, "rb") as f:
             audio_data = f.read()
 
-        logger.info("TTS generated: %d chars → %d bytes OGG [edge-tts %s]", len(tts_text), len(audio_data), voice)
+        logger.info(
+            "TTS generated: %d chars → %d bytes OGG [edge-tts %s]",
+            len(tts_text),
+            len(audio_data),
+            voice,
+        )
         return audio_data
 
     except Exception as e:
@@ -373,6 +421,7 @@ async def _tts_piper(text: str, voice: str = "en_US-lessac-high") -> bytes | Non
     # Lazy-load voice model
     if voice not in _piper_cache:
         from piper import PiperVoice
+
         _piper_cache[voice] = PiperVoice.load(onnx_path, config_path=config_path)
         logger.info("Loaded Piper voice: %s", voice)
     pv = _piper_cache[voice]
@@ -396,7 +445,12 @@ async def _tts_piper(text: str, voice: str = "en_US-lessac-high") -> bytes | Non
         with open(ogg_path, "rb") as f:
             audio_data = f.read()
 
-        logger.info("TTS generated: %d chars → %d bytes OGG [piper %s]", len(text), len(audio_data), voice)
+        logger.info(
+            "TTS generated: %d chars → %d bytes OGG [piper %s]",
+            len(text),
+            len(audio_data),
+            voice,
+        )
         return audio_data
 
     except Exception as e:
@@ -425,6 +479,7 @@ async def _tts_groq(text: str, voice: str = "austin") -> bytes | None:
 
     try:
         from groq import Groq
+
         client = Groq(api_key=_GROQ_API_KEY)
 
         response = client.audio.speech.create(
@@ -441,7 +496,11 @@ async def _tts_groq(text: str, voice: str = "austin") -> bytes | None:
         with open(ogg_path, "rb") as f:
             audio_data = f.read()
 
-        logger.info("TTS generated: %d chars → %d bytes OGG [groq orpheus]", len(tts_text), len(audio_data))
+        logger.info(
+            "TTS generated: %d chars → %d bytes OGG [groq orpheus]",
+            len(tts_text),
+            len(audio_data),
+        )
         return audio_data
 
     except Exception as e:
@@ -520,7 +579,9 @@ async def handle_voice(update: Update, context):
         return
 
     # Log transcription
-    log_message(DB_PATH, chat.id, user.first_name or "user", f"[voice] {text}", _now_iso())
+    log_message(
+        DB_PATH, chat.id, user.first_name or "user", f"[voice] {text}", _now_iso()
+    )
 
     # Send transcription preview, then route through normal Claude pipeline
     # (tmux mode sends to claude-bot pane and returns reply on Telegram)
@@ -577,7 +638,7 @@ async def handle_voice(update: Update, context):
         await msg.reply_text(result)
     else:
         for i in range(0, len(result), 4096):
-            await msg.reply_text(result[i:i + 4096])
+            await msg.reply_text(result[i : i + 4096])
 
 
 async def cmd_status(update: Update, context):
@@ -589,6 +650,7 @@ async def cmd_status(update: Update, context):
         return
 
     from sessions import load_sessions
+
     sessions = load_sessions(SESSIONS_PATH)
     session_count = len(sessions)
 
@@ -670,18 +732,28 @@ async def cmd_whisper(update: Update, context):
     arg = context.args[0].lower() if context.args else ""
     if not arg:
         groq_status = "available" if _GROQ_API_KEY else "no API key"
-        await msg.reply_text(f"Whisper backend: <b>{_whisper_backend}</b>\nGroq: {groq_status}", parse_mode=ParseMode.HTML)
+        await msg.reply_text(
+            f"Whisper backend: <b>{_whisper_backend}</b>\nGroq: {groq_status}",
+            parse_mode=ParseMode.HTML,
+        )
         return
 
     if arg == "groq":
         if not _GROQ_API_KEY:
-            await msg.reply_text("GROQ_API_KEY not set. Start bot with the env var to use Groq.")
+            await msg.reply_text(
+                "GROQ_API_KEY not set. Start bot with the env var to use Groq."
+            )
             return
         _whisper_backend = "groq"
-        await msg.reply_text("Switched to <b>groq</b> backend.", parse_mode=ParseMode.HTML)
+        await msg.reply_text(
+            "Switched to <b>groq</b> backend.", parse_mode=ParseMode.HTML
+        )
     elif arg == "local":
         _whisper_backend = "local"
-        await msg.reply_text("Switched to <b>local</b> (faster-whisper) backend.", parse_mode=ParseMode.HTML)
+        await msg.reply_text(
+            "Switched to <b>local</b> (faster-whisper) backend.",
+            parse_mode=ParseMode.HTML,
+        )
     else:
         await msg.reply_text("Usage: /whisper [groq|local]")
 
@@ -695,6 +767,7 @@ async def cmd_mirror(update: Update, context):
         return
 
     import json as _json
+
     cfg_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
     try:
         with open(cfg_path) as f:
@@ -731,7 +804,9 @@ async def cmd_mirror(update: Update, context):
         with open(cfg_path, "w") as f:
             _json.dump(cfg, f, indent=2)
         state = "on" if not current else "off"
-        await msg.reply_text(f"User message mirroring <b>{state}</b>.", parse_mode=ParseMode.HTML)
+        await msg.reply_text(
+            f"User message mirroring <b>{state}</b>.", parse_mode=ParseMode.HTML
+        )
     else:
         await msg.reply_text("Usage: /mirror [on|off|user]")
 
@@ -761,11 +836,16 @@ async def cmd_tts(update: Update, context):
     if arg == "on":
         _tts_text_replies = True
         _save_tts_config()
-        await msg.reply_text(f"Voice replies on text messages <b>enabled</b> ({_tts_engine}: {_tts_voice}).", parse_mode=ParseMode.HTML)
+        await msg.reply_text(
+            f"Voice replies on text messages <b>enabled</b> ({_tts_engine}: {_tts_voice}).",
+            parse_mode=ParseMode.HTML,
+        )
     elif arg == "off":
         _tts_text_replies = False
         _save_tts_config()
-        await msg.reply_text("Voice replies on text messages <b>disabled</b>.", parse_mode=ParseMode.HTML)
+        await msg.reply_text(
+            "Voice replies on text messages <b>disabled</b>.", parse_mode=ParseMode.HTML
+        )
     else:
         await msg.reply_text("Usage: /tts [on|off]")
 
@@ -797,7 +877,9 @@ async def cmd_voice(update: Update, context):
 
     if arg in ("edge", "piper", "groq"):
         if arg == "groq" and not _GROQ_API_KEY:
-            await msg.reply_text("GROQ_API_KEY not set. Start bot with the env var to use Groq TTS.")
+            await msg.reply_text(
+                "GROQ_API_KEY not set. Start bot with the env var to use Groq TTS."
+            )
             return
         _tts_engine = arg
         _tts_voice = _TTS_ENGINE_DEFAULTS[arg]
@@ -811,8 +893,11 @@ async def cmd_voice(update: Update, context):
     if arg == "list":
         if _tts_engine == "edge":
             import edge_tts
+
             voices = await edge_tts.list_voices()
-            en_voices = [v["ShortName"] for v in voices if v.get("Locale", "").startswith("en")]
+            en_voices = [
+                v["ShortName"] for v in voices if v.get("Locale", "").startswith("en")
+            ]
             en_voices.sort()
             lines = "\n".join(en_voices)
             await msg.reply_text(
@@ -821,6 +906,7 @@ async def cmd_voice(update: Update, context):
             )
         elif _tts_engine == "piper":
             import glob as globmod
+
             onnx_files = sorted(globmod.glob(os.path.join(PIPER_VOICES_DIR, "*.onnx")))
             names = [os.path.basename(f).replace(".onnx", "") for f in onnx_files]
             if not names:
@@ -832,8 +918,9 @@ async def cmd_voice(update: Update, context):
                 parse_mode=ParseMode.HTML,
             )
         elif _tts_engine == "groq":
+            groq_voices = "austin\nautumn\ndaniel\ndiana\nhannah\ntroy"
             await msg.reply_text(
-                "<b>Groq Orpheus voices:</b>\n<code>austin</code>\n\n(single voice model)",
+                f"<b>Groq Orpheus voices (6):</b>\n<code>{groq_voices}</code>",
                 parse_mode=ParseMode.HTML,
             )
         return

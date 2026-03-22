@@ -1,5 +1,4 @@
 {
-  "effort": "max",
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
   },
@@ -277,11 +276,13 @@
     "code-review@claude-plugins-official": false,
     "hookify@claude-plugins-official": false,
     "skill-creator@claude-plugins-official": false,
-    "code-simplifier@claude-plugins-official": false
+    "code-simplifier@claude-plugins-official": false,
+    "telegram@claude-plugins-official": true
   },
   "voiceEnabled": true,
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
+  "effort": "max",
   "disabled_hooks": {
     "TeammateIdle": [
       {

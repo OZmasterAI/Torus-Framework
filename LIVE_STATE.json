@@ -1,24 +1,22 @@
 {
-  "session_count": 519,
+  "session_count": 521,
   "project": "torus-framework",
-  "feature": "test-enforcement-orchestrator",
+  "feature": "orchestrator-upgrades",
   "framework_version": "v3.0.0",
-  "what_was_done": "Built gate 23 (require_tests), auto-commit controls (AC/ACT/Tests flags), revived torus-loop orchestrator, wired /writing-plans to output tasks.json, /implement launches orchestrator when flag on",
+  "what_was_done": "ACT runs tests before committing, torus-loop retry cap + failure history, removed .sh/.bash/.css/.html exemptions, /implement uses TaskCreate, TG bot Groq STT/TTS + official plugin installed",
   "known_issues": [
     "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
     "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files",
     "Gate 23 bug: .gitignore tracked as code (extensionless files not exempt)",
-    "Enforcer daemon caches gate modules — must kill stale daemon for new gates to load"
+    "Gate 23 tracker is global — cross-session pollution from concurrent instances",
+    "Validation bug: tasks.json missing cwd for external projects (writing-plans needs fix)"
   ],
   "next_steps": [
     "Fix gate 23: exempt extensionless dotfiles (.gitignore, .gitattributes, etc)",
-    "Test orchestrator end-to-end: create a test PRP, run torus-loop.sh, verify full cycle",
-    "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
-    "Memory pruning — DB at 3581 entries, run maintenance(action='stale')"
-  ],
-  "last_response_preview": "Session 519 wrap-up. Gate 23 + orchestrator revival complete. Analytics MCP removed.",
-  "dag_branch": "dag-claude",
-  "dag_branch_label": "",
-  "dag_node_count": 22432,
-  "dag_total_branches": 78
+    "Fix gate 23: make tracker per-session instead of global",
+    "Fix writing-plans: set cwd in tasks.json for external projects",
+    "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS",
+    "Test orchestrator end-to-end with retry cap",
+    "Memory pruning — DB at 3642 entries"
+  ]
 }
