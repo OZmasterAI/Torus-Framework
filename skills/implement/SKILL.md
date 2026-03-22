@@ -25,11 +25,14 @@ When the user says "implement", "build", "create", or the Loop reaches the imple
 - If no plan and task is non-trivial, ask: "Run /writing-plans first?"
 
 ### 2. EXECUTE
-For each task (from plan or verbal description):
-- Write the test first (must fail initially)
-- Write the implementation, follow existing code patterns
-- Run test — confirm it passes
-- If fail: fix and retry (max 3 attempts per task)
+- Create a Claude Code task (TaskCreate) for each task from the plan or verbal description
+- Work through tasks in order. For each task:
+  - Mark it in_progress (TaskUpdate)
+  - Write the test first (must fail initially)
+  - Write the implementation, follow existing code patterns
+  - Run test — confirm it passes
+  - If fail: fix and retry (max 3 attempts per task)
+  - Mark completed or note failure (TaskUpdate)
 - Do NOT accumulate multiple unverified changes
 
 ### 3. PROVE
