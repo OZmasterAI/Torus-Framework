@@ -19,7 +19,14 @@ MEMORY_PREFETCH="$SCRIPTS_DIR/memory-prefetch.py"
 
 # ── Defaults ───────────────────────────────────────────────────────
 MAX_ITERATIONS=50
-MODEL="sonnet"
+MODEL=$(python3 -c "
+import json, os
+try:
+    p = json.load(open(os.path.expanduser('~/.claude/config.json'))).get('model_profile', 'quality')
+    print('opus' if p == 'quality' else 'sonnet')
+except Exception:
+    print('sonnet')
+" 2>/dev/null || echo "sonnet")
 TASK_TIMEOUT=600  # 10 minutes per task
 
 # ── Parse arguments ────────────────────────────────────────────────
@@ -56,6 +63,11 @@ fi
 
 # ── Clean up any stale stop sentinel ───────────────────────────────
 rm -f "$STOP_SENTINEL"
+
+# ── Mark orchestrator as active (disables auto-commit) ──────────
+ORCH_MARKER="$CLAUDE_DIR/hooks/.orchestrator_active"
+echo "$$" > "$ORCH_MARKER"
+trap 'rm -f "$ORCH_MARKER"' EXIT
 
 # ── Clean up old agent messages (fail-open) ───────────────────────
 python3 -c "

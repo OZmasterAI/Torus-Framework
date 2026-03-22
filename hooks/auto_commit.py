@@ -42,6 +42,9 @@ _EXEMPT_EXTENSIONS = {
     ".lock",
 }
 
+# Orchestrator marker — when present, auto-commit is disabled
+_ORCH_MARKER = os.path.join(CLAUDE_DIR, "hooks", ".orchestrator_active")
+
 
 def _load_config():
     """Read config.json. Returns dict with defaults on failure."""
@@ -50,6 +53,11 @@ def _load_config():
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
+
+
+def _is_orchestrator_active():
+    """Check if torus-loop orchestrator is running."""
+    return os.path.exists(_ORCH_MARKER)
 
 
 def _is_test_file(path):
@@ -115,6 +123,8 @@ def stage():
     cfg = _load_config()
     if not cfg.get("auto_commit", True):
         return
+    if _is_orchestrator_active():
+        return
 
     try:
         payload = json.load(sys.stdin)
@@ -152,6 +162,8 @@ def commit():
     """Commit only files that stage() explicitly tracked."""
     cfg = _load_config()
     if not cfg.get("auto_commit", True):
+        return
+    if _is_orchestrator_active():
         return
 
     # Read session_id from stdin for namespaced snapshot
