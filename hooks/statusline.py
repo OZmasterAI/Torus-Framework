@@ -1104,6 +1104,9 @@ def main():
         elif usage_pct >= 0.40:
             budget_tier_str = " \U0001f7e1LOW"
     line3 = (
+        f"{_tog('auto_commit', 'AC')} "
+        f"{_tog('auto_commit_require_tests', 'ACT')} "
+        f"{_tog('require_tests', 'Tests')} "
         f"{_tog('terminal_l2_always', 'L2')} "
         f"{_tog('context_enrichment', 'Enrich')} "
         f"{_tog('transcript_l0', 'L0')} "
