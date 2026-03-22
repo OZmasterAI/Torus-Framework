@@ -324,6 +324,7 @@ class WritePipeline:
         # Entity extraction (moved from sync path)
         try:
             from shared.entity_extraction import extract_entities
+
             combined_text = f"{content} {context}" if context else content
             cached_entities = extract_entities(combined_text)
         except Exception:
@@ -343,13 +344,17 @@ class WritePipeline:
                 if len(keywords_str) > 500:
                     keywords_str = keywords_str[:497] + "..."
                 if keywords_str:
-                    collection.update(ids=[doc_id], metadatas=[{"keywords": keywords_str}])
+                    collection.update(
+                        ids=[doc_id], metadatas=[{"keywords": keywords_str}]
+                    )
             except Exception:
                 pass
 
         # Retroactive interference (moved from sync path)
         try:
-            self._retroactive_interference(content, tags, False, collection, h, query_vector=cached_vec)
+            self._retroactive_interference(
+                content, tags, False, collection, h, query_vector=cached_vec
+            )
         except Exception:
             pass
 
@@ -400,7 +405,8 @@ class WritePipeline:
         try:
             if self.graph and collection.count() > 1:
                 _amem_results = collection.query(
-                    query_texts=[content],
+                    query_texts=[content] if not cached_vec else None,
+                    query_vector=cached_vec if cached_vec else None,
                     n_results=6,
                     include=["metadatas", "distances"],
                 )
@@ -440,6 +446,7 @@ class WritePipeline:
                     collection,
                     tag_index,
                     cached_entities,
+                    cached_vec=cached_vec,
                 )
             except Exception:
                 pass
@@ -507,6 +514,7 @@ class WritePipeline:
         collection,
         tag_index,
         cached_entities,
+        cached_vec=None,
     ):
         """A-Mem evolution using pre-extracted entities for the new memory."""
         _MAX_UPDATES = 3
@@ -535,7 +543,8 @@ class WritePipeline:
 
         try:
             neighbors = collection.query(
-                query_texts=[content],
+                query_texts=[content] if not cached_vec else None,
+                query_vector=cached_vec if cached_vec else None,
                 n_results=4,
                 include=["metadatas", "documents", "distances"],
             )
@@ -648,7 +657,9 @@ class WritePipeline:
 
         return hashlib.md5(content.encode()).hexdigest()[:16]
 
-    def _retroactive_interference(self, content, tags, force, collection, h, query_vector=None):
+    def _retroactive_interference(
+        self, content, tags, force, collection, h, query_vector=None
+    ):
         """Corrections/fixes suppress similar existing memories."""
         try:
             if (
