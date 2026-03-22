@@ -50,8 +50,8 @@ class TestIsExemptFile(unittest.TestCase):
     def test_yaml(self):
         assert _is_exempt_file("config.yaml")
 
-    def test_sh(self):
-        assert _is_exempt_file("run.sh")
+    def test_sh_not_exempt(self):
+        assert not _is_exempt_file("run.sh")
 
     def test_py_not_exempt(self):
         assert not _is_exempt_file("foo.py")

@@ -12,8 +12,17 @@ BASE_EXEMPT_BASENAMES = {"state.json", "LIVE_STATE.json", "CLAUDE.md", "__init__
 BASE_EXEMPT_DIRS = [os.path.join(os.path.expanduser("~"), ".claude", "skills")]
 STANDARD_EXEMPT_PATTERNS = ("test_", "_test.", ".test.", "spec_", "_spec.", ".spec.")
 FULL_EXEMPT_EXTENSIONS = {
-    ".md", ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".txt",
-    ".sh", ".bash", ".css", ".html", ".xml", ".csv", ".lock",
+    ".md",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".cfg",
+    ".ini",
+    ".txt",
+    ".xml",
+    ".csv",
+    ".lock",
 }
 
 
@@ -46,7 +55,9 @@ def is_exempt_full(file_path, exempt_extensions=None):
     """Tier 3: standard + non-code extension filter."""
     if is_exempt_standard(file_path):
         return True
-    ext_set = exempt_extensions if exempt_extensions is not None else FULL_EXEMPT_EXTENSIONS
+    ext_set = (
+        exempt_extensions if exempt_extensions is not None else FULL_EXEMPT_EXTENSIONS
+    )
     _, ext = os.path.splitext(os.path.basename(file_path))
     if ext.lower() in ext_set:
         return True
