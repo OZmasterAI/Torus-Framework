@@ -1,23 +1,24 @@
 """Gate 23: REQUIRE TESTS (Tier 2 — Quality)
 
 Blocks Edit/Write on code files if prior code edits in this session
-have no corresponding test files also edited.
+have no corresponding test files (on disk or recently edited).
 
-Tracks its own state key "untested_code_files" — NOT dependent on
+Uses file-based tracker (.untested_code_files.json) — NOT dependent on
 pending_verification (which gets cleared by any Bash command).
 
-Code files are added to the tracking list on PostToolUse (after edit succeeds).
-Test files written clear matching code files from the list.
-PreToolUse blocks if the list has unmatched entries.
+On PreToolUse:
+  - If editing a test file: clear matching code files from tracker, allow.
+  - If editing a code file: check tracker for untested files, block if any.
+    Then check if THIS code file has a test on disk — if not, track it.
+  - Files with existing tests on disk are never tracked or blocked.
 
 Controlled by config.json "require_tests" flag (default: false).
-When off, this gate allows everything.
 
 Exemptions:
   - Test files themselves (always allowed — you need to write them)
   - Config/doc files (.md, .json, .yaml, etc.)
-  - skills/ directory
-  - .state/ directory
+  - skills/ directory, .state/ directory
+  - Code files that already have a matching test file on disk
 
 Tier 2 (non-safety): gate crash = warn + continue, not block.
 """
@@ -37,10 +38,8 @@ WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 CONFIG_FILE = os.path.join(os.path.expanduser("~/.claude"), "config.json")
 STATE_DIR = os.path.join(os.path.expanduser("~/.claude"), "hooks", ".state")
 
-# State key for in-memory state dict (may not persist between enforcer calls)
 STATE_KEY = "untested_code_files"
 
-# File-based persistence (survives between enforcer calls)
 _TRACKER_FILE = os.path.join(
     os.path.expanduser("~/.claude"), "hooks", ".untested_code_files.json"
 )
@@ -95,6 +94,45 @@ def _is_code_file(path):
     return not _is_exempt(path) and not _is_test_file(path) and not _is_state_dir(path)
 
 
+def _test_candidates(code_path):
+    """Return list of possible test file names for a code file."""
+    base = os.path.basename(code_path)
+    name, _ = os.path.splitext(base)
+    return [
+        f"test_{base}",
+        f"test_{name}.py",
+        f"{name}_test.py",
+        f"{name}_test.go",
+        f"{name}.test.ts",
+        f"{name}.test.js",
+        f"{name}.spec.ts",
+        f"{name}.spec.js",
+    ]
+
+
+def _test_search_dirs(code_path):
+    """Return directories to search for test files."""
+    code_dir = os.path.dirname(code_path)
+    parent = os.path.dirname(code_dir)
+    dirs = [code_dir]
+    for td in ("tests", "test", "__tests__"):
+        dirs.append(os.path.join(code_dir, td))
+        dirs.append(os.path.join(parent, td))
+    return dirs
+
+
+def _has_test_on_disk(code_path):
+    """Check if a matching test file exists on disk for a code file."""
+    if not code_path:
+        return False
+    candidates = _test_candidates(code_path)
+    for search_dir in _test_search_dirs(code_path):
+        for c in candidates:
+            if os.path.exists(os.path.join(search_dir, c)):
+                return True
+    return False
+
+
 def _match_test_to_code(test_path, code_files):
     """Return list of code files that this test file covers."""
     if not test_path or not code_files:
@@ -119,11 +157,6 @@ def _match_test_to_code(test_path, code_files):
     return matched
 
 
-def _get_unmatched(state):
-    """Return list of code files without matching tests."""
-    return _load_tracker()
-
-
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
@@ -138,7 +171,7 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     tool_input = safe_tool_input(tool_input)
     file_path = extract_file_path(tool_input)
 
-    # ── Track test files: clear matching code files from untested list ──
+    # ── Track test files: clear matching code files from tracker ──
     if _is_test_file(file_path):
         untested = _load_tracker()
         matched = _match_test_to_code(file_path, untested)
@@ -151,9 +184,14 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if _is_exempt(file_path) or _is_state_dir(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # ── Check for untested code files from prior edits ──
+    # ── Filter tracker: remove files that now have tests on disk ──
     untested = _load_tracker()
+    filtered = [f for f in untested if not _has_test_on_disk(f)]
+    if len(filtered) != len(untested):
+        _save_tracker(filtered)
+        untested = filtered
 
+    # ── Block if untested code files exist from prior edits ──
     if untested:
         names = ", ".join(os.path.basename(f) for f in untested[:3])
         if len(untested) > 3:
@@ -166,8 +204,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
             blocked=True, gate_name=GATE_NAME, message=msg, severity="warn"
         )
 
-    # ── Track this code file for next check ──
-    if _is_code_file(file_path):
+    # ── Track this code file (only if no test exists on disk) ──
+    if _is_code_file(file_path) and not _has_test_on_disk(file_path):
         norm = os.path.normpath(file_path)
         if norm not in untested:
             untested.append(norm)
