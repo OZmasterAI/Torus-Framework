@@ -1,21 +1,21 @@
 {
-  "session_count": 517,
+  "session_count": 518,
   "project": "torus-framework",
-  "feature": "obsidian-integration",
+  "feature": "embed-cpu-optimization",
   "framework_version": "v3.0.0",
-  "what_was_done": "Built Obsidian vault integration: ~/vault/ with session bridge, migrated 25 research reports, installed Obsidian + Syncthing + plugins, created 4 project notes, configured obsidian-git, synced vault to main PC",
+  "what_was_done": "Fixed embedding CPU spike: embed-once in search_pipeline, cached_vec passthrough in write_pipeline A-Mem calls, counterfactual_mode always→threshold, added CF statusline indicator, benchmarked FP16 vs FP32 vs BF16",
   "known_issues": [
-    "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions",
-    "Gate 2 gap: rm -r (without -f) not blocked \u2014 equally destructive on user-owned files"
+    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
+    "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files"
   ],
   "next_steps": [
+    "remember_this: save session 518 embedding CPU fix to memory (server was down at wrap-up)",
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
-    "Memory pruning \u2014 DB at 3495 entries, run maintenance(action='stale')",
-    "Vault search: add semantic search + metadata queries (deferred until 100+ notes)",
-    "Re-add obsidian-mcp to mcp.json when vault grows (config saved in memory)"
+    "Memory pruning — DB at 3558 entries, run maintenance(action='stale')",
+    "Vault search: add semantic search + metadata queries (deferred until 100+ notes)"
   ],
-  "last_response_preview": "Server is up and responding on port 8741. The issue is just that Claude Code's MCP client needs to reconnect. Can you toggle memory off then on in `/mcp`?",
-  "dag_branch": "main",
+  "last_response_preview": "Fixed embed call multiplication: search 3-8→1-2 embeds, write 3→1 embeds. Counterfactual set to threshold. FP16 stays (faster than FP32 on AMD EPYC).",
+  "dag_branch": "dag-claude",
   "dag_branch_label": "",
   "dag_node_count": 19225,
   "dag_total_branches": 72
