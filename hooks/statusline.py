@@ -1107,6 +1107,7 @@ def main():
         f"{_tog('terminal_l2_always', 'L2')} "
         f"{_tog('context_enrichment', 'Enrich')} "
         f"{_tog('transcript_l0', 'L0')} "
+        f"{_tog('counterfactual_retrieval', 'CF')} "
         f"{_tog('tg_l3_always', 'TG')} "
         f"{_tog('tg_enrichment', 'TGe')} "
         f"{_tog('tg_bot_tmux', 'Bot')} "
