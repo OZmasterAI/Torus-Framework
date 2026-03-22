@@ -165,6 +165,15 @@ class SearchPipeline:
             _where["state_type"] = state_type
         _where = _where or None
 
+        # Embed once for all vector searches (LanceDB + DAG)
+        _embed_fn = h.get("embed_text")
+        _query_vec = None
+        if _embed_fn and mode in ("semantic", "hybrid", ""):
+            try:
+                _query_vec = _embed_fn(query)
+            except Exception:
+                pass
+
         if mode == "tags":
             tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)
             tags_list = [t.strip() for t in tag_query.split(",") if t.strip()]
@@ -181,7 +190,8 @@ class SearchPipeline:
             _merge = h.get("merge_results")
             fts_results = _kw_search(query, top_k=actual_k) if _kw_search else []
             lance_results = collection.query(
-                query_texts=[query],
+                query_texts=[query] if not _query_vec else None,
+                query_vector=_query_vec,
                 n_results=actual_k,
                 include=["metadatas", "distances"],
                 where=_where,
@@ -195,7 +205,8 @@ class SearchPipeline:
         else:
             # Semantic (default)
             results = collection.query(
-                query_texts=[query],
+                query_texts=[query] if not _query_vec else None,
+                query_vector=_query_vec,
                 n_results=actual_k,
                 include=["metadatas", "distances"],
                 where=_where,
@@ -209,11 +220,10 @@ class SearchPipeline:
 
             _dag = get_session_dag("main")
             _dag_layer = DAGMemoryLayer(_dag)
-            # Try semantic search if embed_text is available, else keyword
-            _embed_fn = h.get("embed_text")
-            if _embed_fn and mode in ("semantic", "hybrid", ""):
+            # Try semantic search using pre-computed vector, else keyword
+            if _query_vec is not None and mode in ("semantic", "hybrid", ""):
                 _sqlite_results = _dag_layer.semantic_search(
-                    query, top_k=top_k, embed_fn=_embed_fn
+                    query, top_k=top_k, query_vector=_query_vec
                 )
             else:
                 _sqlite_results = _dag_layer.search(query, top_k=top_k, mode="keyword")

@@ -21,7 +21,7 @@ _EMBEDDING_DIM = 768
 # FTS5 special characters that must be stripped/replaced before a MATCH query.
 # Wrapping in phrase quotes ("...") handles most operators, but these chars
 # can still break the tokenizer or produce syntax errors inside a phrase token.
-_FTS5_SPECIAL = re.compile(r'[*&|()\-:^~]')
+_FTS5_SPECIAL = re.compile(r"[*&|()\-:^~]")
 
 
 def _gen_id(prefix="dk_"):
@@ -256,8 +256,9 @@ class DAGMemoryLayer:
         except Exception as e:
             print(f"[DAG_MEMORY] add_edge failed: {e}", file=sys.stderr)
 
-    def find_related_nodes(self, node_id, edge_type=None, direction="both",
-                           limit=50, max_hops=3):
+    def find_related_nodes(
+        self, node_id, edge_type=None, direction="both", limit=50, max_hops=3
+    ):
         """Find nodes connected to node_id via recursive CTE BFS traversal.
 
         Uses SQLite recursive CTEs with UNION (not UNION ALL) for cycle
@@ -304,11 +305,16 @@ class DAGMemoryLayer:
                     params.append(edge_type)
                 params.extend([node_id, limit])
                 for row in self._db.execute(sql, params).fetchall():
-                    results.append({
-                        "node_id": row[0], "edge_type": row[1],
-                        "weight": row[2], "direction": "outgoing",
-                        "created_at": row[3], "depth": row[4],
-                    })
+                    results.append(
+                        {
+                            "node_id": row[0],
+                            "edge_type": row[1],
+                            "weight": row[2],
+                            "direction": "outgoing",
+                            "created_at": row[3],
+                            "depth": row[4],
+                        }
+                    )
             if direction in ("incoming", "both"):
                 edge_filter = "AND e.edge_type = ?" if edge_type else ""
                 remaining = max(1, limit - len(results))
@@ -338,11 +344,16 @@ class DAGMemoryLayer:
                     params.append(edge_type)
                 params.extend([node_id, remaining])
                 for row in self._db.execute(sql, params).fetchall():
-                    results.append({
-                        "node_id": row[0], "edge_type": row[1],
-                        "weight": row[2], "direction": "incoming",
-                        "created_at": row[3], "depth": row[4],
-                    })
+                    results.append(
+                        {
+                            "node_id": row[0],
+                            "edge_type": row[1],
+                            "weight": row[2],
+                            "direction": "incoming",
+                            "created_at": row[3],
+                            "depth": row[4],
+                        }
+                    )
         except Exception as e:
             print(f"[DAG_MEMORY] find_related_nodes failed: {e}", file=sys.stderr)
         return results
@@ -550,18 +561,19 @@ class DAGMemoryLayer:
             print(f"[DAG_MEMORY] cosine_search failed: {e}", file=sys.stderr)
             return []
 
-    def semantic_search(self, query, top_k=15, embed_fn=None):
+    def semantic_search(self, query, top_k=15, embed_fn=None, query_vector=None):
         """Semantic search: embed query, then cosine search knowledge embeddings.
 
         embed_fn: callable that takes a string and returns a list of floats (768-dim).
+        query_vector: pre-computed embedding vector (skips embed_fn call if provided).
         If not provided, uses self._embed_fn from the constructor.
         If neither is available, falls back to FTS5 keyword search.
         """
         fn = embed_fn or self._embed_fn
-        if fn is None:
+        if query_vector is None and fn is None:
             return self.search(query, top_k=top_k, mode="keyword")
         try:
-            query_vec = fn(query)
+            query_vec = query_vector if query_vector is not None else fn(query)
             scored = self.cosine_search(query_vec, top_k=top_k)
             if not scored:
                 return self.search(query, top_k=top_k, mode="keyword")
@@ -783,8 +795,11 @@ def promote_nodes(dag, layer, threshold=0.15, max_promotions=20, kg=None):
                 promo_metadata = {}
                 if activation_context:
                     promo_metadata["activated_context"] = [
-                        {"name": a["name"], "activation": round(a["activation"], 4),
-                         "hops": a["hops"]}
+                        {
+                            "name": a["name"],
+                            "activation": round(a["activation"], 4),
+                            "hops": a["hops"],
+                        }
                         for a in activation_context[:10]  # Cap at 10 context nodes
                     ]
 
