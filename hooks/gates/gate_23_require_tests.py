@@ -3,6 +3,13 @@
 Blocks Edit/Write on code files if prior code edits in this session
 have no corresponding test files also edited.
 
+Tracks its own state key "untested_code_files" — NOT dependent on
+pending_verification (which gets cleared by any Bash command).
+
+Code files are added to the tracking list on PostToolUse (after edit succeeds).
+Test files written clear matching code files from the list.
+PreToolUse blocks if the list has unmatched entries.
+
 Controlled by config.json "require_tests" flag (default: false).
 When off, this gate allows everything.
 
@@ -11,7 +18,6 @@ Exemptions:
   - Config/doc files (.md, .json, .yaml, etc.)
   - skills/ directory
   - .state/ directory
-  - Re-edits of files already in pending_verification
 
 Tier 2 (non-safety): gate crash = warn + continue, not block.
 """
@@ -30,6 +36,9 @@ GATE_NAME = "GATE 23: REQUIRE TESTS"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 CONFIG_FILE = os.path.join(os.path.expanduser("~/.claude"), "config.json")
 STATE_DIR = os.path.join(os.path.expanduser("~/.claude"), "hooks", ".state")
+
+# State key — persists across Bash commands, only cleared by matching test files
+STATE_KEY = "untested_code_files"
 
 
 def _load_config():
@@ -55,21 +64,22 @@ def _is_state_dir(path):
     return norm.startswith(state_norm + os.sep) or norm == state_norm
 
 
-def _code_files_without_tests(pending):
-    """Return list of code files in pending that have no matching test file."""
-    code_files = []
-    test_basenames = set()
-    for f in pending:
-        if _is_test_file(f):
-            test_basenames.add(os.path.basename(f).lower())
-        elif not _is_exempt(f) and not _is_state_dir(f):
-            code_files.append(f)
+def _is_code_file(path):
+    """True if path is a code file (not exempt, not test, not .state/)."""
+    if not path:
+        return False
+    return not _is_exempt(path) and not _is_test_file(path) and not _is_state_dir(path)
 
-    unmatched = []
+
+def _match_test_to_code(test_path, code_files):
+    """Return list of code files that this test file covers."""
+    if not test_path or not code_files:
+        return []
+    test_base = os.path.basename(test_path).lower()
+    matched = []
     for cf in code_files:
         base = os.path.basename(cf)
         name, _ = os.path.splitext(base)
-        # Check common test naming patterns
         candidates = {
             f"test_{base}".lower(),
             f"test_{name}.py".lower(),
@@ -80,15 +90,17 @@ def _code_files_without_tests(pending):
             f"{name}.spec.ts".lower(),
             f"{name}.spec.js".lower(),
         }
-        if not candidates & test_basenames:
-            unmatched.append(cf)
-    return unmatched
+        if test_base in candidates:
+            matched.append(cf)
+    return matched
+
+
+def _get_unmatched(state):
+    """Return list of code files without matching tests."""
+    return list(state.get(STATE_KEY, []))
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
-    if event_type != "PreToolUse":
-        return GateResult(blocked=False, gate_name=GATE_NAME)
-
     if tool_name not in WATCHED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
@@ -99,13 +111,33 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     tool_input = safe_tool_input(tool_input)
     file_path = extract_file_path(tool_input)
 
+    # ── PostToolUse: track what was edited ──
+    if event_type == "PostToolUse":
+        if _is_code_file(file_path):
+            # Add to untested list (if not already there)
+            untested = state.get(STATE_KEY, [])
+            norm = os.path.normpath(file_path)
+            if norm not in untested:
+                untested.append(norm)
+                state[STATE_KEY] = untested
+        elif _is_test_file(file_path):
+            # Test written — clear matching code files from untested list
+            untested = state.get(STATE_KEY, [])
+            matched = _match_test_to_code(file_path, untested)
+            if matched:
+                state[STATE_KEY] = [f for f in untested if f not in matched]
+        return GateResult(blocked=False, gate_name=GATE_NAME)
+
+    # ── PreToolUse: check for untested code ──
+    if event_type != "PreToolUse":
+        return GateResult(blocked=False, gate_name=GATE_NAME)
+
     # Always allow: exempt files, test files, .state/ files
     if _is_exempt(file_path) or _is_test_file(file_path) or _is_state_dir(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # Check pending_verification for untested code files
-    pending = state.get("pending_verification", [])
-    unmatched = _code_files_without_tests(pending)
+    # Check our own tracking list
+    unmatched = _get_unmatched(state)
 
     if not unmatched:
         return GateResult(blocked=False, gate_name=GATE_NAME)

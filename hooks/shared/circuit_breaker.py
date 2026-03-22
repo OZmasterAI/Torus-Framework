@@ -37,13 +37,13 @@ from typing import Any, Dict, Optional
 
 # -- State constants --
 
-STATE_CLOSED    = "CLOSED"
-STATE_OPEN      = "OPEN"
+STATE_CLOSED = "CLOSED"
+STATE_OPEN = "OPEN"
 STATE_HALF_OPEN = "HALF_OPEN"
 
 # -- Persistence paths --
 
-_RAMDISK_DIR  = "/dev/shm/claude-hooks"
+_RAMDISK_DIR = "/dev/shm/claude-hooks"
 _RAMDISK_PATH = os.path.join(_RAMDISK_DIR, "circuit_breaker.json")
 _DISK_FALLBACK = os.path.join(
     os.path.expanduser("~"), ".claude", "hooks", ".circuit_breaker.json"
@@ -51,21 +51,22 @@ _DISK_FALLBACK = os.path.join(
 
 # -- Default configuration --
 
-DEFAULT_FAILURE_THRESHOLD  = 5   # consecutive failures -> OPEN
-DEFAULT_RECOVERY_TIMEOUT   = 60  # seconds to wait in OPEN before HALF_OPEN
-DEFAULT_SUCCESS_THRESHOLD  = 2   # successes in HALF_OPEN -> CLOSED
+DEFAULT_FAILURE_THRESHOLD = 5  # consecutive failures -> OPEN
+DEFAULT_RECOVERY_TIMEOUT = 60  # seconds to wait in OPEN before HALF_OPEN
+DEFAULT_SUCCESS_THRESHOLD = 2  # successes in HALF_OPEN -> CLOSED
 
 # -- Module-level lock (guards in-process concurrent access) --
 
 _lock = threading.Lock()
 
 # -- In-memory TTL cache to reduce disk I/O on hot-path is_open() --
-_cache: Dict[str, Any] = {}       # full state dict
-_cache_ts: float = 0.0             # monotonic timestamp of last load
-_CACHE_TTL: float = 2.0            # seconds before cache expires
+_cache: Dict[str, Any] = {}  # full state dict
+_cache_ts: float = 0.0  # monotonic timestamp of last load
+_CACHE_TTL: float = 2.0  # seconds before cache expires
 
 
 # -- Internal helpers --
+
 
 def _get_path() -> str:
     """Return the best available persistence path."""
@@ -136,22 +137,22 @@ def _save(data: Dict[str, Any]) -> None:
 
 def _default_service_record(
     failure_threshold: int = DEFAULT_FAILURE_THRESHOLD,
-    recovery_timeout: int  = DEFAULT_RECOVERY_TIMEOUT,
+    recovery_timeout: int = DEFAULT_RECOVERY_TIMEOUT,
     success_threshold: int = DEFAULT_SUCCESS_THRESHOLD,
 ) -> Dict[str, Any]:
     """Return a fresh per-service record with all fields initialised."""
     return {
-        "state":             STATE_CLOSED,
-        "failure_count":     0,
-        "success_count":     0,    # consecutive successes while HALF_OPEN
-        "last_failure_time": None, # epoch float
-        "opened_at":         None, # epoch float when last entered OPEN
+        "state": STATE_CLOSED,
+        "failure_count": 0,
+        "success_count": 0,  # consecutive successes while HALF_OPEN
+        "last_failure_time": None,  # epoch float
+        "opened_at": None,  # epoch float when last entered OPEN
         "failure_threshold": failure_threshold,
-        "recovery_timeout":  recovery_timeout,
+        "recovery_timeout": recovery_timeout,
         "success_threshold": success_threshold,
-        "total_failures":    0,
-        "total_successes":   0,
-        "total_rejections":  0,
+        "total_failures": 0,
+        "total_successes": 0,
+        "total_rejections": 0,
     }
 
 
@@ -159,7 +160,7 @@ def _get_or_create(
     data: Dict[str, Any],
     service: str,
     failure_threshold: int = DEFAULT_FAILURE_THRESHOLD,
-    recovery_timeout: int  = DEFAULT_RECOVERY_TIMEOUT,
+    recovery_timeout: int = DEFAULT_RECOVERY_TIMEOUT,
     success_threshold: int = DEFAULT_SUCCESS_THRESHOLD,
 ) -> Dict[str, Any]:
     """Fetch the service record, creating it with defaults if absent."""
@@ -184,7 +185,7 @@ def _maybe_recover(rec: Dict[str, Any]) -> bool:
         opened_at = rec.get("opened_at") or rec.get("last_failure_time", 0) or 0
         elapsed = time.time() - opened_at
         if elapsed >= rec["recovery_timeout"]:
-            rec["state"]         = STATE_HALF_OPEN
+            rec["state"] = STATE_HALF_OPEN
             rec["failure_count"] = 0
             rec["success_count"] = 0
             return True
@@ -193,10 +194,11 @@ def _maybe_recover(rec: Dict[str, Any]) -> bool:
 
 # -- Public API --
 
+
 def record_success(
     service: str,
     failure_threshold: int = DEFAULT_FAILURE_THRESHOLD,
-    recovery_timeout: int  = DEFAULT_RECOVERY_TIMEOUT,
+    recovery_timeout: int = DEFAULT_RECOVERY_TIMEOUT,
     success_threshold: int = DEFAULT_SUCCESS_THRESHOLD,
 ) -> None:
     """Record a successful call for *service*.
@@ -208,7 +210,7 @@ def record_success(
     try:
         with _lock:
             data = _load()
-            rec  = _get_or_create(
+            rec = _get_or_create(
                 data, service, failure_threshold, recovery_timeout, success_threshold
             )
             _maybe_recover(rec)
@@ -221,10 +223,10 @@ def record_success(
             elif rec["state"] == STATE_HALF_OPEN:
                 rec["success_count"] += 1
                 if rec["success_count"] >= rec["success_threshold"]:
-                    rec["state"]         = STATE_CLOSED
+                    rec["state"] = STATE_CLOSED
                     rec["failure_count"] = 0
                     rec["success_count"] = 0
-                    rec["opened_at"]     = None
+                    rec["opened_at"] = None
 
             # OPEN: caller is probing despite the open circuit — leave state alone
 
@@ -236,7 +238,7 @@ def record_success(
 def record_failure(
     service: str,
     failure_threshold: int = DEFAULT_FAILURE_THRESHOLD,
-    recovery_timeout: int  = DEFAULT_RECOVERY_TIMEOUT,
+    recovery_timeout: int = DEFAULT_RECOVERY_TIMEOUT,
     success_threshold: int = DEFAULT_SUCCESS_THRESHOLD,
 ) -> None:
     """Record a failed call for *service*.
@@ -248,25 +250,25 @@ def record_failure(
     try:
         with _lock:
             data = _load()
-            rec  = _get_or_create(
+            rec = _get_or_create(
                 data, service, failure_threshold, recovery_timeout, success_threshold
             )
             _maybe_recover(rec)
 
             now = time.time()
             rec["last_failure_time"] = now
-            rec["total_failures"]   += 1
+            rec["total_failures"] += 1
 
             if rec["state"] == STATE_CLOSED:
                 rec["failure_count"] += 1
                 if rec["failure_count"] >= rec["failure_threshold"]:
-                    rec["state"]     = STATE_OPEN
+                    rec["state"] = STATE_OPEN
                     rec["opened_at"] = now
 
             elif rec["state"] == STATE_HALF_OPEN:
                 # Probe attempt failed — re-open the circuit
-                rec["state"]         = STATE_OPEN
-                rec["opened_at"]     = now
+                rec["state"] = STATE_OPEN
+                rec["opened_at"] = now
                 rec["failure_count"] = 1
                 rec["success_count"] = 0
 
@@ -358,9 +360,9 @@ def reset(service: str) -> None:
             if service in data:
                 # Preserve configured thresholds, reset everything else
                 rec = data[service]
-                ft  = rec.get("failure_threshold",  DEFAULT_FAILURE_THRESHOLD)
-                rt  = rec.get("recovery_timeout",   DEFAULT_RECOVERY_TIMEOUT)
-                st  = rec.get("success_threshold",  DEFAULT_SUCCESS_THRESHOLD)
+                ft = rec.get("failure_threshold", DEFAULT_FAILURE_THRESHOLD)
+                rt = rec.get("recovery_timeout", DEFAULT_RECOVERY_TIMEOUT)
+                st = rec.get("success_threshold", DEFAULT_SUCCESS_THRESHOLD)
                 data[service] = _default_service_record(ft, rt, st)
             _save(data)
     except Exception:
@@ -380,10 +382,10 @@ def reset(service: str) -> None:
 #   - A successful probe -> circuit CLOSES.  Another crash -> re-OPEN.
 #   - Gate state is persisted to a dedicated file (survives reboots).
 
-_GATE_CRASH_THRESHOLD = 3    # crashes within window -> OPEN
-_GATE_CRASH_WINDOW    = 300  # sliding window in seconds (5 minutes)
-_GATE_COOLDOWN        = 60   # seconds in OPEN before HALF_OPEN
-_GATE_SUCCESS_NEEDED  = 1    # successes in HALF_OPEN -> CLOSED
+_GATE_CRASH_THRESHOLD = 3  # crashes within window -> OPEN
+_GATE_CRASH_WINDOW = 300  # sliding window in seconds (5 minutes)
+_GATE_COOLDOWN = 60  # seconds in OPEN before HALF_OPEN
+_GATE_SUCCESS_NEEDED = 1  # successes in HALF_OPEN -> CLOSED
 
 _GATE_STATE_PATH = os.path.join(
     os.path.expanduser("~"), ".claude", "hooks", ".circuit_breaker_state.json"
@@ -399,9 +401,9 @@ _TIER1_GATE_NAMES = {
 _gate_lock = threading.Lock()
 
 # -- In-memory TTL cache for gate circuit-breaker state --
-_gate_cache: Dict[str, Any] = {}   # full gate state dict
-_gate_cache_ts: float = 0.0         # monotonic timestamp of last load
-_GATE_CACHE_TTL: float = 5.0        # seconds before gate cache expires
+_gate_cache: Dict[str, Any] = {}  # full gate state dict
+_gate_cache_ts: float = 0.0  # monotonic timestamp of last load
+_GATE_CACHE_TTL: float = 5.0  # seconds before gate cache expires
 
 
 def _load_gate_state() -> Dict[str, Any]:
@@ -461,11 +463,11 @@ def _save_gate_state(data: Dict[str, Any]) -> None:
 def _default_gate_record() -> Dict[str, Any]:
     """Return a fresh gate circuit-breaker record."""
     return {
-        "state":            STATE_CLOSED,
+        "state": STATE_CLOSED,
         "crash_timestamps": [],  # list of epoch floats (sliding window)
-        "opened_at":        None,
-        "total_crashes":    0,
-        "total_skips":      0,
+        "opened_at": None,
+        "total_crashes": 0,
+        "total_skips": 0,
     }
 
 
@@ -559,20 +561,20 @@ def record_gate_result(gate_name: str, success: bool) -> None:
                 # Never open Tier 1 gate circuits
                 if gate_name not in _TIER1_GATE_NAMES:
                     if rec["state"] == STATE_HALF_OPEN:
-                        rec["state"]     = STATE_OPEN
+                        rec["state"] = STATE_OPEN
                         rec["opened_at"] = now
                     elif rec["state"] == STATE_CLOSED:
                         if len(rec["crash_timestamps"]) >= _GATE_CRASH_THRESHOLD:
-                            rec["state"]     = STATE_OPEN
+                            rec["state"] = STATE_OPEN
                             rec["opened_at"] = now
 
                 _save_gate_state(data)
             else:
                 # Success: probe in HALF_OPEN closes the circuit
                 if rec["state"] == STATE_HALF_OPEN:
-                    rec["state"]            = STATE_CLOSED
+                    rec["state"] = STATE_CLOSED
                     rec["crash_timestamps"] = []
-                    rec["opened_at"]        = None
+                    rec["opened_at"] = None
                     _save_gate_state(data)
                 # CLOSED success = no-op, skip unnecessary save
     except Exception:
@@ -661,16 +663,22 @@ if __name__ == "__main__":
     # 3. Successes in CLOSED state don't open the circuit
     for _ in range(10):
         record_success(TEST_SVC)
-    assert_eq("3. state stays CLOSED after successes", get_state(TEST_SVC), STATE_CLOSED)
+    assert_eq(
+        "3. state stays CLOSED after successes", get_state(TEST_SVC), STATE_CLOSED
+    )
 
     # 4. Failures below threshold don't open the circuit
     for _ in range(DEFAULT_FAILURE_THRESHOLD - 1):
         record_failure(TEST_SVC)
-    assert_eq("4. state stays CLOSED below threshold", get_state(TEST_SVC), STATE_CLOSED)
+    assert_eq(
+        "4. state stays CLOSED below threshold", get_state(TEST_SVC), STATE_CLOSED
+    )
 
     # 5. One more failure crosses the threshold -> OPEN
     record_failure(TEST_SVC)
-    assert_eq("5. state transitions to OPEN at threshold", get_state(TEST_SVC), STATE_OPEN)
+    assert_eq(
+        "5. state transitions to OPEN at threshold", get_state(TEST_SVC), STATE_OPEN
+    )
 
     # 6. is_open returns True when OPEN
     assert_true("6. is_open is True when OPEN", is_open(TEST_SVC))
@@ -683,7 +691,11 @@ if __name__ == "__main__":
     data = _load()
     data[TEST_SVC]["opened_at"] = time.time() - DEFAULT_RECOVERY_TIMEOUT - 1
     _save(data)
-    assert_eq("8. state transitions to HALF_OPEN after timeout", get_state(TEST_SVC), STATE_HALF_OPEN)
+    assert_eq(
+        "8. state transitions to HALF_OPEN after timeout",
+        get_state(TEST_SVC),
+        STATE_HALF_OPEN,
+    )
 
     # 9. is_open returns False in HALF_OPEN (allow probe)
     assert_false("9. is_open is False in HALF_OPEN", is_open(TEST_SVC))
@@ -691,8 +703,11 @@ if __name__ == "__main__":
     # 10. Enough successes in HALF_OPEN -> CLOSED
     for _ in range(DEFAULT_SUCCESS_THRESHOLD):
         record_success(TEST_SVC)
-    assert_eq("10. HALF_OPEN closes after success_threshold successes",
-              get_state(TEST_SVC), STATE_CLOSED)
+    assert_eq(
+        "10. HALF_OPEN closes after success_threshold successes",
+        get_state(TEST_SVC),
+        STATE_CLOSED,
+    )
 
     # 11. Failure in HALF_OPEN re-opens the circuit
     # Re-trigger OPEN first
@@ -702,11 +717,13 @@ if __name__ == "__main__":
     data = _load()
     data[TEST_SVC]["opened_at"] = time.time() - DEFAULT_RECOVERY_TIMEOUT - 1
     _save(data)
-    assert_eq("11a. back in HALF_OPEN for re-open test",
-              get_state(TEST_SVC), STATE_HALF_OPEN)
+    assert_eq(
+        "11a. back in HALF_OPEN for re-open test", get_state(TEST_SVC), STATE_HALF_OPEN
+    )
     record_failure(TEST_SVC)  # probe fails
-    assert_eq("11b. failure in HALF_OPEN re-opens circuit",
-              get_state(TEST_SVC), STATE_OPEN)
+    assert_eq(
+        "11b. failure in HALF_OPEN re-opens circuit", get_state(TEST_SVC), STATE_OPEN
+    )
 
     # 12. reset() restores CLOSED state and clears counters
     reset(TEST_SVC)
@@ -717,26 +734,37 @@ if __name__ == "__main__":
     reset(CUSTOM_SVC)
     for _ in range(2):
         record_failure(CUSTOM_SVC, failure_threshold=2)
-    assert_eq("13. custom failure_threshold=2 triggers OPEN",
-              get_state(CUSTOM_SVC), STATE_OPEN)
+    assert_eq(
+        "13. custom failure_threshold=2 triggers OPEN",
+        get_state(CUSTOM_SVC),
+        STATE_OPEN,
+    )
     reset(CUSTOM_SVC)
 
     # 14. is_open returns False for an unknown service (fail-open default)
     assert_false("14. is_open is False for unknown service", is_open("__unknown_svc__"))
 
     # 15. Persistence path is ramdisk when available
-    assert_true("15. persistence path is /dev/shm/claude-hooks/circuit_breaker.json",
-                _get_path() == _RAMDISK_PATH or os.path.isfile(_get_path()))
+    assert_true(
+        "15. persistence path is /dev/shm/claude-hooks/circuit_breaker.json",
+        _get_path() == _RAMDISK_PATH or os.path.isfile(_get_path()),
+    )
 
     # 16. Gate cache: verify TTL caching for gate state
     reset_gate_circuit("__gate_cache_test__")
     record_gate_result("__gate_cache_test__", success=False)
     record_gate_result("__gate_cache_test__", success=False)
     record_gate_result("__gate_cache_test__", success=False)
-    assert_eq("16. gate cache: circuit opens after 3 crashes",
-              get_gate_circuit_state("__gate_cache_test__"), STATE_OPEN)
-    assert_eq("16b. gate cache: second read returns cached OPEN",
-              get_gate_circuit_state("__gate_cache_test__"), STATE_OPEN)
+    assert_eq(
+        "16. gate cache: circuit opens after 3 crashes",
+        get_gate_circuit_state("__gate_cache_test__"),
+        STATE_OPEN,
+    )
+    assert_eq(
+        "16b. gate cache: second read returns cached OPEN",
+        get_gate_circuit_state("__gate_cache_test__"),
+        STATE_OPEN,
+    )
     reset_gate_circuit("__gate_cache_test__")
 
     # -- Cleanup --
