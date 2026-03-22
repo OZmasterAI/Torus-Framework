@@ -228,10 +228,17 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
     if [[ $ATTEMPTS -ge $MAX_RETRIES ]]; then
         echo "[$ITERATION/$MAX_ITERATIONS] Task $TASK_ID: $TASK_NAME — SKIPPED (failed $ATTEMPTS times)"
         echo "### Iteration $ITERATION — Task $TASK_ID: $TASK_NAME — SKIPPED ($ATTEMPTS failures)" >> "$ACTIVITY_LOG"
-        # Mark as failed so cmd_next moves past it
         python3 "$TASK_MANAGER" update "$PRP_NAME" "$TASK_ID" failed >/dev/null 2>&1
+        CONSECUTIVE_SKIPS=$((CONSECUTIVE_SKIPS + 1))
+        if [[ $CONSECUTIVE_SKIPS -ge 10 ]]; then
+            echo "All remaining tasks exhausted retries. Stopping."
+            echo "## ALL TASKS EXHAUSTED RETRIES" >> "$ACTIVITY_LOG"
+            echo "**Finished**: $(date -Iseconds)" >> "$ACTIVITY_LOG"
+            exit 1
+        fi
         continue
     fi
+    CONSECUTIVE_SKIPS=0
 
     echo "[$ITERATION/$MAX_ITERATIONS] Task $TASK_ID: $TASK_NAME (attempt $((ATTEMPTS + 1))/$MAX_RETRIES)"
 

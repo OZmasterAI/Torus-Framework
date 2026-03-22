@@ -7,10 +7,12 @@ When the user says "implement", "build", "create", or the Loop reaches the imple
 
 ### 0. CHECK ORCHESTRATOR MODE
 - Read config.json `orchestrator` flag
-- If `true` AND a `PRPs/<feature-slug>.tasks.json` exists for this plan:
-  - Tell the user: "Orchestrator mode is on. Launching torus-loop.sh"
-  - Run: `bash ~/.claude/scripts/torus-loop.sh <feature-slug>`
-  - The orchestrator handles everything: fresh Claude per task, validation, commits
+- If `true` AND a `PRPs/<feature-slug>.tasks.json` exists (check `PRPs/` then `~/.claude/PRPs/`):
+  - Read tasks.json and create a Claude Code task (TaskCreate) for each task entry
+  - Tell the user: "Orchestrator mode is on. Launching torus-loop.sh with N tasks"
+  - Run in background: `bash ~/.claude/scripts/torus-loop.sh <feature-slug>`
+  - Poll `task_manager.py status <feature-slug>` every 30s to check progress
+  - Update Claude Code tasks (TaskUpdate) as they pass/fail/skip
   - When done, report results from `PRPs/<feature-slug>.activity.md`
   - Skip to step 4 (SAVE)
 - If `true` but no tasks.json exists:
