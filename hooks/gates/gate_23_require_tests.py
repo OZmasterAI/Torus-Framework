@@ -37,8 +37,32 @@ WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 CONFIG_FILE = os.path.join(os.path.expanduser("~/.claude"), "config.json")
 STATE_DIR = os.path.join(os.path.expanduser("~/.claude"), "hooks", ".state")
 
-# State key — persists across Bash commands, only cleared by matching test files
+# State key for in-memory state dict (may not persist between enforcer calls)
 STATE_KEY = "untested_code_files"
+
+# File-based persistence (survives between enforcer calls)
+_TRACKER_FILE = os.path.join(
+    os.path.expanduser("~/.claude"), "hooks", ".untested_code_files.json"
+)
+
+
+def _load_tracker():
+    """Load untested code files from disk."""
+    try:
+        with open(_TRACKER_FILE) as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return []
+
+
+def _save_tracker(files):
+    """Save untested code files to disk."""
+    try:
+        with open(_TRACKER_FILE, "w") as f:
+            json.dump(files, f)
+    except OSError:
+        pass
 
 
 def _load_config():
@@ -97,10 +121,13 @@ def _match_test_to_code(test_path, code_files):
 
 def _get_unmatched(state):
     """Return list of code files without matching tests."""
-    return list(state.get(STATE_KEY, []))
+    return _load_tracker()
 
 
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
+    if event_type != "PreToolUse":
+        return GateResult(blocked=False, gate_name=GATE_NAME)
+
     if tool_name not in WATCHED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
@@ -111,42 +138,39 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     tool_input = safe_tool_input(tool_input)
     file_path = extract_file_path(tool_input)
 
-    # ── PostToolUse: track what was edited ──
-    if event_type == "PostToolUse":
-        if _is_code_file(file_path):
-            # Add to untested list (if not already there)
-            untested = state.get(STATE_KEY, [])
-            norm = os.path.normpath(file_path)
-            if norm not in untested:
-                untested.append(norm)
-                state[STATE_KEY] = untested
-        elif _is_test_file(file_path):
-            # Test written — clear matching code files from untested list
-            untested = state.get(STATE_KEY, [])
-            matched = _match_test_to_code(file_path, untested)
-            if matched:
-                state[STATE_KEY] = [f for f in untested if f not in matched]
+    # ── Track test files: clear matching code files from untested list ──
+    if _is_test_file(file_path):
+        untested = _load_tracker()
+        matched = _match_test_to_code(file_path, untested)
+        if matched:
+            remaining = [f for f in untested if f not in matched]
+            _save_tracker(remaining)
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # ── PreToolUse: check for untested code ──
-    if event_type != "PreToolUse":
+    # Always allow: exempt files, .state/ files
+    if _is_exempt(file_path) or _is_state_dir(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # Always allow: exempt files, test files, .state/ files
-    if _is_exempt(file_path) or _is_test_file(file_path) or _is_state_dir(file_path):
-        return GateResult(blocked=False, gate_name=GATE_NAME)
+    # ── Check for untested code files from prior edits ──
+    untested = _load_tracker()
 
-    # Check our own tracking list
-    unmatched = _get_unmatched(state)
+    if untested:
+        names = ", ".join(os.path.basename(f) for f in untested[:3])
+        if len(untested) > 3:
+            names += f" +{len(untested) - 3} more"
+        msg = (
+            f"[{GATE_NAME}] BLOCKED: Write tests first for: {names}. "
+            f"Edit/create test files for untested code, then retry."
+        )
+        return GateResult(
+            blocked=True, gate_name=GATE_NAME, message=msg, severity="warn"
+        )
 
-    if not unmatched:
-        return GateResult(blocked=False, gate_name=GATE_NAME)
+    # ── Track this code file for next check ──
+    if _is_code_file(file_path):
+        norm = os.path.normpath(file_path)
+        if norm not in untested:
+            untested.append(norm)
+            _save_tracker(untested)
 
-    names = ", ".join(os.path.basename(f) for f in unmatched[:3])
-    if len(unmatched) > 3:
-        names += f" +{len(unmatched) - 3} more"
-    msg = (
-        f"[{GATE_NAME}] BLOCKED: Write tests first for: {names}. "
-        f"Edit/create test files for untested code, then retry."
-    )
-    return GateResult(blocked=True, gate_name=GATE_NAME, message=msg, severity="warn")
+    return GateResult(blocked=False, gate_name=GATE_NAME)

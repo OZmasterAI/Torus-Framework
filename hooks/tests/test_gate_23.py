@@ -9,9 +9,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from gates.gate_23_require_tests import (
     check,
-    _code_files_without_tests,
     _is_test_file,
+    _is_code_file,
     _is_state_dir,
+    _match_test_to_code,
 )
 
 
@@ -35,158 +36,134 @@ class TestIsTestFile(unittest.TestCase):
         assert not _is_test_file(None)
 
 
-class TestCodeFilesWithoutTests(unittest.TestCase):
-    def test_code_only(self):
-        unmatched = _code_files_without_tests(["/home/user/foo.py"])
-        assert len(unmatched) == 1
+class TestIsCodeFile(unittest.TestCase):
+    def test_python(self):
+        assert _is_code_file("/home/user/foo.py")
 
-    def test_code_with_matching_test(self):
-        unmatched = _code_files_without_tests(
-            [
-                "/home/user/foo.py",
-                "/home/user/test_foo.py",
-            ]
-        )
-        assert len(unmatched) == 0
+    def test_go(self):
+        assert _is_code_file("/home/user/foo.go")
 
-    def test_code_with_suffix_test(self):
-        unmatched = _code_files_without_tests(
-            [
-                "/home/user/foo.py",
-                "/home/user/foo_test.py",
-            ]
-        )
-        assert len(unmatched) == 0
+    def test_json_not_code(self):
+        assert not _is_code_file("/home/user/config.json")
 
-    def test_multiple_code_partial_tests(self):
-        unmatched = _code_files_without_tests(
-            [
-                "/home/user/foo.py",
-                "/home/user/bar.py",
-                "/home/user/test_foo.py",
-            ]
-        )
-        assert len(unmatched) == 1
-        assert "bar.py" in os.path.basename(unmatched[0])
+    def test_test_not_code(self):
+        assert not _is_code_file("/home/user/test_foo.py")
 
-    def test_exempt_files_excluded(self):
-        unmatched = _code_files_without_tests(
-            [
-                "/home/user/config.json",
-                "/home/user/README.md",
-            ]
-        )
-        assert len(unmatched) == 0
+    def test_empty(self):
+        assert not _is_code_file("")
 
-    def test_empty_pending(self):
-        assert _code_files_without_tests([]) == []
 
-    def test_go_test_suffix(self):
-        unmatched = _code_files_without_tests(
-            [
-                "/home/user/handler.go",
-                "/home/user/handler_test.go",
-            ]
-        )
-        assert len(unmatched) == 0
+class TestMatchTestToCode(unittest.TestCase):
+    def test_prefix_match(self):
+        code = ["/home/user/foo.py"]
+        matched = _match_test_to_code("/home/user/test_foo.py", code)
+        assert len(matched) == 1
+
+    def test_suffix_match(self):
+        code = ["/home/user/foo.py"]
+        matched = _match_test_to_code("/home/user/foo_test.py", code)
+        assert len(matched) == 1
+
+    def test_go_suffix(self):
+        code = ["/home/user/handler.go"]
+        matched = _match_test_to_code("/home/user/handler_test.go", code)
+        assert len(matched) == 1
+
+    def test_no_match(self):
+        code = ["/home/user/foo.py"]
+        matched = _match_test_to_code("/home/user/test_bar.py", code)
+        assert len(matched) == 0
 
     def test_ts_spec(self):
-        unmatched = _code_files_without_tests(
-            [
-                "/home/user/app.ts",
-                "/home/user/app.spec.ts",
-            ]
-        )
-        assert len(unmatched) == 0
+        code = ["/home/user/app.ts"]
+        matched = _match_test_to_code("/home/user/app.spec.ts", code)
+        assert len(matched) == 1
 
 
-class TestCheckGate(unittest.TestCase):
-    def _check(self, tool_name, file_path, state, require_tests=False):
-        with patch(
+def _mock_check(tool_name, file_path, tracker_contents, require_tests=True):
+    """Helper: call check() with mocked config and tracker file."""
+    saved = {"data": tracker_contents[:]}
+    with (
+        patch(
             "gates.gate_23_require_tests._load_config",
             return_value={"require_tests": require_tests},
-        ):
-            return check(tool_name, {"file_path": file_path}, state)
+        ),
+        patch(
+            "gates.gate_23_require_tests._load_tracker",
+            return_value=tracker_contents[:],
+        ),
+        patch(
+            "gates.gate_23_require_tests._save_tracker",
+            side_effect=lambda d: saved.update({"data": d}),
+        ),
+    ):
+        result = check(tool_name, {"file_path": file_path}, {})
+    return result, saved["data"]
 
+
+class TestCheckPreToolUse(unittest.TestCase):
     def test_disabled_allows_all(self):
-        r = self._check(
-            "Edit",
-            "/home/user/foo.py",
-            {"pending_verification": ["/home/user/bar.py"]},
-            require_tests=False,
+        r, _ = _mock_check(
+            "Edit", "/home/user/bar.py", ["/home/user/foo.py"], require_tests=False
         )
         assert not r.blocked
 
-    def test_no_prior_edits_allows(self):
-        r = self._check(
-            "Edit",
-            "/home/user/foo.py",
-            {"pending_verification": []},
-            require_tests=True,
-        )
+    def test_no_untested_files_allows(self):
+        r, saved = _mock_check("Edit", "/home/user/foo.py", [])
         assert not r.blocked
+        # Current file should now be tracked
+        assert os.path.normpath("/home/user/foo.py") in saved
 
-    def test_prior_code_no_tests_blocks(self):
-        r = self._check(
-            "Edit",
-            "/home/user/baz.py",
-            {"pending_verification": ["/home/user/foo.py"]},
-            require_tests=True,
-        )
+    def test_untested_code_blocks(self):
+        r, _ = _mock_check("Edit", "/home/user/bar.py", ["/home/user/foo.py"])
         assert r.blocked
         assert "foo.py" in r.message
 
-    def test_prior_code_with_tests_allows(self):
-        r = self._check(
-            "Edit",
-            "/home/user/baz.py",
-            {
-                "pending_verification": [
-                    "/home/user/foo.py",
-                    "/home/user/test_foo.py",
-                ]
-            },
-            require_tests=True,
-        )
-        assert not r.blocked
-
     def test_exempt_file_always_allows(self):
-        r = self._check(
-            "Edit",
-            "/home/user/config.json",
-            {"pending_verification": ["/home/user/foo.py"]},
-            require_tests=True,
-        )
+        r, _ = _mock_check("Edit", "/home/user/config.json", ["/home/user/foo.py"])
         assert not r.blocked
 
     def test_test_file_always_allows(self):
-        r = self._check(
-            "Edit",
-            "/home/user/test_foo.py",
-            {"pending_verification": ["/home/user/foo.py"]},
-            require_tests=True,
-        )
+        r, saved = _mock_check("Edit", "/home/user/test_foo.py", ["/home/user/foo.py"])
         assert not r.blocked
+        # Test file should have cleared foo.py from tracker
+        assert len(saved) == 0
 
     def test_non_watched_tool_allows(self):
-        r = self._check(
-            "Read",
-            "/home/user/foo.py",
-            {"pending_verification": ["/home/user/bar.py"]},
-            require_tests=True,
-        )
+        r, _ = _mock_check("Read", "/home/user/bar.py", ["/home/user/foo.py"])
         assert not r.blocked
 
-    def test_post_tool_use_allows(self):
+    def test_multiple_untested_shows_names(self):
+        r, _ = _mock_check(
+            "Edit", "/home/user/baz.py", ["/home/user/foo.py", "/home/user/bar.py"]
+        )
+        assert r.blocked
+        assert "foo.py" in r.message
+        assert "bar.py" in r.message
+
+    def test_first_edit_passes_and_tracks(self):
+        """First code edit in session should pass and track the file."""
+        r, saved = _mock_check("Edit", "/home/user/brand_new.py", [])
+        assert not r.blocked
+        assert os.path.normpath("/home/user/brand_new.py") in saved
+
+    def test_test_clears_only_matching(self):
+        """Writing test_foo.py should clear foo.py but not bar.py."""
+        r, saved = _mock_check(
+            "Edit", "/home/user/test_foo.py", ["/home/user/foo.py", "/home/user/bar.py"]
+        )
+        assert not r.blocked
+        assert len(saved) == 1
+        assert "bar.py" in saved[0]
+
+    def test_post_tool_use_ignored(self):
+        """PostToolUse event should be ignored (always allow)."""
         with patch(
             "gates.gate_23_require_tests._load_config",
             return_value={"require_tests": True},
         ):
             r = check(
-                "Edit",
-                {"file_path": "/home/user/foo.py"},
-                {"pending_verification": ["/home/user/bar.py"]},
-                event_type="PostToolUse",
+                "Edit", {"file_path": "/home/user/foo.py"}, {}, event_type="PostToolUse"
             )
         assert not r.blocked
 

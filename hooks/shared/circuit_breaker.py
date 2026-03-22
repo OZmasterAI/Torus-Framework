@@ -1,4 +1,5 @@
 """Circuit breaker pattern for the Torus self-healing framework.
+# live test 2
 
 Tracks per-service failure rates and transitions between three states:
   CLOSED    — Normal operation, calls pass through.
