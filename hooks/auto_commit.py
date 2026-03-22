@@ -87,6 +87,85 @@ def _should_hold(tracked, require_tests):
     return has_code and not has_tests
 
 
+def _test_candidates(code_path):
+    """Return list of possible test file names for a code file."""
+    base = os.path.basename(code_path)
+    name, _ = os.path.splitext(base)
+    return [
+        f"test_{base}",
+        f"test_{name}.py",
+        f"{name}_test.py",
+        f"{name}_test.go",
+        f"{name}.test.ts",
+        f"{name}.test.js",
+        f"{name}.spec.ts",
+        f"{name}.spec.js",
+    ]
+
+
+def _test_search_dirs(code_path):
+    """Return directories to search for test files."""
+    code_dir = os.path.dirname(code_path)
+    parent = os.path.dirname(code_dir)
+    dirs = [code_dir]
+    for td in ("tests", "test", "__tests__"):
+        dirs.append(os.path.join(code_dir, td))
+        dirs.append(os.path.join(parent, td))
+    return dirs
+
+
+def _find_test_files(tracked):
+    """Find matching test files on disk for tracked code files."""
+    test_files = set()
+    for fpath in tracked:
+        if _is_exempt_file(fpath) or _is_test_file(fpath):
+            if _is_test_file(fpath):
+                test_files.add(os.path.realpath(fpath))
+            continue
+        for search_dir in _test_search_dirs(fpath):
+            for candidate in _test_candidates(fpath):
+                full = os.path.join(search_dir, candidate)
+                if os.path.exists(full):
+                    test_files.add(os.path.realpath(full))
+    return test_files
+
+
+def _run_tests(test_files):
+    """Run test files. Returns (passed: bool, output: str). 30s timeout."""
+    if not test_files:
+        return True, ""
+    py_tests = [f for f in test_files if f.endswith(".py")]
+    if not py_tests:
+        return True, ""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "-x", "-q", "--tb=short", "--no-header"]
+            + list(py_tests),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=CLAUDE_DIR,
+        )
+        return result.returncode == 0, result.stdout + result.stderr
+    except FileNotFoundError:
+        for tf in py_tests:
+            try:
+                r = subprocess.run(
+                    [sys.executable, tf],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    cwd=CLAUDE_DIR,
+                )
+                if r.returncode != 0:
+                    return False, r.stdout + r.stderr
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                return False, str(exc)
+        return True, ""
+    except subprocess.TimeoutExpired:
+        return False, "Tests timed out (30s limit)"
+
+
 def _get_co_author(session_id=None):
     """Read current model from session-namespaced statusline snapshot."""
     try:
@@ -183,15 +262,26 @@ def commit():
     if not tracked:
         return
 
-    # Check test requirement — hold commit if code files lack test files
+    # Check test requirement — hold commit if code files lack test files OR tests fail
     if cfg.get("auto_commit_require_tests", False):
         if _should_hold(tracked, require_tests=True):
-            print(
-                f"⏸ Holding commit: tests missing for "
-                f"{', '.join(os.path.basename(f) for f in tracked if not _is_exempt_file(f) and not _is_test_file(f))}",
-                file=sys.stderr,
+            code_names = ", ".join(
+                os.path.basename(f)
+                for f in tracked
+                if not _is_exempt_file(f) and not _is_test_file(f)
             )
+            print(f"⏸ Holding commit: tests missing for {code_names}", file=sys.stderr)
             return
+        # Tests exist — now run them
+        test_files = _find_test_files(tracked)
+        if test_files:
+            passed, output = _run_tests(test_files)
+            if not passed:
+                summary = (
+                    output.strip().splitlines()[-1] if output.strip() else "unknown"
+                )
+                print(f"⏸ Holding commit: tests failed — {summary}", file=sys.stderr)
+                return
 
     # Clear tracker (after test check so held files persist)
     try:

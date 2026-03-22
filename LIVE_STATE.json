@@ -1,22 +1,24 @@
 {
   "session_count": 519,
   "project": "torus-framework",
-  "feature": "embed-cpu-optimization",
+  "feature": "test-enforcement-orchestrator",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed embedding CPU spike: embed-once in search_pipeline, cached_vec passthrough in write_pipeline A-Mem calls, counterfactual_mode always\u2192threshold, added CF statusline indicator, benchmarked FP16 vs FP32 vs BF16",
+  "what_was_done": "Built gate 23 (require_tests), auto-commit controls (AC/ACT/Tests flags), revived torus-loop orchestrator, wired /writing-plans to output tasks.json, /implement launches orchestrator when flag on",
   "known_issues": [
-    "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions",
-    "Gate 2 gap: rm -r (without -f) not blocked \u2014 equally destructive on user-owned files"
+    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
+    "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files",
+    "Gate 23 bug: .gitignore tracked as code (extensionless files not exempt)",
+    "Enforcer daemon caches gate modules — must kill stale daemon for new gates to load"
   ],
   "next_steps": [
-    "remember_this: save session 518 embedding CPU fix to memory (server was down at wrap-up)",
+    "Fix gate 23: exempt extensionless dotfiles (.gitignore, .gitattributes, etc)",
+    "Test orchestrator end-to-end: create a test PRP, run torus-loop.sh, verify full cycle",
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
-    "Memory pruning \u2014 DB at 3558 entries, run maintenance(action='stale')",
-    "Vault search: add semantic search + metadata queries (deferred until 100+ notes)"
+    "Memory pruning — DB at 3581 entries, run maintenance(action='stale')"
   ],
-  "last_response_preview": "Server is starting up (UDS socket bound, model still loading). Go ahead and restart Claude Code \u2014 by the time you're back, the model should be loaded and the MCP client will connect to the new server with all our changes.",
-  "dag_branch": "main",
+  "last_response_preview": "Session 519 wrap-up. Gate 23 + orchestrator revival complete. Analytics MCP removed.",
+  "dag_branch": "dag-claude",
   "dag_branch_label": "",
   "dag_node_count": 22432,
-  "dag_total_branches": 77
+  "dag_total_branches": 78
 }
