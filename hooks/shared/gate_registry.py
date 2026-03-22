@@ -27,5 +27,6 @@ GATE_MODULES = [
     "gates.gate_20_self_check",
     "gates.gate_21_working_summary",
     "gates.gate_22_tool_profiles",
+    "gates.gate_23_require_tests",
     "gates.gate_11_rate_limit",  # Last: earlier blocks don't inflate rate counter
 ]

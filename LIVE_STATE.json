@@ -1,22 +1,22 @@
 {
-  "session_count": 518,
+  "session_count": 519,
   "project": "torus-framework",
   "feature": "embed-cpu-optimization",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed embedding CPU spike: embed-once in search_pipeline, cached_vec passthrough in write_pipeline A-Mem calls, counterfactual_mode always→threshold, added CF statusline indicator, benchmarked FP16 vs FP32 vs BF16",
+  "what_was_done": "Fixed embedding CPU spike: embed-once in search_pipeline, cached_vec passthrough in write_pipeline A-Mem calls, counterfactual_mode always\u2192threshold, added CF statusline indicator, benchmarked FP16 vs FP32 vs BF16",
   "known_issues": [
-    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
-    "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files"
+    "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions",
+    "Gate 2 gap: rm -r (without -f) not blocked \u2014 equally destructive on user-owned files"
   ],
   "next_steps": [
     "remember_this: save session 518 embedding CPU fix to memory (server was down at wrap-up)",
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS in gate_02_no_destroy.py",
-    "Memory pruning — DB at 3558 entries, run maintenance(action='stale')",
+    "Memory pruning \u2014 DB at 3558 entries, run maintenance(action='stale')",
     "Vault search: add semantic search + metadata queries (deferred until 100+ notes)"
   ],
-  "last_response_preview": "Fixed embed call multiplication: search 3-8→1-2 embeds, write 3→1 embeds. Counterfactual set to threshold. FP16 stays (faster than FP32 on AMD EPYC).",
-  "dag_branch": "dag-claude",
+  "last_response_preview": "Server is starting up (UDS socket bound, model still loading). Go ahead and restart Claude Code \u2014 by the time you're back, the model should be loaded and the MCP client will connect to the new server with all our changes.",
+  "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 19225,
-  "dag_total_branches": 72
+  "dag_node_count": 22432,
+  "dag_total_branches": 77
 }
