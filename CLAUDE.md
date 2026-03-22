@@ -52,7 +52,7 @@ memory → /brainstorm → /writing-plans → /implement → /test → /review �
 - "again" → query memory | "still" → prove it | "why" → investigate | ALL CAPS → re-read
 
 ## TESTING RULE
-When editing code outside ~/.claude/, write or update tests for changed behavior. Look for existing test runner (package.json scripts, Cargo.toml, Makefile) in the project root.
+When editing code, write or update tests for changed behavior. Look for existing test runner (package.json scripts, Cargo.toml, Makefile, test_framework.py) in the project root.
 
 ## OBSIDIAN VAULT
 - Vault at ~/vault — human-readable knowledge layer

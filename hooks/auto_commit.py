@@ -19,7 +19,64 @@ import sys
 
 CLAUDE_DIR = os.path.expanduser("~/.claude")
 STAGED_TRACKER = os.path.join(CLAUDE_DIR, "hooks", ".auto_commit_staged.txt")
+CONFIG_FILE = os.path.join(CLAUDE_DIR, "config.json")
 MAX_FILES_IN_MSG = 3
+
+# Patterns matching test files (mirrors shared/exemptions.py)
+_TEST_PATTERNS = ("test_", "_test.", ".test.", "spec_", "_spec.", ".spec.")
+_EXEMPT_EXTENSIONS = {
+    ".md",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".cfg",
+    ".ini",
+    ".txt",
+    ".sh",
+    ".bash",
+    ".css",
+    ".html",
+    ".xml",
+    ".csv",
+    ".lock",
+}
+
+
+def _load_config():
+    """Read config.json. Returns dict with defaults on failure."""
+    try:
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def _is_test_file(path):
+    """Check if path is a test file."""
+    lower = os.path.basename(path).lower()
+    return any(pat in lower for pat in _TEST_PATTERNS)
+
+
+def _is_exempt_file(path):
+    """Check if path is a non-code file (config, docs, etc)."""
+    _, ext = os.path.splitext(path)
+    return ext.lower() in _EXEMPT_EXTENSIONS
+
+
+def _should_hold(tracked, require_tests):
+    """Return True if commit should be held (code files without tests)."""
+    if not require_tests:
+        return False
+    has_code = False
+    has_tests = False
+    for f in tracked:
+        if _is_exempt_file(f) or _is_test_file(f):
+            if _is_test_file(f):
+                has_tests = True
+            continue
+        has_code = True
+    return has_code and not has_tests
 
 
 def _get_co_author(session_id=None):
@@ -29,6 +86,7 @@ def _get_co_author(session_id=None):
         if session_id:
             try:
                 from shared.state import session_namespaced_path
+
                 snap_path = session_namespaced_path(snap_path, session_id)
             except ImportError:
                 pass
@@ -46,7 +104,9 @@ def git(*args, timeout=5):
     """Run a git command in the ~/.claude directory."""
     return subprocess.run(
         ["git", "-C", CLAUDE_DIR] + list(args),
-        capture_output=True, text=True, timeout=timeout,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
     )
 
 

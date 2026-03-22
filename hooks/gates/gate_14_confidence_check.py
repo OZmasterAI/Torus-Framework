@@ -15,6 +15,7 @@ Exemptions:
 
 Tier 2 (non-safety): gate crash = warn + continue, not block.
 """
+
 import os
 import sys
 
@@ -51,10 +52,9 @@ def _is_new_file(file_path):
 def _check_signals(state, file_path=""):
     """Check confidence signals. Returns list of failed signal descriptions."""
     failures = []
-    # Signal 1: session_test_baseline — only require for framework files
+    # Signal 1: session_test_baseline — require for all code files
     if not state.get("session_test_baseline", False):
-        if file_path and os.path.expanduser("~/.claude/hooks/") in file_path:
-            failures.append("no test run this session")
+        failures.append("no test run this session")
     # Signal 2: pending_verification
     # Suppress during active error fixing — having unverified edits is expected
     # when fixing a known test failure. Gate 5 still limits unverified file count.
