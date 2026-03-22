@@ -38,8 +38,10 @@ Rules:
 - Code snippets must be real — no pseudocode, no "implement X here" placeholders
 - Reference actual function names, file paths, and line numbers from exploration
 
-### 4. WRITE PLAN FILE
-Write the implementation plan to docs/plans/<feature-slug>-impl.md:
+### 4. WRITE PLAN FILES
+Write TWO files:
+
+**a) Markdown plan** → docs/plans/<feature-slug>-impl.md:
 
   # Implementation Plan: <Feature Name>
   ## Design Decision: <chosen option from brainstorm>
@@ -51,8 +53,28 @@ Write the implementation plan to docs/plans/<feature-slug>-impl.md:
   ## Verification (end-to-end)
   ## Rollback (if something goes wrong)
 
+**b) Orchestrator tasks.json** → PRPs/<feature-slug>.tasks.json:
+
+  {
+    "prp": "<feature-slug>",
+    "created": "<ISO timestamp>",
+    "tasks": [
+      {
+        "id": 1,
+        "name": "<task title>",
+        "status": "pending",
+        "files": ["<file paths from Implementation section>"],
+        "validate": "<Verify command from task>",
+        "depends_on": [<task IDs from Depends on>]
+      }
+    ]
+  }
+
+The tasks.json enables `torus-loop.sh <feature-slug>` for orchestrated execution
+with per-task validation. Every task MUST have a validate command.
+
 ### 5. PRESENT FOR APPROVAL
-Show the task list inline. Ask: "Ready to build? Run /implement to execute."
+Show the task list inline. Ask: "Ready to build? Run /implement to execute, or `torus-loop.sh <feature-slug>` for orchestrated execution."
 
 ### 6. SAVE TO MEMORY
 - remember_this("Plan: [feature] — [N tasks, key files]",
@@ -60,5 +82,6 @@ Show the task list inline. Ask: "Ready to build? Run /implement to execute."
 
 ## Output
 - Implementation plan saved to docs/plans/<feature-slug>-impl.md
+- Orchestrator tasks saved to PRPs/<feature-slug>.tasks.json
 - Task list presented inline for user review
-- User approves, then runs /implement (or implements manually)
+- User approves, then runs /implement or `torus-loop.sh <feature-slug>`
