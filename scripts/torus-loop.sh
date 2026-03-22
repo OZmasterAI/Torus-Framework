@@ -49,14 +49,23 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Validate prerequisites ─────────────────────────────────────────
-TASKS_FILE="$PRP_DIR/${PRP_NAME}.tasks.json"
+# Check project PRPs/ first, then ~/.claude/PRPs/
+TASKS_FILE=""
+for candidate in "PRPs/${PRP_NAME}.tasks.json" "$PRP_DIR/${PRP_NAME}.tasks.json"; do
+    if [[ -f "$candidate" ]]; then
+        TASKS_FILE="$candidate"
+        break
+    fi
+done
+if [[ -z "$TASKS_FILE" ]]; then
+    echo "Error: Tasks file not found in PRPs/ or $PRP_DIR/"
+    exit 1
+fi
 ACTIVITY_LOG="$PRP_DIR/${PRP_NAME}.activity.md"
 STOP_SENTINEL="$PRP_DIR/${PRP_NAME}.stop"
 
-if [[ ! -f "$TASKS_FILE" ]]; then
-    echo "Error: Tasks file not found: $TASKS_FILE"
-    exit 1
-fi
+# ── Retry tracker (associative array: task_id → attempt count) ─────
+declare -A RETRY_COUNT
 
 if ! command -v claude &>/dev/null; then
     echo "Error: 'claude' CLI not found in PATH"
@@ -186,6 +195,7 @@ if msgs:
 
 # ── Main loop ──────────────────────────────────────────────────────
 ITERATION=0
+CONSECUTIVE_SKIPS=0
 echo "Starting torus-loop for PRP: $PRP_NAME"
 echo ""
 
@@ -213,7 +223,17 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
     TASK_ID=$(echo "$TASK_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
     TASK_NAME=$(echo "$TASK_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
 
-    echo "[$ITERATION/$MAX_ITERATIONS] Task $TASK_ID: $TASK_NAME"
+    # Check retry cap
+    ATTEMPTS=${RETRY_COUNT[$TASK_ID]:-0}
+    if [[ $ATTEMPTS -ge $MAX_RETRIES ]]; then
+        echo "[$ITERATION/$MAX_ITERATIONS] Task $TASK_ID: $TASK_NAME — SKIPPED (failed $ATTEMPTS times)"
+        echo "### Iteration $ITERATION — Task $TASK_ID: $TASK_NAME — SKIPPED ($ATTEMPTS failures)" >> "$ACTIVITY_LOG"
+        # Mark as failed so cmd_next moves past it
+        python3 "$TASK_MANAGER" update "$PRP_NAME" "$TASK_ID" failed >/dev/null 2>&1
+        continue
+    fi
+
+    echo "[$ITERATION/$MAX_ITERATIONS] Task $TASK_ID: $TASK_NAME (attempt $((ATTEMPTS + 1))/$MAX_RETRIES)"
 
     # Mark task as in_progress
     python3 "$TASK_MANAGER" update "$PRP_NAME" "$TASK_ID" in_progress >/dev/null
@@ -241,6 +261,7 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
         fi
     else
         STATUS="FAILED"
+        RETRY_COUNT[$TASK_ID]=$((ATTEMPTS + 1))
         # Log on_fail routing if applicable
         ON_FAIL=$(echo "$TASK_JSON" | python3 -c "import sys,json; t=json.load(sys.stdin); print(t.get('on_fail',''))" 2>/dev/null || true)
         if [[ -n "$ON_FAIL" ]]; then
