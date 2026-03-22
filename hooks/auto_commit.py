@@ -112,6 +112,10 @@ def git(*args, timeout=5):
 
 def stage():
     """Stage a file if it's inside ~/.claude/."""
+    cfg = _load_config()
+    if not cfg.get("auto_commit", True):
+        return
+
     try:
         payload = json.load(sys.stdin)
     except Exception:
@@ -146,6 +150,10 @@ def stage():
 
 def commit():
     """Commit only files that stage() explicitly tracked."""
+    cfg = _load_config()
+    if not cfg.get("auto_commit", True):
+        return
+
     # Read session_id from stdin for namespaced snapshot
     _session_id = None
     try:
@@ -163,7 +171,17 @@ def commit():
     if not tracked:
         return
 
-    # Clear tracker immediately (atomic: truncate before commit)
+    # Check test requirement — hold commit if code files lack test files
+    if cfg.get("auto_commit_require_tests", False):
+        if _should_hold(tracked, require_tests=True):
+            print(
+                f"⏸ Holding commit: tests missing for "
+                f"{', '.join(os.path.basename(f) for f in tracked if not _is_exempt_file(f) and not _is_test_file(f))}",
+                file=sys.stderr,
+            )
+            return
+
+    # Clear tracker (after test check so held files persist)
     try:
         open(STAGED_TRACKER, "w").close()
     except OSError:
