@@ -381,6 +381,7 @@ GATE_TOOL_MAP = {
     "gates.gate_19_hindsight": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_20_self_check": {"Edit", "Write", "NotebookEdit"},
     "gates.gate_21_working_summary": {"Edit", "Write", "NotebookEdit", "Bash", "Task"},
+    "gates.gate_23_require_tests": {"Edit", "Write", "NotebookEdit"},
 }
 
 
