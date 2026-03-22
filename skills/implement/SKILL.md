@@ -5,6 +5,18 @@ When the user says "implement", "build", "create", or the Loop reaches the imple
 
 ## Steps
 
+### 0. CHECK ORCHESTRATOR MODE
+- Read config.json `orchestrator` flag
+- If `true` AND a `PRPs/<feature-slug>.tasks.json` exists for this plan:
+  - Tell the user: "Orchestrator mode is on. Launching torus-loop.sh"
+  - Run: `bash ~/.claude/scripts/torus-loop.sh <feature-slug>`
+  - The orchestrator handles everything: fresh Claude per task, validation, commits
+  - When done, report results from `PRPs/<feature-slug>.activity.md`
+  - Skip to step 4 (SAVE)
+- If `true` but no tasks.json exists:
+  - Ask: "No tasks.json found. Run /writing-plans first to generate one?"
+- If `false`: continue with inline execution below
+
 ### 1. CONTEXT
 - search_knowledge("[task]") — check for prior art, known gotchas
 - Read docs/plans/<feature>-impl.md if exists
