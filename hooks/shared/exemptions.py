@@ -52,13 +52,17 @@ def is_exempt_standard(file_path):
 
 
 def is_exempt_full(file_path, exempt_extensions=None):
-    """Tier 3: standard + non-code extension filter."""
+    """Tier 3: standard + non-code extension filter + dotfiles."""
     if is_exempt_standard(file_path):
+        return True
+    basename = os.path.basename(file_path)
+    # Dotfiles (.env, .gitignore, .editorconfig, etc.) are config, not code
+    if basename.startswith("."):
         return True
     ext_set = (
         exempt_extensions if exempt_extensions is not None else FULL_EXEMPT_EXTENSIONS
     )
-    _, ext = os.path.splitext(os.path.basename(file_path))
+    _, ext = os.path.splitext(basename)
     if ext.lower() in ext_set:
         return True
     return False
