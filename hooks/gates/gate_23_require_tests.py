@@ -25,6 +25,7 @@ Tier 2 (non-safety): gate crash = warn + continue, not block.
 
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -121,14 +122,37 @@ def _test_search_dirs(code_path):
     return dirs
 
 
+_TEST_FUNC_PATTERNS = [
+    re.compile(r"def test_"),  # Python
+    re.compile(r"func Test"),  # Go
+    re.compile(r"\bit\("),  # JS/TS mocha/jest
+    re.compile(r"\bdescribe\("),  # JS/TS
+    re.compile(r"\btest\("),  # Jest
+    re.compile(r"#\[test\]"),  # Rust
+    re.compile(r"@Test"),  # Java/Kotlin
+]
+_HEAD_LINES = 80
+
+
+def _has_real_tests(path):
+    """Check if a test file contains at least one actual test function."""
+    try:
+        with open(path) as f:
+            head = "".join(f.readline() for _ in range(_HEAD_LINES))
+        return any(pat.search(head) for pat in _TEST_FUNC_PATTERNS)
+    except OSError:
+        return False
+
+
 def _has_test_on_disk(code_path):
-    """Check if a matching test file exists on disk for a code file."""
+    """Check if a matching test file with real tests exists on disk."""
     if not code_path:
         return False
     candidates = _test_candidates(code_path)
     for search_dir in _test_search_dirs(code_path):
         for c in candidates:
-            if os.path.exists(os.path.join(search_dir, c)):
+            full = os.path.join(search_dir, c)
+            if os.path.exists(full) and _has_real_tests(full):
                 return True
     return False
 
