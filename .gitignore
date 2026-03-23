@@ -4,7 +4,7 @@ integrations/voice-web/piper-voices/*.onnx.json
 
 # Credentials & secrets
 .credentials.json
-hooks/.env
+**/.env
 
 # Auto-generated working memory (hook-injected, not for GitHub)
 hooks/working-memory.md
