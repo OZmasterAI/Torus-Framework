@@ -184,24 +184,33 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if _is_exempt(file_path) or _is_state_dir(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # ── Filter tracker: remove files that now have tests on disk ──
+    # ── Filter tracker: remove deleted files and files that now have tests ──
     untested = _load_tracker()
-    filtered = [f for f in untested if not _has_test_on_disk(f)]
+    filtered = [f for f in untested if os.path.exists(f) and not _has_test_on_disk(f)]
     if len(filtered) != len(untested):
         _save_tracker(filtered)
         untested = filtered
 
-    # ── Block if untested code files exist from prior edits ──
-    if untested:
-        names = ", ".join(os.path.basename(f) for f in untested[:3])
-        if len(untested) > 3:
-            names += f" +{len(untested) - 3} more"
+    # ── Block only if THIS file is untested (scoped, not global) ──
+    norm_path = os.path.normpath(file_path) if file_path else ""
+    if norm_path and norm_path in untested:
         msg = (
-            f"[{GATE_NAME}] BLOCKED: Write tests first for: {names}. "
+            f"[{GATE_NAME}] BLOCKED: Write tests first for: {os.path.basename(norm_path)}. "
             f"Edit/create test files for untested code, then retry."
         )
         return GateResult(
             blocked=True, gate_name=GATE_NAME, message=msg, severity="warn"
+        )
+    # Warn (non-blocking) about other untested files
+    if untested:
+        names = ", ".join(os.path.basename(f) for f in untested[:3])
+        if len(untested) > 3:
+            names += f" +{len(untested) - 3} more"
+        return GateResult(
+            blocked=False,
+            gate_name=GATE_NAME,
+            severity="warn",
+            message=f"[{GATE_NAME}] WARNING: Untested code files: {names}. Consider writing tests.",
         )
 
     # ── Track this code file (only if no test exists on disk) ──
