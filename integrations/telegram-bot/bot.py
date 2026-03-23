@@ -25,7 +25,7 @@ sys.path.insert(0, _PLUGIN_DIR)
 
 from datetime import datetime, timezone
 
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
@@ -981,7 +981,24 @@ def main():
     group_voice_filter = filters.ChatType.GROUPS & (filters.VOICE | filters.AUDIO)
     app.add_handler(MessageHandler(voice_filter | group_voice_filter, handle_voice))
 
+    app.post_init = _register_commands
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+async def _register_commands(application):
+    """Register slash commands with Telegram so they appear in the / menu."""
+    await application.bot.set_my_commands(
+        [
+            BotCommand("status", "Bot and session status"),
+            BotCommand("search", "Search message history"),
+            BotCommand("memory", "Search framework memory"),
+            BotCommand("reset", "Reset conversation session"),
+            BotCommand("whisper", "Switch STT engine (groq/local)"),
+            BotCommand("mirror", "Toggle message mirroring (on/off/user)"),
+            BotCommand("tts", "Toggle text-to-speech (on/off)"),
+            BotCommand("voice", "Change TTS voice/engine"),
+        ]
+    )
 
 
 if __name__ == "__main__":
