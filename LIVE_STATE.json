@@ -1,27 +1,21 @@
 {
   "session_count": 523,
   "project": "torus-framework",
-  "feature": "orchestrator-upgrades",
+  "feature": "telegram-bot-commands",
   "framework_version": "v3.0.0",
-  "what_was_done": "ACT runs tests before committing, torus-loop retry cap + failure history, removed .sh/.bash/.css/.html exemptions, /implement uses TaskCreate, TG bot Groq STT/TTS + official plugin installed",
+  "what_was_done": "TG bot /commands menu via setMyCommands, bot loads own .env for GROQ_API_KEY, gate 23 dotfile exemption fix, paired OZmaster on official TG plugin",
   "known_issues": [
-    "rate_limits statusline field null on API key billing \u2014 only works on claude.ai subscriptions",
-    "Gate 2 gap: rm -r (without -f) not blocked \u2014 equally destructive on user-owned files",
-    "Gate 23 bug: .gitignore tracked as code (extensionless files not exempt)",
-    "Gate 23 tracker is global \u2014 cross-session pollution from concurrent instances",
-    "Validation bug: tasks.json missing cwd for external projects (writing-plans needs fix)"
+    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
+    "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files",
+    "Gate 23 tracker is global — cross-session pollution from concurrent instances",
+    "Validation bug: tasks.json missing cwd for external projects (writing-plans needs fix)",
+    "Custom TG bot tmux transport injects into active pane — unsafe when user is typing"
   ],
   "next_steps": [
-    "Fix gate 23: exempt extensionless dotfiles (.gitignore, .gitattributes, etc)",
     "Fix gate 23: make tracker per-session instead of global",
     "Fix writing-plans: set cwd in tasks.json for external projects",
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS",
-    "Test orchestrator end-to-end with retry cap",
-    "Memory pruning \u2014 DB at 3642 entries"
-  ],
-  "last_response_preview": "**Token updated.** Since you changed the token, you'll need to restart the session or `/reload-plugins` again for the server to pick it up.\n\n**Telegram Channel Status**\n\n| Item | Status |\n|------|--------|\n| **Token** | `8643172420:...` set |\n| **Permissions** | `600` (owner-only) |\n| **Access policy** | Default (`pairing`, empty allowlist) |\n| **Allowed senders** | 0 |\n| **Pending pairings** | 0 |\n\n**Next step:** DM your bot on Telegram. It will reply with a pairing code, then approve it here w",
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 25767,
-  "dag_total_branches": 91
+    "Fix custom TG bot: dedicated tmux pane for transport target",
+    "Memory pruning — DB at 3658 entries"
+  ]
 }
