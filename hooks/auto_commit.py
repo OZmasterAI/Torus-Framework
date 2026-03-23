@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Auto-commit hook for ~/.claude/ file changes.
+"""Auto-commit hook for file changes in any git repo.
 
 Two-phase design:
   Phase 1 (PostToolUse, Edit|Write): Stage changed files via git add
-  Phase 2 (UserPromptSubmit): Commit all staged changes in one batch
+  Phase 2 (UserPromptSubmit): Commit all staged changes per repo
 
 Usage:
-  echo '{"tool_input":{"file_path":"/home/user/.claude/hooks/foo.py"}}' | python3 auto_commit.py stage
+  echo '{"tool_input":{"file_path":"/home/user/project/foo.py"}}' | python3 auto_commit.py stage
   python3 auto_commit.py commit
 
 FAIL-OPEN: Always exits 0. Auto-commit failures must never block work.
@@ -126,10 +126,11 @@ def _find_test_files(tracked):
     return test_files
 
 
-def _run_tests(test_files):
+def _run_tests(test_files, cwd=None):
     """Run test files. Returns (passed: bool, output: str). 30s timeout."""
     if not test_files:
         return True, ""
+    test_cwd = cwd or CLAUDE_DIR
     py_tests = [f for f in test_files if f.endswith(".py")]
     if not py_tests:
         return True, ""
@@ -140,7 +141,7 @@ def _run_tests(test_files):
             capture_output=True,
             text=True,
             timeout=30,
-            cwd=CLAUDE_DIR,
+            cwd=test_cwd,
         )
         return result.returncode == 0, result.stdout + result.stderr
     except FileNotFoundError:
@@ -151,7 +152,7 @@ def _run_tests(test_files):
                     capture_output=True,
                     text=True,
                     timeout=30,
-                    cwd=CLAUDE_DIR,
+                    cwd=test_cwd,
                 )
                 if r.returncode != 0:
                     return False, r.stdout + r.stderr
@@ -183,10 +184,27 @@ def _get_co_author(session_id=None):
     return "Co-Authored-By: Claude <noreply@anthropic.com>"
 
 
-def git(*args, timeout=5):
-    """Run a git command in the ~/.claude directory."""
+def _find_git_root(file_path):
+    """Find the git repo root for a file. Returns None if not in a repo."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", os.path.dirname(file_path), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return None
+
+
+def git(*args, repo_dir=None, timeout=5):
+    """Run a git command in the given repo (defaults to ~/.claude)."""
+    target = repo_dir or CLAUDE_DIR
     return subprocess.run(
-        ["git", "-C", CLAUDE_DIR] + list(args),
+        ["git", "-C", target] + list(args),
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -194,7 +212,7 @@ def git(*args, timeout=5):
 
 
 def stage():
-    """Stage a file if it's inside ~/.claude/."""
+    """Stage a file if it's inside a git repo."""
     cfg = _load_config()
     if not cfg.get("auto_commit", True):
         return
@@ -217,24 +235,23 @@ def stage():
     if not file_path:
         return
 
-    # Resolve to absolute and check it's inside ~/.claude/
     resolved = os.path.realpath(file_path)
-    claude_real = os.path.realpath(CLAUDE_DIR)
-    if not resolved.startswith(claude_real + os.sep) and resolved != claude_real:
+    repo_root = _find_git_root(resolved)
+    if not repo_root:
         return
 
-    git("add", resolved)
+    git("add", resolved, repo_dir=repo_root)
 
-    # Track this file so commit() only commits our staged files
+    # Track file with its repo root so commit() knows where to commit
     try:
         with open(STAGED_TRACKER, "a") as f:
-            f.write(resolved + "\n")
+            f.write(f"{repo_root}\t{resolved}\n")
     except OSError:
         pass
 
 
 def commit():
-    """Commit only files that stage() explicitly tracked."""
+    """Commit only files that stage() explicitly tracked, per repo."""
     cfg = _load_config()
     if not cfg.get("auto_commit", True):
         return
@@ -248,28 +265,45 @@ def commit():
         _session_id = payload.get("session_id")
     except Exception:
         pass
-    # Read tracker — only commit files we explicitly staged
+
+    # Read tracker — group files by repo root
+    # Format: "repo_root\tfile_path" (new) or bare "file_path" (legacy)
+    repos = {}  # repo_root -> set of file paths
     try:
         with open(STAGED_TRACKER) as f:
-            tracked = {line.strip() for line in f if line.strip()}
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                if "\t" in line:
+                    repo_root, fpath = line.split("\t", 1)
+                else:
+                    # Legacy format: bare path, assume ~/.claude
+                    fpath = line
+                    repo_root = CLAUDE_DIR
+                repos.setdefault(repo_root, set()).add(fpath)
     except (FileNotFoundError, OSError):
-        tracked = set()
+        repos = {}
 
-    if not tracked:
+    if not repos:
         return
 
-    # Check test requirement — hold commit if code files lack test files OR tests fail
+    # Check test requirement per repo
+    all_tracked = set()
+    for files in repos.values():
+        all_tracked.update(files)
+
     if cfg.get("auto_commit_require_tests", False):
-        if _should_hold(tracked, require_tests=True):
+        if _should_hold(all_tracked, require_tests=True):
             code_names = ", ".join(
                 os.path.basename(f)
-                for f in tracked
+                for f in all_tracked
                 if not _is_exempt_file(f) and not _is_test_file(f)
             )
             print(f"⏸ Holding commit: tests missing for {code_names}", file=sys.stderr)
             return
         # Tests exist — now run them
-        test_files = _find_test_files(tracked)
+        test_files = _find_test_files(all_tracked)
         if test_files:
             passed, output = _run_tests(test_files)
             if not passed:
@@ -285,31 +319,31 @@ def commit():
     except OSError:
         pass
 
-    # Unstage everything, then re-stage ONLY tracked files
-    # This prevents stale index entries from manual git operations
-    git("reset", "HEAD", "--quiet")
+    # Commit per repo
+    for repo_root, tracked in repos.items():
+        # Unstage everything, then re-stage ONLY tracked files
+        git("reset", "HEAD", "--quiet", repo_dir=repo_root)
 
-    for fpath in tracked:
-        git("add", fpath)
+        for fpath in tracked:
+            git("add", fpath, repo_dir=repo_root)
 
-    result = git("diff", "--cached", "--name-only")
-    if result.returncode != 0 or not result.stdout.strip():
-        return
+        result = git("diff", "--cached", "--name-only", repo_dir=repo_root)
+        if result.returncode != 0 or not result.stdout.strip():
+            continue
 
-    files = [f.strip() for f in result.stdout.strip().splitlines() if f.strip()]
-    if not files:
-        return
+        files = [f.strip() for f in result.stdout.strip().splitlines() if f.strip()]
+        if not files:
+            continue
 
-    # Build message from basenames
-    basenames = [os.path.basename(f) for f in files]
-    if len(basenames) <= MAX_FILES_IN_MSG:
-        file_list = ", ".join(basenames)
-    else:
-        shown = ", ".join(basenames[:MAX_FILES_IN_MSG])
-        file_list = f"{shown} +{len(basenames) - MAX_FILES_IN_MSG} more"
+        basenames = [os.path.basename(f) for f in files]
+        if len(basenames) <= MAX_FILES_IN_MSG:
+            file_list = ", ".join(basenames)
+        else:
+            shown = ", ".join(basenames[:MAX_FILES_IN_MSG])
+            file_list = f"{shown} +{len(basenames) - MAX_FILES_IN_MSG} more"
 
-    message = f"auto: update {file_list}\n\n{_get_co_author(_session_id)}"
-    git("commit", "-m", message)
+        message = f"auto: update {file_list}\n\n{_get_co_author(_session_id)}"
+        git("commit", "-m", message, repo_dir=repo_root)
 
 
 def main():
