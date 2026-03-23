@@ -18,9 +18,18 @@ import subprocess
 import sys
 
 CLAUDE_DIR = os.path.expanduser("~/.claude")
-STAGED_TRACKER = os.path.join(CLAUDE_DIR, "hooks", ".auto_commit_staged.txt")
+_TRACKER_DIR = os.path.join(CLAUDE_DIR, "hooks")
+STAGED_TRACKER = os.path.join(_TRACKER_DIR, ".auto_commit_staged.txt")  # legacy fallback
 CONFIG_FILE = os.path.join(CLAUDE_DIR, "config.json")
 MAX_FILES_IN_MSG = 3
+
+
+def _tracker_path(session_id=None):
+    """Return per-session tracker path, or legacy shared path."""
+    if session_id:
+        safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")[:8]
+        return os.path.join(_TRACKER_DIR, f".auto_commit_staged_{safe_id}.txt")
+    return STAGED_TRACKER
 
 # Patterns matching test files (mirrors shared/exemptions.py)
 _TEST_PATTERNS = ("test_", "_test.", ".test.", "spec_", "_spec.", ".spec.")
@@ -224,6 +233,7 @@ def stage():
     except Exception:
         return
 
+    sid = payload.get("session_id")
     tool_input = payload.get("tool_input", {})
     if isinstance(tool_input, str):
         try:
@@ -243,8 +253,9 @@ def stage():
     git("add", resolved, repo_dir=repo_root)
 
     # Track file with its repo root so commit() knows where to commit
+    tracker = _tracker_path(sid)
     try:
-        with open(STAGED_TRACKER, "a") as f:
+        with open(tracker, "a") as f:
             f.write(f"{repo_root}\t{resolved}\n")
     except OSError:
         pass
@@ -266,11 +277,11 @@ def commit():
     except Exception:
         pass
 
-    # Read tracker — group files by repo root
-    # Format: "repo_root\tfile_path" (new) or bare "file_path" (legacy)
+    # Read per-session tracker — group files by repo root
+    tracker = _tracker_path(_session_id)
     repos = {}  # repo_root -> set of file paths
     try:
-        with open(STAGED_TRACKER) as f:
+        with open(tracker) as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -315,7 +326,7 @@ def commit():
 
     # Clear tracker (after test check so held files persist)
     try:
-        open(STAGED_TRACKER, "w").close()
+        open(tracker, "w").close()
     except OSError:
         pass
 
