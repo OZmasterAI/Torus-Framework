@@ -29,9 +29,15 @@ GATE_NAME = "GATE 2: NO DESTROY"
 # The description string is used as a key for SAFE_EXCEPTIONS below.
 DANGEROUS_PATTERNS = [
     # rm with recursive+force in any flag order, including split flags and full paths
-    (r"(?:/[^\s]*/)?rm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b", "rm -rf (recursive force delete)"),
+    (
+        r"(?:/[^\s]*/)?rm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b",
+        "rm -rf (recursive force delete)",
+    ),
     (r"(?:/[^\s]*/)?rm\s+-rf\b", "rm -rf (recursive force delete)"),
-    (r"(?:/[^\s]*/)?rm\s+(-r\s+-f|-f\s+-r|--recursive\s+--force|--force\s+--recursive)\b", "rm -r -f (split flags)"),
+    (
+        r"(?:/[^\s]*/)?rm\s+(-r\s+-f|-f\s+-r|--recursive\s+--force|--force\s+--recursive)\b",
+        "rm -r -f (split flags)",
+    ),
     (r"(?:/[^\s]*/)?rm\s+--recursive\s+--force\b", "rm --recursive --force"),
     (r"(?:/[^\s]*/)?rm\s+--force\s+--recursive\b", "rm --force --recursive"),
     (r"(?:/[^\s]*/)?rm\s+.*--force\b.*--recursive\b", "rm --force --recursive"),
@@ -39,7 +45,10 @@ DANGEROUS_PATTERNS = [
     # SQL destructive operations (expanded)
     # Allow optional C-style comments (/* ... */) between DROP and the object keyword,
     # since SQL parsers ignore comments and they could bypass a naive whitespace-only regex.
-    (r"DROP\s+(?:/\*.*?\*/\s*)?(TABLE|DATABASE|SCHEMA|VIEW|INDEX|FUNCTION|PROCEDURE|TRIGGER)\b", "DROP database object"),
+    (
+        r"DROP\s+(?:/\*.*?\*/\s*)?(TABLE|DATABASE|SCHEMA|VIEW|INDEX|FUNCTION|PROCEDURE|TRIGGER)\b",
+        "DROP database object",
+    ),
     (r"TRUNCATE\s+TABLE\b", "TRUNCATE TABLE"),
     # Git destructive operations
     (r"git\s+push\s+.*--force\b", "git push --force"),
@@ -55,13 +64,19 @@ DANGEROUS_PATTERNS = [
     (r"\bdd\s+if=", "dd (raw disk write)"),
     (r":\(\)\s*\{", "fork bomb"),
     (r">\s*/dev/sd[a-z]", "write to raw disk device"),
-    (r"chmod\s+-R\s+777\s+/\s*(?:$|[;&|])", "chmod -R 777 / (open permissions on root)"),
+    (
+        r"chmod\s+-R\s+777\s+/\s*(?:$|[;&|])",
+        "chmod -R 777 / (open permissions on root)",
+    ),
     # Alternative deletion tools
     (r"\bfind\b.*\s-delete\b", "find -delete (recursive file deletion)"),
     (r"\btruncate\s+-s\s*0\b", "truncate -s 0 (zero file contents)"),
     (r"\bshred\b", "shred (secure file destruction)"),
     # Disk encryption/partition destruction
-    (r"\bcryptsetup\s+(luksFormat|luksErase|erase|remove)\b", "cryptsetup LUKS destruction"),
+    (
+        r"\bcryptsetup\s+(luksFormat|luksErase|erase|remove)\b",
+        "cryptsetup LUKS destruction",
+    ),
     (r"\b(wipefs|sgdisk\s+--zap-all)\b", "disk signature/partition wipe"),
     # Dangerous rsync (can delete target contents)
     (r"\brsync\b.*--delete\b", "rsync --delete (can remove target files)"),
@@ -89,11 +104,9 @@ SAFE_EXCEPTIONS = [
     # source: handled by _source_is_safe() below (path validation with realpath)
     # exec: handled by _exec_is_safe() below (shlex-based, not regex)
     # DELETE FROM: allow targeted SQL deletes that include a WHERE clause
-    ("DELETE FROM (SQL mass deletion)",
-     r"\bDELETE\s+FROM\s+\S+\s+WHERE\b"),
+    ("DELETE FROM (SQL mass deletion)", r"\bDELETE\s+FROM\s+\S+\s+WHERE\b"),
     # git stash drop: allow dropping a specific numbered stash reference
-    ("git stash drop (destroy stashed changes)",
-     r"git\s+stash\s+drop\s+stash@\{\d+\}"),
+    ("git stash drop (destroy stashed changes)", r"git\s+stash\s+drop\s+stash@\{\d+\}"),
 ]
 
 
@@ -125,9 +138,19 @@ def _is_safe_exception(command, description):
         # Extract the command word before <<
         # Safe: cat << EOF, wc << EOF, tee << EOF
         # Dangerous: bash << EOF, sh << EOF, python3 << EOF
-        DANGEROUS_HEREDOC_CMDS = {"bash", "sh", "zsh", "eval", "exec",
-                                   "python", "python2", "python3", "node",
-                                   "ruby", "perl"}
+        DANGEROUS_HEREDOC_CMDS = {
+            "bash",
+            "sh",
+            "zsh",
+            "eval",
+            "exec",
+            "python",
+            "python2",
+            "python3",
+            "node",
+            "ruby",
+            "perl",
+        }
         m = re.search(r"\b(\w+)\b[^|;&]*(?<!<)<<(?!<)", command)
         if m and m.group(1).lower() not in DANGEROUS_HEREDOC_CMDS:
             return True
@@ -156,7 +179,7 @@ def _rm_has_recursive_and_force(command):
         if basename != "rm":
             continue
         # Check remaining tokens for both -r/--recursive and -f/--force
-        rest = tokens[i + 1:]
+        rest = tokens[i + 1 :]
         has_recursive = False
         has_force = False
         for arg in rest:
@@ -191,8 +214,15 @@ def _exec_is_safe(command):
             exec python3 << 'EOF', exec node -e "code"
     """
     SAFE_INTERPRETERS = {
-        "python", "python2", "python3", "node", "ruby", "java",
-        "perl", "npm", "npx",
+        "python",
+        "python2",
+        "python3",
+        "node",
+        "ruby",
+        "java",
+        "perl",
+        "npm",
+        "npx",
     }
     SAFE_MULTI_WORD = {("cargo", "run"), ("go", "run")}
     DANGEROUS_FLAGS = {"-c", "-e"}
@@ -205,7 +235,7 @@ def _exec_is_safe(command):
     for i, token in enumerate(tokens):
         if token != "exec":
             continue
-        rest = tokens[i + 1:]
+        rest = tokens[i + 1 :]
         if not rest:
             return False
 
@@ -241,16 +271,23 @@ def _source_is_safe(command):
 
     This prevents symlink attacks where /tmp/activate -> /tmp/malicious.sh.
     """
-    SAFE_FILENAMES = {"activate", ".bashrc", ".bash_profile", ".profile",
-                      ".zshrc", ".zprofile", ".envrc"}
+    SAFE_FILENAMES = {
+        "activate",
+        ".bashrc",
+        ".bash_profile",
+        ".profile",
+        ".zshrc",
+        ".zprofile",
+        ".envrc",
+    }
     ALLOWED_PREFIXES = [
         os.path.expanduser("~"),  # Current user's home
-        "/home/",                 # Any user home directory (Linux)
-        "/Users/",                # Any user home directory (macOS)
-        "/etc/",                  # System configuration
-        "/usr/local/",            # Local installations
-        "/usr/",                  # System packages
-        "/opt/",                  # Optional packages
+        "/home/",  # Any user home directory (Linux)
+        "/Users/",  # Any user home directory (macOS)
+        "/etc/",  # System configuration
+        "/usr/local/",  # Local installations
+        "/usr/",  # System packages
+        "/opt/",  # Optional packages
     ]
 
     # Extract the path argument from the source command
@@ -278,6 +315,61 @@ def _source_is_safe(command):
     return False
 
 
+def _strip_data_args(command):
+    """Return command with quoted data arguments replaced by placeholders.
+
+    Uses shlex to identify quoted tokens that are arguments to non-shell
+    commands (git -m "msg", echo "text", grep "pattern"). Replaces them
+    with __DATA__ so pattern scanning only hits actual command tokens.
+    Only strips args to commands that cannot execute their arguments.
+    """
+    SHELL_CMDS = {
+        "bash",
+        "sh",
+        "zsh",
+        "eval",
+        "exec",
+        "python",
+        "python2",
+        "python3",
+        "node",
+        "ruby",
+        "perl",
+    }
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return command  # Malformed quoting — scan raw (safe default)
+
+    if not tokens:
+        return command
+
+    # Find the base command (skip env vars, sudo, etc.)
+    cmd_base = None
+    for t in tokens:
+        if "=" not in t and t not in ("sudo", "env", "nice", "nohup", "time"):
+            cmd_base = os.path.basename(t)
+            break
+
+    # If the command is a shell, don't strip anything — all args could be code
+    if cmd_base and cmd_base in SHELL_CMDS:
+        return command
+
+    # Rebuild command, replacing quoted multi-word tokens with placeholder
+    result = command
+    for token in tokens:
+        # Only strip tokens that were quoted in the original (contain spaces
+        # or special chars that would require quoting)
+        if " " in token or any(c in token for c in ";&|<>()$`"):
+            # Replace the quoted form (single or double quotes)
+            for q in ('"', "'"):
+                quoted = f"{q}{token}{q}"
+                if quoted in result:
+                    result = result.replace(quoted, "__DATA__", 1)
+                    break
+    return result
+
+
 def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if event_type != "PreToolUse":
         return GateResult(blocked=False, gate_name=GATE_NAME)
@@ -289,10 +381,14 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         tool_input = {}
 
     command = tool_input.get("command", "")
+    # Strip data arguments for pattern scanning (prevents false positives
+    # from e.g. "exec" inside git commit messages)
+    scan_command = _strip_data_args(command)
 
     for pattern, description in DANGEROUS_PATTERNS:
-        if re.search(pattern, command, re.IGNORECASE):
+        if re.search(pattern, scan_command, re.IGNORECASE):
             # Check if this matches a known-safe exception before blocking
+            # (use original command for exception checks)
             if _is_safe_exception(command, description):
                 continue
             return GateResult(
