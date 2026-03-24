@@ -215,26 +215,17 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         _save_tracker(filtered)
         untested = filtered
 
-    # ── Block only if THIS file is untested (scoped, not global) ──
-    norm_path = os.path.normpath(file_path) if file_path else ""
-    if norm_path and norm_path in untested:
-        msg = (
-            f"[{GATE_NAME}] BLOCKED: Write tests first for: {os.path.basename(norm_path)}. "
-            f"Edit/create test files for untested code, then retry."
-        )
-        return GateResult(
-            blocked=True, gate_name=GATE_NAME, message=msg, severity="warn"
-        )
-    # Warn (non-blocking) about other untested files
+    # ── Block ALL code edits if any untested files exist (global) ──
     if untested:
         names = ", ".join(os.path.basename(f) for f in untested[:3])
         if len(untested) > 3:
             names += f" +{len(untested) - 3} more"
+        msg = (
+            f"[{GATE_NAME}] BLOCKED: Write tests first for: {names}. "
+            f"Edit/create test files for untested code, then retry."
+        )
         return GateResult(
-            blocked=False,
-            gate_name=GATE_NAME,
-            severity="warn",
-            message=f"[{GATE_NAME}] WARNING: Untested code files: {names}. Consider writing tests.",
+            blocked=True, gate_name=GATE_NAME, message=msg, severity="warn"
         )
 
     # ── Track this code file (only if no test exists on disk) ──
