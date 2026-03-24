@@ -824,7 +824,12 @@ def handle_post_tool_use(
         )
         if _result.get("boundary_detected"):
             _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-            _writer = WorkingMemoryWriter(_hooks_dir)
+            try:
+                from boot_pkg.util import detect_project as _detect_proj_orch
+                _, _proj_dir_orch, _, _ = _detect_proj_orch()
+            except Exception:
+                _proj_dir_orch = None
+            _writer = WorkingMemoryWriter(_hooks_dir, project_dir=_proj_dir_orch or "")
             _tracker_state = _op_tracker.get_state()
             _tracker_state["_session_id"] = session_id
             _writer.write_operations(_tracker_state)

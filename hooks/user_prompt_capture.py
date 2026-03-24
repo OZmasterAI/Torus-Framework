@@ -335,8 +335,13 @@ def main():
         _tracker_state["_session_id"] = _session_id
 
         # Write to hooks dir (hook-injected, not rules/ auto-loaded)
+        # Project sessions write to {project_dir}/.claude/rules/ instead
         _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-        _writer = WorkingMemoryWriter(_hooks_dir)
+        try:
+            _, _proj_dir, _, _ = detect_project()
+        except Exception:
+            _proj_dir = None
+        _writer = WorkingMemoryWriter(_hooks_dir, project_dir=_proj_dir or "")
         _writer.write_status(_tracker_state)
 
         # Check threshold for expand section (Option 3: keep until replaced)
@@ -414,9 +419,12 @@ def main():
     try:
         if _tracker_state.get("context_drop_detected", False):
             for _inject_file in ["working-memory.md", "working-summary.md"]:
-                _inject_path = os.path.join(
-                    os.path.expanduser("~"), ".claude", "hooks", _inject_file
-                )
+                if _proj_dir:
+                    _inject_path = os.path.join(_proj_dir, ".claude", "rules", _inject_file)
+                else:
+                    _inject_path = os.path.join(
+                        os.path.expanduser("~"), ".claude", "hooks", _inject_file
+                    )
                 try:
                     with open(_inject_path) as _f:
                         _content = _f.read().strip()
@@ -434,10 +442,15 @@ def main():
             _tracker_state["summary_clear_countdown"] = _countdown - 1
             _op_tracker._save_state(_tracker_state)
         elif _countdown == 0:
-            # Clear working-summary.md to stub
-            _summary_path = os.path.join(
-                os.path.expanduser("~"), ".claude", "hooks", "working-summary.md"
-            )
+            # Clear working-summary.md to stub (project-local if in a project)
+            if _proj_dir:
+                _ws_rules = os.path.join(_proj_dir, ".claude", "rules")
+                os.makedirs(_ws_rules, exist_ok=True)
+                _summary_path = os.path.join(_ws_rules, "working-summary.md")
+            else:
+                _summary_path = os.path.join(
+                    os.path.expanduser("~"), ".claude", "hooks", "working-summary.md"
+                )
             _stub = (
                 "# Working Summary (Claude-written at context threshold)\n"
                 "<!-- This file is auto-managed. Claude writes it at ~65% context. "

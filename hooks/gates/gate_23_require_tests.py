@@ -41,25 +41,32 @@ STATE_DIR = os.path.join(os.path.expanduser("~/.claude"), "hooks", ".state")
 
 STATE_KEY = "untested_code_files"
 
-_TRACKER_FILE = os.path.join(
-    os.path.expanduser("~/.claude"), "hooks", ".untested_code_files.json"
-)
+_TRACKER_DIR = os.path.expanduser("~/.claude/hooks")
+_TRACKER_FILE = os.path.join(_TRACKER_DIR, ".untested_code_files.json")  # legacy
 
 
-def _load_tracker():
+def _tracker_path(session_id=None):
+    """Return per-session tracker path, or legacy shared path."""
+    if session_id:
+        safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")[:8]
+        return os.path.join(_TRACKER_DIR, f".untested_code_files_{safe_id}.json")
+    return _TRACKER_FILE
+
+
+def _load_tracker(session_id=None):
     """Load untested code files from disk."""
     try:
-        with open(_TRACKER_FILE) as f:
+        with open(_tracker_path(session_id)) as f:
             data = json.load(f)
             return data if isinstance(data, list) else []
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return []
 
 
-def _save_tracker(files):
+def _save_tracker(files, session_id=None):
     """Save untested code files to disk."""
     try:
-        with open(_TRACKER_FILE, "w") as f:
+        with open(_tracker_path(session_id), "w") as f:
             json.dump(files, f)
     except OSError:
         pass
@@ -194,14 +201,15 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     tool_input = safe_tool_input(tool_input)
     file_path = extract_file_path(tool_input)
+    sid = state.get("_session_id")
 
     # ── Track test files: clear matching code files from tracker ──
     if _is_test_file(file_path):
-        untested = _load_tracker()
+        untested = _load_tracker(sid)
         matched = _match_test_to_code(file_path, untested)
         if matched:
             remaining = [f for f in untested if f not in matched]
-            _save_tracker(remaining)
+            _save_tracker(remaining, sid)
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Always allow: exempt files, .state/ files
@@ -209,10 +217,10 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # ── Filter tracker: remove deleted files and files that now have tests ──
-    untested = _load_tracker()
+    untested = _load_tracker(sid)
     filtered = [f for f in untested if os.path.exists(f) and not _has_test_on_disk(f)]
     if len(filtered) != len(untested):
-        _save_tracker(filtered)
+        _save_tracker(filtered, sid)
         untested = filtered
 
     # ── Block ALL code edits if any untested files exist (global) ──
@@ -233,6 +241,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         norm = os.path.normpath(file_path)
         if norm not in untested:
             untested.append(norm)
-            _save_tracker(untested)
+            _save_tracker(untested, sid)
 
     return GateResult(blocked=False, gate_name=GATE_NAME)

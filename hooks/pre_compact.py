@@ -75,7 +75,12 @@ def main():
         if not _tracker_state.get("expand_written", False):
             inject_enforcer_fields(_tracker_state, state)
             _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-            _writer = WorkingMemoryWriter(_hooks_dir)
+            try:
+                from boot_pkg.util import detect_project as _detect_proj
+                _, _proj_dir_pc, _, _ = _detect_proj()
+            except Exception:
+                _proj_dir_pc = None
+            _writer = WorkingMemoryWriter(_hooks_dir, project_dir=_proj_dir_pc or "")
             _writer.write_expanded(_tracker_state)
             _op_tracker._save_state(_tracker_state)
             print(

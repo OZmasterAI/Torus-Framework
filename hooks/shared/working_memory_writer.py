@@ -386,9 +386,15 @@ class WorkingMemoryWriter:
       - write_expanded()  — at context threshold (expand layer)
     """
 
-    def __init__(self, rules_dir: str):
+    def __init__(self, rules_dir: str, project_dir: str = ""):
         self._rules_dir = rules_dir
-        self._output_path = os.path.join(rules_dir, "working-memory.md")
+        if project_dir:
+            # Project session: write to {project_dir}/.claude/rules/
+            proj_rules = os.path.join(project_dir, ".claude", "rules")
+            os.makedirs(proj_rules, exist_ok=True)
+            self._output_path = os.path.join(proj_rules, "working-memory.md")
+        else:
+            self._output_path = os.path.join(rules_dir, "working-memory.md")
         self._expand_written = False
 
     # ── Public API ────────────────────────────────────────────────────────────

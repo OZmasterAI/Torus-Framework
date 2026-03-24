@@ -28,6 +28,7 @@ hooks/.summarizer.sock
 hooks/.summarizer.pid
 hooks/.tg_mirror_cursor.json
 hooks/.auto_commit_staged*.txt
+hooks/.untested_code_files_*.json
 hooks/.audit_trail.jsonl
 hooks/.circuit_breaker_state.json
 hooks/.gate_effectiveness.json
