@@ -223,11 +223,13 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         _save_tracker(filtered, sid)
         untested = filtered
 
-    # ── Block ALL code edits if any untested files exist (global) ──
-    if untested:
-        names = ", ".join(os.path.basename(f) for f in untested[:3])
-        if len(untested) > 3:
-            names += f" +{len(untested) - 3} more"
+    # ── Block code edits if untested files exist in the SAME directory ──
+    edit_dir = os.path.dirname(os.path.normpath(file_path)) if file_path else ""
+    same_dir = [f for f in untested if os.path.dirname(f) == edit_dir]
+    if same_dir:
+        names = ", ".join(os.path.basename(f) for f in same_dir[:3])
+        if len(same_dir) > 3:
+            names += f" +{len(same_dir) - 3} more"
         msg = (
             f"[{GATE_NAME}] BLOCKED: Write tests first for: {names}. "
             f"Edit/create test files for untested code, then retry."

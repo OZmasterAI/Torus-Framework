@@ -83,6 +83,7 @@ class TestMatchTestToCode(unittest.TestCase):
 def _mock_check(tool_name, file_path, tracker_contents, require_tests=True):
     """Helper: call check() with mocked config and tracker file."""
     saved = {"data": tracker_contents[:]}
+    tracked_set = set(tracker_contents)
     with (
         patch(
             "gates.gate_23_require_tests._load_config",
@@ -94,7 +95,15 @@ def _mock_check(tool_name, file_path, tracker_contents, require_tests=True):
         ),
         patch(
             "gates.gate_23_require_tests._save_tracker",
-            side_effect=lambda d: saved.update({"data": d}),
+            side_effect=lambda d, sid=None: saved.update({"data": d}),
+        ),
+        patch(
+            "os.path.exists",
+            side_effect=lambda p: p in tracked_set or os.path.isfile(p),
+        ),
+        patch(
+            "gates.gate_23_require_tests._has_test_on_disk",
+            return_value=False,
         ),
     ):
         result = check(tool_name, {"file_path": file_path}, {})
@@ -114,10 +123,18 @@ class TestCheckPreToolUse(unittest.TestCase):
         # Current file should now be tracked
         assert os.path.normpath("/home/user/foo.py") in saved
 
-    def test_untested_code_blocks(self):
+    def test_untested_same_dir_blocks(self):
+        """Untested file in same directory blocks edits."""
         r, _ = _mock_check("Edit", "/home/user/bar.py", ["/home/user/foo.py"])
         assert r.blocked
         assert "foo.py" in r.message
+
+    def test_untested_different_dir_allows(self):
+        """Untested file in different directory does NOT block edits."""
+        r, _ = _mock_check(
+            "Edit", "/home/user/pkg_b/bar.py", ["/home/user/pkg_a/foo.py"]
+        )
+        assert not r.blocked
 
     def test_exempt_file_always_allows(self):
         r, _ = _mock_check("Edit", "/home/user/config.json", ["/home/user/foo.py"])
