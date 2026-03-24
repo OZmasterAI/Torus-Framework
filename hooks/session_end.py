@@ -679,11 +679,14 @@ def increment_session_count(metrics=None):
     print(f"[SESSION_END] Session {state['session_count']} complete", file=sys.stderr)
 
 
-def write_vault_session_note(state, live_state, project_name=None, feature=None):
+def write_vault_session_note(
+    state, live_state, project_name=None, feature=None, project_dir=None
+):
     """Write a session summary note to ~/vault/sessions/ for Obsidian.
 
     Fail-open: never blocks session end. Skips if vault doesn't exist
     or if /wrap-up already wrote the note (collision-safe).
+    Uses project-local session count for project sessions, global for framework.
     """
     vault_sessions = os.path.join(os.path.expanduser("~"), "vault", "sessions")
     if not os.path.isdir(vault_sessions):
@@ -691,9 +694,22 @@ def write_vault_session_note(state, live_state, project_name=None, feature=None)
 
     filepath = ""
     try:
+        # Use project-local session count when available
         session_num = live_state.get("session_count", 0)
+        project = project_name or live_state.get("project", "unknown")
+        if project_dir:
+            try:
+                proj_state = load_project_state(project_dir)
+                session_num = proj_state.get("session_count", session_num)
+            except Exception:
+                pass
         date_str = time.strftime("%Y-%m-%d")
-        filename = f"{date_str}-session-{session_num:03d}.md"
+        # Add project suffix for non-framework sessions
+        if project_dir and project and project != "torus-framework":
+            slug = project.replace("_", "-").lower()
+            filename = f"{date_str}-session-{session_num:03d}-{slug}.md"
+        else:
+            filename = f"{date_str}-session-{session_num:03d}.md"
         filepath = os.path.join(vault_sessions, filename)
 
         if os.path.exists(filepath):
@@ -816,6 +832,7 @@ def _run_background(data_path):
             live_state,
             project_name=project_name,
             feature=live_state.get("feature"),
+            project_dir=project_dir,
         )
     except Exception as e:
         print(f"[SESSION_END:bg] Vault note error: {e}", file=sys.stderr)
