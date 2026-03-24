@@ -1,21 +1,26 @@
 {
-  "session_count": 523,
+  "session_count": 526,
   "project": "torus-framework",
-  "feature": "telegram-bot-commands",
+  "feature": "session-isolation",
   "framework_version": "v3.0.0",
-  "what_was_done": "TG bot /commands menu via setMyCommands, bot loads own .env for GROQ_API_KEY, gate 23 dotfile exemption fix, paired OZmaster on official TG plugin",
+  "what_was_done": "Session isolation overhaul: gate 23 per-session tracker + real test content check + global blocking restored, auto-commit multi-repo + per-session trackers, gate 2 quote-aware scanning, vault notes project-local counts, working-memory/summary per-project",
   "known_issues": [
     "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
     "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files",
-    "Gate 23 tracker is global — cross-session pollution from concurrent instances",
     "Validation bug: tasks.json missing cwd for external projects (writing-plans needs fix)",
-    "Custom TG bot tmux transport injects into active pane — unsafe when user is typing"
+    "Custom TG bot tmux transport injects into active pane — unsafe when user is typing",
+    "Gate 23 Options A/E deferred — threshold or cascade blocking for middle-ground"
   ],
   "next_steps": [
-    "Fix gate 23: make tracker per-session instead of global",
+    "Implement gate 23 Option A or E (threshold/cascade blocking)",
     "Fix writing-plans: set cwd in tasks.json for external projects",
     "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS",
     "Fix custom TG bot: dedicated tmux pane for transport target",
-    "Memory pruning — DB at 3658 entries"
-  ]
+    "Memory pruning — DB at 3753 entries"
+  ],
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 31140,
+  "dag_total_branches": 100,
+  "last_response_preview": "With the real-test-content check in place, global blocking would look like:\n\n```python\n# \u2500\u2500 Block if ANY untested files exist (global) \u2500\u2500\nif untested:\n    names = \", \".join(os.path.basename(f) for f in untested[:3])\n    if len(untested) > 3:\n        names += f\" +{len(untested) - 3} more\"\n    msg = (\n        f\"[{GATE_NAME}] BLOCKED: Write tests first for: {names}. \"\n        f\"Edit/create test files for untested code, then retry.\"\n    )\n    return GateResult(\n        blocked=True, gate_name=GATE_N"
 }
