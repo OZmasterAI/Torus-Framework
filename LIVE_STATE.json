@@ -1,22 +1,17 @@
 {
-  "session_count": 530,
+  "session_count": 537,
   "project": "torus-framework",
-  "feature": "framework-v5-design",
+  "feature": "framework-v5-impl",
   "framework_version": "v3.0.0",
-  "what_was_done": "Full clean-sheet framework redesign (v5). Compared OpenClaw vs Torus. 4 research agents (web + 28 files). Design at docs/plans/framework-v5-final-design.md. Exported KG to Obsidian (529 entities).",
+  "what_was_done": "Resolved all 7 v5 open questions. Compared Claude Code Dream/auto-mode features. Audited design doc vs transcript. Created /home/crab/projects/framework-v5/ project. Wrote Phase 1 plan (20 TDD tasks) + Phase 2 interface requirements.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid",
-    "Gate 23: Bash bypass via sed/awk/tee",
-    "Claude Code 2.1.83 SSE auth issue with memory MCP server",
-    "Knowledge graph Obsidian export has noise entities (common words)"
+    "Gate 23: Go test naming too rigid"
   ],
   "next_steps": [
-    "Review framework-v5-final-design.md, resolve open questions (section 13)",
-    "Begin Phase 1: PARA structure + enforcer.py (15 gates) + session.py + tracker.py",
-    "Fix SSE auth issue for memory MCP (Claude Code 2.1.83 update)",
-    "Fix gate 2: add rm -r pattern",
-    "Fix gate 23 Go test naming"
+    "Implement Phase 1 in /home/crab/projects/framework-v5/ — read docs/phase1-foundation-impl.md",
+    "Start with Tasks 1-7 (structure + shared modules, parallelizable)",
+    "Then Tasks 8-10 (dependent shared modules), 11-13 (enforcer), 14-17 (hooks), 18-20 (config + integration)"
   ]
 }
