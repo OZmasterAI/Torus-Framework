@@ -1,27 +1,22 @@
 {
-  "session_count": 528,
+  "session_count": 530,
   "project": "torus-framework",
-  "feature": "gate-coverage-gaps",
+  "feature": "framework-v5-design",
   "framework_version": "v3.0.0",
-  "what_was_done": "Gate 23 directory-scoped blocking (replaces global), fixed broken test_gate_23.py mock helper, analyzed gate coverage gaps (rm -r, Bash bypass, Go test naming)",
+  "what_was_done": "Full clean-sheet framework redesign (v5). Compared OpenClaw vs Torus. 4 research agents (web + 28 files). Design at docs/plans/framework-v5-final-design.md. Exported KG to Obsidian (529 entities).",
   "known_issues": [
-    "rate_limits statusline field null on API key billing — only works on claude.ai subscriptions",
-    "Gate 2 gap: rm -r (without -f) not blocked — equally destructive on user-owned files",
-    "Validation bug: tasks.json missing cwd for external projects (writing-plans needs fix)",
-    "Custom TG bot tmux transport injects into active pane — unsafe when user is typing",
-    "Gate 23: Go test naming too rigid — doesn't find *_test.go in same package",
-    "Gate 23: Bash bypass — sed/awk/tee can modify files without triggering gate"
+    "rate_limits statusline field null on API key billing",
+    "Gate 2 gap: rm -r (without -f) not blocked",
+    "Gate 23: Go test naming too rigid",
+    "Gate 23: Bash bypass via sed/awk/tee",
+    "Claude Code 2.1.83 SSE auth issue with memory MCP server",
+    "Knowledge graph Obsidian export has noise entities (common words)"
   ],
   "next_steps": [
-    "Fix gate 23 Go test naming: scan for any *_test.go in same directory",
-    "Fix gate 2: add rm -r pattern to DANGEROUS_PATTERNS",
-    "Shared Bash file-mutation detector for gates 2 + 23",
-    "Fix writing-plans: set cwd in tasks.json for external projects",
-    "Fix custom TG bot: dedicated tmux pane for transport target",
-    "Memory pruning — DB at 3757 entries"
-  ],
-  "dag_branch": "dag-claude",
-  "dag_branch_label": "",
-  "dag_node_count": 33316,
-  "dag_total_branches": 105
+    "Review framework-v5-final-design.md, resolve open questions (section 13)",
+    "Begin Phase 1: PARA structure + enforcer.py (15 gates) + session.py + tracker.py",
+    "Fix SSE auth issue for memory MCP (Claude Code 2.1.83 update)",
+    "Fix gate 2: add rm -r pattern",
+    "Fix gate 23 Go test naming"
+  ]
 }
