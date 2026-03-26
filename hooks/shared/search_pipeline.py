@@ -16,6 +16,7 @@ import sys as _sys
 import re
 
 from shared.scoring_engine import ScoringContext, score_result
+from shared.search_cache import SearchCache
 
 
 def _derive_query_tags(query, results):
@@ -72,6 +73,7 @@ class SearchPipeline:
         self.adaptive = adaptive
         self.config = config or {}
         self.h = helpers or {}
+        self.cache = SearchCache(ttl_seconds=120, max_entries=200)
 
     def search(
         self,
@@ -93,6 +95,18 @@ class SearchPipeline:
         tag_index = self.tag_index
         h = self.h
         config = self.config
+
+        # Cache check
+        _cache_key = self.cache.make_key(
+            query,
+            top_k=top_k,
+            mode=mode,
+            memory_type=memory_type,
+            state_type=state_type,
+        )
+        _cached = self.cache.get(_cache_key)
+        if _cached is not None:
+            return _cached
 
         recency_weight = max(0.0, min(1.0, recency_weight))
         _validate_top_k = h.get("validate_top_k")
@@ -305,9 +319,10 @@ class SearchPipeline:
                     mem_id = entry.get("id", "")
                     if mem_id:
                         try:
-                            neighbors = self.graph.get_neighbors(mem_id)
+                            neighbors = self.graph._get_neighbors(mem_id)
                             if neighbors:
-                                connected = len(set(neighbors) & top_ids - {mem_id})
+                                neighbor_ids = {n[0] for n in neighbors}
+                                connected = len(neighbor_ids & top_ids - {mem_id})
                                 if connected > 0:
                                     _graph_scores[mem_id] = connected * 0.03
                         except Exception:
@@ -457,6 +472,7 @@ class SearchPipeline:
         if tag_expanded:
             result["tag_expanded"] = True
 
+        self.cache.put(_cache_key, result)
         return result
 
     # ── Internal helpers ──────────────────────────────────────────────────
