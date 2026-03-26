@@ -3,18 +3,21 @@
   "project": "torus-framework",
   "feature": "framework-v5-impl",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 543: Phase 3 complete (27/27 tasks, 3 waves). 8 new shared modules: polarquant, knowledge_graph, tool_profiles, self_improve, insights, shadow_git, dream_agent, vector_index. memory_server.py wired with L3 vector search + KG + embedding dedup. 371 tests (was 246), 0 failures. All Phase 4 interface requirements satisfied.",
+  "what_was_done": "Session 544: Verified Phase 3 complete via memory. Compared final design vs P4 requirements (6 modules match, 2 loose ends). Wrote Phase 4 Polish impl plan: 14 TDD tasks, 4 waves.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages"
+    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
+    "LLM-as-Judge (design §7.2) and Autonomous Mode Safety (§8.2) not assigned to any phase"
   ],
   "next_steps": [
-    "Phase 4: Integration testing + end-to-end validation of new modules",
-    "Consider memory maintenance (DB at 3932 entries)",
-    "Address known issues (Gate 2 rm -r gap, Gate 23 Go naming)"
+    "Execute Phase 4 plan: /implement or torus-loop.sh phase4-polish (14 tasks, 4 waves)",
+    "Wave 1: config_change.py + integrity_check.py (parallel)",
+    "Wave 2: statusline.py + failure_recovery.py (parallel)",
+    "Wave 3: verification_specialist.py + fuzz_gates.py (parallel)",
+    "Consider memory maintenance (DB at 3934 entries)"
   ],
-  "last_response_preview": "Session 543 completed all Phase 3 waves. 27/27 tasks done via parallel builder agents. 8 new modules, 125 new tests (246→371), 0 failures. Dream agent, vector search, KG wiring, embedding dedup all integrated into memory_server.py.",
+  "last_response_preview": "Phase 4 plan written: 14 TDD tasks in 4 waves. Modules: statusline, integrity_check, failure_recovery, config_change, verification_specialist, fuzz_gates. Plan at docs/plans/phase4-polish-impl.md.",
   "dag_branch": "dag-claude",
   "dag_branch_label": "",
   "dag_node_count": 41775,
