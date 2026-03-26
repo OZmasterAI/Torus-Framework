@@ -3,13 +3,13 @@
     "state": "CLOSED",
     "failure_count": 0,
     "success_count": 0,
-    "last_failure_time": 1774039157.924183,
+    "last_failure_time": 1774494512.2043753,
     "opened_at": null,
     "failure_threshold": 3,
     "recovery_timeout": 30,
     "success_threshold": 1,
-    "total_failures": 2,
-    "total_successes": 7,
+    "total_failures": 4,
+    "total_successes": 13,
     "total_rejections": 0
   }
 }

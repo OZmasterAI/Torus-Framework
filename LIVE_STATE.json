@@ -1,20 +1,24 @@
 {
-  "session_count": 545,
+  "session_count": 547,
   "project": "torus-framework",
   "feature": "framework-v5-impl",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 543: Phase 3 complete (27/27 tasks, 3 waves, 11 agents). 8 new modules, 125 new tests (246->371). Session 544: Wrote Phase 4 plan, merged to 9 tasks/4 waves.",
+  "what_was_done": "Session 547: Phase 4 complete (6 modules, 432 tests). §7.2 LLM-as-Judge wired (claude -p OAuth, session review, decay). Setup.sh + pushed to GitHub.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
-    "LLM-as-Judge (design §7.2) and Autonomous Mode Safety (§8.2) not assigned to any phase"
+    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)"
   ],
   "next_steps": [
-    "Execute Phase 4 plan: 9 tasks, 4 waves (docs/plans/phase4-polish-impl.md)",
-    "Wave 1: config_change.py + integrity_check.py (parallel)",
-    "Wave 2: statusline.py + failure_recovery.py (parallel)",
-    "Wave 3: verification_specialist.py + fuzz_gates.py (parallel)",
-    "Wave 4: Wire hooks, integration test, full regression (sequential)"
-  ]
+    "§8.2 Autonomous Mode Safety: new gate tracking recently_written_files, block direct execution",
+    "Harden verification_specialist.py subprocess.run(shell=True)",
+    "Test framework-v5 on second machine (setup.sh deployed)",
+    "Memory maintenance: DB at 3966 entries, run stale cleanup"
+  ],
+  "last_response_preview": "pip install --break-system-packages numpy sentence-transformers fastmcp",
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 42648,
+  "dag_total_branches": 143
 }
