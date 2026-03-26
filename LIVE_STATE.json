@@ -1,21 +1,18 @@
 {
-  "session_count": 540,
+  "session_count": 542,
   "project": "torus-framework",
   "feature": "framework-v5-impl",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 540: Switched memory MCP server from SSE to HTTP (streamable-http) transport. Updated mcp.json config and restarted server with --http flag.",
+  "what_was_done": "Session 541: Fixed 5 sideband test failures (conftest.py autouse fixture), 246/246 pass. Wrote Phase 3 impl plan (27 tasks, 8 layers). Wrote Phase 4 interface requirements. Folded P4-req back into Phase 3.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages"
   ],
   "next_steps": [
-    "Fix 5 pre-existing Phase 1 sideband test failures (gates 3,4,9,10)",
-    "Write Phase 3 implementation plan (vector sidecar + KG + tool profiles)",
-    "Consider memory maintenance (DB at 3893 entries)"
-  ],
-  "dag_branch": "dag-claude",
-  "dag_branch_label": "",
-  "dag_node_count": 41557,
-  "dag_total_branches": 136
+    "Implement Phase 3 Wave 1 (polarquant, KG, tool_profiles, self_improve, insights, shadow_git, enforcer stats, state fields)",
+    "Implement Phase 3 Wave 2 (vector_index, KG activation/clusters/recommendations, tool_profile recommendations)",
+    "Implement Phase 3 Wave 3 (vector rebuild, memory_server integration, dream_agent)",
+    "Consider memory maintenance (DB at 3901 entries)"
+  ]
 }
