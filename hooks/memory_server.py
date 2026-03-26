@@ -1041,13 +1041,24 @@ def _init_pipelines():
         print(f"[MCP] Pipeline init failed (will use inline): {e}", file=_sys.stderr)
 
 
+_config_cache = {}
+_config_cache_ts = 0.0
+_CONFIG_CACHE_TTL = 60  # seconds
+
+
 def _read_config_toggles():
-    """Read config toggles from config.json (with LIVE_STATE.json fallback)."""
+    """Read config toggles from config.json (cached, refreshes every 60s)."""
+    global _config_cache, _config_cache_ts
+    now = time.time()
+    if _config_cache and (now - _config_cache_ts) < _CONFIG_CACHE_TTL:
+        return _config_cache
     _config_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
     try:
         if os.path.isfile(_config_path):
             with open(_config_path, "r") as f:
-                return json.load(f)
+                _config_cache = json.load(f)
+                _config_cache_ts = now
+                return _config_cache
     except Exception:
         pass
     _live_state_path = os.path.join(
@@ -1056,10 +1067,12 @@ def _read_config_toggles():
     try:
         if os.path.isfile(_live_state_path):
             with open(_live_state_path, "r") as f:
-                return json.load(f)
+                _config_cache = json.load(f)
+                _config_cache_ts = now
+                return _config_cache
     except Exception:
         pass
-    return {}
+    return _config_cache or {}
 
 
 from shared.search_helpers import TagCooccurrence as _TagCooccurrence
