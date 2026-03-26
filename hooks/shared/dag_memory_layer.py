@@ -9,12 +9,13 @@ All methods are fail-open — exceptions are caught and logged to stderr.
 """
 
 import json
-import math
 import re
 import secrets
 import struct
 import sys
 import time
+
+import numpy as np
 
 _EMBEDDING_DIM = 768
 
@@ -533,7 +534,7 @@ class DAGMemoryLayer:
             print(f"[DAG_MEMORY] store_embedding failed: {e}", file=sys.stderr)
 
     def cosine_search(self, query_vec, top_k=15, source_table="knowledge"):
-        """Python cosine similarity search over stored embeddings.
+        """Numpy-vectorized cosine similarity search over stored embeddings.
 
         Returns list of (source_id, similarity_score) tuples, highest first.
         """
@@ -544,19 +545,24 @@ class DAGMemoryLayer:
             ).fetchall()
             if not rows:
                 return []
-            scored = []
-            q_mag = math.sqrt(sum(a * a for a in query_vec))
+            q = np.array(query_vec, dtype=np.float32)
+            q_mag = np.linalg.norm(q)
             if q_mag == 0:
                 return []
+            ids = []
+            vecs = []
             for source_id, blob in rows:
                 n_floats = len(blob) // 4
-                vec = struct.unpack(f"{n_floats}f", blob)
-                dot = sum(a * b for a, b in zip(query_vec, vec))
-                v_mag = math.sqrt(sum(b * b for b in vec))
-                sim = dot / (q_mag * v_mag) if v_mag else 0
-                scored.append((source_id, sim))
-            scored.sort(key=lambda x: -x[1])
-            return scored[:top_k]
+                vecs.append(np.frombuffer(blob, dtype=np.float32, count=n_floats))
+                ids.append(source_id)
+            matrix = np.vstack(vecs)
+            dots = matrix @ q
+            norms = np.linalg.norm(matrix, axis=1)
+            norms[norms == 0] = 1.0
+            sims = dots / (q_mag * norms)
+            top_indices = np.argpartition(-sims, min(top_k, len(sims) - 1))[:top_k]
+            top_indices = top_indices[np.argsort(-sims[top_indices])]
+            return [(ids[i], float(sims[i])) for i in top_indices]
         except Exception as e:
             print(f"[DAG_MEMORY] cosine_search failed: {e}", file=sys.stderr)
             return []
