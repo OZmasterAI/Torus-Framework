@@ -1,17 +1,24 @@
 {
-  "session_count": 537,
+  "session_count": 539,
   "project": "torus-framework",
   "feature": "framework-v5-impl",
   "framework_version": "v3.0.0",
-  "what_was_done": "Resolved all 7 v5 open questions. Compared Claude Code Dream/auto-mode features. Audited design doc vs transcript. Created /home/crab/projects/framework-v5/ project. Wrote Phase 1 plan (20 TDD tasks) + Phase 2 interface requirements.",
+  "what_was_done": "Audited Phase 1 fix session (gate 6 dead code, gate 4 redundant — fixed). Built Phase 2 Memory MCP: 25 TDD tasks, 9 shared modules, memory_server.py with 7 MCP tools, 241 tests. Wrote phase3-interface-requirements.md. Added TurboQuant to design doc.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid"
+    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
+    "5 pre-existing Phase 1 enforcer sideband test failures (gates 3,4,9,10 in test_enforcer_t2.py)"
   ],
   "next_steps": [
-    "Implement Phase 1 in /home/crab/projects/framework-v5/ — read docs/phase1-foundation-impl.md",
-    "Start with Tasks 1-7 (structure + shared modules, parallelizable)",
-    "Then Tasks 8-10 (dependent shared modules), 11-13 (enforcer), 14-17 (hooks), 18-20 (config + integration)"
-  ]
+    "Fix 5 pre-existing Phase 1 sideband test failures (gates 3,4,9,10 read sideband files that don't exist in test)",
+    "Write Phase 3 implementation plan (vector sidecar + KG + tool profiles + TurboQuant PolarQuant)",
+    "Consider running memory maintenance — DB at 3893 entries",
+    "Defer Telegram/TTS carry-forward hooks — not Phase 2"
+  ],
+  "last_response_preview": "Phase 2 committed (4273dec). 241 tests, 31 files, +3841 lines.",
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 39503,
+  "dag_total_branches": 130
 }
