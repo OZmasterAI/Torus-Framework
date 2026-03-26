@@ -960,14 +960,18 @@ class SearchPipeline:
                     _activated_names = [
                         a["name"] for a in _activated[:5] if a["activation"] > 0.1
                     ]
+                    _kw_search = h.get("lance_keyword_search")
                     for _aname in _activated_names:
                         try:
-                            _graph_results = collection.query(
-                                query_texts=[_aname],
-                                n_results=3,
-                                include=["metadatas", "distances"],
-                            )
-                            _graph_summaries = format_summaries(_graph_results)
+                            if _kw_search:
+                                _graph_summaries = _kw_search(_aname, top_k=3)
+                            else:
+                                _graph_results = collection.query(
+                                    query_texts=[_aname],
+                                    n_results=3,
+                                    include=["metadatas", "distances"],
+                                )
+                                _graph_summaries = format_summaries(_graph_results)
                             for gs in _graph_summaries:
                                 gid = gs.get("id", "")
                                 if gid and gid not in _seen_ids:
