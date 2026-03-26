@@ -1548,7 +1548,11 @@ def _search_observations_internal(query, top_k=20, recency_weight=0):
             return {"results": [], "total_observations": 0}
 
         actual_k = min(top_k, obs_count)
-        results = observations.query(query_texts=[query], n_results=actual_k)
+        results = observations.query(
+            query_texts=[query] if not query_vec else None,
+            query_vector=query_vec,
+            n_results=actual_k,
+        )
         formatted = format_summaries(results)
 
         # Label all results as coming from observations

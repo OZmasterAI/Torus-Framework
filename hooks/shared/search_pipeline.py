@@ -345,7 +345,9 @@ class SearchPipeline:
         formatted = formatted[:top_k]
 
         # ── Step 8: Post-retrieval context ──
-        _action_pattern_count = self._action_patterns(formatted, query, h)
+        _action_pattern_count = self._action_patterns(
+            formatted, query, h, _query_vec=_query_vec
+        )
 
         # "all" mode: merge observations
         if mode == "all":
@@ -354,7 +356,9 @@ class SearchPipeline:
             formatted = formatted[:knowledge_budget]
             _search_obs = h.get("search_observations_internal")
             if _search_obs:
-                obs_results = _search_obs(query, obs_budget, recency_weight=0)
+                obs_results = _search_obs(
+                    query, obs_budget, recency_weight=0, query_vec=_query_vec
+                )
                 obs_formatted = obs_results.get("results", [])
                 seen_ids = {r.get("id") for r in formatted if r.get("id")}
                 for obs in obs_formatted:
@@ -368,7 +372,9 @@ class SearchPipeline:
         if len(formatted) == 0 and mode not in ("tags", "observations", "all"):
             _search_obs = h.get("search_observations_internal")
             if _search_obs:
-                obs_results = _search_obs(query, min(top_k, 10), recency_weight=0)
+                obs_results = _search_obs(
+                    query, min(top_k, 10), recency_weight=0, query_vec=_query_vec
+                )
                 obs_formatted = obs_results.get("results", [])
                 if obs_formatted:
                     for obs in obs_formatted:
@@ -700,7 +706,7 @@ class SearchPipeline:
             pass
         return count
 
-    def _action_patterns(self, formatted, query, h):
+    def _action_patterns(self, formatted, query, h, _query_vec=None):
         """Action pattern lookup from fix_outcomes. Returns count."""
         count = 0
         try:
@@ -714,7 +720,8 @@ class SearchPipeline:
                 _fo_count = fix_outcomes.count()
                 if _fo_count > 0:
                     _fo_results = fix_outcomes.query(
-                        query_texts=[query],
+                        query_texts=[query] if not _query_vec else None,
+                        query_vector=_query_vec,
                         n_results=min(5, _fo_count),
                         include=["metadatas", "documents"],
                     )
