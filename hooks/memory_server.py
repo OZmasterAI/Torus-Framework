@@ -90,22 +90,34 @@ def _touch_memory_timestamp():
     os.replace(tmp, MEMORY_TIMESTAMP_FILE)
 
 
-# SSE transport config — used when launched with --sse flag
-_SSE_HOST = os.environ.get("MEMORY_SSE_HOST", "127.0.0.1")
-_SSE_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8741"))
+# Network transport config — used when launched with --sse or --http flag
+_NET_HOST = os.environ.get("MEMORY_SSE_HOST", "127.0.0.1")
+_NET_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8741"))
 
 # Detect transport mode from CLI args
 import argparse as _argparse
 
 _parser = _argparse.ArgumentParser(add_help=False)
-_parser.add_argument("--sse", action="store_true", default=False)
-_parser.add_argument("--port", type=int, default=_SSE_PORT)
+_parser.add_argument(
+    "--sse",
+    action="store_true",
+    default=False,
+    help="Use SSE transport (deprecated in Claude Code 2.1.83+)",
+)
+_parser.add_argument(
+    "--http",
+    action="store_true",
+    default=False,
+    help="Use streamable-http transport (recommended)",
+)
+_parser.add_argument("--port", type=int, default=_NET_PORT)
 _parser.add_argument("--bootstrap-clusters", action="store_true", default=False)
 _args, _ = _parser.parse_known_args()
 
-# Initialize MCP server (with host/port for SSE mode)
-if _args.sse:
-    mcp = FastMCP("memory", host=_SSE_HOST, port=_args.port)
+# Initialize MCP server (with host/port for network modes)
+_network_mode = _args.sse or _args.http
+if _network_mode:
+    mcp = FastMCP("memory", host=_NET_HOST, port=_args.port)
 else:
     mcp = FastMCP("memory")
 
@@ -211,6 +223,7 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("context", pa.string()),
         pa.field("tags", pa.string()),
         pa.field("timestamp", pa.string()),
@@ -236,6 +249,7 @@ _FIX_OUTCOMES_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("error_hash", pa.string()),
         pa.field("strategy_id", pa.string()),
         pa.field("chain_id", pa.string()),
@@ -255,6 +269,7 @@ _OBSERVATIONS_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("session_id", pa.string()),
         pa.field("tool_name", pa.string()),
         pa.field("timestamp", pa.string()),
@@ -270,6 +285,7 @@ _WEB_PAGES_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("url", pa.string()),
         pa.field("title", pa.string()),
         pa.field("chunk_index", pa.string()),
@@ -285,6 +301,7 @@ _QUARANTINE_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
+        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("quarantine_reason", pa.string()),
         pa.field("quarantine_pair", pa.string()),
         pa.field("quarantined_at", pa.string()),
@@ -399,7 +416,14 @@ def _init_lancedb():
                 existing_cols = set(tbl.schema.names)
                 for field in schema:
                     if field.name not in existing_cols:
-                        if pa.types.is_float64(field.type):
+                        if pa.types.is_list(field.type):
+                            # Vector columns need backfill, not a default
+                            print(
+                                f"[MCP] {name}: new vector column {field.name} needs backfill (run migrate_vector_256.py)",
+                                file=_sys.stderr,
+                            )
+                            continue
+                        elif pa.types.is_float64(field.type):
                             default = "0.0"
                         elif pa.types.is_int32(field.type):
                             default = "0"
@@ -1535,7 +1559,7 @@ def _compact_observations():
         pass  # Compaction failure must not crash the server
 
 
-def _search_observations_internal(query, top_k=20, recency_weight=0):
+def _search_observations_internal(query, top_k=20, recency_weight=0, query_vec=None):
     """Internal helper to search observations collection.
 
     Used by search_knowledge mode="observations", mode="all", and auto-fallback.
@@ -4446,9 +4470,16 @@ if __name__ == "__main__":
     if _args.bootstrap_clusters:
         _bootstrap_clusters()
         _sys.exit(0)
-    _mode = "sse" if _args.sse else "stdio"
-    if _args.sse:
-        _sys.stderr.write(f"[MCP] Starting SSE transport on {_SSE_HOST}:{_args.port}\n")
+    if _args.http:
+        _mode = "streamable-http"
+    elif _args.sse:
+        _mode = "sse"
+    else:
+        _mode = "stdio"
+    if _network_mode:
+        _sys.stderr.write(
+            f"[MCP] Starting {_mode} transport on {_NET_HOST}:{_args.port}\n"
+        )
         _start_sse_watchdog()
     with open(_dbg_log, "a") as _f:
         _f.write(

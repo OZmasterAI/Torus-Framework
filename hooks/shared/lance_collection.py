@@ -56,7 +56,22 @@ class LanceCollection:
         self._embed_texts = embed_texts
         self._embedding_dim = embedding_dim
         # Build set of known column names for metadata handling
-        self._meta_cols = {f.name for f in schema} - {"id", "text", "vector"}
+        self._has_vector_256 = "vector_256" in {f.name for f in schema}
+        if self._has_vector_256:
+            v256_field = schema.field("vector_256")
+            self._vector_256_dim = (
+                v256_field.type.list_size
+                if hasattr(v256_field.type, "list_size")
+                else 256
+            )
+        else:
+            self._vector_256_dim = 256
+        self._meta_cols = {f.name for f in schema} - {
+            "id",
+            "text",
+            "vector",
+            "vector_256",
+        }
 
     def count(self):
         """Return number of rows in the table."""
@@ -110,6 +125,69 @@ class LanceCollection:
             result["embeddings"] = [[r.get("vector", []) for r in rows]]
 
         return result
+
+    def query_approximate(
+        self, query_vector_256, n_candidates=50, where=None, nprobes=10
+    ):
+        """Stage 1: Fast approximate search on vector_256 column.
+
+        Returns raw row dicts with full metadata + 768-dim vector for Stage 2
+        reranking. Does NOT update retrieval_count.
+
+        Falls back to flat scan on vector_256 (no index) if IVF not built yet.
+        """
+        if not self._has_vector_256:
+            # Fallback: use full vector query, return as flat rows
+            result = self.query(
+                query_vector=query_vector_256
+                + [0.0] * (self._embedding_dim - len(query_vector_256)),
+                n_results=n_candidates,
+                where=where,
+                include=["metadatas", "distances", "embeddings"],
+            )
+            rows = []
+            ids = result.get("ids", [[]])[0]
+            metas = result.get("metadatas", [[]])[0]
+            dists = result.get("distances", [[]])[0]
+            vecs = result.get("embeddings", [[]])[0]
+            for i, rid in enumerate(ids):
+                row = {"id": rid, "_distance": dists[i] if i < len(dists) else 1.0}
+                if i < len(metas):
+                    row.update(metas[i])
+                if i < len(vecs):
+                    row["vector"] = vecs[i]
+                rows.append(row)
+            return rows
+
+        try:
+            q = (
+                self._table.search(query_vector_256, vector_column_name="vector_256")
+                .distance_type("cosine")
+                .nprobes(nprobes)
+                .limit(n_candidates)
+            )
+            if where:
+                sql_where = self._translate_where(where)
+                if sql_where:
+                    q = q.where(sql_where, prefilter=True)
+            return q.to_list()
+        except Exception:
+            # Index not built yet — fall back to flat scan on vector_256
+            try:
+                q = (
+                    self._table.search(
+                        query_vector_256, vector_column_name="vector_256"
+                    )
+                    .distance_type("cosine")
+                    .limit(n_candidates)
+                )
+                if where:
+                    sql_where = self._translate_where(where)
+                    if sql_where:
+                        q = q.where(sql_where, prefilter=True)
+                return q.to_list()
+            except Exception:
+                return []
 
     @staticmethod
     def _sanitize_id(i):
@@ -281,6 +359,13 @@ class LanceCollection:
             if vector and len(vector) == self._embedding_dim
             else [0.0] * self._embedding_dim,
         }
+        # Auto-derive vector_256 via Matryoshka prefix truncation
+        if self._has_vector_256:
+            full_vec = record["vector"]
+            dim = self._vector_256_dim
+            record["vector_256"] = (
+                full_vec[:dim] if len(full_vec) >= dim else [0.0] * dim
+            )
         # Fill metadata columns from schema
         for col_name in self._meta_cols:
             field = self._schema.field(col_name)

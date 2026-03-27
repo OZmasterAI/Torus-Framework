@@ -13,6 +13,7 @@ Pure function — no I/O, no side effects, fully unit-testable.
 
 Public API:
     from shared.scoring_engine import ScoringContext, score_result
+    from shared.scoring_engine import rerank_candidates, _cosine_similarity
 """
 
 import math
@@ -148,3 +149,56 @@ def score_result(
     ) * project_mult
 
     return max(0.0, min(1.0, composite))
+
+
+def _cosine_similarity(a, b):
+    """Cosine similarity between two vectors. Returns 0.0-1.0."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return max(0.0, min(1.0, dot / (norm_a * norm_b)))
+
+
+def rerank_candidates(
+    candidates: list,
+    query_vec_768: list,
+    scoring_ctx: ScoringContext,
+    top_k: int,
+) -> list:
+    """Rerank Stage 1 candidates using full 768-dim cosine + ScoringEngine.
+
+    Identical scoring to the main pipeline -- only the input set differs.
+    Converts raw row dicts to format_summaries-compatible dicts.
+    """
+    scored = []
+    for row in candidates:
+        vec = row.get("vector")
+        if not vec or len(vec) < 3:
+            continue
+        base_sim = _cosine_similarity(query_vec_768, vec)
+        entry = {
+            "id": row.get("id", ""),
+            "preview": row.get("preview", "") or (row.get("text", "") or "")[:120],
+            "tags": row.get("tags", ""),
+            "timestamp": row.get("timestamp", ""),
+            "tier": row.get("tier", 2),
+            "retrieval_count": int(row.get("retrieval_count") or 0),
+        }
+        for key in (
+            "primary_source",
+            "source_session_id",
+            "source_observation_ids",
+            "cluster_id",
+            "memory_type",
+            "state_type",
+        ):
+            if row.get(key):
+                entry[key] = row[key]
+
+        entry["relevance"] = score_result(entry, base_sim, scoring_ctx)
+        scored.append(entry)
+
+    scored.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+    return scored[:top_k]

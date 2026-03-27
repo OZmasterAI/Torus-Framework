@@ -16,7 +16,7 @@ import sys as _sys
 import re
 
 from shared.context_compressor import compress_results
-from shared.scoring_engine import ScoringContext, score_result
+from shared.scoring_engine import ScoringContext, score_result, rerank_candidates
 from shared.search_cache import SearchCache
 
 
@@ -218,15 +218,21 @@ class SearchPipeline:
                 else lance_summaries
             )
         else:
-            # Semantic (default)
-            results = collection.query(
-                query_texts=[query] if not _query_vec else None,
-                query_vector=_query_vec,
-                n_results=actual_k,
-                include=["metadatas", "distances"],
-                where=_where,
-            )
-            formatted = format_summaries(results)
+            # Semantic (default) — two-stage when enabled
+            _two_stage = config.get("two_stage_search", False)
+            if _two_stage and _query_vec is not None:
+                formatted = self._two_stage_search(
+                    query, _query_vec, actual_k, _where, format_summaries, h
+                )
+            else:
+                results = collection.query(
+                    query_texts=[query] if not _query_vec else None,
+                    query_vector=_query_vec,
+                    n_results=actual_k,
+                    include=["metadatas", "distances"],
+                    where=_where,
+                )
+                formatted = format_summaries(results)
 
         # ── Step 2b: Merge SQLite DAG memory layer results ──
         try:
@@ -487,6 +493,82 @@ class SearchPipeline:
                 fn()
             except Exception:
                 pass
+
+    def _two_stage_search(
+        self, query, query_vec_768, top_k, where, format_summaries, h
+    ):
+        """Two-stage: approximate retrieval on vector_256 + full rerank."""
+        MIN_STAGE1 = 5
+        STAGE1_THRESHOLD = 0.3
+        n_candidates = max(top_k * 3, 50)
+
+        vec_256 = query_vec_768[:256]
+        candidates = self.collection.query_approximate(
+            query_vector_256=vec_256, n_candidates=n_candidates, where=where
+        )
+
+        # Cascade check: enough quality candidates?
+        quality = [
+            r for r in candidates if (1 - r.get("_distance", 1.0)) >= STAGE1_THRESHOLD
+        ]
+        if len(quality) < min(top_k, MIN_STAGE1):
+            print(
+                f"[Search] Two-stage cascade: {len(quality)} quality < "
+                f"{min(top_k, MIN_STAGE1)}, falling back to flat scan",
+                file=_sys.stderr,
+            )
+            results = self.collection.query(
+                query_vector=query_vec_768, n_results=top_k * 2, where=where
+            )
+            return format_summaries(results)
+
+        # Stage 2: rerank with full scoring
+        _ltp_factors = {}
+        if self.ltp:
+            for row in candidates:
+                mid = row.get("id", "")
+                if mid:
+                    try:
+                        _ltp_factors[mid] = self.ltp.get_decay_factor(mid)
+                    except Exception:
+                        pass
+
+        _graph_scores = {}
+        if self.graph:
+            top_ids = {r.get("id") for r in candidates[:5] if r.get("id")}
+            for row in candidates:
+                mid = row.get("id", "")
+                if mid:
+                    try:
+                        neighbors = self.graph._get_neighbors(mid)
+                        if neighbors:
+                            connected = len(set(neighbors) & top_ids - {mid})
+                            if connected > 0:
+                                _graph_scores[mid] = connected * 0.03
+                    except Exception:
+                        pass
+
+        _ltp_blend = 0.3
+        if self.adaptive:
+            _ltp_blend = self.adaptive.get_weights().get("ltp_blend", 0.3)
+
+        _server_project = h.get("server_project", "") or ""
+        _server_subproject = h.get("server_subproject", "") or ""
+        _query_tags = _derive_query_tags(
+            query, [{"tags": r.get("tags", "")} for r in candidates]
+        )
+
+        ctx = ScoringContext(
+            ltp_factors=_ltp_factors,
+            graph_scores=_graph_scores,
+            query_tags=_query_tags,
+            project=_server_project,
+            server_subproject=_server_subproject,
+            query=query,
+            ltp_blend=_ltp_blend,
+        )
+
+        return rerank_candidates(candidates, query_vec_768, ctx, top_k=top_k * 2)
 
     def _terminal_db_path(self):
         return os.path.join(
