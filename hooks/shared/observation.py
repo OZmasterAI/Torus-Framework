@@ -186,6 +186,7 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
     elif tool_name == "Edit":
         file_path = tool_input.get("file_path", "")
         old_str = tool_input.get("old_string", "")
+        new_str = tool_input.get("new_string", "")
         # Approximate line range from old_string length
         lines_hint = old_str.count('\n') + 1 if old_str else 0
         document = f"Edit: {file_path} (~{lines_hint} lines changed)"
@@ -193,6 +194,11 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
             "file_path": file_path,
             "file_extension": _extract_file_extension(file_path),
         }
+        # Truncated diffs for fix memory enrichment
+        if old_str:
+            context["diff_old"] = scrub(old_str[:200])
+        if new_str:
+            context["diff_new"] = scrub(new_str[:200])
 
     elif tool_name == "Write":
         file_path = tool_input.get("file_path", "")

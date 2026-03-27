@@ -175,6 +175,36 @@ test(
     _obs["document"],
 )
 
+# --- Rich fix memory: Edit observation diffs ---
+_obs_diff = compress_observation(
+    "Edit",
+    {"file_path": "/tmp/fix.py", "old_string": "broken code here", "new_string": "fixed code here"},
+    None,
+    "test-sess",
+)
+import json as _json_obs
+_obs_diff_ctx = _json_obs.loads(_obs_diff["metadata"]["context"])
+test(
+    "Observation: Edit diff_old present",
+    "diff_old" in _obs_diff_ctx and "broken code" in _obs_diff_ctx["diff_old"],
+    f"diff_old={_obs_diff_ctx.get('diff_old', 'MISSING')}",
+)
+test(
+    "Observation: Edit diff_new present",
+    "diff_new" in _obs_diff_ctx and "fixed code" in _obs_diff_ctx["diff_new"],
+    f"diff_new={_obs_diff_ctx.get('diff_new', 'MISSING')}",
+)
+# No diffs when old_string/new_string are empty
+_obs_no_diff = compress_observation(
+    "Edit", {"file_path": "/tmp/x.py"}, None, "test-sess"
+)
+_obs_no_diff_ctx = _json_obs.loads(_obs_no_diff["metadata"]["context"])
+test(
+    "Observation: Edit no diff when empty",
+    "diff_old" not in _obs_no_diff_ctx and "diff_new" not in _obs_no_diff_ctx,
+    f"ctx keys={list(_obs_no_diff_ctx.keys())}",
+)
+
 _obs = compress_observation(
     "Write", {"file_path": "/tmp/new.py", "content": "x" * 100}, None, "test-sess"
 )

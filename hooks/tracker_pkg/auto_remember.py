@@ -132,3 +132,71 @@ def _cap_queue_file():
         os.replace(CAPTURE_QUEUE + ".tmp", CAPTURE_QUEUE)
     except Exception as e:
         _log_debug(f"cap_queue_file failed: {e}")
+
+
+def _build_fix_context(session_id, max_lines=50):
+    """Read recent observations from capture queue and build a rich fix summary.
+
+    Scans the last max_lines of the capture queue for the current session,
+    extracts the error→edit→test-pass sequence, and returns a concise summary
+    string suitable for remember_this content.
+
+    Returns empty string on any failure (fail-open).
+    """
+    try:
+        if not os.path.exists(CAPTURE_QUEUE):
+            return ""
+
+        with open(CAPTURE_QUEUE, "r") as f:
+            lines = f.readlines()
+
+        # Scan last N lines, filter to this session
+        session_obs = []
+        for line in lines[-max_lines:]:
+            try:
+                obs = json.loads(line)
+                meta = obs.get("metadata", {})
+                if meta.get("session_id") == session_id:
+                    session_obs.append(obs)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        if not session_obs:
+            return ""
+
+        # Extract the sequence: errors, edits, and the passing test
+        errors = []
+        edits = []
+        for obs in session_obs:
+            meta = obs.get("metadata", {})
+            doc = obs.get("document", "")
+            if meta.get("has_error") == "true":
+                errors.append(doc[:150])
+            elif meta.get("tool_name") in ("Edit", "Write"):
+                ctx = {}
+                try:
+                    ctx = json.loads(meta.get("context", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                fp = ctx.get("file_path", "")
+                diff_old = ctx.get("diff_old", "")
+                diff_new = ctx.get("diff_new", "")
+                if diff_old or diff_new:
+                    edits.append(
+                        f"{os.path.basename(fp)}: '{diff_old[:80]}' → '{diff_new[:80]}'"
+                    )
+                elif fp:
+                    edits.append(os.path.basename(fp))
+
+        if not errors and not edits:
+            return ""
+
+        parts = []
+        if errors:
+            parts.append(f"Error: {errors[-1]}")
+        if edits:
+            parts.append(f"Changes: {'; '.join(edits[-5:])}")
+
+        return " | ".join(parts)
+    except Exception:
+        return ""  # Fail-open

@@ -25,7 +25,7 @@ from tracker_pkg.verification import (
     _resolve_gate_block_outcomes,
     BROAD_TEST_COMMANDS,
 )
-from tracker_pkg.auto_remember import _auto_remember_event
+from tracker_pkg.auto_remember import _auto_remember_event, _build_fix_context
 
 # Cross-agent file coordination — release locks after Edit/Write (fail-open)
 try:
@@ -486,8 +486,12 @@ def _handle_bash(tool_input, tool_response, state):
                 edited = list(
                     state.get("files_edited", state.get("pending_verification", []))
                 )[-5:]
+                fix_ctx = _build_fix_context(state.get("_session_id", "main"))
+                fix_content = f"Error fixed: {pattern}. Files edited: {', '.join(edited)}"
+                if fix_ctx:
+                    fix_content = f"{fix_content}. {fix_ctx}"
                 _auto_remember_event(
-                    f"Error fixed: {pattern}. Files edited: {', '.join(edited)}",
+                    fix_content,
                     context=f"Test passed after fixing error: {command[:100]}",
                     tags="type:auto-captured,type:fix,area:framework",
                     critical=True,

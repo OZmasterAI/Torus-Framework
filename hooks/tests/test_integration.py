@@ -2446,6 +2446,60 @@ if os.path.exists(_test_queue):
 _tracker_mod.AUTO_REMEMBER_QUEUE = _orig_queue
 _ar_mod.AUTO_REMEMBER_QUEUE = _orig_queue
 
+# --- Rich fix memory: _build_fix_context integration tests ---
+from tracker_pkg.auto_remember import _build_fix_context
+
+# Test: _build_fix_context with error+edit sequence
+_fix_ctx_queue = os.path.join(_tempfile.gettempdir(), ".test_fix_ctx_queue.jsonl")
+_orig_capture_queue = _ar_mod.CAPTURE_QUEUE
+_ar_mod.CAPTURE_QUEUE = _fix_ctx_queue
+with open(_fix_ctx_queue, "w") as _fq:
+    _fq.write(json.dumps({
+        "document": "Bash: pytest -> EXIT 1 | TypeError | bad arg",
+        "metadata": {"session_id": "fix-test", "has_error": "true", "tool_name": "Bash", "context": "{}"}
+    }) + "\n")
+    _fq.write(json.dumps({
+        "document": "Edit: /tmp/app.py (~3 lines changed)",
+        "metadata": {
+            "session_id": "fix-test", "has_error": "false", "tool_name": "Edit",
+            "context": json.dumps({"file_path": "/tmp/app.py", "diff_old": "x = int(y)", "diff_new": "x = str(y)"})
+        }
+    }) + "\n")
+
+_fix_result = _build_fix_context("fix-test")
+test(
+    "Fix context: includes error pattern",
+    "TypeError" in _fix_result,
+    f"result={_fix_result[:100]}",
+)
+test(
+    "Fix context: includes diff",
+    "int(y)" in _fix_result and "str(y)" in _fix_result,
+    f"result={_fix_result[:100]}",
+)
+
+# Test: _build_fix_context with wrong session returns empty
+_fix_empty = _build_fix_context("wrong-session")
+test(
+    "Fix context: empty for wrong session",
+    _fix_empty == "",
+    f"got: {repr(_fix_empty)}",
+)
+
+# Test: _build_fix_context with missing queue returns empty
+_ar_mod.CAPTURE_QUEUE = "/tmp/nonexistent_queue_12345.jsonl"
+_fix_missing = _build_fix_context("fix-test")
+test(
+    "Fix context: empty for missing queue",
+    _fix_missing == "",
+    f"got: {repr(_fix_missing)}",
+)
+
+# Cleanup
+_ar_mod.CAPTURE_QUEUE = _orig_capture_queue
+if os.path.exists(_fix_ctx_queue):
+    os.unlink(_fix_ctx_queue)
+
 # Test 8-10: Lever 2 scoped — promotion criteria (unit tests on promotion logic)
 # These test the criteria logic in memory_server._compact_observations
 # We test the data structures and filtering rather than full LanceDB integration
