@@ -795,6 +795,85 @@ def write_vault_session_note(
             pass
 
 
+def write_vault_daily_note(
+    state, live_state, project_name=None, feature=None, project_dir=None
+):
+    """Append a session entry to today's daily note at ~/vault/daily/.
+
+    Creates the daily note from template if it doesn't exist.
+    Fail-open: never blocks session end.
+    """
+    vault_daily = os.path.join(os.path.expanduser("~"), "vault", "daily")
+    if not os.path.isdir(vault_daily):
+        return
+
+    try:
+        date_str = time.strftime("%Y-%m-%d")
+        filepath = os.path.join(vault_daily, f"{date_str}.md")
+
+        session_num = live_state.get("session_count", 0)
+        project = project_name or live_state.get("project", "unknown")
+        if project_dir:
+            try:
+                proj_state = load_project_state(project_dir)
+                session_num = proj_state.get("session_count", session_num)
+            except Exception:
+                pass
+
+        what_was_done = live_state.get("what_was_done", "No summary.")
+        duration = _format_duration(state.get("session_start"))
+        total_tools = state.get("total_tool_calls", state.get("tool_call_count", 0))
+        feat = feature or live_state.get("feature", "")
+
+        # Build session entry
+        entry_lines = [
+            "",
+            f"### Session {session_num} — {project}",
+        ]
+        if feat:
+            entry_lines.append(f"**Feature:** {feat}")
+        entry_lines.append(f"**Duration:** {duration} · **Tools:** {total_tools}")
+        entry_lines.append(f"**Summary:** {what_was_done}")
+        entry_lines.append(f"**Link:** [[{date_str}-session-{session_num:03d}]]")
+        entry_lines.append("")
+        entry = "\n".join(entry_lines)
+
+        if not os.path.exists(filepath):
+            # Create from template
+            template = [
+                "---",
+                "type: daily",
+                "tags: [daily]",
+                f"created: {date_str}",
+                "status: active",
+                "---",
+                "",
+                f"# {date_str}",
+                "",
+                "## Plan",
+                "",
+                "",
+                "## Notes",
+                "",
+                "",
+                "## Sessions",
+                "",
+            ]
+            content = "\n".join(template) + entry
+            tmp_path = filepath + ".tmp"
+            with open(tmp_path, "w") as f:
+                f.write(content)
+            os.replace(tmp_path, filepath)
+            print(f"[SESSION_END:daily] Created {date_str}.md", file=sys.stderr)
+        else:
+            # Append to existing
+            with open(filepath, "a") as f:
+                f.write(entry)
+            print(f"[SESSION_END:daily] Appended to {date_str}.md", file=sys.stderr)
+    except Exception as e:
+        print(f"[SESSION_END:daily] Failed (non-fatal): {e}", file=sys.stderr)
+
+
 def _run_background(data_path):
     """Background mode: handles all slow operations with no time pressure."""
     try:
@@ -836,6 +915,24 @@ def _run_background(data_path):
         )
     except Exception as e:
         print(f"[SESSION_END:bg] Vault note error: {e}", file=sys.stderr)
+
+    # Append to daily note (fail-open)
+    try:
+        try:
+            live_state
+        except NameError:
+            live_state = _load_live_state()
+        if not live_state:
+            live_state = _load_live_state()
+        write_vault_daily_note(
+            state,
+            live_state,
+            project_name=project_name,
+            feature=live_state.get("feature"),
+            project_dir=project_dir,
+        )
+    except Exception as e:
+        print(f"[SESSION_END:bg] Daily note error: {e}", file=sys.stderr)
 
     try:
         flush_capture_queue()

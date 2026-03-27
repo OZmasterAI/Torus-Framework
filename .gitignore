@@ -164,3 +164,9 @@ ide/*.lock
 
 # Session state files
 sessions/*.json
+
+# Claude Code usage analytics (auto-generated, contains session metadata)
+usage-data/
+
+# Backup files
+hooks/memory_server.py.bak
