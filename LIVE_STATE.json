@@ -1,26 +1,21 @@
 {
-  "session_count": 552,
+  "session_count": 554,
   "project": "torus-framework",
   "feature": "framework-v5-impl",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 551: Restarted memory server with --http streamable transport (new Claude Code standard). Diagnosed MCP connection issue — server running but mcpServers empty in settings.json. Gate 4 bootstrap deadlock confirmed working as intended. User to add mcpServers config manually before next session.",
+  "what_was_done": "Session 553: Memory server defaults to streamable-http transport, boot auto-starts with duplicate check. Daily note writer groups sessions by project with stats footer. Gitignored usage-data/. Investigated auto-commit silent hold (require_tests + no test file).",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
-    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)"
+    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
+    "Auto-commit silently holds when auto_commit_require_tests=True and no matching test file exists"
   ],
   "next_steps": [
-    "Add mcpServers config to settings.json (memory: http://127.0.0.1:8741/mcp) and verify MCP tools connect",
-    "Make memory server auto-start with --http streamable transport instead of --sse",
+    "Fix auto-commit silent hold: exempt infra files or create test stubs",
     "§8.2 Autonomous Mode Safety: new gate tracking recently_written_files, block direct execution",
     "Harden verification_specialist.py subprocess.run(shell=True)",
     "Test framework-v5 on second machine (setup.sh deployed)",
-    "Memory maintenance: DB at 3966 entries, run stale cleanup"
-  ],
-  "last_response_preview": "Session 551: Memory server restarted with --http on port 8741. mcpServers config needs adding to settings.json (Gate 4 bootstrap deadlock prevented self-edit). Memory wrap-up skipped — server reconnection pending.",
-  "dag_branch": "dag-claude",
-  "dag_branch_label": "",
-  "dag_node_count": 51340,
-  "dag_total_branches": 200
+    "Memory maintenance: DB at 4015 entries, run stale cleanup"
+  ]
 }
