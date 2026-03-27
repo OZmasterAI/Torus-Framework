@@ -1,6 +1,6 @@
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "permissions": {
     "allow": [
@@ -278,7 +278,7 @@
     "hookify@claude-plugins-official": false,
     "skill-creator@claude-plugins-official": false,
     "code-simplifier@claude-plugins-official": false,
-    "telegram@claude-plugins-official": true
+    "telegram@claude-plugins-official": false
   },
   "voiceEnabled": true,
   "autoMemoryEnabled": false,

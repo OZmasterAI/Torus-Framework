@@ -90,7 +90,7 @@ def _touch_memory_timestamp():
     os.replace(tmp, MEMORY_TIMESTAMP_FILE)
 
 
-# Network transport config — used when launched with --sse or --http flag
+# Network transport config — streamable-http is default, use --stdio or --sse to override
 _NET_HOST = os.environ.get("MEMORY_SSE_HOST", "127.0.0.1")
 _NET_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8741"))
 
@@ -107,12 +107,22 @@ _parser.add_argument(
 _parser.add_argument(
     "--http",
     action="store_true",
+    default=True,
+    help="Use streamable-http transport (default, recommended)",
+)
+_parser.add_argument(
+    "--stdio",
+    action="store_true",
     default=False,
-    help="Use streamable-http transport (recommended)",
+    help="Use stdio transport (for subprocess/pipe mode)",
 )
 _parser.add_argument("--port", type=int, default=_NET_PORT)
 _parser.add_argument("--bootstrap-clusters", action="store_true", default=False)
 _args, _ = _parser.parse_known_args()
+
+# --stdio explicitly overrides --http default
+if _args.stdio:
+    _args.http = False
 
 # Initialize MCP server (with host/port for network modes)
 _network_mode = _args.sse or _args.http
@@ -4470,12 +4480,12 @@ if __name__ == "__main__":
     if _args.bootstrap_clusters:
         _bootstrap_clusters()
         _sys.exit(0)
-    if _args.http:
-        _mode = "streamable-http"
+    if _args.stdio:
+        _mode = "stdio"
     elif _args.sse:
         _mode = "sse"
     else:
-        _mode = "stdio"
+        _mode = "streamable-http"
     if _network_mode:
         _sys.stderr.write(
             f"[MCP] Starting {_mode} transport on {_NET_HOST}:{_args.port}\n"

@@ -222,11 +222,11 @@ def main():
     except Exception:
         pass  # Daemon startup is optional, never block boot
 
-    # Auto-start memory SSE server for MCP connection
+    # Auto-start memory server (streamable-http, default transport)
     try:
         _mem_server_path = os.path.join(CLAUDE_DIR, "hooks", "memory_server.py")
         if os.path.isfile(_mem_server_path):
-            _mem_sse_running = False
+            _mem_running = False
             try:
                 import socket as _sock
 
@@ -234,19 +234,25 @@ def main():
                 _s.settimeout(1)
                 _s.connect(("127.0.0.1", 8741))
                 _s.close()
-                _mem_sse_running = True
+                _mem_running = True
             except Exception:
                 pass
-            if not _mem_sse_running:
+            if not _mem_running:
                 subprocess.Popen(
-                    [sys.executable, _mem_server_path, "--sse"],
+                    [sys.executable, _mem_server_path],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,
                 )
-                print("  [BOOT] Memory SSE server started (port 8741)", file=sys.stderr)
+                print(
+                    "  [BOOT] Memory server started (streamable-http, port 8741)",
+                    file=sys.stderr,
+                )
             else:
-                print("  [BOOT] Memory SSE server already running", file=sys.stderr)
+                print(
+                    "  [BOOT] Memory server already running (port 8741)",
+                    file=sys.stderr,
+                )
     except Exception:
         pass  # Memory server startup is optional, never block boot
 
