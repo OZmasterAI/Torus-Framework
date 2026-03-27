@@ -15,6 +15,7 @@ import subprocess
 import sys as _sys
 import re
 
+from shared.context_compressor import compress_results
 from shared.scoring_engine import ScoringContext, score_result
 from shared.search_cache import SearchCache
 
@@ -471,6 +472,8 @@ class SearchPipeline:
             result["counterfactual_count"] = counterfactual_count
         if tag_expanded:
             result["tag_expanded"] = True
+        if formatted:
+            result["compressed_results"] = compress_results(formatted)
 
         self.cache.put(_cache_key, result)
         return result

@@ -38,6 +38,7 @@ from boot_pkg.maintenance import (
     _rotate_audit_logs,
     sync_agent_models,
 )
+from shared.context_compressor import compress_boot_state
 
 try:
     from shared.ramdisk import ensure_ramdisk as _ramdisk_ensure, get_capture_queue
@@ -576,7 +577,7 @@ def main():
             filtered["next_steps"] = filtered["next_steps"][:3]
         if "known_issues" in filtered:
             filtered["known_issues"] = filtered["known_issues"][:3]
-        context_parts.append(f"project_state: {json.dumps(filtered, indent=2)}")
+        context_parts.append(f"project_state: {compress_boot_state(filtered)}")
     elif live_state:
         # Framework/hub sessions: use LIVE_STATE.json
         CONTEXT_KEYS = {
@@ -597,15 +598,11 @@ def main():
             filtered["next_steps"] = filtered["next_steps"][:3]
         if "known_issues" in filtered:
             filtered["known_issues"] = filtered["known_issues"][:3]
-        context_parts.append(f"LIVE_STATE.json: {json.dumps(filtered, indent=2)}")
+        context_parts.append(f"LIVE_STATE.json: {compress_boot_state(filtered)}")
     if git_context:
         git_info = f"Git: branch={git_context['branch']}"
         if git_context["uncommitted_count"] > 0:
             git_info += f", {git_context['uncommitted_count']} uncommitted files"
-        if git_context["recent_commits"]:
-            git_info += (
-                f"\nRecent commits: {'; '.join(git_context['recent_commits'][:3])}"
-            )
         context_parts.append(git_info)
     if active_tasks:
         context_parts.append(f"Active tasks: {', '.join(active_tasks[:5])}")
