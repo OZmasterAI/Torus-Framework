@@ -795,12 +795,74 @@ def write_vault_session_note(
             pass
 
 
+def _parse_daily_sessions(content):
+    """Parse project groups and session entries from a daily note.
+
+    Returns (header, projects, stats_existed).
+    header = everything before '## Sessions'
+    projects = {project_name: [session_lines, ...]}
+    """
+    projects = {}
+    header_lines = []
+    in_sessions = False
+    in_stats = False
+    current_project = None
+
+    for line in content.splitlines():
+        if line.strip() == "## Sessions":
+            in_sessions = True
+            continue
+        if (
+            line.strip() == "## Daily Stats"
+            or line.strip() == "---"
+            and in_sessions
+            and not current_project
+        ):
+            in_stats = True
+            continue
+        if in_stats:
+            continue  # Skip old stats — we regenerate
+        if not in_sessions:
+            header_lines.append(line)
+            continue
+
+        # Inside ## Sessions
+        if line.startswith("### "):
+            current_project = line[4:].strip()
+            projects.setdefault(current_project, [])
+        elif current_project and line.startswith("- "):
+            projects[current_project].append(line)
+
+    return "\n".join(header_lines), projects
+
+
+def _duration_to_minutes(duration_str):
+    """Parse '1h 30m' or '45m' to total minutes."""
+    minutes = 0
+    import re
+
+    h = re.search(r"(\d+)h", duration_str)
+    m = re.search(r"(\d+)m", duration_str)
+    if h:
+        minutes += int(h.group(1)) * 60
+    if m:
+        minutes += int(m.group(1))
+    return minutes
+
+
+def _minutes_to_str(total):
+    """Convert total minutes to '1h 30m' format."""
+    if total >= 60:
+        return f"{total // 60}h {total % 60}m"
+    return f"{total}m"
+
+
 def write_vault_daily_note(
     state, live_state, project_name=None, feature=None, project_dir=None
 ):
-    """Append a session entry to today's daily note at ~/vault/daily/.
+    """Write/update today's daily note at ~/vault/daily/.
 
-    Creates the daily note from template if it doesn't exist.
+    Groups sessions by project. Regenerates daily stats on each write.
     Fail-open: never blocks session end.
     """
     vault_daily = os.path.join(os.path.expanduser("~"), "vault", "daily")
@@ -825,51 +887,88 @@ def write_vault_daily_note(
         total_tools = state.get("total_tool_calls", state.get("tool_call_count", 0))
         feat = feature or live_state.get("feature", "")
 
-        # Build session entry
-        entry_lines = [
-            "",
-            f"### Session {session_num} — {project}",
-        ]
+        # Build session line
+        parts = [f"Session {session_num}"]
         if feat:
-            entry_lines.append(f"**Feature:** {feat}")
-        entry_lines.append(f"**Duration:** {duration} · **Tools:** {total_tools}")
-        entry_lines.append(f"**Summary:** {what_was_done}")
-        entry_lines.append(f"**Link:** [[{date_str}-session-{session_num:03d}]]")
-        entry_lines.append("")
-        entry = "\n".join(entry_lines)
+            parts.append(f"({feat})")
+        parts.append(f"— {duration} · {total_tools} tools")
+        parts.append(f"— {what_was_done}")
+        session_line = f"- {' '.join(parts)} [[{date_str}-session-{session_num:03d}]]"
 
-        if not os.path.exists(filepath):
-            # Create from template
-            template = [
-                "---",
-                "type: daily",
-                "tags: [daily]",
-                f"created: {date_str}",
-                "status: active",
-                "---",
-                "",
-                f"# {date_str}",
-                "",
-                "## Plan",
-                "",
-                "",
-                "## Notes",
-                "",
-                "",
-                "## Sessions",
-                "",
-            ]
-            content = "\n".join(template) + entry
-            tmp_path = filepath + ".tmp"
-            with open(tmp_path, "w") as f:
-                f.write(content)
-            os.replace(tmp_path, filepath)
-            print(f"[SESSION_END:daily] Created {date_str}.md", file=sys.stderr)
+        if os.path.exists(filepath):
+            with open(filepath) as f:
+                existing = f.read()
+            header, projects = _parse_daily_sessions(existing)
         else:
-            # Append to existing
-            with open(filepath, "a") as f:
-                f.write(entry)
-            print(f"[SESSION_END:daily] Appended to {date_str}.md", file=sys.stderr)
+            header = "\n".join(
+                [
+                    "---",
+                    "type: daily",
+                    "tags: [daily]",
+                    f"created: {date_str}",
+                    "status: active",
+                    "---",
+                    "",
+                    f"# {date_str}",
+                    "",
+                    "## Plan",
+                    "",
+                    "",
+                    "## Notes",
+                    "",
+                ]
+            )
+            projects = {}
+
+        # Add session to its project group
+        projects.setdefault(project, [])
+        # Avoid duplicate if session_end runs twice
+        if not any(f"Session {session_num}" in line for line in projects[project]):
+            projects[project].append(session_line)
+
+        # Rebuild file (strip trailing whitespace from header)
+        lines = [header.rstrip(), "", "## Sessions", ""]
+        for proj_name, sessions in projects.items():
+            lines.append(f"### {proj_name}")
+            for s in sessions:
+                lines.append(s)
+            lines.append("")
+
+        # Daily stats
+        total_sessions = sum(len(s) for s in projects.values())
+        total_mins = 0
+        total_tool_count = 0
+        for sessions in projects.values():
+            for s in sessions:
+                # Parse duration from "— 1h 30m · 42 tools"
+                import re
+
+                dur_match = re.search(r"— (\d+h\s*)?(\d+m)", s)
+                if dur_match:
+                    total_mins += _duration_to_minutes(dur_match.group(0)[2:])
+                tool_match = re.search(r"(\d+) tools", s)
+                if tool_match:
+                    total_tool_count += int(tool_match.group(1))
+
+        lines.append("---")
+        lines.append("")
+        lines.append("## Daily Stats")
+        lines.append(
+            f"**Sessions:** {total_sessions} · "
+            f"**Duration:** {_minutes_to_str(total_mins)} · "
+            f"**Tools:** {total_tool_count}"
+        )
+        lines.append(f"**Projects:** {', '.join(projects.keys())}")
+        lines.append("")
+
+        content = "\n".join(lines)
+        tmp_path = filepath + ".tmp"
+        with open(tmp_path, "w") as f:
+            f.write(content)
+        os.replace(tmp_path, filepath)
+
+        action = "Created" if total_sessions == 1 else "Updated"
+        print(f"[SESSION_END:daily] {action} {date_str}.md", file=sys.stderr)
     except Exception as e:
         print(f"[SESSION_END:daily] Failed (non-fatal): {e}", file=sys.stderr)
 
