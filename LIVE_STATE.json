@@ -1,9 +1,9 @@
 {
-  "session_count": 556,
+  "session_count": 558,
   "project": "torus-framework",
-  "feature": "rich-fix-memory",
+  "feature": "knowledge-graph-obsidian",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 555: Rich fix memory — auto-saved fixes now include diffs and error sequence. Fixed gate_01 corruption from test crash simulator (atexit safety net). Turned off auto_commit_require_tests. Audited all test enforcement mechanisms (gates 3/14/20/23, ACT, mentor, tracker).",
+  "what_was_done": "Session 558: Fixed KG default path (was writing to wrong DB). Built kg_to_obsidian.py exporting 960 entities + 308 edges + 429 project links. Enabled ACT, mentor_all, mentor_hindsight_gate.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
@@ -12,14 +12,14 @@
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code"
   ],
   "next_steps": [
-    "Remove redundant Gate 20 checks (session_test_baseline + pending_verification — shadowed by Gate 14)",
-    "Port rich fix memory to framework-v5 (observation diffs + _build_fix_context)",
-    "§8.2 Autonomous Mode Safety: new gate tracking recently_written_files, block direct execution",
-    "Harden verification_specialist.py subprocess.run(shell=True)",
+    "Run kg_to_obsidian.py periodically (cron or post-session hook) to keep vault graph fresh",
+    "Seed co_occurs edges into real KG from entity extraction (currently only co_retrieved edges exist)",
+    "Remove redundant Gate 20 checks (shadowed by Gate 14)",
+    "§8.2 Autonomous Mode Safety: new gate tracking recently_written_files",
     "Memory maintenance: DB at 4015 entries, run stale cleanup"
   ],
   "dag_branch": "dag-claude",
   "dag_branch_label": "",
-  "dag_node_count": 53899,
-  "dag_total_branches": 207
+  "dag_node_count": 60136,
+  "dag_total_branches": 208
 }

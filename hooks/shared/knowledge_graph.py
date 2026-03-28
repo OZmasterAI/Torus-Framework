@@ -13,7 +13,7 @@ import sqlite3
 from itertools import combinations
 from typing import Dict, List, Optional, Tuple
 
-_DEFAULT_DB_PATH = os.path.expanduser("~/.claude/data/memory/knowledge_graph.db")
+_DEFAULT_DB_PATH = os.path.expanduser("~/data/memory/knowledge_graph.db")
 
 
 class KnowledgeGraph:
@@ -90,11 +90,20 @@ class KnowledgeGraph:
         placeholders = ",".join("?" for _ in names)
         rows = self._conn.execute(
             f"SELECT name, type, salience, mention_count, created_at, last_seen_at "
-            f"FROM entities WHERE name IN ({placeholders})", list(names)
+            f"FROM entities WHERE name IN ({placeholders})",
+            list(names),
         ).fetchall()
-        return {row[0]: {"name": row[0], "type": row[1], "salience": row[2],
-                "mention_count": row[3], "created_at": row[4], "last_seen_at": row[5]}
-                for row in rows}
+        return {
+            row[0]: {
+                "name": row[0],
+                "type": row[1],
+                "salience": row[2],
+                "mention_count": row[3],
+                "created_at": row[4],
+                "last_seen_at": row[5],
+            }
+            for row in rows
+        }
 
     def batch_get_edges(self, entity_ids):
         if not entity_ids:
@@ -104,11 +113,22 @@ class KnowledgeGraph:
             f"SELECT from_id, to_id, relation_type, strength, activation_count, "
             f"co_occurrence_count, pmi, created_at, last_activated "
             f"FROM edges WHERE from_id IN ({placeholders}) OR to_id IN ({placeholders})",
-            list(entity_ids) + list(entity_ids)
+            list(entity_ids) + list(entity_ids),
         ).fetchall()
-        return [{"from_id": r[0], "to_id": r[1], "relation_type": r[2],
-                 "strength": r[3], "activation_count": r[4], "co_occurrence_count": r[5],
-                 "pmi": r[6], "created_at": r[7], "last_activated": r[8]} for r in rows]
+        return [
+            {
+                "from_id": r[0],
+                "to_id": r[1],
+                "relation_type": r[2],
+                "strength": r[3],
+                "activation_count": r[4],
+                "co_occurrence_count": r[5],
+                "pmi": r[6],
+                "created_at": r[7],
+                "last_activated": r[8],
+            }
+            for r in rows
+        ]
 
     # --- Edge operations ---
 
@@ -218,7 +238,6 @@ class KnowledgeGraph:
                 canonical,
             )
         self._conn.commit()
-
 
     # --- Memory link traversal (A-Mem interconnected network) ---
 
@@ -330,7 +349,9 @@ class KnowledgeGraph:
 
         for hop in range(1, max_hops + 1):
             # Filter frontier to nodes above threshold
-            active_frontier = [n for n in frontier if activations.get(n, 0.0) >= threshold]
+            active_frontier = [
+                n for n in frontier if activations.get(n, 0.0) >= threshold
+            ]
             if not active_frontier:
                 break
 
@@ -361,8 +382,10 @@ class KnowledgeGraph:
                 break
 
             # Normalize activations with tanh to bound PMI-driven accumulation
-            activations = {k: math.tanh(v) if k not in seed_set else v
-                           for k, v in activations.items()}
+            activations = {
+                k: math.tanh(v) if k not in seed_set else v
+                for k, v in activations.items()
+            }
 
             # Early termination: <5% new entities after hop 3
             if hop >= 3 and len(next_frontier) < 0.05 * len(activations):
@@ -411,7 +434,6 @@ class KnowledgeGraph:
                 effective = 0.0
             result.append((neighbor_name, effective))
         return result
-
 
     def _get_neighbors_batch(self, nodes):
         """Batch neighbor lookup for multiple nodes. More efficient than per-node queries."""
@@ -537,7 +559,6 @@ class KnowledgeGraph:
                 (delta, name),
             )
         self._conn.commit()
-
 
     def normalize_entity_name(self, name: str) -> str:
         """Normalize entity name for consistent matching.
