@@ -1,20 +1,26 @@
 {
-  "session_count": 562,
+  "session_count": 564,
   "project": "torus-framework",
-  "feature": "scribe-revert",
+  "feature": "gate-14-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Reverted scribe agent (commit 68fc6f1) — user didn't want batch-at-wrap-up design. Cleaned up ramdisk feed files. Gate 14 fix preserved.",
+  "what_was_done": "Gate 14 PENDING_THRESHOLD raised 2→5 to fix multi-file deadlock. Merged Obsidian go_sdk_agent/go-sdk-agent duplicate nodes (deleted KG concept, fixed 31 session frontmatter + 48 KG wikilinks + daily note).",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
     "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
-    "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code"
+    "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
+    "kg_to_obsidian.py generates underscore filenames for entities — causes graph duplication when project uses hyphens"
   ],
   "next_steps": [
+    "Fix kg_to_obsidian.py to normalize entity names to hyphen-case (prevent future graph duplication)",
     "Run kg_to_obsidian.py periodically (cron or post-session hook) to keep vault graph fresh",
-    "Seed co_occurs edges into real KG from entity extraction (currently only co_retrieved edges exist)",
     "Remove redundant Gate 20 checks (shadowed by Gate 14)",
-    "Memory maintenance: DB at 4015 entries, run stale cleanup"
-  ]
+    "Memory maintenance: DB at 4015 entries, run stale cleanup",
+    "Seed co_occurs edges into real KG from entity extraction"
+  ],
+  "dag_branch": "dag-claude",
+  "dag_branch_label": "",
+  "dag_node_count": 65403,
+  "dag_total_branches": 221
 }
