@@ -1474,7 +1474,10 @@ _g14_state6["session_test_baseline"] = True
 _g14_state6["pending_verification"] = [
     "/tmp/edited_a.py",
     "/tmp/edited_b.py",
-]  # 2 = PENDING_THRESHOLD
+    "/tmp/edited_c.py",
+    "/tmp/edited_d.py",
+    "/tmp/edited_e.py",
+]  # 5 = PENDING_THRESHOLD
 _g14_existing_path = os.path.join(
     os.path.dirname(__file__), "..", "gates", "gate_14_confidence_check.py"
 )

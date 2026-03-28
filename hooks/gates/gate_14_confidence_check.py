@@ -29,8 +29,11 @@ GATE_NAME = "GATE 14: CONFIDENCE CHECK"
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 
 # Block when pending_verification count meets or exceeds this threshold.
+# Raised from 2→5 to avoid deadlocking multi-file workflows. Gate 5
+# (proof-before-fixed) already blocks at 4 other-file edits, so Gate 14
+# acts as a softer outer fence that catches sustained unverified streaks.
 # Tunable via state["gate_tune_overrides"]["gate_14_confidence_check"]["pending_threshold"].
-PENDING_THRESHOLD = 2
+PENDING_THRESHOLD = 5
 
 from shared.exemptions import is_exempt_full as _is_exempt
 
