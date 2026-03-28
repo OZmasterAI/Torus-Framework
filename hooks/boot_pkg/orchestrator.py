@@ -635,16 +635,6 @@ def main():
         "Ask: 'Continue or New task?' "
         "If user says continue, ask which item to tackle — do NOT auto-start work."
     )
-    # Scribe agent directive — launch a named Haiku background agent for session notes
-    _scribe_feed = os.path.join(
-        f"/run/user/{os.getuid()}/claude-hooks",
-        f".scribe_feed_{session_num}.jsonl",
-    )
-    context_parts.append(
-        f'SCRIBE: launch Agent(name="scribe", model="haiku", run_in_background=true, '
-        f'prompt="You are the scribe for this session. Feed file: {_scribe_feed} — '
-        f'wait for finalize message.") — see agents/scribe.md'
-    )
     # Inject working-memory and working-summary (hook-injected, not auto-loaded from rules/)
     _hooks_dir_inject = os.path.join(CLAUDE_DIR, "hooks")
     for _inject_file in ["working-memory.md", "working-summary.md"]:

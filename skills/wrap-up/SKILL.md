@@ -7,13 +7,7 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
 1. **GATHER** — Run `python3 ~/.claude/skills/wrap-up/scripts/gather.py` and parse the JSON output
    - If script fails, fall back to manual: read LIVE_STATE.json, git status, search_knowledge
    - The JSON contains: live_state, handoff (content + age), git status, memory count, promotion_candidates, recent_learnings, risk_level, warnings
-1.5. **SCRIBE FINALIZE** — If a named "scribe" agent is running:
-   - `SendMessage(to="scribe", content="finalize — read your feed file and return structured JSON")`
-   - The scribe reads `.scribe_feed_{session_id}.jsonl` from ramdisk and returns JSON with: atomic_facts, decisions, patterns, contradictions, course_corrections, key_learnings
-   - If the scribe agent doesn't exist (wasn't launched this session), skip this step
-   - If the scribe returns empty arrays or errors, continue — never block wrap-up
-   - Hold the scribe's output for incorporation in the next step
-2. **SAVE TO MEMORY** — Based on gathered data + conversation context + scribe notes (if available), remember_this() for significant work:
+2. **SAVE TO MEMORY** — Based on gathered data + conversation context, remember_this() for significant work:
    - Bugs fixed and how
    - Decisions made and why
    - New patterns discovered

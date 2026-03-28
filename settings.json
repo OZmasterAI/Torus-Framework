@@ -37,11 +37,6 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/tg_mirror_tools.py\"",
             "timeout": 2
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/scribe_feed.py\"",
-            "timeout": 2
           }
         ]
       },
@@ -100,11 +95,6 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/tg_mirror_user.py\"",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/scribe_feed.py\"",
-            "timeout": 2
           }
         ]
       },
