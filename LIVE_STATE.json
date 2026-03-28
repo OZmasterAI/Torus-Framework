@@ -1,9 +1,9 @@
 {
-  "session_count": 559,
+  "session_count": 561,
   "project": "torus-framework",
-  "feature": "daily-note-fix",
+  "feature": "scribe-agent",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed write_vault_daily_note and write_vault_session_note: project sessions now read what_was_done/feature/known_issues/next_steps from project .claude-state.json instead of LIVE_STATE. Cleaned up corrupted 2026-03-27 daily note and session notes.",
+  "what_was_done": "Implemented Haiku Scribe Agent (Option A): scribe_feed.py hook, agents/scribe.md, boot directive, wrap-up step 1.5. Fixed Gate 14 deadlock: test baseline now warn-only, block messages suggest targeted tests.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
@@ -12,15 +12,10 @@
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code"
   ],
   "next_steps": [
+    "Test scribe agent end-to-end: start session, do work, /wrap-up, verify scribe output",
     "Run kg_to_obsidian.py periodically (cron or post-session hook) to keep vault graph fresh",
     "Seed co_occurs edges into real KG from entity extraction (currently only co_retrieved edges exist)",
     "Remove redundant Gate 20 checks (shadowed by Gate 14)",
-    "§8.2 Autonomous Mode Safety: new gate tracking recently_written_files",
     "Memory maintenance: DB at 4015 entries, run stale cleanup"
-  ],
-  "dag_branch": "dag-claude",
-  "dag_branch_label": "",
-  "dag_node_count": 60387,
-  "dag_total_branches": 210,
-  "last_response_preview": "All cleaned up — daily note, session notes corrected, code fix applied to both vault note writers."
+  ]
 }
