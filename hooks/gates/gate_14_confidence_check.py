@@ -1,12 +1,14 @@
 """Gate 14: PRE-IMPLEMENTATION CONFIDENCE (Tier 2 — Quality)
 
 Checks confidence signals before allowing new file creation via Edit/Write/NotebookEdit.
-Blocks immediately on first confidence failure (no warn phase).
 
 Confidence signals checked:
-  1. session_test_baseline — has a test been run this session? (code files only)
-  2. pending_verification — are previous edits verified?
+  1. session_test_baseline — has a test been run this session? (WARN-ONLY, not blocking)
+  2. pending_verification — are previous edits verified? (BLOCKING)
   3. memory_last_queried — DORMANT (redundant with Gate 4)
+
+Signal 1 was changed from blocking to warn-only to avoid session-start deadlock:
+the first edit of any session would always be blocked since no tests have run yet.
 
 Exemptions:
   - Re-edits of files already in pending_verification (iteration, not new work)
@@ -31,6 +33,28 @@ WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 PENDING_THRESHOLD = 2
 
 from shared.exemptions import is_exempt_full as _is_exempt
+
+
+# Map source directories to their most relevant test file (fast, targeted tests)
+_TEST_MAP = {
+    "gates/": "tests/test_gates_quality.py",
+    "shared/": "tests/test_shared_core.py",
+    "tracker_pkg/": "tests/test_state_tracking.py",
+    "boot_pkg/": "tests/test_project_detection.py",
+}
+
+
+def _suggest_test(pending_files):
+    """Suggest a targeted test command for the pending files."""
+    if not pending_files:
+        return "pytest -x -q"
+    # Find best test file based on first pending file's directory
+    for fp in pending_files:
+        for src_dir, test_file in _TEST_MAP.items():
+            if src_dir in fp:
+                return f"pytest hooks/{test_file} -x -q"
+    # Fallback: smallest general test
+    return "pytest hooks/tests/test_edit_streak.py -x -q"
 
 
 def _is_re_edit(file_path, state):
@@ -95,14 +119,35 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name == "Write" and _is_new_file(file_path):
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    # Check confidence signals — block immediately on failure
+    # Check confidence signals
     failures = _check_signals(state, file_path=file_path)
     if not failures:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
-    failure_str = "; ".join(failures)
-    msg = (
-        f"[{GATE_NAME}] BLOCKED: Low confidence ({failure_str}). "
-        f"Run a Bash command (e.g. pytest) to set test baseline and clear pending verification."
-    )
-    return GateResult(blocked=True, gate_name=GATE_NAME, message=msg, severity="warn")
+    # Separate hard-block failures (pending verification) from soft warnings (test baseline).
+    # Test baseline alone should warn, not block — avoids deadlock at session start
+    # where no tests have been run yet but the first edit is needed.
+    hard_failures = [f for f in failures if "test run" not in f]
+    soft_failures = [f for f in failures if "test run" in f]
+
+    if hard_failures:
+        pending = state.get("pending_verification", [])
+        pending_str = ", ".join(os.path.basename(f) for f in pending[:5])
+        suggested = _suggest_test(pending)
+        msg = (
+            f"[{GATE_NAME}] BLOCKED: {len(pending)} unverified file(s): {pending_str}. "
+            f"Run: {suggested}"
+        )
+        return GateResult(
+            blocked=True, gate_name=GATE_NAME, message=msg, severity="warn"
+        )
+
+    # Soft-only: warn but allow through
+    if soft_failures:
+        msg = (
+            f"[{GATE_NAME}] WARNING: no test run this session. "
+            f"Consider: pytest hooks/tests/test_edit_streak.py -x -q"
+        )
+        return GateResult(
+            blocked=False, gate_name=GATE_NAME, message=msg, severity="warn"
+        )
