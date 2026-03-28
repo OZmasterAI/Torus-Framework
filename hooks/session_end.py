@@ -694,15 +694,16 @@ def write_vault_session_note(
 
     filepath = ""
     try:
-        # Use project-local session count when available
+        # For project sessions, read from project state (LIVE_STATE belongs to framework)
         session_num = live_state.get("session_count", 0)
         project = project_name or live_state.get("project", "unknown")
+        _src = live_state
         if project_dir:
             try:
-                proj_state = load_project_state(project_dir)
-                session_num = proj_state.get("session_count", session_num)
+                _src = load_project_state(project_dir)
+                session_num = _src.get("session_count", session_num)
             except Exception:
-                pass
+                _src = live_state
         date_str = time.strftime("%Y-%m-%d")
         # Add project suffix for non-framework sessions
         if project_dir and project and project != "torus-framework":
@@ -721,10 +722,10 @@ def write_vault_session_note(
 
         # Extract metadata
         project = project_name or live_state.get("project", "unknown")
-        feat = feature or live_state.get("feature", "")
-        what_was_done = live_state.get("what_was_done", "No summary available.")
-        known_issues = live_state.get("known_issues", [])
-        next_steps = live_state.get("next_steps", [])
+        feat = _src.get("feature", "")
+        what_was_done = _src.get("what_was_done", "No summary available.")
+        known_issues = _src.get("known_issues", [])
+        next_steps = _src.get("next_steps", [])
         duration = _format_duration(state.get("session_start"))
         total_tools = state.get("total_tool_calls", state.get("tool_call_count", 0))
         files_edited = state.get("files_edited", [])
@@ -875,17 +876,19 @@ def write_vault_daily_note(
 
         session_num = live_state.get("session_count", 0)
         project = project_name or live_state.get("project", "unknown")
+        # For project sessions, read from project state (LIVE_STATE belongs to framework)
+        _src = live_state
         if project_dir:
             try:
-                proj_state = load_project_state(project_dir)
-                session_num = proj_state.get("session_count", session_num)
+                _src = load_project_state(project_dir)
+                session_num = _src.get("session_count", session_num)
             except Exception:
-                pass
+                _src = live_state
 
-        what_was_done = live_state.get("what_was_done", "No summary.")
+        what_was_done = _src.get("what_was_done", "No summary.")
         duration = _format_duration(state.get("session_start"))
         total_tools = state.get("total_tool_calls", state.get("tool_call_count", 0))
-        feat = feature or live_state.get("feature", "")
+        feat = _src.get("feature", "")
 
         # Build session line
         parts = [f"Session {session_num}"]

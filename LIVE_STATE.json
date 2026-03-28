@@ -1,9 +1,9 @@
 {
-  "session_count": 558,
+  "session_count": 559,
   "project": "torus-framework",
-  "feature": "knowledge-graph-obsidian",
+  "feature": "daily-note-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 558: Fixed KG default path (was writing to wrong DB). Built kg_to_obsidian.py exporting 960 entities + 308 edges + 429 project links. Enabled ACT, mentor_all, mentor_hindsight_gate.",
+  "what_was_done": "Fixed write_vault_daily_note and write_vault_session_note: project sessions now read what_was_done/feature/known_issues/next_steps from project .claude-state.json instead of LIVE_STATE. Cleaned up corrupted 2026-03-27 daily note and session notes.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
@@ -20,6 +20,7 @@
   ],
   "dag_branch": "dag-claude",
   "dag_branch_label": "",
-  "dag_node_count": 60136,
-  "dag_total_branches": 208
+  "dag_node_count": 60387,
+  "dag_total_branches": 210,
+  "last_response_preview": "All cleaned up — daily note, session notes corrected, code fix applied to both vault note writers."
 }
