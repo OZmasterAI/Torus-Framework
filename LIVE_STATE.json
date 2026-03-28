@@ -1,9 +1,9 @@
 {
-  "session_count": 561,
+  "session_count": 562,
   "project": "torus-framework",
-  "feature": "scribe-agent",
+  "feature": "scribe-revert",
   "framework_version": "v3.0.0",
-  "what_was_done": "Implemented Haiku Scribe Agent (Option A): scribe_feed.py hook, agents/scribe.md, boot directive, wrap-up step 1.5. Fixed Gate 14 deadlock: test baseline now warn-only, block messages suggest targeted tests.",
+  "what_was_done": "Reverted scribe agent (commit 68fc6f1) — user didn't want batch-at-wrap-up design. Cleaned up ramdisk feed files. Gate 14 fix preserved.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
@@ -12,7 +12,6 @@
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code"
   ],
   "next_steps": [
-    "Test scribe agent end-to-end: start session, do work, /wrap-up, verify scribe output",
     "Run kg_to_obsidian.py periodically (cron or post-session hook) to keep vault graph fresh",
     "Seed co_occurs edges into real KG from entity extraction (currently only co_retrieved edges exist)",
     "Remove redundant Gate 20 checks (shadowed by Gate 14)",
