@@ -20,7 +20,7 @@ class ClaudePClient:
 
         Args:
             prompt: The full prompt text to send.
-            max_tokens: Optional max tokens for the response.
+            max_tokens: Ignored (CLI no longer supports --max-tokens).
 
         Returns:
             The model's response text (stdout).
@@ -30,8 +30,6 @@ class ClaudePClient:
             subprocess.TimeoutExpired: If the command exceeds timeout.
         """
         cmd = ["claude", "-p", "--model", self.model]
-        if max_tokens is not None:
-            cmd.extend(["--max-tokens", str(max_tokens)])
 
         result = subprocess.run(
             cmd,
