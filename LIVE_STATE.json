@@ -1,26 +1,28 @@
 {
-  "session_count": 564,
+  "session_count": 569,
   "project": "torus-framework",
-  "feature": "gate-14-fix",
+  "feature": "vector256-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Gate 14 threshold 2→5 fix. Obsidian graph dedup (go_sdk_agent→go-sdk-agent). Wrote companyOS session 1 summary from transcript. Created vault/projects/companyos.md.",
+  "what_was_done": "Fixed vector_256 column type mismatch (string\u2192list) on all 5 LanceDB tables \u2014 memory writes were silently failing. Moved working-memory/summary from rules/ to hooks/ saving ~636 tok/call. Added content-hash skip to WorkingMemoryWriter. Cleaned up ~5GB of stale repos (terminalius, BEAM, opencode, herm).",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
-    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
+    "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
+    "\u00a78.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
-    "kg_to_obsidian.py generates underscore filenames for entities — causes graph duplication when project uses hyphens"
+    "kg_to_obsidian.py generates underscore filenames for entities \u2014 causes graph duplication when project uses hyphens",
+    "MCP auth error when launching Claude Code from ~/.claude/hooks/ subdirectory"
   ],
   "next_steps": [
-    "Fix kg_to_obsidian.py to normalize entity names to hyphen-case (prevent future graph duplication)",
-    "Run kg_to_obsidian.py periodically (cron or post-session hook) to keep vault graph fresh",
+    "Fix kg_to_obsidian.py to normalize entity names to hyphen-case",
+    "Run kg_to_obsidian.py periodically (cron or post-session hook)",
     "Remove redundant Gate 20 checks (shadowed by Gate 14)",
-    "Memory maintenance: DB at 4015 entries, run stale cleanup",
-    "Seed co_occurs edges into real KG from entity extraction"
+    "Memory maintenance: DB at 4051 entries, run stale cleanup",
+    "Delete framework-v5 .venv (5.1GB of duplicate CUDA/torch libs)"
   ],
-  "dag_branch": "dag-claude",
+  "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 65403,
-  "dag_total_branches": 221
+  "dag_node_count": 70379,
+  "dag_total_branches": 234,
+  "last_response_preview": "No local overrides. The MCP config in `~/.claude.json` should apply everywhere. Try launching from `~/.claude/` instead of `~/.claude/hooks/` \u2014 the hooks dir isn't meant to be a working directory for Claude Code. Or try option 1 (Authenticate) then dismiss it \u2014 sometimes that resets the connection state."
 }

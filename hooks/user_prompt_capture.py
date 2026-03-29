@@ -420,7 +420,9 @@ def main():
         if _tracker_state.get("context_drop_detected", False):
             for _inject_file in ["working-memory.md", "working-summary.md"]:
                 if _proj_dir:
-                    _inject_path = os.path.join(_proj_dir, ".claude", "rules", _inject_file)
+                    _inject_path = os.path.join(
+                        _proj_dir, ".claude", "hooks", _inject_file
+                    )
                 else:
                     _inject_path = os.path.join(
                         os.path.expanduser("~"), ".claude", "hooks", _inject_file
@@ -444,9 +446,9 @@ def main():
         elif _countdown == 0:
             # Clear working-summary.md to stub (project-local if in a project)
             if _proj_dir:
-                _ws_rules = os.path.join(_proj_dir, ".claude", "rules")
-                os.makedirs(_ws_rules, exist_ok=True)
-                _summary_path = os.path.join(_ws_rules, "working-summary.md")
+                _ws_hooks = os.path.join(_proj_dir, ".claude", "hooks")
+                os.makedirs(_ws_hooks, exist_ok=True)
+                _summary_path = os.path.join(_ws_hooks, "working-summary.md")
             else:
                 _summary_path = os.path.join(
                     os.path.expanduser("~"), ".claude", "hooks", "working-summary.md"

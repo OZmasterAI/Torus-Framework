@@ -422,12 +422,13 @@ def _init_lancedb():
             """Open table if exists, create with schema if not."""
             try:
                 tbl = _lance_db.open_table(name)
-                # Migrate: add missing columns from schema
-                existing_cols = set(tbl.schema.names)
+                # Migrate: add missing columns or fix type mismatches
+                existing_cols = {f.name: f.type for f in tbl.schema}
                 for field in schema:
-                    if field.name not in existing_cols:
+                    existing_type = existing_cols.get(field.name)
+                    if existing_type is None:
+                        # Column missing — add it
                         if pa.types.is_list(field.type):
-                            # Vector columns need backfill, not a default
                             print(
                                 f"[MCP] {name}: new vector column {field.name} needs backfill (run migrate_vector_256.py)",
                                 file=_sys.stderr,
@@ -450,6 +451,14 @@ def _init_lancedb():
                                 f"[MCP] Migration failed for {name}.{field.name}: {e}",
                                 file=_sys.stderr,
                             )
+                    elif pa.types.is_list(field.type) and not pa.types.is_list(
+                        existing_type
+                    ):
+                        # Type mismatch: schema wants list but column is string/other
+                        print(
+                            f"[MCP] WARNING: {name}.{field.name} has wrong type ({existing_type}, expected {field.type}). Run migrate_vector_256.py to fix.",
+                            file=_sys.stderr,
+                        )
             except Exception:
                 tbl = _lance_db.create_table(name, schema=schema)
             return _make_lance_collection(tbl, schema, name)

@@ -278,8 +278,12 @@ class LanceCollection:
             # Fallback: try add (for new tables or if merge_insert fails)
             try:
                 self._table.add(records)
-            except Exception:
-                print(f"[Lance] upsert failed for {self._name}: {e}", file=sys.stderr)
+            except Exception as e2:
+                print(
+                    f"[Lance] upsert failed for {self._name}: merge_insert={e}, add={e2}",
+                    file=sys.stderr,
+                )
+                raise RuntimeError(f"upsert failed for {self._name}: {e}") from e
 
     def update(self, ids=None, metadatas=None, documents=None):
         """Update metadata and/or documents for existing records.

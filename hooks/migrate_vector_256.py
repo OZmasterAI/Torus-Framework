@@ -29,27 +29,34 @@ def migrate():
         cols = set(tbl.schema.names)
         print(f"\n=== {name} ({row_count} rows) ===")
 
-        # Step 1: Add vector_256 column if missing
-        if "vector_256" not in cols:
+        # Step 1: Add or fix vector_256 column
+        import pyarrow as _pa
+
+        needs_create = "vector_256" not in cols
+        if not needs_create:
+            # Check for type mismatch (e.g. string instead of list)
+            v256_type = tbl.schema.field("vector_256").type
+            if not _pa.types.is_list(v256_type):
+                print(f"  vector_256 has wrong type ({v256_type}), dropping...")
+                tbl.drop_columns(["vector_256"])
+                needs_create = True
+            else:
+                print(f"  vector_256 already exists with correct type")
+        if needs_create:
             print(f"  Adding vector_256 column...")
             try:
-                tbl.add_columns({"vector_256": "slice(vector, 0, 256)"})
-                print(f"  Added vector_256 via SQL slice")
-            except Exception as e:
-                print(f"  SQL slice failed ({e}), trying batch approach...")
-                try:
-                    rows = tbl.to_pandas()
-                    rows["vector_256"] = rows["vector"].apply(
-                        lambda v: (
-                            v[:256] if v is not None and len(v) >= 256 else [0.0] * 256
-                        )
+                pdf = tbl.to_pandas()
+                pdf["vector_256"] = pdf["vector"].apply(
+                    lambda v: (
+                        v[:256] if v is not None and len(v) >= 256 else [0.0] * 256
                     )
-                    print(f"  Batch backfill: {len(rows)} rows")
-                except Exception as e2:
-                    print(f"  FAILED: {e2}")
-                    continue
-        else:
-            print(f"  vector_256 already exists")
+                )
+                db.create_table(name, data=pdf, mode="overwrite")
+                tbl = db.open_table(name)
+                print(f"  Recreated table with correct vector_256 ({row_count} rows)")
+            except Exception as e2:
+                print(f"  FAILED: {e2}")
+                continue
 
         # Step 2: Compact fragments
         print(f"  Compacting...")

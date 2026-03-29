@@ -1,6 +1,6 @@
 """Working memory writer for hybrid working memory system.
 
-Reads operation tracker state and writes rules/working-memory.md with three sections:
+Reads operation tracker state and writes hooks/working-memory.md with three sections:
 
   Status     (~40 tokens)  — current op, last op. Updated every turn.
   Operations (+60-80/op)   — completed op summaries, FIFO eviction at ~650 tokens.
@@ -11,6 +11,7 @@ Atomic writes: tmp + os.replace() — safe against concurrent UserPromptSubmit/P
 """
 
 import logging
+import hashlib
 import os
 import subprocess
 
@@ -378,7 +379,10 @@ def _atomic_write(path: str, content: str) -> None:
 
 
 class WorkingMemoryWriter:
-    """Writes rules/working-memory.md with three layered sections.
+    """Writes hooks/working-memory.md with three layered sections.
+
+    Writes to hooks/ (not rules/) so the file is injected on-demand by
+    boot.py/post_compact.py instead of auto-loaded on every API call.
 
     Three sections, each updated on a different trigger:
       - write_status()    — every UserPromptSubmit (base layer)
@@ -386,31 +390,40 @@ class WorkingMemoryWriter:
       - write_expanded()  — at context threshold (expand layer)
     """
 
-    def __init__(self, rules_dir: str, project_dir: str = ""):
-        self._rules_dir = rules_dir
+    def __init__(self, hooks_dir: str, project_dir: str = ""):
+        self._hooks_dir = hooks_dir
         if project_dir:
-            # Project session: write to {project_dir}/.claude/rules/
-            proj_rules = os.path.join(project_dir, ".claude", "rules")
-            os.makedirs(proj_rules, exist_ok=True)
-            self._output_path = os.path.join(proj_rules, "working-memory.md")
+            # Project session: write to {project_dir}/.claude/hooks/
+            proj_hooks = os.path.join(project_dir, ".claude", "hooks")
+            os.makedirs(proj_hooks, exist_ok=True)
+            self._output_path = os.path.join(proj_hooks, "working-memory.md")
         else:
-            self._output_path = os.path.join(rules_dir, "working-memory.md")
+            self._output_path = os.path.join(hooks_dir, "working-memory.md")
         self._expand_written = False
+        self._last_hash = ""  # Skip writes when content unchanged
 
     # ── Public API ────────────────────────────────────────────────────────────
+
+    def _write_if_changed(self, content: str) -> bool:
+        """Write file only if content changed. Returns True if written."""
+        h = hashlib.md5(content.encode()).hexdigest()
+        if h == self._last_hash:
+            return False
+        _atomic_write(self._output_path, content)
+        self._last_hash = h
+        return True
 
     def write_status(self, tracker_state: dict) -> None:
         """Update the Status section. Called every UserPromptSubmit turn.
 
-        Rewrites the entire file with current Status + last Operations + optional Context.
-        Status-only rewrite is safe because the file is always regenerated from tracker state.
+        Skips the write if content hasn't changed since last call.
         """
         try:
             include_ctx = self._expand_written or tracker_state.get(
                 "expand_written", False
             )
             content = _build_full_file(tracker_state, include_context=include_ctx)
-            _atomic_write(self._output_path, content)
+            self._write_if_changed(content)
         except Exception as e:
             logger.warning(f"working_memory_writer.write_status failed: {e}")
 
@@ -424,7 +437,7 @@ class WorkingMemoryWriter:
                 "expand_written", False
             )
             content = _build_full_file(tracker_state, include_context=include_ctx)
-            _atomic_write(self._output_path, content)
+            self._write_if_changed(content)
         except Exception as e:
             logger.warning(f"working_memory_writer.write_operations failed: {e}")
 
