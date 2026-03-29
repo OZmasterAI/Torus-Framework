@@ -103,7 +103,11 @@ class LanceCollection:
             )
 
         try:
-            q = self._table.search(vector, vector_column_name="vector").distance_type("cosine").limit(n_results)
+            q = (
+                self._table.search(vector, vector_column_name="vector")
+                .distance_type("cosine")
+                .limit(n_results)
+            )
             if where:
                 sql_where = self._translate_where(where)
                 if sql_where:

@@ -1,9 +1,9 @@
 {
-  "session_count": 597,
+  "session_count": 601,
   "project": "torus-framework",
   "feature": "skill-mcp-v2",
   "framework_version": "v3.0.0",
-  "what_was_done": "Converted skill_server_v2.py from stdio to HTTP (streamable-http, port 8743). Added FP16 (.half()) + torch thread limits to skill_search.py. Added argparse, OAuth stubs, transport selection. Single shared process replaces per-instance stdio spawning.",
+  "what_was_done": "Switched skill_search embedding from v2-moe (475M, CPU-stuck) to v1.5 (137M, 2.5x faster, 1.4GB RSS). Verified all 4 skill-v2 tools work over HTTP. Fixed --max-tokens CLI flag removal in skill_llm_backend.py. capture_skill now generates skills successfully.",
   "known_issues": [
     "Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
@@ -11,19 +11,16 @@
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
     "kg_to_obsidian.py generates underscore filenames for entities — causes graph duplication when project uses hyphens",
     "MCP auth error when launching Claude Code from ~/.claude/hooks/ subdirectory",
-    "skill_server_v2 needs systemd/supervisor for auto-start on boot (currently manual nohup)"
+    "skill_server_v2 needs systemd/supervisor for auto-start on boot (currently manual nohup)",
+    "Memory MCP tools not registering in sessions — Gate 4 sideband workaround needed"
   ],
   "next_steps": [
-    "Restart Claude to pick up HTTP skills-v2 registration, verify search_skills works",
-    "Test remaining tools via HTTP: invoke_skill, capture_skill, trigger_evolution, self_improve",
-    "Update test_skill_search.py for FP16 + non-blocking EmbeddingIndex API",
+    "Update test_skill_search.py for v1.5 model + non-blocking EmbeddingIndex API",
+    "Fix memory MCP tool registration so Gate 4 works natively (not sideband hack)",
+    "Test trigger_evolution and self_improve tools via HTTP",
     "Add systemd unit or supervisor config for skill_server_v2 (like memory_server)",
-    "Implement Phase 5: pluggable API backend (OpenAICompatBackend for OpenRouter/NIM)",
-    "Fix kg_to_obsidian.py to normalize entity names to hyphen-case"
-  ],
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 71999,
-  "dag_total_branches": 264,
-  "last_response_preview": ""
+    "Gate 2 gap: rm -r (without -f) not blocked",
+    "Gate 23: Go test naming too rigid",
+    "Implement Phase 5: pluggable API backend (OpenAICompatBackend for OpenRouter/NIM)"
+  ]
 }

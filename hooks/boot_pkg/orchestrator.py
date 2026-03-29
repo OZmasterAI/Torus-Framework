@@ -232,7 +232,7 @@ def main():
 
                 _s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
                 _s.settimeout(1)
-                _s.connect(("127.0.0.1", 8741))
+                _s.connect(("127.0.0.1", 8742))
                 _s.close()
                 _mem_running = True
             except Exception:
@@ -245,12 +245,12 @@ def main():
                     start_new_session=True,
                 )
                 print(
-                    "  [BOOT] Memory server started (streamable-http, port 8741)",
+                    "  [BOOT] Memory server started (streamable-http, port 8742)",
                     file=sys.stderr,
                 )
             else:
                 print(
-                    "  [BOOT] Memory server already running (port 8741)",
+                    "  [BOOT] Memory server already running (port 8742)",
                     file=sys.stderr,
                 )
     except Exception:

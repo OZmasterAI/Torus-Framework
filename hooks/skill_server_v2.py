@@ -123,7 +123,7 @@ def _index_all_skills():
         try:
             with open(md_path, "r") as f:
                 content = f.read()
-            text = f"{name} {content[:2000]}"
+            text = f"{name} {content[:300]}"
             engine.add(name, text)
         except Exception:
             pass

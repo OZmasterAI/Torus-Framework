@@ -92,7 +92,7 @@ def _touch_memory_timestamp():
 
 # Network transport config — streamable-http is default, use --stdio or --sse to override
 _NET_HOST = os.environ.get("MEMORY_SSE_HOST", "127.0.0.1")
-_NET_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8741"))
+_NET_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8742"))
 
 # Detect transport mode from CLI args
 import argparse as _argparse
@@ -127,9 +127,53 @@ if _args.stdio:
 # Initialize MCP server (with host/port for network modes)
 _network_mode = _args.sse or _args.http
 if _network_mode:
-    mcp = FastMCP("memory", host=_NET_HOST, port=_args.port)
+    mcp = FastMCP("memory", host=_NET_HOST, port=_args.port, json_response=True)
 else:
     mcp = FastMCP("memory")
+
+# --- OAuth discovery stubs (Claude Code 2.1.85+ does RFC 9728 / RFC 8414 probing) ---
+# The MCP spec says auth is OPTIONAL. When discovery returns 404, the client
+# should fall back to default endpoints. We return 404 with proper JSON on all
+# OAuth-related paths so Claude Code doesn't choke on plain-text "Not Found".
+from starlette.requests import Request
+from starlette.responses import Response, JSONResponse
+
+
+@mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])
+async def _oauth_as_metadata(request: Request) -> Response:
+    """RFC 8414 — no authorization server configured."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+async def _oauth_protected_resource(request: Request) -> Response:
+    """RFC 9728 — resource is not protected."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/.well-known/openid-configuration", methods=["GET"])
+async def _openid_config(request: Request) -> Response:
+    """OpenID Connect — not supported."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/register", methods=["POST"])
+async def _oauth_register(request: Request) -> Response:
+    """RFC 7591 Dynamic Client Registration — not supported."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/authorize", methods=["GET"])
+async def _oauth_authorize(request: Request) -> Response:
+    """OAuth authorize endpoint — not supported."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/token", methods=["POST"])
+async def _oauth_token(request: Request) -> Response:
+    """OAuth token endpoint — not supported."""
+    return Response(status_code=404)
+
 
 # --- SSE reconnect fix ---
 # When Claude Code's SSE connection drops and reconnects, it skips sending the
