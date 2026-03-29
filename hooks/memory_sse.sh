@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-PORT="${MEMORY_SSE_PORT:-8741}"
+PORT="${MEMORY_SSE_PORT:-8742}"
 PIDFILE="/tmp/memory_server_sse.pid"
 LOGFILE="/tmp/memory_server_sse.log"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

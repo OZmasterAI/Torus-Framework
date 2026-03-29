@@ -3,7 +3,7 @@
 
 Provides three index classes:
 - BM25Index: keyword search via rank_bm25
-- EmbeddingIndex: semantic search via nomic-embed-text-v2-moe (lazy loaded)
+- EmbeddingIndex: semantic search via nomic-embed-text-v1.5 (lazy loaded)
 - HybridSearch: combines both with configurable weights
 
 Embedding model loads in background — BM25 works immediately,
@@ -31,14 +31,16 @@ def _get_embedding_model():
             import torch
 
             torch.set_num_threads(2)
-            torch.set_num_interop_threads(2)
+            try:
+                torch.set_num_interop_threads(2)
+            except RuntimeError:
+                pass  # already set or parallel work started
             from sentence_transformers import SentenceTransformer
 
             _model = SentenceTransformer(
-                "nomic-ai/nomic-embed-text-v2-moe", trust_remote_code=True
+                "nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True
             )
-            _model.half()  # FP32 → FP16: halves RAM (~5.3GB → ~2.7GB), ~0% quality loss
-            logger.info("Embedding model loaded (FP16)")
+            logger.info("Embedding model loaded (v1.5, 137M params)")
         except Exception as e:
             logger.warning("Embedding model unavailable, BM25-only: %s", e)
             _model_failed = True
@@ -82,6 +84,7 @@ class EmbeddingIndex:
 
     add() never blocks on model loading — stores raw text.
     search() computes embeddings lazily when model is available.
+    Embeddings are cached — only new items get encoded.
     """
 
     def __init__(self):
@@ -96,13 +99,21 @@ class EmbeddingIndex:
         self._embeddings.append(None)
 
     def _ensure_embeddings(self) -> None:
-        """Compute embeddings for any pending items if model is ready."""
+        """Batch-compute embeddings for any pending items if model is ready."""
         model = _get_embedding_model()
         if model is None:
             return
-        for i, text in enumerate(self._texts):
-            if self._embeddings[i] is None:
-                self._embeddings[i] = model.encode(text, normalize_embeddings=True)
+        pending = [
+            (i, self._texts[i])
+            for i in range(len(self._texts))
+            if self._embeddings[i] is None
+        ]
+        if not pending:
+            return
+        indices, texts = zip(*pending)
+        vecs = model.encode(list(texts), normalize_embeddings=True, batch_size=32)
+        for i, vec in zip(indices, vecs):
+            self._embeddings[i] = vec
 
     def search(self, query: str, top_k: int = 5) -> list[tuple[str, float]]:
         """Search by semantic similarity. Returns [(name, score), ...]."""
@@ -114,9 +125,10 @@ class EmbeddingIndex:
         if model is None:
             return []
         query_emb = model.encode(query, normalize_embeddings=True)
-        scores = [float(np.dot(query_emb, emb)) for _, emb in valid]
         names = [n for n, _ in valid]
-        ranked = sorted(zip(names, scores), key=lambda x: -x[1])
+        emb_matrix = np.stack([e for _, e in valid])
+        scores = emb_matrix @ query_emb
+        ranked = sorted(zip(names, scores.tolist()), key=lambda x: -x[1])
         return [(n, s) for n, s in ranked[:top_k]]
 
 
