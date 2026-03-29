@@ -17,7 +17,7 @@ from shared.memory_classification import classify_state_type
 
 def test_ephemeral_port_running():
     """Runtime state with port + running → ephemeral."""
-    assert classify_state_type("MCP server running on port 8741", "") == "ephemeral"
+    assert classify_state_type("MCP server running on port 8742", "") == "ephemeral"
 
 
 def test_ephemeral_process_pid():
@@ -157,7 +157,7 @@ def test_ephemeral_wins_over_conceptual():
     """More ephemeral than conceptual hits → ephemeral."""
     assert (
         classify_state_type(
-            "Server running on port 8741, process started and listening", ""
+            "Server running on port 8742, process started and listening", ""
         )
         == "ephemeral"
     )

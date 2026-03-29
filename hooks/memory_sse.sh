@@ -2,7 +2,7 @@
 # Launch memory server in SSE mode (shared across all Claude sessions).
 # Usage: ./memory_sse.sh [start|stop|status|restart]
 #
-# The server listens on 127.0.0.1:8741 by default.
+# The server listens on 127.0.0.1:8742 by default.
 # Override with MEMORY_SSE_PORT=XXXX environment variable.
 
 set -euo pipefail

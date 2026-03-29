@@ -64,7 +64,7 @@ cat > "$CONF/mcp.json" << 'MCPEOF'
   "mcpServers": {
     "memory": {
       "type": "sse",
-      "url": "http://localhost:8741/sse"
+      "url": "http://localhost:8742/sse"
     }
   }
 }
@@ -73,10 +73,10 @@ echo "  MCP: memory + model-router + skills + web-search"
 
 # ── Check memory server ──
 echo ""
-if curl -s --max-time 3 http://127.0.0.1:8741/sse > /dev/null 2>&1; then
+if curl -s --max-time 3 http://127.0.0.1:8742/sse > /dev/null 2>&1; then
     echo "Memory server: REACHABLE"
 else
-    echo "Memory server: NOT reachable (host :8741)"
+    echo "Memory server: NOT reachable (host :8742)"
 fi
 
 echo ""
