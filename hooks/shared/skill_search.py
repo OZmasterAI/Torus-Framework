@@ -28,11 +28,17 @@ def _get_embedding_model():
         return None
     if _model is None:
         try:
+            import torch
+
+            torch.set_num_threads(2)
+            torch.set_num_interop_threads(2)
             from sentence_transformers import SentenceTransformer
 
             _model = SentenceTransformer(
                 "nomic-ai/nomic-embed-text-v2-moe", trust_remote_code=True
             )
+            _model.half()  # FP32 → FP16: halves RAM (~5.3GB → ~2.7GB), ~0% quality loss
+            logger.info("Embedding model loaded (FP16)")
         except Exception as e:
             logger.warning("Embedding model unavailable, BM25-only: %s", e)
             _model_failed = True

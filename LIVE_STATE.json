@@ -1,26 +1,29 @@
 {
-  "session_count": 593,
+  "session_count": 597,
   "project": "torus-framework",
   "feature": "skill-mcp-v2",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed skills-v2 MCP server hang: restructured EmbeddingIndex to non-blocking (add stores text, search computes lazily), BM25 indexes at startup, embedding model loads in background thread. Tested 6/10 tools live (list_skills, skill_health, record_outcome, skill_usage, skill_lineage, search_skills).",
+  "what_was_done": "Converted skill_server_v2.py from stdio to HTTP (streamable-http, port 8743). Added FP16 (.half()) + torch thread limits to skill_search.py. Added argparse, OAuth stubs, transport selection. Single shared process replaces per-instance stdio spawning.",
   "known_issues": [
     "Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
     "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
     "kg_to_obsidian.py generates underscore filenames for entities — causes graph duplication when project uses hyphens",
-    "MCP auth error when launching Claude Code from ~/.claude/hooks/ subdirectory"
+    "MCP auth error when launching Claude Code from ~/.claude/hooks/ subdirectory",
+    "skill_server_v2 needs systemd/supervisor for auto-start on boot (currently manual nohup)"
   ],
   "next_steps": [
-    "Restart Claude, reconnect skills-v2 MCP, finish testing remaining 4 tools (invoke_skill, capture_skill, trigger_evolution, self_improve)",
-    "Verify search_skills returns BM25 results immediately, then hybrid after model loads",
-    "Update test_skill_search.py for new non-blocking EmbeddingIndex API",
+    "Restart Claude to pick up HTTP skills-v2 registration, verify search_skills works",
+    "Test remaining tools via HTTP: invoke_skill, capture_skill, trigger_evolution, self_improve",
+    "Update test_skill_search.py for FP16 + non-blocking EmbeddingIndex API",
+    "Add systemd unit or supervisor config for skill_server_v2 (like memory_server)",
     "Implement Phase 5: pluggable API backend (OpenAICompatBackend for OpenRouter/NIM)",
     "Fix kg_to_obsidian.py to normalize entity names to hyphen-case"
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 71750,
-  "dag_total_branches": 261
+  "dag_node_count": 71999,
+  "dag_total_branches": 264,
+  "last_response_preview": ""
 }

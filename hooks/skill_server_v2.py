@@ -13,6 +13,7 @@ Run standalone: python3 skill_server_v2.py
 Used via MCP: registered via `claude mcp add`
 """
 
+import argparse
 import functools
 import os
 import sys
@@ -29,7 +30,59 @@ _SKILL_DIRS = [_SKILL_LIBRARY, _SKILLS_DIR]
 _STATE_DIR = os.path.join(_CLAUDE_DIR, "hooks", ".state")
 _DB_PATH = os.path.join(_STATE_DIR, "skills.db")
 
-mcp = FastMCP("skills")
+# ── Transport config — streamable-http default, --stdio for pipe mode ──
+_NET_HOST = os.environ.get("SKILLS_HOST", "127.0.0.1")
+_NET_PORT = int(os.environ.get("SKILLS_PORT", "8743"))
+
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument(
+    "--http",
+    action="store_true",
+    default=True,
+    help="Use streamable-http transport (default)",
+)
+_parser.add_argument(
+    "--stdio",
+    action="store_true",
+    default=False,
+    help="Use stdio transport (for subprocess/pipe mode)",
+)
+_parser.add_argument("--port", type=int, default=_NET_PORT)
+_args, _ = _parser.parse_known_args()
+
+if _args.stdio:
+    _args.http = False
+
+if _args.http:
+    mcp = FastMCP("skills", host=_NET_HOST, port=_args.port)
+else:
+    mcp = FastMCP("skills")
+
+# ── OAuth discovery stubs (Claude Code does RFC 9728/8414 probing) ──
+if _args.http:
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    @mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])
+    async def _oauth_as_metadata(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+    async def _oauth_protected_resource(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/.well-known/openid-configuration", methods=["GET"])
+    async def _openid_config(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/register", methods=["POST"])
+    async def _oauth_register(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/authorize", methods=["GET"])
+    async def _oauth_authorize(request: Request) -> Response:
+        return Response(status_code=404)
+
 
 # ── Lazy-loaded singletons ──
 _db_conn = None
@@ -724,4 +777,11 @@ if __name__ == "__main__":
             pass
 
     threading.Thread(target=_warmup_embeddings, daemon=True).start()
-    mcp.run()
+
+    _mode = "stdio" if _args.stdio else "streamable-http"
+    if _args.http:
+        print(
+            f"[Skill MCP v2] Starting {_mode} on {_NET_HOST}:{_args.port}",
+            file=sys.stderr,
+        )
+    mcp.run(transport=_mode)
