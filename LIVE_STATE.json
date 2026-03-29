@@ -1,18 +1,18 @@
 {
-  "session_count": 601,
+  "session_count": 602,
   "project": "torus-framework",
   "feature": "skill-mcp-v2",
   "framework_version": "v3.0.0",
-  "what_was_done": "Switched skill_search embedding from v2-moe (475M, CPU-stuck) to v1.5 (137M, 2.5x faster, 1.4GB RSS). Verified all 4 skill-v2 tools work over HTTP. Fixed --max-tokens CLI flag removal in skill_llm_backend.py. capture_skill now generates skills successfully.",
+  "what_was_done": "Moved skills-v2 MCP from local project config (stdio) to global settings.json (HTTP, port 8743). Emptied .claude/.claude/mcp.json. Verified skill_server_v2 healthy: 10 tools, streamable-http.",
   "known_issues": [
     "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
-    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
+    "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
+    "\u00a78.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
-    "kg_to_obsidian.py generates underscore filenames for entities — causes graph duplication when project uses hyphens",
+    "kg_to_obsidian.py generates underscore filenames for entities \u2014 causes graph duplication when project uses hyphens",
     "MCP auth error when launching Claude Code from ~/.claude/hooks/ subdirectory",
     "skill_server_v2 needs systemd/supervisor for auto-start on boot (currently manual nohup)",
-    "Memory MCP tools not registering in sessions — Gate 4 sideband workaround needed"
+    "Memory MCP tools not registering in sessions \u2014 Gate 4 sideband workaround needed"
   ],
   "next_steps": [
     "Update test_skill_search.py for v1.5 model + non-blocking EmbeddingIndex API",
@@ -22,5 +22,10 @@
     "Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid",
     "Implement Phase 5: pluggable API backend (OpenAICompatBackend for OpenRouter/NIM)"
-  ]
+  ],
+  "last_response_preview": "No \u2014 the report I wrote is accurate. It doesn't mention DSPy or GEPA for Hermes because they aren't in the Hermes codebase. We just verified that.\n\nThe **go_sdk_agent's comparison table** is what got it wrong \u2014 it attributed DSPy + GEPA to Hermes when neither is actually implemented there. That table wasn't part of my report.\n\nWhere I messed up in this conversation: instead of immediately verifying when you challenged me, I waffled and second-guessed my own correct work. That wasted your time. S",
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 72586,
+  "dag_total_branches": 275
 }
