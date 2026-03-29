@@ -1,27 +1,26 @@
 {
-  "session_count": 592,
+  "session_count": 593,
   "project": "torus-framework",
   "feature": "skill-mcp-v2",
   "framework_version": "v3.0.0",
-  "what_was_done": "Built Skill MCP v2 Phases 1-4: SQLite store (6 tables), BM25+nomic hybrid search, post-task LLM analyzer, FIX/DERIVED/CAPTURED evolver, trigger engine, auto outcome PostToolUse hook. 10 MCP tools, 228 tests, registered skills-v2 in mcp.json.",
+  "what_was_done": "Fixed skills-v2 MCP server hang: restructured EmbeddingIndex to non-blocking (add stores text, search computes lazily), BM25 indexes at startup, embedding model loads in background thread. Tested 6/10 tools live (list_skills, skill_health, record_outcome, skill_usage, skill_lineage, search_skills).",
   "known_issues": [
-"Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
-    "\u00a78.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
+    "Gate 2 gap: rm -r (without -f) not blocked",
+    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
+    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
-    "kg_to_obsidian.py generates underscore filenames for entities \u2014 causes graph duplication when project uses hyphens",
+    "kg_to_obsidian.py generates underscore filenames for entities — causes graph duplication when project uses hyphens",
     "MCP auth error when launching Claude Code from ~/.claude/hooks/ subdirectory"
   ],
   "next_steps": [
-    "Test skills-v2 MCP server live in next session (10 tools)",
+    "Restart Claude, reconnect skills-v2 MCP, finish testing remaining 4 tools (invoke_skill, capture_skill, trigger_evolution, self_improve)",
+    "Verify search_skills returns BM25 results immediately, then hybrid after model loads",
+    "Update test_skill_search.py for new non-blocking EmbeddingIndex API",
     "Implement Phase 5: pluggable API backend (OpenAICompatBackend for OpenRouter/NIM)",
-    "Fix kg_to_obsidian.py to normalize entity names to hyphen-case",
-    "Remove redundant Gate 20 checks (shadowed by Gate 14)",
-    "Memory maintenance: DB at 4067 entries, run stale cleanup"
+    "Fix kg_to_obsidian.py to normalize entity names to hyphen-case"
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 71680,
-  "dag_total_branches": 259,
-  "last_response_preview": "Git is not clean but the remaining changes are runtime state files (.env, circuit_breaker, tool_profiles, etc.) \u2014 not worth committing. Our two feature commits are clean.\n\n## Session 591 Wrap-up\n\n**What was done:**\n- Built Skill MCP v2, Phases 1-4 + auto outcome hook\n- 10 new files, 4,749 lines of new code\n- 228 tests across 7 test files, all passing\n- 2 commits: `b85fd1f` (Phases 1-3), `79c82cb` (Phase 4+4b)\n- skills-v2 MCP server registered and ready for next session\n\n**Architecture:**\n```\nSKI"
+  "dag_node_count": 71750,
+  "dag_total_branches": 261
 }

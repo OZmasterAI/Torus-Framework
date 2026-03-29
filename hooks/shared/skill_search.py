@@ -5,23 +5,38 @@ Provides three index classes:
 - BM25Index: keyword search via rank_bm25
 - EmbeddingIndex: semantic search via nomic-embed-text-v2-moe (lazy loaded)
 - HybridSearch: combines both with configurable weights
+
+Embedding model loads in background — BM25 works immediately,
+semantic search activates once the model is ready.
 """
 
+import logging
 import numpy as np
 from rank_bm25 import BM25Okapi
 
-# Lazy-loaded embedding model (avoid 2-3s startup penalty)
+logger = logging.getLogger(__name__)
+
+# Lazy-loaded embedding model
 _model = None
+_model_failed = False
 
 
 def _get_embedding_model():
-    global _model
+    """Load nomic embedding model. Returns None if unavailable."""
+    global _model, _model_failed
+    if _model_failed:
+        return None
     if _model is None:
-        from sentence_transformers import SentenceTransformer
+        try:
+            from sentence_transformers import SentenceTransformer
 
-        _model = SentenceTransformer(
-            "nomic-ai/nomic-embed-text-v2-moe", trust_remote_code=True
-        )
+            _model = SentenceTransformer(
+                "nomic-ai/nomic-embed-text-v2-moe", trust_remote_code=True
+            )
+        except Exception as e:
+            logger.warning("Embedding model unavailable, BM25-only: %s", e)
+            _model_failed = True
+            return None
     return _model
 
 
@@ -57,27 +72,45 @@ class BM25Index:
 
 
 class EmbeddingIndex:
-    """Semantic search using nomic-embed-text-v2-moe."""
+    """Semantic search using nomic-embed-text-v2-moe.
+
+    add() never blocks on model loading — stores raw text.
+    search() computes embeddings lazily when model is available.
+    """
 
     def __init__(self):
         self._names: list[str] = []
-        self._embeddings: list[np.ndarray] = []
+        self._texts: list[str] = []
+        self._embeddings: list[np.ndarray | None] = []
 
     def add(self, name: str, text: str) -> None:
-        """Add a skill to the index (embeds immediately)."""
-        model = _get_embedding_model()
-        emb = model.encode(text, normalize_embeddings=True)
+        """Add a skill to the index. Never blocks on model loading."""
         self._names.append(name)
-        self._embeddings.append(emb)
+        self._texts.append(text)
+        self._embeddings.append(None)
+
+    def _ensure_embeddings(self) -> None:
+        """Compute embeddings for any pending items if model is ready."""
+        model = _get_embedding_model()
+        if model is None:
+            return
+        for i, text in enumerate(self._texts):
+            if self._embeddings[i] is None:
+                self._embeddings[i] = model.encode(text, normalize_embeddings=True)
 
     def search(self, query: str, top_k: int = 5) -> list[tuple[str, float]]:
         """Search by semantic similarity. Returns [(name, score), ...]."""
-        if not self._embeddings:
+        self._ensure_embeddings()
+        valid = [(n, e) for n, e in zip(self._names, self._embeddings) if e is not None]
+        if not valid:
             return []
         model = _get_embedding_model()
+        if model is None:
+            return []
         query_emb = model.encode(query, normalize_embeddings=True)
-        scores = [float(np.dot(query_emb, emb)) for emb in self._embeddings]
-        ranked = sorted(zip(self._names, scores), key=lambda x: -x[1])
+        scores = [float(np.dot(query_emb, emb)) for _, emb in valid]
+        names = [n for n, _ in valid]
+        ranked = sorted(zip(names, scores), key=lambda x: -x[1])
         return [(n, s) for n, s in ranked[:top_k]]
 
 
@@ -91,7 +124,7 @@ class HybridSearch:
         self.embedding_weight = embedding_weight
 
     def add(self, name: str, text: str) -> None:
-        """Add a skill to both indexes."""
+        """Add a skill to both indexes. Never blocks on model loading."""
         self.bm25.add(name, text)
         self.embedding.add(name, text)
 
@@ -99,6 +132,7 @@ class HybridSearch:
         """Hybrid search combining BM25 and embedding scores.
 
         BM25 scores are normalized to [0, 1] before combining.
+        Falls back to BM25-only if embeddings aren't available yet.
         Returns [(name, combined_score), ...].
         """
         if not query.strip():
@@ -114,6 +148,11 @@ class HybridSearch:
             bm25_scores = {n: s / max_bm25 for n, s in bm25_results}
 
         emb_scores = {n: s for n, s in emb_results}
+
+        # If no embeddings yet, return BM25-only (normalized to [0, 1])
+        if not emb_scores and bm25_scores:
+            ranked = sorted(bm25_scores.items(), key=lambda x: -x[1])
+            return ranked[:top_k]
 
         # Combine all skill names
         all_names = set(bm25_scores.keys()) | set(emb_scores.keys())

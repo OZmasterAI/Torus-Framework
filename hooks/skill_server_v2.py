@@ -707,4 +707,21 @@ def skill_health() -> dict:
 
 
 if __name__ == "__main__":
+    import threading
+
+    # Phase 1 (main thread): index all skills into BM25 immediately.
+    # add() no longer blocks on embedding model, so this is fast.
+    _get_search()
+
+    # Phase 2 (background): load embedding model for semantic search.
+    # BM25 search works immediately; hybrid activates when model is ready.
+    def _warmup_embeddings():
+        try:
+            from shared.skill_search import _get_embedding_model
+
+            _get_embedding_model()
+        except Exception:
+            pass
+
+    threading.Thread(target=_warmup_embeddings, daemon=True).start()
     mcp.run()
