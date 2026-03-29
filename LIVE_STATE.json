@@ -3,7 +3,7 @@
   "project": "torus-framework",
   "feature": "gate-14-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Gate 14 PENDING_THRESHOLD raised 2→5 to fix multi-file deadlock. Merged Obsidian go_sdk_agent/go-sdk-agent duplicate nodes (deleted KG concept, fixed 31 session frontmatter + 48 KG wikilinks + daily note).",
+  "what_was_done": "Gate 14 threshold 2→5 fix. Obsidian graph dedup (go_sdk_agent→go-sdk-agent). Wrote companyOS session 1 summary from transcript. Created vault/projects/companyos.md.",
   "known_issues": [
     "rate_limits statusline field null on API key billing",
     "Gate 2 gap: rm -r (without -f) not blocked",
