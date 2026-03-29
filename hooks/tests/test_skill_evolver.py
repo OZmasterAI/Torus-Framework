@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for shared/skill_evolver.py — FIX evolution engine."""
+"""Tests for shared/skill_evolver.py — FIX, DERIVED, CAPTURED evolution."""
 
 import json
 import os
@@ -11,8 +11,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from shared.skill_evolver import (
     build_fix_prompt,
+    build_derived_prompt,
+    build_captured_prompt,
     parse_evolution_response,
+    parse_derived_response,
     evolve_skill,
+    evolve_derived,
+    evolve_captured,
     EVOLUTION_COMPLETE,
     EVOLUTION_FAILED,
     MAX_ITERATIONS,
@@ -365,6 +370,247 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
         # Check counter reset (anti-loop)
         test("Lineage: new skill selections = 0", new_rec["total_selections"] == 0)
+
+    conn.close()
+
+
+# ══════════════════════════════════════════
+# DERIVED evolution tests
+# ══════════════════════════════════════════
+
+# ── DERIVED prompt building ──
+print("\n--- skill_evolver: DERIVED prompt ---")
+
+dprompt = build_derived_prompt(
+    parent_content="# Commit\nBasic commit flow.",
+    direction="Specialize for monorepo commits with scope prefixes",
+    execution_insights="Users often need scoped commits in monorepos",
+    metric_summary="applied_rate=0.20, completion_rate=0.30",
+)
+test("DERIVED: has parent content", "Basic commit" in dprompt)
+test("DERIVED: has direction", "monorepo" in dprompt)
+test("DERIVED: has insights", "scoped commits" in dprompt)
+test("DERIVED: has metrics", "applied_rate=0.20" in dprompt)
+test(
+    "DERIVED: has name instruction",
+    "different" in dprompt.lower() and "name" in dprompt.lower(),
+)
+
+
+# ── DERIVED response parsing ──
+print("\n--- skill_evolver: Parse DERIVED response ---")
+
+derived_response = f"""CHANGE_SUMMARY: Created monorepo-commit skill specialized for scoped commits
+NEW_SKILL_NAME: monorepo-commit
+
+# Monorepo Commit
+Scoped commit flow for monorepos with conventional commit prefixes.
+
+## Steps
+1. Detect monorepo structure
+2. Scope changes by package
+3. Create scoped commit messages
+
+{EVOLUTION_COMPLETE}"""
+
+parsed_d = parse_derived_response(derived_response)
+test("DERIVED parse: complete", parsed_d["complete"] is True)
+test("DERIVED parse: new_name extracted", parsed_d["new_name"] == "monorepo-commit")
+test("DERIVED parse: has content", "Monorepo Commit" in parsed_d["content"])
+test("DERIVED parse: content clean", "NEW_SKILL_NAME:" not in parsed_d["content"])
+
+
+# ── DERIVED response: no name fallback ──
+print("\n--- skill_evolver: DERIVED no name fallback ---")
+
+no_name_resp = f"""CHANGE_SUMMARY: Enhanced for CI pipelines
+
+# CI Commit Helper
+Auto-commit for CI pipelines.
+
+{EVOLUTION_COMPLETE}"""
+
+parsed_nn = parse_derived_response(no_name_resp)
+test(
+    "DERIVED no-name: infers from heading", parsed_nn["new_name"] == "ci-commit-helper"
+)
+
+
+# ── Full evolve_derived ──
+print("\n--- skill_evolver: evolve_derived ---")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    db_path = os.path.join(tmpdir, "skills.db")
+    conn = init_db(db_path)
+
+    # Create parent skill
+    parent_dir = os.path.join(tmpdir, "skill-library", "commit")
+    os.makedirs(parent_dir, exist_ok=True)
+    with open(os.path.join(parent_dir, "SKILL.md"), "w") as f:
+        f.write("# Commit\nBasic commit.\n")
+    parent_id = get_or_create_skill(conn, "commit", "Basic commit", parent_dir)
+
+    lib_dir = os.path.join(tmpdir, "skill-library")
+
+    evolved_resp = f"""CHANGE_SUMMARY: Derived monorepo-commit from commit
+NEW_SKILL_NAME: monorepo-commit
+
+# Monorepo Commit
+Specialized for monorepo scoped commits.
+
+{EVOLUTION_COMPLETE}"""
+
+    mock_client = MagicMock()
+    mock_client.complete.return_value = evolved_resp
+
+    result = evolve_derived(
+        conn=conn,
+        llm_client=mock_client,
+        parent_skill_id=parent_id,
+        parent_skill_name="commit",
+        parent_skill_dir=parent_dir,
+        direction="Specialize for monorepos",
+        execution_insights="",
+        metric_summary="",
+        skill_library_dir=lib_dir,
+    )
+
+    test("DERIVED: success", result["success"] is True)
+    test("DERIVED: has new_name", result.get("new_name") == "monorepo-commit")
+    test(
+        "DERIVED: has new_skill_id",
+        "monorepo-commit__v0_" in result.get("new_skill_id", ""),
+    )
+
+    # Check new skill dir created
+    new_dir = os.path.join(lib_dir, "monorepo-commit")
+    test("DERIVED: new dir exists", os.path.isdir(new_dir))
+    test(
+        "DERIVED: new SKILL.md exists",
+        os.path.exists(os.path.join(new_dir, "SKILL.md")),
+    )
+
+    # Parent stays active
+    parent_rec = get_skill_record(conn, parent_id)
+    test("DERIVED: parent still active", parent_rec["is_active"] == 1)
+
+    # New skill has lineage
+    new_sid = result["new_skill_id"]
+    lineage = get_skill_lineage(conn, new_sid)
+    test("DERIVED: lineage parent recorded", len(lineage["parents"]) == 1)
+
+    new_rec = get_skill_record(conn, new_sid)
+    test("DERIVED: generation is 0", new_rec["lineage_generation"] == 0)
+    test(
+        "DERIVED: origin is evolved_derived",
+        new_rec["lineage_origin"] == "evolved_derived",
+    )
+
+    conn.close()
+
+
+# ══════════════════════════════════════════
+# CAPTURED evolution tests
+# ══════════════════════════════════════════
+
+# ── CAPTURED prompt building ──
+print("\n--- skill_evolver: CAPTURED prompt ---")
+
+cprompt = build_captured_prompt(
+    direction="Extract the pattern of using git stash before risky operations",
+    category="workflow",
+    execution_highlights="In 3 tasks, the agent used git stash before refactors",
+)
+test("CAPTURED: has direction", "git stash" in cprompt)
+test("CAPTURED: has category", "workflow" in cprompt)
+test("CAPTURED: has highlights", "3 tasks" in cprompt)
+test("CAPTURED: has name instruction", "name" in cprompt.lower())
+
+
+# ── Full evolve_captured ──
+print("\n--- skill_evolver: evolve_captured ---")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    db_path = os.path.join(tmpdir, "skills.db")
+    conn = init_db(db_path)
+    lib_dir = os.path.join(tmpdir, "skill-library")
+    os.makedirs(lib_dir, exist_ok=True)
+
+    captured_resp = f"""CHANGE_SUMMARY: Captured git-stash-guard workflow pattern
+NEW_SKILL_NAME: git-stash-guard
+
+# Git Stash Guard
+Automatically stash uncommitted changes before risky operations.
+
+## Steps
+1. Check for uncommitted changes
+2. Stash if dirty
+3. Run operation
+4. Pop stash
+
+{EVOLUTION_COMPLETE}"""
+
+    mock_client = MagicMock()
+    mock_client.complete.return_value = captured_resp
+
+    result = evolve_captured(
+        conn=conn,
+        llm_client=mock_client,
+        direction="Extract git stash before risky ops pattern",
+        category="workflow",
+        execution_highlights="Used in 3 refactoring tasks",
+        skill_library_dir=lib_dir,
+    )
+
+    test("CAPTURED: success", result["success"] is True)
+    test("CAPTURED: has new_name", result.get("new_name") == "git-stash-guard")
+    test(
+        "CAPTURED: has new_skill_id",
+        "git-stash-guard__v0_" in result.get("new_skill_id", ""),
+    )
+
+    # Check skill dir created
+    new_dir = os.path.join(lib_dir, "git-stash-guard")
+    test("CAPTURED: dir exists", os.path.isdir(new_dir))
+    with open(os.path.join(new_dir, "SKILL.md")) as f:
+        content = f.read()
+    test("CAPTURED: SKILL.md has content", "Stash Guard" in content)
+    test("CAPTURED: no token leak", EVOLUTION_COMPLETE not in content)
+
+    # Check SQLite record
+    new_sid = result["new_skill_id"]
+    new_rec = get_skill_record(conn, new_sid)
+    test("CAPTURED: origin is captured", new_rec["lineage_origin"] == "captured")
+    test("CAPTURED: generation is 0", new_rec["lineage_generation"] == 0)
+    test("CAPTURED: no parents", len(get_skill_lineage(conn, new_sid)["parents"]) == 0)
+
+    conn.close()
+
+
+# ── CAPTURED: EVOLUTION_FAILED ──
+print("\n--- skill_evolver: CAPTURED failed ---")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    db_path = os.path.join(tmpdir, "skills.db")
+    conn = init_db(db_path)
+    lib_dir = os.path.join(tmpdir, "skill-library")
+    os.makedirs(lib_dir, exist_ok=True)
+
+    mock_client = MagicMock()
+    mock_client.complete.return_value = (
+        f"{EVOLUTION_FAILED}\nReason: Pattern too specific to generalize."
+    )
+
+    result = evolve_captured(
+        conn=conn,
+        llm_client=mock_client,
+        direction="Extract some niche pattern",
+        category="workflow",
+        execution_highlights="",
+        skill_library_dir=lib_dir,
+    )
+
+    test("CAPTURED failed: success is False", result["success"] is False)
 
     conn.close()
 

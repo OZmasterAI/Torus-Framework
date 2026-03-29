@@ -37,6 +37,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/tg_mirror_tools.py\"",
             "timeout": 2
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/skill_outcome_tracker.py\"",
+            "timeout": 2
           }
         ]
       },

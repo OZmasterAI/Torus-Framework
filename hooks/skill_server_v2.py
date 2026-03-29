@@ -183,6 +183,9 @@ def list_skills() -> dict:
                 quality = {
                     "selections": rec["total_selections"],
                     "effective_rate": round(rates["effective_rate"], 2),
+                    "completion_rate": round(rates["completion_rate"], 2),
+                    "applied_rate": round(rates["applied_rate"], 2),
+                    "generation": rec["lineage_generation"],
                 }
 
             entry = {
@@ -528,18 +531,104 @@ def _run_evolution(skill_name: str, direction: str = "") -> dict:
 
 @mcp.tool()
 @crash_proof
-def trigger_evolution(skill: str, direction: str = "") -> dict:
-    """Trigger FIX evolution on a degraded skill.
+def trigger_evolution(
+    skill: str, direction: str = "", evolution_type: str = "FIX"
+) -> dict:
+    """Trigger evolution on a degraded skill.
 
-    Checks if the skill meets evolution thresholds, then runs the evolver
-    (claude -p, up to 5 iterations). Updates SKILL.md in-place and records
-    lineage in SQLite.
+    Checks if the skill meets evolution thresholds, then runs the appropriate
+    evolver (claude -p, up to 5 iterations).
+
+    FIX: Repair in-place. DERIVED: Create specialized variant (parent stays).
 
     Args:
         skill: Skill name to evolve.
-        direction: Optional specific direction for the fix (auto-detected if empty).
+        direction: Optional specific direction (auto-detected if empty).
+        evolution_type: "FIX" (default) or "DERIVED".
     """
+    if evolution_type == "DERIVED":
+        return _run_derived_evolution(skill, direction)
     return _run_evolution(skill, direction)
+
+
+def _run_derived_evolution(skill_name: str, direction: str = "") -> dict:
+    """Execute DERIVED evolution on a skill. Returns result dict."""
+    try:
+        from shared.skill_evolver import evolve_derived
+        from shared.skill_triggers import is_evolution_eligible
+        from shared.skill_db import get_skill_by_name, computed_rates
+        from shared.skill_llm_backend import ClaudePClient
+
+        conn = _get_db()
+        rec = get_skill_by_name(conn, skill_name)
+        if rec is None:
+            return {"success": False, "error": f"Skill '{skill_name}' not in SQLite"}
+
+        skill_id = rec["skill_id"]
+        if not is_evolution_eligible(conn, skill_id):
+            return {"success": False, "error": f"Skill '{skill_name}' not eligible"}
+
+        skill_dir, md_path = _find_skill(skill_name)
+        if md_path is None:
+            return {"success": False, "error": f"Skill '{skill_name}' not found"}
+
+        rates = computed_rates(rec)
+        metric_summary = (
+            f"applied_rate={rates['applied_rate']:.2f}, "
+            f"completion_rate={rates['completion_rate']:.2f}, "
+            f"selections={rec['total_selections']}"
+        )
+
+        client = ClaudePClient()
+        return evolve_derived(
+            conn=conn,
+            llm_client=client,
+            parent_skill_id=skill_id,
+            parent_skill_name=skill_name,
+            parent_skill_dir=skill_dir,
+            direction=direction
+            or f"Specialize degraded skill (metrics: {metric_summary})",
+            execution_insights="",
+            metric_summary=metric_summary,
+            skill_library_dir=_SKILL_LIBRARY,
+        )
+    except Exception as e:
+        print(f"[Skill MCP v2] derived evolution failed: {e}", file=sys.stderr)
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+@crash_proof
+def capture_skill(
+    direction: str, category: str = "workflow", context: str = ""
+) -> dict:
+    """Capture a novel pattern into a brand-new skill.
+
+    Creates a new SKILL.md in skill-library/ from observed patterns.
+    Uses claude -p to generate the skill content.
+
+    Args:
+        direction: Description of the pattern to capture.
+        category: One of "workflow", "tool_guide", "reference".
+        context: Execution context where the pattern was observed.
+    """
+    try:
+        from shared.skill_evolver import evolve_captured
+        from shared.skill_llm_backend import ClaudePClient
+
+        conn = _get_db()
+        client = ClaudePClient()
+        return evolve_captured(
+            conn=conn,
+            llm_client=client,
+            direction=direction,
+            category=category,
+            execution_highlights=context,
+            skill_library_dir=_SKILL_LIBRARY,
+        )
+    except Exception as e:
+        print(f"[Skill MCP v2] capture failed: {e}", file=sys.stderr)
+        return {"success": False, "error": str(e)}
 
 
 @mcp.tool()

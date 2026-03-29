@@ -16,8 +16,12 @@ from shared.skill_db import (
 from shared.skill_triggers import (
     check_triggers,
     is_evolution_eligible,
+    add_tool_dep,
+    get_tool_deps,
+    get_skills_by_tool,
     FALLBACK_THRESHOLD,
     LOW_COMPLETION_THRESHOLD,
+    MIN_APPLIED_FOR_DERIVED,
     MIN_SELECTIONS,
 )
 
@@ -227,6 +231,95 @@ with tempfile.TemporaryDirectory() as tmpdir:
         eligible is False,
         "completion_rate=0.35 should NOT trigger",
     )
+
+    conn.close()
+
+
+# ── DERIVED trigger: low applied + low completion ──
+print("\n--- skill_triggers: DERIVED trigger ---")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    db_path = os.path.join(tmpdir, "skills.db")
+    conn = init_db(db_path)
+    sid = get_or_create_skill(conn, "ignored-skill", "Low applied", "/ig")
+
+    # 10 selections, only 2 applied (applied_rate=0.2), 0 completions
+    for _ in range(10):
+        record_selection(conn, sid)
+    for _ in range(2):
+        record_outcome(conn, sid, applied=True, completed=False)
+    for _ in range(8):
+        record_outcome(conn, sid, applied=False, completed=False)
+
+    candidates = check_triggers(conn)
+    test("DERIVED: has candidate", len(candidates) == 1)
+    if candidates:
+        test(
+            "DERIVED: type is DERIVED",
+            candidates[0]["evolution_type"] == "DERIVED",
+            f"got {candidates[0]['evolution_type']}",
+        )
+        test("DERIVED: has applied_rate", "applied_rate" in candidates[0])
+
+    conn.close()
+
+
+# ── FIX vs DERIVED: high applied + low completion = FIX ──
+print("\n--- skill_triggers: FIX vs DERIVED distinction ---")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    db_path = os.path.join(tmpdir, "skills.db")
+    conn = init_db(db_path)
+    sid = get_or_create_skill(conn, "high-applied", "Applied but fails", "/ha")
+
+    # 10 selections, 8 applied (0.8), 1 completed -> FIX not DERIVED
+    for _ in range(10):
+        record_selection(conn, sid)
+    for _ in range(1):
+        record_outcome(conn, sid, applied=True, completed=True)
+    for _ in range(7):
+        record_outcome(conn, sid, applied=True, completed=False)
+    for _ in range(2):
+        record_outcome(conn, sid, applied=False, completed=False)
+
+    candidates = check_triggers(conn)
+    test("FIX-not-DERIVED: has candidate", len(candidates) == 1)
+    if candidates:
+        test(
+            "FIX-not-DERIVED: type is FIX",
+            candidates[0]["evolution_type"] == "FIX",
+            f"got {candidates[0]['evolution_type']}",
+        )
+
+    conn.close()
+
+
+# ── Tool dependencies ──
+print("\n--- skill_triggers: Tool dependencies ---")
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    db_path = os.path.join(tmpdir, "skills.db")
+    conn = init_db(db_path)
+    sid = get_or_create_skill(conn, "tool-user", "Uses tools", "/tu")
+
+    add_tool_dep(conn, sid, "Bash", critical=True)
+    add_tool_dep(conn, sid, "Edit", critical=False)
+    add_tool_dep(conn, sid, "Bash", critical=True)  # idempotent
+
+    deps = get_tool_deps(conn, sid)
+    test("Tool deps: 2 deps", len(deps) == 2, f"got {len(deps)}")
+    test(
+        "Tool deps: Bash is critical",
+        any(d["tool_key"] == "Bash" and d["critical"] for d in deps),
+    )
+    test(
+        "Tool deps: Edit not critical",
+        any(d["tool_key"] == "Edit" and not d["critical"] for d in deps),
+    )
+
+    # Reverse lookup
+    skills = get_skills_by_tool(conn, "Bash")
+    test("Tool lookup: finds skill", sid in skills)
 
     conn.close()
 
