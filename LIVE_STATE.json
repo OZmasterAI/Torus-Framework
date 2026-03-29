@@ -1,12 +1,11 @@
 {
-  "session_count": 569,
+  "session_count": 592,
   "project": "torus-framework",
-  "feature": "vector256-fix",
+  "feature": "skill-mcp-v2",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed vector_256 column type mismatch (string\u2192list) on all 5 LanceDB tables \u2014 memory writes were silently failing. Moved working-memory/summary from rules/ to hooks/ saving ~636 tok/call. Added content-hash skip to WorkingMemoryWriter. Cleaned up ~5GB of stale repos (terminalius, BEAM, opencode, herm).",
+  "what_was_done": "Built Skill MCP v2 Phases 1-4: SQLite store (6 tables), BM25+nomic hybrid search, post-task LLM analyzer, FIX/DERIVED/CAPTURED evolver, trigger engine, auto outcome PostToolUse hook. 10 MCP tools, 228 tests, registered skills-v2 in mcp.json.",
   "known_issues": [
-    "rate_limits statusline field null on API key billing",
-    "Gate 2 gap: rm -r (without -f) not blocked",
+"Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
     "\u00a78.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
@@ -14,15 +13,15 @@
     "MCP auth error when launching Claude Code from ~/.claude/hooks/ subdirectory"
   ],
   "next_steps": [
+    "Test skills-v2 MCP server live in next session (10 tools)",
+    "Implement Phase 5: pluggable API backend (OpenAICompatBackend for OpenRouter/NIM)",
     "Fix kg_to_obsidian.py to normalize entity names to hyphen-case",
-    "Run kg_to_obsidian.py periodically (cron or post-session hook)",
     "Remove redundant Gate 20 checks (shadowed by Gate 14)",
-    "Memory maintenance: DB at 4051 entries, run stale cleanup",
-    "Delete framework-v5 .venv (5.1GB of duplicate CUDA/torch libs)"
+    "Memory maintenance: DB at 4067 entries, run stale cleanup"
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 70379,
-  "dag_total_branches": 234,
-  "last_response_preview": "No local overrides. The MCP config in `~/.claude.json` should apply everywhere. Try launching from `~/.claude/` instead of `~/.claude/hooks/` \u2014 the hooks dir isn't meant to be a working directory for Claude Code. Or try option 1 (Authenticate) then dismiss it \u2014 sometimes that resets the connection state."
+  "dag_node_count": 71680,
+  "dag_total_branches": 259,
+  "last_response_preview": "Git is not clean but the remaining changes are runtime state files (.env, circuit_breaker, tool_profiles, etc.) \u2014 not worth committing. Our two feature commits are clean.\n\n## Session 591 Wrap-up\n\n**What was done:**\n- Built Skill MCP v2, Phases 1-4 + auto outcome hook\n- 10 new files, 4,749 lines of new code\n- 228 tests across 7 test files, all passing\n- 2 commits: `b85fd1f` (Phases 1-3), `79c82cb` (Phase 4+4b)\n- skills-v2 MCP server registered and ready for next session\n\n**Architecture:**\n```\nSKI"
 }

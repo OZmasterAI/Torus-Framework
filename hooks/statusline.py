@@ -854,6 +854,7 @@ def main():
     # Extract session info (correct nested paths)
     cost_data = data.get("cost", {}) or {}
     ctx_data = data.get("context_window", {}) or {}
+    rate_data = data.get("rate_limits", {}) or {}
 
     cost = cost_data.get("total_cost_usd", 0) or 0
     duration_ms = cost_data.get("total_duration_ms", 0) or 0
@@ -1062,6 +1063,23 @@ def main():
     vr_verified, vr_total = get_verification_ratio(sess_state)
     if vr_total > 0:
         line2_parts.append(f"\u2705V:{vr_verified}/{vr_total}")
+
+    # Rate limits (Pro/Team/Enterprise plans)
+    _rl_5h = rate_data.get("five_hour", {}) or {}
+    _rl_7d = rate_data.get("seven_day", {}) or {}
+    _rl_5h_pct = _rl_5h.get("used_percentage")
+    _rl_7d_pct = _rl_7d.get("used_percentage")
+    if _rl_5h_pct is not None or _rl_7d_pct is not None:
+        _5h = _rl_5h_pct if _rl_5h_pct is not None else 0
+        _7d = _rl_7d_pct if _rl_7d_pct is not None else 0
+        _rl_max = max(_5h, _7d)
+        if _rl_max >= 80:
+            _rl_color = COLOR_RED
+        elif _rl_max >= 50:
+            _rl_color = COLOR_YELLOW
+        else:
+            _rl_color = COLOR_GREEN
+        line2_parts.append(f"{_rl_color}RL:{_5h}%/{_7d}%{COLOR_RESET}")
 
     # Cost
     line2_parts.append(f"\U0001f4b0{cost_str}")
