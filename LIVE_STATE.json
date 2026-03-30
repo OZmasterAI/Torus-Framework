@@ -1,31 +1,27 @@
 {
   "session_count": 604,
   "project": "torus-framework",
-  "feature": "skill-mcp-v2",
+  "feature": "skill-consolidation",
   "framework_version": "v3.0.0",
-  "what_was_done": "Moved skills-v2 MCP from local project config (stdio) to global settings.json (HTTP, port 8743). Emptied .claude/.claude/mcp.json. Verified skill_server_v2 healthy: 10 tools, streamable-http.",
+  "what_was_done": "Researched skill system usage: v1 MCP (9 uses, dead since Mar 13), v2 MCP (zero executions), slash commands (618 uses). Compared with disler/the-library. Planned consolidation: move /skills/ into /skill-library/, route all invocation through skills-v2 MCP, one CLAUDE.md line replaces 21 system prompt descriptions. Checkpoint commit aa35390.",
   "known_issues": [
     "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
-    "\u00a78.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
+    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
+    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
-    "kg_to_obsidian.py generates underscore filenames for entities \u2014 causes graph duplication when project uses hyphens",
+    "kg_to_obsidian.py generates underscore filenames for entities — causes graph duplication when project uses hyphens",
     "MCP auth error when launching Claude Code from ~/.claude/hooks/ subdirectory",
     "skill_server_v2 needs systemd/supervisor for auto-start on boot (currently manual nohup)",
-    "Memory MCP tools not registering in sessions \u2014 Gate 4 sideband workaround needed"
+    "Memory MCP tools not registering in sessions — Gate 4 sideband workaround needed",
+    "skill_outcome_tracker.py only watches MCP invoke_skill — misses all slash command usage"
   ],
   "next_steps": [
+    "Execute skill consolidation: move 21 /skills/ into /skill-library/, update CLAUDE.md routing",
+    "Ensure skills-v2 MCP ingests all moved skills into SQLite",
+    "Test invoke_skill through MCP for key skills (commit, test, brainstorm)",
+    "Remove v1 skill server (stdio) after consolidation verified",
     "Update test_skill_search.py for v1.5 model + non-blocking EmbeddingIndex API",
-    "Fix memory MCP tool registration so Gate 4 works natively (not sideband hack)",
-    "Test trigger_evolution and self_improve tools via HTTP",
-    "Add systemd unit or supervisor config for skill_server_v2 (like memory_server)",
-    "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid",
-    "Implement Phase 5: pluggable API backend (OpenAICompatBackend for OpenRouter/NIM)"
-  ],
-  "last_response_preview": "Saved both. I won't make excuses \u2014 the pattern you're describing is a real problem and I need to do better at verifying before claiming things.",
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 72747,
-  "dag_total_branches": 280
+    "Fix memory MCP tool registration so Gate 4 works natively",
+    "Add systemd unit for skill_server_v2"
+  ]
 }
