@@ -1,0 +1,44 @@
+{
+  "templates": {
+    "single-view": {
+      "name": "Single View Application",
+      "complexity": "low",
+      "components": 1,
+      "views": 1,
+      "time_estimate": "1-2 hours",
+      "use_cases": ["Simple viewer", "Single-purpose tool"]
+    },
+    "multi-view": {
+      "name": "Multi-View State Machine",
+      "complexity": "medium",
+      "components": 3,
+      "views": 3,
+      "time_estimate": "2-4 hours",
+      "use_cases": ["Wizard", "Multi-step process"]
+    },
+    "master-detail": {
+      "name": "Master-Detail Layout",
+      "complexity": "medium",
+      "components": 2,
+      "views": 1,
+      "time_estimate": "2-3 hours",
+      "use_cases": ["File manager", "Email client"]
+    },
+    "progress-tracker": {
+      "name": "Progress Tracker",
+      "complexity": "medium",
+      "components": 3,
+      "views": 2,
+      "time_estimate": "2-3 hours",
+      "use_cases": ["Installer", "Batch processor"]
+    },
+    "dashboard": {
+      "name": "Dashboard",
+      "complexity": "high",
+      "components": 5,
+      "views": 4,
+      "time_estimate": "4-6 hours",
+      "use_cases": ["Monitoring tool", "Multi-panel app"]
+    }
+  }
+}

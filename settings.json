@@ -1,10 +1,5 @@
 {
-  "mcpServers": {
-    "skills-v2": {
-      "type": "http",
-      "url": "http://127.0.0.1:8743/mcp"
-    }
-  },
+  "mcpServers": {},
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },

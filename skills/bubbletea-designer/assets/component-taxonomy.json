@@ -1,0 +1,40 @@
+{
+  "categories": {
+    "input": {
+      "description": "User input components",
+      "components": ["textinput", "textarea", "filepicker", "autocomplete"]
+    },
+    "display": {
+      "description": "Content display components",
+      "components": ["viewport", "table", "list", "pager", "paginator"]
+    },
+    "feedback": {
+      "description": "Status and progress indicators",
+      "components": ["spinner", "progress", "timer", "stopwatch"]
+    },
+    "navigation": {
+      "description": "View and navigation management",
+      "components": ["tabs", "help"]
+    },
+    "layout": {
+      "description": "Layout and styling",
+      "components": ["lipgloss"]
+    }
+  },
+  "relationships": {
+    "common_pairs": [
+      ["viewport", "textinput"],
+      ["list", "viewport"],
+      ["progress", "spinner"],
+      ["table", "paginator"],
+      ["textarea", "viewport"]
+    ],
+    "archetypes": {
+      "file-manager": ["filepicker", "viewport", "list"],
+      "installer": ["progress", "spinner", "list"],
+      "viewer": ["viewport", "paginator", "textinput"],
+      "form": ["textinput", "textarea", "help"],
+      "dashboard": ["tabs", "viewport", "table"]
+    }
+  }
+}
