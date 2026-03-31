@@ -829,6 +829,68 @@ code, msg = _direct_stderr(
 test("Repair loop: Gate 6 emits REPAIR LOOP warning", "REPAIR LOOP" in msg, msg)
 
 # ─────────────────────────────────────────────────
+# Test: Toolshed proxy — remember_this via run_tool clears verified_fixes
+# ─────────────────────────────────────────────────
+print("\n--- Toolshed Proxy: remember_this via run_tool ---")
+
+_st_ts1 = default_state()
+_st_ts1["verified_fixes"] = ["/tmp/fix_a.py", "/tmp/fix_b.py"]
+_st_ts1["unlogged_errors"] = [
+    {"pattern": "Traceback", "command": "cmd", "timestamp": time.time()}
+]
+_st_ts1["error_pattern_counts"] = {"Traceback": 3}
+_st_ts1["gate6_warn_count"] = 2
+_post(
+    "mcp__toolshed__run_tool",
+    {
+        "server": "memory",
+        "tool": "remember_this",
+        "args": {"content": "Fixed via toolshed", "tags": "type:fix"},
+    },
+    _st_ts1,
+    tool_response='{"result": "Memory stored successfully!", "id": "abc123"}',
+)
+test(
+    "Toolshed proxy: remember_this clears verified_fixes",
+    _st_ts1.get("verified_fixes", []) == [],
+    f"verified_fixes={_st_ts1.get('verified_fixes', [])}",
+)
+test(
+    "Toolshed proxy: remember_this clears unlogged_errors",
+    _st_ts1.get("unlogged_errors", []) == [],
+    f"unlogged_errors={_st_ts1.get('unlogged_errors', [])}",
+)
+test(
+    "Toolshed proxy: remember_this clears error_pattern_counts",
+    _st_ts1.get("error_pattern_counts", {}) == {},
+    f"counts={_st_ts1.get('error_pattern_counts', {})}",
+)
+test(
+    "Toolshed proxy: remember_this resets gate6_warn_count",
+    _st_ts1.get("gate6_warn_count", 0) == 0,
+    f"gate6_warn_count={_st_ts1.get('gate6_warn_count')}",
+)
+
+# Toolshed proxy: deduped remember_this does NOT clear
+_st_ts2 = default_state()
+_st_ts2["verified_fixes"] = ["/tmp/fix_c.py", "/tmp/fix_d.py"]
+_post(
+    "mcp__toolshed__run_tool",
+    {
+        "server": "memory",
+        "tool": "remember_this",
+        "args": {"content": "Dupe", "tags": "type:fix"},
+    },
+    _st_ts2,
+    tool_response='{"deduplicated": true, "existing_id": "xyz", "distance": 0.01}',
+)
+test(
+    "Toolshed proxy: deduped remember_this does NOT clear verified_fixes",
+    len(_st_ts2.get("verified_fixes", [])) == 2,
+    f"verified_fixes={_st_ts2.get('verified_fixes', [])}",
+)
+
+# ─────────────────────────────────────────────────
 # Test: Feature 5 — Outcome Tag Suggestions (3 tests)
 # ─────────────────────────────────────────────────
 print("\n--- Outcome Tag Suggestions ---")

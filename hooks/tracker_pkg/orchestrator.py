@@ -30,6 +30,7 @@ from tracker_pkg.auto_remember import _auto_remember_event, _build_fix_context
 # Cross-agent file coordination — release locks after Edit/Write (fail-open)
 try:
     from shared.file_lock_registry import release_lock as _flr_release
+
     _FILE_LOCK_AVAILABLE = True
 except ImportError:
     _FILE_LOCK_AVAILABLE = False
@@ -37,13 +38,19 @@ except ImportError:
 # Learning loop — feeds gate outcomes into adaptive thresholds + tool mastery
 try:
     from shared.learning_loop import process_gate_result as _ll_process_gate
+
     _LEARNING_LOOP_AVAILABLE = True
 except ImportError:
     _LEARNING_LOOP_AVAILABLE = False
 
 # Skill tracker — records skill invocation outcomes
 try:
-    from shared.skill_tracker import load_skill_data as _st_load, save_skill_data as _st_save, record_skill_invocation as _st_record
+    from shared.skill_tracker import (
+        load_skill_data as _st_load,
+        save_skill_data as _st_save,
+        record_skill_invocation as _st_record,
+    )
+
     _SKILL_TRACKER_AVAILABLE = True
 except ImportError:
     _SKILL_TRACKER_AVAILABLE = False
@@ -487,7 +494,9 @@ def _handle_bash(tool_input, tool_response, state):
                     state.get("files_edited", state.get("pending_verification", []))
                 )[-5:]
                 fix_ctx = _build_fix_context(state.get("_session_id", "main"))
-                fix_content = f"Error fixed: {pattern}. Files edited: {', '.join(edited)}"
+                fix_content = (
+                    f"Error fixed: {pattern}. Files edited: {', '.join(edited)}"
+                )
                 if fix_ctx:
                     fix_content = f"{fix_content}. {fix_ctx}"
                 _auto_remember_event(
@@ -657,8 +666,13 @@ def handle_post_tool_use(
         except Exception:
             pass  # Fail-open: lock release errors are non-fatal
 
-    # Track memory queries
-    if is_memory_tool(tool_name):
+    # Track memory queries (direct MCP or proxied through toolshed)
+    _is_mem = is_memory_tool(tool_name)
+    if not _is_mem and tool_name == "mcp__toolshed__run_tool":
+        _ts_server = (tool_input.get("server") or "").lower()
+        if _ts_server == "memory":
+            _is_mem = True
+    if _is_mem:
         state["memory_last_queried"] = time.time()
         # F1: Redundant sideband write — keeps sideband fresh so Gate 4
         # doesn't block long-running subagents after the 5-min window
@@ -669,7 +683,13 @@ def handle_post_tool_use(
         except Exception:
             pass  # Best-effort redundancy
 
-    if tool_name == "mcp__memory__remember_this":
+    _is_remember = tool_name == "mcp__memory__remember_this"
+    if not _is_remember and tool_name == "mcp__toolshed__run_tool":
+        _ts_server = (tool_input.get("server") or "").lower()
+        _ts_tool = (tool_input.get("tool") or "").lower()
+        if _ts_server == "memory" and _ts_tool == "remember_this":
+            _is_remember = True
+    if _is_remember:
         # Only reset Gate 6 counters if memory was actually saved (not deduped/rejected)
         resp = {}
         if isinstance(tool_response, dict):
@@ -754,12 +774,24 @@ def handle_post_tool_use(
         _detect_errors(tool_input, tool_response, state)
 
     # causal chain: attempt registration, outcome + ban tracking, history query
-    if tool_name in (
+    _causal_tool = tool_name
+    _causal_input = tool_input
+    if tool_name == "mcp__toolshed__run_tool":
+        _ts_server = (tool_input.get("server") or "").lower()
+        _ts_tool = (tool_input.get("tool") or "").lower()
+        if _ts_server == "memory" and _ts_tool in (
+            "record_attempt",
+            "record_outcome",
+            "query_fix_history",
+        ):
+            _causal_tool = f"mcp__memory__{_ts_tool}"
+            _causal_input = tool_input.get("args", {})
+    if _causal_tool in (
         "mcp__memory__record_attempt",
         "mcp__memory__record_outcome",
         "mcp__memory__query_fix_history",
     ):
-        _handle_causal_chain(tool_name, tool_input, tool_response, state)
+        _handle_causal_chain(_causal_tool, _causal_input, tool_response, state)
 
     # Gate 17: Injection defense — scan external tool results for prompt injection
     _handle_gate17_scan(tool_name, tool_response, state)
@@ -830,6 +862,7 @@ def handle_post_tool_use(
             _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
             try:
                 from boot_pkg.util import detect_project as _detect_proj_orch
+
                 _, _proj_dir_orch, _, _ = _detect_proj_orch()
             except Exception:
                 _proj_dir_orch = None

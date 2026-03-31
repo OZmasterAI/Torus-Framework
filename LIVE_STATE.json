@@ -1,9 +1,9 @@
 {
-  "session_count": 609,
+  "session_count": 611,
   "project": "torus-framework",
-  "feature": "toolshed-consolidation",
+  "feature": "toolshed-gate-compat",
   "framework_version": "v3.0.0",
-  "what_was_done": "Consolidated MCP to toolshed-only: removed memory+search from ~/.claude.json and mcp.json. Updated CLAUDE.md with toolshed gateway docs. Investigated session_end.py auto-summary — no redundancy bug.",
+  "what_was_done": "Fixed Gate 6 not resetting after toolshed MCP migration. orchestrator.py PostToolUse handler now recognizes remember_this + causal chain tools via toolshed proxy route. Added 5 tests.",
   "known_issues": [
     "Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
@@ -14,17 +14,16 @@
     "skill_outcome_tracker.py only watches MCP invoke_skill \u2014 misses all slash command usage"
   ],
   "next_steps": [
+    "Audit remaining mcp__memory__ references in hooks/ for other toolshed-compat gaps",
     "Execute skill consolidation: move 21 /skills/ into /skill-library/, update CLAUDE.md routing",
     "Ensure skills-v2 MCP ingests all moved skills into SQLite",
     "Test invoke_skill through MCP for key skills (commit, test, brainstorm)",
     "Remove v1 skill server (stdio) after consolidation verified",
-    "Verify toolshed-only MCP works in fresh sessions (all dirs)",
     "Update settings.json allowedTools from mcp__memory__* to mcp__toolshed__*",
     "Add systemd unit for skill_server_v2"
   ],
-  "last_response_preview": "The batch channel files were already auto-committed at `8a26858`. The only remaining change is the Hermes model entry in `config/models.json` from a previous session. Want me to commit that too, or leave it unstaged?",
-  "dag_branch": "main",
+  "dag_branch": "dag-claude",
   "dag_branch_label": "",
-  "dag_node_count": 74161,
-  "dag_total_branches": 299
+  "dag_node_count": 74334,
+  "dag_total_branches": 302
 }
