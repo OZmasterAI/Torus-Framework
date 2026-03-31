@@ -1,9 +1,17 @@
 # Torus-Framework
 
+## TOOLSHED (single MCP gateway)
+All tools route through toolshed: `run_tool(server, tool, args)`
+- **memory**: search_knowledge, get_memory, remember_this, fuzzy_search, record_attempt, record_outcome, query_fix_history, health_check, agent_coordination
+- **skills-v2**: list_skills, invoke_skill, search_skills, self_improve, skill_usage, skill_health, record_outcome, trigger_evolution, capture_skill, skill_lineage
+- **search**: terminal_history_search, transcript_context
+- **web-search**: web_search
+- Discovery: `list_tools(group="memory")` to see tools in a group
+
 ## MEMORY FIRST (Non-Negotiable)
-BEFORE building/fixing ANYTHING: search_knowledge("[what you're about to do]")
+BEFORE building/fixing ANYTHING: `run_tool("memory", "search_knowledge", {"query": "..."})`
 - >0.5: use directly | 0.2-0.5: get_memory(id) to verify | <0.2: treat as unknown
-AFTER any fix/decision/failed-approach/preference: remember_this(content, context, tags)
+AFTER any fix/decision/failed-approach/preference: `run_tool("memory", "remember_this", {"content": "...", "tags": "..."})`
 For errors: use Causal Chain (below) then remember_this()
 
 ## THE LOOP (mandatory — do not skip steps)
@@ -11,8 +19,8 @@ memory → /brainstorm → /writing-plans → /implement → /test → /review �
 - Do NOT use EnterPlanMode — /brainstorm replaces it
 - For quick fixes: memory → /fix → /test → /commit (skip brainstorm/writing-plans)
 
-## SKILL TRIGGERS (on-demand via MCP skill library)
-- "fix/debug/broken" → invoke_skill("fix")
+## SKILL TRIGGERS (via toolshed skills-v2)
+- "fix/debug/broken" → `run_tool("skills-v2", "invoke_skill", {"name": "fix"})`
 - "explore/trace/how does" → invoke_skill("explore")
 - "deep-dive/full context" → invoke_skill("deep-dive")
 - "status/health" → invoke_skill("status")
@@ -21,7 +29,7 @@ memory → /brainstorm → /writing-plans → /implement → /test → /review �
 - "wrap up/done" → /wrap-up
 
 ## CAUSAL CHAIN (for errors)
-1. query_fix_history("error") → 2. record_attempt("error", "strategy") → 3. Fix + test → 4. record_outcome(chain_id, result) → 5. remember_this(type:fix)
+1. `run_tool("memory", "query_fix_history", {"error_text": "..."})` → 2. record_attempt → 3. Fix + test → 4. record_outcome → 5. remember_this(type:fix)
 
 ## BEHAVIORAL RULES
 0. **Quality over speed** — Always verify then assert, never assert then verify. Applies to everything: code, conversation, analysis, questions. "Let me check" is always better than a fast wrong answer.
