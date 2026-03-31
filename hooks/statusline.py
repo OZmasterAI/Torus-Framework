@@ -23,11 +23,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.memory_socket import (
-    is_worker_available,
-    count as socket_count,
-    WorkerUnavailable,
-)
+from shared.memory_socket import is_worker_available
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
@@ -94,7 +90,11 @@ def count_gates():
 
 
 def get_memory_count():
-    """Get curated memory count, cached to avoid frequent UDS calls."""
+    """Get curated memory count, cached for CACHE_TTL seconds.
+
+    Reads LanceDB directly (count_rows is O(1) metadata read).
+    Falls back to stale cache on any error.
+    """
     # Try cache first
     try:
         if os.path.exists(STATS_CACHE):
@@ -105,20 +105,22 @@ def get_memory_count():
     except (json.JSONDecodeError, OSError):
         pass
 
-    # Cache miss — query via UDS socket (fast, no subprocess needed)
+    # Cache miss — read LanceDB directly
     try:
-        count = socket_count("knowledge")
-        # Write cache
+        import lancedb
+
+        db = lancedb.connect(os.path.join(MEMORY_DIR, "lancedb"))
+        count = db.open_table("knowledge").count_rows()
         try:
             with open(STATS_CACHE, "w") as f:
                 json.dump({"ts": time.time(), "mem_count": count}, f)
         except OSError:
             pass
         return count
-    except (WorkerUnavailable, RuntimeError, OSError):
+    except Exception:
         pass
 
-    # UDS unavailable — return stale cache or "?"
+    # LanceDB unavailable — return stale cache or "?"
     try:
         if os.path.exists(STATS_CACHE):
             with open(STATS_CACHE) as f:

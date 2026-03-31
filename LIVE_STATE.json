@@ -1,19 +1,19 @@
 {
-  "session_count": 604,
+  "session_count": 608,
   "project": "torus-framework",
-  "feature": "skill-consolidation",
+  "feature": "statusline-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Researched skill system usage: v1 MCP (9 uses, dead since Mar 13), v2 MCP (zero executions), slash commands (618 uses). Compared with disler/the-library. Planned consolidation: move /skills/ into /skill-library/, route all invocation through skills-v2 MCP, one CLAUDE.md line replaces 21 system prompt descriptions. Checkpoint commit aa35390.",
+  "what_was_done": "Fixed statusline memory count stuck at stale value (M:4078). Root cause: UDS socket worker down, circuit breaker open, stale cache returned forever. Fix: replaced UDS socket_count() with direct LanceDB count_rows() in get_memory_count(). Count now live at 4106.",
   "known_issues": [
     "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
-    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
+    "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
+    "\u00a78.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
-    "kg_to_obsidian.py generates underscore filenames for entities — causes graph duplication when project uses hyphens",
+    "kg_to_obsidian.py generates underscore filenames for entities \u2014 causes graph duplication when project uses hyphens",
     "MCP auth error when launching Claude Code from ~/.claude/hooks/ subdirectory",
     "skill_server_v2 needs systemd/supervisor for auto-start on boot (currently manual nohup)",
-    "Memory MCP tools not registering in sessions — Gate 4 sideband workaround needed",
-    "skill_outcome_tracker.py only watches MCP invoke_skill — misses all slash command usage"
+    "Memory MCP tools not registering in sessions \u2014 Gate 4 sideband workaround needed",
+    "skill_outcome_tracker.py only watches MCP invoke_skill \u2014 misses all slash command usage"
   ],
   "next_steps": [
     "Execute skill consolidation: move 21 /skills/ into /skill-library/, update CLAUDE.md routing",
@@ -23,5 +23,10 @@
     "Update test_skill_search.py for v1.5 model + non-blocking EmbeddingIndex API",
     "Fix memory MCP tool registration so Gate 4 works natively",
     "Add systemd unit for skill_server_v2"
-  ]
+  ],
+  "last_response_preview": "That confirms it \u2014 the live fetch occasionally times out or fails silently (8s timeout), and the fallback is those sparse hardcoded lists. When it works, you get the full catalog.\n\nThe fix is simple: the fetch failures are completely silent (`return nil`). Want me to add a log line so you can at least see when it falls back? Something like:\n\n```go\nif err != nil {\n    log.Printf(\"[startup] OpenRouter fetch failed: %v\", err)\n    return nil\n}\n```\n\nThat way next time it shows only 3 models, you'll k",
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 73823,
+  "dag_total_branches": 296
 }

@@ -7,7 +7,9 @@
     "allow": [
       "mcp__memory__get_memory",
       "mcp__memory__search_knowledge",
-      "mcp__memory__remember_this"
+      "mcp__memory__remember_this",
+      "mcp__toolshed__list_tools",
+      "mcp__toolshed__run_tool"
     ],
     "defaultMode": "default"
   },
