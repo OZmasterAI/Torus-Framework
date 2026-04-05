@@ -93,6 +93,7 @@ def _touch_memory_timestamp():
 # Network transport config — streamable-http is default, use --stdio or --sse to override
 _NET_HOST = os.environ.get("MEMORY_SSE_HOST", "127.0.0.1")
 _NET_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8742"))
+_PID_FILE = os.path.join(os.path.dirname(__file__), ".memory_server.pid")
 
 # Detect transport mode from CLI args
 import argparse as _argparse
@@ -4519,6 +4520,54 @@ def agent_coordination(
 if __name__ == "__main__":
     # Debug log for MCP init diagnosis (added session 469)
     _dbg_log = "/tmp/memory_server_debug.log"
+
+    # PID file guard — prevent double-launch (added session 83)
+    def _check_pid_guard():
+        """Check if another instance is already running. Exit if so."""
+        if os.path.exists(_PID_FILE):
+            try:
+                with open(_PID_FILE) as f:
+                    old_pid = int(f.read().strip())
+                # Check if that process is still alive
+                os.kill(old_pid, 0)
+                # Process alive — check it's actually memory_server
+                import subprocess as _sp
+
+                cmdline = _sp.run(
+                    ["ps", "-p", str(old_pid), "-o", "args="],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                ).stdout.strip()
+                if "memory_server" in cmdline:
+                    _sys.stderr.write(
+                        f"[MCP] memory_server already running (PID {old_pid}). Exiting.\n"
+                    )
+                    with open(_dbg_log, "a") as f:
+                        f.write(
+                            f"[{datetime.now().isoformat()}] PID={os.getpid()} ABORTED: "
+                            f"existing instance PID {old_pid} still running\n"
+                        )
+                    _sys.exit(0)
+            except (OSError, ValueError, Exception):
+                pass  # Stale PID file or dead process — safe to proceed
+
+    def _write_pid():
+        """Write current PID to file and register cleanup."""
+        with open(_PID_FILE, "w") as f:
+            f.write(str(os.getpid()))
+        atexit.register(_remove_pid)
+
+    def _remove_pid():
+        """Remove PID file on clean exit."""
+        try:
+            os.remove(_PID_FILE)
+        except OSError:
+            pass
+
+    _check_pid_guard()
+    _write_pid()
+
     with open(_dbg_log, "a") as _f:
         _f.write(
             f"[{datetime.now().isoformat()}] PID={os.getpid()} args={_sys.argv} starting\n"

@@ -225,6 +225,7 @@ def main():
     # Auto-start memory server (streamable-http, default transport)
     try:
         _mem_server_path = os.path.join(CLAUDE_DIR, "hooks", "memory_server.py")
+        _mem_port = int(os.environ.get("MEMORY_SSE_PORT", "8742"))
         if os.path.isfile(_mem_server_path):
             _mem_running = False
             try:
@@ -232,25 +233,25 @@ def main():
 
                 _s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
                 _s.settimeout(1)
-                _s.connect(("127.0.0.1", 8742))
+                _s.connect(("127.0.0.1", _mem_port))
                 _s.close()
                 _mem_running = True
             except Exception:
                 pass
             if not _mem_running:
                 subprocess.Popen(
-                    [sys.executable, _mem_server_path],
+                    [sys.executable, _mem_server_path, "--port", str(_mem_port)],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,
                 )
                 print(
-                    "  [BOOT] Memory server started (streamable-http, port 8742)",
+                    f"  [BOOT] Memory server started (streamable-http, port {_mem_port})",
                     file=sys.stderr,
                 )
             else:
                 print(
-                    "  [BOOT] Memory server already running (port 8742)",
+                    f"  [BOOT] Memory server already running (port {_mem_port})",
                     file=sys.stderr,
                 )
     except Exception:
