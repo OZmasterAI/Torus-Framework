@@ -1,29 +1,25 @@
 {
-  "session_count": 611,
+  "session_count": 615,
   "project": "torus-framework",
-  "feature": "toolshed-gate-compat",
+  "feature": "working-memory-injection",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed Gate 6 not resetting after toolshed MCP migration. orchestrator.py PostToolUse handler now recognizes remember_this + causal chain tools via toolshed proxy route. Added 5 tests.",
+  "what_was_done": "Fixed project-local working-memory/summary injection in boot.py and post_compact.py. Deleted stranded rules/working-memory.md from torus-web-design that caused LLM direct-write behavior.",
   "known_issues": [
     "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
-    "\u00a78.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
+    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
+    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
     "Gate 14/20 redundancy: both check session_test_baseline, Gate 20 check is dead code",
-    "kg_to_obsidian.py generates underscore filenames for entities \u2014 causes graph duplication when project uses hyphens",
+    "kg_to_obsidian.py generates underscore filenames for entities — causes graph duplication when project uses hyphens",
     "skill_server_v2 needs systemd/supervisor for auto-start on boot (currently manual nohup)",
-    "skill_outcome_tracker.py only watches MCP invoke_skill \u2014 misses all slash command usage"
+    "skill_outcome_tracker.py only watches MCP invoke_skill — misses all slash command usage"
   ],
   "next_steps": [
     "Audit remaining mcp__memory__ references in hooks/ for other toolshed-compat gaps",
+    "Check other projects for stranded rules/working-memory.md or rules/working-summary.md",
     "Execute skill consolidation: move 21 /skills/ into /skill-library/, update CLAUDE.md routing",
     "Ensure skills-v2 MCP ingests all moved skills into SQLite",
     "Test invoke_skill through MCP for key skills (commit, test, brainstorm)",
     "Remove v1 skill server (stdio) after consolidation verified",
-    "Update settings.json allowedTools from mcp__memory__* to mcp__toolshed__*",
-    "Add systemd unit for skill_server_v2"
-  ],
-  "dag_branch": "dag-claude",
-  "dag_branch_label": "",
-  "dag_node_count": 74334,
-  "dag_total_branches": 302
+    "Update settings.json allowedTools from mcp__memory__* to mcp__toolshed__*"
+  ]
 }

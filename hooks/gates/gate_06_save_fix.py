@@ -26,7 +26,7 @@ from shared.state import get_memory_last_queried
 GATE_NAME = "GATE 6: SAVE TO MEMORY"
 
 # Block immediately at this many unsaved verified fixes (no warn phase)
-BLOCK_THRESHOLD = 2
+BLOCK_THRESHOLD = 50
 
 # Verified fixes older than this are considered stale (expired)
 STALE_FIX_SECONDS = 1200  # 20 minutes

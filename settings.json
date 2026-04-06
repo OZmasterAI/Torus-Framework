@@ -1,5 +1,4 @@
 {
-  "mcpServers": {},
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
@@ -291,6 +290,7 @@
   "voiceEnabled": true,
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
+  "mcpServers": {},
   "effort": "max",
   "disabled_hooks": {
     "TeammateIdle": [
