@@ -15,18 +15,14 @@ AFTER any fix/decision/failed-approach/preference: `run_tool("memory", "remember
 For errors: use Causal Chain (below) then remember_this()
 
 ## THE LOOP (mandatory — do not skip steps)
-memory → /brainstorm → /writing-plans → /implement → /test → /review → /commit
-- Do NOT use EnterPlanMode — /brainstorm replaces it
-- For quick fixes: memory → /fix → /test → /commit (skip brainstorm/writing-plans)
+memory → brainstorm → writing-plans → implement → test → review → commit
+- All steps are skills: `invoke_skill("brainstorm")`, `invoke_skill("commit")`, etc.
+- Do NOT use EnterPlanMode — brainstorm replaces it
+- For quick fixes: memory → fix → test → commit (skip brainstorm/writing-plans)
 
-## SKILL TRIGGERS (via toolshed skills-v2)
-- "fix/debug/broken" → `run_tool("skills-v2", "invoke_skill", {"name": "fix"})`
-- "explore/trace/how does" → invoke_skill("explore")
-- "deep-dive/full context" → invoke_skill("deep-dive")
-- "status/health" → invoke_skill("status")
-- "research/investigate" → invoke_skill("research")
-- "learn [url]/teach" → invoke_skill("learn")
-- "wrap up/done" → /wrap-up
+## SKILLS (via toolshed skills-v2, 50 available)
+Use `search_skills(query)` to discover, `invoke_skill(name)` to run.
+All route through: `run_tool("skills-v2", "invoke_skill", {"name": "..."})`
 
 ## CAUSAL CHAIN (for errors)
 1. `run_tool("memory", "query_fix_history", {"error_text": "..."})` → 2. record_attempt → 3. Fix + test → 4. record_outcome → 5. remember_this(type:fix)
