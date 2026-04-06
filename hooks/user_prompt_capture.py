@@ -298,6 +298,23 @@ def main():
     except Exception:
         pass  # Fail-open — DAG failures must never crash the hook
 
+    # --- Cache expiry detection ---
+    try:
+        _ts_path = os.path.join(_HOOKS_DIR, ".last_response_ts")
+        if os.path.exists(_ts_path):
+            with open(_ts_path) as f:
+                _last_ts = float(f.read().strip())
+            _idle_seconds = time.time() - _last_ts
+            if _idle_seconds > 300:  # 5 min = Anthropic cache TTL
+                _idle_min = _idle_seconds / 60
+                print(
+                    f"CACHE EXPIRED ({_idle_min:.0f}m idle). "
+                    f"Full context re-processed at 10x cost. "
+                    f"Consider: /compact (shrink) or /clear (fresh session)."
+                )
+    except Exception:
+        pass  # Fail-open
+
     # --- State-based warnings + compact baseline ---
     warnings = _collect_state_warnings()
     baseline = "RULES: verify before asserting, ask before acting."

@@ -55,11 +55,21 @@ def detect_skill_invocation(
     tool_name: str, tool_input: dict, tool_response: str
 ) -> str | None:
     """Check if this tool call is an invoke_skill. Returns skill name or None."""
-    if tool_name not in _INVOKE_PATTERNS:
-        return None
-
-    skill_name = tool_input.get("name", "")
-    if not skill_name:
+    # Direct MCP call path
+    if tool_name in _INVOKE_PATTERNS:
+        skill_name = tool_input.get("name", "")
+        if not skill_name:
+            return None
+    # Toolshed gateway path
+    elif (
+        tool_name == "mcp__toolshed__run_tool"
+        and tool_input.get("server") == "skills-v2"
+        and tool_input.get("tool") == "invoke_skill"
+    ):
+        skill_name = tool_input.get("args", {}).get("name", "")
+        if not skill_name:
+            return None
+    else:
         return None
 
     # Check response isn't an error

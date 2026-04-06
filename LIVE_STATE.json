@@ -1,21 +1,21 @@
 {
-  "session_count": 617,
+  "session_count": 618,
   "project": "torus-framework",
-  "feature": "token-optimization",
+  "feature": "cache-expiry-and-skill-tracking",
   "framework_version": "v3.0.0",
-  "what_was_done": "Token optimization: consolidated 21 native /skills/ into /skill-library/ (~650 tok/turn saved), dormanted 4 agents (~1,150 tok/turn), disabled rust-analyzer-lsp, analyzed cache expiry ($125 waste/14d).",
+  "what_was_done": "Cache expiry awareness hooks (Stop writes timestamp, UPS warns if >5m idle). Fixed skill_outcome_tracker to detect toolshed-routed invoke_skill calls (evolution pipeline unblocked). Triaged next-steps: skill routing non-issue, mcp__memory__ refs are vestigial cleanup.",
   "known_issues": [
-    "BREAKING: /wrap-up and other slash-command skills fail via native Skill tool — must invoke via toolshed skills-v2",
     "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid — needs smarter _has_test_on_disk for Go packages",
-    "§8.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)",
-    "skill_outcome_tracker.py only watches MCP invoke_skill — misses all slash command usage"
+    "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
+    "\u00a78.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)"
   ],
   "next_steps": [
-    "Build cache expiry awareness hooks (Stop timestamp + UserPromptSubmit idle warning) — doc at docs/plans/cache-expiry-awareness.md",
-    "Fix native Skill tool routing: either restore key skills to /skills/ as symlinks or accept toolshed-only workflow",
-    "Audit remaining mcp__memory__ references in hooks/ for toolshed-compat gaps",
     "Check other projects for stranded rules/working-memory.md",
-    "Remove v1 skill server (stdio) after consolidation verified"
-  ]
+    "Remove v1 skill server (stdio) after consolidation verified",
+    "[low] Cleanup: mcp__memory__ references in hooks/ are vestigial (memory only via toolshed) \u2014 harmless but dead code"
+  ],
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 89022,
+  "dag_total_branches": 372
 }

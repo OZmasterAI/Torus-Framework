@@ -13,6 +13,7 @@ Fail-open: always exits 0.
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(__file__))
 from shared.state import load_state, save_state
@@ -63,6 +64,18 @@ def main():
 
     # Capture last_assistant_message for session handoff
     _capture_last_message(payload)
+
+    # Record response timestamp for cache expiry detection
+    try:
+        ts_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), ".last_response_ts"
+        )
+        tmp = ts_path + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(str(time.time()))
+        os.replace(tmp, ts_path)
+    except OSError:
+        pass
 
     # DAG: record assistant message (Task 5)
     try:
