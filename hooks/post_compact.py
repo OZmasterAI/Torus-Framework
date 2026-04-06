@@ -16,6 +16,24 @@ HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HOOKS_DIR)
 from shared.context_compressor import compress_postcompact
 
+GLOBAL_HOOKS = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+
+
+def _resolve_inject_path(fname):
+    """Prefer project-local hooks/ file, fall back to global."""
+    try:
+        sys.path.insert(0, GLOBAL_HOOKS)
+        from boot_pkg.util import detect_project
+
+        _, proj_dir, _, _ = detect_project()
+        if proj_dir:
+            proj_path = os.path.join(proj_dir, ".claude", "hooks", fname)
+            if os.path.exists(proj_path):
+                return proj_path
+    except Exception:
+        pass
+    return os.path.join(GLOBAL_HOOKS, fname)
+
 
 def main():
     # Read stdin for session_id
@@ -27,7 +45,7 @@ def main():
     wm_content = ""
     ws_content = ""
     for fname, var_name in [("working-memory.md", "wm"), ("working-summary.md", "ws")]:
-        path = os.path.join(os.path.expanduser("~"), ".claude", "hooks", fname)
+        path = _resolve_inject_path(fname)
         try:
             with open(path) as f:
                 content = f.read().strip()

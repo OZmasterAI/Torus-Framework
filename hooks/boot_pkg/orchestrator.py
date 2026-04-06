@@ -637,9 +637,18 @@ def main():
         "If user says continue, ask which item to tackle — do NOT auto-start work."
     )
     # Inject working-memory and working-summary (hook-injected, not auto-loaded from rules/)
+    # Prefer project-local hooks/ when in a project session, fall back to global
     _hooks_dir_inject = os.path.join(CLAUDE_DIR, "hooks")
     for _inject_file in ["working-memory.md", "working-summary.md"]:
-        _inject_path = os.path.join(_hooks_dir_inject, _inject_file)
+        _inject_path = None
+        if _effective_dir:
+            _proj_inject = os.path.join(
+                _effective_dir, ".claude", "hooks", _inject_file
+            )
+            if os.path.exists(_proj_inject):
+                _inject_path = _proj_inject
+        if _inject_path is None:
+            _inject_path = os.path.join(_hooks_dir_inject, _inject_file)
         try:
             with open(_inject_path) as _f:
                 _inject_content = _f.read().strip()
