@@ -794,6 +794,8 @@ tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
 _initializing = False  # True during _ensure_initialized() — watchdog skips strikes
+_init_lock = threading.Lock()  # Serializes warmup thread vs tool call initialization
+_init_done = threading.Event()  # Signaled when initialization completes
 _lance_fts_ready = False  # True once LanceDB FTS index is built
 _knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None  # LTPTracker instance (initialized lazily)
@@ -936,7 +938,14 @@ def _ensure_initialized():
     global _initializing
     if _initialized:
         return
-    _initializing = True
+    if _initializing:
+        # Warmup thread is running — wait for it to finish (up to 5 min)
+        _init_done.wait(timeout=300)
+        return
+    with _init_lock:
+        if _initialized:
+            return  # Completed while we waited for the lock
+        _initializing = True
     _t_total = time.monotonic()
     _init_lancedb()
     _t_model = time.monotonic()
@@ -946,6 +955,7 @@ def _ensure_initialized():
         )
         _initialized = True
         _initializing = False
+        _init_done.set()
         return
 
     # Build LanceDB native FTS index on text column (incremental if possible)
@@ -1060,6 +1070,7 @@ def _ensure_initialized():
     )
     _initialized = True
     _initializing = False
+    _init_done.set()
 
 
 def _init_pipelines():
@@ -4572,8 +4583,27 @@ if __name__ == "__main__":
         _f.write(
             f"[{datetime.now().isoformat()}] PID={os.getpid()} args={_sys.argv} starting\n"
         )
-    # Defer _ensure_initialized() to first tool call — mcp.run() must start
-    # immediately so Claude Code's MCP handshake doesn't timeout (~25s model load).
+
+    # Background warmup: load embedding model + LanceDB while uvicorn starts.
+    # This eliminates the 80-160s cold-start timeout on first tool call.
+    def _background_warmup():
+        try:
+            _sys.stderr.write("[WARMUP] Starting background initialization...\n")
+            _ensure_initialized()
+            _sys.stderr.write(
+                "[WARMUP] Background initialization complete — server ready\n"
+            )
+        except Exception as e:
+            _sys.stderr.write(
+                f"[WARMUP] Background init failed (will retry on first call): {e}\n"
+            )
+
+    import threading as _startup_threading
+
+    _startup_threading.Thread(
+        target=_background_warmup, daemon=True, name="warmup"
+    ).start()
+
     _start_socket_server()
     with open(_dbg_log, "a") as _f:
         _f.write(

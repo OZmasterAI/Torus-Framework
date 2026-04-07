@@ -1,4 +1,424 @@
 {
+  "Read": {
+    "known_failures": [],
+    "preconditions": [],
+    "success_count": 2113,
+    "failure_count": 0,
+    "recent_outcomes": [
+      {
+        "success": true,
+        "ts": 1775545214.0034924
+      },
+      {
+        "success": true,
+        "ts": 1775545220.7118871
+      },
+      {
+        "success": true,
+        "ts": 1775545235.297923
+      },
+      {
+        "success": true,
+        "ts": 1775545235.765035
+      },
+      {
+        "success": true,
+        "ts": 1775545236.2864642
+      },
+      {
+        "success": true,
+        "ts": 1775545309.1621482
+      },
+      {
+        "success": true,
+        "ts": 1775545421.6181443
+      },
+      {
+        "success": true,
+        "ts": 1775545422.0629873
+      },
+      {
+        "success": true,
+        "ts": 1775545422.6134965
+      },
+      {
+        "success": true,
+        "ts": 1775545435.2029784
+      },
+      {
+        "success": true,
+        "ts": 1775545449.885715
+      },
+      {
+        "success": true,
+        "ts": 1775545462.8706567
+      },
+      {
+        "success": true,
+        "ts": 1775559627.6730251
+      },
+      {
+        "success": true,
+        "ts": 1775559794.8054383
+      },
+      {
+        "success": true,
+        "ts": 1775559795.1865838
+      },
+      {
+        "success": true,
+        "ts": 1775559921.4029012
+      },
+      {
+        "success": true,
+        "ts": 1775559922.2862391
+      },
+      {
+        "success": true,
+        "ts": 1775559922.56608
+      },
+      {
+        "success": true,
+        "ts": 1775559923.5698028
+      },
+      {
+        "success": true,
+        "ts": 1775559923.6905434
+      },
+      {
+        "success": true,
+        "ts": 1775559924.1792982
+      },
+      {
+        "success": true,
+        "ts": 1775559924.270818
+      },
+      {
+        "success": true,
+        "ts": 1775560130.2828083
+      },
+      {
+        "success": true,
+        "ts": 1775560130.3625877
+      },
+      {
+        "success": true,
+        "ts": 1775560130.6971838
+      },
+      {
+        "success": true,
+        "ts": 1775560131.3041613
+      },
+      {
+        "success": true,
+        "ts": 1775560131.5886788
+      },
+      {
+        "success": true,
+        "ts": 1775560132.1695175
+      },
+      {
+        "success": true,
+        "ts": 1775560132.3810384
+      },
+      {
+        "success": true,
+        "ts": 1775560136.0745177
+      },
+      {
+        "success": true,
+        "ts": 1775560136.5749767
+      },
+      {
+        "success": true,
+        "ts": 1775560136.976249
+      },
+      {
+        "success": true,
+        "ts": 1775560140.0174088
+      },
+      {
+        "success": true,
+        "ts": 1775560140.765114
+      },
+      {
+        "success": true,
+        "ts": 1775560141.092475
+      },
+      {
+        "success": true,
+        "ts": 1775560141.4038665
+      },
+      {
+        "success": true,
+        "ts": 1775560141.9615412
+      },
+      {
+        "success": true,
+        "ts": 1775560142.3804219
+      },
+      {
+        "success": true,
+        "ts": 1775560142.9814737
+      },
+      {
+        "success": true,
+        "ts": 1775560142.9996057
+      },
+      {
+        "success": true,
+        "ts": 1775560143.4059389
+      },
+      {
+        "success": true,
+        "ts": 1775560143.7607052
+      },
+      {
+        "success": true,
+        "ts": 1775560155.3753643
+      },
+      {
+        "success": true,
+        "ts": 1775560155.52213
+      },
+      {
+        "success": true,
+        "ts": 1775560226.7750723
+      },
+      {
+        "success": true,
+        "ts": 1775560242.862055
+      },
+      {
+        "success": true,
+        "ts": 1775560258.013017
+      },
+      {
+        "success": true,
+        "ts": 1775560486.7782574
+      },
+      {
+        "success": true,
+        "ts": 1775590835.385765
+      },
+      {
+        "success": true,
+        "ts": 1775590846.3666704
+      }
+    ],
+    "common_errors": [],
+    "last_updated": 1775590846.3666742
+  },
+  "Grep": {
+    "known_failures": [],
+    "preconditions": [],
+    "success_count": 474,
+    "failure_count": 0,
+    "recent_outcomes": [
+      {
+        "success": true,
+        "ts": 1775543325.4603827
+      },
+      {
+        "success": true,
+        "ts": 1775543326.2955148
+      },
+      {
+        "success": true,
+        "ts": 1775543327.391458
+      },
+      {
+        "success": true,
+        "ts": 1775543331.2251766
+      },
+      {
+        "success": true,
+        "ts": 1775543333.0052147
+      },
+      {
+        "success": true,
+        "ts": 1775543335.9768662
+      },
+      {
+        "success": true,
+        "ts": 1775543337.1627188
+      },
+      {
+        "success": true,
+        "ts": 1775543342.7650056
+      },
+      {
+        "success": true,
+        "ts": 1775543348.7697818
+      },
+      {
+        "success": true,
+        "ts": 1775543352.5858078
+      },
+      {
+        "success": true,
+        "ts": 1775543356.1739922
+      },
+      {
+        "success": true,
+        "ts": 1775543365.2692525
+      },
+      {
+        "success": true,
+        "ts": 1775543407.492027
+      },
+      {
+        "success": true,
+        "ts": 1775543412.678903
+      },
+      {
+        "success": true,
+        "ts": 1775543463.1698217
+      },
+      {
+        "success": true,
+        "ts": 1775543463.5824091
+      },
+      {
+        "success": true,
+        "ts": 1775543604.8664556
+      },
+      {
+        "success": true,
+        "ts": 1775543605.707622
+      },
+      {
+        "success": true,
+        "ts": 1775543878.068949
+      },
+      {
+        "success": true,
+        "ts": 1775543907.5731764
+      },
+      {
+        "success": true,
+        "ts": 1775543908.5913553
+      },
+      {
+        "success": true,
+        "ts": 1775543943.6122487
+      },
+      {
+        "success": true,
+        "ts": 1775543952.259778
+      },
+      {
+        "success": true,
+        "ts": 1775544007.0048044
+      },
+      {
+        "success": true,
+        "ts": 1775544026.2614708
+      },
+      {
+        "success": true,
+        "ts": 1775544031.8905866
+      },
+      {
+        "success": true,
+        "ts": 1775544035.4926581
+      },
+      {
+        "success": true,
+        "ts": 1775544435.7787678
+      },
+      {
+        "success": true,
+        "ts": 1775544454.3856971
+      },
+      {
+        "success": true,
+        "ts": 1775544461.5955005
+      },
+      {
+        "success": true,
+        "ts": 1775544465.39753
+      },
+      {
+        "success": true,
+        "ts": 1775544794.4909554
+      },
+      {
+        "success": true,
+        "ts": 1775544797.964627
+      },
+      {
+        "success": true,
+        "ts": 1775545241.277236
+      },
+      {
+        "success": true,
+        "ts": 1775545242.312782
+      },
+      {
+        "success": true,
+        "ts": 1775545253.7687073
+      },
+      {
+        "success": true,
+        "ts": 1775559762.5844166
+      },
+      {
+        "success": true,
+        "ts": 1775559768.9809318
+      },
+      {
+        "success": true,
+        "ts": 1775559826.1330647
+      },
+      {
+        "success": true,
+        "ts": 1775560150.073183
+      },
+      {
+        "success": true,
+        "ts": 1775560150.7852757
+      },
+      {
+        "success": true,
+        "ts": 1775560173.094709
+      },
+      {
+        "success": true,
+        "ts": 1775560178.965743
+      },
+      {
+        "success": true,
+        "ts": 1775560187.8878143
+      },
+      {
+        "success": true,
+        "ts": 1775560232.567627
+      },
+      {
+        "success": true,
+        "ts": 1775560634.4937809
+      },
+      {
+        "success": true,
+        "ts": 1775560639.7606802
+      },
+      {
+        "success": true,
+        "ts": 1775560643.5829587
+      },
+      {
+        "success": true,
+        "ts": 1775560650.5067875
+      },
+      {
+        "success": true,
+        "ts": 1775590832.5044122
+      }
+    ],
+    "common_errors": [],
+    "last_updated": 1775590832.504416
+  },
   "Bash": {
     "known_failures": [
       {
@@ -7,1783 +427,1275 @@
           "tool": "Bash",
           "command_prefix": "python"
         },
-        "count": 124,
-        "first_seen": 1774614929.712241,
-        "last_seen": 1774811358.7948399
+        "count": 38,
+        "first_seen": 1775175988.8616552,
+        "last_seen": 1775532514.8875513
       }
     ],
     "preconditions": [],
-    "success_count": 7092,
-    "failure_count": 124,
+    "success_count": 3462,
+    "failure_count": 38,
     "recent_outcomes": [
       {
         "success": true,
-        "ts": 1774957462.8999405
+        "ts": 1775559660.9698768
       },
       {
         "success": true,
-        "ts": 1774957469.3789124
+        "ts": 1775559666.502177
       },
       {
         "success": true,
-        "ts": 1774957470.0873587
+        "ts": 1775559671.5944233
       },
       {
         "success": true,
-        "ts": 1774957529.1715593
+        "ts": 1775559675.1969688
       },
       {
         "success": true,
-        "ts": 1774958353.710421
+        "ts": 1775559685.4168985
       },
       {
         "success": true,
-        "ts": 1774958473.0614042
+        "ts": 1775559687.0859728
       },
       {
         "success": true,
-        "ts": 1774958548.0101888
+        "ts": 1775559709.9005797
       },
       {
         "success": true,
-        "ts": 1774958560.2844768
+        "ts": 1775559754.8162785
       },
       {
         "success": true,
-        "ts": 1774958709.000622
+        "ts": 1775560226.6399684
       },
       {
         "success": true,
-        "ts": 1774958720.2786498
+        "ts": 1775560242.7840135
       },
       {
         "success": true,
-        "ts": 1774959147.4982939
+        "ts": 1775560257.9047396
       },
       {
         "success": true,
-        "ts": 1774959148.783177
+        "ts": 1775560264.3762434
       },
       {
         "success": true,
-        "ts": 1774959149.4815116
+        "ts": 1775560265.393254
       },
       {
         "success": true,
-        "ts": 1774959157.511309
+        "ts": 1775560265.4825613
       },
       {
         "success": true,
-        "ts": 1774959158.172023
+        "ts": 1775560287.4772544
       },
       {
         "success": true,
-        "ts": 1774959454.3864052
+        "ts": 1775560294.5835333
       },
       {
         "success": true,
-        "ts": 1774959679.9829679
+        "ts": 1775560483.8895643
       },
       {
         "success": true,
-        "ts": 1774959892.0813453
+        "ts": 1775560509.9011714
       },
       {
         "success": true,
-        "ts": 1774959918.8636415
+        "ts": 1775560595.486866
       },
       {
         "success": true,
-        "ts": 1774960206.7072628
+        "ts": 1775560596.8150213
       },
       {
         "success": true,
-        "ts": 1774960219.082551
+        "ts": 1775560607.1775053
       },
       {
         "success": true,
-        "ts": 1774960402.4150734
+        "ts": 1775560607.6821651
       },
       {
         "success": true,
-        "ts": 1774960439.9188201
+        "ts": 1775560607.8817904
       },
       {
         "success": true,
-        "ts": 1774960465.207714
+        "ts": 1775560633.8002381
       },
       {
         "success": true,
-        "ts": 1774960499.3022945
+        "ts": 1775560642.798756
       },
       {
         "success": true,
-        "ts": 1774961306.344797
+        "ts": 1775560649.9842622
       },
       {
         "success": true,
-        "ts": 1774961323.3109858
+        "ts": 1775560664.4906366
       },
       {
         "success": true,
-        "ts": 1774961458.5995932
+        "ts": 1775560725.4074187
       },
       {
         "success": true,
-        "ts": 1774961616.2738657
+        "ts": 1775560730.5920305
       },
       {
         "success": true,
-        "ts": 1774961652.7995167
+        "ts": 1775560734.167973
       },
       {
         "success": true,
-        "ts": 1774961670.2986925
+        "ts": 1775590587.4786541
       },
       {
         "success": true,
-        "ts": 1774961744.713485
+        "ts": 1775590690.7762036
       },
       {
         "success": true,
-        "ts": 1774961750.083294
+        "ts": 1775590691.4838405
       },
       {
         "success": true,
-        "ts": 1774961798.2882714
+        "ts": 1775590692.4808638
       },
       {
         "success": true,
-        "ts": 1774962071.7947767
+        "ts": 1775590692.679219
       },
       {
         "success": true,
-        "ts": 1774962071.8845093
+        "ts": 1775590692.7806072
       },
       {
         "success": true,
-        "ts": 1774962076.0840695
+        "ts": 1775590692.8735209
       },
       {
         "success": true,
-        "ts": 1774962135.0995133
+        "ts": 1775590770.319308
       },
       {
         "success": true,
-        "ts": 1774962143.4636917
+        "ts": 1775590771.1189985
       },
       {
         "success": true,
-        "ts": 1774962148.620076
+        "ts": 1775590831.0779533
       },
       {
         "success": true,
-        "ts": 1774962199.3989596
+        "ts": 1775590836.489517
       },
       {
         "success": true,
-        "ts": 1774962227.2273047
+        "ts": 1775591073.0806139
       },
       {
         "success": true,
-        "ts": 1774962257.6834507
+        "ts": 1775591079.3086646
       },
       {
         "success": true,
-        "ts": 1774962258.5744388
+        "ts": 1775591080.0000277
       },
       {
         "success": true,
-        "ts": 1774962265.1114643
+        "ts": 1775591081.597022
       },
       {
         "success": true,
-        "ts": 1774962319.773268
+        "ts": 1775591085.6706235
       },
       {
         "success": true,
-        "ts": 1774962353.5055053
+        "ts": 1775591085.9896102
       },
       {
         "success": true,
-        "ts": 1774962388.3889315
+        "ts": 1775591162.6869595
       },
       {
         "success": true,
-        "ts": 1774962436.2928097
+        "ts": 1775591166.8660185
       },
       {
         "success": true,
-        "ts": 1774962436.9776247
+        "ts": 1775591171.0758321
       }
     ],
     "common_errors": [
       {
         "pattern": "Traceback (most recent call last):",
         "count": 1,
-        "last_seen": 1774614929.7122452
+        "last_seen": 1775175988.86166
       }
     ],
-    "last_updated": 1774962436.9776278
-  },
-  "Read": {
-    "known_failures": [],
-    "preconditions": [],
-    "success_count": 4027,
-    "failure_count": 0,
-    "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1774952711.1794147
-      },
-      {
-        "success": true,
-        "ts": 1774952715.6766768
-      },
-      {
-        "success": true,
-        "ts": 1774952744.5690787
-      },
-      {
-        "success": true,
-        "ts": 1774952748.1998675
-      },
-      {
-        "success": true,
-        "ts": 1774952824.893732
-      },
-      {
-        "success": true,
-        "ts": 1774952876.4862719
-      },
-      {
-        "success": true,
-        "ts": 1774957498.2954738
-      },
-      {
-        "success": true,
-        "ts": 1774957498.5121462
-      },
-      {
-        "success": true,
-        "ts": 1774957498.9929209
-      },
-      {
-        "success": true,
-        "ts": 1774957504.7011485
-      },
-      {
-        "success": true,
-        "ts": 1774957505.192593
-      },
-      {
-        "success": true,
-        "ts": 1774957505.6974962
-      },
-      {
-        "success": true,
-        "ts": 1774957515.6918993
-      },
-      {
-        "success": true,
-        "ts": 1774957516.1325624
-      },
-      {
-        "success": true,
-        "ts": 1774957516.61485
-      },
-      {
-        "success": true,
-        "ts": 1774957520.9041598
-      },
-      {
-        "success": true,
-        "ts": 1774957521.407527
-      },
-      {
-        "success": true,
-        "ts": 1774957522.0020354
-      },
-      {
-        "success": true,
-        "ts": 1774957532.0902703
-      },
-      {
-        "success": true,
-        "ts": 1774957532.8267384
-      },
-      {
-        "success": true,
-        "ts": 1774958343.8660486
-      },
-      {
-        "success": true,
-        "ts": 1774958354.1201935
-      },
-      {
-        "success": true,
-        "ts": 1774958441.4778833
-      },
-      {
-        "success": true,
-        "ts": 1774958452.567403
-      },
-      {
-        "success": true,
-        "ts": 1774958465.4609106
-      },
-      {
-        "success": true,
-        "ts": 1774958478.6664157
-      },
-      {
-        "success": true,
-        "ts": 1774958634.3778706
-      },
-      {
-        "success": true,
-        "ts": 1774958669.545124
-      },
-      {
-        "success": true,
-        "ts": 1774959718.026768
-      },
-      {
-        "success": true,
-        "ts": 1774959725.7850747
-      },
-      {
-        "success": true,
-        "ts": 1774959792.1083388
-      },
-      {
-        "success": true,
-        "ts": 1774959828.6935146
-      },
-      {
-        "success": true,
-        "ts": 1774959871.8799398
-      },
-      {
-        "success": true,
-        "ts": 1774959897.799907
-      },
-      {
-        "success": true,
-        "ts": 1774959924.4325683
-      },
-      {
-        "success": true,
-        "ts": 1774960189.9658709
-      },
-      {
-        "success": true,
-        "ts": 1774960444.9654691
-      },
-      {
-        "success": true,
-        "ts": 1774960549.586985
-      },
-      {
-        "success": true,
-        "ts": 1774960593.134601
-      },
-      {
-        "success": true,
-        "ts": 1774960626.186408
-      },
-      {
-        "success": true,
-        "ts": 1774960634.1295762
-      },
-      {
-        "success": true,
-        "ts": 1774961289.578446
-      },
-      {
-        "success": true,
-        "ts": 1774961294.393295
-      },
-      {
-        "success": true,
-        "ts": 1774961353.5098011
-      },
-      {
-        "success": true,
-        "ts": 1774961356.6950316
-      },
-      {
-        "success": true,
-        "ts": 1774961655.7198026
-      },
-      {
-        "success": true,
-        "ts": 1774961892.2852244
-      },
-      {
-        "success": true,
-        "ts": 1774962122.2724423
-      },
-      {
-        "success": true,
-        "ts": 1774962357.7948117
-      },
-      {
-        "success": true,
-        "ts": 1774962392.3607624
-      }
-    ],
-    "common_errors": [],
-    "last_updated": 1774962392.3607702
-  },
-  "Edit": {
-    "known_failures": [],
-    "preconditions": [],
-    "success_count": 2923,
-    "failure_count": 0,
-    "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1774826762.9854934
-      },
-      {
-        "success": true,
-        "ts": 1774827158.9043303
-      },
-      {
-        "success": true,
-        "ts": 1774827427.3840654
-      },
-      {
-        "success": true,
-        "ts": 1774876902.6725922
-      },
-      {
-        "success": true,
-        "ts": 1774876917.660281
-      },
-      {
-        "success": true,
-        "ts": 1774876925.228249
-      },
-      {
-        "success": true,
-        "ts": 1774876937.4666069
-      },
-      {
-        "success": true,
-        "ts": 1774876967.3240569
-      },
-      {
-        "success": true,
-        "ts": 1774876977.0171285
-      },
-      {
-        "success": true,
-        "ts": 1774877422.7932649
-      },
-      {
-        "success": true,
-        "ts": 1774879822.7203264
-      },
-      {
-        "success": true,
-        "ts": 1774886057.3713787
-      },
-      {
-        "success": true,
-        "ts": 1774886954.8733313
-      },
-      {
-        "success": true,
-        "ts": 1774886957.5644295
-      },
-      {
-        "success": true,
-        "ts": 1774886983.2065513
-      },
-      {
-        "success": true,
-        "ts": 1774886984.6922312
-      },
-      {
-        "success": true,
-        "ts": 1774887049.5097206
-      },
-      {
-        "success": true,
-        "ts": 1774890336.2688072
-      },
-      {
-        "success": true,
-        "ts": 1774890349.1815429
-      },
-      {
-        "success": true,
-        "ts": 1774891357.478247
-      },
-      {
-        "success": true,
-        "ts": 1774891367.6853185
-      },
-      {
-        "success": true,
-        "ts": 1774892853.4862642
-      },
-      {
-        "success": true,
-        "ts": 1774893409.4961612
-      },
-      {
-        "success": true,
-        "ts": 1774893523.8119564
-      },
-      {
-        "success": true,
-        "ts": 1774893714.58717
-      },
-      {
-        "success": true,
-        "ts": 1774894100.667985
-      },
-      {
-        "success": true,
-        "ts": 1774894346.2668533
-      },
-      {
-        "success": true,
-        "ts": 1774952075.6856143
-      },
-      {
-        "success": true,
-        "ts": 1774952722.6714528
-      },
-      {
-        "success": true,
-        "ts": 1774952735.1832597
-      },
-      {
-        "success": true,
-        "ts": 1774952755.991019
-      },
-      {
-        "success": true,
-        "ts": 1774952832.5857909
-      },
-      {
-        "success": true,
-        "ts": 1774952881.6186929
-      },
-      {
-        "success": true,
-        "ts": 1774952891.2768888
-      },
-      {
-        "success": true,
-        "ts": 1774958519.207582
-      },
-      {
-        "success": true,
-        "ts": 1774958527.774812
-      },
-      {
-        "success": true,
-        "ts": 1774958534.3947186
-      },
-      {
-        "success": true,
-        "ts": 1774958675.7815647
-      },
-      {
-        "success": true,
-        "ts": 1774958681.9082382
-      },
-      {
-        "success": true,
-        "ts": 1774958692.5802205
-      },
-      {
-        "success": true,
-        "ts": 1774958700.4757714
-      },
-      {
-        "success": true,
-        "ts": 1774959857.4871411
-      },
-      {
-        "success": true,
-        "ts": 1774959866.0653753
-      },
-      {
-        "success": true,
-        "ts": 1774959878.3861763
-      },
-      {
-        "success": true,
-        "ts": 1774959907.583033
-      },
-      {
-        "success": true,
-        "ts": 1774960178.1851923
-      },
-      {
-        "success": true,
-        "ts": 1774960200.0660043
-      },
-      {
-        "success": true,
-        "ts": 1774960566.8046184
-      },
-      {
-        "success": true,
-        "ts": 1774962371.1942844
-      },
-      {
-        "success": true,
-        "ts": 1774962431.5881205
-      }
-    ],
-    "common_errors": [],
-    "last_updated": 1774962431.5881255
-  },
-  "NotebookEdit": {
-    "known_failures": [],
-    "preconditions": [],
-    "success_count": 127,
-    "failure_count": 0,
-    "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1774691097.8962986
-      },
-      {
-        "success": true,
-        "ts": 1774691099.75983
-      },
-      {
-        "success": true,
-        "ts": 1774691105.6853087
-      },
-      {
-        "success": true,
-        "ts": 1774691126.4651659
-      },
-      {
-        "success": true,
-        "ts": 1774691129.3892
-      },
-      {
-        "success": true,
-        "ts": 1774691144.385238
-      },
-      {
-        "success": true,
-        "ts": 1774691177.0683937
-      },
-      {
-        "success": true,
-        "ts": 1774691220.5786092
-      },
-      {
-        "success": true,
-        "ts": 1774691234.1871548
-      },
-      {
-        "success": true,
-        "ts": 1774691247.9645944
-      },
-      {
-        "success": true,
-        "ts": 1774691285.1675043
-      },
-      {
-        "success": true,
-        "ts": 1774691316.0606048
-      },
-      {
-        "success": true,
-        "ts": 1774691330.620519
-      },
-      {
-        "success": true,
-        "ts": 1774691373.2771206
-      },
-      {
-        "success": true,
-        "ts": 1774691398.383969
-      },
-      {
-        "success": true,
-        "ts": 1774691431.97613
-      },
-      {
-        "success": true,
-        "ts": 1774693972.5198252
-      },
-      {
-        "success": true,
-        "ts": 1774694019.1922255
-      },
-      {
-        "success": true,
-        "ts": 1774694039.9629521
-      },
-      {
-        "success": true,
-        "ts": 1774694070.7813663
-      },
-      {
-        "success": true,
-        "ts": 1774694103.579561
-      },
-      {
-        "success": true,
-        "ts": 1774694163.5868208
-      },
-      {
-        "success": true,
-        "ts": 1774694203.2003872
-      },
-      {
-        "success": true,
-        "ts": 1774694225.4251447
-      },
-      {
-        "success": true,
-        "ts": 1774694233.996811
-      },
-      {
-        "success": true,
-        "ts": 1774694264.9846313
-      },
-      {
-        "success": true,
-        "ts": 1774694297.5728774
-      },
-      {
-        "success": true,
-        "ts": 1774694411.762508
-      },
-      {
-        "success": true,
-        "ts": 1774694467.0846398
-      },
-      {
-        "success": true,
-        "ts": 1774694497.4855695
-      },
-      {
-        "success": true,
-        "ts": 1774694543.8744721
-      },
-      {
-        "success": true,
-        "ts": 1774694602.7907941
-      },
-      {
-        "success": true,
-        "ts": 1774694631.8845289
-      },
-      {
-        "success": true,
-        "ts": 1774694674.2860842
-      },
-      {
-        "success": true,
-        "ts": 1774694740.4851744
-      },
-      {
-        "success": true,
-        "ts": 1774694770.3922276
-      },
-      {
-        "success": true,
-        "ts": 1774709008.8742297
-      },
-      {
-        "success": true,
-        "ts": 1774709147.782551
-      },
-      {
-        "success": true,
-        "ts": 1774709156.5697792
-      },
-      {
-        "success": true,
-        "ts": 1774709176.3705099
-      },
-      {
-        "success": true,
-        "ts": 1774709247.161746
-      },
-      {
-        "success": true,
-        "ts": 1774719542.8621225
-      },
-      {
-        "success": true,
-        "ts": 1774719628.5703351
-      },
-      {
-        "success": true,
-        "ts": 1774719655.8671215
-      },
-      {
-        "success": true,
-        "ts": 1774811205.5138996
-      },
-      {
-        "success": true,
-        "ts": 1774811247.8901799
-      },
-      {
-        "success": true,
-        "ts": 1774811267.6852436
-      },
-      {
-        "success": true,
-        "ts": 1774811278.0729835
-      },
-      {
-        "success": true,
-        "ts": 1774811328.7672334
-      },
-      {
-        "success": true,
-        "ts": 1774811353.7015858
-      }
-    ],
-    "common_errors": [],
-    "last_updated": 1774811353.7015893
-  },
-  "Write": {
-    "known_failures": [],
-    "preconditions": [],
-    "success_count": 428,
-    "failure_count": 0,
-    "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1774819225.0730555
-      },
-      {
-        "success": true,
-        "ts": 1774820790.871533
-      },
-      {
-        "success": true,
-        "ts": 1774820823.8866284
-      },
-      {
-        "success": true,
-        "ts": 1774821231.5834472
-      },
-      {
-        "success": true,
-        "ts": 1774822424.394699
-      },
-      {
-        "success": true,
-        "ts": 1774822458.5895424
-      },
-      {
-        "success": true,
-        "ts": 1774824852.871433
-      },
-      {
-        "success": true,
-        "ts": 1774825032.3705938
-      },
-      {
-        "success": true,
-        "ts": 1774825070.361077
-      },
-      {
-        "success": true,
-        "ts": 1774826446.06499
-      },
-      {
-        "success": true,
-        "ts": 1774826473.3142567
-      },
-      {
-        "success": true,
-        "ts": 1774827504.7779498
-      },
-      {
-        "success": true,
-        "ts": 1774827518.270775
-      },
-      {
-        "success": true,
-        "ts": 1774833063.6704912
-      },
-      {
-        "success": true,
-        "ts": 1774833083.1774874
-      },
-      {
-        "success": true,
-        "ts": 1774868183.8038507
-      },
-      {
-        "success": true,
-        "ts": 1774875975.4014528
-      },
-      {
-        "success": true,
-        "ts": 1774875987.718452
-      },
-      {
-        "success": true,
-        "ts": 1774876322.7113085
-      },
-      {
-        "success": true,
-        "ts": 1774876540.76657
-      },
-      {
-        "success": true,
-        "ts": 1774879589.903025
-      },
-      {
-        "success": true,
-        "ts": 1774886887.5939426
-      },
-      {
-        "success": true,
-        "ts": 1774886891.8138082
-      },
-      {
-        "success": true,
-        "ts": 1774886892.8011644
-      },
-      {
-        "success": true,
-        "ts": 1774886894.092813
-      },
-      {
-        "success": true,
-        "ts": 1774886903.5849168
-      },
-      {
-        "success": true,
-        "ts": 1774887102.667568
-      },
-      {
-        "success": true,
-        "ts": 1774890278.008319
-      },
-      {
-        "success": true,
-        "ts": 1774890304.697901
-      },
-      {
-        "success": true,
-        "ts": 1774891895.7276468
-      },
-      {
-        "success": true,
-        "ts": 1774891933.372754
-      },
-      {
-        "success": true,
-        "ts": 1774892455.4122982
-      },
-      {
-        "success": true,
-        "ts": 1774893408.3680007
-      },
-      {
-        "success": true,
-        "ts": 1774893522.9792123
-      },
-      {
-        "success": true,
-        "ts": 1774893878.5839071
-      },
-      {
-        "success": true,
-        "ts": 1774918872.0088742
-      },
-      {
-        "success": true,
-        "ts": 1774918898.366875
-      },
-      {
-        "success": true,
-        "ts": 1774919409.786756
-      },
-      {
-        "success": true,
-        "ts": 1774951188.489198
-      },
-      {
-        "success": true,
-        "ts": 1774958507.7094047
-      },
-      {
-        "success": true,
-        "ts": 1774958652.7795897
-      },
-      {
-        "success": true,
-        "ts": 1774959502.9048376
-      },
-      {
-        "success": true,
-        "ts": 1774959558.7671924
-      },
-      {
-        "success": true,
-        "ts": 1774959669.882722
-      },
-      {
-        "success": true,
-        "ts": 1774960043.969815
-      },
-      {
-        "success": true,
-        "ts": 1774960180.1798525
-      },
-      {
-        "success": true,
-        "ts": 1774960459.6061993
-      },
-      {
-        "success": true,
-        "ts": 1774960493.201598
-      },
-      {
-        "success": true,
-        "ts": 1774961666.1882238
-      },
-      {
-        "success": true,
-        "ts": 1774961739.9620767
-      }
-    ],
-    "common_errors": [],
-    "last_updated": 1774961739.9620807
-  },
-  "Grep": {
-    "known_failures": [],
-    "preconditions": [],
-    "success_count": 526,
-    "failure_count": 0,
-    "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1774892567.2437832
-      },
-      {
-        "success": true,
-        "ts": 1774892692.5255198
-      },
-      {
-        "success": true,
-        "ts": 1774892697.8297467
-      },
-      {
-        "success": true,
-        "ts": 1774892805.4994898
-      },
-      {
-        "success": true,
-        "ts": 1774892806.237284
-      },
-      {
-        "success": true,
-        "ts": 1774892858.1216815
-      },
-      {
-        "success": true,
-        "ts": 1774892859.3125408
-      },
-      {
-        "success": true,
-        "ts": 1774894017.2091324
-      },
-      {
-        "success": true,
-        "ts": 1774894324.7208083
-      },
-      {
-        "success": true,
-        "ts": 1774906322.284208
-      },
-      {
-        "success": true,
-        "ts": 1774906466.1136975
-      },
-      {
-        "success": true,
-        "ts": 1774906470.1245427
-      },
-      {
-        "success": true,
-        "ts": 1774906474.2300487
-      },
-      {
-        "success": true,
-        "ts": 1774906478.3722084
-      },
-      {
-        "success": true,
-        "ts": 1774906483.2666883
-      },
-      {
-        "success": true,
-        "ts": 1774906492.7394178
-      },
-      {
-        "success": true,
-        "ts": 1774906496.4624057
-      },
-      {
-        "success": true,
-        "ts": 1774906500.124587
-      },
-      {
-        "success": true,
-        "ts": 1774906503.9100804
-      },
-      {
-        "success": true,
-        "ts": 1774952074.4931786
-      },
-      {
-        "success": true,
-        "ts": 1774952080.2017777
-      },
-      {
-        "success": true,
-        "ts": 1774952087.670621
-      },
-      {
-        "success": true,
-        "ts": 1774952091.8644145
-      },
-      {
-        "success": true,
-        "ts": 1774952095.0819726
-      },
-      {
-        "success": true,
-        "ts": 1774952102.8842695
-      },
-      {
-        "success": true,
-        "ts": 1774952103.962082
-      },
-      {
-        "success": true,
-        "ts": 1774952138.6819131
-      },
-      {
-        "success": true,
-        "ts": 1774952142.16325
-      },
-      {
-        "success": true,
-        "ts": 1774952740.0680532
-      },
-      {
-        "success": true,
-        "ts": 1774956607.079935
-      },
-      {
-        "success": true,
-        "ts": 1774956607.531786
-      },
-      {
-        "success": true,
-        "ts": 1774956612.7276225
-      },
-      {
-        "success": true,
-        "ts": 1774958436.629648
-      },
-      {
-        "success": true,
-        "ts": 1774958459.3673477
-      },
-      {
-        "success": true,
-        "ts": 1774958613.2623584
-      },
-      {
-        "success": true,
-        "ts": 1774958618.7629688
-      },
-      {
-        "success": true,
-        "ts": 1774958624.3077376
-      },
-      {
-        "success": true,
-        "ts": 1774958629.8055387
-      },
-      {
-        "success": true,
-        "ts": 1774959461.5778537
-      },
-      {
-        "success": true,
-        "ts": 1774959793.0645816
-      },
-      {
-        "success": true,
-        "ts": 1774959797.434363
-      },
-      {
-        "success": true,
-        "ts": 1774960451.3005664
-      },
-      {
-        "success": true,
-        "ts": 1774960587.812525
-      },
-      {
-        "success": true,
-        "ts": 1774961317.319687
-      },
-      {
-        "success": true,
-        "ts": 1774961897.199639
-      },
-      {
-        "success": true,
-        "ts": 1774961976.8158638
-      },
-      {
-        "success": true,
-        "ts": 1774961979.0337675
-      },
-      {
-        "success": true,
-        "ts": 1774962129.9731684
-      },
-      {
-        "success": true,
-        "ts": 1774962230.0630543
-      },
-      {
-        "success": true,
-        "ts": 1774962284.2998133
-      }
-    ],
-    "common_errors": [],
-    "last_updated": 1774962284.29982
-  },
-  "Glob": {
-    "known_failures": [],
-    "preconditions": [],
-    "success_count": 246,
-    "failure_count": 0,
-    "recent_outcomes": [
-      {
-        "success": true,
-        "ts": 1774787543.4652138
-      },
-      {
-        "success": true,
-        "ts": 1774787543.664291
-      },
-      {
-        "success": true,
-        "ts": 1774799862.8948894
-      },
-      {
-        "success": true,
-        "ts": 1774799868.3877282
-      },
-      {
-        "success": true,
-        "ts": 1774799868.6103303
-      },
-      {
-        "success": true,
-        "ts": 1774799901.0549703
-      },
-      {
-        "success": true,
-        "ts": 1774799905.6832767
-      },
-      {
-        "success": true,
-        "ts": 1774801144.888447
-      },
-      {
-        "success": true,
-        "ts": 1774801145.2944849
-      },
-      {
-        "success": true,
-        "ts": 1774802263.6789353
-      },
-      {
-        "success": true,
-        "ts": 1774802263.7725031
-      },
-      {
-        "success": true,
-        "ts": 1774806033.7825263
-      },
-      {
-        "success": true,
-        "ts": 1774806529.4974632
-      },
-      {
-        "success": true,
-        "ts": 1774807036.0638044
-      },
-      {
-        "success": true,
-        "ts": 1774807036.2879183
-      },
-      {
-        "success": true,
-        "ts": 1774807400.382247
-      },
-      {
-        "success": true,
-        "ts": 1774807400.6810386
-      },
-      {
-        "success": true,
-        "ts": 1774808620.4908319
-      },
-      {
-        "success": true,
-        "ts": 1774809426.9608936
-      },
-      {
-        "success": true,
-        "ts": 1774819487.888875
-      },
-      {
-        "success": true,
-        "ts": 1774819494.3847806
-      },
-      {
-        "success": true,
-        "ts": 1774819504.792355
-      },
-      {
-        "success": true,
-        "ts": 1774819505.5622935
-      },
-      {
-        "success": true,
-        "ts": 1774820438.1655052
-      },
-      {
-        "success": true,
-        "ts": 1774820438.9838479
-      },
-      {
-        "success": true,
-        "ts": 1774820439.670249
-      },
-      {
-        "success": true,
-        "ts": 1774820514.1666825
-      },
-      {
-        "success": true,
-        "ts": 1774820519.9759724
-      },
-      {
-        "success": true,
-        "ts": 1774820520.771109
-      },
-      {
-        "success": true,
-        "ts": 1774820531.1883957
-      },
-      {
-        "success": true,
-        "ts": 1774820536.1631875
-      },
-      {
-        "success": true,
-        "ts": 1774820560.2899227
-      },
-      {
-        "success": true,
-        "ts": 1774820572.0843291
-      },
-      {
-        "success": true,
-        "ts": 1774824458.367364
-      },
-      {
-        "success": true,
-        "ts": 1774825956.1633306
-      },
-      {
-        "success": true,
-        "ts": 1774828273.4915164
-      },
-      {
-        "success": true,
-        "ts": 1774868110.5635185
-      },
-      {
-        "success": true,
-        "ts": 1774868111.779744
-      },
-      {
-        "success": true,
-        "ts": 1774871531.6955197
-      },
-      {
-        "success": true,
-        "ts": 1774885451.8377962
-      },
-      {
-        "success": true,
-        "ts": 1774890436.7661548
-      },
-      {
-        "success": true,
-        "ts": 1774892110.3716085
-      },
-      {
-        "success": true,
-        "ts": 1774892112.785519
-      },
-      {
-        "success": true,
-        "ts": 1774957494.1359518
-      },
-      {
-        "success": true,
-        "ts": 1774957510.9955158
-      },
-      {
-        "success": true,
-        "ts": 1774957511.5661807
-      },
-      {
-        "success": true,
-        "ts": 1774957512.0087528
-      },
-      {
-        "success": true,
-        "ts": 1774957527.3107643
-      },
-      {
-        "success": true,
-        "ts": 1774957527.7824583
-      },
-      {
-        "success": true,
-        "ts": 1774958446.9707384
-      }
-    ],
-    "common_errors": [],
-    "last_updated": 1774958446.970742
+    "last_updated": 1775591171.0758371
   },
   "Agent": {
     "known_failures": [],
     "preconditions": [],
-    "success_count": 106,
+    "success_count": 101,
     "failure_count": 0,
     "recent_outcomes": [
       {
         "success": true,
-        "ts": 1774713776.5555985
+        "ts": 1775518551.8911686
       },
       {
         "success": true,
-        "ts": 1774714179.197223
+        "ts": 1775518563.969689
       },
       {
         "success": true,
-        "ts": 1774715194.265374
+        "ts": 1775518645.9907694
       },
       {
         "success": true,
-        "ts": 1774715548.2496545
+        "ts": 1775519690.3629904
       },
       {
         "success": true,
-        "ts": 1774715749.7322888
+        "ts": 1775522007.2705534
       },
       {
         "success": true,
-        "ts": 1774715811.725636
+        "ts": 1775522299.3666704
       },
       {
         "success": true,
-        "ts": 1774715951.0321167
+        "ts": 1775522322.3638732
       },
       {
         "success": true,
-        "ts": 1774715957.030203
+        "ts": 1775522325.2694495
       },
       {
         "success": true,
-        "ts": 1774715963.7278998
+        "ts": 1775522804.1737823
       },
       {
         "success": true,
-        "ts": 1774715969.92719
+        "ts": 1775523499.4869664
       },
       {
         "success": true,
-        "ts": 1774715975.7357156
+        "ts": 1775523508.8733008
       },
       {
         "success": true,
-        "ts": 1774716613.9748302
+        "ts": 1775524509.0671926
       },
       {
         "success": true,
-        "ts": 1774717019.4825633
+        "ts": 1775524515.4681132
       },
       {
         "success": true,
-        "ts": 1774717320.5933514
+        "ts": 1775524528.792344
       },
       {
         "success": true,
-        "ts": 1774717346.8887987
+        "ts": 1775524542.8762093
       },
       {
         "success": true,
-        "ts": 1774717716.1831894
+        "ts": 1775524546.3749886
       },
       {
         "success": true,
-        "ts": 1774717794.76612
+        "ts": 1775524577.3768215
       },
       {
         "success": true,
-        "ts": 1774718310.3928988
+        "ts": 1775524741.788137
       },
       {
         "success": true,
-        "ts": 1774719146.3704658
+        "ts": 1775525446.2773497
       },
       {
         "success": true,
-        "ts": 1774720087.5807245
+        "ts": 1775525555.6725209
       },
       {
         "success": true,
-        "ts": 1774746355.4909163
+        "ts": 1775525851.6758378
       },
       {
         "success": true,
-        "ts": 1774746416.6805341
+        "ts": 1775525984.972536
       },
       {
         "success": true,
-        "ts": 1774746436.7734556
+        "ts": 1775528285.7867115
       },
       {
         "success": true,
-        "ts": 1774746458.7846901
+        "ts": 1775528294.7601674
       },
       {
         "success": true,
-        "ts": 1774780540.5946724
+        "ts": 1775528299.3645978
       },
       {
         "success": true,
-        "ts": 1774780618.507374
+        "ts": 1775528305.9772093
       },
       {
         "success": true,
-        "ts": 1774780686.3907585
+        "ts": 1775528314.077993
       },
       {
         "success": true,
-        "ts": 1774780911.363822
+        "ts": 1775532917.7773604
       },
       {
         "success": true,
-        "ts": 1774781084.3604035
+        "ts": 1775533011.594614
       },
       {
         "success": true,
-        "ts": 1774781130.6783333
+        "ts": 1775533717.3636277
       },
       {
         "success": true,
-        "ts": 1774781222.094385
+        "ts": 1775533752.8923745
       },
       {
         "success": true,
-        "ts": 1774781315.1634963
+        "ts": 1775533774.179579
       },
       {
         "success": true,
-        "ts": 1774786813.369195
+        "ts": 1775542762.525689
       },
       {
         "success": true,
-        "ts": 1774786914.7092185
+        "ts": 1775543406.7748125
       },
       {
         "success": true,
-        "ts": 1774786926.300703
+        "ts": 1775543445.4756038
       },
       {
         "success": true,
-        "ts": 1774786969.2616606
+        "ts": 1775543476.8053808
       },
       {
         "success": true,
-        "ts": 1774799915.2602148
+        "ts": 1775543480.4630315
       },
       {
         "success": true,
-        "ts": 1774799947.4981663
+        "ts": 1775543570.2853127
       },
       {
         "success": true,
-        "ts": 1774799976.463715
+        "ts": 1775543593.8614483
       },
       {
         "success": true,
-        "ts": 1774809451.2649193
+        "ts": 1775544463.976314
       },
       {
         "success": true,
-        "ts": 1774819591.997979
+        "ts": 1775544521.3922276
       },
       {
         "success": true,
-        "ts": 1774819622.378994
+        "ts": 1775544654.9921763
       },
       {
         "success": true,
-        "ts": 1774820785.180078
+        "ts": 1775544816.7730277
       },
       {
         "success": true,
-        "ts": 1774821033.5802882
+        "ts": 1775545131.6594014
       },
       {
         "success": true,
-        "ts": 1774833220.413896
+        "ts": 1775545171.4026911
       },
       {
         "success": true,
-        "ts": 1774886645.3356204
+        "ts": 1775556238.3049033
       },
       {
         "success": true,
-        "ts": 1774891053.1097522
+        "ts": 1775560185.1095834
       },
       {
         "success": true,
-        "ts": 1774952143.3662786
+        "ts": 1775560188.38168
       },
       {
         "success": true,
-        "ts": 1774953160.5572677
+        "ts": 1775560200.1126158
       },
       {
         "success": true,
-        "ts": 1774957655.3976388
+        "ts": 1775590482.5106912
       }
     ],
     "common_errors": [],
-    "last_updated": 1774957655.3976438
+    "last_updated": 1775590482.5106952
+  },
+  "Glob": {
+    "known_failures": [],
+    "preconditions": [],
+    "success_count": 140,
+    "failure_count": 0,
+    "recent_outcomes": [
+      {
+        "success": true,
+        "ts": 1775543108.1737356
+      },
+      {
+        "success": true,
+        "ts": 1775543109.5664136
+      },
+      {
+        "success": true,
+        "ts": 1775543117.3836005
+      },
+      {
+        "success": true,
+        "ts": 1775543117.5844033
+      },
+      {
+        "success": true,
+        "ts": 1775543117.5888054
+      },
+      {
+        "success": true,
+        "ts": 1775543118.4629831
+      },
+      {
+        "success": true,
+        "ts": 1775543123.661028
+      },
+      {
+        "success": true,
+        "ts": 1775543124.369801
+      },
+      {
+        "success": true,
+        "ts": 1775543125.1652622
+      },
+      {
+        "success": true,
+        "ts": 1775543128.2890337
+      },
+      {
+        "success": true,
+        "ts": 1775543134.6001997
+      },
+      {
+        "success": true,
+        "ts": 1775543135.0721803
+      },
+      {
+        "success": true,
+        "ts": 1775543135.3941495
+      },
+      {
+        "success": true,
+        "ts": 1775543145.4792511
+      },
+      {
+        "success": true,
+        "ts": 1775543235.374893
+      },
+      {
+        "success": true,
+        "ts": 1775543401.403936
+      },
+      {
+        "success": true,
+        "ts": 1775543844.6226172
+      },
+      {
+        "success": true,
+        "ts": 1775543845.0979288
+      },
+      {
+        "success": true,
+        "ts": 1775543845.8889482
+      },
+      {
+        "success": true,
+        "ts": 1775543846.2813745
+      },
+      {
+        "success": true,
+        "ts": 1775543852.0839896
+      },
+      {
+        "success": true,
+        "ts": 1775543852.865764
+      },
+      {
+        "success": true,
+        "ts": 1775543858.3894053
+      },
+      {
+        "success": true,
+        "ts": 1775543859.086994
+      },
+      {
+        "success": true,
+        "ts": 1775543863.2700706
+      },
+      {
+        "success": true,
+        "ts": 1775543863.275635
+      },
+      {
+        "success": true,
+        "ts": 1775543863.304965
+      },
+      {
+        "success": true,
+        "ts": 1775543870.3778493
+      },
+      {
+        "success": true,
+        "ts": 1775543871.6269202
+      },
+      {
+        "success": true,
+        "ts": 1775543872.9715803
+      },
+      {
+        "success": true,
+        "ts": 1775543878.7746317
+      },
+      {
+        "success": true,
+        "ts": 1775543879.5851624
+      },
+      {
+        "success": true,
+        "ts": 1775543882.6636422
+      },
+      {
+        "success": true,
+        "ts": 1775543883.474495
+      },
+      {
+        "success": true,
+        "ts": 1775543884.9857726
+      },
+      {
+        "success": true,
+        "ts": 1775543886.5005937
+      },
+      {
+        "success": true,
+        "ts": 1775543886.8272607
+      },
+      {
+        "success": true,
+        "ts": 1775543897.8924794
+      },
+      {
+        "success": true,
+        "ts": 1775543901.8881238
+      },
+      {
+        "success": true,
+        "ts": 1775543902.672913
+      },
+      {
+        "success": true,
+        "ts": 1775543903.271702
+      },
+      {
+        "success": true,
+        "ts": 1775543910.4745653
+      },
+      {
+        "success": true,
+        "ts": 1775543910.7656217
+      },
+      {
+        "success": true,
+        "ts": 1775543953.7885513
+      },
+      {
+        "success": true,
+        "ts": 1775543954.1705062
+      },
+      {
+        "success": true,
+        "ts": 1775544019.879234
+      },
+      {
+        "success": true,
+        "ts": 1775544525.260496
+      },
+      {
+        "success": true,
+        "ts": 1775544923.2898664
+      },
+      {
+        "success": true,
+        "ts": 1775559757.8761182
+      },
+      {
+        "success": true,
+        "ts": 1775559761.6852376
+      }
+    ],
+    "common_errors": [],
+    "last_updated": 1775559761.6852415
+  },
+  "Edit": {
+    "known_failures": [],
+    "preconditions": [],
+    "success_count": 1167,
+    "failure_count": 0,
+    "recent_outcomes": [
+      {
+        "success": true,
+        "ts": 1775544513.3655336
+      },
+      {
+        "success": true,
+        "ts": 1775544516.5762045
+      },
+      {
+        "success": true,
+        "ts": 1775544518.2613256
+      },
+      {
+        "success": true,
+        "ts": 1775544519.6662576
+      },
+      {
+        "success": true,
+        "ts": 1775544523.3897471
+      },
+      {
+        "success": true,
+        "ts": 1775544537.0644116
+      },
+      {
+        "success": true,
+        "ts": 1775544539.5733712
+      },
+      {
+        "success": true,
+        "ts": 1775544603.4972267
+      },
+      {
+        "success": true,
+        "ts": 1775544628.471735
+      },
+      {
+        "success": true,
+        "ts": 1775544763.2722788
+      },
+      {
+        "success": true,
+        "ts": 1775544772.4763212
+      },
+      {
+        "success": true,
+        "ts": 1775544772.967781
+      },
+      {
+        "success": true,
+        "ts": 1775544813.1867898
+      },
+      {
+        "success": true,
+        "ts": 1775544816.2850368
+      },
+      {
+        "success": true,
+        "ts": 1775544818.199829
+      },
+      {
+        "success": true,
+        "ts": 1775544862.197176
+      },
+      {
+        "success": true,
+        "ts": 1775544866.882318
+      },
+      {
+        "success": true,
+        "ts": 1775544935.9245188
+      },
+      {
+        "success": true,
+        "ts": 1775544946.429812
+      },
+      {
+        "success": true,
+        "ts": 1775545006.0801642
+      },
+      {
+        "success": true,
+        "ts": 1775545314.779265
+      },
+      {
+        "success": true,
+        "ts": 1775545430.8953793
+      },
+      {
+        "success": true,
+        "ts": 1775545442.9640746
+      },
+      {
+        "success": true,
+        "ts": 1775545457.6713622
+      },
+      {
+        "success": true,
+        "ts": 1775545474.165677
+      },
+      {
+        "success": true,
+        "ts": 1775545480.3846107
+      },
+      {
+        "success": true,
+        "ts": 1775559819.2938094
+      },
+      {
+        "success": true,
+        "ts": 1775559821.7635534
+      },
+      {
+        "success": true,
+        "ts": 1775560150.160169
+      },
+      {
+        "success": true,
+        "ts": 1775560152.2758071
+      },
+      {
+        "success": true,
+        "ts": 1775560154.0814278
+      },
+      {
+        "success": true,
+        "ts": 1775560154.5607753
+      },
+      {
+        "success": true,
+        "ts": 1775560156.176453
+      },
+      {
+        "success": true,
+        "ts": 1775560157.2684243
+      },
+      {
+        "success": true,
+        "ts": 1775560158.3958418
+      },
+      {
+        "success": true,
+        "ts": 1775560159.771016
+      },
+      {
+        "success": true,
+        "ts": 1775560159.978083
+      },
+      {
+        "success": true,
+        "ts": 1775560161.562509
+      },
+      {
+        "success": true,
+        "ts": 1775560163.6777055
+      },
+      {
+        "success": true,
+        "ts": 1775560164.1878269
+      },
+      {
+        "success": true,
+        "ts": 1775560166.0809295
+      },
+      {
+        "success": true,
+        "ts": 1775560166.0929167
+      },
+      {
+        "success": true,
+        "ts": 1775560167.5814075
+      },
+      {
+        "success": true,
+        "ts": 1775560168.9881337
+      },
+      {
+        "success": true,
+        "ts": 1775560172.1767309
+      },
+      {
+        "success": true,
+        "ts": 1775560173.5814707
+      },
+      {
+        "success": true,
+        "ts": 1775560174.8681698
+      },
+      {
+        "success": true,
+        "ts": 1775560176.2642505
+      },
+      {
+        "success": true,
+        "ts": 1775560178.075213
+      },
+      {
+        "success": true,
+        "ts": 1775560179.7718558
+      }
+    ],
+    "common_errors": [],
+    "last_updated": 1775560179.7718592
+  },
+  "Write": {
+    "known_failures": [],
+    "preconditions": [],
+    "success_count": 281,
+    "failure_count": 0,
+    "recent_outcomes": [
+      {
+        "success": true,
+        "ts": 1775543474.9690413
+      },
+      {
+        "success": true,
+        "ts": 1775543499.5586245
+      },
+      {
+        "success": true,
+        "ts": 1775543934.3853822
+      },
+      {
+        "success": true,
+        "ts": 1775543954.8739758
+      },
+      {
+        "success": true,
+        "ts": 1775544086.7637362
+      },
+      {
+        "success": true,
+        "ts": 1775544091.1641681
+      },
+      {
+        "success": true,
+        "ts": 1775544102.0632153
+      },
+      {
+        "success": true,
+        "ts": 1775544103.6735528
+      },
+      {
+        "success": true,
+        "ts": 1775544112.8643568
+      },
+      {
+        "success": true,
+        "ts": 1775544154.2622204
+      },
+      {
+        "success": true,
+        "ts": 1775544183.3879817
+      },
+      {
+        "success": true,
+        "ts": 1775544191.6834602
+      },
+      {
+        "success": true,
+        "ts": 1775544216.1597724
+      },
+      {
+        "success": true,
+        "ts": 1775544222.579247
+      },
+      {
+        "success": true,
+        "ts": 1775544257.9737437
+      },
+      {
+        "success": true,
+        "ts": 1775544260.5707936
+      },
+      {
+        "success": true,
+        "ts": 1775544272.373551
+      },
+      {
+        "success": true,
+        "ts": 1775544279.669895
+      },
+      {
+        "success": true,
+        "ts": 1775544306.6928658
+      },
+      {
+        "success": true,
+        "ts": 1775544312.1625779
+      },
+      {
+        "success": true,
+        "ts": 1775544319.9698308
+      },
+      {
+        "success": true,
+        "ts": 1775544342.9867442
+      },
+      {
+        "success": true,
+        "ts": 1775544343.7747226
+      },
+      {
+        "success": true,
+        "ts": 1775544345.58682
+      },
+      {
+        "success": true,
+        "ts": 1775544353.1820607
+      },
+      {
+        "success": true,
+        "ts": 1775544356.3732874
+      },
+      {
+        "success": true,
+        "ts": 1775544364.2720335
+      },
+      {
+        "success": true,
+        "ts": 1775544376.067491
+      },
+      {
+        "success": true,
+        "ts": 1775544383.0777872
+      },
+      {
+        "success": true,
+        "ts": 1775544385.8802004
+      },
+      {
+        "success": true,
+        "ts": 1775544389.7736666
+      },
+      {
+        "success": true,
+        "ts": 1775544407.9721472
+      },
+      {
+        "success": true,
+        "ts": 1775544480.0729978
+      },
+      {
+        "success": true,
+        "ts": 1775544487.188368
+      },
+      {
+        "success": true,
+        "ts": 1775544505.8682928
+      },
+      {
+        "success": true,
+        "ts": 1775544525.1866827
+      },
+      {
+        "success": true,
+        "ts": 1775544588.685462
+      },
+      {
+        "success": true,
+        "ts": 1775544607.4589398
+      },
+      {
+        "success": true,
+        "ts": 1775544614.1851666
+      },
+      {
+        "success": true,
+        "ts": 1775544643.0674975
+      },
+      {
+        "success": true,
+        "ts": 1775544656.9915037
+      },
+      {
+        "success": true,
+        "ts": 1775544668.6841419
+      },
+      {
+        "success": true,
+        "ts": 1775544690.5864458
+      },
+      {
+        "success": true,
+        "ts": 1775544716.0889897
+      },
+      {
+        "success": true,
+        "ts": 1775544729.1710546
+      },
+      {
+        "success": true,
+        "ts": 1775544744.2812076
+      },
+      {
+        "success": true,
+        "ts": 1775544974.0686786
+      },
+      {
+        "success": true,
+        "ts": 1775559437.2633307
+      },
+      {
+        "success": true,
+        "ts": 1775559638.7865276
+      },
+      {
+        "success": true,
+        "ts": 1775559657.0193853
+      }
+    ],
+    "common_errors": [],
+    "last_updated": 1775559657.0193884
+  },
+  "NotebookEdit": {
+    "known_failures": [],
+    "preconditions": [],
+    "success_count": 41,
+    "failure_count": 0,
+    "recent_outcomes": [
+      {
+        "success": true,
+        "ts": 1775175974.1642182
+      },
+      {
+        "success": true,
+        "ts": 1775176092.086258
+      },
+      {
+        "success": true,
+        "ts": 1775176108.06038
+      },
+      {
+        "success": true,
+        "ts": 1775176138.0772011
+      },
+      {
+        "success": true,
+        "ts": 1775176231.5679765
+      },
+      {
+        "success": true,
+        "ts": 1775176265.5822842
+      },
+      {
+        "success": true,
+        "ts": 1775176268.3655677
+      },
+      {
+        "success": true,
+        "ts": 1775176585.77942
+      },
+      {
+        "success": true,
+        "ts": 1775475431.0870686
+      },
+      {
+        "success": true,
+        "ts": 1775475463.9108365
+      },
+      {
+        "success": true,
+        "ts": 1775475485.6654592
+      },
+      {
+        "success": true,
+        "ts": 1775475496.979074
+      },
+      {
+        "success": true,
+        "ts": 1775475504.3700724
+      },
+      {
+        "success": true,
+        "ts": 1775475532.6883056
+      },
+      {
+        "success": true,
+        "ts": 1775475552.0060663
+      },
+      {
+        "success": true,
+        "ts": 1775475562.2658033
+      },
+      {
+        "success": true,
+        "ts": 1775475580.8132756
+      },
+      {
+        "success": true,
+        "ts": 1775475627.5638387
+      },
+      {
+        "success": true,
+        "ts": 1775475662.0768394
+      },
+      {
+        "success": true,
+        "ts": 1775475684.3559992
+      },
+      {
+        "success": true,
+        "ts": 1775475695.4866178
+      },
+      {
+        "success": true,
+        "ts": 1775475718.8167145
+      },
+      {
+        "success": true,
+        "ts": 1775475755.9679039
+      },
+      {
+        "success": true,
+        "ts": 1775475817.6127517
+      },
+      {
+        "success": true,
+        "ts": 1775475847.5809016
+      },
+      {
+        "success": true,
+        "ts": 1775475883.064124
+      },
+      {
+        "success": true,
+        "ts": 1775475933.9649427
+      },
+      {
+        "success": true,
+        "ts": 1775475961.5220792
+      },
+      {
+        "success": true,
+        "ts": 1775512990.6183193
+      },
+      {
+        "success": true,
+        "ts": 1775528386.8787975
+      },
+      {
+        "success": true,
+        "ts": 1775528769.4603105
+      },
+      {
+        "success": true,
+        "ts": 1775528903.175825
+      },
+      {
+        "success": true,
+        "ts": 1775532135.6915846
+      },
+      {
+        "success": true,
+        "ts": 1775532180.2187252
+      },
+      {
+        "success": true,
+        "ts": 1775532212.4723275
+      },
+      {
+        "success": true,
+        "ts": 1775532278.7786677
+      },
+      {
+        "success": true,
+        "ts": 1775532343.5671473
+      },
+      {
+        "success": true,
+        "ts": 1775532369.1727653
+      },
+      {
+        "success": true,
+        "ts": 1775532420.4789095
+      },
+      {
+        "success": true,
+        "ts": 1775532482.1864626
+      },
+      {
+        "success": true,
+        "ts": 1775532512.0963104
+      }
+    ],
+    "common_errors": [],
+    "last_updated": 1775532512.096312
   },
   "Skill": {
     "known_failures": [],
     "preconditions": [],
-    "success_count": 20,
+    "success_count": 7,
     "failure_count": 0,
     "recent_outcomes": [
       {
         "success": true,
-        "ts": 1774642496.4612467
+        "ts": 1775207779.6845198
       },
       {
         "success": true,
-        "ts": 1774649658.7642467
+        "ts": 1775320609.3898442
       },
       {
         "success": true,
-        "ts": 1774649826.9654086
+        "ts": 1775427257.3887048
       },
       {
         "success": true,
-        "ts": 1774652928.1058693
+        "ts": 1775432686.772318
       },
       {
         "success": true,
-        "ts": 1774660418.8668165
+        "ts": 1775434447.8302636
       },
       {
         "success": true,
-        "ts": 1774668323.870021
+        "ts": 1775448856.4155881
       },
       {
         "success": true,
-        "ts": 1774669035.2481568
-      },
-      {
-        "success": true,
-        "ts": 1774694006.9648268
-      },
-      {
-        "success": true,
-        "ts": 1774695446.6254694
-      },
-      {
-        "success": true,
-        "ts": 1774696165.170007
-      },
-      {
-        "success": true,
-        "ts": 1774698713.3958035
-      },
-      {
-        "success": true,
-        "ts": 1774707628.5993934
-      },
-      {
-        "success": true,
-        "ts": 1774748077.0815482
-      },
-      {
-        "success": true,
-        "ts": 1774813883.208649
-      },
-      {
-        "success": true,
-        "ts": 1774816743.6699593
-      },
-      {
-        "success": true,
-        "ts": 1774824767.7826736
-      },
-      {
-        "success": true,
-        "ts": 1774826584.7969756
-      },
-      {
-        "success": true,
-        "ts": 1774868079.7158945
-      },
-      {
-        "success": true,
-        "ts": 1774875849.6695898
-      },
-      {
-        "success": true,
-        "ts": 1774879528.4042795
+        "ts": 1775478754.4774735
       }
     ],
     "common_errors": [],
-    "last_updated": 1774879528.4042823
+    "last_updated": 1775478754.4774861
   }
 }

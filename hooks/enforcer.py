@@ -37,7 +37,11 @@ from shared.state import (
 )
 from shared.gate_result import GateResult
 from shared.audit_log import log_gate_decision
-from shared.circuit_breaker import should_skip_gate, record_gate_result
+from shared.circuit_breaker import (
+    should_skip_gate,
+    record_gate_result,
+    sweep_stale_circuits,
+)
 from shared.gate_router import get_optimal_gate_order, update_qtable, flush_qtable
 from shared.gate_timing import (
     record_timing as _record_gate_timing,
@@ -1060,6 +1064,9 @@ def main():
     live_profile = get_live_toggle("security_profile")
     if live_profile:
         state["security_profile"] = live_profile
+
+    # Recover any circuits stuck in OPEN past their recovery timeout.
+    sweep_stale_circuits()
 
     handle_pre_tool_use(tool_name, tool_input, state)
 

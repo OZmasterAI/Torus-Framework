@@ -309,6 +309,27 @@ def is_open(service: str) -> bool:
         return False  # Fail-open
 
 
+def sweep_stale_circuits() -> int:
+    """Transition all OPEN circuits past their recovery_timeout to HALF_OPEN.
+
+    Returns the number of circuits transitioned.  Called once per enforcer
+    invocation so circuits cannot stay frozen when no consumer polls them.
+    """
+    try:
+        with _lock:
+            data = _load()
+            changed = 0
+            for rec in data.values():
+                if isinstance(rec, dict) and rec.get("state") == STATE_OPEN:
+                    if _maybe_recover(rec):
+                        changed += 1
+            if changed:
+                _save(data)
+            return changed
+    except Exception:
+        return 0  # Fail-open
+
+
 def get_state(service: str) -> str:
     """Return the current circuit state string for *service*.
 

@@ -829,7 +829,7 @@ if _bsg_wj:
     test("Wrap-up gather: warnings is list", isinstance(_bsg_wj.get("warnings"), list))
 
 # 3. Test risk_level computation directly
-sys.path.insert(0, os.path.join(_BSG_CLAUDE_DIR, "skills", "wrap-up", "scripts"))
+sys.path.insert(0, os.path.join(_BSG_CLAUDE_DIR, "skill-library", "wrap-up", "scripts"))
 from gather import compute_risk_level as _bsg_crl
 
 _bsg_green = _bsg_crl(
@@ -884,6 +884,7 @@ try:
         extract_content as _ws_ec,
         content_hash as _ws_ch,
     )
+
     _WEB_SCRIPTS_AVAILABLE = True
 except ImportError:
     _WEB_SCRIPTS_AVAILABLE = False
@@ -930,7 +931,9 @@ if _WEB_SCRIPTS_AVAILABLE:
         # Chunking: single short content stays as one chunk
         _ws_short_para = "A short paragraph with a few words."
         _ws_single = _ws_cc(_ws_short_para)
-        test("Web index: chunking keeps short content as one chunk", len(_ws_single) == 1)
+        test(
+            "Web index: chunking keeps short content as one chunk", len(_ws_single) == 1
+        )
 
         # Content hash: deterministic
         _ws_h1 = _ws_ch("test content")
@@ -994,7 +997,10 @@ if _WEB_SCRIPTS_AVAILABLE:
     )
     with open(_ws_ms_path) as _ws_f:
         _ws_ms_src = _ws_f.read()
-    test("Web: memory_server col_map has web_pages", '"web_pages": web_pages' in _ws_ms_src)
+    test(
+        "Web: memory_server col_map has web_pages",
+        '"web_pages": web_pages' in _ws_ms_src,
+    )
     test("Web: memory_server has delete handler", 'if method == "delete"' in _ws_ms_src)
     test("Web: memory_server inits web_pages collection", '"web_pages"' in _ws_ms_src)
 
@@ -1847,7 +1853,9 @@ if not MEMORY_SERVER_RUNNING:
     )
 
     if _hl_col is None:
-        print("  [SKIP] Hybrid linking: LanceDB collection unavailable", file=sys.stderr)
+        print(
+            "  [SKIP] Hybrid linking: LanceDB collection unavailable", file=sys.stderr
+        )
 
 if not MEMORY_SERVER_RUNNING and locals().get("_hl_col") is not None:
     # Test 1: resolves:ID creates bidirectional link (target gets resolved_by:)
@@ -2454,17 +2462,40 @@ _fix_ctx_queue = os.path.join(_tempfile.gettempdir(), ".test_fix_ctx_queue.jsonl
 _orig_capture_queue = _ar_mod.CAPTURE_QUEUE
 _ar_mod.CAPTURE_QUEUE = _fix_ctx_queue
 with open(_fix_ctx_queue, "w") as _fq:
-    _fq.write(json.dumps({
-        "document": "Bash: pytest -> EXIT 1 | TypeError | bad arg",
-        "metadata": {"session_id": "fix-test", "has_error": "true", "tool_name": "Bash", "context": "{}"}
-    }) + "\n")
-    _fq.write(json.dumps({
-        "document": "Edit: /tmp/app.py (~3 lines changed)",
-        "metadata": {
-            "session_id": "fix-test", "has_error": "false", "tool_name": "Edit",
-            "context": json.dumps({"file_path": "/tmp/app.py", "diff_old": "x = int(y)", "diff_new": "x = str(y)"})
-        }
-    }) + "\n")
+    _fq.write(
+        json.dumps(
+            {
+                "document": "Bash: pytest -> EXIT 1 | TypeError | bad arg",
+                "metadata": {
+                    "session_id": "fix-test",
+                    "has_error": "true",
+                    "tool_name": "Bash",
+                    "context": "{}",
+                },
+            }
+        )
+        + "\n"
+    )
+    _fq.write(
+        json.dumps(
+            {
+                "document": "Edit: /tmp/app.py (~3 lines changed)",
+                "metadata": {
+                    "session_id": "fix-test",
+                    "has_error": "false",
+                    "tool_name": "Edit",
+                    "context": json.dumps(
+                        {
+                            "file_path": "/tmp/app.py",
+                            "diff_old": "x = int(y)",
+                            "diff_new": "x = str(y)",
+                        }
+                    ),
+                },
+            }
+        )
+        + "\n"
+    )
 
 _fix_result = _build_fix_context("fix-test")
 test(

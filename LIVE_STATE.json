@@ -1,21 +1,28 @@
 {
-  "session_count": 620,
+  "session_count": 629,
   "project": "torus-framework",
-  "feature": "cache-expiry-and-skill-tracking",
+  "feature": "memory-server-timeout-diagnosis",
   "framework_version": "v3.0.0",
-  "what_was_done": "Removed v1 skill server (skill_server.py, test_skill_server_lazy.py, skills-v1 from toolshed.json). Verified zero callers — v2 handles everything. Toolshed now 4 backends.",
+  "what_was_done": "Diagnosed memory server timeout issue. Root cause: nomic-embed-text-v2-moe model load takes 80-160s on first tool call, causing timeouts through toolshed. After model loads, calls are 0.4s and server is healthy (0.7% idle CPU). Previous server instances showed sustained 200-360% CPU from the MoE model without megablocks library. Restarted memory server with clean code. Attempted background warmup fix but it introduced a torch thread CPU-spin bug; reverted. No correlation with skill_server.py removal found \u2014 timing was coincidental.",
   "known_issues": [
-    "Gate 2 gap: rm -r (without -f) not blocked",
-    "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
-    "\u00a78.2 Autonomous Mode Safety deferred (write-then-execute risk, verification_specialist unguarded subprocess)"
+    "Memory server cold-start takes 80-160s (model load) \u2014 first tool call times out through toolshed",
+    "nomic-embed-text-v2-moe without megablocks is CPU-intensive (install megablocks for 3-5x speedup)",
+    "Gate 2: rm -r (without -f) not blocked (HIGH)",
+    "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
+    "Gate 1: path traversal ../../../../etc/passwd bypasses extension guard (HIGH)",
+    "Gate 2: Unicode non-breaking space bypasses rm -rf regex (MEDIUM)",
+    "Gate 17: plaintext injection phrases not scanned on PreToolUse (MEDIUM)",
+    "LIVE_STATE.json not guarded by gate_07 (MEDIUM)"
   ],
   "next_steps": [
-    "Check other projects for stranded rules/working-memory.md",
-    "[low] Cleanup: mcp__memory__ references in hooks/ are vestigial (memory only via toolshed) \u2014 harmless but dead code"
+    "Fix memory server cold-start: either install megablocks (`pip install git+https://github.com/nomic-ai/megablocks.git`) or add safe background warmup without torch thread leak",
+    "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
+    "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
+    "Clean up 28 pre-existing test failures"
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 89626,
-  "dag_total_branches": 379,
-  "last_response_preview": "Fair point \u2014 it's short enough that the full context won't hurt. Go for it, paste everything. The new instance will see the reasoning behind each decision, not just the final spec."
+  "dag_node_count": 94178,
+  "dag_total_branches": 395,
+  "last_response_preview": "Already committed \u2014 looks like one of the earlier attempts went through before the user denied the retry. \n\n**Session 98 wrap-up complete:**\n- Research saved to `chainovi-economics-research.md`\n- Memory saved (id: `a672ca657531cc7f`)\n- State updated in `.claude-state.json`\n- Committed as `3d240d6`\n- Risk level: YELLOW (framework files uncommitted \u2014 those are from other sessions, not this one)"
 }
