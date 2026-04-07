@@ -1,9 +1,9 @@
 {
-  "session_count": 629,
+  "session_count": 630,
   "project": "torus-framework",
-  "feature": "memory-server-timeout-diagnosis",
+  "feature": "skill-tool-disambiguation",
   "framework_version": "v3.0.0",
-  "what_was_done": "Diagnosed memory server timeout issue. Root cause: nomic-embed-text-v2-moe model load takes 80-160s on first tool call, causing timeouts through toolshed. After model loads, calls are 0.4s and server is healthy (0.7% idle CPU). Previous server instances showed sustained 200-360% CPU from the MoE model without megablocks library. Restarted memory server with clean code. Attempted background warmup fix but it introduced a torch thread CPU-spin bug; reverted. No correlation with skill_server.py removal found \u2014 timing was coincidental.",
+  "what_was_done": "Fixed CLAUDE.md skill/tool disambiguation. Instances were using built-in Skill() for framework skills (wrap-up, brainstorm, etc.) because CLAUDE.md used /slash notation. Removed all / prefixes, added explicit 'NEVER use Skill tool for framework skills' warning, replaced shorthand with full run_tool() syntax. 5 edits to CLAUDE.md.",
   "known_issues": [
     "Memory server cold-start takes 80-160s (model load) \u2014 first tool call times out through toolshed",
     "nomic-embed-text-v2-moe without megablocks is CPU-intensive (install megablocks for 3-5x speedup)",
@@ -22,7 +22,7 @@
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 94178,
-  "dag_total_branches": 395,
-  "last_response_preview": "Already committed \u2014 looks like one of the earlier attempts went through before the user denied the retry. \n\n**Session 98 wrap-up complete:**\n- Research saved to `chainovi-economics-research.md`\n- Memory saved (id: `a672ca657531cc7f`)\n- State updated in `.claude-state.json`\n- Committed as `3d240d6`\n- Risk level: YELLOW (framework files uncommitted \u2014 those are from other sessions, not this one)"
+  "dag_node_count": 94381,
+  "dag_total_branches": 398,
+  "last_response_preview": "Here's the full audit:\n\n## Session Start: ~5,100 tokens\n\n| Source | Chars | Tokens | Notes |\n|--------|------:|-------:|-------|\n| Claude Code built-ins (system prompt + tool schemas) | ~12,000 | ~3,150 | **Estimate** \u2014 not directly measurable |\n| `CLAUDE.md` | 2,960 | 780 | Largest controllable injection |\n| `rules/` (3 files: hooks, memory, framework) | 2,050 | 540 | Auto-loaded by Claude Code |\n| Toolshed MCP schemas (2 tools) | 800 | 210 | Down from ~5-7k pre-toolshed |\n| `<session-start-con"
 }
