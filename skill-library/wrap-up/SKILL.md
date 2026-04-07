@@ -4,7 +4,7 @@
 When the user says "wrap up", "done", "end session", "save progress", or is finishing work.
 
 ## Steps
-1. **GATHER** — Run `python3 ~/.claude/skills/wrap-up/scripts/gather.py` and parse the JSON output
+1. **GATHER** — Run `python3 ~/.claude/skill-library/wrap-up/scripts/gather.py` and parse the JSON output
    - If script fails, fall back to manual: read LIVE_STATE.json, git status, search_knowledge
    - The JSON contains: live_state, handoff (content + age), git status, memory count, promotion_candidates, recent_learnings, risk_level, warnings
 2. **SAVE TO MEMORY** — Based on gathered data + conversation context, remember_this() for significant work:
