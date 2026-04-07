@@ -1,9 +1,9 @@
 {
-  "session_count": 618,
+  "session_count": 620,
   "project": "torus-framework",
   "feature": "cache-expiry-and-skill-tracking",
   "framework_version": "v3.0.0",
-  "what_was_done": "Cache expiry awareness hooks (Stop writes timestamp, UPS warns if >5m idle). Fixed skill_outcome_tracker to detect toolshed-routed invoke_skill calls (evolution pipeline unblocked). Triaged next-steps: skill routing non-issue, mcp__memory__ refs are vestigial cleanup.",
+  "what_was_done": "Removed v1 skill server (skill_server.py, test_skill_server_lazy.py, skills-v1 from toolshed.json). Verified zero callers — v2 handles everything. Toolshed now 4 backends.",
   "known_issues": [
     "Gate 2 gap: rm -r (without -f) not blocked",
     "Gate 23: Go test naming too rigid \u2014 needs smarter _has_test_on_disk for Go packages",
@@ -11,11 +11,11 @@
   ],
   "next_steps": [
     "Check other projects for stranded rules/working-memory.md",
-    "Remove v1 skill server (stdio) after consolidation verified",
     "[low] Cleanup: mcp__memory__ references in hooks/ are vestigial (memory only via toolshed) \u2014 harmless but dead code"
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 89022,
-  "dag_total_branches": 372
+  "dag_node_count": 89626,
+  "dag_total_branches": 379,
+  "last_response_preview": "Fair point \u2014 it's short enough that the full context won't hurt. Go for it, paste everything. The new instance will see the reasoning behind each decision, not just the final spec."
 }
