@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Skill dependency and health analyzer for the Torus framework.
 
-This module scans all skills in ~/.claude/skills/, parses their
+This module scans all skills in ~/.claude/skill-library/, parses their
 metadata and scripts, and builds a comprehensive dependency graph to identify
 missing dependencies, code reuse opportunities, and overall skill health.
 
@@ -66,6 +66,7 @@ KNOWN_SHARED_MODULES = {
 @dataclass
 class SkillMetadata:
     """Metadata for a skill."""
+
     name: str
     path: str
     skill_md_path: str
@@ -81,6 +82,7 @@ class SkillMetadata:
 @dataclass
 class SkillHealth:
     """Health status for a skill."""
+
     name: str
     status: str  # "healthy", "degraded", "unhealthy"
     coverage_pct: float  # % of shared modules used vs potentially useful
@@ -218,9 +220,7 @@ class SkillMapper:
                 functions_defined.add(node.name)
 
         # Extract function calls (simple pattern matching for common patterns)
-        for match in re.finditer(
-            r"\b([a-z_][a-z0-9_]*)\s*\(", source, re.IGNORECASE
-        ):
+        for match in re.finditer(r"\b([a-z_][a-z0-9_]*)\s*\(", source, re.IGNORECASE):
             functions_called.add(match.group(1))
 
     def _identify_missing_dependencies(
@@ -232,7 +232,10 @@ class SkillMapper:
         # Check for direct shared module usage patterns
         for module_name in KNOWN_SHARED_MODULES:
             # Check if module is used in function calls but not imported
-            if module_name in functions_called and module_name not in imports_from_shared:
+            if (
+                module_name in functions_called
+                and module_name not in imports_from_shared
+            ):
                 missing.add(module_name)
 
         return missing
@@ -300,13 +303,13 @@ class SkillMapper:
 
             # Check if this module would be useful based on skill functions
             if self._module_would_be_useful(module_name, metadata):
-                opportunities.append(
-                    f"{module_name}: {description}"
-                )
+                opportunities.append(f"{module_name}: {description}")
 
         return opportunities[:5]  # Top 5 opportunities
 
-    def _module_would_be_useful(self, module_name: str, metadata: SkillMetadata) -> bool:
+    def _module_would_be_useful(
+        self, module_name: str, metadata: SkillMetadata
+    ) -> bool:
         """Heuristically determine if a shared module would be useful."""
         # Health module useful for skills that do health checks
         if module_name == "health_monitor" and any(
@@ -328,7 +331,8 @@ class SkillMapper:
 
         # State useful for skills that manage state
         if module_name == "state" and any(
-            fn in metadata.functions_called for fn in ["state", "save", "load", "persist"]
+            fn in metadata.functions_called
+            for fn in ["state", "save", "load", "persist"]
         ):
             return True
 
@@ -428,7 +432,9 @@ class SkillMapper:
         lines.append("-" * 80)
         usage = self.get_shared_module_usage()
         if usage:
-            for module, count in sorted(usage.items(), key=lambda x: x[1], reverse=True):
+            for module, count in sorted(
+                usage.items(), key=lambda x: x[1], reverse=True
+            ):
                 skills = self.shared_module_usage[module]
                 lines.append(f"{module} ({count} skills): {', '.join(sorted(skills))}")
         else:
@@ -464,7 +470,9 @@ class SkillMapper:
             status_sym = (
                 "HEALTHY"
                 if health.status == "healthy"
-                else "DEGRADED" if health.status == "degraded" else "UNHEALTHY"
+                else "DEGRADED"
+                if health.status == "degraded"
+                else "UNHEALTHY"
             )
             lines.append(
                 f"{skill}: {status_sym} (coverage: {health.coverage_pct:.0f}%, "

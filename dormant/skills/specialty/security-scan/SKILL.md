@@ -21,7 +21,7 @@ Run a comprehensive security scan of the Torus framework's gates, hooks, state f
 ## Usage
 Use this skill to run a security audit of the framework before deploying changes or after adding new components.
 
-Run `python3 ~/.claude/skills/security-scan/scripts/scan.py` for a programmatic scan report.
+Run `python3 ~/.claude/skill-library/security-scan/scripts/scan.py` for a programmatic scan report.
 
 ---
 
@@ -50,7 +50,7 @@ Extract the `mcpServers` block. For each server record:
 
 **Skills** — glob all SKILL.md files:
 ```
-~/.claude/skills/*/SKILL.md
+~/.claude/skill-library/*/SKILL.md
 ```
 For each skill record: name, trigger phrases, what commands it runs.
 

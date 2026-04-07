@@ -241,7 +241,7 @@ python3 ~/.claude/integrations/telegram-bot/bot.py
 <summary><strong>Optional: Web Skill Dependencies</strong></summary>
 
 ```bash
-pip install -r ~/.claude/skills/web/requirements.txt
+pip install -r ~/.claude/skill-library/web/requirements.txt
 ```
 
 </details>

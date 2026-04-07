@@ -54,7 +54,7 @@ Improve the /my-skill skill to produce better outputs
 
 # Skill
 - Name: my-skill
-- Path: ~/.claude/skills/my-skill/SKILL.md
+- Path: ~/.claude/skill-library/my-skill/SKILL.md
 - Test prompt: "Generate a diagram of a REST API flow"
 
 # Eval
@@ -65,7 +65,7 @@ Binary criteria — each scored yes(1) or no(0) per run:
 - Is the output free of unnecessary numbering or ordinals?
 
 # What You CAN Edit
-- ~/.claude/skills/my-skill/SKILL.md
+- ~/.claude/skill-library/my-skill/SKILL.md
 
 # Constraints
 - Do not change the skill's core purpose

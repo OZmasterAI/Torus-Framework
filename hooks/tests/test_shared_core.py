@@ -178,11 +178,16 @@ test(
 # --- Rich fix memory: Edit observation diffs ---
 _obs_diff = compress_observation(
     "Edit",
-    {"file_path": "/tmp/fix.py", "old_string": "broken code here", "new_string": "fixed code here"},
+    {
+        "file_path": "/tmp/fix.py",
+        "old_string": "broken code here",
+        "new_string": "fixed code here",
+    },
     None,
     "test-sess",
 )
 import json as _json_obs
+
 _obs_diff_ctx = _json_obs.loads(_obs_diff["metadata"]["context"])
 test(
     "Observation: Edit diff_old present",
@@ -2534,7 +2539,7 @@ test(
 print("\n--- Named Agents (Feature 4) ---")
 
 _agents_dir = os.path.join(os.path.expanduser("~"), ".claude", "agents")
-_expected_agents = ["researcher.md", "security.md", "builder.md", "stress-tester.md"]
+_expected_agents = ["researcher.md", "builder.md", "explore.md", "plan.md"]
 
 # 1. All agent files exist
 _agents_exist = all(
@@ -2590,16 +2595,14 @@ print("\n--- New Agent Definitions ---")
 
 _new_agents = [
     "researcher.md",
-    "stress-tester.md",
     "builder.md",
-    "security.md",
-    "perf-analyzer.md",
-    "debugger.md",
+    "explore.md",
+    "plan.md",
 ]
 
 # 1. All new agent files exist
 test(
-    "New Agents: all 6 files exist",
+    "New Agents: all 4 files exist",
     all(os.path.isfile(os.path.join(_agents_dir, a)) for a in _new_agents),
     f"missing={[a for a in _new_agents if not os.path.isfile(os.path.join(_agents_dir, a))]}",
 )
@@ -2639,13 +2642,11 @@ for _research_agent in ["researcher.md"]:
         "haiku" in _hfm or "sonnet" in _hfm,
     )
 
-# 4. Model assignments: sonnet for security, perf-analyzer, debugger, stress-tester, builder
+# 4. Model assignments: sonnet for builder, plan, explore
 for _sonnet_agent in [
-    "security.md",
-    "perf-analyzer.md",
-    "debugger.md",
-    "stress-tester.md",
     "builder.md",
+    "plan.md",
+    "explore.md",
 ]:
     with open(os.path.join(_agents_dir, _sonnet_agent)) as _sf:
         _scontent = _sf.read()
@@ -2667,8 +2668,8 @@ for _nafile in _new_agents:
         break
 test("New Agents: tool lists are non-empty", _tools_nonempty, _tools_detail)
 
-# 6. No Edit or Write tool in read-only agents (researcher, security, perf-analyzer)
-_readonly_agents = ["researcher.md", "security.md", "perf-analyzer.md"]
+# 6. No Edit or Write tool in read-only agents (researcher, explore)
+_readonly_agents = ["researcher.md", "explore.md"]
 _no_edit_write_ok = True
 _no_edit_write_detail = ""
 for _rofile in _readonly_agents:
@@ -3969,7 +3970,7 @@ for _s2_skill in [
     "sprint",
     "teach",
 ]:  # optimize removed session 183, superseded by /super-prof-optimize
-    _s2_path = os.path.expanduser(f"~/.claude/skills/{_s2_skill}/SKILL.md")
+    _s2_path = os.path.expanduser(f"~/.claude/skill-library/{_s2_skill}/SKILL.md")
     test(
         f"Sprint2 Skills: {_s2_skill}/SKILL.md exists",
         os.path.isfile(_s2_path),
@@ -4002,14 +4003,14 @@ test(
     "team-lead.md not found in dormant/agents/",
 )
 test(
-    "Sprint2 Agents: perf-analyzer.md exists (merged optimizer+performance-analyzer)",
-    os.path.isfile(os.path.join(_agents_dir, "perf-analyzer.md")),
-    "perf-analyzer.md not found in agents/",
+    "Sprint2 Agents: perf-analyzer.md removed (consolidated into framework agents)",
+    not os.path.isfile(os.path.join(_agents_dir, "perf-analyzer.md")),
+    "perf-analyzer.md should not exist in agents/",
 )
 test(
-    "Sprint2 Agents: security.md exists (merged auditor+security-auditor)",
-    os.path.isfile(os.path.join(_agents_dir, "security.md")),
-    "security.md not found in agents/",
+    "Sprint2 Agents: security.md removed (consolidated into framework agents)",
+    not os.path.isfile(os.path.join(_agents_dir, "security.md")),
+    "security.md should not exist in agents/",
 )
 
 # ─────────────────────────────────────────────────
@@ -6738,7 +6739,7 @@ test("Exempt base: non-exempt file", is_exempt_base("/tmp/app.py") is False)
 test(
     "Exempt base: non-skills path with /skills/",
     is_exempt_base("/tmp/skills/hack.py") is False,
-    "Only ~/.claude/skills/ should match, not any /skills/ substring",
+    "Only ~/.claude/skill-library/ should match, not any /skills/ substring",
 )
 
 # ── Standard tier ──

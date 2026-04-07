@@ -125,7 +125,7 @@ class TestGate21Exemptions:
 
     def test_exempts_skills_dir(self):
         state = {"summary_threshold_fired": True}
-        skill_path = os.path.expanduser("~/.claude/skills/test/SKILL.md")
+        skill_path = os.path.expanduser("~/.claude/skill-library/test/SKILL.md")
         result = check(
             "Write", {"file_path": skill_path}, state, _summary_size_override=0
         )

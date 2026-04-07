@@ -19,7 +19,7 @@ deep metrics, and operational overview in one skill.
 ### 1. QUICK DASHBOARD (always runs first)
 Run the quick status gather:
 ```bash
-python3 ~/.claude/skills/status/scripts/gather.py
+python3 ~/.claude/skill-library/status/scripts/gather.py
 ```
 Display the pre-formatted dashboard output to the user immediately.
 If `--quick` flag is set, stop here.
@@ -27,11 +27,11 @@ If `--quick` flag is set, stop here.
 ### 2. DEEP DIAGNOSTICS
 Run the health check script:
 ```bash
-python3 ~/.claude/skills/super-health/scripts/check.py
+python3 ~/.claude/skill-library/super-health/scripts/check.py
 ```
 If `--repair` flag is given:
 ```bash
-python3 ~/.claude/skills/super-health/scripts/check.py --repair
+python3 ~/.claude/skill-library/super-health/scripts/check.py --repair
 ```
 
 This checks:

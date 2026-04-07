@@ -54,7 +54,7 @@ ls ~/.claude/hooks/gates/
 python3 -c "import json; d=json.load(open('~/.claude/settings.json')); [print(h) for h in d.get('hooks', {})]"
 
 # Skills
-ls ~/.claude/skills/
+ls ~/.claude/skill-library/
 
 # MCP tools (registered servers)
 python3 -c "import json; d=json.load(open('~/.claude/settings.json')); [print(s) for s in d.get('mcpServers', {}).keys()]"
@@ -149,7 +149,7 @@ for gate, count in results.most_common():
 ```
 
 ### 2d. Skills audit
-For each skill in `~/.claude/skills/`:
+For each skill in `~/.claude/skill-library/`:
 - Does it have a valid SKILL.md?
 - Does it reference tools or scripts that still exist?
 - Is it invokable (check for broken paths or commands)?
