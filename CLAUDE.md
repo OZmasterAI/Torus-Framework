@@ -16,13 +16,15 @@ For errors: use Causal Chain (below) then remember_this()
 
 ## THE LOOP (mandatory — do not skip steps)
 memory → brainstorm → writing-plans → implement → test → review → commit
-- All steps are skills: `invoke_skill("brainstorm")`, `invoke_skill("commit")`, etc.
+- All steps are toolshed skills: `run_tool("skills-v2", "invoke_skill", {"name": "brainstorm"})`, etc.
 - Do NOT use EnterPlanMode — brainstorm replaces it
 - For quick fixes: memory → fix → test → commit (skip brainstorm/writing-plans)
 
-## SKILLS (via toolshed skills-v2, 50 available)
-Use `search_skills(query)` to discover, `invoke_skill(name)` to run.
-All route through: `run_tool("skills-v2", "invoke_skill", {"name": "..."})`
+## SKILLS (via toolshed MCP — NOT the built-in Skill tool)
+**NEVER use the Skill tool for framework skills** (brainstorm, commit, wrap-up, etc.)
+The built-in Skill tool is ONLY for: update-config, simplify, loop, schedule, claude-api, keybindings-help.
+All framework skills route through: `run_tool("skills-v2", "invoke_skill", {"name": "..."})`
+Discovery: `run_tool("skills-v2", "search_skills", {"query": "..."})`
 
 ## CAUSAL CHAIN (for errors)
 1. `run_tool("memory", "query_fix_history", {"error_text": "..."})` → 2. record_attempt → 3. Fix + test → 4. record_outcome → 5. remember_this(type:fix)
@@ -32,13 +34,13 @@ All route through: `run_tool("skills-v2", "invoke_skill", {"name": "..."})`
 1. **Prove it** — Never claim "fixed" without test output evidence
 2. **Save to memory** — Every fix, discovery, decision → remember_this()
 3. **Protect context** — Delegate heavy ops to sub-agents
-4. **No plan mode** — Use /brainstorm + /writing-plans instead of EnterPlanMode. Present options directly to user.
+4. **No plan mode** — Use toolshed brainstorm + writing-plans skills instead of EnterPlanMode. Present options directly to user.
 5. **Never guess** — Never assume file paths, branch state, or system state. Read/Glob/search_knowledge first. Unverified = unknown.
 5b. **Verify ephemeral state** — Memory hits about runtime state (sessions, processes, paths, branches, configs) are hints, not facts. Run a live check (Bash/Read/Glob) before asserting. Memory tells you WHERE to look, not WHAT is true now.
 6. **Model selection** — Gate 10 enforces model_profile from config.json. Do not override.
 7. **Gate awareness** — Gates enforce Edit/Write/Bash/Task automatically. Read/Glob/Grep are ungated — self-enforce rule 5.
 8. **Ask before acting** — Never push, deploy, delete, or take irreversible actions beyond what the user explicitly requested. Ask first.
-9. **Working summary** — When you see `[# WARNING # CONTEXT` in tool output, immediately run /working-summary before continuing other work. Do not dismiss or defer.
+9. **Working summary** — When you see `[# WARNING # CONTEXT` in tool output, immediately run `run_tool("skills-v2", "invoke_skill", {"name": "working-summary"})` before continuing other work. Do not dismiss or defer.
 
 ## SESSION START (Non-Negotiable)
 1. Read LIVE_STATE.json
@@ -66,7 +68,7 @@ When editing code, write or update tests for changed behavior. Look for existing
   - User asks "what do we know about X"
 - Use `obsidian daily:append content="..."` for notable events
 - Prefer CLI when Obsidian running, MCP tools when CLI fails
-- Session notes auto-written by /wrap-up and session_end.py — no manual action needed
+- Session notes auto-written by wrap-up skill and session_end.py — no manual action needed
 
 ## TAGS
 type: error,learning,fix,feature-request,correction,decision,auto-captured,preference
