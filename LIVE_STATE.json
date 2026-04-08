@@ -1,11 +1,11 @@
 {
-  "session_count": 630,
+  "session_count": 632,
   "project": "torus-framework",
-  "feature": "skill-tool-disambiguation",
+  "feature": "toolshed-resilience",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed CLAUDE.md skill/tool disambiguation. Instances were using built-in Skill() for framework skills (wrap-up, brainstorm, etc.) because CLAUDE.md used /slash notation. Removed all / prefixes, added explicit 'NEVER use Skill tool for framework skills' warning, replaced shorthand with full run_tool() syntax. 5 edits to CLAUDE.md.",
+  "what_was_done": "Fixed 3 critical toolshed proxy issues causing intermittent search failures: added 30s timeout (was infinite), replaced Lock with Semaphore(10) for concurrency, added auto-reconnect with cooldown. Restarted via systemd. 4 backends/22 tools confirmed.",
   "known_issues": [
-    "Memory server cold-start takes 80-160s (model load) \u2014 first tool call times out through toolshed",
+    "Memory server cold-start takes 80-160s (model load) \u2014 mitigated by toolshed timeout+reconnect but not eliminated",
     "nomic-embed-text-v2-moe without megablocks is CPU-intensive (install megablocks for 3-5x speedup)",
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
@@ -15,14 +15,15 @@
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)"
   ],
   "next_steps": [
-    "Fix memory server cold-start: either install megablocks (`pip install git+https://github.com/nomic-ai/megablocks.git`) or add safe background warmup without torch thread leak",
+    "Fix memory server cold-start: install megablocks or add safe warmup without torch thread leak",
     "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
     "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
+    "Add per-server timeout overrides in toolshed.json (e.g. memory: 60s for heavy queries)",
     "Clean up 28 pre-existing test failures"
   ],
-  "dag_branch": "main",
+  "dag_branch": "dag-claude",
   "dag_branch_label": "",
-  "dag_node_count": 94381,
-  "dag_total_branches": 398,
-  "last_response_preview": "Here's the full audit:\n\n## Session Start: ~5,100 tokens\n\n| Source | Chars | Tokens | Notes |\n|--------|------:|-------:|-------|\n| Claude Code built-ins (system prompt + tool schemas) | ~12,000 | ~3,150 | **Estimate** \u2014 not directly measurable |\n| `CLAUDE.md` | 2,960 | 780 | Largest controllable injection |\n| `rules/` (3 files: hooks, memory, framework) | 2,050 | 540 | Auto-loaded by Claude Code |\n| Toolshed MCP schemas (2 tools) | 800 | 210 | Down from ~5-7k pre-toolshed |\n| `<session-start-con"
+  "dag_node_count": 95546,
+  "dag_total_branches": 409,
+  "last_response_preview": "Toolshed restarted via systemd: 4 backends, 22 tools. MCP reconnected."
 }
