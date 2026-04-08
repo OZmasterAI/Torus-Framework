@@ -1,9 +1,9 @@
 {
-  "session_count": 638,
+  "session_count": 639,
   "project": "torus-framework",
   "feature": "memory-recovery-toolshed-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Reverted lancedb to 768-dim backup after failed MiniLM migration (10,351 memories recovered, 0 lost). Fixed toolshed crash-loop: added RuntimeError to 4 exception tuples preventing 271 systemd restarts when backend unreachable.",
+  "what_was_done": "Session 639: Diagnosed and fixed toolshed startup crash loop. Root cause: anyio BaseExceptionGroup (from streamablehttp_client TaskGroup) not caught by except clauses in connect_http/cleanup/startup. Added BaseExceptionGroup to 3 catch sites. Commit 1722742. Also identified mid-session shutdown race (MEDIUM, unfixed).",
   "known_issues": [
     "MiniLM migration still pending \u2014 768-dim nomic model restored, migrate_to_minilm.py needs rework to not lock up server",
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
@@ -12,6 +12,7 @@
     "Gate 2: Unicode non-breaking space bypasses rm -rf regex (MEDIUM)",
     "Gate 17: plaintext injection phrases not scanned on PreToolUse (MEDIUM)",
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
+    "Toolshed mid-session shutdown race: uvicorn still processing requests after MCP session manager teardown (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)"
   ],
   "next_steps": [
@@ -20,8 +21,9 @@
     "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
     "Fix 2 stdio backend test failures in toolshed"
   ],
-  "dag_branch": "dag-claude",
+  "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 99552,
-  "dag_total_branches": 436
+  "dag_node_count": 100148,
+  "dag_total_branches": 439,
+  "last_response_preview": "**Session 9 wrap-up:**\n\n- **Done:** Researched all module patterns + wrote full Task 10 plan (saved to memory)\n- **Not done:** Zero code written \u2014 session was all research\n- **Lesson:** Over-researched (20+ min reading repetitive patterns). Next time: read 1 reference module, then build.\n\n**Next session:** Task 10 \u2014 x/governance (15 files, plan ready in memory `6a5e9ec7`)"
 }
