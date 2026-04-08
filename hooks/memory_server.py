@@ -4590,6 +4590,12 @@ if __name__ == "__main__":
         try:
             _sys.stderr.write("[WARMUP] Starting background initialization...\n")
             _ensure_initialized()
+            # Run a dummy embedding to fully warm the model (JIT/kernel caches).
+            # Without this, the first real search_knowledge call pays a >30s penalty.
+            if _embedding_fn is not None:
+                _sys.stderr.write("[WARMUP] Running dummy embedding to warm model...\n")
+                _embed_text("warmup")
+                _sys.stderr.write("[WARMUP] Embedding model warm\n")
             _sys.stderr.write(
                 "[WARMUP] Background initialization complete — server ready\n"
             )
