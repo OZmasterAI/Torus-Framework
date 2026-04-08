@@ -1,12 +1,12 @@
 {
-  "session_count": 632,
+  "session_count": 634,
   "project": "torus-framework",
   "feature": "toolshed-resilience",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed 3 critical toolshed proxy issues causing intermittent search failures: added 30s timeout (was infinite), replaced Lock with Semaphore(10) for concurrency, added auto-reconnect with cooldown. Restarted via systemd. 4 backends/22 tools confirmed.",
+  "what_was_done": "Fixed memory search timeout: added 90s per-server timeout for memory in toolshed.json (was 30s default), added dummy embed in warmup thread to prime JIT caches. Diagnosed root cause: cold embedding model + 30s toolshed timeout = search_knowledge failures. megablocks requires GPU (unavailable), so warmup+timeout is the fix.",
   "known_issues": [
-    "Memory server cold-start takes 80-160s (model load) \u2014 mitigated by toolshed timeout+reconnect but not eliminated",
-    "nomic-embed-text-v2-moe without megablocks is CPU-intensive (install megablocks for 3-5x speedup)",
+    "Memory server cold-start takes ~363s (327s model load + 36s indexes) — mitigated by warmup thread + 90s timeout",
+    "nomic-embed-text-v2-moe without megablocks is CPU-intensive (megablocks needs GPU, not available)",
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
     "Gate 1: path traversal ../../../../etc/passwd bypasses extension guard (HIGH)",
@@ -15,15 +15,13 @@
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)"
   ],
   "next_steps": [
-    "Fix memory server cold-start: install megablocks or add safe warmup without torch thread leak",
     "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
     "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
-    "Add per-server timeout overrides in toolshed.json (e.g. memory: 60s for heavy queries)",
     "Clean up 28 pre-existing test failures"
   ],
-  "dag_branch": "dag-claude",
+  "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 95546,
-  "dag_total_branches": 409,
-  "last_response_preview": "Toolshed restarted via systemd: 4 backends, 22 tools. MCP reconnected."
+  "dag_node_count": 97055,
+  "dag_total_branches": 423,
+  "last_response_preview": "Both changes applied and verified: 90s memory timeout in toolshed.json, dummy embed in warmup thread."
 }
