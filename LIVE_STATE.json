@@ -1,27 +1,27 @@
 {
-  "session_count": 637,
+  "session_count": 638,
   "project": "torus-framework",
-  "feature": "memory-model-migration",
+  "feature": "memory-recovery-toolshed-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed toolshed crash cycle: removed sys.exit(0) signal handler that caused RuntimeError 'Task group not initialized' (6 crashes/session). Added CancelledError to cleanup. Diagnosed nomic-embed = 151s/embed on CPU. Benchmarked MiniLM = 350ms/embed. Migration script + backup ready, code reverted pending re-embed run.",
+  "what_was_done": "Reverted lancedb to 768-dim backup after failed MiniLM migration (10,351 memories recovered, 0 lost). Fixed toolshed crash-loop: added RuntimeError to 4 exception tuples preventing 271 systemd restarts when backend unreachable.",
   "known_issues": [
-    "nomic-embed-text-v2-moe = 151s/embed on CPU \u2014 search_knowledge effectively unusable until MiniLM migration",
-    "Migration pending: script at ~/.claude/hooks/migrate_to_minilm.py, backup at ~/data/memory/lancedb_backup_768dim/",
+    "MiniLM migration still pending \u2014 768-dim nomic model restored, migrate_to_minilm.py needs rework to not lock up server",
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
     "Gate 1: path traversal ../../../../etc/passwd bypasses extension guard (HIGH)",
     "Gate 2: Unicode non-breaking space bypasses rm -rf regex (MEDIUM)",
     "Gate 17: plaintext injection phrases not scanned on PreToolUse (MEDIUM)",
-    "LIVE_STATE.json not guarded by gate_07 (MEDIUM)"
+    "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
+    "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)"
   ],
   "next_steps": [
-    "Run MiniLM migration: update memory_server.py (model+dim+init), run migrate_to_minilm.py, restart memory server",
+    "Rework MiniLM migration: run as offline batch (not during server startup), validate row counts before swapping",
     "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
-    "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)"
+    "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
+    "Fix 2 stdio backend test failures in toolshed"
   ],
-  "dag_branch": "main",
+  "dag_branch": "dag-claude",
   "dag_branch_label": "",
   "dag_node_count": 99552,
-  "dag_total_branches": 436,
-  "last_response_preview": "Complementary on top \u2014 the last commit stays. Here's what would change:\n\n1. **Reward model** \u2014 new enum values (additive, nothing removed)\n2. **ai-rewards-calculator** \u2014 future AI rewards now get tagged with `category: 'ai_gateway'` so they show up in `byPool`\n3. **community-pools stats API** \u2014 swap the `AIUsageLog` query for a `byPool.ai_gateway` query (simpler, consistent with how esports/toroidal work)\n4. **community-pools page** \u2014 swap \"Total Requests\" for \"TRS Distributed\" on the AI card (c"
+  "dag_total_branches": 436
 }
