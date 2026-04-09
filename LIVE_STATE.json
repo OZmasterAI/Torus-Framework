@@ -1,31 +1,31 @@
 {
-  "session_count": 642,
+  "session_count": 644,
   "project": "torus-framework",
-  "feature": "memory-server-perf",
+  "feature": "nv-embed-migration",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 642: Added periodic LanceDB compaction to session_end.py — compact_if_needed(threshold=100) checks _versions/ per table, triggers optimize via UDS socket. Fixed _optimize_tables() bug (called nonexistent _get_lance_db). Diagnosed toolshed crash-loop (174 restarts/24h from CancelledError on client SSE disconnect) — caught at main() for clean exit. Middleware fix needs FastMCP version investigation.",
+  "what_was_done": "Session 643: Fixed toolshed mid-session crash (ShutdownGuardMiddleware, commit 15e5272). Switched memory embedding from local nomic (768-dim, 151s/embed, 3.3GB) to NVIDIA nv-embed-v1 via NIM API (4096-dim, ~1s/embed, 436MB, MTEB 69.3). Removed vector_256 from schemas. Backup at ~/data/memory/lancedb_nomic_backup/.",
   "known_issues": [
-    "MiniLM migration still pending \u2014 768-dim nomic model restored, migrate_to_minilm.py needs rework to not lock up server",
+    "NIM API key hardcoded in memory_server.py — move to config.json (MEDIUM)",
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
     "Gate 1: path traversal ../../../../etc/passwd bypasses extension guard (HIGH)",
     "Gate 2: Unicode non-breaking space bypasses rm -rf regex (MEDIUM)",
     "Gate 17: plaintext injection phrases not scanned on PreToolUse (MEDIUM)",
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
-    "Toolshed mid-session shutdown race: uvicorn still processing requests after MCP session manager teardown (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)"
   ],
   "next_steps": [
-    "Toolshed: investigate FastMCP run_http_async middleware support for proper CancelledError isolation (current fix is exit-level catch)",
-    "Watchdog load shedding + /health endpoint (nice-to-have hardening for memory server)",
-    "Rework MiniLM migration: run as offline batch (not during server startup), validate row counts before swapping",
+    "Test nv-embed-v1 quality in real sessions — compare search relevance vs nomic",
+    "Move NIM API key from memory_server.py to config.json",
+    "NIM 300m (2048-dim) migration complete at ~/data/memory/lancedb_nim300m_migration/ — available as fallback",
     "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
     "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
+    "Watchdog load shedding + /health endpoint for memory server",
     "Fix 2 stdio backend test failures in toolshed"
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 102553,
-  "dag_total_branches": 449,
-  "last_response_preview": "## Session Summary\n\n**Problem:** Memory server timing out, high CPU/RAM, other instances couldn't reach it.\n\n**Root causes found & fixed:**\n- LanceDB `knowledge.lance` had **10,580 versions / 2,019 orphaned data files** bloating it to 11 GB \u2192 compacted to **44 MB**\n- Server process running 12+ hours with **3.1 GB RSS, 200-330% CPU** \u2192 restarted, now **2.2 GB RSS, 0.5% CPU idle**\n\n**Investigated but no action needed:**\n- DAG \u2014 costs almost nothing (SQLite, 118 MB, no CPU/RAM)\n- Concurrency limit "
+  "dag_node_count": 103258,
+  "dag_total_branches": 455,
+  "last_response_preview": "Nothing to commit \u2014 the remaining changes are all runtime state files (`.db-shm`, `.db-wal`, `tool_profiles.json`, pid files, etc.), not code. Both fixes are already committed:\n\n- `3c9a3b5` \u2014 LanceDB compaction\n- `0985761` \u2014 LIVE_STATE update"
 }

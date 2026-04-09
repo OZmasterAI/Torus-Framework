@@ -248,11 +248,13 @@ MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 LANCE_DIR = os.path.join(MEMORY_DIR, "lancedb")
 os.makedirs(LANCE_DIR, exist_ok=True)
 
-# Embedding model: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens, ~67% MTEB)
-# MoE architecture (305M active params), Matryoshka (truncatable to 256-dim)
-_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v2-moe"
-_EMBEDDING_DIM = 768
-_embedding_fn = None  # Lazy init — SentenceTransformer instance
+# Embedding model: nvidia/nv-embed-v1 via NIM API (4096-dim, 7B params, MTEB 69.3)
+# API-based — no local model, near-zero RAM, ~1s per embed
+_EMBEDDING_MODEL = "nvidia/nv-embed-v1"
+_EMBEDDING_DIM = 4096
+_embedding_fn = True  # Always "loaded" — API-based, no local model
+_NIM_URL = "https://integrate.api.nvidia.com/v1/embeddings"
+_NIM_KEY = "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"
 TAGS_DB_PATH = os.path.join(MEMORY_DIR, "tags.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
@@ -278,7 +280,6 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("context", pa.string()),
         pa.field("tags", pa.string()),
         pa.field("timestamp", pa.string()),
@@ -304,7 +305,6 @@ _FIX_OUTCOMES_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("error_hash", pa.string()),
         pa.field("strategy_id", pa.string()),
         pa.field("chain_id", pa.string()),
@@ -324,7 +324,6 @@ _OBSERVATIONS_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("session_id", pa.string()),
         pa.field("tool_name", pa.string()),
         pa.field("timestamp", pa.string()),
@@ -340,7 +339,6 @@ _WEB_PAGES_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("url", pa.string()),
         pa.field("title", pa.string()),
         pa.field("chunk_index", pa.string()),
@@ -356,7 +354,6 @@ _QUARANTINE_SCHEMA = pa.schema(
         pa.field("id", pa.string()),
         pa.field("text", pa.string()),
         pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("vector_256", pa.list_(pa.float32(), 256)),
         pa.field("quarantine_reason", pa.string()),
         pa.field("quarantine_pair", pa.string()),
         pa.field("quarantined_at", pa.string()),
@@ -378,17 +375,26 @@ _TABLE_SCHEMAS = {
 
 
 def _embed_texts(texts):
-    """Embed a list of texts using the loaded SentenceTransformer model.
+    """Embed a list of texts via NVIDIA NIM API (nv-embed-v1, 4096-dim).
 
-    Returns list of lists of floats (768-dim vectors).
-    Falls back to zero vectors if embedding model is unavailable.
+    Returns list of lists of floats (4096-dim vectors).
+    Falls back to zero vectors if API is unavailable.
     """
-    if _embedding_fn is None:
-        return [[0.0] * _EMBEDDING_DIM for _ in texts]
+    import requests
+    # Replace empty texts — NIM rejects them
+    safe_texts = [t if t and t.strip() else "[empty]" for t in texts]
     try:
-        vectors = _embedding_fn.encode(texts, show_progress_bar=False)
-        return [v.tolist() for v in vectors]
-    except Exception:
+        resp = requests.post(
+            _NIM_URL,
+            headers={"Authorization": "Bearer " + _NIM_KEY, "Content-Type": "application/json"},
+            json={"model": _EMBEDDING_MODEL, "input": safe_texts, "input_type": "passage", "encoding_format": "float"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return [d["embedding"] for d in data["data"]]
+    except Exception as e:
+        print(f"[MCP] NIM embed error: {e}", file=_sys.stderr)
         return [[0.0] * _EMBEDDING_DIM for _ in texts]
 
 
@@ -441,25 +447,11 @@ def _init_lancedb():
     if _lance_db is not None:
         return
     try:
-        # Initialize embedding function (nomic-embed-text-v2-moe, 768-dim, 8192 tokens)
-        try:
-            import torch
-
-            torch.set_num_threads(2)
-            torch.set_num_interop_threads(2)
-            from sentence_transformers import SentenceTransformer
-
-            _embedding_fn = SentenceTransformer(
-                _EMBEDDING_MODEL, trust_remote_code=True
-            )
-            _embedding_fn.half()  # FP32 → FP16: halves RAM (~5.3GB → ~2.7GB), ~0% quality loss
-            print(
-                f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim, FP16)",
-                file=_sys.stderr,
-            )
-        except Exception as ef_err:
-            print(f"[MCP] Embedding model load failed: {ef_err}", file=_sys.stderr)
-            _embedding_fn = None
+        # nv-embed-v1 via NIM API — no local model to load
+        print(
+            f"[MCP] Embedding via NIM API: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim)",
+            file=_sys.stderr,
+        )
 
         _lance_db = lancedb.connect(LANCE_DIR)
 
