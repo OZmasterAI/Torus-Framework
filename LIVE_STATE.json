@@ -1,9 +1,9 @@
 {
   "session_count": 645,
   "project": "torus-framework",
-  "feature": "toolshed-startup-retry",
+  "feature": "toolshed-bridge",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 645: Fixed toolshed startup race — added retry with backoff (2,3,5,8,12s) for HTTP backends not ready at startup. Commit 7b1e59b in toolshed repo.",
+  "what_was_done": "Session 645: (1) Added startup retry with backoff to toolshed.py (commit 7b1e59b). (2) Built toolshed_bridge.py — stdio-to-HTTP bridge that Claude Code spawns directly, with auto-reconnect. Fixes mid-session MCP drops (CC bug #31198). Updated mcp.json to use bridge.",
   "known_issues": [
     "NIM API key hardcoded in memory_server.py \u2014 move to config.json (MEDIUM)",
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
