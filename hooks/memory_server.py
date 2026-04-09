@@ -3740,10 +3740,12 @@ def _optimize_tables() -> dict:
     from datetime import timedelta
     import time
 
-    db = _get_lance_db()
+    global _lance_db
+    if _lance_db is None:
+        return {"action": "optimize", "error": "LanceDB not initialized"}
     results = {}
-    for name in db.list_tables():
-        t = db.open_table(name)
+    for name in _lance_db.table_names():
+        t = _lance_db.open_table(name)
         before = t.count_rows()
         start = time.time()
         t.optimize(cleanup_older_than=timedelta(0), delete_unverified=True)
@@ -4034,6 +4036,10 @@ def _dispatch_request(req):
 
         if method == "backup":
             result = _backup_database()
+            return {"ok": True, "result": result}
+
+        if method == "optimize":
+            result = _optimize_tables()
             return {"ok": True, "result": result}
 
         if method == "auto_remember":

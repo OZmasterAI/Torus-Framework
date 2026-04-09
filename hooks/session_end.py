@@ -656,6 +656,49 @@ def backup_database():
         print(f"[SESSION_END] Backup failed (non-fatal): {e}", file=sys.stderr)
 
 
+def compact_if_needed(threshold=100):
+    """Compact LanceDB tables if any table exceeds the version threshold.
+
+    Checks _versions/ directory count for each .lance table. If any exceeds
+    the threshold, sends an optimize request to memory_server via UDS socket.
+    Runs in the background process so there's no time pressure.
+    """
+    lance_dir = os.path.join(MEMORY_DIR, "lancedb")
+    if not os.path.isdir(lance_dir):
+        return
+    for name in os.listdir(lance_dir):
+        if not name.endswith(".lance"):
+            continue
+        versions_dir = os.path.join(lance_dir, name, "_versions")
+        if not os.path.isdir(versions_dir):
+            continue
+        count = len(os.listdir(versions_dir))
+        if count > threshold:
+            if not is_worker_available(retries=1, delay=0.2):
+                print(
+                    f"[SESSION_END] Compaction needed ({name}: {count} versions) but worker unavailable",
+                    file=sys.stderr,
+                )
+                return
+            from shared.memory_socket import optimize as socket_optimize
+
+            result = socket_optimize()
+            tables = result.get("tables", {}) if isinstance(result, dict) else {}
+            summary = ", ".join(
+                f"{t}: {v.get('rows_before', '?')}r/{v.get('duration_s', '?')}s"
+                for t, v in tables.items()
+            )
+            print(
+                f"[SESSION_END] Compacted LanceDB (trigger: {name} had {count} versions) — {summary}",
+                file=sys.stderr,
+            )
+            return  # optimize hits all tables, one call suffices
+    print(
+        "[SESSION_END] Compaction not needed (all tables under threshold)",
+        file=sys.stderr,
+    )
+
+
 def increment_session_count(metrics=None):
     """Increment session_count in LIVE_STATE.json and save session metrics."""
     state = {}
@@ -1045,6 +1088,11 @@ def _run_background(data_path):
         backup_database()
     except Exception as e:
         print(f"[SESSION_END:bg] Backup error: {e}", file=sys.stderr)
+
+    try:
+        compact_if_needed()
+    except Exception as e:
+        print(f"[SESSION_END:bg] Compaction error: {e}", file=sys.stderr)
 
     try:
         from scripts.flush_audit import flush as flush_audit
