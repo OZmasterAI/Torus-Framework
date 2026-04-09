@@ -1,11 +1,11 @@
 {
-  "session_count": 644,
+  "session_count": 645,
   "project": "torus-framework",
-  "feature": "nv-embed-migration",
+  "feature": "toolshed-startup-retry",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 643: Fixed toolshed mid-session crash (ShutdownGuardMiddleware, commit 15e5272). Switched memory embedding from local nomic (768-dim, 151s/embed, 3.3GB) to NVIDIA nv-embed-v1 via NIM API (4096-dim, ~1s/embed, 436MB, MTEB 69.3). Removed vector_256 from schemas. Backup at ~/data/memory/lancedb_nomic_backup/.",
+  "what_was_done": "Session 645: Fixed toolshed startup race — added retry with backoff (2,3,5,8,12s) for HTTP backends not ready at startup. Commit 7b1e59b in toolshed repo.",
   "known_issues": [
-    "NIM API key hardcoded in memory_server.py — move to config.json (MEDIUM)",
+    "NIM API key hardcoded in memory_server.py \u2014 move to config.json (MEDIUM)",
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
     "Gate 1: path traversal ../../../../etc/passwd bypasses extension guard (HIGH)",
@@ -15,17 +15,11 @@
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)"
   ],
   "next_steps": [
-    "Test nv-embed-v1 quality in real sessions — compare search relevance vs nomic",
+    "Test nv-embed-v1 quality in real sessions \u2014 compare search relevance vs nomic",
     "Move NIM API key from memory_server.py to config.json",
-    "NIM 300m (2048-dim) migration complete at ~/data/memory/lancedb_nim300m_migration/ — available as fallback",
     "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
     "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
     "Watchdog load shedding + /health endpoint for memory server",
     "Fix 2 stdio backend test failures in toolshed"
-  ],
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 103258,
-  "dag_total_branches": 455,
-  "last_response_preview": "Nothing to commit \u2014 the remaining changes are all runtime state files (`.db-shm`, `.db-wal`, `tool_profiles.json`, pid files, etc.), not code. Both fixes are already committed:\n\n- `3c9a3b5` \u2014 LanceDB compaction\n- `0985761` \u2014 LIVE_STATE update"
+  ]
 }
