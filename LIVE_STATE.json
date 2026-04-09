@@ -1,9 +1,9 @@
 {
-  "session_count": 639,
+  "session_count": 642,
   "project": "torus-framework",
-  "feature": "memory-recovery-toolshed-fix",
+  "feature": "memory-server-perf",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 639: Diagnosed and fixed toolshed startup crash loop. Root cause: anyio BaseExceptionGroup (from streamablehttp_client TaskGroup) not caught by except clauses in connect_http/cleanup/startup. Added BaseExceptionGroup to 3 catch sites. Commit 1722742. Also identified mid-session shutdown race (MEDIUM, unfixed).",
+  "what_was_done": "Session 642: Added periodic LanceDB compaction to session_end.py — compact_if_needed(threshold=100) checks _versions/ per table, triggers optimize via UDS socket. Fixed _optimize_tables() bug (called nonexistent _get_lance_db). Diagnosed toolshed crash-loop (174 restarts/24h from CancelledError on client SSE disconnect) — caught at main() for clean exit. Middleware fix needs FastMCP version investigation.",
   "known_issues": [
     "MiniLM migration still pending \u2014 768-dim nomic model restored, migrate_to_minilm.py needs rework to not lock up server",
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
@@ -16,6 +16,8 @@
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)"
   ],
   "next_steps": [
+    "Toolshed: investigate FastMCP run_http_async middleware support for proper CancelledError isolation (current fix is exit-level catch)",
+    "Watchdog load shedding + /health endpoint (nice-to-have hardening for memory server)",
     "Rework MiniLM migration: run as offline batch (not during server startup), validate row counts before swapping",
     "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
     "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
@@ -23,7 +25,7 @@
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 100148,
-  "dag_total_branches": 439,
-  "last_response_preview": "**Session 9 wrap-up:**\n\n- **Done:** Researched all module patterns + wrote full Task 10 plan (saved to memory)\n- **Not done:** Zero code written \u2014 session was all research\n- **Lesson:** Over-researched (20+ min reading repetitive patterns). Next time: read 1 reference module, then build.\n\n**Next session:** Task 10 \u2014 x/governance (15 files, plan ready in memory `6a5e9ec7`)"
+  "dag_node_count": 102553,
+  "dag_total_branches": 449,
+  "last_response_preview": "## Session Summary\n\n**Problem:** Memory server timing out, high CPU/RAM, other instances couldn't reach it.\n\n**Root causes found & fixed:**\n- LanceDB `knowledge.lance` had **10,580 versions / 2,019 orphaned data files** bloating it to 11 GB \u2192 compacted to **44 MB**\n- Server process running 12+ hours with **3.1 GB RSS, 200-330% CPU** \u2192 restarted, now **2.2 GB RSS, 0.5% CPU idle**\n\n**Investigated but no action needed:**\n- DAG \u2014 costs almost nothing (SQLite, 118 MB, no CPU/RAM)\n- Concurrency limit "
 }
