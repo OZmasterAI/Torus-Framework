@@ -1,11 +1,11 @@
 {
-  "session_count": 645,
+  "session_count": 647,
   "project": "torus-framework",
   "feature": "toolshed-bridge",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 645: (1) Added startup retry with backoff to toolshed.py (commit 7b1e59b). (2) Built toolshed_bridge.py — stdio-to-HTTP bridge that Claude Code spawns directly, with auto-reconnect. Fixes mid-session MCP drops (CC bug #31198). Updated mcp.json to use bridge.",
+  "what_was_done": "Session 646: Fixed bridge not launching — removed stale mcpOAuth from .credentials.json (was bypassing stdio bridge), made upstream connect lazy in toolshed_bridge.py (init 3.2s→1.8s).",
   "known_issues": [
-    "NIM API key hardcoded in memory_server.py \u2014 move to config.json (MEDIUM)",
+    "NIM API key hardcoded in memory_server.py — move to config.json (MEDIUM)",
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
     "Gate 1: path traversal ../../../../etc/passwd bypasses extension guard (HIGH)",
@@ -15,11 +15,17 @@
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)"
   ],
   "next_steps": [
-    "Test nv-embed-v1 quality in real sessions \u2014 compare search relevance vs nomic",
+    "Verify bridge works on fresh Claude Code restart (just restart and check tools)",
+    "Test nv-embed-v1 quality in real sessions — compare search relevance vs nomic",
     "Move NIM API key from memory_server.py to config.json",
     "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
     "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
     "Watchdog load shedding + /health endpoint for memory server",
     "Fix 2 stdio backend test failures in toolshed"
-  ]
+  ],
+  "last_response_preview": "Session 646: Fixed toolshed bridge. Root causes: (1) .credentials.json had stale mcpOAuth entries — CC connected via HTTP+OAuth instead of spawning stdio bridge. (2) Bridge blocked stdio on _startup() upstream connect. Fixes: removed mcpOAuth, made connect lazy. Restart CC to activate.",
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 105773,
+  "dag_total_branches": 466
 }
