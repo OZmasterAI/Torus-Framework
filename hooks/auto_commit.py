@@ -19,7 +19,9 @@ import sys
 
 CLAUDE_DIR = os.path.expanduser("~/.claude")
 _TRACKER_DIR = os.path.join(CLAUDE_DIR, "hooks")
-STAGED_TRACKER = os.path.join(_TRACKER_DIR, ".auto_commit_staged.txt")  # legacy fallback
+STAGED_TRACKER = os.path.join(
+    _TRACKER_DIR, ".auto_commit_staged.txt"
+)  # legacy fallback
 CONFIG_FILE = os.path.join(CLAUDE_DIR, "config.json")
 MAX_FILES_IN_MSG = 3
 
@@ -30,6 +32,7 @@ def _tracker_path(session_id=None):
         safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")[:8]
         return os.path.join(_TRACKER_DIR, f".auto_commit_staged_{safe_id}.txt")
     return STAGED_TRACKER
+
 
 # Patterns matching test files (mirrors shared/exemptions.py)
 _TEST_PATTERNS = ("test_", "_test.", ".test.", "spec_", "_spec.", ".spec.")
@@ -186,11 +189,10 @@ def _get_co_author(session_id=None):
         with open(snap_path) as f:
             model = json.load(f).get("model", "")
         if model:
-            name = model.replace("claude-", "").replace("-", " ").title()
-            return f"Co-Authored-By: Claude {name} <noreply@anthropic.com>"
+            return "Co-Authored-By: Claude Torus-framework <noreply@anthropic.com>"
     except Exception:
         pass
-    return "Co-Authored-By: Claude <noreply@anthropic.com>"
+    return "Co-Authored-By: Claude Torus-framework <noreply@anthropic.com>"
 
 
 def _find_git_root(file_path):
