@@ -1,9 +1,9 @@
 {
-  "session_count": 648,
+  "session_count": 651,
   "project": "torus-framework",
-  "feature": "toolshed-bridge",
+  "feature": "framework-fixes",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 648: Verified toolshed bridge auto-launches on fresh restart (Session 646 fix confirmed). Moved NIM API key from hardcoded in memory_server.py to config.json with fallback.",
+  "what_was_done": "Session 651: Fixed co-author trailer to 'Torus-framework for Claude'. Fixed LIVE_STATE.json leak bug (project sessions falling through when Stop event omits cwd — boot now persists cwd to ramdisk). Restarted memory server + toolshed.",
   "known_issues": [
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
@@ -15,9 +15,14 @@
   ],
   "next_steps": [
     "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
-    "Test nv-embed-v1 quality in real sessions — compare search relevance vs nomic",
+    "Test nv-embed-v1 quality in real sessions \u2014 compare search relevance vs nomic",
     "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
     "Watchdog load shedding + /health endpoint for memory server",
     "Fix 2 stdio backend test failures in toolshed"
-  ]
+  ],
+  "last_response_preview": "Fixed co-author trailer (all 3 locations) and LIVE_STATE.json cwd fallback bug. CLAUDE.md reviewed — no update needed.",
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 126323,
+  "dag_total_branches": 580
 }

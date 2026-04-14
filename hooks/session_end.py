@@ -1239,6 +1239,19 @@ def main():
         transcript_path = _session_data.get("transcript_path", "")
 
         _cwd = _session_data.get("cwd")
+        # Fallback: read cwd persisted by boot if Stop event didn't include it
+        if not _cwd:
+            for _cwd_path in (
+                f"/run/user/{os.getuid()}/claude-hooks/session_cwd",
+                os.path.join(HOOKS_DIR, ".session_cwd"),
+            ):
+                try:
+                    with open(_cwd_path) as _f:
+                        _cwd = _f.read().strip()
+                    if _cwd:
+                        break
+                except OSError:
+                    continue
         _project_name, _project_dir, _subproject_name, _subproject_dir = detect_project(
             _cwd
         )

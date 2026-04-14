@@ -17,7 +17,7 @@ When the user says "commit", "save changes", "checkpoint", or wants to commit cu
    - Analyze the staged diff to understand the "why" not just the "what"
    - Draft a concise commit message (1-2 sentences) matching the repo's style
    - Use conventional format if the repo uses it (feat:, fix:, chore:, etc.)
-   - End with: `Co-Authored-By: Claude Torus-framework <noreply@anthropic.com>`
+   - End with: `Co-Authored-By: Torus-framework for Claude <noreply@anthropic.com>`
 4. **COMMIT**:
    - Use a HEREDOC for the message to preserve formatting
    - Do NOT use `--no-verify` — let pre-commit hooks run

@@ -82,6 +82,23 @@ def main():
         f"{_project_name}/{_subproject_name}" if _subproject_name else _project_name
     )
 
+    # Persist boot cwd so session_end can always find it (even if Stop event omits cwd)
+    if _boot_cwd:
+        _cwd_file = os.path.join(f"/run/user/{os.getuid()}/claude-hooks", "session_cwd")
+        try:
+            with open(_cwd_file, "w") as _f:
+                _f.write(_boot_cwd)
+        except OSError:
+            # Ramdisk may not exist yet — try hooks dir fallback
+            try:
+                _cwd_fallback = os.path.join(
+                    os.path.dirname(os.path.dirname(__file__)), ".session_cwd"
+                )
+                with open(_cwd_fallback, "w") as _f:
+                    _f.write(_boot_cwd)
+            except OSError:
+                pass
+
     now = datetime.now()
     hour = now.hour
     day = now.strftime("%A")

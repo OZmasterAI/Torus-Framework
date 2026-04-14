@@ -189,10 +189,10 @@ def _get_co_author(session_id=None):
         with open(snap_path) as f:
             model = json.load(f).get("model", "")
         if model:
-            return "Co-Authored-By: Claude Torus-framework <noreply@anthropic.com>"
+            return "Co-Authored-By: Torus-framework for Claude <noreply@anthropic.com>"
     except Exception:
         pass
-    return "Co-Authored-By: Claude Torus-framework <noreply@anthropic.com>"
+    return "Co-Authored-By: Torus-framework for Claude <noreply@anthropic.com>"
 
 
 def _find_git_root(file_path):
