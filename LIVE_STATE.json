@@ -1,9 +1,9 @@
 {
-  "session_count": 654,
+  "session_count": 655,
   "project": "torus-framework",
-  "feature": "global-git-hooks",
+  "feature": "obsidian-disable",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 654: Installed global git prepare-commit-msg hook (~/.git-hooks/) to replace co-author trailer in ALL repos. Added repo-local hook chaining so pi-mono husky pre-commit keeps working.",
+  "what_was_done": "Session 655: Disabled Obsidian vault integration — commented out vault writes in session_end.py, removed OBSIDIAN section from CLAUDE.md, removed step 3.5 from wrap-up skill (backed up).",
   "known_issues": [
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
@@ -20,9 +20,9 @@
     "Watchdog load shedding + /health endpoint for memory server",
     "Fix 2 stdio backend test failures in toolshed"
   ],
-  "last_response_preview": "**torus-ai-sdk** (`@torus/sdk`) is **Phase 1 of the Torus AI Platform roadmap** \u2014 a thin TypeScript SDK that wraps the Torus AI proxy.\n\n**What it does:** Gives developers a single interface to call 13+ AI providers (OpenAI, Anthropic, Gemini, Venice, etc.) through the Torus proxy, with TRS (Torus Reward Score) rewards earned on every API call.\n\n**Key characteristics:**\n- **Zero runtime dependencies** \u2014 uses native `fetch()` only\n- **BYOK (Bring Your Own Key)** \u2014 provider keys are never stored se",
+  "last_response_preview": "Hook working. Session 654 wrapped up.\n\n**What was done:**\n- Installed global `prepare-commit-msg` hook at `~/.git-hooks/` \u2014 rewrites co-author trailer on every commit in every repo\n- Set `git config --global core.hooksPath ~/.git-hooks/`\n- Added repo-local hook chaining so pi-mono's husky pre-commit keeps firing\n- Checked all repos \u2014 pi-mono is the only one with active hooks\n\n**Risk: YELLOW** \u2014 5 uncommitted files remain (settings.json, tool_profiles, skills.db, etc.) \u2014 these are runtime state, ",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 132820,
-  "dag_total_branches": 638
+  "dag_node_count": 133866,
+  "dag_total_branches": 646
 }

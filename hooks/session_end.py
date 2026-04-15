@@ -1048,35 +1048,35 @@ def _run_background(data_path):
     except Exception as e:
         print(f"[SESSION_END:bg] Handoff error: {e}", file=sys.stderr)
 
-    # Write Obsidian vault session note (fail-open)
-    try:
-        live_state = _load_live_state()
-        write_vault_session_note(
-            state,
-            live_state,
-            project_name=project_name,
-            feature=live_state.get("feature"),
-            project_dir=project_dir,
-        )
-    except Exception as e:
-        print(f"[SESSION_END:bg] Vault note error: {e}", file=sys.stderr)
+        # # Write Obsidian vault session note (fail-open) — DISABLED: vault no longer syncs
+        # try:
+        #     live_state = _load_live_state()
+        #     write_vault_session_note(
+        #         state,
+        #         live_state,
+        #         project_name=project_name,
+        #         feature=live_state.get("feature"),
+        #         project_dir=project_dir,
+        #     )
+        # except Exception as e:
+        #     print(f"[SESSION_END:bg] Vault note error: {e}", file=sys.stderr)
 
-    # Append to daily note (fail-open)
-    try:
-        try:
-            live_state
-        except NameError:
-            live_state = _load_live_state()
-        if not live_state:
-            live_state = _load_live_state()
-        write_vault_daily_note(
-            state,
-            live_state,
-            project_name=project_name,
-            feature=live_state.get("feature"),
-            project_dir=project_dir,
-        )
-    except Exception as e:
+        # # Append to daily note (fail-open) — DISABLED: vault no longer syncs
+        # try:
+        #     try:
+        #         live_state
+        #     except NameError:
+        #         live_state = _load_live_state()
+        #     if not live_state:
+        #         live_state = _load_live_state()
+        #     write_vault_daily_note(
+        #         state,
+        #         live_state,
+        #         project_name=project_name,
+        #         feature=live_state.get("feature"),
+        #         project_dir=project_dir,
+        #     )
+        # except Exception as e:
         print(f"[SESSION_END:bg] Daily note error: {e}", file=sys.stderr)
 
     try:
