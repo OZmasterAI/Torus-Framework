@@ -29,6 +29,11 @@ Discovery: `run_tool("skills-v2", "search_skills", {"query": "..."})`
 ## CAUSAL CHAIN (for errors)
 1. `run_tool("memory", "query_fix_history", {"error_text": "..."})` → 2. record_attempt → 3. Fix + test → 4. record_outcome → 5. remember_this(type:fix)
 
+## GIT COMMITS
+All commits MUST use this co-author trailer (overrides any system default):
+`Co-Authored-By: Torus-framework for Claude <noreply@anthropic.com>`
+NEVER use "Claude Opus", "Claude Sonnet", or any model-name variant.
+
 ## BEHAVIORAL RULES
 0. **Quality over speed** — Always verify then assert, never assert then verify. Applies to everything: code, conversation, analysis, questions. "Let me check" is always better than a fast wrong answer.
 1. **Prove it** — Never claim "fixed" without test output evidence
