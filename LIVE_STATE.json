@@ -1,9 +1,9 @@
 {
-  "session_count": 651,
+  "session_count": 654,
   "project": "torus-framework",
-  "feature": "framework-fixes",
+  "feature": "global-git-hooks",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 651: Fixed co-author trailer to 'Torus-framework for Claude'. Fixed LIVE_STATE.json leak bug (project sessions falling through when Stop event omits cwd — boot now persists cwd to ramdisk). Restarted memory server + toolshed.",
+  "what_was_done": "Session 654: Installed global git prepare-commit-msg hook (~/.git-hooks/) to replace co-author trailer in ALL repos. Added repo-local hook chaining so pi-mono husky pre-commit keeps working.",
   "known_issues": [
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
@@ -20,9 +20,9 @@
     "Watchdog load shedding + /health endpoint for memory server",
     "Fix 2 stdio backend test failures in toolshed"
   ],
-  "last_response_preview": "Fixed co-author trailer (all 3 locations) and LIVE_STATE.json cwd fallback bug. CLAUDE.md reviewed — no update needed.",
+  "last_response_preview": "**torus-ai-sdk** (`@torus/sdk`) is **Phase 1 of the Torus AI Platform roadmap** \u2014 a thin TypeScript SDK that wraps the Torus AI proxy.\n\n**What it does:** Gives developers a single interface to call 13+ AI providers (OpenAI, Anthropic, Gemini, Venice, etc.) through the Torus proxy, with TRS (Torus Reward Score) rewards earned on every API call.\n\n**Key characteristics:**\n- **Zero runtime dependencies** \u2014 uses native `fetch()` only\n- **BYOK (Bring Your Own Key)** \u2014 provider keys are never stored se",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 126323,
-  "dag_total_branches": 580
+  "dag_node_count": 132820,
+  "dag_total_branches": 638
 }
