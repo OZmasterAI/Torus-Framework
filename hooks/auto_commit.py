@@ -334,13 +334,16 @@ def commit():
 
     # Commit per repo
     for repo_root, tracked in repos.items():
-        # Unstage everything, then re-stage ONLY tracked files
-        git("reset", "HEAD", "--quiet", repo_dir=repo_root)
+        tracked_list = list(tracked)
 
-        for fpath in tracked:
+        # Stage tracked files (may already be staged from stage() phase)
+        for fpath in tracked_list:
             git("add", fpath, repo_dir=repo_root)
 
-        result = git("diff", "--cached", "--name-only", repo_dir=repo_root)
+        # Check for staged changes among tracked files only (no reset HEAD)
+        result = git(
+            "diff", "--cached", "--name-only", "--", *tracked_list, repo_dir=repo_root
+        )
         if result.returncode != 0 or not result.stdout.strip():
             continue
 
@@ -356,7 +359,7 @@ def commit():
             file_list = f"{shown} +{len(basenames) - MAX_FILES_IN_MSG} more"
 
         message = f"auto: update {file_list}\n\n{_get_co_author(_session_id)}"
-        git("commit", "-m", message, repo_dir=repo_root)
+        git("commit", "-m", message, "--", *tracked_list, repo_dir=repo_root)
 
 
 def main():

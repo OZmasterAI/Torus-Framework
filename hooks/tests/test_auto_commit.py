@@ -217,5 +217,150 @@ class TestRunTests(unittest.TestCase):
             os.unlink(test_path)
 
 
+class TestCommitNoReset(unittest.TestCase):
+    """Verify commit() scopes to tracked files without resetting HEAD."""
+
+    def setUp(self):
+        import tempfile
+        import subprocess
+
+        self.tmpdir = tempfile.mkdtemp()
+        subprocess.run(["git", "init", self.tmpdir], capture_output=True)
+        subprocess.run(
+            ["git", "-C", self.tmpdir, "config", "user.email", "test@test.com"],
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", self.tmpdir, "config", "user.name", "Test"],
+            capture_output=True,
+        )
+        # Initial commit so HEAD exists
+        init_file = os.path.join(self.tmpdir, "init.txt")
+        with open(init_file, "w") as f:
+            f.write("init\n")
+        subprocess.run(["git", "-C", self.tmpdir, "add", "."], capture_output=True)
+        subprocess.run(
+            ["git", "-C", self.tmpdir, "commit", "-m", "init"], capture_output=True
+        )
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_commit_does_not_reset_head(self):
+        """Unrelated staged files must survive commit()."""
+        import subprocess
+        import tempfile
+        import auto_commit
+
+        # Create two files: one tracked by auto_commit, one staged independently
+        tracked_file = os.path.join(self.tmpdir, "tracked.py")
+        other_file = os.path.join(self.tmpdir, "other.py")
+        with open(tracked_file, "w") as f:
+            f.write("tracked\n")
+        with open(other_file, "w") as f:
+            f.write("other\n")
+
+        # Stage both
+        subprocess.run(
+            ["git", "-C", self.tmpdir, "add", tracked_file, other_file],
+            capture_output=True,
+        )
+
+        # Write tracker with only tracked_file
+        tracker = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, dir=self.tmpdir
+        )
+        tracker.write(f"{self.tmpdir}\t{tracked_file}\n")
+        tracker.close()
+
+        # Patch auto_commit to use our tracker and disable test requirement
+        orig_tracker = auto_commit._tracker_path
+        orig_config = auto_commit.CONFIG_FILE
+        auto_commit._tracker_path = lambda sid=None: tracker.name
+        auto_commit.CONFIG_FILE = "/nonexistent/config.json"
+
+        try:
+            # Mock stdin for commit()
+            old_stdin = sys.stdin
+            import io
+
+            sys.stdin = io.StringIO('{"session_id":"test"}')
+            auto_commit.commit()
+            sys.stdin = old_stdin
+
+            # other.py should still be staged (not unstaged by reset HEAD)
+            result = subprocess.run(
+                ["git", "-C", self.tmpdir, "diff", "--cached", "--name-only"],
+                capture_output=True,
+                text=True,
+            )
+            staged = result.stdout.strip().splitlines()
+            assert "other.py" in staged, f"other.py was unstaged! staged: {staged}"
+
+            # tracked.py should be committed
+            result = subprocess.run(
+                ["git", "-C", self.tmpdir, "log", "--oneline", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            assert "tracked.py" in result.stdout
+        finally:
+            auto_commit._tracker_path = orig_tracker
+            auto_commit.CONFIG_FILE = orig_config
+            os.unlink(tracker.name)
+
+    def test_commit_new_untracked_file(self):
+        """New files (previously untracked) must be committed successfully."""
+        import subprocess
+        import tempfile
+        import auto_commit
+
+        new_file = os.path.join(self.tmpdir, "brand_new.py")
+        with open(new_file, "w") as f:
+            f.write("new file\n")
+
+        subprocess.run(["git", "-C", self.tmpdir, "add", new_file], capture_output=True)
+
+        tracker = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, dir=self.tmpdir
+        )
+        tracker.write(f"{self.tmpdir}\t{new_file}\n")
+        tracker.close()
+
+        orig_tracker = auto_commit._tracker_path
+        orig_config = auto_commit.CONFIG_FILE
+        auto_commit._tracker_path = lambda sid=None: tracker.name
+        auto_commit.CONFIG_FILE = "/nonexistent/config.json"
+
+        try:
+            import io
+
+            old_stdin = sys.stdin
+            sys.stdin = io.StringIO('{"session_id":"test"}')
+            auto_commit.commit()
+            sys.stdin = old_stdin
+
+            result = subprocess.run(
+                ["git", "-C", self.tmpdir, "log", "--oneline", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            assert "brand_new.py" in result.stdout
+
+            # File should no longer be in staging area
+            result = subprocess.run(
+                ["git", "-C", self.tmpdir, "diff", "--cached", "--name-only"],
+                capture_output=True,
+                text=True,
+            )
+            assert "brand_new.py" not in result.stdout.strip()
+        finally:
+            auto_commit._tracker_path = orig_tracker
+            auto_commit.CONFIG_FILE = orig_config
+            os.unlink(tracker.name)
+
+
 if __name__ == "__main__":
     unittest.main()
