@@ -1,9 +1,9 @@
 {
-  "session_count": 655,
+  "session_count": 672,
   "project": "torus-framework",
-  "feature": "obsidian-disable",
+  "feature": "auto-commit-fix",
   "framework_version": "v3.0.0",
-  "what_was_done": "Session 655: Disabled Obsidian vault integration — commented out vault writes in session_end.py, removed OBSIDIAN section from CLAUDE.md, removed step 3.5 from wrap-up skill (backed up).",
+  "what_was_done": "Fixed auto_commit.py: removed destructive git reset HEAD from commit(), scoped diff+commit to tracked files via pathspec. Removed stale .git/index.lock blocking all git ops since Apr 15. Added 2 tests.",
   "known_issues": [
     "Gate 2: rm -r (without -f) not blocked (HIGH)",
     "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
@@ -15,14 +15,13 @@
   ],
   "next_steps": [
     "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
-    "Test nv-embed-v1 quality in real sessions \u2014 compare search relevance vs nomic",
+    "Investigate torus-web-design file revert cause (likely Zed editor buffer overwrite)",
     "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
-    "Watchdog load shedding + /health endpoint for memory server",
-    "Fix 2 stdio backend test failures in toolshed"
+    "Test nv-embed-v1 quality in real sessions — compare search relevance vs nomic",
+    "Watchdog load shedding + /health endpoint for memory server"
   ],
-  "last_response_preview": "Hook working. Session 654 wrapped up.\n\n**What was done:**\n- Installed global `prepare-commit-msg` hook at `~/.git-hooks/` \u2014 rewrites co-author trailer on every commit in every repo\n- Set `git config --global core.hooksPath ~/.git-hooks/`\n- Added repo-local hook chaining so pi-mono's husky pre-commit keeps firing\n- Checked all repos \u2014 pi-mono is the only one with active hooks\n\n**Risk: YELLOW** \u2014 5 uncommitted files remain (settings.json, tool_profiles, skills.db, etc.) \u2014 these are runtime state, ",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 133866,
-  "dag_total_branches": 646
+  "dag_node_count": 151390,
+  "dag_total_branches": 789
 }
