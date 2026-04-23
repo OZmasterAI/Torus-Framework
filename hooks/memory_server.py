@@ -37,7 +37,9 @@ os.environ.setdefault("OMP_NUM_THREADS", "2")  # PyTorch OpenMP threads
 os.environ.setdefault("MKL_NUM_THREADS", "2")  # PyTorch MKL threads
 os.environ.setdefault("TOKIO_WORKER_THREADS", "2")  # LanceDB async I/O (Tokio)
 os.environ.setdefault("RAYON_NUM_THREADS", "2")  # LanceDB CPU compute (Rayon)
+os.environ.setdefault("MALLOC_ARENA_MAX", "2")  # Limit glibc arena fragmentation
 
+import ctypes as _ctypes
 import lancedb
 import pyarrow as pa
 from mcp.server.fastmcp import FastMCP
@@ -205,6 +207,14 @@ ServerSession._received_request = _patched_received_request
 # --- end SSE reconnect fix ---
 
 
+_libc = _ctypes.CDLL("libc.so.6", use_errno=True)
+_malloc_trim = _libc.malloc_trim
+_malloc_trim.argtypes = [_ctypes.c_int]
+_malloc_trim.restype = _ctypes.c_int
+_tool_call_counter = 0
+_MALLOC_TRIM_INTERVAL = 50
+
+
 def crash_proof(fn):
     """Wrap MCP tool: offloads sync body to thread pool, catches exceptions.
 
@@ -215,9 +225,14 @@ def crash_proof(fn):
     async def wrapper(*args, **kwargs):
         try:
             loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 _tool_executor, functools.partial(fn, *args, **kwargs)
             )
+            global _tool_call_counter
+            _tool_call_counter += 1
+            if _tool_call_counter % _MALLOC_TRIM_INTERVAL == 0:
+                _malloc_trim(0)
+            return result
         except Exception as e:
             import traceback
 

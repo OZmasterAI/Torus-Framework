@@ -198,25 +198,30 @@ class LanceCollection:
         """Escape single quotes to prevent filter injection."""
         return str(i).replace("'", "''")
 
-    def get(self, ids=None, where=None, limit=None, offset=0, include=None):
+    def get(
+        self, ids=None, where=None, limit=None, offset=0, include=None, columns=None
+    ):
         """Fetch by IDs or filter. Returns flat results.
 
         Result format: {"ids": [...], "documents": [...], "metadatas": [...]}
+        columns: optional list of column names to select (avoids loading vectors).
         """
         if include is None:
             include = ["metadatas", "documents"]
+
+        def _apply_select(q):
+            if columns:
+                return q.select(columns)
+            return q
 
         try:
             if ids is not None and len(ids) > 0:
                 # Fetch by specific IDs
                 escaped = ", ".join(f"'{self._sanitize_id(i)}'" for i in ids)
                 sql = f"id IN ({escaped})"
-                rows = (
-                    self._table.search()
-                    .where(sql, prefilter=True)
-                    .limit(len(ids) + 10)
-                    .to_list()
-                )
+                rows = _apply_select(
+                    self._table.search().where(sql, prefilter=True).limit(len(ids) + 10)
+                ).to_list()
                 # Preserve requested order
                 id_order = {i: idx for idx, i in enumerate(ids)}
                 rows.sort(key=lambda r: id_order.get(r["id"], 999999))
@@ -227,13 +232,13 @@ class LanceCollection:
                     q = q.limit(limit)
                 else:
                     q = q.limit(10000)  # practical cap
-                rows = q.to_list()
+                rows = _apply_select(q).to_list()
             elif limit:
-                rows = self._table.search().limit(limit).to_list()
+                rows = _apply_select(self._table.search().limit(limit)).to_list()
                 if offset and offset > 0:
                     rows = rows[offset:]
             else:
-                rows = self._table.search().limit(10000).to_list()
+                rows = _apply_select(self._table.search().limit(10000)).to_list()
         except Exception:
             rows = []
 

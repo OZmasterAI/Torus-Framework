@@ -67,7 +67,9 @@ class TagIndex:
         count = lance_collection.count()
         if count == 0:
             return 0
-        all_data = lance_collection.get(limit=count, include=["metadatas"])
+        all_data = lance_collection.get(
+            limit=count, include=["metadatas"], columns=["id", "tags"]
+        )
         if not all_data or not all_data.get("ids"):
             return 0
         ids = all_data["ids"]
