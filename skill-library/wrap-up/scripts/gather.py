@@ -36,12 +36,11 @@ def _get_state_file():
     """
     try:
         from boot_pkg.util import detect_project
+
         _proj_name, _proj_dir, _sub_name, _sub_dir = detect_project()
         _eff_dir = _sub_dir or _proj_dir
         if _eff_dir:
-            state_file = os.path.join(_eff_dir, ".claude-state.json")
-            if os.path.exists(state_file):
-                return state_file
+            return os.path.join(_eff_dir, ".claude-state.json")
     except Exception:
         pass
     return LIVE_STATE_FILE
@@ -80,7 +79,9 @@ def gather_git(warnings):
     try:
         porcelain = subprocess.run(
             ["git", "-C", CLAUDE_DIR, "status", "--porcelain"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         lines = [l.strip() for l in porcelain.stdout.strip().splitlines() if l.strip()]
         result["clean"] = len(lines) == 0
@@ -90,7 +91,9 @@ def gather_git(warnings):
     try:
         diff_stat = subprocess.run(
             ["git", "-C", CLAUDE_DIR, "diff", "--stat"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         result["diff_stat"] = diff_stat.stdout.strip()
     except Exception as e:
@@ -103,7 +106,9 @@ def _is_mcp_process_running():
     try:
         result = subprocess.run(
             ["pgrep", "-f", "memory_server.py"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except Exception:
@@ -145,7 +150,9 @@ def gather_memory(warnings):
                     warnings.append("memory count: used stats-cache fallback")
                 else:
                     result["count_reliable"] = False
-                    warnings.append(f"memory count: stats-cache expired ({int(age)}s old)")
+                    warnings.append(
+                        f"memory count: stats-cache expired ({int(age)}s old)"
+                    )
             except Exception:
                 result["count_reliable"] = False
                 warnings.append(f"memory count: {e}")
