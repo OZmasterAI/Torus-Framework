@@ -1,22 +1,25 @@
 {
-  "session_count": 674,
+  "session_count": 676,
   "project": "torus-framework",
-  "feature": "gate-audit-security",
+  "feature": "obsidian-wiki-synthesis",
   "framework_version": "v3.0.0",
-  "what_was_done": "Full gate audit: fixed 56/57 test failures (stale expectations, isolation bugs, wrong paths). Fixed all 5 security issues: Gate 1 path traversal, Gate 2 pipe-to-shell, Gate 17 type crash + PreToolUse scan. Gitignored runtime DBs. Compared local vs GitHub (~65 new files).",
+  "what_was_done": "Fixed wrap-up state file confusion (3 bugs: existence check, docstring, SKILL.md naming). Designed 13-task Obsidian Wiki Synthesis plan inspired by Karpathy's LLM Wiki. Compared vs OB1 and Second Brain Starter.",
   "known_issues": [
-    "Gate 2: Unicode non-breaking space bypass already fixed (Python \\s is Unicode-aware) — remove from tracking",
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)",
     "1 test failure: WorkerUnavailable circuit breaker message format",
     "Gate 22 missing from GATE_TOOL_MAP (runs as universal — intentional or needs scoping?)"
   ],
   "next_steps": [
+    "Implement Obsidian Wiki Synthesis Layer (13 tasks — use prompt from session 675)",
     "Add LIVE_STATE.json to gate_07 CRITICAL_PATTERNS",
     "Sync to GitHub: update .gitignore, copy new files, sanitize LIVE_STATE, squash commit",
-    "Investigate torus-web-design file revert cause (likely Zed editor buffer overwrite)",
     "Build tool_profiles evolution: use learned data to auto-adjust tool behavior",
-    "Test nv-embed-v1 quality in real sessions — compare search relevance vs nomic",
     "Watchdog load shedding + /health endpoint for memory server"
-  ]
+  ],
+  "last_response_preview": "Implementation prompt for next session provided — 13 tasks, covers vault reset, 4 new skills (wiki-update, wiki-lint, wiki-ingest, wiki-present), wrap-up integration, session_end.py rewrite, Dataview queries, Marp slides, query-against-wiki, file-answers-back.",
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 157206,
+  "dag_total_branches": 800
 }
