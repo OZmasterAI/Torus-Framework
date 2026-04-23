@@ -722,22 +722,17 @@ def increment_session_count(metrics=None):
     print(f"[SESSION_END] Session {state['session_count']} complete", file=sys.stderr)
 
 
-def write_vault_session_note(
-    state, live_state, project_name=None, feature=None, project_dir=None
-):
-    """Write a session summary note to ~/vault/sessions/ for Obsidian.
+def append_wiki_log(state, live_state, project_name=None, project_dir=None):
+    """Append a one-line session entry to ~/vault/wiki/log.md.
 
-    Fail-open: never blocks session end. Skips if vault doesn't exist
-    or if /wrap-up already wrote the note (collision-safe).
-    Uses project-local session count for project sessions, global for framework.
+    Fail-open: never blocks session end. Skips if wiki doesn't exist.
+    Atomic write via tmp + os.replace().
     """
-    vault_sessions = os.path.join(os.path.expanduser("~"), "vault", "sessions")
-    if not os.path.isdir(vault_sessions):
-        return  # No vault — skip silently
+    log_path = os.path.join(os.path.expanduser("~"), "vault", "wiki", "log.md")
+    if not os.path.isfile(log_path):
+        return
 
-    filepath = ""
     try:
-        # For project sessions, read from project state (LIVE_STATE belongs to framework)
         session_num = live_state.get("session_count", 0)
         project = project_name or live_state.get("project", "unknown")
         _src = live_state
@@ -747,276 +742,41 @@ def write_vault_session_note(
                 session_num = _src.get("session_count", session_num)
             except Exception:
                 _src = live_state
-        date_str = time.strftime("%Y-%m-%d")
-        # Add project suffix for non-framework sessions
-        if project_dir and project and project != "torus-framework":
-            slug = project.replace("_", "-").lower()
-            filename = f"{date_str}-session-{session_num:03d}-{slug}.md"
-        else:
-            filename = f"{date_str}-session-{session_num:03d}.md"
-        filepath = os.path.join(vault_sessions, filename)
 
-        if os.path.exists(filepath):
+        date_str = time.strftime("%Y-%m-%d")
+        feature = _src.get("feature", "")
+        what_was_done = _src.get("what_was_done", "No summary.")
+
+        topic = feature or project
+        entry = f"\n## [{date_str}] session {session_num} | {project} | {topic} — {what_was_done}\n"
+
+        with open(log_path) as f:
+            existing = f.read()
+
+        if f"session {session_num} | {project}" in existing:
             print(
-                f"[SESSION_END:vault] Skipped — {filename} exists (/wrap-up wrote it)",
+                f"[SESSION_END:wiki] Skipped — session {session_num} already in log",
                 file=sys.stderr,
             )
             return
 
-        # Extract metadata
-        project = project_name or live_state.get("project", "unknown")
-        feat = _src.get("feature", "")
-        what_was_done = _src.get("what_was_done", "No summary available.")
-        known_issues = _src.get("known_issues", [])
-        next_steps = _src.get("next_steps", [])
-        duration = _format_duration(state.get("session_start"))
-        total_tools = state.get("total_tool_calls", state.get("tool_call_count", 0))
-        files_edited = state.get("files_edited", [])
-
-        tags = ["session", project]
-        if feat:
-            tags.append(feat)
-
-        lines = [
-            "---",
-            "type: session",
-            f"tags: [{', '.join(tags)}]",
-            f"created: {date_str}",
-            "status: completed",
-            f"project: {project}",
-            f"session_number: {session_num}",
-            f"duration: {duration}",
-            f"tools_used: {total_tools}",
-            f"files_modified: {len(files_edited)}",
-            "---",
-            "",
-            f"# Session {session_num} — {date_str}",
-            "",
-            "> [!summary] Quick Stats",
-            f"> **Duration:** {duration} · **Tools:** {total_tools} · **Files:** {len(files_edited)}",
-            "",
-            "---",
-            "",
-            "## What Was Done",
-            what_was_done,
-            "",
-        ]
-
-        if known_issues:
-            lines.append("---")
-            lines.append("")
-            lines.append("## Known Issues")
-            lines.append("")
-            lines.append("> [!bug]")
-            for issue in known_issues:
-                lines.append(f"> - {issue}")
-            lines.append("")
-
-        if next_steps:
-            lines.append("---")
-            lines.append("")
-            lines.append("## Next Steps")
-            lines.append("")
-            for step in next_steps:
-                lines.append(f"- [ ] {step}")
-            lines.append("")
-
-        content = "\n".join(lines)
-
-        # Atomic write: .tmp then os.replace
-        tmp_path = filepath + ".tmp"
+        content = existing.rstrip() + "\n" + entry
+        tmp_path = log_path + ".tmp"
         with open(tmp_path, "w") as f:
             f.write(content)
-        os.replace(tmp_path, filepath)
+        os.replace(tmp_path, log_path)
 
-        print(f"[SESSION_END:vault] Wrote {filename}", file=sys.stderr)
+        print(
+            f"[SESSION_END:wiki] Appended session {session_num} to log.md",
+            file=sys.stderr,
+        )
     except Exception as e:
-        print(f"[SESSION_END:vault] Failed (non-fatal): {e}", file=sys.stderr)
+        print(f"[SESSION_END:wiki] Failed (non-fatal): {e}", file=sys.stderr)
         try:
-            if os.path.exists(filepath + ".tmp"):
-                os.unlink(filepath + ".tmp")
+            if os.path.exists(log_path + ".tmp"):
+                os.unlink(log_path + ".tmp")
         except Exception:
             pass
-
-
-def _parse_daily_sessions(content):
-    """Parse project groups and session entries from a daily note.
-
-    Returns (header, projects, stats_existed).
-    header = everything before '## Sessions'
-    projects = {project_name: [session_lines, ...]}
-    """
-    projects = {}
-    header_lines = []
-    in_sessions = False
-    in_stats = False
-    current_project = None
-
-    for line in content.splitlines():
-        if line.strip() == "## Sessions":
-            in_sessions = True
-            continue
-        if (
-            line.strip() == "## Daily Stats"
-            or line.strip() == "---"
-            and in_sessions
-            and not current_project
-        ):
-            in_stats = True
-            continue
-        if in_stats:
-            continue  # Skip old stats — we regenerate
-        if not in_sessions:
-            header_lines.append(line)
-            continue
-
-        # Inside ## Sessions
-        if line.startswith("### "):
-            current_project = line[4:].strip()
-            projects.setdefault(current_project, [])
-        elif current_project and line.startswith("- "):
-            projects[current_project].append(line)
-
-    return "\n".join(header_lines), projects
-
-
-def _duration_to_minutes(duration_str):
-    """Parse '1h 30m' or '45m' to total minutes."""
-    minutes = 0
-    import re
-
-    h = re.search(r"(\d+)h", duration_str)
-    m = re.search(r"(\d+)m", duration_str)
-    if h:
-        minutes += int(h.group(1)) * 60
-    if m:
-        minutes += int(m.group(1))
-    return minutes
-
-
-def _minutes_to_str(total):
-    """Convert total minutes to '1h 30m' format."""
-    if total >= 60:
-        return f"{total // 60}h {total % 60}m"
-    return f"{total}m"
-
-
-def write_vault_daily_note(
-    state, live_state, project_name=None, feature=None, project_dir=None
-):
-    """Write/update today's daily note at ~/vault/daily/.
-
-    Groups sessions by project. Regenerates daily stats on each write.
-    Fail-open: never blocks session end.
-    """
-    vault_daily = os.path.join(os.path.expanduser("~"), "vault", "daily")
-    if not os.path.isdir(vault_daily):
-        return
-
-    try:
-        date_str = time.strftime("%Y-%m-%d")
-        filepath = os.path.join(vault_daily, f"{date_str}.md")
-
-        session_num = live_state.get("session_count", 0)
-        project = project_name or live_state.get("project", "unknown")
-        # For project sessions, read from project state (LIVE_STATE belongs to framework)
-        _src = live_state
-        if project_dir:
-            try:
-                _src = load_project_state(project_dir)
-                session_num = _src.get("session_count", session_num)
-            except Exception:
-                _src = live_state
-
-        what_was_done = _src.get("what_was_done", "No summary.")
-        duration = _format_duration(state.get("session_start"))
-        total_tools = state.get("total_tool_calls", state.get("tool_call_count", 0))
-        feat = _src.get("feature", "")
-
-        # Build session line
-        parts = [f"Session {session_num}"]
-        if feat:
-            parts.append(f"({feat})")
-        parts.append(f"— {duration} · {total_tools} tools")
-        parts.append(f"— {what_was_done}")
-        session_line = f"- {' '.join(parts)} [[{date_str}-session-{session_num:03d}]]"
-
-        if os.path.exists(filepath):
-            with open(filepath) as f:
-                existing = f.read()
-            header, projects = _parse_daily_sessions(existing)
-        else:
-            header = "\n".join(
-                [
-                    "---",
-                    "type: daily",
-                    "tags: [daily]",
-                    f"created: {date_str}",
-                    "status: active",
-                    "---",
-                    "",
-                    f"# {date_str}",
-                    "",
-                    "## Plan",
-                    "",
-                    "",
-                    "## Notes",
-                    "",
-                ]
-            )
-            projects = {}
-
-        # Add session to its project group
-        projects.setdefault(project, [])
-        # Avoid duplicate if session_end runs twice
-        if not any(f"Session {session_num}" in line for line in projects[project]):
-            projects[project].append(session_line)
-
-        # Rebuild file (strip trailing whitespace from header)
-        lines = [header.rstrip(), "", "## Sessions", ""]
-        for proj_name, sessions in projects.items():
-            lines.append(f"### {proj_name}")
-            for s in sessions:
-                lines.append(s)
-            lines.append("")
-
-        # Daily stats
-        total_sessions = sum(len(s) for s in projects.values())
-        total_mins = 0
-        total_tool_count = 0
-        for sessions in projects.values():
-            for s in sessions:
-                # Parse duration from "— 1h 30m · 42 tools"
-                import re
-
-                dur_match = re.search(r"— (\d+h\s*)?(\d+m)", s)
-                if dur_match:
-                    total_mins += _duration_to_minutes(dur_match.group(0)[2:])
-                tool_match = re.search(r"(\d+) tools", s)
-                if tool_match:
-                    total_tool_count += int(tool_match.group(1))
-
-        lines.append("---")
-        lines.append("")
-        lines.append("## Daily Stats")
-        lines.append(
-            f"**Sessions:** {total_sessions} · "
-            f"**Duration:** {_minutes_to_str(total_mins)} · "
-            f"**Tools:** {total_tool_count}"
-        )
-        lines.append(f"**Projects:** {', '.join(projects.keys())}")
-        lines.append("")
-
-        content = "\n".join(lines)
-        tmp_path = filepath + ".tmp"
-        with open(tmp_path, "w") as f:
-            f.write(content)
-        os.replace(tmp_path, filepath)
-
-        action = "Created" if total_sessions == 1 else "Updated"
-        print(f"[SESSION_END:daily] {action} {date_str}.md", file=sys.stderr)
-    except Exception as e:
-        print(f"[SESSION_END:daily] Failed (non-fatal): {e}", file=sys.stderr)
 
 
 def _run_background(data_path):
@@ -1048,36 +808,16 @@ def _run_background(data_path):
     except Exception as e:
         print(f"[SESSION_END:bg] Handoff error: {e}", file=sys.stderr)
 
-        # # Write Obsidian vault session note (fail-open) — DISABLED: vault no longer syncs
-        # try:
-        #     live_state = _load_live_state()
-        #     write_vault_session_note(
-        #         state,
-        #         live_state,
-        #         project_name=project_name,
-        #         feature=live_state.get("feature"),
-        #         project_dir=project_dir,
-        #     )
-        # except Exception as e:
-        #     print(f"[SESSION_END:bg] Vault note error: {e}", file=sys.stderr)
-
-        # # Append to daily note (fail-open) — DISABLED: vault no longer syncs
-        # try:
-        #     try:
-        #         live_state
-        #     except NameError:
-        #         live_state = _load_live_state()
-        #     if not live_state:
-        #         live_state = _load_live_state()
-        #     write_vault_daily_note(
-        #         state,
-        #         live_state,
-        #         project_name=project_name,
-        #         feature=live_state.get("feature"),
-        #         project_dir=project_dir,
-        #     )
-        # except Exception as e:
-        print(f"[SESSION_END:bg] Daily note error: {e}", file=sys.stderr)
+    try:
+        live_state = _load_live_state()
+        append_wiki_log(
+            state,
+            live_state,
+            project_name=project_name,
+            project_dir=project_dir,
+        )
+    except Exception as e:
+        print(f"[SESSION_END:bg] Wiki log error: {e}", file=sys.stderr)
 
     try:
         flush_capture_queue()

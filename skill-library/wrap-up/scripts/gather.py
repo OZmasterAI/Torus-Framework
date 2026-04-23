@@ -237,6 +237,32 @@ def compute_risk_level(handoff, git, memory):
     return "GREEN"
 
 
+def gather_wiki_state(warnings):
+    """Check wiki health: existence, page count, stale pages."""
+    wiki_dir = os.path.join(os.path.expanduser("~"), "vault", "wiki")
+    index_path = os.path.join(wiki_dir, "_index.md")
+    result = {"exists": False, "page_count": 0, "stale_pages": []}
+    if not os.path.isfile(index_path):
+        return result
+    result["exists"] = True
+    try:
+        count = 0
+        two_weeks_ago = time.time() - (14 * 86400)
+        for root, _dirs, files in os.walk(wiki_dir):
+            for fname in files:
+                if not fname.endswith(".md"):
+                    continue
+                count += 1
+                fpath = os.path.join(root, fname)
+                if os.path.getmtime(fpath) < two_weeks_ago:
+                    rel = os.path.relpath(fpath, wiki_dir)
+                    result["stale_pages"].append(rel)
+        result["page_count"] = count
+    except Exception as e:
+        warnings.append(f"wiki_state: {e}")
+    return result
+
+
 def main():
     warnings = []
 
@@ -247,6 +273,7 @@ def main():
     backup = gather_backup(warnings)
     promotion_candidates = gather_promotion_candidates(warnings)
     recent_learnings = gather_recent_learnings(warnings)
+    wiki_state = gather_wiki_state(warnings)
     risk_level = compute_risk_level(handoff, git, memory)
 
     # Memory pruning nudge — threshold check, no MCP call
@@ -264,6 +291,7 @@ def main():
         "promotion_candidates": promotion_candidates,
         "recent_learnings": recent_learnings,
         "risk_level": risk_level,
+        "wiki_state": wiki_state,
         "warnings": warnings,
         "memory_pruning_nudge": memory_pruning_nudge,
     }

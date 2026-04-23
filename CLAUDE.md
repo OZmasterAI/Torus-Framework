@@ -26,6 +26,11 @@ The built-in Skill tool is ONLY for: update-config, simplify, loop, schedule, cl
 All framework skills route through: `run_tool("skills-v2", "invoke_skill", {"name": "..."})`
 Discovery: `run_tool("skills-v2", "search_skills", {"query": "..."})`
 
+## WIKI (alongside MEMORY)
+When starting work on a topic, read `~/vault/wiki/_index.md`.
+If relevant pages exist, read them before search_knowledge().
+Wiki pages have pre-compiled synthesis; search_knowledge() fills gaps.
+
 ## CAUSAL CHAIN (for errors)
 1. `run_tool("memory", "query_fix_history", {"error_text": "..."})` → 2. record_attempt → 3. Fix + test → 4. record_outcome → 5. remember_this(type:fix)
 

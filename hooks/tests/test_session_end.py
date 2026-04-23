@@ -1,6 +1,5 @@
-"""Tests for session_end.py — vault session note writing."""
+"""Tests for session_end.py — wiki log append."""
 
-import json
 import os
 import sys
 import tempfile
@@ -21,59 +20,78 @@ import boot_pkg.util as _util
 _orig_load = _util.load_project_state
 _util.load_project_state = _mock_load_project_state
 
-from session_end import write_vault_session_note
+from session_end import append_wiki_log
 
 # Restore after import
 _util.load_project_state = _orig_load
 
+LOG_SEED = """---
+type: log
+last_updated: 2026-04-23
+session: 677
+---
+# Wiki Log
 
-def test_framework_session_uses_global_count():
-    """Framework sessions use LIVE_STATE session_count."""
+Chronological record of all wiki changes. Append-only.
+
+---
+
+## [2026-04-23] init | wiki — Initialized wiki
+"""
+
+
+def _setup_wiki(tmpdir):
+    """Create a minimal wiki with log.md."""
+    wiki_dir = os.path.join(tmpdir, "vault", "wiki")
+    os.makedirs(wiki_dir)
+    log_path = os.path.join(wiki_dir, "log.md")
+    with open(log_path, "w") as f:
+        f.write(LOG_SEED)
+    return log_path
+
+
+def test_framework_session_appends_to_log():
+    """Framework sessions append to wiki/log.md using global session count."""
     tmpdir = tempfile.mkdtemp()
-    vault_dir = os.path.join(tmpdir, "vault", "sessions")
-    os.makedirs(vault_dir)
+    log_path = _setup_wiki(tmpdir)
 
-    # Monkey-patch vault path
-    import session_end
-
-    orig = session_end.write_vault_session_note.__code__
-    # Instead, just call with mocked live_state
     state = {}
-    live_state = {"session_count": 42, "project": "torus-framework"}
+    live_state = {
+        "session_count": 42,
+        "project": "torus-framework",
+        "feature": "gate-fixes",
+        "what_was_done": "Fixed gate 01 bypass",
+    }
 
-    # Patch os.path.expanduser temporarily
     _orig_expand = os.path.expanduser
     os.path.expanduser = lambda p: p.replace("~", tmpdir)
     try:
-        write_vault_session_note(state, live_state, project_name="torus-framework")
+        append_wiki_log(state, live_state, project_name="torus-framework")
     finally:
         os.path.expanduser = _orig_expand
 
-    files = os.listdir(vault_dir)
-    assert len(files) == 1, f"Expected 1 file, got {files}"
-    assert "session-042" in files[0], f"Expected session-042 in {files[0]}"
-    assert "torus" not in files[0], (
-        f"Framework session should not have project suffix: {files[0]}"
-    )
-
-    # Check frontmatter
-    with open(os.path.join(vault_dir, files[0])) as f:
+    with open(log_path) as f:
         content = f.read()
-    assert "session_number: 42" in content
+    assert "session 42" in content, f"Expected session 42 in log:\n{content}"
+    assert "torus-framework" in content
+    assert "gate-fixes" in content
+    assert "Fixed gate 01 bypass" in content
     shutil.rmtree(tmpdir)
-    print("PASS: framework session uses global count")
+    print("PASS: framework session appends to wiki log")
 
 
 def test_project_session_uses_local_count():
     """Project sessions use .claude-state.json session_count."""
     tmpdir = tempfile.mkdtemp()
-    vault_dir = os.path.join(tmpdir, "vault", "sessions")
-    os.makedirs(vault_dir)
+    log_path = _setup_wiki(tmpdir)
     proj_dir = os.path.join(tmpdir, "project")
     os.makedirs(proj_dir)
 
-    # Mock project state
-    _mock_project_states[proj_dir] = {"session_count": 53}
+    _mock_project_states[proj_dir] = {
+        "session_count": 53,
+        "feature": "api-work",
+        "what_was_done": "Built API endpoints",
+    }
 
     state = {}
     live_state = {"session_count": 527, "project": "go_sdk_agent"}
@@ -83,7 +101,7 @@ def test_project_session_uses_local_count():
     os.path.expanduser = lambda p: p.replace("~", tmpdir)
     _util.load_project_state = _mock_load_project_state
     try:
-        write_vault_session_note(
+        append_wiki_log(
             state,
             live_state,
             project_name="go_sdk_agent",
@@ -93,46 +111,57 @@ def test_project_session_uses_local_count():
         os.path.expanduser = _orig_expand
         _util.load_project_state = _orig_load_proj
 
-    files = os.listdir(vault_dir)
-    assert len(files) == 1, f"Expected 1 file, got {files}"
-    assert "session-053" in files[0], (
-        f"Expected session-053 (project-local), got {files[0]}"
-    )
-    assert "go-sdk-agent" in files[0], f"Expected project suffix in {files[0]}"
-
-    with open(os.path.join(vault_dir, files[0])) as f:
+    with open(log_path) as f:
         content = f.read()
-    assert "session_number: 53" in content
+    assert "session 53" in content, f"Expected session 53 (local count):\n{content}"
+    assert "go_sdk_agent" in content
 
     del _mock_project_states[proj_dir]
     shutil.rmtree(tmpdir)
-    print("PASS: project session uses local count")
+    print("PASS: project session uses local count in wiki log")
 
 
-def test_collision_safe_skips_existing():
-    """If note already exists, skip silently."""
+def test_collision_safe_skips_duplicate():
+    """If session already in log, skip silently."""
     tmpdir = tempfile.mkdtemp()
-    vault_dir = os.path.join(tmpdir, "vault", "sessions")
-    os.makedirs(vault_dir)
+    log_path = _setup_wiki(tmpdir)
 
     state = {}
-    live_state = {"session_count": 99}
+    live_state = {"session_count": 99, "project": "test", "what_was_done": "Testing"}
 
     _orig_expand = os.path.expanduser
     os.path.expanduser = lambda p: p.replace("~", tmpdir)
 
-    # Write first note
-    write_vault_session_note(state, live_state)
-    files_before = os.listdir(vault_dir)
+    append_wiki_log(state, live_state)
+    with open(log_path) as f:
+        content_after_first = f.read()
 
-    # Write again — should skip
-    write_vault_session_note(state, live_state)
-    files_after = os.listdir(vault_dir)
+    append_wiki_log(state, live_state)
+    with open(log_path) as f:
+        content_after_second = f.read()
 
     os.path.expanduser = _orig_expand
-    assert files_before == files_after, "Second write should be skipped"
+    assert content_after_first == content_after_second, "Second write should be skipped"
     shutil.rmtree(tmpdir)
-    print("PASS: collision-safe skip works")
+    print("PASS: collision-safe skip works for wiki log")
+
+
+def test_no_wiki_skips_silently():
+    """If wiki/log.md doesn't exist, skip without error."""
+    tmpdir = tempfile.mkdtemp()
+
+    state = {}
+    live_state = {"session_count": 1, "project": "test"}
+
+    _orig_expand = os.path.expanduser
+    os.path.expanduser = lambda p: p.replace("~", tmpdir)
+    try:
+        append_wiki_log(state, live_state)
+    finally:
+        os.path.expanduser = _orig_expand
+
+    shutil.rmtree(tmpdir)
+    print("PASS: missing wiki skips silently")
 
 
 if __name__ == "__main__":
