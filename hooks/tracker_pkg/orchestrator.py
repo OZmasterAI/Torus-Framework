@@ -24,6 +24,7 @@ from tracker_pkg.verification import (
     _classify_verification_score,
     _resolve_gate_block_outcomes,
     BROAD_TEST_COMMANDS,
+    BROAD_STATIC_CHECK_COMMANDS,
 )
 from tracker_pkg.auto_remember import _auto_remember_event, _build_fix_context
 
@@ -414,10 +415,36 @@ def _update_tool_profile(tool_name, tool_input, tool_response, state):
         _log_debug(f"Tool profile update failed (non-blocking): {e}")
 
 
+def _extract_exit_code(tool_response):
+    """Pull exit_code from tool_response. Returns 0 if unavailable (assume success)."""
+    if tool_response is None:
+        return 0
+    if isinstance(tool_response, dict):
+        return (
+            tool_response.get(
+                "exit_code",
+                tool_response.get("exitCode", tool_response.get("status", 0)),
+            )
+            or 0
+        )
+    if isinstance(tool_response, str):
+        try:
+            resp = json.loads(tool_response)
+            if isinstance(resp, dict):
+                return (
+                    resp.get("exit_code", resp.get("exitCode", resp.get("status", 0)))
+                    or 0
+                )
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return 0
+
+
 def _handle_bash(tool_input, tool_response, state):
     """Handle all Bash PostToolUse tracking: test detection, causal chain
     auto-detect, git commit capture, and verification scoring."""
     command = tool_input.get("command", "")
+    bash_exit_code = _extract_exit_code(tool_response)
 
     # --- Block A: test detection + fixing_error + auto-remember ---
     if any(
@@ -539,8 +566,15 @@ def _handle_bash(tool_input, tool_response, state):
     # Reset edit streaks on verification
     state["edit_streak"] = {}
 
-    if any(kw in command for kw in BROAD_TEST_COMMANDS):
-        # Broad tests apply score to all pending files
+    # A failing command does not verify anything. Skip scoring on non-zero exit.
+    if bash_exit_code != 0:
+        return
+
+    is_broad = any(
+        kw in command for kw in (*BROAD_TEST_COMMANDS, *BROAD_STATIC_CHECK_COMMANDS)
+    )
+    if is_broad:
+        # Broad tests/static checks apply score to all pending files
         for fp in pending:
             scores[fp] = scores.get(fp, 0) + score
     else:

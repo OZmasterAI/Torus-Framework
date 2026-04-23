@@ -45,8 +45,8 @@ if _HOOKS_DIR not in sys.path:
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 # Age thresholds (days)
-STALE_THRESHOLD_DAYS = 90    # memories older than this are candidates for review
-ANCIENT_THRESHOLD_DAYS = 180 # memories older than this are strong archive candidates
+STALE_THRESHOLD_DAYS = 90  # memories older than this are candidates for review
+ANCIENT_THRESHOLD_DAYS = 180  # memories older than this are strong archive candidates
 
 # Tag category targets — categories with fewer than this share of total are "underrepresented"
 UNDERREPRESENTED_SHARE = 0.03  # 3 % of total
@@ -55,30 +55,33 @@ UNDERREPRESENTED_SHARE = 0.03  # 3 % of total
 MIN_MEMORIES_FOR_ANALYSIS = 10
 
 # Tags that are noise/meta and should be excluded from tag distribution analysis
-_NOISE_TAGS = frozenset({
-    "needs-enrichment",
-    "possible-dupe",
-    "auto-captured",
-    "tag_expanded",
-})
+_NOISE_TAGS = frozenset(
+    {
+        "needs-enrichment",
+        "possible-dupe",
+        "auto-captured",
+        "tag_expanded",
+    }
+)
 
 # Known session-reference patterns in content (old session anchors)
 _SESSION_REF_RE = re.compile(
-    r'\b(session\s*#?\s*\d{1,3}|session_?id|sprint[\s-]\d)\b',
+    r"\b(session\s*#?\s*\d{1,3}|session_?id|sprint[\s-]\d)\b",
     re.IGNORECASE,
 )
 
 # Patterns that indicate a memory describes a superseded state
 _SUPERSEDED_PATTERNS = [
-    re.compile(p, re.IGNORECASE) for p in [
-        r'was\s+(fixed|resolved|deprecated)',
-        r'no\s+longer\s+(needed|valid|applies)',
-        r'replaced\s+by',
-        r'obsolete',
-        r'(the\s+)?old\s+(implementation|approach|strategy)',
-        r'previously\s+(used|was)',
-        r'before\s+(the|this)\s+(refactor|migration|change)',
-        r'temporary\s+workaround',
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"was\s+(fixed|resolved|deprecated)",
+        r"no\s+longer\s+(needed|valid|applies)",
+        r"replaced\s+by",
+        r"obsolete",
+        r"(the\s+)?old\s+(implementation|approach|strategy)",
+        r"previously\s+(used|was)",
+        r"before\s+(the|this)\s+(refactor|migration|change)",
+        r"temporary\s+workaround",
     ]
 ]
 
@@ -122,6 +125,7 @@ def _safe_fetch_all(collection_name="knowledge"):
     """
     try:
         from shared.memory_socket import get, count, WorkerUnavailable
+
         total = count(collection_name)
         if total == 0:
             return []
@@ -142,15 +146,17 @@ def _safe_fetch_all(collection_name="knowledge"):
         for i, entry_id in enumerate(ids):
             doc = docs[i] if i < len(docs) else ""
             meta = metas[i] if i < len(metas) else {}
-            results.append({
-                "id": entry_id,
-                "document": doc or "",
-                "tags": meta.get("tags", ""),
-                "timestamp": meta.get("timestamp", ""),
-                "preview": meta.get("preview", ""),
-                "session_time": meta.get("session_time", 0.0),
-                "possible_dupe": meta.get("possible_dupe", ""),
-            })
+            results.append(
+                {
+                    "id": entry_id,
+                    "document": doc or "",
+                    "tags": meta.get("tags", ""),
+                    "timestamp": meta.get("timestamp", ""),
+                    "preview": meta.get("preview", ""),
+                    "session_time": meta.get("session_time", 0.0),
+                    "possible_dupe": meta.get("possible_dupe", ""),
+                }
+            )
 
         return results
     except Exception:
@@ -260,6 +266,7 @@ def _count_stats(entries, now):
     quarantine_count = None
     try:
         from shared.memory_socket import count as uds_count
+
         quarantine_count = uds_count("quarantine")
     except Exception:
         pass
@@ -325,7 +332,8 @@ def _tag_distribution(entries):
 
     # Identify underrepresented canonical categories
     underrepresented = [
-        cat for cat in _CANONICAL_CATEGORIES
+        cat
+        for cat in _CANONICAL_CATEGORIES
         if category_breakdown[cat]["share_pct"] < UNDERREPRESENTED_SHARE * 100
     ]
 
@@ -375,11 +383,13 @@ def _similarity_groups(entries):
     for tag, ids in sorted(tag_to_ids.items(), key=lambda x: -len(x[1])):
         if len(ids) < 3:
             continue
-        clusters.append({
-            "label": tag,
-            "size": len(ids),
-            "member_ids": ids[:10],
-        })
+        clusters.append(
+            {
+                "label": tag,
+                "size": len(ids),
+                "member_ids": ids[:10],
+            }
+        )
 
     # Count singletons: entries whose tags all appear on only 1 memory
     # Use full ID lists from tag_to_ids, not truncated member_ids[:10]
@@ -387,9 +397,7 @@ def _similarity_groups(entries):
     for c in clusters:
         tag = c["label"]
         clustered_ids.update(tag_to_ids.get(tag, []))
-    singleton_count = sum(
-        1 for e in entries if e["id"] not in clustered_ids
-    )
+    singleton_count = sum(1 for e in entries if e["id"] not in clustered_ids)
 
     return {
         "clusters": clusters[:30],  # cap at 30 for readability
@@ -446,13 +454,15 @@ def _stale_memory_scan(entries, now):
             signals.append(f"possible_dupe={dupe_tags[0]}")
 
         if signals:
-            stale.append({
-                "id": entry["id"],
-                "age_days": round(age, 1) if age is not None else None,
-                "signals": signals,
-                "preview": (entry["preview"] or doc[:100]).strip(),
-                "tags": entry["tags"],
-            })
+            stale.append(
+                {
+                    "id": entry["id"],
+                    "age_days": round(age, 1) if age is not None else None,
+                    "signals": signals,
+                    "preview": (entry["preview"] or doc[:100]).strip(),
+                    "tags": entry["tags"],
+                }
+            )
 
     return {
         "stale_count": len(stale),
@@ -509,7 +519,7 @@ def _build_recommendations(count_stats, tag_dist, stale_scan, groups):
     under = tag_dist.get("underrepresented_categories", [])
     if under:
         recs.append(
-            f"Underrepresented tag categories (< {UNDERREPRESENTED_SHARE*100:.0f}% share): "
+            f"Underrepresented tag categories (< {UNDERREPRESENTED_SHARE * 100:.0f}% share): "
             + ", ".join(under[:8])
             + ". Consider whether gaps reflect genuine absence or missed tagging."
         )
@@ -629,6 +639,7 @@ def analyze_memory_health():
 
     except Exception as exc:
         import traceback
+
         return {
             "timestamp": time.time(),
             "duration_ms": round((time.monotonic() - t0) * 1000, 2),
@@ -725,14 +736,16 @@ def cleanup_candidates():
 
             if tier is not None:
                 preview = (entry["preview"] or doc[:100]).strip()
-                candidates.append({
-                    "id": entry["id"],
-                    "tier": tier,
-                    "reason": "; ".join(reason_parts),
-                    "age_days": round(age, 1) if age is not None else None,
-                    "preview": preview[:120],
-                    "tags": entry["tags"],
-                })
+                candidates.append(
+                    {
+                        "id": entry["id"],
+                        "tier": tier,
+                        "reason": "; ".join(reason_parts),
+                        "age_days": round(age, 1) if age is not None else None,
+                        "preview": preview[:120],
+                        "tags": entry["tags"],
+                    }
+                )
                 seen_ids.add(entry["id"])
 
         # Sort: strong first, then moderate, then soft; within each tier oldest first
@@ -759,35 +772,32 @@ if __name__ == "__main__":
         description="Torus Memory Maintenance — read-only health analysis"
     )
     parser.add_argument(
-        "--json", action="store_true",
-        help="Output full report as JSON"
+        "--json", action="store_true", help="Output full report as JSON"
     )
     parser.add_argument(
-        "--candidates", action="store_true",
-        help="Show cleanup candidates only (skip full analysis)"
+        "--candidates",
+        action="store_true",
+        help="Show cleanup candidates only (skip full analysis)",
     )
     parser.add_argument(
-        "--top", type=int, default=20,
-        help="Max candidates to show (default: 20)"
+        "--top", type=int, default=20, help="Max candidates to show (default: 20)"
     )
     args = parser.parse_args()
 
     if args.candidates:
         candidates = cleanup_candidates()
         if args.json:
-            print(json.dumps(candidates[:args.top], indent=2))
+            print(json.dumps(candidates[: args.top], indent=2))
         else:
             print(
                 f"Cleanup candidates ({min(len(candidates), args.top)} "
                 f"of {len(candidates)}):"
             )
-            for c in candidates[:args.top]:
+            for c in candidates[: args.top]:
                 age_str = (
                     f"{c['age_days']:.0f}d" if c["age_days"] is not None else "age=?"
                 )
-                print(
-                    f"  [{c['tier'].upper():8s}] {c['id']}  {age_str}  {c['reason']}"
-                )
+                print(f"  [{c['tier'].upper():8s}] {c['id']}  {age_str}  {c['reason']}")
                 print(f"             preview: {c['preview'][:80]}")
     else:
         report = analyze_memory_health()
@@ -797,7 +807,8 @@ if __name__ == "__main__":
             compact = dict(report)
             if "stale_scan" in compact:
                 compact["stale_scan"] = {
-                    k: v for k, v in compact["stale_scan"].items()
+                    k: v
+                    for k, v in compact["stale_scan"].items()
                     if k != "stale_entries"
                 }
             print(json.dumps(compact, indent=2))

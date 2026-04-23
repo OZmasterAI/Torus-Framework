@@ -18,6 +18,13 @@ BROAD_TEST_COMMANDS = [
     "make test",
 ]
 
+BROAD_STATIC_CHECK_COMMANDS = [
+    "tsc --noEmit",
+    "tsc --build",
+    "typecheck",
+    "type-check",
+]
+
 
 def _classify_verification_score(command):
     """Classify a Bash command's verification confidence score.
@@ -38,6 +45,10 @@ def _classify_verification_score(command):
             if re.search(r"\w+\.test\.(js|ts|tsx)\b", rest):
                 return 70  # Jest-style targeted test
             return 100  # Full test suite
+
+    # Static checks (typecheck, compile-verify) — broadly applied but lower than runtime tests
+    if any(kw in command for kw in BROAD_STATIC_CHECK_COMMANDS):
+        return 70
 
     script_runners = ["python ", "python3 ", "node ", "ruby ", "bash ", "sh ", "./"]
     if any(kw in command for kw in script_runners):
