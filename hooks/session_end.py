@@ -808,16 +808,17 @@ def _run_background(data_path):
     except Exception as e:
         print(f"[SESSION_END:bg] Handoff error: {e}", file=sys.stderr)
 
-    try:
-        live_state = _load_live_state()
-        append_wiki_log(
-            state,
-            live_state,
-            project_name=project_name,
-            project_dir=project_dir,
-        )
-    except Exception as e:
-        print(f"[SESSION_END:bg] Wiki log error: {e}", file=sys.stderr)
+    # # Wiki log append — disabled, re-enable when ready
+    # try:
+    #     live_state = _load_live_state()
+    #     append_wiki_log(
+    #         state,
+    #         live_state,
+    #         project_name=project_name,
+    #         project_dir=project_dir,
+    #     )
+    # except Exception as e:
+    #     print(f"[SESSION_END:bg] Wiki log error: {e}", file=sys.stderr)
 
     try:
         flush_capture_queue()
