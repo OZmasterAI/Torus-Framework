@@ -1,25 +1,26 @@
 {
-  "session_count": 676,
+  "session_count": 679,
   "project": "torus-framework",
   "feature": "obsidian-wiki-synthesis",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed wrap-up state file confusion (3 bugs: existence check, docstring, SKILL.md naming). Designed 13-task Obsidian Wiki Synthesis plan inspired by Karpathy's LLM Wiki. Compared vs OB1 and Second Brain Starter.",
+  "what_was_done": "Implemented Obsidian Wiki Synthesis (33 pages, 4 skills, disabled). Synced v3.1.0 to GitHub main (246 files, sanitized). Fixed Syncthing vault sync. Fixed wikilink graph connectivity.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)",
     "1 test failure: WorkerUnavailable circuit breaker message format",
-    "Gate 22 missing from GATE_TOOL_MAP (runs as universal — intentional or needs scoping?)"
+    "Gate 22 missing from GATE_TOOL_MAP (runs as universal — intentional or needs scoping?)",
+    "Obsidian wiki disabled at user request — re-enable by uncommenting wrap-up step 3.5, CLAUDE.md WIKI section, session_end.py append_wiki_log call"
   ],
   "next_steps": [
-    "Implement Obsidian Wiki Synthesis Layer (13 tasks — use prompt from session 675)",
     "Add LIVE_STATE.json to gate_07 CRITICAL_PATTERNS",
-    "Sync to GitHub: update .gitignore, copy new files, sanitize LIVE_STATE, squash commit",
     "Build tool_profiles evolution: use learned data to auto-adjust tool behavior",
-    "Watchdog load shedding + /health endpoint for memory server"
+    "Watchdog load shedding + /health endpoint for memory server",
+    "Memory maintenance: 5206 entries, run stale cleanup",
+    "Evaluate wiki usefulness — re-enable if Obsidian graph proves valuable"
   ],
-  "last_response_preview": "Implementation prompt for next session provided — 13 tasks, covers vault reset, 4 new skills (wiki-update, wiki-lint, wiki-ingest, wiki-present), wrap-up integration, session_end.py rewrite, Dataview queries, Marp slides, query-against-wiki, file-answers-back.",
+  "last_response_preview": "",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 157206,
-  "dag_total_branches": 800
+  "dag_node_count": 158144,
+  "dag_total_branches": 803
 }
