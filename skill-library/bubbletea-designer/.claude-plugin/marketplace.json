@@ -1,0 +1,21 @@
+{
+  "name": "bubbletea-designer",
+  "owner": {
+    "name": "Agent Creator",
+    "email": "noreply@example.com"
+  },
+  "metadata": {
+    "description": "Bubble Tea TUI Design Automation Agent",
+    "version": "1.0.0",
+    "created": "2025-10-18"
+  },
+  "plugins": [
+    {
+      "name": "bubbletea-designer-plugin",
+      "description": "Automates Bubble Tea TUI design by analyzing requirements, mapping to appropriate components from the Charmbracelet ecosystem, generating component architecture, and creating implementation workflows. Use when designing terminal UIs, planning Bubble Tea applications, selecting components, or needing design guidance for TUI development.",
+      "source": "./",
+      "strict": false,
+      "skills": ["./"]
+    }
+  ]
+}

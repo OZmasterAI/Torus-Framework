@@ -273,6 +273,48 @@ def main():
             "before the session ends.</session_ending>"
         )
 
+    # --- DAG: record user message + /clear interception (Task 4 + Task 7) ---
+    try:
+        from shared.dag import get_session_dag
+        from boot_pkg.util import detect_project
+
+        _dag = get_session_dag(data.get("session_id", "main"))
+        _dag_proj, _, _dag_subproj, _ = detect_project()
+        # /clear interception: create new branch before Claude clears
+        if prompt.strip() == "/clear":
+            _dag.new_branch(
+                f"clear-{int(time.time())}",
+                project=_dag_proj,
+                subproject=_dag_subproj,
+            )
+        else:
+            _dag.add_node(
+                parent_id=_dag.get_head(),
+                role="user",
+                content=prompt[:2000],
+                project=_dag_proj,
+                subproject=_dag_subproj,
+            )
+    except Exception:
+        pass  # Fail-open — DAG failures must never crash the hook
+
+    # --- Cache expiry detection ---
+    try:
+        _ts_path = os.path.join(_HOOKS_DIR, ".last_response_ts")
+        if os.path.exists(_ts_path):
+            with open(_ts_path) as f:
+                _last_ts = float(f.read().strip())
+            _idle_seconds = time.time() - _last_ts
+            if _idle_seconds > 300:  # 5 min = Anthropic cache TTL
+                _idle_min = _idle_seconds / 60
+                print(
+                    f"CACHE EXPIRED ({_idle_min:.0f}m idle). "
+                    f"Full context re-processed at 10x cost. "
+                    f"Consider: /compact (shrink) or /clear (fresh session)."
+                )
+    except Exception:
+        pass  # Fail-open
+
     # --- State-based warnings + compact baseline ---
     warnings = _collect_state_warnings()
     baseline = "RULES: verify before asserting, ask before acting."
@@ -310,8 +352,13 @@ def main():
         _tracker_state["_session_id"] = _session_id
 
         # Write to hooks dir (hook-injected, not rules/ auto-loaded)
+        # Project sessions write to {project_dir}/.claude/rules/ instead
         _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-        _writer = WorkingMemoryWriter(_hooks_dir)
+        try:
+            _, _proj_dir, _, _ = detect_project()
+        except Exception:
+            _proj_dir = None
+        _writer = WorkingMemoryWriter(_hooks_dir, project_dir=_proj_dir or "")
         _writer.write_status(_tracker_state)
 
         # Check threshold for expand section (Option 3: keep until replaced)
@@ -389,9 +436,14 @@ def main():
     try:
         if _tracker_state.get("context_drop_detected", False):
             for _inject_file in ["working-memory.md", "working-summary.md"]:
-                _inject_path = os.path.join(
-                    os.path.expanduser("~"), ".claude", "hooks", _inject_file
-                )
+                if _proj_dir:
+                    _inject_path = os.path.join(
+                        _proj_dir, ".claude", "hooks", _inject_file
+                    )
+                else:
+                    _inject_path = os.path.join(
+                        os.path.expanduser("~"), ".claude", "hooks", _inject_file
+                    )
                 try:
                     with open(_inject_path) as _f:
                         _content = _f.read().strip()
@@ -409,8 +461,15 @@ def main():
             _tracker_state["summary_clear_countdown"] = _countdown - 1
             _op_tracker._save_state(_tracker_state)
         elif _countdown == 0:
-            # Clear working-summary.md to stub
-            _summary_path = os.path.join(_hooks_dir, "working-summary.md")
+            # Clear working-summary.md to stub (project-local if in a project)
+            if _proj_dir:
+                _ws_hooks = os.path.join(_proj_dir, ".claude", "hooks")
+                os.makedirs(_ws_hooks, exist_ok=True)
+                _summary_path = os.path.join(_ws_hooks, "working-summary.md")
+            else:
+                _summary_path = os.path.join(
+                    os.path.expanduser("~"), ".claude", "hooks", "working-summary.md"
+                )
             _stub = (
                 "# Working Summary (Claude-written at context threshold)\n"
                 "<!-- This file is auto-managed. Claude writes it at ~65% context. "

@@ -7,10 +7,10 @@ When user says "web index", "web search", "index this url", "search the web page
 ## Steps
 1. Parse the user's intent: index | search | list | delete
 2. Run the appropriate script:
-   - **index**: `python3 ~/.claude/skills/web/scripts/index.py <url> [--preview]`
-   - **search**: `python3 ~/.claude/skills/web/scripts/search.py "<query>" [--n 5]`
-   - **list**: `python3 ~/.claude/skills/web/scripts/list.py [--pattern <url-glob>]`
-   - **delete**: `python3 ~/.claude/skills/web/scripts/delete.py <url-pattern>`
+   - **index**: `python3 ~/.claude/skill-library/web/scripts/index.py <url> [--preview]`
+   - **search**: `python3 ~/.claude/skill-library/web/scripts/search.py "<query>" [--n 5]`
+   - **list**: `python3 ~/.claude/skill-library/web/scripts/list.py [--pattern <url-glob>]`
+   - **delete**: `python3 ~/.claude/skill-library/web/scripts/delete.py <url-pattern>`
 3. Display the output to the user
 4. For search results, offer to deep-dive into specific pages or index more URLs
 5. If any script fails, report the error — do NOT fall back to WebFetch

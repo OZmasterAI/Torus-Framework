@@ -13,6 +13,7 @@ Fail-open: always exits 0.
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(__file__))
 from shared.state import load_state, save_state
@@ -28,6 +29,7 @@ def _get_last_msg_path():
         return _LAST_MSG_PATH
     try:
         from shared.ramdisk import TMPFS_STATE_DIR
+
         if os.path.isdir(TMPFS_STATE_DIR):
             _LAST_MSG_PATH = os.path.join(TMPFS_STATE_DIR, ".last_assistant_message")
             return _LAST_MSG_PATH
@@ -62,6 +64,37 @@ def main():
 
     # Capture last_assistant_message for session handoff
     _capture_last_message(payload)
+
+    # Record response timestamp for cache expiry detection
+    try:
+        ts_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), ".last_response_ts"
+        )
+        tmp = ts_path + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(str(time.time()))
+        os.replace(tmp, ts_path)
+    except OSError:
+        pass
+
+    # DAG: record assistant message (Task 5)
+    try:
+        msg = payload.get("last_assistant_message", "")
+        if msg:
+            from shared.dag import get_session_dag
+            from boot_pkg.util import detect_project
+
+            _dag = get_session_dag(payload.get("session_id", "main"))
+            _dag_proj, _, _dag_subproj, _ = detect_project()
+            _dag.add_node(
+                parent_id=_dag.get_head(),
+                role="assistant",
+                content=msg[:2000],
+                project=_dag_proj,
+                subproject=_dag_subproj,
+            )
+    except Exception:
+        pass  # Fail-open
 
     session_id = payload.get("session_id", "main")
     state = load_state(session_id=session_id)

@@ -50,14 +50,14 @@ for g in gates:
 
 **Skills:**
 ```bash
-ls ~/.claude/skills/*/SKILL.md 2>/dev/null
-ls ~/.claude/skills/*/SKILL.md 2>/dev/null | wc -l
+ls ~/.claude/skill-library/*/SKILL.md 2>/dev/null
+ls ~/.claude/skill-library/*/SKILL.md 2>/dev/null | wc -l
 ```
 For each skill, extract name and description:
 ```bash
 python3 -c "
 import os, re
-skills_dir = os.path.expanduser('~/.claude/skills')
+skills_dir = os.path.expanduser('~/.claude/skill-library')
 for skill in sorted(os.listdir(skills_dir)):
     skill_path = os.path.join(skills_dir, skill, 'SKILL.md')
     if os.path.exists(skill_path):
@@ -287,7 +287,7 @@ List each gate that has zero test functions referencing it.
 ```bash
 python3 -c "
 import os, re
-skills_dir = os.path.expanduser('~/.claude/skills')
+skills_dir = os.path.expanduser('~/.claude/skill-library')
 test_path = os.path.expanduser('~/.claude/hooks/test_framework.py')
 test_content = open(test_path).read()
 for skill in sorted(os.listdir(skills_dir)):
@@ -304,7 +304,7 @@ for skill in sorted(os.listdir(skills_dir)):
 python3 -c "
 import os, re
 agents_dir = os.path.expanduser('~/.claude/agents')
-skills_dir = os.path.expanduser('~/.claude/skills')
+skills_dir = os.path.expanduser('~/.claude/skill-library')
 if not os.path.isdir(agents_dir):
     print('(no agents dir)')
 else:

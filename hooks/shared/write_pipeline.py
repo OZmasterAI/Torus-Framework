@@ -1,21 +1,29 @@
 """Write Pipeline — Layer 3 of the Memory v2 Layered Redesign.
 
-Orchestrates the full write flow: validate → normalize → quality score →
-dedup check → classify tier → store → side effects.
+Orchestrates the full write flow: validate → normalize → A-Mem enrich →
+quality score → dedup check → classify tier → store → side effects.
+
+Performance (session 506): embed-once cache, entity cache, background
+post-store work. Cuts remember_this from ~3min to seconds.
 
 Public API:
     from shared.write_pipeline import WritePipeline
 """
 
+import logging
 import os
+import re
+import threading
 import time
 from datetime import datetime
 
+_log = logging.getLogger(__name__)
+
 
 class WritePipeline:
-    """7-step write orchestrator.
+    """7-step write orchestrator (with A-Mem enrichment sub-step).
 
-    Coordinates: validation, normalization, quality scoring, dedup,
+    Coordinates: validation, normalization, A-Mem enrichment, quality scoring,
     tier classification, storage, and side effects.
     """
 
@@ -39,6 +47,8 @@ class WritePipeline:
         self.graph = graph
         self.config = config or {}
         self.h = helpers or {}
+        self._cached_session_id = None
+        self._bg_semaphore = threading.Semaphore(1)  # queue bg threads, 1 at a time
 
     def write(
         self,
@@ -58,9 +68,11 @@ class WritePipeline:
         tag_index = self.tag_index
         h = self.h
 
-        # Auto-detect source session ID
+        # Auto-detect source session ID (cached after first call)
         if not source_session_id:
-            source_session_id = self._detect_session_id()
+            if self._cached_session_id is None:
+                self._cached_session_id = self._detect_session_id()
+            source_session_id = self._cached_session_id
 
         # ── Step 1: Validate ──
         min_content_length = h.get("min_content_length", 20)
@@ -112,6 +124,22 @@ class WritePipeline:
                         "total_memories": collection.count(),
                     }
 
+        # ── Embed once, reuse everywhere ──
+        _embed_text = h.get("embed_text")
+        _cached_vec = None
+        if _embed_text:
+            try:
+                _cached_vec = _embed_text(content)
+            except Exception:
+                pass
+
+        # ── Step 2b: Context description (fast string-only, entities moved to background) ──
+        _amem_context_desc = ""
+        try:
+            _amem_context_desc = _generate_context_description(content, context)
+        except Exception:
+            pass
+
         # ── Step 3: Quality score ──
         _q_score = 0.5
         try:
@@ -124,11 +152,13 @@ class WritePipeline:
         except Exception:
             pass
 
-        # ── Step 4: Dedup check ──
+        # ── Step 4: Dedup check (pass cached vector to skip re-embedding) ──
         _soft_dupe_tag = None
         _check_dedup = h.get("check_dedup")
         dedup_result = (
-            _check_dedup(content, tags) if _check_dedup and not force else None
+            _check_dedup(content, tags, query_vector=_cached_vec)
+            if _check_dedup and not force
+            else None
         )
         if dedup_result:
             if dedup_result.get("blocked"):
@@ -141,9 +171,6 @@ class WritePipeline:
                 }
             elif dedup_result.get("soft_dupe_tag"):
                 _soft_dupe_tag = dedup_result["soft_dupe_tag"]
-
-        # Retroactive interference
-        self._retroactive_interference(content, tags, force, collection, h)
 
         # Citation extraction
         _extract_citations = h.get("extract_citations")
@@ -189,86 +216,48 @@ class WritePipeline:
         _classify_state_type = h.get("classify_state_type")
         state_type = _classify_state_type(content, tags) if _classify_state_type else ""
 
-        # Cluster assignment
+        # Cluster assignment (reuse cached embedding)
         _assigned_cluster_id = ""
         try:
             _cluster_store = h.get("cluster_store")
-            _embed_text = h.get("embed_text")
-            if _cluster_store and _embed_text:
-                _cluster_vec = _embed_text(content)
-                _assigned_cluster_id = _cluster_store.assign(_cluster_vec, content)
+            if _cluster_store and _cached_vec:
+                _assigned_cluster_id = _cluster_store.assign(_cached_vec, content)
         except Exception:
             pass
 
-        # ── Step 6: Store ──
-        collection.upsert(
-            documents=[content],
-            metadatas=[
-                {
-                    "context": context,
-                    "tags": tags,
-                    "timestamp": timestamp,
-                    "session_time": now,
-                    "preview": preview,
-                    "primary_source": primary_source,
-                    "related_urls": related_urls,
-                    "source_method": source_method,
-                    "tier": tier,
-                    "source_session_id": source_session_id,
-                    "source_observation_ids": source_observation_ids,
-                    "cluster_id": _assigned_cluster_id,
-                    "memory_type": memory_type,
-                    "state_type": state_type,
-                    "quality_score": _q_score,
-                }
-            ],
-            ids=[doc_id],
-        )
+        # ── Step 6: Store (pass cached vector to skip re-embedding) ──
+        _upsert_meta = {
+            "context": context,
+            "tags": tags,
+            "timestamp": timestamp,
+            "session_time": now,
+            "preview": preview,
+            "primary_source": primary_source,
+            "related_urls": related_urls,
+            "source_method": source_method,
+            "tier": tier,
+            "source_session_id": source_session_id,
+            "source_observation_ids": source_observation_ids,
+            "cluster_id": _assigned_cluster_id,
+            "memory_type": memory_type,
+            "state_type": state_type,
+            "quality_score": _q_score,
+            "keywords": "",
+            "context_description": _amem_context_desc,
+        }
+        _upsert_kwargs = {
+            "documents": [content],
+            "metadatas": [_upsert_meta],
+            "ids": [doc_id],
+        }
+        if _cached_vec:
+            _upsert_kwargs["vectors"] = [_cached_vec]
+        collection.upsert(**_upsert_kwargs)
 
-        # Update tag index
+        # Update tag index (keep synchronous — fast and needed for immediate queries)
         tag_index.add_tags(doc_id, tags)
 
-        # Knowledge graph population
-        try:
-            if self.graph:
-                from shared.entity_extraction import (
-                    extract_entities,
-                    extract_cooccurrences,
-                )
-
-                _kg_text = f"{content} {context}"
-                _kg_entities = extract_entities(_kg_text)
-                for ent in _kg_entities:
-                    self.graph.upsert_entity(ent["name"], ent["type"])
-                _kg_coocs = extract_cooccurrences(_kg_text)
-                _kg_total = collection.count()
-                for e1, e2 in _kg_coocs:
-                    self.graph.add_edge(e1, e2, "co_occurs")
-                    self.graph.update_pmi(e1, e2, "co_occurs", _kg_total)
-        except Exception:
-            pass
-
-        # ── Step 7: Side effects ──
-        _touch = h.get("touch_memory_timestamp")
-        if _touch:
-            try:
-                _touch()
-            except Exception:
-                pass
-
-        # Hybrid memory linking
-        resolves_id, linked_to, link_warning = self._hybrid_linking(
-            doc_id, tags, collection, tag_index
-        )
-
-        # Fix-outcome bridge
-        bridge_result = None
-        if tags and "type:fix" in tags:
-            _bridge = h.get("bridge_to_fix_outcomes")
-            if _bridge:
-                bridge_result = _bridge(content, context, tags)
-
-        # Build result
+        # ── Build result and return immediately ──
         result = {
             "result": "Memory stored successfully!",
             "id": doc_id,
@@ -277,22 +266,366 @@ class WritePipeline:
             "quality_score": _q_score,
             "memory_type": memory_type,
             "state_type": state_type,
+            "keywords": "",
+            "context_description": _amem_context_desc,
         }
-        if bridge_result:
-            result["fix_outcome_bridged"] = True
-            result["bridge_chain_id"] = bridge_result.get("chain_id", "")
-        if linked_to:
-            result["linked_to"] = linked_to
-        if link_warning:
-            result["link_warning"] = link_warning
-        if tags and "type:fix" in tags and not resolves_id and not linked_to:
-            result["hint"] = (
-                "Tip: add a resolves:MEMORY_ID tag to link this fix to the problem memory it resolves"
-            )
+
+        # ── Background: post-store side effects (all fail-open) ──
+        bg_args = {
+            "doc_id": doc_id,
+            "content": content,
+            "context": context,
+            "tags": tags,
+            "tier": tier,
+            "memory_type": memory_type,
+            "state_type": state_type,
+            "quality_score": _q_score,
+            "cluster_id": _assigned_cluster_id,
+            "cached_vec": _cached_vec,
+            "cached_entities": None,
+        }
+        t = threading.Thread(
+            target=self._post_store_background,
+            args=(bg_args,),
+            daemon=True,
+            name="write-pipeline-bg",
+        )
+        t.start()
 
         return result
 
+    # ── Background post-store work ────────────────────────────────────────
+
+    def _post_store_background(self, args):
+        """Run all fail-open side effects in a background thread (queued)."""
+        with self._bg_semaphore:
+            try:
+                self._bg_inner(args)
+            except Exception as e:
+                _log.debug("write-pipeline background error: %s", e)
+
+    def _bg_inner(self, a):
+        collection = self.collection
+        tag_index = self.tag_index
+        h = self.h
+
+        doc_id = a["doc_id"]
+        content = a["content"]
+        context = a["context"]
+        tags = a["tags"]
+        tier = a["tier"]
+        memory_type = a["memory_type"]
+        state_type = a["state_type"]
+        quality_score = a["quality_score"]
+        cluster_id = a["cluster_id"]
+        cached_vec = a["cached_vec"]
+        cached_entities = a["cached_entities"]
+
+        # Entity extraction (moved from sync path)
+        try:
+            from shared.entity_extraction import extract_entities
+
+            combined_text = f"{content} {context}" if context else content
+            cached_entities = extract_entities(combined_text)
+        except Exception:
+            cached_entities = []
+
+        # Update keywords metadata in background
+        if cached_entities:
+            try:
+                seen = set()
+                keyword_names = []
+                for ent in cached_entities:
+                    name_lower = ent["name"].lower()
+                    if name_lower not in seen:
+                        seen.add(name_lower)
+                        keyword_names.append(ent["name"])
+                keywords_str = ",".join(keyword_names[:10])
+                if len(keywords_str) > 500:
+                    keywords_str = keywords_str[:497] + "..."
+                if keywords_str:
+                    collection.update(
+                        ids=[doc_id], metadatas=[{"keywords": keywords_str}]
+                    )
+            except Exception:
+                pass
+
+        # Retroactive interference (moved from sync path)
+        try:
+            self._retroactive_interference(
+                content, tags, False, collection, h, query_vector=cached_vec
+            )
+        except Exception:
+            pass
+
+        # DAG dual-write (reuse cached embedding)
+        try:
+            from shared.dag import get_session_dag
+            from shared.dag_memory_layer import DAGMemoryLayer
+
+            _dag = get_session_dag("main")
+            _dag_layer = DAGMemoryLayer(_dag)
+            _dag_result = _dag_layer.store(
+                content=content,
+                tags=f"{tags},source:dual-write" if tags else "source:dual-write",
+                tier=tier,
+                memory_type=memory_type,
+                state_type=state_type,
+                context=context,
+                quality_score=quality_score,
+                cluster_id=cluster_id,
+            )
+            if _dag_result.get("stored") and cached_vec and len(cached_vec) > 0:
+                try:
+                    _dag_layer.store_embedding(
+                        _dag_result["id"], "knowledge", cached_vec
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Knowledge graph population (reuse cached entities)
+        try:
+            if self.graph and cached_entities:
+                from shared.entity_extraction import extract_cooccurrences
+
+                for ent in cached_entities:
+                    self.graph.upsert_entity(ent["name"], ent["type"])
+                _kg_text = f"{content} {context}"
+                _kg_coocs = extract_cooccurrences(_kg_text)
+                _kg_total = collection.count()
+                for e1, e2 in _kg_coocs:
+                    self.graph.add_edge(e1, e2, "co_occurs")
+                    self.graph.update_pmi(e1, e2, "co_occurs", _kg_total)
+        except Exception:
+            pass
+
+        # A-Mem linking
+        try:
+            if self.graph and collection.count() > 1:
+                _amem_results = collection.query(
+                    query_texts=[content] if not cached_vec else None,
+                    query_vector=cached_vec if cached_vec else None,
+                    n_results=6,
+                    include=["metadatas", "distances"],
+                )
+                if (
+                    _amem_results
+                    and _amem_results.get("ids")
+                    and _amem_results["ids"][0]
+                ):
+                    _amem_threshold = 0.7
+                    for _amem_idx, _amem_id in enumerate(_amem_results["ids"][0]):
+                        if _amem_id == doc_id:
+                            continue
+                        _amem_dist = (
+                            _amem_results["distances"][0][_amem_idx]
+                            if _amem_results.get("distances")
+                            else 1.0
+                        )
+                        _amem_sim = max(0.0, 1.0 - _amem_dist)
+                        if _amem_sim >= _amem_threshold:
+                            self.graph.add_edge(
+                                doc_id, _amem_id, "linked_memory", strength=_amem_sim
+                            )
+                            self.graph.add_edge(
+                                _amem_id, doc_id, "linked_memory", strength=_amem_sim
+                            )
+        except Exception:
+            pass
+
+        # A-Mem evolution (reuse cached entities for new memory)
+        if self.config.get("enable_evolution", True):
+            try:
+                self._evolve_neighbors_cached(
+                    doc_id,
+                    content,
+                    context,
+                    tags,
+                    collection,
+                    tag_index,
+                    cached_entities,
+                    cached_vec=cached_vec,
+                )
+            except Exception:
+                pass
+
+        # Touch memory timestamp
+        _touch = h.get("touch_memory_timestamp")
+        if _touch:
+            try:
+                _touch()
+            except Exception:
+                pass
+
+        # Hybrid memory linking
+        try:
+            self._hybrid_linking(doc_id, tags, collection, tag_index)
+        except Exception:
+            pass
+
+        # Fix-outcome bridge
+        if tags and "type:fix" in tags:
+            _bridge = h.get("bridge_to_fix_outcomes")
+            if _bridge:
+                try:
+                    _bridge(content, context, tags)
+                except Exception:
+                    pass
+
     # ── Internal helpers ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _amem_enrich_cached(content, context, cached_entities):
+        """A-Mem enrichment using pre-extracted entities.
+
+        Returns:
+            (keywords_str, context_description) -- both strings.
+        """
+        keywords_str = ""
+        context_description = ""
+
+        if cached_entities:
+            seen = set()
+            keyword_names = []
+            for ent in cached_entities:
+                name_lower = ent["name"].lower()
+                if name_lower not in seen:
+                    seen.add(name_lower)
+                    keyword_names.append(ent["name"])
+            keywords_str = ",".join(keyword_names[:10])
+            if len(keywords_str) > 500:
+                keywords_str = keywords_str[:497] + "..."
+
+        try:
+            context_description = _generate_context_description(content, context)
+        except Exception:
+            pass
+
+        return keywords_str, context_description
+
+    def _evolve_neighbors_cached(
+        self,
+        doc_id,
+        content,
+        context,
+        tags,
+        collection,
+        tag_index,
+        cached_entities,
+        cached_vec=None,
+    ):
+        """A-Mem evolution using pre-extracted entities for the new memory."""
+        _MAX_UPDATES = 3
+        _MIN_SIMILARITY = 0.3
+        _TAG_CAP = 500
+
+        if not tags or not collection:
+            return 0
+
+        try:
+            from shared.entity_extraction import extract_entities
+        except ImportError:
+            return 0
+
+        new_entities = set()
+        if cached_entities:
+            for ent in cached_entities:
+                new_entities.add(ent["name"].lower())
+
+        if not new_entities:
+            return 0
+
+        new_tag_set = set(t.strip() for t in tags.split(",") if t.strip())
+        if not new_tag_set:
+            return 0
+
+        try:
+            neighbors = collection.query(
+                query_texts=[content] if not cached_vec else None,
+                query_vector=cached_vec if cached_vec else None,
+                n_results=4,
+                include=["metadatas", "documents", "distances"],
+            )
+        except Exception:
+            return 0
+
+        if not neighbors or not neighbors.get("ids") or not neighbors["ids"][0]:
+            return 0
+
+        updated = 0
+        for idx, neighbor_id in enumerate(neighbors["ids"][0]):
+            if updated >= _MAX_UPDATES:
+                break
+
+            if neighbor_id == doc_id:
+                continue
+
+            dist = neighbors["distances"][0][idx] if neighbors.get("distances") else 1.0
+            similarity = max(0, 1.0 - dist)
+            if similarity < _MIN_SIMILARITY:
+                continue
+
+            neighbor_meta = (
+                neighbors["metadatas"][0][idx] if neighbors.get("metadatas") else {}
+            )
+            neighbor_doc = (
+                neighbors["documents"][0][idx] if neighbors.get("documents") else ""
+            )
+            neighbor_tags_str = neighbor_meta.get("tags", "") or ""
+            neighbor_context = neighbor_meta.get("context", "") or ""
+
+            neighbor_text = f"{neighbor_doc} {neighbor_context}"
+            neighbor_entities = set()
+            for ent in extract_entities(neighbor_text):
+                neighbor_entities.add(ent["name"].lower())
+
+            shared_entities = new_entities & neighbor_entities
+            if not shared_entities:
+                continue
+
+            neighbor_tag_set = set(
+                t.strip() for t in neighbor_tags_str.split(",") if t.strip()
+            )
+            propagatable_tags = set()
+            _skip_prefixes = ("resolves:", "resolved_by:", "source:", "cluster:")
+            for tag in new_tag_set:
+                if tag in neighbor_tag_set:
+                    continue
+                if any(tag.startswith(p) for p in _skip_prefixes):
+                    continue
+                propagatable_tags.add(tag)
+
+            if not propagatable_tags:
+                continue
+
+            merged_tags = neighbor_tags_str
+            for ptag in sorted(propagatable_tags):
+                candidate = f"{merged_tags},{ptag}" if merged_tags else ptag
+                if len(candidate) > _TAG_CAP:
+                    break
+                merged_tags = candidate
+
+            if merged_tags == neighbor_tags_str:
+                continue
+
+            updated_meta = dict(neighbor_meta)
+            updated_meta["tags"] = merged_tags
+            try:
+                collection.update(
+                    ids=[neighbor_id],
+                    metadatas=[updated_meta],
+                )
+                try:
+                    tag_index.add_tags(neighbor_id, merged_tags)
+                except Exception:
+                    pass
+                updated += 1
+            except Exception:
+                pass
+
+        return updated
 
     def _detect_session_id(self):
         """Auto-detect source session ID from most recent JSONL session file."""
@@ -324,7 +657,9 @@ class WritePipeline:
 
         return hashlib.md5(content.encode()).hexdigest()[:16]
 
-    def _retroactive_interference(self, content, tags, force, collection, h):
+    def _retroactive_interference(
+        self, content, tags, force, collection, h, query_vector=None
+    ):
         """Corrections/fixes suppress similar existing memories."""
         try:
             if (
@@ -336,11 +671,12 @@ class WritePipeline:
 
                 _classify_tier = h.get("classify_tier")
 
-                _ri_results = collection.query(
-                    query_texts=[content],
-                    n_results=3,
-                    include=["metadatas", "distances"],
-                )
+                _ri_kwargs = {"n_results": 3, "include": ["metadatas", "distances"]}
+                if query_vector is not None:
+                    _ri_kwargs["query_vector"] = query_vector
+                else:
+                    _ri_kwargs["query_texts"] = [content]
+                _ri_results = collection.query(**_ri_kwargs)
                 if _ri_results and _ri_results.get("ids") and _ri_results["ids"][0]:
                     _new_tier = _classify_tier(content, tags) if _classify_tier else 2
                     _new_mem = {"tier": _new_tier, "tags": tags}
@@ -430,3 +766,50 @@ class WritePipeline:
                 resolves_id = None
 
         return resolves_id, linked_to, link_warning
+
+
+# ── Module-level helpers ─────────────────────────────────────────────────────────────
+
+# Sentence boundary pattern: split on  followed by capital, or on  /
+_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
+
+
+def _generate_context_description(content, context=""):
+    """Generate a 1-sentence context description for A-Mem structured notes.
+
+    Strategy:
+    1. If context is provided and non-trivial, use it directly (already a description).
+    2. Otherwise, extract first sentence from content as the context description.
+    3. Cap at 200 chars for metadata safety.
+    """
+    # If caller provided a context string, prefer it (it is typically a description)
+    if context and len(context.strip()) >= 10:
+        desc = context.strip()
+        # Take first sentence if context is multi-sentence
+        sentences = _SENTENCE_END_RE.split(desc)
+        if sentences:
+            desc = sentences[0].strip()
+        if len(desc) > 200:
+            desc = desc[:197] + "..."
+        return desc
+
+    # Fall back to first sentence of content
+    stripped = content.strip()
+    if not stripped:
+        return ""
+
+    # Remove leading project prefix like [project:xyz]
+    if stripped.startswith("["):
+        bracket_end = stripped.find("]")
+        if bracket_end > 0 and bracket_end < 60:
+            stripped = stripped[bracket_end + 1 :].strip()
+
+    sentences = _SENTENCE_END_RE.split(stripped)
+    if sentences:
+        desc = sentences[0].strip()
+    else:
+        desc = stripped
+
+    if len(desc) > 200:
+        desc = desc[:197] + "..."
+    return desc

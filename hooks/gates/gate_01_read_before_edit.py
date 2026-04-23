@@ -97,12 +97,23 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
         tool_input = {}
 
     file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+    if not file_path:
+        return GateResult(blocked=False, gate_name=GATE_NAME)
     file_path = os.path.normpath(file_path)
+
+    # Block path traversal regardless of extension
+    if file_path.startswith("..") or "/../" in file_path:
+        return GateResult(
+            blocked=True,
+            message=f"[{GATE_NAME}] BLOCKED: Path traversal detected in '{file_path}'. Use an absolute path.",
+            gate_name=GATE_NAME,
+        )
+
     _, ext = os.path.splitext(file_path)
     ext = ext.lower()
 
-    # Only guard specific extensions
-    if ext not in GUARDED_EXTENSIONS:
+    # Guard code extensions + extensionless files outside the working tree
+    if ext not in GUARDED_EXTENSIONS and ext != "":
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
     # Check exemptions (exact basename match to prevent substring bypass)

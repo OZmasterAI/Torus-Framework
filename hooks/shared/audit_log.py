@@ -225,6 +225,28 @@ def log_gate_decision(
         pass
 
 
+def _tail_lines(filepath, max_lines, chunk_size=8192):
+    """Read the last max_lines lines from a file efficiently.
+
+    Reads from the end of the file in chunks instead of loading
+    the entire file into memory. Returns lines in file order.
+    """
+    lines = []
+    with open(filepath, "rb") as f:
+        f.seek(0, 2)  # seek to end
+        remaining = f.tell()
+        buf = b""
+        while remaining > 0 and len(lines) < max_lines:
+            read_size = min(chunk_size, remaining)
+            remaining -= read_size
+            f.seek(remaining)
+            buf = f.read(read_size) + buf
+            lines = buf.split(b"\n")
+        # Decode and return last max_lines (excluding empty trailing)
+        decoded = [l.decode("utf-8", errors="replace") for l in lines if l.strip()]
+        return decoded[-max_lines:]
+
+
 def get_recent_decisions(gate_name=None, limit=50):
     """Query recent gate decisions from the persistent audit trail.
 
@@ -245,8 +267,8 @@ def get_recent_decisions(gate_name=None, limit=50):
         return results
 
     try:
-        with open(AUDIT_TRAIL_PATH, "r") as f:
-            lines = f.readlines()
+        # Read from end of file in chunks to avoid loading entire trail
+        lines = _tail_lines(AUDIT_TRAIL_PATH, max(limit * 4, 200))
     except (IOError, OSError):
         return results
 

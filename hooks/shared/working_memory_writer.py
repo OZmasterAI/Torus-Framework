@@ -1,6 +1,6 @@
 """Working memory writer for hybrid working memory system.
 
-Reads operation tracker state and writes rules/working-memory.md with three sections:
+Reads operation tracker state and writes hooks/working-memory.md with three sections:
 
   Status     (~40 tokens)  — current op, last op. Updated every turn.
   Operations (+60-80/op)   — completed op summaries, FIFO eviction at ~650 tokens.
@@ -11,6 +11,7 @@ Atomic writes: tmp + os.replace() — safe against concurrent UserPromptSubmit/P
 """
 
 import logging
+import hashlib
 import os
 import subprocess
 
@@ -57,6 +58,23 @@ def inject_enforcer_fields(tracker_state: dict, enforcer_state: dict) -> None:
     )
     tracker_state["_edit_streak"] = enforcer_state.get("edit_streak", {})
     tracker_state["_files_read"] = enforcer_state.get("files_read", [])
+
+
+def inject_dag_fields(tracker_state: dict, dag) -> None:
+    """Inject DAG context into tracker_state for header and context section.
+
+    Prefixed with _dag_ to avoid collisions with tracker's own fields.
+    Fail-open: exceptions are silently caught.
+    """
+    try:
+        binfo = dag.current_branch_info()
+        tracker_state["_dag_branch"] = binfo.get("name", "")
+        tracker_state["_dag_branch_label"] = dag.get_branch_label()
+        tracker_state["_dag_node_count"] = binfo.get("msg_count", 0)
+        tracker_state["_dag_total_branches"] = binfo.get("total_branches", 0)
+    except Exception:
+        pass  # Fail-open
+    tracker_state["_deferred_items"] = enforcer_state.get("deferred_items", [])
 
 
 # ── Section builders ──────────────────────────────────────────────────────────
@@ -209,6 +227,32 @@ def _build_context_section(tracker_state: dict) -> str:
     else:
         lines.append("- (none)")
 
+    # Deferred items — strategies that failed and were deferred for later
+    deferred = tracker_state.get("_deferred_items", [])
+    if deferred:
+        lines.append("### Deferred")
+        for item in deferred[-3:]:
+            strategy = item.get("strategy", "?")[:40]
+            err_sig = item.get("error_signature", "?")[:30]
+            fails = item.get("fail_count", 0)
+            lines.append(f"- {strategy} ({err_sig}, {fails}x failed)")
+
+    # DAG Branch — active task context
+    dag_branch_ctx = tracker_state.get("_dag_branch", "")
+    dag_label_ctx = tracker_state.get("_dag_branch_label", "")
+    dag_nodes_ctx = tracker_state.get("_dag_node_count", 0)
+    dag_total_ctx = tracker_state.get("_dag_total_branches", 0)
+    if dag_branch_ctx or dag_nodes_ctx:
+        lines.append("### DAG Context")
+        dag_line = f"- Branch: {dag_branch_ctx or 'main'}"
+        if dag_label_ctx:
+            dag_line += f" (task={dag_label_ctx})"
+        if dag_nodes_ctx:
+            dag_line += f", {dag_nodes_ctx} nodes"
+        if dag_total_ctx > 1:
+            dag_line += f", {dag_total_ctx} branches"
+        lines.append(dag_line)
+
     # Hot Files — merge edit counts + read counts per file
     edit_streak = tracker_state.get("_edit_streak", {})
     files_read_list = tracker_state.get("_files_read", [])
@@ -280,10 +324,22 @@ def _build_full_file(
     session_id = tracker_state.get("_session_id", "session")
     branch = tracker_state.get("_branch", _get_branch())
 
+    dag_branch = tracker_state.get("_dag_branch", "")
+    dag_label = tracker_state.get("_dag_branch_label", "")
+    dag_nodes = tracker_state.get("_dag_node_count", 0)
+
+    dag_suffix = ""
+    if dag_branch and dag_branch not in ("main", ""):
+        dag_suffix = f" | DAG: {dag_branch}"
+        if dag_label:
+            dag_suffix += f":{dag_label}"
+    elif dag_nodes > 0:
+        dag_suffix = f" | DAG: {dag_nodes}n"
+
     header = (
         f"# Working Memory (auto-generated — do not edit)\n"
         f"## Session {session_id[:16] if len(session_id) > 16 else session_id}"
-        f" | Branch: {branch}\n\n"
+        f" | Branch: {branch}{dag_suffix}\n\n"
     )
 
     status = _build_status_section(tracker_state)
@@ -323,7 +379,10 @@ def _atomic_write(path: str, content: str) -> None:
 
 
 class WorkingMemoryWriter:
-    """Writes rules/working-memory.md with three layered sections.
+    """Writes hooks/working-memory.md with three layered sections.
+
+    Writes to hooks/ (not rules/) so the file is injected on-demand by
+    boot.py/post_compact.py instead of auto-loaded on every API call.
 
     Three sections, each updated on a different trigger:
       - write_status()    — every UserPromptSubmit (base layer)
@@ -331,25 +390,40 @@ class WorkingMemoryWriter:
       - write_expanded()  — at context threshold (expand layer)
     """
 
-    def __init__(self, rules_dir: str):
-        self._rules_dir = rules_dir
-        self._output_path = os.path.join(rules_dir, "working-memory.md")
+    def __init__(self, hooks_dir: str, project_dir: str = ""):
+        self._hooks_dir = hooks_dir
+        if project_dir:
+            # Project session: write to {project_dir}/.claude/hooks/
+            proj_hooks = os.path.join(project_dir, ".claude", "hooks")
+            os.makedirs(proj_hooks, exist_ok=True)
+            self._output_path = os.path.join(proj_hooks, "working-memory.md")
+        else:
+            self._output_path = os.path.join(hooks_dir, "working-memory.md")
         self._expand_written = False
+        self._last_hash = ""  # Skip writes when content unchanged
 
     # ── Public API ────────────────────────────────────────────────────────────
+
+    def _write_if_changed(self, content: str) -> bool:
+        """Write file only if content changed. Returns True if written."""
+        h = hashlib.md5(content.encode()).hexdigest()
+        if h == self._last_hash:
+            return False
+        _atomic_write(self._output_path, content)
+        self._last_hash = h
+        return True
 
     def write_status(self, tracker_state: dict) -> None:
         """Update the Status section. Called every UserPromptSubmit turn.
 
-        Rewrites the entire file with current Status + last Operations + optional Context.
-        Status-only rewrite is safe because the file is always regenerated from tracker state.
+        Skips the write if content hasn't changed since last call.
         """
         try:
             include_ctx = self._expand_written or tracker_state.get(
                 "expand_written", False
             )
             content = _build_full_file(tracker_state, include_context=include_ctx)
-            _atomic_write(self._output_path, content)
+            self._write_if_changed(content)
         except Exception as e:
             logger.warning(f"working_memory_writer.write_status failed: {e}")
 
@@ -363,7 +437,7 @@ class WorkingMemoryWriter:
                 "expand_written", False
             )
             content = _build_full_file(tracker_state, include_context=include_ctx)
-            _atomic_write(self._output_path, content)
+            self._write_if_changed(content)
         except Exception as e:
             logger.warning(f"working_memory_writer.write_operations failed: {e}")
 

@@ -23,11 +23,13 @@ sys.path.insert(0, os.path.join(_PLUGIN_DIR, "hooks"))
 
 # --- TestFormatHtml ---
 
+
 class TestFormatHtml(unittest.TestCase):
     """Test session summary -> Telegram HTML conversion."""
 
     def setUp(self):
         from on_session_end import _format_html
+
         self.format_html = _format_html
 
     def test_heading_conversion(self):
@@ -65,6 +67,7 @@ class TestFormatHtml(unittest.TestCase):
 
 # --- TestDbLayer ---
 
+
 class TestDbLayer(unittest.TestCase):
     """Test FTS5 database operations."""
 
@@ -77,15 +80,22 @@ class TestDbLayer(unittest.TestCase):
 
     def test_init_creates_tables(self):
         from db import init_db
+
         init_db(self.db_path)
         conn = sqlite3.connect(self.db_path)
-        tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')").fetchall()]
+        tables = [
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')"
+            ).fetchall()
+        ]
         conn.close()
         self.assertIn("tg_fts", tables)
         self.assertIn("tg_meta", tables)
 
     def test_log_and_search(self):
         from db import init_db, log_message, search_fts
+
         init_db(self.db_path)
         log_message(self.db_path, 123, "user", "hello world test message", "2026-02-18")
         results = search_fts(self.db_path, "hello", limit=5)
@@ -96,6 +106,7 @@ class TestDbLayer(unittest.TestCase):
 
     def test_get_recent(self):
         from db import init_db, log_message, get_recent
+
         init_db(self.db_path)
         log_message(self.db_path, 123, "user", "first message", "2026-02-18T10:00:00")
         log_message(self.db_path, 123, "Claude", "response here", "2026-02-18T10:00:01")
@@ -105,17 +116,20 @@ class TestDbLayer(unittest.TestCase):
 
     def test_empty_text_skipped(self):
         from db import init_db, log_message
+
         init_db(self.db_path)
         result = log_message(self.db_path, 123, "user", "", "2026-02-18")
         self.assertIsNone(result)
 
     def test_search_nonexistent_db(self):
         from db import search_fts
+
         results = search_fts("/nonexistent/db.sqlite", "hello")
         self.assertEqual(results, [])
 
 
 # --- TestSessionPersistence ---
+
 
 class TestSessionPersistence(unittest.TestCase):
     """Test session ID persistence."""
@@ -129,23 +143,27 @@ class TestSessionPersistence(unittest.TestCase):
 
     def test_save_and_load(self):
         from sessions import save_session, get_session_id
+
         save_session(self.sessions_path, 123, "sess-abc-123")
         result = get_session_id(self.sessions_path, 123)
         self.assertEqual(result, "sess-abc-123")
 
     def test_missing_chat_returns_none(self):
         from sessions import save_session, get_session_id
+
         save_session(self.sessions_path, 123, "sess-abc")
         result = get_session_id(self.sessions_path, 999)
         self.assertIsNone(result)
 
     def test_load_nonexistent_returns_empty(self):
         from sessions import load_sessions
+
         result = load_sessions("/nonexistent/sessions.json")
         self.assertEqual(result, {})
 
 
 # --- TestClaudeRunner ---
+
 
 class TestClaudeRunner(unittest.TestCase):
     """Test Claude subprocess wrapper (all mocked)."""
@@ -156,6 +174,7 @@ class TestClaudeRunner(unittest.TestCase):
     @patch("claude_runner.asyncio.create_subprocess_exec")
     def test_successful_run(self, mock_exec):
         from claude_runner import run_claude
+
         mock_proc = AsyncMock()
         mock_proc.communicate.return_value = (
             json.dumps({"result": "Hello!", "session_id": "sess-123"}).encode(),
@@ -171,6 +190,7 @@ class TestClaudeRunner(unittest.TestCase):
     @patch("claude_runner.asyncio.create_subprocess_exec")
     def test_nonzero_exit(self, mock_exec):
         from claude_runner import run_claude, ClaudeError
+
         mock_proc = AsyncMock()
         mock_proc.communicate.return_value = (b"", b"some error")
         mock_proc.returncode = 1
@@ -182,6 +202,7 @@ class TestClaudeRunner(unittest.TestCase):
     @patch("claude_runner.asyncio.create_subprocess_exec")
     def test_invalid_json(self, mock_exec):
         from claude_runner import run_claude, ClaudeError
+
         mock_proc = AsyncMock()
         mock_proc.communicate.return_value = (b"not json", b"")
         mock_proc.returncode = 0
@@ -193,6 +214,7 @@ class TestClaudeRunner(unittest.TestCase):
     @patch("claude_runner.asyncio.create_subprocess_exec")
     def test_with_session_resume(self, mock_exec):
         from claude_runner import run_claude
+
         mock_proc = AsyncMock()
         mock_proc.communicate.return_value = (
             json.dumps({"result": "Resumed!", "session_id": "sess-456"}).encode(),
@@ -212,6 +234,7 @@ class TestClaudeRunner(unittest.TestCase):
 
 # --- TestConfigLoading ---
 
+
 class TestConfigLoading(unittest.TestCase):
     """Test config.json loading and validation."""
 
@@ -223,11 +246,13 @@ class TestConfigLoading(unittest.TestCase):
 
     def test_missing_file_raises(self):
         from config import load_config, BotConfigError
+
         with self.assertRaises(BotConfigError):
             load_config("/nonexistent/config.json")
 
     def test_missing_token_raises(self):
         from config import load_config, BotConfigError
+
         path = os.path.join(self.tmpdir, "cfg.json")
         with open(path, "w") as f:
             json.dump({"bot_token": "", "allowed_users": []}, f)
@@ -236,6 +261,7 @@ class TestConfigLoading(unittest.TestCase):
 
     def test_valid_config(self):
         from config import load_config
+
         path = os.path.join(self.tmpdir, "cfg.json")
         with open(path, "w") as f:
             json.dump({"bot_token": "test:token", "allowed_users": [123]}, f)
@@ -247,13 +273,16 @@ class TestConfigLoading(unittest.TestCase):
 
 # --- TestSearchCli ---
 
+
 class TestSearchCli(unittest.TestCase):
     """Test search.py CLI JSON output."""
 
     def test_json_output_format(self):
         result = subprocess.run(
             [sys.executable, os.path.join(_PLUGIN_DIR, "search.py"), "test", "--json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         self.assertEqual(result.returncode, 0)
         data = json.loads(result.stdout)
@@ -264,7 +293,9 @@ class TestSearchCli(unittest.TestCase):
     def test_empty_query(self):
         result = subprocess.run(
             [sys.executable, os.path.join(_PLUGIN_DIR, "search.py"), "", "--json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         self.assertEqual(result.returncode, 0)
         data = json.loads(result.stdout)
@@ -272,12 +303,51 @@ class TestSearchCli(unittest.TestCase):
 
     def test_limit_flag(self):
         result = subprocess.run(
-            [sys.executable, os.path.join(_PLUGIN_DIR, "search.py"), "test", "--json", "--limit", "3"],
-            capture_output=True, text=True, timeout=10,
+            [
+                sys.executable,
+                os.path.join(_PLUGIN_DIR, "search.py"),
+                "test",
+                "--json",
+                "--limit",
+                "3",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         self.assertEqual(result.returncode, 0)
         data = json.loads(result.stdout)
         self.assertIn("results", data)
+
+
+# --- TestCommandMenuRegistration ---
+
+
+class TestCommandMenuRegistration(unittest.TestCase):
+    """Test that bot registers slash commands with Telegram on startup."""
+
+    def test_post_init_calls_set_my_commands(self):
+        from bot import BotCommand
+
+        mock_bot = AsyncMock()
+        mock_app = MagicMock()
+        mock_app.bot = mock_bot
+
+        # Import main to get the post_init callback wired up
+        # We test the callback directly instead
+        async def _run():
+            from bot import _register_commands
+
+            await _register_commands(mock_app)
+            mock_bot.set_my_commands.assert_called_once()
+            cmds = mock_bot.set_my_commands.call_args[0][0]
+            cmd_names = [c.command for c in cmds]
+            self.assertIn("status", cmd_names)
+            self.assertIn("tts", cmd_names)
+            self.assertIn("voice", cmd_names)
+            self.assertEqual(len(cmds), 8)
+
+        asyncio.get_event_loop().run_until_complete(_run())
 
 
 if __name__ == "__main__":

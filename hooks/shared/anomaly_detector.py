@@ -55,17 +55,18 @@ def detect_anomalies(
     current: Dict[str, float],
     baseline: Dict[str, float],
     threshold_sigma: float = 2.0,
+    history: Optional[List[Dict[str, float]]] = None,
 ) -> List[Dict]:
     """Find gates whose current fire rate is anomalously high.
 
-    A gate is anomalous if its current rate exceeds
-    (baseline_mean + threshold_sigma * baseline_stddev) across all gates,
-    where the stddev is computed over all baseline values.
+    Uses dual detection: global threshold (original) plus per-gate adaptive
+    threshold when history is available. A gate is flagged if either triggers.
 
     Args:
         current:         Dict mapping gate name -> current fire rate.
         baseline:        Dict mapping gate name -> mean fire rate (from compute_baseline).
         threshold_sigma: Number of standard deviations above the mean to flag.
+        history:         Optional full history for per-gate stddev computation.
 
     Returns:
         List of dicts, each with keys:
@@ -74,6 +75,7 @@ def detect_anomalies(
           - baseline_rate: float
           - delta: float  (current - baseline)
           - sigma: float  (how many stddevs above baseline mean)
+          - detection_method: str ("global", "per_gate", or "both")
     """
     if not baseline:
         return []
@@ -82,12 +84,39 @@ def detect_anomalies(
     mean_all = sum(baseline_values) / len(baseline_values)
     std_all = _stddev(baseline_values)
 
+    # Per-gate stddev from history (more sensitive to individual gate anomalies)
+    per_gate_std: Dict[str, Tuple[float, float]] = {}
+    if history and len(history) >= 3:
+        all_gates = set()
+        for snap in history:
+            all_gates.update(snap.keys())
+        for gate in all_gates:
+            gate_vals = [snap.get(gate, 0.0) for snap in history]
+            gate_mean = sum(gate_vals) / len(gate_vals)
+            gate_std = _stddev(gate_vals)
+            per_gate_std[gate] = (gate_mean, gate_std)
+
     anomalies = []
     for gate, rate in current.items():
         baseline_rate = baseline.get(gate, 0.0)
-        threshold = mean_all + threshold_sigma * std_all
-        if rate > threshold and rate > baseline_rate:
+        global_threshold = mean_all + threshold_sigma * std_all
+        global_triggered = rate > global_threshold and rate > baseline_rate
+
+        # Per-gate detection: rate exceeds gate's own mean + threshold * gate's own stddev
+        per_gate_triggered = False
+        if gate in per_gate_std:
+            g_mean, g_std = per_gate_std[gate]
+            if g_std > 0:
+                per_gate_triggered = rate > g_mean + threshold_sigma * g_std
+
+        if global_triggered or per_gate_triggered:
             sigma = (rate - mean_all) / std_all if std_all > 0 else float("inf")
+            if global_triggered and per_gate_triggered:
+                method = "both"
+            elif global_triggered:
+                method = "global"
+            else:
+                method = "per_gate"
             anomalies.append(
                 {
                     "gate": gate,
@@ -95,10 +124,10 @@ def detect_anomalies(
                     "baseline_rate": baseline_rate,
                     "delta": rate - baseline_rate,
                     "sigma": sigma,
+                    "detection_method": method,
                 }
             )
 
-    # Sort descending by delta for easy inspection
     anomalies.sort(key=lambda x: x["delta"], reverse=True)
     return anomalies
 
@@ -179,6 +208,56 @@ def should_escalate(
 
     return False, "No anomalies detected"
 
+
+
+def detect_rate_of_change(
+    history: List[Dict[str, float]],
+    window: int = 5,
+    threshold: float = 2.0,
+) -> List[Dict]:
+    """Detect gates with rapid rate-of-change (acceleration detection).
+
+    Computes the derivative of fire rates across recent history windows
+    and flags gates where the rate is accelerating significantly.
+
+    Args:
+        history:   List of gate fire rate snapshots (oldest first).
+        window:    Number of snapshots for derivative computation.
+        threshold: Minimum rate-of-change magnitude to flag.
+
+    Returns:
+        List of dicts with gate, rate_of_change, direction ("accelerating"/"decelerating").
+    """
+    if len(history) < window + 1:
+        return []
+
+    recent = history[-window:]
+    older = history[-(window * 2):-window] if len(history) >= window * 2 else history[:window]
+
+    all_gates: set = set()
+    for snap in recent + older:
+        all_gates.update(snap.keys())
+
+    results = []
+    for gate in all_gates:
+        recent_vals = [snap.get(gate, 0.0) for snap in recent]
+        older_vals = [snap.get(gate, 0.0) for snap in older]
+
+        recent_mean = sum(recent_vals) / len(recent_vals) if recent_vals else 0.0
+        older_mean = sum(older_vals) / len(older_vals) if older_vals else 0.0
+
+        roc = recent_mean - older_mean
+        if abs(roc) >= threshold:
+            results.append({
+                "gate": gate,
+                "rate_of_change": round(roc, 3),
+                "recent_mean": round(recent_mean, 3),
+                "older_mean": round(older_mean, 3),
+                "direction": "accelerating" if roc > 0 else "decelerating",
+            })
+
+    results.sort(key=lambda x: abs(x["rate_of_change"]), reverse=True)
+    return results
 
 # ---------------------------------------------------------------------------
 # Session-level behavioral drift detection

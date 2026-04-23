@@ -98,7 +98,11 @@ def detect_project(cwd=None):
     # --- Fallback: any dir with .git ancestor (stop at $HOME) ---
     d = cwd
     home = os.path.realpath(os.path.expanduser("~"))
+    claude_dir = os.path.realpath(CLAUDE_DIR)
     while d != os.sep and d != home:
+        if d == claude_dir:
+            # ~/.claude is the framework hub, not a project
+            break
         if os.path.isdir(os.path.join(d, ".git")):
             return os.path.basename(d), d, None, None
         d = os.path.dirname(d)

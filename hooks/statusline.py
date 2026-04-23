@@ -23,11 +23,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from shared.memory_socket import (
-    is_worker_available,
-    count as socket_count,
-    WorkerUnavailable,
-)
+from shared.memory_socket import is_worker_available
 
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
@@ -49,6 +45,7 @@ except ImportError:
     _HAS_RAMDISK = False
 GATES_DIR = os.path.join(HOOKS_DIR, "gates")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
+SKILL_LIBRARY_DIR = os.path.join(CLAUDE_DIR, "skill-library")
 MODES_DIR = os.path.join(CLAUDE_DIR, "modes")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
@@ -60,7 +57,7 @@ CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
 EXPECTED_GATES = 17
-EXPECTED_SKILLS = 7
+EXPECTED_SKILLS = 15  # Minimum across both skills/ and skill-library/
 EXPECTED_HOOK_EVENTS = 13
 
 # Health bar characters (legacy — kept for reference)
@@ -93,7 +90,11 @@ def count_gates():
 
 
 def get_memory_count():
-    """Get curated memory count, cached to avoid frequent UDS calls."""
+    """Get curated memory count, cached for CACHE_TTL seconds.
+
+    Reads LanceDB directly (count_rows is O(1) metadata read).
+    Falls back to stale cache on any error.
+    """
     # Try cache first
     try:
         if os.path.exists(STATS_CACHE):
@@ -104,20 +105,22 @@ def get_memory_count():
     except (json.JSONDecodeError, OSError):
         pass
 
-    # Cache miss — query via UDS socket (fast, no subprocess needed)
+    # Cache miss — read LanceDB directly
     try:
-        count = socket_count("knowledge")
-        # Write cache
+        import lancedb
+
+        db = lancedb.connect(os.path.join(MEMORY_DIR, "lancedb"))
+        count = db.open_table("knowledge").count_rows()
         try:
             with open(STATS_CACHE, "w") as f:
                 json.dump({"ts": time.time(), "mem_count": count}, f)
         except OSError:
             pass
         return count
-    except (WorkerUnavailable, RuntimeError, OSError):
+    except Exception:
         pass
 
-    # UDS unavailable — return stale cache or "?"
+    # LanceDB unavailable — return stale cache or "?"
     try:
         if os.path.exists(STATS_CACHE):
             with open(STATS_CACHE) as f:
@@ -199,15 +202,18 @@ def get_project_name():
 
 
 def count_skills():
-    """Count SKILL.md directories in the skills directory."""
-    if not os.path.isdir(SKILLS_DIR):
-        return 0
-    count = 0
-    for entry in os.listdir(SKILLS_DIR):
-        skill_file = os.path.join(SKILLS_DIR, entry, "SKILL.md")
-        if os.path.isfile(skill_file):
-            count += 1
-    return count
+    """Count SKILL.md directories in both skill-library/ and skills/ (deduplicated)."""
+    seen = set()
+    for base_dir in (SKILL_LIBRARY_DIR, SKILLS_DIR):
+        if not os.path.isdir(base_dir):
+            continue
+        for entry in os.listdir(base_dir):
+            if entry in seen:
+                continue
+            skill_file = os.path.join(base_dir, entry, "SKILL.md")
+            if os.path.isfile(skill_file):
+                seen.add(entry)
+    return len(seen)
 
 
 def count_hook_events():
@@ -850,6 +856,7 @@ def main():
     # Extract session info (correct nested paths)
     cost_data = data.get("cost", {}) or {}
     ctx_data = data.get("context_window", {}) or {}
+    rate_data = data.get("rate_limits", {}) or {}
 
     cost = cost_data.get("total_cost_usd", 0) or 0
     duration_ms = cost_data.get("total_duration_ms", 0) or 0
@@ -1059,6 +1066,23 @@ def main():
     if vr_total > 0:
         line2_parts.append(f"\u2705V:{vr_verified}/{vr_total}")
 
+    # Rate limits (Pro/Team/Enterprise plans)
+    _rl_5h = rate_data.get("five_hour", {}) or {}
+    _rl_7d = rate_data.get("seven_day", {}) or {}
+    _rl_5h_pct = _rl_5h.get("used_percentage")
+    _rl_7d_pct = _rl_7d.get("used_percentage")
+    if _rl_5h_pct is not None or _rl_7d_pct is not None:
+        _5h = _rl_5h_pct if _rl_5h_pct is not None else 0
+        _7d = _rl_7d_pct if _rl_7d_pct is not None else 0
+        _rl_max = max(_5h, _7d)
+        if _rl_max >= 80:
+            _rl_color = COLOR_RED
+        elif _rl_max >= 50:
+            _rl_color = COLOR_YELLOW
+        else:
+            _rl_color = COLOR_GREEN
+        line2_parts.append(f"{_rl_color}RL:{_5h}%/{_7d}%{COLOR_RESET}")
+
     # Cost
     line2_parts.append(f"\U0001f4b0{cost_str}")
 
@@ -1100,9 +1124,14 @@ def main():
         elif usage_pct >= 0.40:
             budget_tier_str = " \U0001f7e1LOW"
     line3 = (
+        f"{_tog('auto_commit', 'AC')} "
+        f"{_tog('auto_commit_require_tests', 'ACT')} "
+        f"{_tog('require_tests', 'Tests')} "
+        f"{_tog('orchestrator', 'Orch')} "
         f"{_tog('terminal_l2_always', 'L2')} "
         f"{_tog('context_enrichment', 'Enrich')} "
         f"{_tog('transcript_l0', 'L0')} "
+        f"{_tog('counterfactual_retrieval', 'CF')} "
         f"{_tog('tg_l3_always', 'TG')} "
         f"{_tog('tg_enrichment', 'TGe')} "
         f"{_tog('tg_bot_tmux', 'Bot')} "

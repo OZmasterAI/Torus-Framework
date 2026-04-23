@@ -16,7 +16,9 @@ LanceDB provides optimistic concurrency control (no more segfaults),
 native TS bindings, and built-in BM25 FTS.
 """
 
+import asyncio
 import atexit
+import concurrent.futures
 import functools
 import hashlib
 import json
@@ -88,38 +90,139 @@ def _touch_memory_timestamp():
     os.replace(tmp, MEMORY_TIMESTAMP_FILE)
 
 
-# SSE transport config — used when launched with --sse flag
-_SSE_HOST = os.environ.get("MEMORY_SSE_HOST", "127.0.0.1")
-_SSE_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8741"))
+# Network transport config — streamable-http is default, use --stdio or --sse to override
+_NET_HOST = os.environ.get("MEMORY_SSE_HOST", "127.0.0.1")
+_NET_PORT = int(os.environ.get("MEMORY_SSE_PORT", "8742"))
+_PID_FILE = os.path.join(os.path.dirname(__file__), ".memory_server.pid")
 
 # Detect transport mode from CLI args
 import argparse as _argparse
 
 _parser = _argparse.ArgumentParser(add_help=False)
-_parser.add_argument("--sse", action="store_true", default=False)
-_parser.add_argument("--port", type=int, default=_SSE_PORT)
+_parser.add_argument(
+    "--sse",
+    action="store_true",
+    default=False,
+    help="Use SSE transport (deprecated in Claude Code 2.1.83+)",
+)
+_parser.add_argument(
+    "--http",
+    action="store_true",
+    default=True,
+    help="Use streamable-http transport (default, recommended)",
+)
+_parser.add_argument(
+    "--stdio",
+    action="store_true",
+    default=False,
+    help="Use stdio transport (for subprocess/pipe mode)",
+)
+_parser.add_argument("--port", type=int, default=_NET_PORT)
 _parser.add_argument("--bootstrap-clusters", action="store_true", default=False)
 _args, _ = _parser.parse_known_args()
 
-# Initialize MCP server (with host/port for SSE mode)
-if _args.sse:
-    mcp = FastMCP("memory", host=_SSE_HOST, port=_args.port)
+# --stdio explicitly overrides --http default
+if _args.stdio:
+    _args.http = False
+
+# Initialize MCP server (with host/port for network modes)
+_network_mode = _args.sse or _args.http
+if _network_mode:
+    mcp = FastMCP("memory", host=_NET_HOST, port=_args.port, json_response=True)
 else:
     mcp = FastMCP("memory")
 
+# --- OAuth discovery stubs (Claude Code 2.1.85+ does RFC 9728 / RFC 8414 probing) ---
+# The MCP spec says auth is OPTIONAL. When discovery returns 404, the client
+# should fall back to default endpoints. We return 404 with proper JSON on all
+# OAuth-related paths so Claude Code doesn't choke on plain-text "Not Found".
+from starlette.requests import Request
+from starlette.responses import Response, JSONResponse
+
+
+@mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])
+async def _oauth_as_metadata(request: Request) -> Response:
+    """RFC 8414 — no authorization server configured."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+async def _oauth_protected_resource(request: Request) -> Response:
+    """RFC 9728 — resource is not protected."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/.well-known/openid-configuration", methods=["GET"])
+async def _openid_config(request: Request) -> Response:
+    """OpenID Connect — not supported."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/register", methods=["POST"])
+async def _oauth_register(request: Request) -> Response:
+    """RFC 7591 Dynamic Client Registration — not supported."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/authorize", methods=["GET"])
+async def _oauth_authorize(request: Request) -> Response:
+    """OAuth authorize endpoint — not supported."""
+    return Response(status_code=404)
+
+
+@mcp.custom_route("/token", methods=["POST"])
+async def _oauth_token(request: Request) -> Response:
+    """OAuth token endpoint — not supported."""
+    return Response(status_code=404)
+
+
+# --- SSE reconnect fix ---
+# When Claude Code's SSE connection drops and reconnects, it skips sending the
+# MCP InitializeRequest and jumps straight to tool calls.  The default
+# ServerSession._received_request raises RuntimeError for uninitialized sessions.
+# This patch auto-initializes instead, so reconnects work transparently.
+from mcp.server.session import ServerSession, InitializationState
+import mcp.types as _mcp_types
+
+_original_received_request = ServerSession._received_request
+
+
+async def _patched_received_request(self, responder):
+    """Allow tool requests on uninitialized SSE sessions by auto-initializing."""
+    if self._initialization_state != InitializationState.Initialized and not isinstance(
+        responder.request.root,
+        (_mcp_types.InitializeRequest, _mcp_types.PingRequest),
+    ):
+        _sys.stderr.write(
+            "[MCP] Auto-initializing session on reconnect "
+            f"(got {type(responder.request.root).__name__} before InitializeRequest)\n"
+        )
+        self._initialization_state = InitializationState.Initialized
+    return await _original_received_request(self, responder)
+
+
+ServerSession._received_request = _patched_received_request
+# --- end SSE reconnect fix ---
+
 
 def crash_proof(fn):
-    """Wrap MCP tool handler so exceptions return error dicts instead of crashing the server."""
+    """Wrap MCP tool: offloads sync body to thread pool, catches exceptions.
+
+    Keeps uvicorn event loop free while embedding inference runs.
+    """
 
     @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
+    async def wrapper(*args, **kwargs):
         try:
-            return fn(*args, **kwargs)
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                _tool_executor, functools.partial(fn, *args, **kwargs)
+            )
         except Exception as e:
             import traceback
 
             tb = traceback.format_exc()
-            print(f"[MCP] {fn.__name__} error: {e}\n{tb}", file=_sys.stderr)
+            _sys.stderr.write(f"[MCP] {fn.__name__} error: {e}\n{tb}\n")
             return {"error": f"{fn.__name__} failed: {type(e).__name__}: {e}"}
 
     return wrapper
@@ -145,11 +248,15 @@ MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 LANCE_DIR = os.path.join(MEMORY_DIR, "lancedb")
 os.makedirs(LANCE_DIR, exist_ok=True)
 
-# Embedding model: nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens, ~67% MTEB)
-# MoE architecture (305M active params), Matryoshka (truncatable to 256-dim)
-_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v2-moe"
-_EMBEDDING_DIM = 768
-_embedding_fn = None  # Lazy init — SentenceTransformer instance
+# Embedding model: nvidia/nv-embed-v1 via NIM API (4096-dim, 7B params, MTEB 69.3)
+# API-based — no local model, near-zero RAM, ~1s per embed
+_EMBEDDING_MODEL = "nvidia/nv-embed-v1"
+_EMBEDDING_DIM = 4096
+_embedding_fn = True  # Always "loaded" — API-based, no local model
+_NIM_URL = "https://integrate.api.nvidia.com/v1/embeddings"
+_NIM_KEY_FALLBACK = (
+    "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"
+)
 TAGS_DB_PATH = os.path.join(MEMORY_DIR, "tags.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
@@ -191,6 +298,7 @@ _KNOWLEDGE_SCHEMA = pa.schema(
         pa.field("cluster_id", pa.string()),
         pa.field("memory_type", pa.string()),
         pa.field("state_type", pa.string()),
+        pa.field("quality_score", pa.float64()),
     ]
 )
 
@@ -269,23 +377,49 @@ _TABLE_SCHEMAS = {
 
 
 def _embed_texts(texts):
-    """Embed a list of texts using the loaded SentenceTransformer model.
+    """Embed a list of texts via NVIDIA NIM API (nv-embed-v1, 4096-dim).
 
-    Returns list of lists of floats (768-dim vectors).
-    Falls back to zero vectors if embedding model is unavailable.
+    Returns list of lists of floats (4096-dim vectors).
+    Falls back to zero vectors if API is unavailable.
     """
-    if _embedding_fn is None:
-        return [[0.0] * _EMBEDDING_DIM for _ in texts]
+    import requests
+
+    # Replace empty texts — NIM rejects them
+    safe_texts = [t if t and t.strip() else "[empty]" for t in texts]
     try:
-        vectors = _embedding_fn.encode(texts, show_progress_bar=False)
-        return [v.tolist() for v in vectors]
-    except Exception:
+        resp = requests.post(
+            _NIM_URL,
+            headers={
+                "Authorization": "Bearer "
+                + _read_config_toggles().get("nim_api_key", _NIM_KEY_FALLBACK),
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": _EMBEDDING_MODEL,
+                "input": safe_texts,
+                "input_type": "passage",
+                "encoding_format": "float",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return [d["embedding"] for d in data["data"]]
+    except Exception as e:
+        print(f"[MCP] NIM embed error: {e}", file=_sys.stderr)
         return [[0.0] * _EMBEDDING_DIM for _ in texts]
 
 
 def _embed_text(text):
     """Embed a single text string. Returns list of floats (768-dim)."""
     return _embed_texts([text])[0]
+
+
+# Thread pool for offloading CPU-heavy MCP tool calls off the uvicorn event loop.
+# Single worker serializes access to the non-thread-safe SentenceTransformer model.
+_tool_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="mcp-tool"
+)
 
 
 from shared.lance_collection import (
@@ -325,24 +459,11 @@ def _init_lancedb():
     if _lance_db is not None:
         return
     try:
-        # Initialize embedding function (nomic-embed-text-v2-moe, 768-dim, 8192 tokens)
-        try:
-            import torch
-
-            torch.set_num_threads(2)
-            torch.set_num_interop_threads(2)
-            from sentence_transformers import SentenceTransformer
-
-            _embedding_fn = SentenceTransformer(
-                _EMBEDDING_MODEL, trust_remote_code=True
-            )
-            print(
-                f"[MCP] Embedding model loaded: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim)",
-                file=_sys.stderr,
-            )
-        except Exception as ef_err:
-            print(f"[MCP] Embedding model load failed: {ef_err}", file=_sys.stderr)
-            _embedding_fn = None
+        # nv-embed-v1 via NIM API — no local model to load
+        print(
+            f"[MCP] Embedding via NIM API: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim)",
+            file=_sys.stderr,
+        )
 
         _lance_db = lancedb.connect(LANCE_DIR)
 
@@ -350,11 +471,19 @@ def _init_lancedb():
             """Open table if exists, create with schema if not."""
             try:
                 tbl = _lance_db.open_table(name)
-                # Migrate: add missing columns from schema
-                existing_cols = set(tbl.schema.names)
+                # Migrate: add missing columns or fix type mismatches
+                existing_cols = {f.name: f.type for f in tbl.schema}
                 for field in schema:
-                    if field.name not in existing_cols:
-                        if pa.types.is_float64(field.type):
+                    existing_type = existing_cols.get(field.name)
+                    if existing_type is None:
+                        # Column missing — add it
+                        if pa.types.is_list(field.type):
+                            print(
+                                f"[MCP] {name}: new vector column {field.name} needs backfill (run migrate_vector_256.py)",
+                                file=_sys.stderr,
+                            )
+                            continue
+                        elif pa.types.is_float64(field.type):
                             default = "0.0"
                         elif pa.types.is_int32(field.type):
                             default = "0"
@@ -371,6 +500,14 @@ def _init_lancedb():
                                 f"[MCP] Migration failed for {name}.{field.name}: {e}",
                                 file=_sys.stderr,
                             )
+                    elif pa.types.is_list(field.type) and not pa.types.is_list(
+                        existing_type
+                    ):
+                        # Type mismatch: schema wants list but column is string/other
+                        print(
+                            f"[MCP] WARNING: {name}.{field.name} has wrong type ({existing_type}, expected {field.type}). Run migrate_vector_256.py to fix.",
+                            file=_sys.stderr,
+                        )
             except Exception:
                 tbl = _lance_db.create_table(name, schema=schema)
             return _make_lance_collection(tbl, schema, name)
@@ -660,6 +797,9 @@ _preview_migrated = False
 tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
+_initializing = False  # True during _ensure_initialized() — watchdog skips strikes
+_init_lock = threading.Lock()  # Serializes warmup thread vs tool call initialization
+_init_done = threading.Event()  # Signaled when initialization completes
 _lance_fts_ready = False  # True once LanceDB FTS index is built
 _knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None  # LTPTracker instance (initialized lazily)
@@ -799,22 +939,56 @@ def _ensure_initialized():
     """
     global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
     global _knowledge_graph, _ltp_tracker, _adaptive_weights, _cluster_store
+    global _initializing
     if _initialized:
         return
+    if _initializing:
+        # Warmup thread is running — wait for it to finish (up to 5 min)
+        _init_done.wait(timeout=300)
+        return
+    with _init_lock:
+        if _initialized:
+            return  # Completed while we waited for the lock
+        _initializing = True
+    _t_total = time.monotonic()
     _init_lancedb()
+    _t_model = time.monotonic()
     if collection is None:
         print(
             "[MCP] LanceDB unavailable — starting in degraded mode.", file=_sys.stderr
         )
         _initialized = True
+        _initializing = False
+        _init_done.set()
         return
 
-    # Build LanceDB native FTS index on text column
+    # Build LanceDB native FTS index on text column (incremental if possible)
     try:
-        collection._table.create_fts_index("text", replace=True)
+        _fts_count_path = os.path.join(MEMORY_DIR, ".fts_last_count")
+        _current_rows = collection._table.count_rows()
+        _last_count = 0
+        if os.path.exists(_fts_count_path):
+            try:
+                _last_count = int(open(_fts_count_path).read().strip())
+            except (ValueError, OSError):
+                pass
+        if _last_count == 0 or _current_rows == 0:
+            # No prior index or empty table — full build needed
+            collection._table.create_fts_index("text", replace=True)
+        elif _current_rows != _last_count:
+            # New rows since last index — incremental optimize
+            try:
+                collection._table.optimize()
+            except Exception:
+                # optimize failed — fall back to full rebuild
+                collection._table.create_fts_index("text", replace=True)
+        # else: row count unchanged — skip entirely
+        with open(_fts_count_path, "w") as f:
+            f.write(str(_current_rows))
         _lance_fts_ready = True
     except Exception:
         pass  # FTS is optional — keyword search degrades gracefully
+    _t_fts = time.monotonic()
 
     # Initialize knowledge graph and LTP tracker (fail-open)
     try:
@@ -893,7 +1067,14 @@ def _ensure_initialized():
     # Initialize pipeline instances (fail-open — fall back to inline logic)
     _init_pipelines()
 
+    _t_done = time.monotonic()
+    print(
+        f"[MCP] Startup: model={_t_model - _t_total:.1f}s  fts={_t_fts - _t_model:.1f}s  rest={_t_done - _t_fts:.1f}s  total={_t_done - _t_total:.1f}s",
+        file=_sys.stderr,
+    )
     _initialized = True
+    _initializing = False
+    _init_done.set()
 
 
 def _init_pipelines():
@@ -950,6 +1131,7 @@ def _init_pipelines():
             "summary_length": SUMMARY_LENGTH,
             "server_project": _SERVER_PROJECT,
             "server_subproject": _SERVER_SUBPROJECT,
+            "embed_text": _embed_text,
         }
         _write_pipeline = WritePipeline(
             collection=collection,
@@ -962,13 +1144,24 @@ def _init_pipelines():
         print(f"[MCP] Pipeline init failed (will use inline): {e}", file=_sys.stderr)
 
 
+_config_cache = {}
+_config_cache_ts = 0.0
+_CONFIG_CACHE_TTL = 60  # seconds
+
+
 def _read_config_toggles():
-    """Read config toggles from config.json (with LIVE_STATE.json fallback)."""
+    """Read config toggles from config.json (cached, refreshes every 60s)."""
+    global _config_cache, _config_cache_ts
+    now = time.time()
+    if _config_cache and (now - _config_cache_ts) < _CONFIG_CACHE_TTL:
+        return _config_cache
     _config_path = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
     try:
         if os.path.isfile(_config_path):
             with open(_config_path, "r") as f:
-                return json.load(f)
+                _config_cache = json.load(f)
+                _config_cache_ts = now
+                return _config_cache
     except Exception:
         pass
     _live_state_path = os.path.join(
@@ -977,10 +1170,12 @@ def _read_config_toggles():
     try:
         if os.path.isfile(_live_state_path):
             with open(_live_state_path, "r") as f:
-                return json.load(f)
+                _config_cache = json.load(f)
+                _config_cache_ts = now
+                return _config_cache
     except Exception:
         pass
-    return {}
+    return _config_cache or {}
 
 
 from shared.search_helpers import TagCooccurrence as _TagCooccurrence
@@ -1443,7 +1638,7 @@ def _compact_observations():
         pass  # Compaction failure must not crash the server
 
 
-def _search_observations_internal(query, top_k=20, recency_weight=0):
+def _search_observations_internal(query, top_k=20, recency_weight=0, query_vec=None):
     """Internal helper to search observations collection.
 
     Used by search_knowledge mode="observations", mode="all", and auto-fallback.
@@ -1456,7 +1651,11 @@ def _search_observations_internal(query, top_k=20, recency_weight=0):
             return {"results": [], "total_observations": 0}
 
         actual_k = min(top_k, obs_count)
-        results = observations.query(query_texts=[query], n_results=actual_k)
+        results = observations.query(
+            query_texts=[query] if not query_vec else None,
+            query_vector=query_vec,
+            n_results=actual_k,
+        )
         formatted = format_summaries(results)
 
         # Label all results as coming from observations
@@ -1728,12 +1927,15 @@ def _bridge_to_fix_outcomes(content, context, tags):
         return None
 
 
-def _check_dedup(content, tags=""):
+def _check_dedup(content, tags="", query_vector=None):
     """Check if content is a near-duplicate of existing knowledge.
 
     Returns None if unique, or a dict:
       - {"blocked": True, "existing_id": ..., "distance": ...} if hard-dedup
       - {"soft_dupe_tag": "possible-dupe:ID"} if in soft zone
+
+    Args:
+        query_vector: Pre-computed embedding vector. Skips re-embedding if provided.
     """
     if _FIX_DEDUP_EXEMPT and "type:fix" in tags:
         return None
@@ -1741,11 +1943,12 @@ def _check_dedup(content, tags=""):
         cnt = collection.count()
         if cnt == 0:
             return None
-        similar = collection.query(
-            query_texts=[content],
-            n_results=1,
-            include=["distances"],
-        )
+        _query_kwargs = {"n_results": 1, "include": ["distances"]}
+        if query_vector is not None:
+            _query_kwargs["query_vector"] = query_vector
+        else:
+            _query_kwargs["query_texts"] = [content]
+        similar = collection.query(**_query_kwargs)
         if (
             similar
             and similar.get("distances")
@@ -3511,6 +3714,8 @@ def maintenance(
         return memory_health_report()
     elif action == "rebuild_tags":
         return rebuild_tag_index()
+    elif action == "optimize":
+        return _optimize_tables()
     elif action == "batch_rename":
         return _batch_rename_memories()
     elif action == "gate_effectiveness":
@@ -3524,6 +3729,7 @@ def maintenance(
                 "cluster": "Group related memories into clusters (min_cluster_size, distance_threshold)",
                 "health": "Generate memory health metrics (no params)",
                 "rebuild_tags": "Rebuild tag co-occurrence matrix (no params)",
+                "optimize": "Compact tables and remove orphaned old version files (no params)",
                 "batch_rename": "Rename megaman→torus in all memory content and tags",
                 "gate_effectiveness": "Analyze gate block effectiveness from session state",
             },
@@ -3531,6 +3737,33 @@ def maintenance(
 
 
 # ──────────────────────────────────────────────────
+
+
+def _optimize_tables() -> dict:
+    """Compact all LanceDB tables, prune old versions, recover disk space."""
+    from datetime import timedelta
+    import time
+
+    global _lance_db
+    if _lance_db is None:
+        return {"action": "optimize", "error": "LanceDB not initialized"}
+    results = {}
+    for name in _lance_db.table_names():
+        t = _lance_db.open_table(name)
+        before = t.count_rows()
+        start = time.time()
+        t.optimize(cleanup_older_than=timedelta(0), delete_unverified=True)
+        elapsed = time.time() - start
+        after = t.count_rows()
+        results[name] = {
+            "rows_before": before,
+            "rows_after": after,
+            "duration_s": round(elapsed, 1),
+            "rows_ok": before == after,
+        }
+    return {"action": "optimize", "tables": results}
+
+
 # Teammate Transcript Helpers (DORMANT — add @mcp.tool() to activate)
 # ──────────────────────────────────────────────────
 
@@ -3809,6 +4042,10 @@ def _dispatch_request(req):
             result = _backup_database()
             return {"ok": True, "result": result}
 
+        if method == "optimize":
+            result = _optimize_tables()
+            return {"ok": True, "result": result}
+
         if method == "auto_remember":
             content = params.get("content", "")
             context = params.get("context", "")
@@ -4077,18 +4314,342 @@ def _cleanup_socket():
 atexit.register(_cleanup_socket)
 
 
+# ──────────────────────────────────────────────────
+# SSE Health Watchdog — detect runaway threads/CPU and self-restart
+# ──────────────────────────────────────────────────
+
+_WATCHDOG_INTERVAL = 30  # seconds between checks
+_WATCHDOG_CPU_THRESHOLD = 80.0  # % CPU averaged over interval
+_WATCHDOG_THREAD_THRESHOLD = 20  # max active threads before alarm
+_WATCHDOG_STRIKES_TO_RESTART = 3  # consecutive bad checks before restart
+
+
+def _start_sse_watchdog():
+    """Monitor process health and self-restart if SSE transport degrades.
+
+    Detects: accumulated dead SSE connections causing thread buildup and CPU spin.
+    Action: logs warning, then graceful self-restart via os.execv after N strikes.
+    """
+    import resource
+
+    _strikes = 0
+    _last_cpu = time.monotonic()
+    _last_usage = resource.getrusage(resource.RUSAGE_SELF)
+
+    def _watchdog_loop():
+        nonlocal _strikes, _last_cpu, _last_usage
+
+        while True:
+            time.sleep(_WATCHDOG_INTERVAL)
+            try:
+                # Measure CPU usage over the interval
+                now = time.monotonic()
+                usage = resource.getrusage(resource.RUSAGE_SELF)
+                elapsed = now - _last_cpu
+                if elapsed < 1:
+                    continue
+                cpu_time = (usage.ru_utime - _last_usage.ru_utime) + (
+                    usage.ru_stime - _last_usage.ru_stime
+                )
+                cpu_pct = (cpu_time / elapsed) * 100.0
+                _last_cpu = now
+                _last_usage = usage
+
+                # Count active threads
+                thread_count = threading.active_count()
+
+                unhealthy = (
+                    cpu_pct > _WATCHDOG_CPU_THRESHOLD
+                    or thread_count > _WATCHDOG_THREAD_THRESHOLD
+                )
+
+                # Skip strike counting during model loading / init
+                if _initializing or not _initialized:
+                    if unhealthy:
+                        _sys.stderr.write(
+                            f"[WATCHDOG] Init in progress, skipping strike: "
+                            f"CPU={cpu_pct:.1f}% threads={thread_count}\n"
+                        )
+                    _strikes = 0
+                    continue
+
+                if unhealthy:
+                    _strikes += 1
+                    _sys.stderr.write(
+                        f"[WATCHDOG] Strike {_strikes}/{_WATCHDOG_STRIKES_TO_RESTART}: "
+                        f"CPU={cpu_pct:.1f}% threads={thread_count}\n"
+                    )
+                else:
+                    if _strikes > 0:
+                        _sys.stderr.write(
+                            f"[WATCHDOG] Recovered: CPU={cpu_pct:.1f}% threads={thread_count}\n"
+                        )
+                    _strikes = 0
+
+                if _strikes >= _WATCHDOG_STRIKES_TO_RESTART:
+                    _sys.stderr.write(
+                        f"[WATCHDOG] High load: {_strikes} consecutive strikes "
+                        f"(CPU={cpu_pct:.1f}% threads={thread_count}) — logging only\n"
+                    )
+                    with open("/tmp/memory_server_debug.log", "a") as f:
+                        f.write(
+                            f"[{datetime.now().isoformat()}] PID={os.getpid()} "
+                            f"WATCHDOG high load: CPU={cpu_pct:.1f}% threads={thread_count}\n"
+                        )
+                    _strikes = 0  # reset after logging
+            except Exception as e:
+                _sys.stderr.write(f"[WATCHDOG] Error: {e}\n")
+
+    t = threading.Thread(target=_watchdog_loop, daemon=True, name="sse-watchdog")
+    t.start()
+    _sys.stderr.write("[WATCHDOG] SSE health monitor started\n")
+
+
+# ──────────────────────────────────────────────────
+# Agent Coordination (agent_channel.py v2 wrapper)
+# ──────────────────────────────────────────────────
+
+
+@mcp.tool()
+@crash_proof
+def agent_coordination(
+    action: str,
+    title: str = "",
+    description: str = "",
+    created_by: str = "",
+    assigned_to: str = "",
+    priority: int = 5,
+    tags: str = "",
+    depends_on: str = "",
+    required_role: str = "",
+    goal: str = "",
+    parent_task_id: str = "",
+    task_id: str = "",
+    result: str = "",
+    role: str = "",
+    tag: str = "",
+    agent_id: str = "",
+    status: str = "",
+    msg_type: str = "info",
+    content: str = "",
+    to_agent: str = "all",
+    since_minutes: int = 60,
+) -> dict:
+    """Unified agent task and messaging coordination.
+
+    Actions:
+      create_task   — Create a task (title, created_by required)
+      list_tasks    — List tasks (optional: status, agent_id, tag)
+      claim_task    — Claim next pending task (agent_id required, optional: role, tag)
+      complete_task — Complete a task (task_id, result required)
+      send_message  — Send a message (content required, optional: to_agent, msg_type)
+      read_messages — Read recent messages (optional: agent_id, since_minutes)
+    """
+    _ac_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    if _ac_path not in _sys.path:
+        _sys.path.insert(0, _ac_path)
+    try:
+        from shared.agent_channel import (
+            create_task as _ac_create,
+            list_tasks as _ac_list,
+            claim_next_task as _ac_claim,
+            complete_task as _ac_complete,
+            post_message as _ac_post,
+            read_messages as _ac_read,
+        )
+    except ImportError as e:
+        return {"error": f"agent_channel import failed: {e}"}
+
+    action = action.strip().lower().replace("-", "_")
+
+    if action == "create_task":
+        if not title:
+            return {"error": "title is required for create_task"}
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+        tid = _ac_create(
+            title=title,
+            description=description or "",
+            created_by=created_by or "main",
+            priority=priority,
+            tags=tag_list,
+            assigned_to=assigned_to or None,
+            depends_on=depends_on or None,
+            required_role=required_role or None,
+            goal=goal or None,
+            parent_task_id=parent_task_id or None,
+            notify=bool(assigned_to),
+        )
+        if tid:
+            return {"task_id": tid, "title": title, "status": "pending"}
+        return {"error": "Failed to create task"}
+
+    elif action == "list_tasks":
+        tasks = _ac_list(
+            status=status or None,
+            agent_id=agent_id or None,
+            tag=tag or None,
+            parent_task_id=parent_task_id or None,
+        )
+        return {"tasks": tasks, "count": len(tasks)}
+
+    elif action == "claim_task":
+        if not agent_id:
+            return {"error": "agent_id is required for claim_task"}
+        task = _ac_claim(agent_id, role=role or None, tag=tag or "")
+        if task:
+            return {"claimed": True, "task": task}
+        return {"claimed": False, "message": "No tasks available"}
+
+    elif action == "complete_task":
+        if not task_id:
+            return {"error": "task_id is required for complete_task"}
+        ok = _ac_complete(task_id, result or "", broadcast=True)
+        return {"completed": ok, "task_id": task_id}
+
+    elif action == "send_message":
+        if not content:
+            return {"error": "content is required for send_message"}
+        ok = _ac_post(
+            from_agent=agent_id or "main",
+            msg_type=msg_type,
+            content=content,
+            to_agent=to_agent,
+        )
+        return {"sent": ok}
+
+    elif action == "read_messages":
+        import time as _ac_time
+
+        since_ts = _ac_time.time() - (since_minutes * 60)
+        msgs = _ac_read(since_ts, agent_id=agent_id or None)
+        return {"messages": msgs, "count": len(msgs)}
+
+    else:
+        return {
+            "error": f"Unknown action: {action}",
+            "valid_actions": [
+                "create_task",
+                "list_tasks",
+                "claim_task",
+                "complete_task",
+                "send_message",
+                "read_messages",
+            ],
+        }
+
+
 if __name__ == "__main__":
-    # Defer _ensure_initialized() to first tool call — mcp.run() must start
-    # immediately so Claude Code's MCP handshake doesn't timeout (~25s model load).
+    # Debug log for MCP init diagnosis (added session 469)
+    _dbg_log = "/tmp/memory_server_debug.log"
+
+    # PID file guard — prevent double-launch (added session 83)
+    def _check_pid_guard():
+        """Check if another instance is already running. Exit if so."""
+        if os.path.exists(_PID_FILE):
+            try:
+                with open(_PID_FILE) as f:
+                    old_pid = int(f.read().strip())
+                # Check if that process is still alive
+                os.kill(old_pid, 0)
+                # Process alive — check it's actually memory_server
+                import subprocess as _sp
+
+                cmdline = _sp.run(
+                    ["ps", "-p", str(old_pid), "-o", "args="],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                ).stdout.strip()
+                if "memory_server" in cmdline:
+                    _sys.stderr.write(
+                        f"[MCP] memory_server already running (PID {old_pid}). Exiting.\n"
+                    )
+                    with open(_dbg_log, "a") as f:
+                        f.write(
+                            f"[{datetime.now().isoformat()}] PID={os.getpid()} ABORTED: "
+                            f"existing instance PID {old_pid} still running\n"
+                        )
+                    _sys.exit(0)
+            except (OSError, ValueError, Exception):
+                pass  # Stale PID file or dead process — safe to proceed
+
+    def _write_pid():
+        """Write current PID to file and register cleanup."""
+        with open(_PID_FILE, "w") as f:
+            f.write(str(os.getpid()))
+        atexit.register(_remove_pid)
+
+    def _remove_pid():
+        """Remove PID file on clean exit."""
+        try:
+            os.remove(_PID_FILE)
+        except OSError:
+            pass
+
+    _check_pid_guard()
+    _write_pid()
+
+    with open(_dbg_log, "a") as _f:
+        _f.write(
+            f"[{datetime.now().isoformat()}] PID={os.getpid()} args={_sys.argv} starting\n"
+        )
+
+    # Background warmup: load embedding model + LanceDB while uvicorn starts.
+    # This eliminates the 80-160s cold-start timeout on first tool call.
+    def _background_warmup():
+        try:
+            _sys.stderr.write("[WARMUP] Starting background initialization...\n")
+            _ensure_initialized()
+            # Run a dummy embedding to fully warm the model (JIT/kernel caches).
+            # Without this, the first real search_knowledge call pays a >30s penalty.
+            if _embedding_fn is not None:
+                _sys.stderr.write("[WARMUP] Running dummy embedding to warm model...\n")
+                _embed_text("warmup")
+                _sys.stderr.write("[WARMUP] Embedding model warm\n")
+            _sys.stderr.write(
+                "[WARMUP] Background initialization complete — server ready\n"
+            )
+        except Exception as e:
+            _sys.stderr.write(
+                f"[WARMUP] Background init failed (will retry on first call): {e}\n"
+            )
+
+    import threading as _startup_threading
+
+    _startup_threading.Thread(
+        target=_background_warmup, daemon=True, name="warmup"
+    ).start()
+
     _start_socket_server()
+    with open(_dbg_log, "a") as _f:
+        _f.write(
+            f"[{datetime.now().isoformat()}] PID={os.getpid()} socket server done\n"
+        )
     if _args.bootstrap_clusters:
         _bootstrap_clusters()
         _sys.exit(0)
-    _mode = "sse" if _args.sse else "stdio"
-    if _args.sse:
-        _sys.stderr.write(f"[MCP] Starting SSE transport on {_SSE_HOST}:{_args.port}\n")
+    if _args.stdio:
+        _mode = "stdio"
+    elif _args.sse:
+        _mode = "sse"
+    else:
+        _mode = "streamable-http"
+    if _network_mode:
+        _sys.stderr.write(
+            f"[MCP] Starting {_mode} transport on {_NET_HOST}:{_args.port}\n"
+        )
+        _start_sse_watchdog()
+    with open(_dbg_log, "a") as _f:
+        _f.write(
+            f"[{datetime.now().isoformat()}] PID={os.getpid()} calling mcp.run(transport={_mode})\n"
+        )
     try:
         mcp.run(transport=_mode)
     except Exception as e:
+        with open(_dbg_log, "a") as _f:
+            import traceback
+
+            _f.write(f"[{datetime.now().isoformat()}] PID={os.getpid()} FATAL: {e}\n")
+            _f.write(traceback.format_exc() + "\n")
         _sys.stderr.write(f"[MCP] Fatal: {e}\n")
         _sys.exit(1)

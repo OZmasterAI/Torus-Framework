@@ -14,7 +14,7 @@ When the user says "fix", "debug", "broken", or encounters an error.
    - Check memory for similar past issues
    - If the issue was seen before, use the previous fix as starting point
 4. **FIX**:
-   - Enter Plan Mode if the fix is non-trivial
+   - Run /brainstorm if the fix is non-trivial
    - Make the minimal change needed
    - Follow The Loop: fix → test → prove → save
 5. **VERIFY**:

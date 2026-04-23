@@ -75,7 +75,12 @@ def main():
         if not _tracker_state.get("expand_written", False):
             inject_enforcer_fields(_tracker_state, state)
             _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-            _writer = WorkingMemoryWriter(_hooks_dir)
+            try:
+                from boot_pkg.util import detect_project as _detect_proj
+                _, _proj_dir_pc, _, _ = _detect_proj()
+            except Exception:
+                _proj_dir_pc = None
+            _writer = WorkingMemoryWriter(_hooks_dir, project_dir=_proj_dir_pc or "")
             _writer.write_expanded(_tracker_state)
             _op_tracker._save_state(_tracker_state)
             print(
@@ -90,6 +95,14 @@ def main():
 
     # Start 5-turn countdown to clear working-summary.md after compaction
     try:
+        # Guard: if working memory block above failed, _tracker_state may be unbound
+        try:
+            _tracker_state  # noqa: B018 — existence check
+        except NameError:
+            from shared.operation_tracker import OperationTracker as _OT2
+
+            _op_tracker = _OT2(session_id)
+            _tracker_state = _op_tracker.get_state()
         _tracker_state["summary_clear_countdown"] = 5
         _tracker_state["summary_threshold_fired"] = False  # Reset for next cycle
         _tracker_state["context_warning_shown"] = False  # Reset so warning fires again
@@ -110,6 +123,55 @@ def main():
         )
     except Exception:
         pass  # Non-blocking
+
+    # Task 19: include DAG branch label + summary in pre-compact snapshot
+    _dag_branch_label = ""
+    _dag_branch_name = ""
+    _dag_summary = ""
+    _dag_node_count = 0
+    try:
+        from shared.dag import get_session_dag
+
+        _dag = get_session_dag(session_id)
+        _dag_branch_label = _dag.get_branch_label()
+        _binfo = _dag.current_branch_info()
+        _dag_branch_name = _binfo.get("name", "")
+        _dag_node_count = _binfo.get("msg_count", 0)
+        # Build compact branch summary for post-compaction context recovery
+        _dag_summary = _dag.build_summary(max_nodes=8)
+        if _dag_branch_label:
+            print(
+                f"[PreCompact] DAG branch: {_dag_branch_name} "
+                f"(task={_dag_branch_label}, nodes={_dag_node_count})",
+                file=sys.stderr,
+            )
+        elif _dag_branch_name:
+            print(
+                f"[PreCompact] DAG branch: {_dag_branch_name} (nodes={_dag_node_count})",
+                file=sys.stderr,
+            )
+        # Write DAG snapshot fields to LIVE_STATE.json for session continuity
+        try:
+            _live_path = os.path.join(
+                os.path.expanduser("~"), ".claude", "LIVE_STATE.json"
+            )
+            _ls = {}
+            if os.path.isfile(_live_path):
+                with open(_live_path) as _f:
+                    _ls = json.load(_f)
+            _ls["dag_branch"] = _dag_branch_name
+            _ls["dag_branch_label"] = _dag_branch_label
+            _ls["dag_node_count"] = _dag_node_count
+            _ls["pre_compact_ts"] = datetime.now().isoformat()
+            _tmp = _live_path + ".tmp"
+            with open(_tmp, "w") as _f:
+                json.dump(_ls, _f, indent=2)
+                _f.write("\n")
+            os.replace(_tmp, _live_path)
+        except Exception:
+            pass  # LIVE_STATE update is best-effort
+    except Exception:
+        pass  # Fail-open
 
     # Extract snapshot metrics
     tool_call_count = state.get("tool_call_count", 0)
@@ -278,6 +340,17 @@ def main():
         trajectory = "struggling"
     document_parts.append(f"Trajectory: {trajectory}")
 
+    # Add DAG branch context to document for post-compaction recovery
+    if _dag_branch_name:
+        _dag_doc = f"DAG branch: {_dag_branch_name}"
+        if _dag_branch_label:
+            _dag_doc += f" (task={_dag_branch_label})"
+        if _dag_node_count:
+            _dag_doc += f", {_dag_node_count} nodes"
+        document_parts.append(_dag_doc)
+    if _dag_summary:
+        document_parts.append(f"Recent conversation: {_dag_summary[:300]}")
+
     document = ". ".join(document_parts)
 
     timestamp = datetime.now().isoformat()
@@ -307,6 +380,9 @@ def main():
         "rw_rating": rw_rating,
         "skill_count": len(skill_usage),
         "skills_used": list(skill_usage.keys())[:10],
+        "dag_branch": _dag_branch_name,
+        "dag_branch_label": _dag_branch_label,
+        "dag_node_count": _dag_node_count,
     }
 
     observation = {

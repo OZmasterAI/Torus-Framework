@@ -66,6 +66,7 @@ def _time_decay_factor(
     age_days: float,
     half_life: float = DEFAULT_HALF_LIFE_DAYS,
     potentiated: bool = False,
+    ltp_factor: Optional[float] = None,
 ) -> float:
     """Hybrid decay: exponential for recent, power-law for older memories.
 
@@ -79,11 +80,17 @@ def _time_decay_factor(
         age_days: Age of the memory in days
         half_life: Half-life in days for exponential phase and crossover point (default 15)
         potentiated: If True, halve the decay rates (LTP-protected memories)
+        ltp_factor: Direct LTP rate multiplier (0.1-1.0). Overrides potentiated when set.
     """
     crossover = half_life
     exp_rate = math.log(2) / crossover  # ln(2)/half_life
     power_exp = 0.5  # power-law exponent
-    if potentiated:
+    if ltp_factor is not None and ltp_factor < 1.0:
+        # Apply LTP factor directly to both decay rates for correct scaling
+        # in both exponential and power-law phases
+        exp_rate *= ltp_factor
+        power_exp *= ltp_factor
+    elif potentiated:
         exp_rate *= 0.5
         power_exp *= 0.5
 
@@ -125,13 +132,13 @@ def calculate_relevance_score(
     - Base score from tier (T1=1.0, T2=0.7, T3=0.4)
     - Hybrid time decay with LTP protection
     - Access boost: log-scaled bonus for high retrieval_count (max +0.20)
-    - Recency boost: flat +0.10 for memories < 7 days old
+    - Recency boost: linear ramp from +0.15 at age=0 to 0 at 365 days
     - Tag relevance: bonus if entry tags overlap with query_context (max +0.15)
 
     Args:
         memory_entry: Dict with keys: tier, timestamp, retrieval_count, tags
         query_context: Comma-separated tags describing the current query context
-        half_life_days: Days until base score halves (default 45)
+        half_life_days: Days for exponential decay half-life (default 15)
         ltp_factor: LTP decay factor from LTPTracker (1.0/0.5/0.33/0.1).
                     If None, falls back to retrieval_count heuristic.
 
@@ -151,12 +158,7 @@ def calculate_relevance_score(
         potentiated = retrieval_count >= 5
         ltp_factor = 0.5 if potentiated else 1.0
 
-    decay = _time_decay_factor(age, half_life_days, potentiated=potentiated)
-    # Scale decay further by LTP factor for full 4-level gradation
-    # (potentiated halves the rate, ltp_factor applies the remaining scale)
-    if potentiated and ltp_factor < 0.5:
-        # potentiated already gives 0.5x rate; apply remaining ratio
-        decay = decay ** (ltp_factor / 0.5)
+    decay = _time_decay_factor(age, half_life_days, ltp_factor=ltp_factor)
 
     access = _access_boost(retrieval_count)
     recency = _recency_boost(age)

@@ -9,13 +9,9 @@ Clean edit on same file resets the counter.
 Tier 2 (non-safety): gate crash = warn + continue, not block.
 """
 
-import ast
 import os
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.gate_result import GateResult
@@ -23,16 +19,31 @@ from shared.gate_result import GateResult
 GATE_NAME = "GATE 16: CODE QUALITY"
 
 # ── ruff integration ──────────────────────────────────────────────────────────
-_RUFF_BIN = shutil.which("ruff") or os.path.expanduser("~/.local/bin/ruff")
+# shutil resolved lazily on first call to avoid ~90ms cold import at module load.
+_RUFF_BIN = None
+_RUFF_BIN_RESOLVED = False
 _RUFF_CONFIG = os.path.join(os.path.dirname(__file__), "..", ".ruff.toml")
+
+
+def _get_ruff_bin():
+    """Return ruff binary path, resolving once and caching."""
+    global _RUFF_BIN, _RUFF_BIN_RESOLVED
+    if not _RUFF_BIN_RESOLVED:
+        import shutil as _shutil  # lazy: ~90ms cold, only needed for ruff path lookup
+        _RUFF_BIN = _shutil.which("ruff") or os.path.expanduser("~/.local/bin/ruff")
+        _RUFF_BIN_RESOLVED = True
+    return _RUFF_BIN
 
 
 def _ruff_check(file_path: str, content: str) -> list:
     """Run ruff on content via a temp file. Returns [(rule, lineno, msg), ...].
     Fail-open: returns [] on any error (not found, timeout, parse error)."""
-    if not os.path.isfile(_RUFF_BIN):
+    ruff_bin = _get_ruff_bin()
+    if not os.path.isfile(ruff_bin):
         return []
     try:
+        import subprocess  # lazy: ~77ms cold, only needed when ruff binary exists
+        import tempfile
         with tempfile.NamedTemporaryFile(
             suffix=".py", delete=False, mode="w", encoding="utf-8"
         ) as tmp:
@@ -41,7 +52,7 @@ def _ruff_check(file_path: str, content: str) -> list:
         try:
             cfg = ["--config", _RUFF_CONFIG] if os.path.isfile(_RUFF_CONFIG) else []
             result = subprocess.run(
-                [_RUFF_BIN, "check", tmp_path, "--output-format", "concise"] + cfg,
+                [ruff_bin, "check", tmp_path, "--output-format", "concise"] + cfg,
                 capture_output=True,
                 text=True,
                 timeout=3,
@@ -69,7 +80,9 @@ def _ruff_check(file_path: str, content: str) -> list:
         return []  # Fail-open
 
 
-# ── AST complexity ────────────────────────────────────────────────────────────
+# ── AST complexity (lazy) ────────────────────────────────────────────────────
+# All ast-dependent analysis lives inside _python_checks() so that import ast
+# (~150ms cold) only happens when gate_16 actually processes a .py file.
 _COMPLEXITY_WARN_DEFAULT = 12  # advisory warn, non-escalating
 _COMPLEXITY_BLOCK_DEFAULT = 20  # escalates G16 counter (blocks at 4th)
 _NESTING_WARN_DEFAULT = 4  # 4 levels of nesting is hard to read
@@ -81,152 +94,95 @@ _LENGTH_BLOCK_DEFAULT = (
     150  # escalates G16 counter at 150+ lines (100 too tight for framework)
 )
 
-_BRANCH_NODES = (
-    ast.If,
-    ast.For,
-    ast.While,
-    ast.ExceptHandler,
-    ast.With,
-    ast.Assert,
-    ast.comprehension,
-)
+def _python_checks(content: str, tune: dict) -> list:
+    """Run AST complexity/nesting/length checks on Python content.
 
-# Control-flow nodes that increase nesting depth
-_NESTING_NODES = (ast.If, ast.For, ast.While, ast.With, ast.Try, ast.ExceptHandler)
-# Stop recursing into nested function/class bodies when measuring outer function depth
-_NESTING_STOP = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    Imports ast lazily -- only executed when a .py file is actually being written.
+    Returns [(name, lineno, severity, escalates), ...] violation tuples.
+    """
+    import ast  # lazy: ~150ms cold, only needed for Python files
 
+    _BRANCH_NODES = (ast.If, ast.For, ast.While, ast.ExceptHandler, ast.With, ast.Assert, ast.comprehension)
+    _NESTING_NODES = (ast.If, ast.For, ast.While, ast.With, ast.Try, ast.ExceptHandler)
+    _NESTING_STOP = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
-class _ComplexityVisitor(ast.NodeVisitor):
-    def __init__(self):
-        self.results = []  # [(func_name, complexity)]
+    class _ComplexityVisitor(ast.NodeVisitor):
+        def __init__(self): self.results = []
+        def visit_FunctionDef(self, node):
+            branches = sum(1 for n in ast.walk(node) if isinstance(n, _BRANCH_NODES))
+            self.results.append((node.name, branches + 1))
+            self.generic_visit(node)
+        visit_AsyncFunctionDef = visit_FunctionDef
 
-    def visit_FunctionDef(self, node):
-        branches = sum(1 for n in ast.walk(node) if isinstance(n, _BRANCH_NODES))
-        self.results.append((node.name, branches + 1))
-        self.generic_visit(node)
-
-    visit_AsyncFunctionDef = visit_FunctionDef
-
-
-def _ast_complexity(content: str, warn_at: int, block_at: int) -> list:
-    """Check cyclomatic complexity for all functions in content.
-    Returns [(func_name, complexity, escalates), ...] for functions >= warn_at.
-    Fail-open: returns [] on SyntaxError or any parse failure."""
-    try:
-        tree = ast.parse(content)
-        visitor = _ComplexityVisitor()
-        visitor.visit(tree)
-        results = []
-        for name, complexity in visitor.results:
-            if complexity >= warn_at:
-                escalates = complexity >= block_at
-                results.append((name, complexity, escalates))
-        return results
-    except Exception:
-        return []  # Fail-open
-
-
-def _compute_nesting(node, depth=0):
-    """Recursively compute max control-flow nesting depth.
-    Does not cross nested function/class boundaries.
-    elif chains stay at same depth as the if — only true nesting increments."""
-    max_d = depth
-    if isinstance(node, ast.If):
-        # Body: depth+1 (genuinely nested inside the if)
-        for child in node.body:
-            if isinstance(child, _NESTING_STOP):
-                continue
-            child_depth = _compute_nesting(
-                child, depth + 1 if isinstance(child, _NESTING_NODES) else depth
-            )
-            if child_depth > max_d:
-                max_d = child_depth
-        # orelse: single If = elif chain → same depth (not +1); else block → depth+1
-        if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
-            child_depth = _compute_nesting(node.orelse[0], depth)
-            if child_depth > max_d:
-                max_d = child_depth
+    def _compute_nesting(node, depth=0):
+        max_d = depth
+        if isinstance(node, ast.If):
+            for child in node.body:
+                if isinstance(child, _NESTING_STOP): continue
+                cd = _compute_nesting(child, depth + 1 if isinstance(child, _NESTING_NODES) else depth)
+                if cd > max_d: max_d = cd
+            if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
+                cd = _compute_nesting(node.orelse[0], depth)
+                if cd > max_d: max_d = cd
+            else:
+                for child in node.orelse:
+                    if isinstance(child, _NESTING_STOP): continue
+                    cd = _compute_nesting(child, depth + 1 if isinstance(child, _NESTING_NODES) else depth)
+                    if cd > max_d: max_d = cd
         else:
-            for child in node.orelse:
-                if isinstance(child, _NESTING_STOP):
-                    continue
-                child_depth = _compute_nesting(
-                    child, depth + 1 if isinstance(child, _NESTING_NODES) else depth
-                )
-                if child_depth > max_d:
-                    max_d = child_depth
-    else:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, _NESTING_STOP):
-                continue
-            child_depth = _compute_nesting(
-                child, depth + 1 if isinstance(child, _NESTING_NODES) else depth
-            )
-            if child_depth > max_d:
-                max_d = child_depth
-    return max_d
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, _NESTING_STOP): continue
+                cd = _compute_nesting(child, depth + 1 if isinstance(child, _NESTING_NODES) else depth)
+                if cd > max_d: max_d = cd
+        return max_d
 
+    class _NestingVisitor(ast.NodeVisitor):
+        def __init__(self): self.results = []
+        def visit_FunctionDef(self, node):
+            self.results.append((node.name, _compute_nesting(node), node.lineno))
+            self.generic_visit(node)
+        visit_AsyncFunctionDef = visit_FunctionDef
 
-class _NestingVisitor(ast.NodeVisitor):
-    def __init__(self):
-        self.results = []  # [(func_name, max_depth, lineno)]
+    class _LengthVisitor(ast.NodeVisitor):
+        def __init__(self): self.results = []
+        def visit_FunctionDef(self, node):
+            length = getattr(node, "end_lineno", node.lineno) - node.lineno + 1
+            self.results.append((node.name, length, node.lineno))
+            self.generic_visit(node)
+        visit_AsyncFunctionDef = visit_FunctionDef
 
-    def visit_FunctionDef(self, node):
-        depth = _compute_nesting(node)
-        self.results.append((node.name, depth, node.lineno))
-        self.generic_visit(node)
+    def _ast_complexity(src, warn_at, block_at):
+        try:
+            v = _ComplexityVisitor(); v.visit(ast.parse(src))
+            return [(n, cx, cx >= block_at) for n, cx in v.results if cx >= warn_at]
+        except Exception: return []
 
-    visit_AsyncFunctionDef = visit_FunctionDef
+    def _ast_nesting(src, warn_at, block_at):
+        try:
+            v = _NestingVisitor(); v.visit(ast.parse(src))
+            return [(n, d, ln, d >= block_at) for n, d, ln in v.results if d >= warn_at]
+        except Exception: return []
 
+    def _ast_length(src, warn_at, block_at):
+        try:
+            v = _LengthVisitor(); v.visit(ast.parse(src))
+            return [(n, ln_count, ln, ln_count >= block_at) for n, ln_count, ln in v.results if ln_count >= warn_at]
+        except Exception: return []
 
-class _LengthVisitor(ast.NodeVisitor):
-    def __init__(self):
-        self.results = []  # [(func_name, line_count, lineno)]
-
-    def visit_FunctionDef(self, node):
-        length = getattr(node, "end_lineno", node.lineno) - node.lineno + 1
-        self.results.append((node.name, length, node.lineno))
-        self.generic_visit(node)
-
-    visit_AsyncFunctionDef = visit_FunctionDef
-
-
-def _ast_nesting(content: str, warn_at: int, block_at: int) -> list:
-    """Check max control-flow nesting depth for all functions.
-    Returns [(func_name, depth, lineno, escalates), ...] for functions >= warn_at.
-    Fail-open: returns [] on SyntaxError or any parse failure."""
-    try:
-        tree = ast.parse(content)
-        visitor = _NestingVisitor()
-        visitor.visit(tree)
-        results = []
-        for name, depth, lineno in visitor.results:
-            if depth >= warn_at:
-                escalates = depth >= block_at
-                results.append((name, depth, lineno, escalates))
-        return results
-    except Exception:
-        return []  # Fail-open
-
-
-def _ast_length(content: str, warn_at: int, block_at: int) -> list:
-    """Check function line count.
-    Returns [(func_name, lines, lineno, escalates), ...] for functions >= warn_at.
-    Fail-open: returns [] on SyntaxError or any parse failure."""
-    try:
-        tree = ast.parse(content)
-        visitor = _LengthVisitor()
-        visitor.visit(tree)
-        results = []
-        for name, length, lineno in visitor.results:
-            if length >= warn_at:
-                escalates = length >= block_at
-                results.append((name, length, lineno, escalates))
-        return results
-    except Exception:
-        return []  # Fail-open
-
+    violations = []
+    _warn_at = tune.get("complexity_warn", _COMPLEXITY_WARN_DEFAULT)
+    _block_at = tune.get("complexity_block", _COMPLEXITY_BLOCK_DEFAULT)
+    for _fn, _cx, _escalates in _ast_complexity(content, _warn_at, _block_at):
+        violations.append((f"complexity:{_fn}(={_cx})", 0, "high" if _escalates else "medium", _escalates))
+    _nest_warn = tune.get("nesting_warn", _NESTING_WARN_DEFAULT)
+    _nest_block = tune.get("nesting_block", _NESTING_BLOCK_DEFAULT)
+    for _fn, _depth, _lineno, _escalates in _ast_nesting(content, _nest_warn, _nest_block):
+        violations.append((f"nesting:{_fn}(depth={_depth})", _lineno, "high" if _escalates else "medium", _escalates))
+    _len_warn = tune.get("length_warn", _LENGTH_WARN_DEFAULT)
+    _len_block = tune.get("length_block", _LENGTH_BLOCK_DEFAULT)
+    for _fn, _lines, _lineno, _escalates in _ast_length(content, _len_warn, _len_block):
+        violations.append((f"length:{_fn}(={_lines}lines)", _lineno, "high" if _escalates else "medium", _escalates))
+    return violations
 
 WATCHED_TOOLS = {"Edit", "Write", "NotebookEdit"}
 MAX_WARNINGS = 3  # Block on 4th violation per file
@@ -338,60 +294,16 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     violations = _scan_content(content)
 
     # Python-only: ruff + AST complexity (non-Python files use regex patterns only)
+    # ast, shutil, subprocess imported lazily inside these calls.
     if file_path.endswith(".py") and content.strip():
         tune = state.get("gate_tune_overrides", {}).get("gate_16_code_quality", {})
         # ruff: F-codes (undefined names, unused imports) and B-codes (bugbear) escalate
         if tune.get("ruff_enabled", True):
             for _code, _lineno, _msg in _ruff_check(file_path, content):
                 _escalates = _code.startswith("F") or _code.startswith("B")
-                violations.append(
-                    (
-                        f"ruff:{_code}",
-                        _lineno,
-                        "medium" if _escalates else "low",
-                        _escalates,
-                    )
-                )
-        # AST complexity: warn at 12, escalate counter at 20 (tunable)
-        _warn_at = tune.get("complexity_warn", _COMPLEXITY_WARN_DEFAULT)
-        _block_at = tune.get("complexity_block", _COMPLEXITY_BLOCK_DEFAULT)
-        for _fn, _cx, _escalates in _ast_complexity(content, _warn_at, _block_at):
-            violations.append(
-                (
-                    f"complexity:{_fn}(={_cx})",
-                    0,
-                    "high" if _escalates else "medium",
-                    _escalates,
-                )
-            )
-        # AST nesting depth: warn at 4, escalate at 6 (tunable)
-        _nest_warn = tune.get("nesting_warn", _NESTING_WARN_DEFAULT)
-        _nest_block = tune.get("nesting_block", _NESTING_BLOCK_DEFAULT)
-        for _fn, _depth, _lineno, _escalates in _ast_nesting(
-            content, _nest_warn, _nest_block
-        ):
-            violations.append(
-                (
-                    f"nesting:{_fn}(depth={_depth})",
-                    _lineno,
-                    "high" if _escalates else "medium",
-                    _escalates,
-                )
-            )
-        # Function length: warn at 60 lines, escalate at 100 (tunable)
-        _len_warn = tune.get("length_warn", _LENGTH_WARN_DEFAULT)
-        _len_block = tune.get("length_block", _LENGTH_BLOCK_DEFAULT)
-        for _fn, _lines, _lineno, _escalates in _ast_length(
-            content, _len_warn, _len_block
-        ):
-            violations.append(
-                (
-                    f"length:{_fn}(={_lines}lines)",
-                    _lineno,
-                    "high" if _escalates else "medium",
-                    _escalates,
-                )
-            )
+                violations.append((f"ruff:{_code}", _lineno, "medium" if _escalates else "low", _escalates))
+        # AST complexity, nesting, and length (all lazy-imported inside _python_checks)
+        violations.extend(_python_checks(content, tune))
 
     if not violations:
         # Clean edit — reset counter for this file

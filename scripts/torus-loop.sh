@@ -19,7 +19,15 @@ MEMORY_PREFETCH="$SCRIPTS_DIR/memory-prefetch.py"
 
 # ── Defaults ───────────────────────────────────────────────────────
 MAX_ITERATIONS=50
-MODEL="sonnet"
+MAX_RETRIES=3  # max attempts per task before skipping
+MODEL=$(python3 -c "
+import json, os
+try:
+    p = json.load(open(os.path.expanduser('~/.claude/config.json'))).get('model_profile', 'quality')
+    print('opus' if p == 'quality' else 'sonnet')
+except Exception:
+    print('sonnet')
+" 2>/dev/null || echo "sonnet")
 TASK_TIMEOUT=600  # 10 minutes per task
 
 # ── Parse arguments ────────────────────────────────────────────────
@@ -35,19 +43,30 @@ while [[ $# -gt 0 ]]; do
         --max-iterations) MAX_ITERATIONS="$2"; shift 2 ;;
         --model)          MODEL="$2"; shift 2 ;;
         --timeout)        TASK_TIMEOUT="$2"; shift 2 ;;
+        --max-retries)    MAX_RETRIES="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
 # ── Validate prerequisites ─────────────────────────────────────────
-TASKS_FILE="$PRP_DIR/${PRP_NAME}.tasks.json"
+# Check project PRPs/ first, then ~/.claude/PRPs/
+TASKS_FILE=""
+for candidate in "PRPs/${PRP_NAME}.tasks.json" "$PRP_DIR/${PRP_NAME}.tasks.json"; do
+    if [[ -f "$candidate" ]]; then
+        TASKS_FILE="$candidate"
+        break
+    fi
+done
+if [[ -z "$TASKS_FILE" ]]; then
+    echo "Error: Tasks file not found in PRPs/ or $PRP_DIR/"
+    exit 1
+fi
 ACTIVITY_LOG="$PRP_DIR/${PRP_NAME}.activity.md"
 STOP_SENTINEL="$PRP_DIR/${PRP_NAME}.stop"
 
-if [[ ! -f "$TASKS_FILE" ]]; then
-    echo "Error: Tasks file not found: $TASKS_FILE"
-    exit 1
-fi
+# ── Retry tracker (associative array: task_id → attempt count / failure history) ─
+declare -A RETRY_COUNT
+declare -A FAILURE_HISTORY
 
 if ! command -v claude &>/dev/null; then
     echo "Error: 'claude' CLI not found in PATH"
@@ -56,6 +75,11 @@ fi
 
 # ── Clean up any stale stop sentinel ───────────────────────────────
 rm -f "$STOP_SENTINEL"
+
+# ── Mark orchestrator as active (disables auto-commit) ──────────
+ORCH_MARKER="$CLAUDE_DIR/hooks/.orchestrator_active"
+echo "$$" > "$ORCH_MARKER"
+trap 'rm -f "$ORCH_MARKER"' EXIT
 
 # ── Clean up old agent messages (fail-open) ───────────────────────
 python3 -c "
@@ -78,6 +102,8 @@ from shared.agent_channel import cleanup; cleanup()
 # ── Build prompt from template ─────────────────────────────────────
 build_prompt() {
     local task_json="$1"
+    local attempt_num="${2:-1}"
+    local failure_history="${3:-}"
     local task_id task_name file_list validate_cmd
 
     task_id=$(echo "$task_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
@@ -168,10 +194,21 @@ if msgs:
         echo ""
         cat "$context_file"
     fi
+
+    # Inject failure history from previous attempts
+    if [[ $attempt_num -gt 1 && -n "$failure_history" ]]; then
+        echo ""
+        echo "## Previous Attempts (THIS IS ATTEMPT $attempt_num)"
+        echo "Previous approaches FAILED. Do NOT repeat them:"
+        echo "$failure_history"
+        echo ""
+        echo "You MUST try a fundamentally different approach."
+    fi
 }
 
 # ── Main loop ──────────────────────────────────────────────────────
 ITERATION=0
+CONSECUTIVE_SKIPS=0
 echo "Starting torus-loop for PRP: $PRP_NAME"
 echo ""
 
@@ -199,13 +236,30 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
     TASK_ID=$(echo "$TASK_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
     TASK_NAME=$(echo "$TASK_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
 
-    echo "[$ITERATION/$MAX_ITERATIONS] Task $TASK_ID: $TASK_NAME"
+    # Check retry cap
+    ATTEMPTS=${RETRY_COUNT[$TASK_ID]:-0}
+    if [[ $ATTEMPTS -ge $MAX_RETRIES ]]; then
+        echo "[$ITERATION/$MAX_ITERATIONS] Task $TASK_ID: $TASK_NAME — SKIPPED (failed $ATTEMPTS times)"
+        echo "### Iteration $ITERATION — Task $TASK_ID: $TASK_NAME — SKIPPED ($ATTEMPTS failures)" >> "$ACTIVITY_LOG"
+        python3 "$TASK_MANAGER" update "$PRP_NAME" "$TASK_ID" failed >/dev/null 2>&1
+        CONSECUTIVE_SKIPS=$((CONSECUTIVE_SKIPS + 1))
+        if [[ $CONSECUTIVE_SKIPS -ge 10 ]]; then
+            echo "All remaining tasks exhausted retries. Stopping."
+            echo "## ALL TASKS EXHAUSTED RETRIES" >> "$ACTIVITY_LOG"
+            echo "**Finished**: $(date -Iseconds)" >> "$ACTIVITY_LOG"
+            exit 1
+        fi
+        continue
+    fi
+    CONSECUTIVE_SKIPS=0
+
+    echo "[$ITERATION/$MAX_ITERATIONS] Task $TASK_ID: $TASK_NAME (attempt $((ATTEMPTS + 1))/$MAX_RETRIES)"
 
     # Mark task as in_progress
     python3 "$TASK_MANAGER" update "$PRP_NAME" "$TASK_ID" in_progress >/dev/null
 
-    # Build prompt
-    PROMPT=$(build_prompt "$TASK_JSON")
+    # Build prompt (pass attempt number + failure history for retries)
+    PROMPT=$(build_prompt "$TASK_JSON" "$((ATTEMPTS + 1))" "${FAILURE_HISTORY[$TASK_ID]:-}")
 
     # Spawn fresh Claude instance (unset CLAUDECODE to allow launching from within a session)
     START_TIME=$(date +%s)
@@ -214,9 +268,9 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
     END_TIME=$(date +%s)
     DURATION=$((END_TIME - START_TIME))
 
-    # Validate the task
+    # Validate the task (capture output for failure history)
     VALIDATE_EXIT=0
-    python3 "$TASK_MANAGER" validate "$PRP_NAME" "$TASK_ID" >/dev/null 2>&1 || VALIDATE_EXIT=$?
+    VALIDATE_OUTPUT=$(python3 "$TASK_MANAGER" validate "$PRP_NAME" "$TASK_ID" 2>&1) || VALIDATE_EXIT=$?
 
     # Determine final status
     if [[ $VALIDATE_EXIT -eq 0 ]]; then
@@ -227,6 +281,10 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
         fi
     else
         STATUS="FAILED"
+        RETRY_COUNT[$TASK_ID]=$((ATTEMPTS + 1))
+        # Append to failure history for next attempt's prompt
+        FAILURE_HISTORY[$TASK_ID]+="
+- Attempt $((ATTEMPTS + 1)): FAILED (exit=$VALIDATE_EXIT). Output: ${VALIDATE_OUTPUT:0:500}"
         # Log on_fail routing if applicable
         ON_FAIL=$(echo "$TASK_JSON" | python3 -c "import sys,json; t=json.load(sys.stdin); print(t.get('on_fail',''))" 2>/dev/null || true)
         if [[ -n "$ON_FAIL" ]]; then

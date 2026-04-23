@@ -6,10 +6,13 @@
     "allow": [
       "mcp__memory__get_memory",
       "mcp__memory__search_knowledge",
-      "mcp__memory__remember_this"
+      "mcp__memory__remember_this",
+      "mcp__toolshed__list_tools",
+      "mcp__toolshed__run_tool"
     ],
     "defaultMode": "default"
   },
+  "model": "claude-opus-4-6[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -35,6 +38,11 @@
           {
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/tg_mirror_tools.py\"",
+            "timeout": 2
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/skill_outcome_tracker.py\"",
             "timeout": 2
           }
         ]
@@ -276,11 +284,17 @@
     "code-review@claude-plugins-official": false,
     "hookify@claude-plugins-official": false,
     "skill-creator@claude-plugins-official": false,
-    "code-simplifier@claude-plugins-official": false
+    "code-simplifier@claude-plugins-official": false,
+    "telegram@claude-plugins-official": false
   },
-  "voiceEnabled": true,
+  "effortLevel": "high",
+  "awaySummaryEnabled": false,
+  "tui": "default",
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
+  "voiceEnabled": true,
+  "mcpServers": {},
+  "effort": "max",
   "disabled_hooks": {
     "TeammateIdle": [
       {
@@ -319,5 +333,7 @@
     "Model cost — haiku for search, sonnet for work, opus for complex",
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
-  ]
+  ],
+  "autoUpdatesChannel": "stable",
+  "minimumVersion": "2.1.112"
 }

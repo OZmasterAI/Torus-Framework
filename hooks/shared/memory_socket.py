@@ -14,34 +14,56 @@ import socket
 import sys
 import time
 
-SOCKET_PATH = os.path.join(
-    os.path.expanduser("~"), ".claude", "hooks", ".memory.sock"
-)
+SOCKET_PATH = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".memory.sock")
 SOCKET_TIMEOUT = 2  # seconds (kept low to avoid boot timeout — 15s hook limit)
+
+# Per-method timeout overrides (seconds)
+METHOD_TIMEOUTS = {
+    "ping": 1.0,
+    "count": 2.0,
+    "query": 5.0,
+    "search": 5.0,
+    "get": 3.0,
+    "upsert": 3.0,
+    "remember": 3.0,
+    "delete": 3.0,
+    "flush_queue": 5.0,
+    "backup": 10.0,
+    "optimize": 30.0,
+}
 
 # ── Circuit-breaker integration ────────────────────────────────────────────────
 # Wraps socket calls so repeated failures open the circuit and short-circuit
 # future calls instead of hammering a dead worker.
 try:
     from shared.circuit_breaker import (
-        is_open        as _cb_is_open,
+        is_open as _cb_is_open,
         record_success as _cb_record_success,
         record_failure as _cb_record_failure,
-        get_state      as _cb_get_state,
+        get_state as _cb_get_state,
     )
 except ImportError:
     # Degrade gracefully when circuit_breaker is unavailable
-    def _cb_is_open(s):              return False       # noqa: E704
-    def _cb_record_success(s, **kw): pass               # noqa: E704
-    def _cb_record_failure(s, **kw): pass               # noqa: E704
-    def _cb_get_state(s):            return "CLOSED"    # noqa: E704
+    def _cb_is_open(s):
+        return False  # noqa: E704
 
-_CB_SVC    = "memory_socket"
+    def _cb_record_success(s, **kw):
+        pass  # noqa: E704
+
+    def _cb_record_failure(s, **kw):
+        pass  # noqa: E704
+
+    def _cb_get_state(s):
+        return "CLOSED"  # noqa: E704
+
+
+_CB_SVC = "memory_socket"
 _CB_KWARGS = {"failure_threshold": 3, "recovery_timeout": 30, "success_threshold": 1}
 
 
 class WorkerUnavailable(Exception):
     """Raised when the UDS worker (memory_server.py) is not reachable."""
+
     pass
 
 
@@ -60,7 +82,7 @@ def is_worker_available(retries=3, delay=0.5):
             return True
         except (FileNotFoundError, ConnectionRefusedError, OSError):
             if attempt < retries - 1:
-                time.sleep(delay * (2 ** attempt))
+                time.sleep(delay * (2**attempt))
     return False
 
 
@@ -90,7 +112,8 @@ def request(method, collection=None, params=None):
 
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(SOCKET_TIMEOUT)
+        _effective_timeout = METHOD_TIMEOUTS.get(method, SOCKET_TIMEOUT)
+        sock.settimeout(_effective_timeout)
         sock.connect(SOCKET_PATH)
     except (FileNotFoundError, ConnectionRefusedError, OSError) as e:
         _cb_record_failure(_CB_SVC, **_CB_KWARGS)
@@ -103,7 +126,7 @@ def request(method, collection=None, params=None):
         sock.sendall((json.dumps(req) + "\n").encode("utf-8"))
 
         # Read response (accumulate until newline, cap at 10MB)
-        MAX_RESPONSE_SIZE = 10 * 1024 * 1024
+        MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # 50MB
         buf = b""
         while b"\n" not in buf:
             chunk = sock.recv(65536)
@@ -131,6 +154,7 @@ def request(method, collection=None, params=None):
 
 
 # ── Convenience wrappers ──────────────────────────────────────
+
 
 def ping():
     """Health check — returns 'pong' if worker is alive."""
@@ -164,11 +188,15 @@ def get(collection, ids=None, limit=None, include=None):
 
 def upsert(collection, documents, metadatas, ids):
     """Upsert documents into a collection."""
-    return request("upsert", collection=collection, params={
-        "documents": documents,
-        "metadatas": metadatas,
-        "ids": ids,
-    })
+    return request(
+        "upsert",
+        collection=collection,
+        params={
+            "documents": documents,
+            "metadatas": metadatas,
+            "ids": ids,
+        },
+    )
 
 
 def delete(collection, ids):
@@ -178,9 +206,14 @@ def delete(collection, ids):
 
 def remember(content, context="", tags=""):
     """Save a memory to knowledge via UDS. Returns result dict."""
-    return request("auto_remember", params={
-        "content": content, "context": context, "tags": tags,
-    })
+    return request(
+        "auto_remember",
+        params={
+            "content": content,
+            "context": context,
+            "tags": tags,
+        },
+    )
 
 
 def flush_queue():
@@ -193,3 +226,6 @@ def backup():
     return request("backup")
 
 
+def optimize():
+    """Compact all LanceDB tables and prune old versions."""
+    return request("optimize")

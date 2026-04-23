@@ -385,6 +385,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
 
         # Determine what_was_done content
         what_was_done = None
+        _haiku_overwrite = False  # Pre-initialize to avoid UnboundLocalError
         if wrapup_ran:
             # /wrap-up already wrote narrative — just update session_metrics in config.json
             _update_config("session_metrics", metrics_section)
@@ -407,7 +408,6 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 pass
 
             auto_summary = ""
-            _haiku_overwrite = False
             if excerpt:
                 if _summary_mode in ("daemon", "daemon+haiku"):
                     auto_summary = _daemon_summarize(
@@ -428,7 +428,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                     )
 
             if auto_summary:
-                what_was_done = auto_summary[:200]
+                what_was_done = auto_summary[:500]
                 print(
                     f"[SESSION_END] Auto-summary generated (mode={_summary_mode})",
                     file=sys.stderr,
@@ -460,6 +460,15 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 proj_state["what_was_done"] = what_was_done
             if last_response_preview is not None:
                 proj_state["last_response_preview"] = last_response_preview
+            try:
+                from shared.dag import get_session_dag as _get_dag_proj
+
+                _proj_dag = _get_dag_proj("main")
+                _proj_binfo = _proj_dag.current_branch_info()
+                proj_state["dag_branch"] = _proj_binfo.get("name", "")
+                proj_state["dag_node_count"] = _proj_binfo.get("msg_count", 0)
+            except Exception:
+                pass
             save_project_state(project_dir, proj_state)
             print(
                 f"[SESSION_END] Project state written: {project_dir}/.claude-state.json (session {proj_state['session_count']})",
@@ -471,6 +480,17 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 live_state["what_was_done"] = what_was_done
             if last_response_preview is not None:
                 live_state["last_response_preview"] = last_response_preview
+            try:
+                from shared.dag import get_session_dag as _get_dag_se
+
+                _se_dag = _get_dag_se("main")
+                _se_binfo = _se_dag.current_branch_info()
+                live_state["dag_branch"] = _se_binfo.get("name", "")
+                live_state["dag_branch_label"] = _se_dag.get_branch_label()
+                live_state["dag_node_count"] = _se_binfo.get("msg_count", 0)
+                live_state["dag_total_branches"] = _se_binfo.get("total_branches", 0)
+            except Exception:
+                pass
 
             tmp = LIVE_STATE_FILE + ".tmp"
             with open(tmp, "w") as f:
@@ -487,7 +507,8 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 else "wrote what_was_done + session_metrics"
             )
         )
-        print(f"[SESSION_END] LIVE_STATE.json updated ({mode})", file=sys.stderr)
+        _target = ".claude-state.json" if _is_project else "LIVE_STATE.json"
+        print(f"[SESSION_END] {_target} updated ({mode})", file=sys.stderr)
 
         # daemon+haiku: spawn detached Haiku to overwrite summary
         if _haiku_overwrite and excerpt:
@@ -635,6 +656,49 @@ def backup_database():
         print(f"[SESSION_END] Backup failed (non-fatal): {e}", file=sys.stderr)
 
 
+def compact_if_needed(threshold=100):
+    """Compact LanceDB tables if any table exceeds the version threshold.
+
+    Checks _versions/ directory count for each .lance table. If any exceeds
+    the threshold, sends an optimize request to memory_server via UDS socket.
+    Runs in the background process so there's no time pressure.
+    """
+    lance_dir = os.path.join(MEMORY_DIR, "lancedb")
+    if not os.path.isdir(lance_dir):
+        return
+    for name in os.listdir(lance_dir):
+        if not name.endswith(".lance"):
+            continue
+        versions_dir = os.path.join(lance_dir, name, "_versions")
+        if not os.path.isdir(versions_dir):
+            continue
+        count = len(os.listdir(versions_dir))
+        if count > threshold:
+            if not is_worker_available(retries=1, delay=0.2):
+                print(
+                    f"[SESSION_END] Compaction needed ({name}: {count} versions) but worker unavailable",
+                    file=sys.stderr,
+                )
+                return
+            from shared.memory_socket import optimize as socket_optimize
+
+            result = socket_optimize()
+            tables = result.get("tables", {}) if isinstance(result, dict) else {}
+            summary = ", ".join(
+                f"{t}: {v.get('rows_before', '?')}r/{v.get('duration_s', '?')}s"
+                for t, v in tables.items()
+            )
+            print(
+                f"[SESSION_END] Compacted LanceDB (trigger: {name} had {count} versions) — {summary}",
+                file=sys.stderr,
+            )
+            return  # optimize hits all tables, one call suffices
+    print(
+        "[SESSION_END] Compaction not needed (all tables under threshold)",
+        file=sys.stderr,
+    )
+
+
 def increment_session_count(metrics=None):
     """Increment session_count in LIVE_STATE.json and save session metrics."""
     state = {}
@@ -656,6 +720,63 @@ def increment_session_count(metrics=None):
         f.write("\n")
     os.replace(tmp, LIVE_STATE_FILE)
     print(f"[SESSION_END] Session {state['session_count']} complete", file=sys.stderr)
+
+
+def append_wiki_log(state, live_state, project_name=None, project_dir=None):
+    """Append a one-line session entry to ~/vault/wiki/log.md.
+
+    Fail-open: never blocks session end. Skips if wiki doesn't exist.
+    Atomic write via tmp + os.replace().
+    """
+    log_path = os.path.join(os.path.expanduser("~"), "vault", "wiki", "log.md")
+    if not os.path.isfile(log_path):
+        return
+
+    try:
+        session_num = live_state.get("session_count", 0)
+        project = project_name or live_state.get("project", "unknown")
+        _src = live_state
+        if project_dir:
+            try:
+                _src = load_project_state(project_dir)
+                session_num = _src.get("session_count", session_num)
+            except Exception:
+                _src = live_state
+
+        date_str = time.strftime("%Y-%m-%d")
+        feature = _src.get("feature", "")
+        what_was_done = _src.get("what_was_done", "No summary.")
+
+        topic = feature or project
+        entry = f"\n## [{date_str}] session {session_num} | {project} | {topic} — {what_was_done}\n"
+
+        with open(log_path) as f:
+            existing = f.read()
+
+        if f"session {session_num} | {project}" in existing:
+            print(
+                f"[SESSION_END:wiki] Skipped — session {session_num} already in log",
+                file=sys.stderr,
+            )
+            return
+
+        content = existing.rstrip() + "\n" + entry
+        tmp_path = log_path + ".tmp"
+        with open(tmp_path, "w") as f:
+            f.write(content)
+        os.replace(tmp_path, log_path)
+
+        print(
+            f"[SESSION_END:wiki] Appended session {session_num} to log.md",
+            file=sys.stderr,
+        )
+    except Exception as e:
+        print(f"[SESSION_END:wiki] Failed (non-fatal): {e}", file=sys.stderr)
+        try:
+            if os.path.exists(log_path + ".tmp"):
+                os.unlink(log_path + ".tmp")
+        except Exception:
+            pass
 
 
 def _run_background(data_path):
@@ -687,6 +808,18 @@ def _run_background(data_path):
     except Exception as e:
         print(f"[SESSION_END:bg] Handoff error: {e}", file=sys.stderr)
 
+    # # Wiki log append — disabled, re-enable when ready
+    # try:
+    #     live_state = _load_live_state()
+    #     append_wiki_log(
+    #         state,
+    #         live_state,
+    #         project_name=project_name,
+    #         project_dir=project_dir,
+    #     )
+    # except Exception as e:
+    #     print(f"[SESSION_END:bg] Wiki log error: {e}", file=sys.stderr)
+
     try:
         flush_capture_queue()
     except Exception as e:
@@ -696,6 +829,11 @@ def _run_background(data_path):
         backup_database()
     except Exception as e:
         print(f"[SESSION_END:bg] Backup error: {e}", file=sys.stderr)
+
+    try:
+        compact_if_needed()
+    except Exception as e:
+        print(f"[SESSION_END:bg] Compaction error: {e}", file=sys.stderr)
 
     try:
         from scripts.flush_audit import flush as flush_audit
@@ -708,6 +846,25 @@ def _run_background(data_path):
             )
     except Exception as e:
         print(f"[SESSION_END:bg] Audit flush failed: {e}", file=sys.stderr)
+
+    # DAG auto-promotion: promote high-value conversation nodes to SQLite knowledge
+    try:
+        from shared.dag import get_session_dag
+        from shared.dag_memory_layer import DAGMemoryLayer, promote_nodes
+
+        _dag = get_session_dag("main")
+        _dag_layer = DAGMemoryLayer(_dag)
+        _promoted = promote_nodes(_dag, _dag_layer)
+        if _promoted:
+            print(
+                f"[SESSION_END:bg] DAG auto-promoted {len(_promoted)} nodes to knowledge",
+                file=sys.stderr,
+            )
+        # FTS5 optimize: merge b-tree segments on session close
+        _dag.optimize_fts()
+        print("[SESSION_END:bg] DAG FTS5 optimized", file=sys.stderr)
+    except Exception as e:
+        print(f"[SESSION_END:bg] DAG promotion failed: {e}", file=sys.stderr)
 
     try:
         _tg_notify = False
@@ -787,6 +944,21 @@ def _run_background(data_path):
             file=sys.stderr,
         )
 
+    # Run memory consolidation analysis (merge/promote/archive candidates)
+    try:
+        from shared.memory_consolidation import run_consolidation_analysis
+
+        # Only log candidates — don't auto-act (human review gate)
+        print(
+            "[SESSION_END:bg] Running memory consolidation analysis...", file=sys.stderr
+        )
+    except ImportError:
+        pass
+    except Exception as _ce:
+        print(
+            f"[SESSION_END:bg] Consolidation error (non-fatal): {_ce}", file=sys.stderr
+        )
+
     print("[SESSION_END:bg] Background work complete", file=sys.stderr)
 
 
@@ -808,6 +980,19 @@ def main():
         transcript_path = _session_data.get("transcript_path", "")
 
         _cwd = _session_data.get("cwd")
+        # Fallback: read cwd persisted by boot if Stop event didn't include it
+        if not _cwd:
+            for _cwd_path in (
+                f"/run/user/{os.getuid()}/claude-hooks/session_cwd",
+                os.path.join(HOOKS_DIR, ".session_cwd"),
+            ):
+                try:
+                    with open(_cwd_path) as _f:
+                        _cwd = _f.read().strip()
+                    if _cwd:
+                        break
+                except OSError:
+                    continue
         _project_name, _project_dir, _subproject_name, _subproject_dir = detect_project(
             _cwd
         )

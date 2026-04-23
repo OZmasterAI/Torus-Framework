@@ -15,7 +15,9 @@ import subprocess
 import sys as _sys
 import re
 
-from shared.scoring_engine import ScoringContext, score_result
+from shared.context_compressor import compress_results
+from shared.scoring_engine import ScoringContext, score_result, rerank_candidates
+from shared.search_cache import SearchCache
 
 
 def _derive_query_tags(query, results):
@@ -72,6 +74,7 @@ class SearchPipeline:
         self.adaptive = adaptive
         self.config = config or {}
         self.h = helpers or {}
+        self.cache = SearchCache(ttl_seconds=120, max_entries=200)
 
     def search(
         self,
@@ -93,6 +96,18 @@ class SearchPipeline:
         tag_index = self.tag_index
         h = self.h
         config = self.config
+
+        # Cache check
+        _cache_key = self.cache.make_key(
+            query,
+            top_k=top_k,
+            mode=mode,
+            memory_type=memory_type,
+            state_type=state_type,
+        )
+        _cached = self.cache.get(_cache_key)
+        if _cached is not None:
+            return _cached
 
         recency_weight = max(0.0, min(1.0, recency_weight))
         _validate_top_k = h.get("validate_top_k")
@@ -165,6 +180,15 @@ class SearchPipeline:
             _where["state_type"] = state_type
         _where = _where or None
 
+        # Embed once for all vector searches (LanceDB + DAG)
+        _embed_fn = h.get("embed_text")
+        _query_vec = None
+        if _embed_fn and mode in ("semantic", "hybrid", ""):
+            try:
+                _query_vec = _embed_fn(query)
+            except Exception:
+                pass
+
         if mode == "tags":
             tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)
             tags_list = [t.strip() for t in tag_query.split(",") if t.strip()]
@@ -181,7 +205,8 @@ class SearchPipeline:
             _merge = h.get("merge_results")
             fts_results = _kw_search(query, top_k=actual_k) if _kw_search else []
             lance_results = collection.query(
-                query_texts=[query],
+                query_texts=[query] if not _query_vec else None,
+                query_vector=_query_vec,
                 n_results=actual_k,
                 include=["metadatas", "distances"],
                 where=_where,
@@ -193,14 +218,57 @@ class SearchPipeline:
                 else lance_summaries
             )
         else:
-            # Semantic (default)
-            results = collection.query(
-                query_texts=[query],
-                n_results=actual_k,
-                include=["metadatas", "distances"],
-                where=_where,
-            )
-            formatted = format_summaries(results)
+            # Semantic (default) — two-stage when enabled
+            _two_stage = config.get("two_stage_search", False)
+            if _two_stage and _query_vec is not None:
+                formatted = self._two_stage_search(
+                    query, _query_vec, actual_k, _where, format_summaries, h
+                )
+            else:
+                results = collection.query(
+                    query_texts=[query] if not _query_vec else None,
+                    query_vector=_query_vec,
+                    n_results=actual_k,
+                    include=["metadatas", "distances"],
+                    where=_where,
+                )
+                formatted = format_summaries(results)
+
+        # ── Step 2b: Merge SQLite DAG memory layer results ──
+        try:
+            from shared.dag import get_session_dag
+            from shared.dag_memory_layer import DAGMemoryLayer
+
+            _dag = get_session_dag("main")
+            _dag_layer = DAGMemoryLayer(_dag)
+            # Try semantic search using pre-computed vector, else keyword
+            if _query_vec is not None and mode in ("semantic", "hybrid", ""):
+                _sqlite_results = _dag_layer.semantic_search(
+                    query, top_k=top_k, query_vector=_query_vec
+                )
+            else:
+                _sqlite_results = _dag_layer.search(query, top_k=top_k, mode="keyword")
+            if _sqlite_results:
+                _existing = {r.get("content", "")[:100] for r in formatted}
+                for sr in _sqlite_results:
+                    if sr["content"][:100] not in _existing:
+                        formatted.append(
+                            {
+                                "id": sr["id"],
+                                "content": sr["content"],
+                                "preview": sr["content"][:200],
+                                "tags": sr.get("tags", ""),
+                                "tier": sr.get("tier", 1),
+                                "retrieval_count": sr.get("retrieval_count", 0),
+                                "timestamp": sr.get("created_at", ""),
+                                "source": "dag_sqlite",
+                                "relevance": sr.get("quality_score", 0.5),
+                            }
+                        )
+                        _existing.add(sr["content"][:100])
+                        _dag_layer.increment_retrieval(sr["id"])
+        except Exception:
+            pass  # Fail-open: SQLite search failure must not block LanceDB results
 
         # ── Step 3: Cascade (L2, L0, L3 after scoring) ──
         terminal_l2_count = self._cascade_terminal_l2(formatted, query, config)
@@ -258,9 +326,10 @@ class SearchPipeline:
                     mem_id = entry.get("id", "")
                     if mem_id:
                         try:
-                            neighbors = self.graph.get_neighbors(mem_id)
+                            neighbors = self.graph._get_neighbors(mem_id)
                             if neighbors:
-                                connected = len(set(neighbors) & top_ids - {mem_id})
+                                neighbor_ids = {n[0] for n in neighbors}
+                                connected = len(neighbor_ids & top_ids - {mem_id})
                                 if connected > 0:
                                     _graph_scores[mem_id] = connected * 0.03
                         except Exception:
@@ -298,7 +367,9 @@ class SearchPipeline:
         formatted = formatted[:top_k]
 
         # ── Step 8: Post-retrieval context ──
-        _action_pattern_count = self._action_patterns(formatted, query, h)
+        _action_pattern_count = self._action_patterns(
+            formatted, query, h, _query_vec=_query_vec
+        )
 
         # "all" mode: merge observations
         if mode == "all":
@@ -307,7 +378,9 @@ class SearchPipeline:
             formatted = formatted[:knowledge_budget]
             _search_obs = h.get("search_observations_internal")
             if _search_obs:
-                obs_results = _search_obs(query, obs_budget, recency_weight=0)
+                obs_results = _search_obs(
+                    query, obs_budget, recency_weight=0, query_vec=_query_vec
+                )
                 obs_formatted = obs_results.get("results", [])
                 seen_ids = {r.get("id") for r in formatted if r.get("id")}
                 for obs in obs_formatted:
@@ -321,7 +394,9 @@ class SearchPipeline:
         if len(formatted) == 0 and mode not in ("tags", "observations", "all"):
             _search_obs = h.get("search_observations_internal")
             if _search_obs:
-                obs_results = _search_obs(query, min(top_k, 10), recency_weight=0)
+                obs_results = _search_obs(
+                    query, min(top_k, 10), recency_weight=0, query_vec=_query_vec
+                )
                 obs_formatted = obs_results.get("results", [])
                 if obs_formatted:
                     for obs in obs_formatted:
@@ -335,6 +410,9 @@ class SearchPipeline:
 
         # Hybrid memory linking
         linked_memories_count = self._hybrid_linking(formatted, collection)
+
+        # A-Mem network expansion: traverse linked_memory edges to surface connected knowledge
+        amem_link_count = self._amem_expansion(formatted, collection)
 
         # Telegram L3 cascade (after trim, after linking)
         tg_fallback_count = self._cascade_telegram_l3(formatted, query, config)
@@ -392,13 +470,18 @@ class SearchPipeline:
             result["tg_enrichment_count"] = tg_enrichment_count
         if _action_pattern_count > 0:
             result["action_pattern_count"] = _action_pattern_count
+        if amem_link_count > 0:
+            result["amem_link_count"] = amem_link_count
         if graph_enriched_count > 0:
             result["graph_enriched_count"] = graph_enriched_count
         if counterfactual_count > 0:
             result["counterfactual_count"] = counterfactual_count
         if tag_expanded:
             result["tag_expanded"] = True
+        if formatted:
+            result["compressed_results"] = compress_results(formatted)
 
+        self.cache.put(_cache_key, result)
         return result
 
     # ── Internal helpers ──────────────────────────────────────────────────
@@ -410,6 +493,82 @@ class SearchPipeline:
                 fn()
             except Exception:
                 pass
+
+    def _two_stage_search(
+        self, query, query_vec_768, top_k, where, format_summaries, h
+    ):
+        """Two-stage: approximate retrieval on vector_256 + full rerank."""
+        MIN_STAGE1 = 5
+        STAGE1_THRESHOLD = 0.3
+        n_candidates = max(top_k * 3, 50)
+
+        vec_256 = query_vec_768[:256]
+        candidates = self.collection.query_approximate(
+            query_vector_256=vec_256, n_candidates=n_candidates, where=where
+        )
+
+        # Cascade check: enough quality candidates?
+        quality = [
+            r for r in candidates if (1 - r.get("_distance", 1.0)) >= STAGE1_THRESHOLD
+        ]
+        if len(quality) < min(top_k, MIN_STAGE1):
+            print(
+                f"[Search] Two-stage cascade: {len(quality)} quality < "
+                f"{min(top_k, MIN_STAGE1)}, falling back to flat scan",
+                file=_sys.stderr,
+            )
+            results = self.collection.query(
+                query_vector=query_vec_768, n_results=top_k * 2, where=where
+            )
+            return format_summaries(results)
+
+        # Stage 2: rerank with full scoring
+        _ltp_factors = {}
+        if self.ltp:
+            for row in candidates:
+                mid = row.get("id", "")
+                if mid:
+                    try:
+                        _ltp_factors[mid] = self.ltp.get_decay_factor(mid)
+                    except Exception:
+                        pass
+
+        _graph_scores = {}
+        if self.graph:
+            top_ids = {r.get("id") for r in candidates[:5] if r.get("id")}
+            for row in candidates:
+                mid = row.get("id", "")
+                if mid:
+                    try:
+                        neighbors = self.graph._get_neighbors(mid)
+                        if neighbors:
+                            connected = len(set(neighbors) & top_ids - {mid})
+                            if connected > 0:
+                                _graph_scores[mid] = connected * 0.03
+                    except Exception:
+                        pass
+
+        _ltp_blend = 0.3
+        if self.adaptive:
+            _ltp_blend = self.adaptive.get_weights().get("ltp_blend", 0.3)
+
+        _server_project = h.get("server_project", "") or ""
+        _server_subproject = h.get("server_subproject", "") or ""
+        _query_tags = _derive_query_tags(
+            query, [{"tags": r.get("tags", "")} for r in candidates]
+        )
+
+        ctx = ScoringContext(
+            ltp_factors=_ltp_factors,
+            graph_scores=_graph_scores,
+            query_tags=_query_tags,
+            project=_server_project,
+            server_subproject=_server_subproject,
+            query=query,
+            ltp_blend=_ltp_blend,
+        )
+
+        return rerank_candidates(candidates, query_vec_768, ctx, top_k=top_k * 2)
 
     def _terminal_db_path(self):
         return os.path.join(
@@ -648,7 +807,7 @@ class SearchPipeline:
             pass
         return count
 
-    def _action_patterns(self, formatted, query, h):
+    def _action_patterns(self, formatted, query, h, _query_vec=None):
         """Action pattern lookup from fix_outcomes. Returns count."""
         count = 0
         try:
@@ -662,7 +821,8 @@ class SearchPipeline:
                 _fo_count = fix_outcomes.count()
                 if _fo_count > 0:
                     _fo_results = fix_outcomes.query(
-                        query_texts=[query],
+                        query_texts=[query] if not _query_vec else None,
+                        query_vector=_query_vec,
                         n_results=min(5, _fo_count),
                         include=["metadatas", "documents"],
                     )
@@ -697,6 +857,73 @@ class SearchPipeline:
                                 count += 1
         except (ImportError, ValueError, TypeError, KeyError, AttributeError):
             pass
+        return count
+
+    def _amem_expansion(self, formatted, collection):
+        """Expand search results via A-Mem linked_memory edges. Returns count of added results."""
+        count = 0
+        if not self.graph:
+            return 0
+        try:
+            seen_ids = {r.get("id") for r in formatted if r.get("id")}
+            linked_candidates = {}  # id -> strength
+
+            # For each top result, traverse linked_memory edges (max_depth=2)
+            for r in formatted[:5]:
+                mem_id = r.get("id", "")
+                if not mem_id:
+                    continue
+                linked = self.graph.get_linked_memories(mem_id, max_depth=2)
+                for link in linked:
+                    lid = link["id"]
+                    if lid not in seen_ids:
+                        # Keep the strongest link if seen from multiple seeds
+                        old_strength = linked_candidates.get(lid, 0.0)
+                        if link["strength"] > old_strength:
+                            linked_candidates[lid] = link["strength"]
+
+            if not linked_candidates:
+                return 0
+
+            # Fetch the linked memory contents from the collection
+            candidate_ids = list(linked_candidates.keys())[:10]  # cap at 10
+            try:
+                linked_results = collection.get(
+                    ids=candidate_ids,
+                    include=["metadatas", "documents"],
+                )
+            except Exception:
+                return 0
+
+            if linked_results and linked_results.get("ids"):
+                l_ids = linked_results["ids"]
+                l_metas = linked_results.get("metadatas") or [{}] * len(l_ids)
+                l_docs = linked_results.get("documents") or [""] * len(l_ids)
+                for i, lid in enumerate(l_ids):
+                    if lid in seen_ids:
+                        continue
+                    meta = l_metas[i] if i < len(l_metas) else {}
+                    doc = l_docs[i] if i < len(l_docs) else ""
+                    preview = meta.get("preview", "") or (
+                        doc[:120] + "..." if doc and len(doc) > 120 else doc
+                    )
+                    link_strength = linked_candidates.get(lid, 0.0)
+                    formatted.append(
+                        {
+                            "id": lid,
+                            "preview": preview,
+                            "content": doc,
+                            "tags": meta.get("tags", ""),
+                            "timestamp": meta.get("timestamp", ""),
+                            "relevance": link_strength * 0.6,  # discount linked results
+                            "amem_linked": True,
+                            "amem_strength": round(link_strength, 4),
+                        }
+                    )
+                    seen_ids.add(lid)
+                    count += 1
+        except Exception:
+            pass  # Fail-open: A-Mem expansion failure must not block search
         return count
 
     def _hybrid_linking(self, formatted, collection):
@@ -841,14 +1068,18 @@ class SearchPipeline:
                     _activated_names = [
                         a["name"] for a in _activated[:5] if a["activation"] > 0.1
                     ]
+                    _kw_search = h.get("lance_keyword_search")
                     for _aname in _activated_names:
                         try:
-                            _graph_results = collection.query(
-                                query_texts=[_aname],
-                                n_results=3,
-                                include=["metadatas", "distances"],
-                            )
-                            _graph_summaries = format_summaries(_graph_results)
+                            if _kw_search:
+                                _graph_summaries = _kw_search(_aname, top_k=3)
+                            else:
+                                _graph_results = collection.query(
+                                    query_texts=[_aname],
+                                    n_results=3,
+                                    include=["metadatas", "distances"],
+                                )
+                                _graph_summaries = format_summaries(_graph_results)
                             for gs in _graph_summaries:
                                 gid = gs.get("id", "")
                                 if gid and gid not in _seen_ids:

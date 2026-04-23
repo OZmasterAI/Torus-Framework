@@ -678,8 +678,31 @@ test("H1: exec node server.js (no -e) → allowed", code == 0, msg)
 print("\n--- E2: Tier 1 Fail-to-Load Path ---")
 
 import shutil
+import atexit
 _gate_01_path = os.path.join(HOOKS_DIR, "gates", "gate_01_read_before_edit.py")
 _gate_01_hidden = _gate_01_path + ".hidden"
+
+# Save original content in memory — survives even if .bak file is lost
+with open(_gate_01_path) as _f01:
+    _gate_01_original = _f01.read()
+
+def _emergency_restore_gate_01():
+    """atexit safety net: restore gate_01 if left in a bad state."""
+    try:
+        if os.path.exists(_gate_01_hidden):
+            os.rename(_gate_01_hidden, _gate_01_path)
+            return
+        if not os.path.exists(_gate_01_path):
+            return
+        with open(_gate_01_path) as f:
+            current = f.read()
+        if "Simulated Tier 1 gate crash" in current or len(current) < 50:
+            with open(_gate_01_path, "w") as f:
+                f.write(_gate_01_original)
+    except Exception:
+        pass
+
+atexit.register(_emergency_restore_gate_01)
 
 try:
     os.rename(_gate_01_path, _gate_01_hidden)
@@ -695,8 +718,6 @@ finally:
 # ─────────────────────────────────────────────────
 print("\n--- E1: Tier 1 Fail-Closed Crash Path ---")
 
-_gate_01_backup = _gate_01_path + ".bak"
-shutil.copy2(_gate_01_path, _gate_01_backup)
 try:
     # Replace gate_01 with a version that crashes in check()
     with open(_gate_01_path, "w") as f:
@@ -712,11 +733,9 @@ try:
     test("E1: Tier 1 gate crash → blocked (fail-closed)", code != 0, f"code={code}")
     test("E1: crash message mentions gate crash", "crashed" in msg.lower() or "BLOCKED" in msg, msg)
 finally:
-    shutil.move(_gate_01_backup, _gate_01_path)
-    # Touch the restored file so Python's __pycache__ is invalidated.
-    # shutil.copy2 preserves the original mtime; shutil.move restores it.
-    # The crashed version's .pyc has a newer mtime, so Python would trust it.
-    # Bumping the source mtime forces Python to recompile from the restored source.
+    # Restore from in-memory original (no .bak file that can get lost on kill)
+    with open(_gate_01_path, "w") as _rf:
+        _rf.write(_gate_01_original)
     _now = time.time()
     os.utime(_gate_01_path, (_now, _now))
     import glob as _glob

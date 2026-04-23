@@ -1,13 +1,46 @@
 """MCP Bridge — thin FastMCP wrapper over model-router REST API."""
 
+import os
+import socket
+import subprocess
+import sys
+import time
 from typing import Optional
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 
 ROUTER_URL = "http://127.0.0.1:18800"
+ROUTER_PORT = 18800
+_server_proc = None
 
 mcp = FastMCP("model-router")
+
+
+def _port_open(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _ensure_server():
+    """Auto-launch server.py if not already listening."""
+    global _server_proc
+    if _port_open(ROUTER_PORT):
+        return
+    server_path = os.path.join(os.path.dirname(__file__), "server.py")
+    _server_proc = subprocess.Popen(
+        [sys.executable, server_path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    # Wait up to 5s for server to be ready
+    for _ in range(50):
+        if _port_open(ROUTER_PORT):
+            return
+        time.sleep(0.1)
+
+
+_ensure_server()
 
 
 async def _post(path: str, data: dict) -> dict:

@@ -24,8 +24,51 @@ from tracker_pkg.verification import (
     _classify_verification_score,
     _resolve_gate_block_outcomes,
     BROAD_TEST_COMMANDS,
+    BROAD_STATIC_CHECK_COMMANDS,
 )
-from tracker_pkg.auto_remember import _auto_remember_event
+from tracker_pkg.auto_remember import _auto_remember_event, _build_fix_context
+
+# Cross-agent file coordination — release locks after Edit/Write (fail-open)
+try:
+    from shared.file_lock_registry import release_lock as _flr_release
+
+    _FILE_LOCK_AVAILABLE = True
+except ImportError:
+    _FILE_LOCK_AVAILABLE = False
+
+# Learning loop — feeds gate outcomes into adaptive thresholds + tool mastery
+try:
+    from shared.learning_loop import process_gate_result as _ll_process_gate
+
+    _LEARNING_LOOP_AVAILABLE = True
+except ImportError:
+    _LEARNING_LOOP_AVAILABLE = False
+
+# Skill tracker — records skill invocation outcomes
+try:
+    from shared.skill_tracker import (
+        load_skill_data as _st_load,
+        save_skill_data as _st_save,
+        record_skill_invocation as _st_record,
+    )
+
+    _SKILL_TRACKER_AVAILABLE = True
+except ImportError:
+    _SKILL_TRACKER_AVAILABLE = False
+
+# Tool profile evolution (AutoAgent-inspired online adaptation)
+try:
+    from shared.tool_profiles import (
+        load_profiles as _load_tool_profiles,
+        save_profiles as _save_tool_profiles,
+        record_success as _tp_record_success,
+        record_failure as _tp_record_failure,
+        PROFILED_TOOLS as _TP_PROFILED_TOOLS,
+    )
+
+    _TOOL_PROFILES_AVAILABLE = True
+except ImportError:
+    _TOOL_PROFILES_AVAILABLE = False
 
 # Gate 17 injection scanning — imported here to run on PostToolUse results
 try:
@@ -147,6 +190,15 @@ def _handle_causal_chain(tool_name, tool_input, tool_response, state):
                 pending = state.setdefault("pending_chain_ids", [])
                 if chain_id not in pending:
                     pending.append(chain_id)
+                # Task 14: tag chain with DAG context
+                try:
+                    from shared.dag_memory import get_dag_context_for_chain
+
+                    _dag_ctx = get_dag_context_for_chain()
+                    if _dag_ctx:
+                        state["chain_dag_context"] = _dag_ctx
+                except Exception:
+                    pass
         except Exception as e:
             _log_debug(f"record_attempt tracking failed: {e}")
 
@@ -300,10 +352,99 @@ def _handle_gate17_scan(tool_name, tool_response, state):
         _log_debug(f"Gate 17 scan failed (non-blocking): {e}")
 
 
+def _update_tool_profile(tool_name, tool_input, tool_response, state):
+    """Update tool profile based on observed outcome (AutoAgent-inspired).
+
+    Tracks success/failure patterns per tool. When a new failure pattern
+    is discovered, saves it to memory for cross-session learning.
+    Fail-open: any exception here is logged and swallowed.
+    """
+    if not _TOOL_PROFILES_AVAILABLE:
+        return
+    if tool_name not in _TP_PROFILED_TOOLS:
+        return
+    try:
+        profiles = _load_tool_profiles()
+
+        # Determine if this was a success or failure
+        is_error = False
+        error_text = ""
+        if isinstance(tool_response, dict):
+            is_error = tool_response.get("is_error", False)
+            error_text = tool_response.get("stderr", "") or tool_response.get(
+                "error", ""
+            )
+            if not error_text and is_error:
+                error_text = tool_response.get("stdout", "")
+        elif isinstance(tool_response, str):
+            # Check for gate blocks and hook errors in string responses
+            if any(
+                marker in tool_response
+                for marker in (
+                    "BLOCKED:",
+                    "[GATE",
+                    "hook error:",
+                    "Error:",
+                    "error:",
+                    "Permission denied",
+                    "No such file",
+                )
+            ):
+                is_error = True
+                error_text = tool_response
+
+        if is_error and error_text:
+            result = _tp_record_failure(profiles, tool_name, tool_input, error_text)
+            if result and result.get("is_new"):
+                # New failure pattern discovered — auto-remember
+                _auto_remember_event(
+                    f"Tool profile: {tool_name} new failure — {result['signature'][:80]}",
+                    context=f"tool profile evolution, context: {json.dumps(result.get('context', {}))[:100]}",
+                    tags="type:auto-captured,area:framework,tool-profile",
+                    critical=False,
+                    state=state,
+                )
+                _log_debug(
+                    f"Tool profile: new failure for {tool_name}: {result['signature'][:60]}"
+                )
+        else:
+            _tp_record_success(profiles, tool_name, tool_input)
+
+        _save_tool_profiles(profiles)
+    except Exception as e:
+        _log_debug(f"Tool profile update failed (non-blocking): {e}")
+
+
+def _extract_exit_code(tool_response):
+    """Pull exit_code from tool_response. Returns 0 if unavailable (assume success)."""
+    if tool_response is None:
+        return 0
+    if isinstance(tool_response, dict):
+        return (
+            tool_response.get(
+                "exit_code",
+                tool_response.get("exitCode", tool_response.get("status", 0)),
+            )
+            or 0
+        )
+    if isinstance(tool_response, str):
+        try:
+            resp = json.loads(tool_response)
+            if isinstance(resp, dict):
+                return (
+                    resp.get("exit_code", resp.get("exitCode", resp.get("status", 0)))
+                    or 0
+                )
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return 0
+
+
 def _handle_bash(tool_input, tool_response, state):
     """Handle all Bash PostToolUse tracking: test detection, causal chain
     auto-detect, git commit capture, and verification scoring."""
     command = tool_input.get("command", "")
+    bash_exit_code = _extract_exit_code(tool_response)
 
     # --- Block A: test detection + fixing_error + auto-remember ---
     if any(
@@ -379,8 +520,14 @@ def _handle_bash(tool_input, tool_response, state):
                 edited = list(
                     state.get("files_edited", state.get("pending_verification", []))
                 )[-5:]
+                fix_ctx = _build_fix_context(state.get("_session_id", "main"))
+                fix_content = (
+                    f"Error fixed: {pattern}. Files edited: {', '.join(edited)}"
+                )
+                if fix_ctx:
+                    fix_content = f"{fix_content}. {fix_ctx}"
                 _auto_remember_event(
-                    f"Error fixed: {pattern}. Files edited: {', '.join(edited)}",
+                    fix_content,
                     context=f"Test passed after fixing error: {command[:100]}",
                     tags="type:auto-captured,type:fix,area:framework",
                     critical=True,
@@ -419,8 +566,15 @@ def _handle_bash(tool_input, tool_response, state):
     # Reset edit streaks on verification
     state["edit_streak"] = {}
 
-    if any(kw in command for kw in BROAD_TEST_COMMANDS):
-        # Broad tests apply score to all pending files
+    # A failing command does not verify anything. Skip scoring on non-zero exit.
+    if bash_exit_code != 0:
+        return
+
+    is_broad = any(
+        kw in command for kw in (*BROAD_TEST_COMMANDS, *BROAD_STATIC_CHECK_COMMANDS)
+    )
+    if is_broad:
+        # Broad tests/static checks apply score to all pending files
         for fp in pending:
             scores[fp] = scores.get(fp, 0) + score
     else:
@@ -485,6 +639,20 @@ def handle_post_tool_use(
     # Gate effectiveness: resolve pending block outcomes
     _resolve_gate_block_outcomes(tool_name, tool_input, state)
 
+    # Feed gate outcomes into learning loop (adaptive thresholds + tool mastery)
+    if _LEARNING_LOOP_AVAILABLE:
+        try:
+            _sideband = read_enforcer_sideband(state.get("_session_id", "main"))
+            for _gr in (_sideband or {}).get("gate_results", []):
+                _ll_process_gate(
+                    gate_name=_gr.get("gate", ""),
+                    gate_blocked=_gr.get("blocked", False),
+                    tool_name=tool_name,
+                    tool_succeeded=True,
+                )
+        except Exception:
+            pass
+
     # Auto-expire fixing_error after 30 minutes of staleness
     # Prevents permanent fixing_error=True when tests never pass
     if state.get("fixing_error", False):
@@ -523,8 +691,22 @@ def handle_post_tool_use(
             state.get("_session_id", "main"),
         )
 
-    # Track memory queries
-    if is_memory_tool(tool_name):
+    # Release file lock after successful Edit/Write (fail-open)
+    if _FILE_LOCK_AVAILABLE and tool_name in ("Edit", "Write", "NotebookEdit"):
+        try:
+            _fp = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+            if _fp:
+                _flr_release(_fp, state.get("_session_id", "main"))
+        except Exception:
+            pass  # Fail-open: lock release errors are non-fatal
+
+    # Track memory queries (direct MCP or proxied through toolshed)
+    _is_mem = is_memory_tool(tool_name)
+    if not _is_mem and tool_name == "mcp__toolshed__run_tool":
+        _ts_server = (tool_input.get("server") or "").lower()
+        if _ts_server == "memory":
+            _is_mem = True
+    if _is_mem:
         state["memory_last_queried"] = time.time()
         # F1: Redundant sideband write — keeps sideband fresh so Gate 4
         # doesn't block long-running subagents after the 5-min window
@@ -535,7 +717,13 @@ def handle_post_tool_use(
         except Exception:
             pass  # Best-effort redundancy
 
-    if tool_name == "mcp__memory__remember_this":
+    _is_remember = tool_name == "mcp__memory__remember_this"
+    if not _is_remember and tool_name == "mcp__toolshed__run_tool":
+        _ts_server = (tool_input.get("server") or "").lower()
+        _ts_tool = (tool_input.get("tool") or "").lower()
+        if _ts_server == "memory" and _ts_tool == "remember_this":
+            _is_remember = True
+    if _is_remember:
         # Only reset Gate 6 counters if memory was actually saved (not deduped/rejected)
         resp = {}
         if isinstance(tool_response, dict):
@@ -564,6 +752,11 @@ def handle_post_tool_use(
                 # Cap at 50 recent entries
                 if len(recent) > 50:
                     state["recent_skills"] = recent[-50:]
+                # Record in skill_tracker for effectiveness analysis
+                if _SKILL_TRACKER_AVAILABLE:
+                    _sd = _st_load()
+                    _st_record(_sd, skill_name)
+                    _st_save(_sd)
         except Exception as e:
             _log_debug(f"skill tracking failed: {e}")
 
@@ -615,12 +808,24 @@ def handle_post_tool_use(
         _detect_errors(tool_input, tool_response, state)
 
     # causal chain: attempt registration, outcome + ban tracking, history query
-    if tool_name in (
+    _causal_tool = tool_name
+    _causal_input = tool_input
+    if tool_name == "mcp__toolshed__run_tool":
+        _ts_server = (tool_input.get("server") or "").lower()
+        _ts_tool = (tool_input.get("tool") or "").lower()
+        if _ts_server == "memory" and _ts_tool in (
+            "record_attempt",
+            "record_outcome",
+            "query_fix_history",
+        ):
+            _causal_tool = f"mcp__memory__{_ts_tool}"
+            _causal_input = tool_input.get("args", {})
+    if _causal_tool in (
         "mcp__memory__record_attempt",
         "mcp__memory__record_outcome",
         "mcp__memory__query_fix_history",
     ):
-        _handle_causal_chain(tool_name, tool_input, tool_response, state)
+        _handle_causal_chain(_causal_tool, _causal_input, tool_response, state)
 
     # Gate 17: Injection defense — scan external tool results for prompt injection
     _handle_gate17_scan(tool_name, tool_response, state)
@@ -639,6 +844,9 @@ def handle_post_tool_use(
         state["analytics_last_used"] = alu
 
     _capture_observation(tool_name, tool_input, tool_response, session_id, state)
+
+    # ── Tool Profile Evolution (AutoAgent-inspired) — fail-open ──
+    _update_tool_profile(tool_name, tool_input, tool_response, state)
 
     # ── Mentor System (A+D+E+F) — all toggle-gated, all fail-open ──
     _run_mentor_system(tool_name, tool_input, tool_response, state)
@@ -686,7 +894,13 @@ def handle_post_tool_use(
         )
         if _result.get("boundary_detected"):
             _hooks_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-            _writer = WorkingMemoryWriter(_hooks_dir)
+            try:
+                from boot_pkg.util import detect_project as _detect_proj_orch
+
+                _, _proj_dir_orch, _, _ = _detect_proj_orch()
+            except Exception:
+                _proj_dir_orch = None
+            _writer = WorkingMemoryWriter(_hooks_dir, project_dir=_proj_dir_orch or "")
             _tracker_state = _op_tracker.get_state()
             _tracker_state["_session_id"] = session_id
             _writer.write_operations(_tracker_state)
@@ -716,6 +930,29 @@ def handle_post_tool_use(
                 pass  # Fail-open: gate sync is best-effort
     except Exception as _ctx_err:
         _log_debug(f"context threshold check failed (non-blocking): {_ctx_err}")
+
+    # ── DAG: record tool call (Task 6) ──
+    try:
+        from shared.dag import get_session_dag
+        from boot_pkg.util import detect_project
+
+        _dag = get_session_dag(session_id)
+        _dag_proj, _, _dag_subproj, _ = detect_project()
+        _dag.add_node(
+            parent_id=_dag.get_head(),
+            role="tool",
+            content=json.dumps(
+                {
+                    "tool_name": tool_name,
+                    "tool_input": str(tool_input)[:500],
+                    "tool_response": str(tool_response)[:1000],
+                }
+            ),
+            project=_dag_proj,
+            subproject=_dag_subproj,
+        )
+    except Exception:
+        pass  # Fail-open
 
 
 # ── Context threshold detection ────────────────────────────────────────

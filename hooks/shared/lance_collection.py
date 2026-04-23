@@ -56,7 +56,22 @@ class LanceCollection:
         self._embed_texts = embed_texts
         self._embedding_dim = embedding_dim
         # Build set of known column names for metadata handling
-        self._meta_cols = {f.name for f in schema} - {"id", "text", "vector"}
+        self._has_vector_256 = "vector_256" in {f.name for f in schema}
+        if self._has_vector_256:
+            v256_field = schema.field("vector_256")
+            self._vector_256_dim = (
+                v256_field.type.list_size
+                if hasattr(v256_field.type, "list_size")
+                else 256
+            )
+        else:
+            self._vector_256_dim = 256
+        self._meta_cols = {f.name for f in schema} - {
+            "id",
+            "text",
+            "vector",
+            "vector_256",
+        }
 
     def count(self):
         """Return number of rows in the table."""
@@ -65,20 +80,34 @@ class LanceCollection:
         except Exception:
             return 0
 
-    def query(self, query_texts=None, n_results=5, include=None, where=None):
+    def query(
+        self, query_texts=None, n_results=5, include=None, where=None, query_vector=None
+    ):
         """Semantic search. Returns nested results.
 
         Result format: {"ids": [[...]], "documents": [[...]], "metadatas": [[...]], "distances": [[...]]}
+
+        Args:
+            query_vector: Pre-computed embedding vector. Skips embed_text if provided.
         """
         if include is None:
             include = ["metadatas", "distances"]
-        text = query_texts[0] if query_texts else ""
-        vector = (
-            self._embed_text(text) if self._embed_text else [0.0] * self._embedding_dim
-        )
+        if query_vector is not None:
+            vector = query_vector
+        else:
+            text = query_texts[0] if query_texts else ""
+            vector = (
+                self._embed_text(text)
+                if self._embed_text
+                else [0.0] * self._embedding_dim
+            )
 
         try:
-            q = self._table.search(vector).distance_type("cosine").limit(n_results)
+            q = (
+                self._table.search(vector, vector_column_name="vector")
+                .distance_type("cosine")
+                .limit(n_results)
+            )
             if where:
                 sql_where = self._translate_where(where)
                 if sql_where:
@@ -100,6 +129,69 @@ class LanceCollection:
             result["embeddings"] = [[r.get("vector", []) for r in rows]]
 
         return result
+
+    def query_approximate(
+        self, query_vector_256, n_candidates=50, where=None, nprobes=10
+    ):
+        """Stage 1: Fast approximate search on vector_256 column.
+
+        Returns raw row dicts with full metadata + 768-dim vector for Stage 2
+        reranking. Does NOT update retrieval_count.
+
+        Falls back to flat scan on vector_256 (no index) if IVF not built yet.
+        """
+        if not self._has_vector_256:
+            # Fallback: use full vector query, return as flat rows
+            result = self.query(
+                query_vector=query_vector_256
+                + [0.0] * (self._embedding_dim - len(query_vector_256)),
+                n_results=n_candidates,
+                where=where,
+                include=["metadatas", "distances", "embeddings"],
+            )
+            rows = []
+            ids = result.get("ids", [[]])[0]
+            metas = result.get("metadatas", [[]])[0]
+            dists = result.get("distances", [[]])[0]
+            vecs = result.get("embeddings", [[]])[0]
+            for i, rid in enumerate(ids):
+                row = {"id": rid, "_distance": dists[i] if i < len(dists) else 1.0}
+                if i < len(metas):
+                    row.update(metas[i])
+                if i < len(vecs):
+                    row["vector"] = vecs[i]
+                rows.append(row)
+            return rows
+
+        try:
+            q = (
+                self._table.search(query_vector_256, vector_column_name="vector_256")
+                .distance_type("cosine")
+                .nprobes(nprobes)
+                .limit(n_candidates)
+            )
+            if where:
+                sql_where = self._translate_where(where)
+                if sql_where:
+                    q = q.where(sql_where, prefilter=True)
+            return q.to_list()
+        except Exception:
+            # Index not built yet — fall back to flat scan on vector_256
+            try:
+                q = (
+                    self._table.search(
+                        query_vector_256, vector_column_name="vector_256"
+                    )
+                    .distance_type("cosine")
+                    .limit(n_candidates)
+                )
+                if where:
+                    sql_where = self._translate_where(where)
+                    if sql_where:
+                        q = q.where(sql_where, prefilter=True)
+                return q.to_list()
+            except Exception:
+                return []
 
     @staticmethod
     def _sanitize_id(i):
@@ -156,16 +248,21 @@ class LanceCollection:
 
         return result
 
-    def upsert(self, documents=None, metadatas=None, ids=None):
-        """Upsert records using LanceDB merge_insert."""
+    def upsert(self, documents=None, metadatas=None, ids=None, vectors=None):
+        """Upsert records using LanceDB merge_insert.
+
+        Args:
+            vectors: Pre-computed embedding vectors. Skips embed_texts if provided.
+        """
         if not ids or not documents:
             return
         records = []
-        vectors = (
-            self._embed_texts(documents)
-            if self._embed_texts
-            else [[0.0] * self._embedding_dim for _ in documents]
-        )
+        if vectors is None:
+            vectors = (
+                self._embed_texts(documents)
+                if self._embed_texts
+                else [[0.0] * self._embedding_dim for _ in documents]
+            )
         for i, doc_id in enumerate(ids):
             doc = documents[i] if i < len(documents) else ""
             meta = metadatas[i] if metadatas and i < len(metadatas) else {}
@@ -185,8 +282,12 @@ class LanceCollection:
             # Fallback: try add (for new tables or if merge_insert fails)
             try:
                 self._table.add(records)
-            except Exception:
-                print(f"[Lance] upsert failed for {self._name}: {e}", file=sys.stderr)
+            except Exception as e2:
+                print(
+                    f"[Lance] upsert failed for {self._name}: merge_insert={e}, add={e2}",
+                    file=sys.stderr,
+                )
+                raise RuntimeError(f"upsert failed for {self._name}: {e}") from e
 
     def update(self, ids=None, metadatas=None, documents=None):
         """Update metadata and/or documents for existing records.
@@ -266,6 +367,13 @@ class LanceCollection:
             if vector and len(vector) == self._embedding_dim
             else [0.0] * self._embedding_dim,
         }
+        # Auto-derive vector_256 via Matryoshka prefix truncation
+        if self._has_vector_256:
+            full_vec = record["vector"]
+            dim = self._vector_256_dim
+            record["vector_256"] = (
+                full_vec[:dim] if len(full_vec) >= dim else [0.0] * dim
+            )
         # Fill metadata columns from schema
         for col_name in self._meta_cols:
             field = self._schema.field(col_name)

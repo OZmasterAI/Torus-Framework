@@ -1,0 +1,74 @@
+{
+  "activation_keywords": {
+    "technologies": [
+      "bubble tea",
+      "bubbletea",
+      "charm",
+      "charmbracelet",
+      "lipgloss",
+      "tui",
+      "terminal ui",
+      "tea.Program"
+    ],
+    "components": [
+      "viewport",
+      "textinput",
+      "textarea",
+      "table",
+      "list",
+      "spinner",
+      "progress",
+      "filepicker",
+      "paginator",
+      "timer",
+      "stopwatch",
+      "tabs",
+      "help",
+      "autocomplete"
+    ],
+    "actions": [
+      "design tui",
+      "create tui",
+      "build tui",
+      "architect tui",
+      "plan tui",
+      "automate tui design",
+      "generate tui",
+      "scaffold tui",
+      "map components",
+      "select components"
+    ],
+    "tui_types": [
+      "file manager",
+      "installer",
+      "package manager",
+      "dashboard",
+      "form",
+      "wizard",
+      "chat interface",
+      "log viewer",
+      "text viewer",
+      "configuration tool",
+      "menu system"
+    ],
+    "patterns": [
+      "multi-view",
+      "tabbed interface",
+      "progress tracking",
+      "form validation",
+      "keyboard navigation",
+      "mouse support",
+      "real-time updates"
+    ]
+  },
+  "negative_scope": [
+    "web ui",
+    "gui",
+    "graphical interface",
+    "react",
+    "vue",
+    "angular",
+    "html",
+    "css"
+  ]
+}

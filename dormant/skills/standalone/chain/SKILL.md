@@ -13,7 +13,7 @@ Examples:
 ### 1. PARSE CHAIN
 - Parse skill names from the chain string by splitting on `->` or `→`
 - Trim whitespace from each skill name, strip any leading `/` prefix
-- Validate each skill exists in `~/.claude/skills/` (check for `SKILL.md`)
+- Validate each skill exists in `~/.claude/skill-library/` (check for `SKILL.md`)
 - If any skill is missing, report which ones and abort
 - Maximum chain length: 6 skills (reject longer chains with explanation)
 - Show execution plan to user:

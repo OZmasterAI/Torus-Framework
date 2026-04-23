@@ -209,6 +209,8 @@ def default_state():
         "active_domain": "",  # Currently active domain name (or empty)
         # v3.6 fields (branch-change detection)
         "_last_branch": "",  # Last known git branch — used to reset mentor state on switch
+        # v3.7 fields (context preservation)
+        "summary_threshold_fired": False,  # Whether working-summary threshold was triggered
     }
 
 
@@ -566,6 +568,12 @@ def get_state_schema():
             "type": "str",
             "description": "Last known git branch — resets mentor state on change",
             "category": "meta",
+        },
+        # v3.7 fields (context preservation)
+        "summary_threshold_fired": {
+            "type": "bool",
+            "description": "Whether working-summary context threshold was triggered this session",
+            "category": "context",
         },
     }
 

@@ -21,9 +21,9 @@ Before entering the loop, state these limits to the user:
 4. Get explicit user approval: "Starting autonomous mode. I'll work through up to 10 iterations. Ready?"
 
 ### Phase 1: PLAN (iteration 0)
-1. Enter Plan Mode, explore the codebase, write the plan
+1. Run /brainstorm to explore the codebase and write the plan
 2. Break the task into ordered sub-tasks (numbered checklist)
-3. Exit Plan Mode for user approval
+3. Present plan for user approval
 4. Save plan to memory
 
 ### Phase 2: EXECUTE (iterations 1-N)

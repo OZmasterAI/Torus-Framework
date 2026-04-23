@@ -12,6 +12,12 @@ Tier 2 (quality, gates 04-07): Run after Tier 1 passes.
 Tier 3 (advisory/advanced, gates 09-17): Run last. Individual skips happen here
 when a gate's tool-type filter does not match the current tool.
 
+Q-learning ordering
+-------------------
+Tier 2/3 gates are reordered by learned block probability using an epsilon-greedy
+strategy (5% exploration, 95% exploitation). Gates that block more frequently
+for a given tool run first, enabling earlier short-circuits.
+
 Stats tracking
 --------------
 Module-level counters accumulate across the process lifetime (one enforcer
@@ -30,6 +36,7 @@ Usage
 import importlib
 import json
 import os
+import random
 import sys
 import time
 import types
@@ -79,12 +86,17 @@ GATE_TOOL_MAP: Dict[str, Optional[Set[str]]] = {
     "gates.gate_17_injection_defense":   {"WebFetch", "WebSearch"},
     "gates.gate_18_canary":              None,  # Universal — observes all tool calls
     "gates.gate_19_hindsight":           {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_20_self_check":          {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_21_working_summary":     {"Edit", "Write", "NotebookEdit", "Bash", "Task"},
+    "gates.gate_22_tool_profiles":       None,  # Universal — advisory for all profiled tools
 }
 
 
 # ---------------------------------------------------------------------------
 # Module-level stats (reset each time the module is (re)loaded).
 # ---------------------------------------------------------------------------
+
+_MAX_TIMING_SAMPLES = 100  # Cap timing_ms to prevent unbounded growth
 
 _stats: Dict[str, object] = {
     "calls": 0,          # total route_gates() calls
@@ -159,7 +171,7 @@ def _load_gate(module_name: str) -> Optional[types.ModuleType]:
 def get_applicable_gates(tool_name: str) -> List[str]:
     """Return gate module names that apply to *tool_name*, in priority order.
 
-    Gates are ordered Tier 1 → Tier 2 → Tier 3, preserving the original
+    Gates are ordered Tier 1 -> Tier 2 -> Tier 3, preserving the original
     GATE_MODULES ordering within each tier.  Gates whose tool-type filter
     does not include *tool_name* are excluded.
 
@@ -201,10 +213,12 @@ def route_gates(
     Algorithm
     ---------
     1. Build the ordered list of applicable gates via ``get_applicable_gates``.
-    2. Run gates in order.  Timing is recorded per-call.
-    3. If any **Tier 1** gate returns ``blocked=True`` (or ``is_ask=True``),
+    2. Apply Q-learning reordering to Tier 2/3 gates (epsilon-greedy).
+    3. Run gates in order.  Timing is recorded per-call.
+    4. If any **Tier 1** gate returns ``blocked=True`` (or ``is_ask=True``),
        remaining gates are skipped and the results list is returned immediately.
-    4. Stats are updated: ``gates_run``, ``gates_skipped``, ``tier1_blocks``.
+    5. Update Q-table with each gate's result and flush at end.
+    6. Stats are updated: ``gates_run``, ``gates_skipped``, ``tier1_blocks``.
 
     Parameters
     ----------
@@ -228,20 +242,22 @@ def route_gates(
     _set_stat_int("calls", _get_stat_int("calls") + 1)
 
     applicable = get_applicable_gates(tool_name)
-    total_possible = len(applicable)
+    # Apply Q-learning reordering (Tier 1 stays first, Tier 2/3 reordered)
+    applicable = get_optimal_gate_order(tool_name, applicable)
 
     results: List[GateResult] = []
     short_circuited = False
+    gates_skipped_count = 0
 
     for module_name in applicable:
         if short_circuited:
-            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + 1)
+            gates_skipped_count += 1
             continue
 
         mod = _load_gate(module_name)
         if mod is None:
             # Gate not loadable — count as skipped, do not block (non-Tier-1).
-            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + 1)
+            gates_skipped_count += 1
             continue
 
         try:
@@ -253,7 +269,7 @@ def route_gates(
         except Exception as exc:
             tier = _tier_of(module_name)
             if tier == 1:
-                # Tier 1 crash → fail-closed
+                # Tier 1 crash -> fail-closed
                 result = GateResult(
                     blocked=True,
                     message=f"[gate_router] Tier 1 gate '{module_name}' crashed: {exc}",
@@ -261,7 +277,7 @@ def route_gates(
                     severity="critical",
                 )
             else:
-                # Non-Tier-1 crash → fail-open (warn, do not block)
+                # Non-Tier-1 crash -> fail-open (warn, do not block)
                 result = GateResult(
                     blocked=False,
                     message=f"[gate_router] Gate '{module_name}' crashed (non-fatal): {exc}",
@@ -269,23 +285,28 @@ def route_gates(
                     severity="warn",
                 )
 
-        _set_stat_int("gates_run", _get_stat_int("gates_run") + 1)
         results.append(result)
+
+        # Update Q-table with this gate's outcome
+        update_qtable(module_name, tool_name, result.blocked or result.is_ask)
 
         # Short-circuit: Tier 1 block or ask triggers immediate halt.
         if _tier_of(module_name) == 1 and (result.blocked or result.is_ask):
             _set_stat_int("tier1_blocks", _get_stat_int("tier1_blocks") + 1)
             short_circuited = True
 
-    # Count gates that were in the applicable list but never reached.
-    gates_run_count = len(results)
-    skipped_this_call = total_possible - gates_run_count
-    _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + skipped_this_call)
+    # Update stats — no double-counting: gates_skipped_count tracks all skips
+    _set_stat_int("gates_run", _get_stat_int("gates_run") + len(results))
+    _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + gates_skipped_count)
 
     elapsed_ms = (time.time() - t_start) * 1000
-    timing_list = _get_stat_list("timing_ms")
-    timing_list.append(elapsed_ms)
-    _stats["timing_ms"] = timing_list
+    timing = _get_stat_list("timing_ms")
+    timing.append(elapsed_ms)
+    if len(timing) > _MAX_TIMING_SAMPLES:
+        _stats["timing_ms"] = timing[-(_MAX_TIMING_SAMPLES // 2):]
+
+    # Flush Q-table updates to disk (single write per invocation)
+    flush_qtable()
 
     return results
 
@@ -317,25 +338,34 @@ def _run_tier_parallel(gate_names, tool_name, tool_input, state, event_type, max
 
     Falls back to sequential execution for < 3 gates (thread pool
     overhead exceeds savings for small batches).
+
+    Returns (results, skipped_count) -- caller owns stat updates to
+    prevent double-counting between helper and caller.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     if len(gate_names) < 3:
         results = []
+        skipped = 0
         for gn in gate_names:
             _, r = _run_gate_checked(gn, tool_name, tool_input, state, event_type)
             if r is not None:
                 results.append(r)
-        return results
+            else:
+                skipped += 1
+        return results, skipped
 
     results = []
+    skipped = 0
     with ThreadPoolExecutor(max_workers=min(max_workers, len(gate_names))) as executor:
         futures = {executor.submit(_run_gate_checked, gn, tool_name, tool_input, state, event_type): gn for gn in gate_names}
         for future in as_completed(futures):
             name, result = future.result()
             if result is not None:
                 results.append(result)
-    return results
+            else:
+                skipped += 1
+    return results, skipped
 
 
 def route_gates_parallel(
@@ -353,6 +383,10 @@ def route_gates_parallel(
 
     Gate 11 (rate_limit) always runs last, after all other tiers,
     regardless of tier membership.
+
+    Q-learning reordering is applied to determine the order within each
+    parallel tier (affects which gates get to block first in sequential
+    fallback for small tiers).
 
     Parameters
     ----------
@@ -382,6 +416,10 @@ def route_gates_parallel(
     t2 = [g for g in applicable if g in TIER2]
     t3 = [g for g in applicable if g in TIER3]
 
+    # Apply Q-learning ordering within T2 and T3
+    t2 = get_optimal_gate_order(tool_name, t2)
+    t3 = get_optimal_gate_order(tool_name, t3)
+
     # Gate 11 must run last — extract from its tier
     RATE_LIMIT = "gates.gate_11_rate_limit"
     has_rate_limit = RATE_LIMIT in t3
@@ -389,46 +427,68 @@ def route_gates_parallel(
         t3.remove(RATE_LIMIT)
 
     results: List[GateResult] = []
+    total_skipped = 0
 
-    # ── Phase 1: Tier 1 — sequential, short-circuit on block/ask ──
+    # -- Phase 1: Tier 1 — sequential, short-circuit on block/ask --
     for module_name in t1:
         _, result = _run_gate_checked(module_name, tool_name, tool_input, state, event_type)
         if result is None:
-            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + 1)
+            total_skipped += 1
             continue
         _set_stat_int("gates_run", _get_stat_int("gates_run") + 1)
         results.append(result)
+        update_qtable(module_name, tool_name, result.blocked or result.is_ask)
         if result.blocked or result.is_ask:
             _set_stat_int("tier1_blocks", _get_stat_int("tier1_blocks") + 1)
             remaining = len(t2) + len(t3) + (1 if has_rate_limit else 0)
-            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + remaining)
+            total_skipped += remaining
+            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + total_skipped)
             elapsed_ms = (time.time() - t_start) * 1000
-            _get_stat_list("timing_ms").append(elapsed_ms)
+            timing = _get_stat_list("timing_ms")
+            timing.append(elapsed_ms)
+            if len(timing) > _MAX_TIMING_SAMPLES:
+                _stats["timing_ms"] = timing[-(_MAX_TIMING_SAMPLES // 2):]
+            flush_qtable()
             return results
 
-    # ── Phase 2: Tier 2 — parallel ──
+    # -- Phase 2: Tier 2 — parallel --
     if t2:
-        t2_results = _run_tier_parallel(t2, tool_name, tool_input, state, event_type, max_workers)
+        t2_results, t2_skipped = _run_tier_parallel(t2, tool_name, tool_input, state, event_type, max_workers)
         _set_stat_int("gates_run", _get_stat_int("gates_run") + len(t2_results))
+        total_skipped += t2_skipped
+        for r in t2_results:
+            update_qtable(r.gate_name or "", tool_name, r.blocked or r.is_ask)
         results.extend(t2_results)
 
-    # ── Phase 3: Tier 3 — parallel (excluding rate limit) ──
+    # -- Phase 3: Tier 3 — parallel (excluding rate limit) --
     if t3:
-        t3_results = _run_tier_parallel(t3, tool_name, tool_input, state, event_type, max_workers)
+        t3_results, t3_skipped = _run_tier_parallel(t3, tool_name, tool_input, state, event_type, max_workers)
         _set_stat_int("gates_run", _get_stat_int("gates_run") + len(t3_results))
+        total_skipped += t3_skipped
+        for r in t3_results:
+            update_qtable(r.gate_name or "", tool_name, r.blocked or r.is_ask)
         results.extend(t3_results)
 
-    # ── Phase 4: Rate limit — always last, sequential ──
+    # -- Phase 4: Rate limit — always last, sequential --
     if has_rate_limit:
         _, rl_result = _run_gate_checked(RATE_LIMIT, tool_name, tool_input, state, event_type)
         if rl_result is not None:
             _set_stat_int("gates_run", _get_stat_int("gates_run") + 1)
             results.append(rl_result)
+            update_qtable(RATE_LIMIT, tool_name, rl_result.blocked or rl_result.is_ask)
         else:
-            _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + 1)
+            total_skipped += 1
+
+    # Single stat update for all skips -- prevents double-counting
+    _set_stat_int("gates_skipped", _get_stat_int("gates_skipped") + total_skipped)
 
     elapsed_ms = (time.time() - t_start) * 1000
-    _get_stat_list("timing_ms").append(elapsed_ms)
+    timing = _get_stat_list("timing_ms")
+    timing.append(elapsed_ms)
+    if len(timing) > _MAX_TIMING_SAMPLES:
+        _stats["timing_ms"] = timing[-(_MAX_TIMING_SAMPLES // 2):]
+
+    flush_qtable()
 
     return results
 
@@ -452,7 +512,7 @@ def get_routing_stats() -> dict:
     last_routing_ms : float
         Routing time of the most recent call (0.0 if no calls yet).
     skip_rate : float
-        Fraction of applicable gates skipped (0.0–1.0); 0.0 if nothing run.
+        Fraction of applicable gates skipped (0.0-1.0); 0.0 if nothing run.
     """
     calls: int = _get_stat_int("calls")
     gates_run: int = _get_stat_int("gates_run")
@@ -482,6 +542,7 @@ def get_routing_stats() -> dict:
 
 _QTABLE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".gate_qtable.json")
 _Q_ALPHA = 0.1      # learning rate
+_Q_EPSILON = 0.05   # epsilon for epsilon-greedy exploration (5% random order)
 _Q_REWARD_BLOCK = 1.0   # reward when gate blocks
 _Q_REWARD_PASS = -0.1   # reward when gate passes (no block)
 
@@ -532,6 +593,10 @@ def get_optimal_gate_order(tool_name: str, gate_names: List[str]) -> List[str]:
     the given tool — gates with higher learned block probability run first,
     enabling earlier short-circuits.
 
+    Uses epsilon-greedy exploration: with probability _Q_EPSILON (5%), gates
+    are shuffled randomly instead of sorted by Q-value. This ensures rarely-
+    firing gates get sampled and don't stay stuck at Q=0.
+
     Gates with no Q-table entry are treated as Q=0.0.
 
     Parameters
@@ -551,7 +616,16 @@ def get_optimal_gate_order(tool_name: str, gate_names: List[str]) -> List[str]:
     tier1_gates = [n for n in gate_names if n in TIER1]
     non_tier1 = [n for n in gate_names if n not in TIER1]
 
-    # Sort non-Tier-1 gates by descending Q-value (higher = more likely to block = run first).
+    if not non_tier1:
+        return tier1_gates
+
+    # Epsilon-greedy: with probability _Q_EPSILON, shuffle for exploration
+    # so rarely-firing gates get sampled and don't stay stuck at Q=0.
+    if random.random() < _Q_EPSILON:
+        random.shuffle(non_tier1)
+        return tier1_gates + non_tier1
+
+    # Exploitation: sort by descending Q-value (higher = more likely to block = run first).
     def _q_value(gate_name: str) -> float:
         return qtable.get(gate_name, {}).get(tool_name, 0.0)
 
@@ -564,7 +638,7 @@ def update_qtable(gate_name: str, tool_name: str, blocked: bool) -> None:
 
     Mutates the in-process cache only.  Call flush_qtable() to persist.
 
-    Update rule:  Q = Q + α * (reward − Q)
+    Update rule:  Q = Q + alpha * (reward - Q)
     where reward is _Q_REWARD_BLOCK (1.0) if blocked, _Q_REWARD_PASS (-0.1) otherwise.
 
     Parameters

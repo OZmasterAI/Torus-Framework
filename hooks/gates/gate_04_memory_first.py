@@ -39,6 +39,8 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     if tool_name not in GATED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
 
+
+
     tool_input = safe_tool_input(tool_input)
 
     # Read-only subagents don't edit files — skip memory freshness check
@@ -66,6 +68,19 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     # Check if memory was queried recently (checks both enforcer state AND MCP sideband file)
     last_query = get_memory_last_queried(state)
+    import sys as _sys, json as _json, os as _os
+    _sf = '/run/user/1000/claude-hooks/state/state_main.json'
+    _sb = '/run/user/1000/claude-hooks/state/.enforcer_sideband_main.json'
+    _sf_mlq = 'N/A'
+    _sb_mlq = 'N/A'
+    try:
+        with open(_sf) as _f: _sf_mlq = str(_json.load(_f).get('memory_last_queried', 0))
+    except: pass
+    try:
+        if _os.path.exists(_sb):
+            with open(_sb) as _f: _sb_mlq = str(_json.load(_f).get('memory_last_queried', 0))
+        else: _sb_mlq = 'DELETED'
+    except: pass
     elapsed = time.time() - last_query
 
     # F3: Per-tool freshness windows — Write gets 10 min (composition takes longer)

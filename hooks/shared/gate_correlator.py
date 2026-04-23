@@ -380,6 +380,28 @@ def detect_gate_chains(
                 chain_gaps[key].append(gap * 1000.0)
                 chain_tools[key].append(b_entry.get("tool", ""))
 
+    # Track block decisions for conditional probability
+    chain_blocks: Dict[Tuple[str, str], List[Tuple[bool, bool]]] = defaultdict(list)
+    for session_entries in by_session.values():
+        for i, a_entry in enumerate(session_entries):
+            a_gate = a_entry.get("gate", "")
+            a_ts = _ts_float(a_entry)
+            a_blocked = a_entry.get("decision") == "block"
+            if not a_gate:
+                continue
+            for b_entry in session_entries[i + 1:]:
+                b_ts = _ts_float(b_entry)
+                gap = b_ts - a_ts
+                if gap > window_seconds:
+                    break
+                if gap < 0:
+                    continue
+                b_gate = b_entry.get("gate", "")
+                if not b_gate or b_gate == a_gate:
+                    continue
+                b_blocked = b_entry.get("decision") == "block"
+                chain_blocks[(a_gate, b_gate)].append((a_blocked, b_blocked))
+
     results = []
     for (from_gate, to_gate), gaps in chain_gaps.items():
         if len(gaps) < min_count:
@@ -389,13 +411,22 @@ def detect_gate_chains(
             if t:
                 tool_counts[t] += 1
         example_tool = max(tool_counts, key=tool_counts.__getitem__) if tool_counts else ""
-        results.append({
+
+        # P(B blocks | A blocks) — conditional block probability
+        decisions = chain_blocks.get((from_gate, to_gate), [])
+        a_blocks = [(a, b) for a, b in decisions if a]
+        cond_prob = sum(1 for _, b in a_blocks if b) / max(len(a_blocks), 1) if a_blocks else None
+
+        entry = {
             "from_gate": from_gate,
             "to_gate": to_gate,
             "count": len(gaps),
             "avg_gap_ms": round(sum(gaps) / len(gaps), 1),
             "example_tool": example_tool,
-        })
+        }
+        if cond_prob is not None:
+            entry["cond_block_prob"] = round(cond_prob, 4)
+        results.append(entry)
 
     results.sort(key=lambda r: r["count"], reverse=True)
     return results

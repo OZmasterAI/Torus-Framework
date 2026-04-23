@@ -1,3 +1,8 @@
+---
+name: diagnose
+description: Gate effectiveness analysis. Reads audit logs, calculates block/warn/pass rates per gate, identifies noisy or quiet gates, and recommends tuning.
+---
+
 # /diagnose — Gate Effectiveness Analysis
 
 ## When to use
@@ -135,7 +140,7 @@ Based on the analysis, generate specific recommendations:
   remember_this(
     content="Gate diagnose: {summary of top findings}",
     context="Gate effectiveness report for {today}",
-    tags=["type:learning", "area:framework", "diagnose", "gates"]
+    tags="type:learning,area:framework,area:diagnose,area:gates"
   )
   ```
 - If the audit log has fewer than 10 entries, note "Low data — report may not be

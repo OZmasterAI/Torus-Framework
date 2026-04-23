@@ -25,31 +25,36 @@ CAPTURE_QUEUE_FILE = os.path.join(_HOOKS_DIR, ".capture_queue.jsonl")
 
 # Human-readable display labels keyed by normalised gate key
 _GATE_LABELS: Dict[str, str] = {
-    "gate_01_read_before_edit":    "G01 Read-Before-Edit",
-    "gate_02_no_destroy":          "G02 No-Destroy",
-    "gate_03_test_before_deploy":  "G03 Test-Before-Deploy",
-    "gate_04_memory_first":        "G04 Memory-First",
-    "gate_05_proof_before_fixed":  "G05 Proof-Before-Fixed",
-    "gate_06_save_fix":            "G06 Save-Fix",
+    "gate_01_read_before_edit": "G01 Read-Before-Edit",
+    "gate_02_no_destroy": "G02 No-Destroy",
+    "gate_03_test_before_deploy": "G03 Test-Before-Deploy",
+    "gate_04_memory_first": "G04 Memory-First",
+    "gate_05_proof_before_fixed": "G05 Proof-Before-Fixed",
+    "gate_06_save_fix": "G06 Save-Fix",
     "gate_07_critical_file_guard": "G07 Critical-File-Guard",
-    "gate_09_strategy_ban":        "G09 Strategy-Ban",
-    "gate_10_model_enforcement":   "G10 Model-Enforcement",
-    "gate_11_rate_limit":          "G11 Rate-Limit",
+    "gate_09_strategy_ban": "G09 Strategy-Ban",
+    "gate_10_model_enforcement": "G10 Model-Enforcement",
+    "gate_11_rate_limit": "G11 Rate-Limit",
     "gate_13_workspace_isolation": "G13 Workspace-Isolation",
-    "gate_14_confidence_check":    "G14 Confidence-Check",
-    "gate_15_causal_chain":        "G15 Causal-Chain",
-    "gate_16_code_quality":        "G16 Code-Quality",
-    "gate_17_injection_defense":   "G17 Injection-Defense",
+    "gate_14_confidence_check": "G14 Confidence-Check",
+    "gate_15_causal_chain": "G15 Causal-Chain",
+    "gate_16_code_quality": "G16 Code-Quality",
+    "gate_17_injection_defense": "G17 Injection-Defense",
 }
 
 # Tool names that are subject to gate enforcement (not always-allowed)
 _GATED_TOOLS = {"Edit", "Write", "Bash", "NotebookEdit"}
 
 # Tier 1 gates that are mandatory safety rails (affects recommendation text)
-_TIER1_GATES = {"gate_01_read_before_edit", "gate_02_no_destroy", "gate_03_test_before_deploy"}
+_TIER1_GATES = {
+    "gate_01_read_before_edit",
+    "gate_02_no_destroy",
+    "gate_03_test_before_deploy",
+}
 
 
 # ── Data container ────────────────────────────────────────────────────────────
+
 
 @dataclass
 class GateMetrics:
@@ -68,6 +73,7 @@ class GateMetrics:
         tool_calls_total: Total non-prompt tool calls from the capture queue
                           (denominator for coverage computation).
     """
+
     blocks: int = 0
     overrides: int = 0
     prevented: int = 0
@@ -81,18 +87,25 @@ class GateMetrics:
 
 # ── File loaders ──────────────────────────────────────────────────────────────
 
+
 def _load_effectiveness() -> Dict[str, dict]:
-    """Load raw gate effectiveness data.
+    """Load raw gate effectiveness data, merging all per-session files.
 
     Returns:
         dict keyed by gate name with block/override/prevented counts.
         Returns {} on missing or corrupt file.
     """
     try:
-        with open(EFFECTIVENESS_FILE, "r") as fh:
-            return json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return {}
+        from shared.state import load_gate_effectiveness
+
+        return load_gate_effectiveness()
+    except Exception:
+        # Fallback to base file if import fails
+        try:
+            with open(EFFECTIVENESS_FILE, "r") as fh:
+                return json.load(fh)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return {}
 
 
 def _load_capture_queue() -> List[dict]:
@@ -124,6 +137,7 @@ def _load_capture_queue() -> List[dict]:
 
 # ── Core computation ──────────────────────────────────────────────────────────
 
+
 def _normalise_key(raw_key: str) -> str:
     """Strip whitespace from a gate key."""
     return raw_key.strip()
@@ -145,12 +159,9 @@ def get_gate_metrics() -> Dict[str, GateMetrics]:
     queue = _load_capture_queue()
 
     # Queue-level denominators
-    gated_tool_count = sum(
-        1 for m in queue if m.get("tool_name", "") in _GATED_TOOLS
-    )
+    gated_tool_count = sum(1 for m in queue if m.get("tool_name", "") in _GATED_TOOLS)
     total_tool_count = sum(
-        1 for m in queue
-        if m.get("tool_name", "") not in {"UserPrompt", "PreCompact"}
+        1 for m in queue if m.get("tool_name", "") not in {"UserPrompt", "PreCompact"}
     )
 
     metrics: Dict[str, GateMetrics] = {}
@@ -167,7 +178,9 @@ def get_gate_metrics() -> Dict[str, GateMetrics]:
         fires = blocks
 
         # block_rate: blocks relative to gated tool calls
-        block_rate = min(1.0, blocks / gated_tool_count) if gated_tool_count > 0 else 0.0
+        block_rate = (
+            min(1.0, blocks / gated_tool_count) if gated_tool_count > 0 else 0.0
+        )
 
         # coverage: blocks relative to all tracked tool calls
         coverage = min(1.0, blocks / total_tool_count) if total_tool_count > 0 else 0.0
@@ -176,7 +189,8 @@ def get_gate_metrics() -> Dict[str, GateMetrics]:
         if total_tool_count > 0 and blocks > 0:
             override_ratio = min(1.0, overrides / blocks)
             effectiveness = (
-                math.log1p(blocks) / math.log1p(total_tool_count)
+                math.log1p(blocks)
+                / math.log1p(total_tool_count)
                 * (1.0 - override_ratio)
             )
         else:
@@ -184,8 +198,7 @@ def get_gate_metrics() -> Dict[str, GateMetrics]:
 
         # prevented_bonus: log-scaled contribution from confirmed prevented incidents
         prevented_bonus = (
-            min(1.0, math.log1p(prevented) / math.log1p(10))
-            if prevented > 0 else 0.0
+            min(1.0, math.log1p(prevented) / math.log1p(10)) if prevented > 0 else 0.0
         )
 
         # value_score: blended ranking score
@@ -217,6 +230,7 @@ def rank_gates_by_value() -> List[Tuple[str, GateMetrics]]:
 
 
 # ── Rendering ─────────────────────────────────────────────────────────────────
+
 
 def _label(gate_key: str) -> str:
     """Return a short display label for a gate key."""
@@ -279,6 +293,7 @@ def render_dashboard() -> str:
 
 # ── Recommendations ───────────────────────────────────────────────────────────
 
+
 def get_recommendations() -> List[str]:
     """Generate actionable recommendations based on gate metrics.
 
@@ -312,31 +327,37 @@ def get_recommendations() -> List[str]:
         if m.blocks > 10 and m.overrides > 0:
             override_rate = m.overrides / m.blocks
             if override_rate > 0.10:
-                recs.append((
-                    30,
-                    f"{_label(key)}: {override_rate:.0%} override rate "
-                    f"({m.overrides} overrides / {m.blocks:,} blocks). "
-                    "Gate may be firing too aggressively -- review thresholds."
-                ))
+                recs.append(
+                    (
+                        30,
+                        f"{_label(key)}: {override_rate:.0%} override rate "
+                        f"({m.overrides} overrides / {m.blocks:,} blocks). "
+                        "Gate may be firing too aggressively -- review thresholds.",
+                    )
+                )
 
     # Priority 25: Legacy 'block' key instead of 'blocks' in effectiveness file
     for raw_key, entry in raw.items():
         if int(entry.get("blocks", 0)) == 0 and int(entry.get("block", 0)) > 0:
             alt = int(entry.get("block", 0))
-            recs.append((
-                25,
-                f"{_label(_normalise_key(raw_key))}: effectiveness file uses legacy 'block' "
-                f"key (value={alt}) instead of 'blocks'. Normalise key for consistent tracking."
-            ))
+            recs.append(
+                (
+                    25,
+                    f"{_label(_normalise_key(raw_key))}: effectiveness file uses legacy 'block' "
+                    f"key (value={alt}) instead of 'blocks'. Normalise key for consistent tracking.",
+                )
+            )
 
     # Priority 20: High block count but zero confirmed incidents prevented
     for key, m in metrics.items():
         if m.blocks > 100 and m.prevented == 0 and key not in _TIER1_GATES:
-            recs.append((
-                20,
-                f"{_label(key)}: {m.blocks:,} blocks recorded but 0 confirmed incidents "
-                "prevented. Consider auditing block quality or adding 'prevented' tracking."
-            ))
+            recs.append(
+                (
+                    20,
+                    f"{_label(key)}: {m.blocks:,} blocks recorded but 0 confirmed incidents "
+                    "prevented. Consider auditing block quality or adding 'prevented' tracking.",
+                )
+            )
 
     # Priority 10: Suspiciously low block count (possible misconfiguration)
     # Gates expected to be rare by design are excluded
@@ -349,29 +370,35 @@ def get_recommendations() -> List[str]:
         if key in _rare_by_design:
             continue
         if m.blocks < 5:
-            recs.append((
-                10,
-                f"{_label(key)}: only {m.blocks} total blocks -- gate may be dormant or "
-                "conditions too rare. Verify it is correctly registered in enforcer.py."
-            ))
+            recs.append(
+                (
+                    10,
+                    f"{_label(key)}: only {m.blocks} total blocks -- gate may be dormant or "
+                    "conditions too rare. Verify it is correctly registered in enforcer.py.",
+                )
+            )
 
     # Priority 5: Top gate celebration
     ranked = rank_gates_by_value()
     if ranked:
         top_key, top_m = ranked[0]
-        recs.append((
-            5,
-            f"Top gate by value score: {_label(top_key)} "
-            f"(score={top_m.value_score:.4f}, {top_m.blocks:,} blocks, "
-            f"{top_m.prevented} prevented). Provides the most measurable protection."
-        ))
+        recs.append(
+            (
+                5,
+                f"Top gate by value score: {_label(top_key)} "
+                f"(score={top_m.value_score:.4f}, {top_m.blocks:,} blocks, "
+                f"{top_m.prevented} prevented). Provides the most measurable protection.",
+            )
+        )
 
     # Priority 1: System summary
-    recs.append((
-        1,
-        f"System totals: {total_blocks:,} blocks across {len(metrics)} active gate(s), "
-        f"{total_prevented} incident(s) confirmed prevented."
-    ))
+    recs.append(
+        (
+            1,
+            f"System totals: {total_blocks:,} blocks across {len(metrics)} active gate(s), "
+            f"{total_prevented} incident(s) confirmed prevented.",
+        )
+    )
 
     # Sort highest-priority first, return messages only
     recs.sort(key=lambda x: x[0], reverse=True)
@@ -412,10 +439,11 @@ if __name__ == "__main__":
             ranked[0][1].value_score >= ranked[-1][1].value_score,
         )
     dash = render_dashboard()
-    _check("render_dashboard returns non-empty str",
-           isinstance(dash, str) and len(dash) > 50)
-    _check("render_dashboard contains header",
-           "GATE EFFECTIVENESS DASHBOARD" in dash)
+    _check(
+        "render_dashboard returns non-empty str",
+        isinstance(dash, str) and len(dash) > 50,
+    )
+    _check("render_dashboard contains header", "GATE EFFECTIVENESS DASHBOARD" in dash)
     recs = get_recommendations()
     _check("get_recommendations returns list", isinstance(recs, list))
     _check("get_recommendations non-empty", len(recs) > 0)

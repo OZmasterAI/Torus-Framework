@@ -38,6 +38,7 @@ from boot_pkg.maintenance import (
     _rotate_audit_logs,
     sync_agent_models,
 )
+from shared.context_compressor import compress_boot_state
 
 try:
     from shared.ramdisk import ensure_ramdisk as _ramdisk_ensure, get_capture_queue
@@ -80,6 +81,23 @@ def main():
     _effective_name = (
         f"{_project_name}/{_subproject_name}" if _subproject_name else _project_name
     )
+
+    # Persist boot cwd so session_end can always find it (even if Stop event omits cwd)
+    if _boot_cwd:
+        _cwd_file = os.path.join(f"/run/user/{os.getuid()}/claude-hooks", "session_cwd")
+        try:
+            with open(_cwd_file, "w") as _f:
+                _f.write(_boot_cwd)
+        except OSError:
+            # Ramdisk may not exist yet — try hooks dir fallback
+            try:
+                _cwd_fallback = os.path.join(
+                    os.path.dirname(os.path.dirname(__file__)), ".session_cwd"
+                )
+                with open(_cwd_fallback, "w") as _f:
+                    _f.write(_boot_cwd)
+            except OSError:
+                pass
 
     now = datetime.now()
     hour = now.hour
@@ -221,31 +239,38 @@ def main():
     except Exception:
         pass  # Daemon startup is optional, never block boot
 
-    # Auto-start memory SSE server for MCP connection
+    # Auto-start memory server (streamable-http, default transport)
     try:
         _mem_server_path = os.path.join(CLAUDE_DIR, "hooks", "memory_server.py")
+        _mem_port = int(os.environ.get("MEMORY_SSE_PORT", "8742"))
         if os.path.isfile(_mem_server_path):
-            _mem_sse_running = False
+            _mem_running = False
             try:
                 import socket as _sock
 
                 _s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
                 _s.settimeout(1)
-                _s.connect(("127.0.0.1", 8741))
+                _s.connect(("127.0.0.1", _mem_port))
                 _s.close()
-                _mem_sse_running = True
+                _mem_running = True
             except Exception:
                 pass
-            if not _mem_sse_running:
+            if not _mem_running:
                 subprocess.Popen(
-                    [sys.executable, _mem_server_path, "--sse"],
+                    [sys.executable, _mem_server_path, "--port", str(_mem_port)],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,
                 )
-                print("  [BOOT] Memory SSE server started (port 8741)", file=sys.stderr)
+                print(
+                    f"  [BOOT] Memory server started (streamable-http, port {_mem_port})",
+                    file=sys.stderr,
+                )
             else:
-                print("  [BOOT] Memory SSE server already running", file=sys.stderr)
+                print(
+                    f"  [BOOT] Memory server already running (port {_mem_port})",
+                    file=sys.stderr,
+                )
     except Exception:
         pass  # Memory server startup is optional, never block boot
 
@@ -576,7 +601,7 @@ def main():
             filtered["next_steps"] = filtered["next_steps"][:3]
         if "known_issues" in filtered:
             filtered["known_issues"] = filtered["known_issues"][:3]
-        context_parts.append(f"project_state: {json.dumps(filtered, indent=2)}")
+        context_parts.append(f"project_state: {compress_boot_state(filtered)}")
     elif live_state:
         # Framework/hub sessions: use LIVE_STATE.json
         CONTEXT_KEYS = {
@@ -597,15 +622,11 @@ def main():
             filtered["next_steps"] = filtered["next_steps"][:3]
         if "known_issues" in filtered:
             filtered["known_issues"] = filtered["known_issues"][:3]
-        context_parts.append(f"LIVE_STATE.json: {json.dumps(filtered, indent=2)}")
+        context_parts.append(f"LIVE_STATE.json: {compress_boot_state(filtered)}")
     if git_context:
         git_info = f"Git: branch={git_context['branch']}"
         if git_context["uncommitted_count"] > 0:
             git_info += f", {git_context['uncommitted_count']} uncommitted files"
-        if git_context["recent_commits"]:
-            git_info += (
-                f"\nRecent commits: {'; '.join(git_context['recent_commits'][:3])}"
-            )
         context_parts.append(git_info)
     if active_tasks:
         context_parts.append(f"Active tasks: {', '.join(active_tasks[:5])}")
@@ -633,9 +654,18 @@ def main():
         "If user says continue, ask which item to tackle — do NOT auto-start work."
     )
     # Inject working-memory and working-summary (hook-injected, not auto-loaded from rules/)
+    # Prefer project-local hooks/ when in a project session, fall back to global
     _hooks_dir_inject = os.path.join(CLAUDE_DIR, "hooks")
     for _inject_file in ["working-memory.md", "working-summary.md"]:
-        _inject_path = os.path.join(_hooks_dir_inject, _inject_file)
+        _inject_path = None
+        if _effective_dir:
+            _proj_inject = os.path.join(
+                _effective_dir, ".claude", "hooks", _inject_file
+            )
+            if os.path.exists(_proj_inject):
+                _inject_path = _proj_inject
+        if _inject_path is None:
+            _inject_path = os.path.join(_hooks_dir_inject, _inject_file)
         try:
             with open(_inject_path) as _f:
                 _inject_content = _f.read().strip()
@@ -643,6 +673,24 @@ def main():
                     context_parts.append(_inject_content)
         except OSError:
             pass  # File missing at first session — skip silently
+    # DAG: create per-session branch + inject context (B+C model)
+    try:
+        sys.path.insert(0, os.path.join(CLAUDE_DIR, "hooks"))
+        from shared.dag import get_session_dag
+
+        _dag = get_session_dag("main")
+        # Create a new branch for this session with project scoping
+        _dag.start_session_branch(
+            session_num,
+            project=_project_name,
+            subproject=_subproject_name,
+        )
+        _dag_info = _dag.current_branch_info()
+        _dag_total = _dag._db.execute("SELECT COUNT(*) FROM branches").fetchone()[0]
+        context_parts.append(f"DAG: branch={_dag_info['name']} | {_dag_total} branches")
+    except Exception:
+        pass  # Fail-open
+
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))
 

@@ -39,6 +39,8 @@ _DEFAULT_SETTINGS_PATH = os.path.join(_CLAUDE_DIR, "settings.json")
 _DEFAULT_LIVE_STATE_PATH = os.path.join(_CLAUDE_DIR, "LIVE_STATE.json")
 _DEFAULT_ENFORCER_PATH = os.path.join(_HOOKS_DIR, "enforcer.py")
 _DEFAULT_SKILLS_DIR = os.path.join(_CLAUDE_DIR, "skills")
+_DEFAULT_SKILL_LIBRARY_DIR = os.path.join(_CLAUDE_DIR, "skill-library")
+_ALL_DEFAULT_SKILL_DIRS = [_DEFAULT_SKILL_LIBRARY_DIR, _DEFAULT_SKILLS_DIR]
 
 # Valid Claude Code hook event types
 _VALID_EVENT_TYPES = {
@@ -254,39 +256,50 @@ def validate_gates(enforcer_path=None):
 def validate_skills(skills_dir=None):
     """Validate that every skill directory contains a SKILL.md file.
 
+    Scans both skill-library/ and skills/ unless a custom skills_dir is given.
     Returns a list of error strings. Empty list means valid.
     """
     errors = []
-    sdir = skills_dir or _DEFAULT_SKILLS_DIR
 
-    if not os.path.exists(sdir):
-        return [f"skills directory not found: {sdir}"]
-
-    if not os.path.isdir(sdir):
-        return [f"skills path is not a directory: {sdir}"]
-
-    try:
-        entries = sorted(os.listdir(sdir))
-    except OSError as e:
-        return [f"skills directory could not be read: {e}"]
+    if skills_dir is not None:
+        sdirs = [os.path.abspath(os.path.expanduser(skills_dir))]
+    else:
+        sdirs = _ALL_DEFAULT_SKILL_DIRS
 
     found_skills = 0
-    for entry in entries:
-        entry_path = os.path.join(sdir, entry)
-        if not os.path.isdir(entry_path):
-            continue  # Skip non-directory files (e.g. __init__.py)
-        found_skills += 1
-        skill_md = os.path.join(entry_path, "SKILL.md")
-        if not os.path.exists(skill_md):
-            errors.append(
-                f"skill '{entry}': missing SKILL.md at {skill_md}"
-            )
+    seen = set()
+    any_dir_exists = False
 
-    if found_skills == 0:
-        errors.append(f"skills directory contains no skill subdirectories: {sdir}")
+    for sdir in sdirs:
+        if not os.path.exists(sdir):
+            continue
+        if not os.path.isdir(sdir):
+            errors.append(f"skills path is not a directory: {sdir}")
+            continue
+        any_dir_exists = True
+        try:
+            entries = sorted(os.listdir(sdir))
+        except OSError as e:
+            errors.append(f"skills directory could not be read: {e}")
+            continue
+        for entry in entries:
+            if entry in seen:
+                continue
+            entry_path = os.path.join(sdir, entry)
+            if not os.path.isdir(entry_path):
+                continue
+            seen.add(entry)
+            found_skills += 1
+            skill_md = os.path.join(entry_path, "SKILL.md")
+            if not os.path.exists(skill_md):
+                errors.append(f"skill '{entry}': missing SKILL.md at {skill_md}")
+
+    if not any_dir_exists:
+        errors.append(f"skills directories not found: {', '.join(str(s) for s in sdirs)}")
+    elif found_skills == 0:
+        errors.append(f"no skill subdirectories found in: {', '.join(str(s) for s in sdirs)}")
 
     return errors
-
 
 # ── validate_all ─────────────────────────────────────────────────────────────
 

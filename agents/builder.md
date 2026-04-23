@@ -15,8 +15,8 @@ tools:
   - mcp__memory__record_attempt
   - mcp__memory__record_outcome
   - mcp__memory__query_fix_history
-model: sonnet
-permissionMode: default
+model: opus
+permissionMode: acceptEdits
 ---
 
 # Builder Agent

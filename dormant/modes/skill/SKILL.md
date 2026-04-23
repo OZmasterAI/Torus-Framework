@@ -36,4 +36,4 @@ When the user says "/mode on coding", "/mode off", "/mode list", or wants to swi
 - Modes are additive — they layer on top of CLAUDE.md, rules, and gates
 - Only one mode can be active at a time
 - The `_active_mode.md` file in rules/ is auto-loaded by Claude Code's rules system
-- This skill is dormant until moved to `~/.claude/skills/mode/SKILL.md`
+- This skill is dormant until moved to `~/.claude/skill-library/mode/SKILL.md`

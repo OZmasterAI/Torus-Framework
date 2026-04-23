@@ -8,10 +8,16 @@ Each observation gets a deterministic ID (obs_{hash}) for dedup.
 
 import hashlib
 import json
+import os
+import threading
 import time
+import uuid
 from datetime import datetime
 
 from shared.secrets_filter import scrub
+
+_obs_lock = threading.Lock()
+_obs_counter = 0
 
 # Import fnv1a_hash for command dedup
 try:
@@ -115,7 +121,7 @@ def _compute_priority(tool_name, has_error, exit_code):
         return "medium"
     if tool_name in ("Read", "Glob", "Grep"):
         return "low"
-    if tool_name in ("Bash", "WebSearch", "WebFetch"):
+    if tool_name in ("Bash", "WebSearch", "WebFetch", "Task", "Agent", "Skill"):
         return "medium"
     return "low"
 
@@ -180,6 +186,7 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
     elif tool_name == "Edit":
         file_path = tool_input.get("file_path", "")
         old_str = tool_input.get("old_string", "")
+        new_str = tool_input.get("new_string", "")
         # Approximate line range from old_string length
         lines_hint = old_str.count('\n') + 1 if old_str else 0
         document = f"Edit: {file_path} (~{lines_hint} lines changed)"
@@ -187,6 +194,11 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
             "file_path": file_path,
             "file_extension": _extract_file_extension(file_path),
         }
+        # Truncated diffs for fix memory enrichment
+        if old_str:
+            context["diff_old"] = scrub(old_str[:200])
+        if new_str:
+            context["diff_new"] = scrub(new_str[:200])
 
     elif tool_name == "Write":
         file_path = tool_input.get("file_path", "")
@@ -251,7 +263,6 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
         if model:
             document += f" (model={model})"
         context = {"subagent_type": subagent_type, "model": model}
-        priority = "medium"
 
     else:
         document = f"{tool_name}: (uncategorized)"
@@ -281,7 +292,11 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
             mentor_chain_score = str(round(mc, 2))
 
     # Generate deterministic ID
-    id_source = f"{document}_{session_id}_{now}"
+    global _obs_counter
+    with _obs_lock:
+        _obs_counter += 1
+        count = _obs_counter
+    id_source = f"{document}_{session_id}_{now}_{os.getpid()}_{count}_{uuid.uuid4().hex[:8]}"
     obs_id = "obs_" + hashlib.sha256(id_source.encode()).hexdigest()[:12]
 
     return {
