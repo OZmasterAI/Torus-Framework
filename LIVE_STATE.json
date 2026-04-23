@@ -1,26 +1,22 @@
 {
-  "session_count": 679,
+  "session_count": 682,
   "project": "torus-framework",
-  "feature": "obsidian-wiki-synthesis",
-  "framework_version": "v3.0.0",
-  "what_was_done": "Implemented Obsidian Wiki Synthesis (33 pages, 4 skills, disabled). Synced v3.1.0 to GitHub main (246 files, sanitized). Fixed Syncthing vault sync. Fixed wikilink graph connectivity.",
+  "feature": "resource-audit-github-sync",
+  "framework_version": "v3.2.0",
+  "what_was_done": "Audited MCP server resource usage. Mapped dormant skills. Added analytics server to toolshed. Documented working-memory/working-summary systems. Synced v3.2.0 to GitHub main.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)",
     "1 test failure: WorkerUnavailable circuit breaker message format",
     "Gate 22 missing from GATE_TOOL_MAP (runs as universal — intentional or needs scoping?)",
-    "Obsidian wiki disabled at user request — re-enable by uncommenting wrap-up step 3.5, CLAUDE.md WIKI section, session_end.py append_wiki_log call"
+    "Obsidian wiki disabled at user request — re-enable by uncommenting wrap-up step 3.5, CLAUDE.md WIKI section, session_end.py append_wiki_log call",
+    "Analytics server added to toolshed.json but toolshed not yet restarted — restart needed to activate"
   ],
   "next_steps": [
+    "Restart toolshed to activate analytics backend",
+    "Clean up 18 stale dormant skill copies (already live in skills-v2)",
+    "Memory maintenance: 5213 entries, run stale cleanup",
     "Add LIVE_STATE.json to gate_07 CRITICAL_PATTERNS",
-    "Build tool_profiles evolution: use learned data to auto-adjust tool behavior",
-    "Watchdog load shedding + /health endpoint for memory server",
-    "Memory maintenance: 5206 entries, run stale cleanup",
-    "Evaluate wiki usefulness — re-enable if Obsidian graph proves valuable"
-  ],
-  "last_response_preview": "",
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 158144,
-  "dag_total_branches": 803
+    "Watchdog load shedding + /health endpoint for memory server"
+  ]
 }

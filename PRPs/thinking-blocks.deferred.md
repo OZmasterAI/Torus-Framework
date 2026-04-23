@@ -3234,3 +3234,519 @@
 - **Failures**: 3
 - **Action needed**: Try different approach or escalate to human review
 
+### 2026-04-17T05:34:14 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-17T05:34:15 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-17T05:35:00 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-17T05:35:02 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:49:08 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:49:08 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:49:29 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:49:29 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:49:41 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:49:41 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:49:56 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:49:56 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:50:07 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:50:07 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:50:24 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:50:24 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:50:55 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:50:55 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:51:15 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:51:19 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:51:28 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:51:28 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:57:14 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:57:14 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:59:09 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:59:09 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:59:44 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T00:59:45 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:00:17 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:00:17 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:01:10 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:01:10 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:53:46 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:53:46 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:53:56 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:53:56 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:54:11 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:54:11 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:54:21 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:54:21 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:54:49 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:54:49 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:55:13 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:55:13 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:55:34 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:55:34 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:55:46 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:55:47 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:56:06 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:56:06 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:58:12 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:58:13 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:58:38 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:58:38 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:59:16 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T01:59:16 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:00:35 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:00:35 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:01:03 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:01:03 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:01:32 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:01:32 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:01:37 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:01:38 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:02:11 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:02:11 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:02:54 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:02:54 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:06:14 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:06:14 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:08:16 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:08:16 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:09:53 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:09:53 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:12:55 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:12:56 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:31:01 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:31:02 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:32:11 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:32:11 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:35:54 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T02:35:55 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T03:01:00 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T03:01:01 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T03:04:16 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-23T03:04:17 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+

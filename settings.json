@@ -1,6 +1,6 @@
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
   },
   "permissions": {
     "allow": [
@@ -12,7 +12,7 @@
     ],
     "defaultMode": "default"
   },
-  "model": "opus[1m]",
+  "model": "claude-opus-4-6[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -287,9 +287,12 @@
     "code-simplifier@claude-plugins-official": false,
     "telegram@claude-plugins-official": false
   },
-  "voiceEnabled": true,
+  "effortLevel": "high",
+  "awaySummaryEnabled": false,
+  "tui": "default",
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
+  "voiceEnabled": true,
   "mcpServers": {},
   "effort": "max",
   "disabled_hooks": {
@@ -330,5 +333,7 @@
     "Model cost — haiku for search, sonnet for work, opus for complex",
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
-  ]
+  ],
+  "autoUpdatesChannel": "stable",
+  "minimumVersion": "2.1.112"
 }
