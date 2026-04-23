@@ -27,6 +27,10 @@ hooks/.statusline_snapshot_*.json
 hooks/.summarizer.sock
 hooks/.summarizer.pid
 hooks/.tg_mirror_cursor.json
+hooks/.last_response_ts
+hooks/.memory_last_saved
+hooks/.memory_server.pid
+hooks/.session_cwd
 hooks/.auto_commit_staged*.txt
 hooks/.untested_code_files_*.json
 hooks/.audit_trail.jsonl
@@ -45,6 +49,14 @@ skills/**/scripts/__pycache__/
 # Databases (runtime, not portable)
 hooks/agent_channel.db
 hooks/agent_channel.db.lock
+hooks/conversations.db
+hooks/conversations.db-wal
+hooks/conversations.db-shm
+hooks/.state/skills.db
+hooks/.state/skills.db-shm
+hooks/.state/skills.db-wal
+hooks/.state/tool_profiles.json
+hooks/.state/.memory_last_queried
 memory/chroma_db/
 data/conversations.db
 data/conversations.db-wal
