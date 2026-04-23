@@ -5,7 +5,7 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
 
 ## Steps
 1. **GATHER** — Run `python3 ~/.claude/skill-library/wrap-up/scripts/gather.py` and parse the JSON output
-   - If script fails, fall back to manual: read LIVE_STATE.json, git status, search_knowledge
+   - If script fails, fall back to manual: read project state file (use detect_project() to find it — see step 3), git status, search_knowledge
    - The JSON contains: live_state, handoff (content + age), git status, memory count, promotion_candidates, recent_learnings, risk_level, warnings
 2. **SAVE TO MEMORY** — Based on gathered data + conversation context, remember_this() for significant work:
    - Bugs fixed and how
@@ -15,7 +15,7 @@ When the user says "wrap up", "done", "end session", "save progress", or is fini
    - Use promotion_candidates from gathered data to check for recurring patterns
    - If any topic appears 3+ times, suggest promoting to CLAUDE.md as a new rule
    - Present promotion suggestions to user for approval — never auto-promote
-3. **UPDATE STATE** — Run `python3 -c "import sys; sys.path.insert(0, '$HOME/.claude/hooks'); from boot_pkg.util import detect_project; n,d,s,sd = detect_project(); print(sd or d or '')"` to detect project root. If it returns a path, write to `{path}/.claude-state.json`. If empty (framework/hub session), write to `~/.claude/LIVE_STATE.json`. This covers `~/projects/`, `~/agents/`, and `~/worktrees/` automatically. Write with:
+3. **UPDATE STATE** — Run `python3 -c "import sys; sys.path.insert(0, '$HOME/.claude/hooks'); from boot_pkg.util import detect_project; n,d,s,sd = detect_project(); print(sd or d or '')"` to detect project root. If it returns a path, write to `{path}/.claude-state.json`. If empty (framework/hub session), write to `~/.claude/LIVE_STATE.json`. This covers `~/projects/`, `~/agents/`, and `~/worktrees/` automatically. In your summary message, say "State saved to .claude-state.json" (for projects) or "State saved to LIVE_STATE.json" (for framework hub) — use the correct name for whichever file you actually wrote to. Write with:
    - Updated session count
    - `feature` — short keyword tag for current work area (e.g. "session-isolation", "github-sync", "none")
    - `what_was_done` — max ~200 chars, action verbs only, no metrics/explanations (full details go to remember_this)

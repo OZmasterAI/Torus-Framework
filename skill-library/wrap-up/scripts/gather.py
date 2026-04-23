@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Gather all prerequisite data for wrap-up and output JSON to stdout.
 
-Claude uses this JSON to write the intelligent parts (LIVE_STATE.json).
+Claude uses this JSON to update the project-local state file (.claude-state.json)
+or the global LIVE_STATE.json for framework sessions. The write target is determined
+by detect_project() — see SKILL.md step 3.
 Every data source is wrapped in try/except so failures are non-fatal (fail-open).
 """
 
