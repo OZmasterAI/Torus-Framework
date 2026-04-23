@@ -254,14 +254,20 @@ def tag_ids_to_summaries(memory_ids, collection=None):
 class TagCooccurrence:
     """Tag co-occurrence matrix with PMI-based expansion."""
 
+    _REBUILD_COOLDOWN = 60
+
     def __init__(self):
         self.cooccurrence = {}
         self.counts = {}
         self.dirty = True
         self.total_memories = 0
+        self._last_build = 0
 
     def build(self, tag_index):
         """Build tag co-occurrence matrix from tag index."""
+        import time
+
+        self._last_build = time.monotonic()
         conn = tag_index.conn
         rows = conn.execute("SELECT memory_id, tag FROM tags").fetchall()
 
@@ -287,7 +293,13 @@ class TagCooccurrence:
 
     def get_expanded_tags(self, query, tag_index=None):
         """Find tags that co-occur with tags matching the query (PMI > 1.0)."""
-        if self.dirty and tag_index:
+        import time
+
+        if (
+            self.dirty
+            and tag_index
+            and (time.monotonic() - self._last_build >= self._REBUILD_COOLDOWN)
+        ):
             self.build(tag_index)
 
         if not self.counts:

@@ -546,6 +546,7 @@ class DAGMemoryLayer:
             if not rows:
                 return []
             q = np.array(query_vec, dtype=np.float32)
+            q_dim = q.shape[0]
             q_mag = np.linalg.norm(q)
             if q_mag == 0:
                 return []
@@ -553,8 +554,12 @@ class DAGMemoryLayer:
             vecs = []
             for source_id, blob in rows:
                 n_floats = len(blob) // 4
+                if n_floats != q_dim:
+                    continue
                 vecs.append(np.frombuffer(blob, dtype=np.float32, count=n_floats))
                 ids.append(source_id)
+            if not vecs:
+                return []
             matrix = np.vstack(vecs)
             dots = matrix @ q
             norms = np.linalg.norm(matrix, axis=1)

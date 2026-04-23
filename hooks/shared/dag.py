@@ -117,8 +117,8 @@ class ConversationDAG:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA busy_timeout=5000")
         self._db.execute("PRAGMA synchronous=NORMAL")
-        self._db.execute("PRAGMA cache_size=-64000")  # 64MB page cache
-        self._db.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
+        self._db.execute("PRAGMA cache_size=-8000")  # 8MB page cache
+        self._db.execute("PRAGMA mmap_size=67108864")  # 64MB mmap
         self._db.execute("PRAGMA temp_store=MEMORY")
         self._db.executescript(_DAG_SCHEMA)
         # Index for DAG-to-memory promotion lookups
@@ -745,19 +745,30 @@ class ConversationDAG:
             print(f"[dag] get_path error: {exc}", file=sys.stderr)
             return []
 
-
     # --- Stats & Metrics (Task #13) ---
 
     def get_stats(self):
         """Return comprehensive DAG stats dict."""
         try:
             node_count = self._db.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-            branch_count = self._db.execute("SELECT COUNT(*) FROM branches").fetchone()[0]
-            knowledge_count = self._db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
-            embedding_count = self._db.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
-            edge_count = self._db.execute("SELECT COUNT(*) FROM node_edges").fetchone()[0]
-            observation_count = self._db.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
-            fix_count = self._db.execute("SELECT COUNT(*) FROM fix_outcomes").fetchone()[0]
+            branch_count = self._db.execute("SELECT COUNT(*) FROM branches").fetchone()[
+                0
+            ]
+            knowledge_count = self._db.execute(
+                "SELECT COUNT(*) FROM knowledge"
+            ).fetchone()[0]
+            embedding_count = self._db.execute(
+                "SELECT COUNT(*) FROM embeddings"
+            ).fetchone()[0]
+            edge_count = self._db.execute("SELECT COUNT(*) FROM node_edges").fetchone()[
+                0
+            ]
+            observation_count = self._db.execute(
+                "SELECT COUNT(*) FROM observations"
+            ).fetchone()[0]
+            fix_count = self._db.execute(
+                "SELECT COUNT(*) FROM fix_outcomes"
+            ).fetchone()[0]
 
             promotion_count = self._db.execute(
                 "SELECT COUNT(*) FROM nodes WHERE metadata LIKE ? OR metadata LIKE ?",
@@ -840,7 +851,9 @@ class ConversationDAG:
         """Run FTS5 optimize command to merge b-tree segments. Call on session close."""
         try:
             self._db.execute("INSERT INTO nodes_fts(nodes_fts) VALUES('optimize')")
-            self._db.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES('optimize')")
+            self._db.execute(
+                "INSERT INTO knowledge_fts(knowledge_fts) VALUES('optimize')"
+            )
             self._db.commit()
             return True
         except Exception as e:
@@ -851,7 +864,9 @@ class ConversationDAG:
         """Full FTS5 rebuild - re-index all content. Use sparingly."""
         try:
             self._db.execute("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild')")
-            self._db.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES('rebuild')")
+            self._db.execute(
+                "INSERT INTO knowledge_fts(knowledge_fts) VALUES('rebuild')"
+            )
             self._db.commit()
             return True
         except Exception as e:
@@ -930,10 +945,18 @@ class ConversationDAG:
                             "(id, parent_id, role, content, model, provider, "
                             "timestamp, token_count, metadata, archived_at) "
                             "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                            (node["id"], node["parent_id"], node["role"],
-                             node["content"], node["model"], node["provider"],
-                             node["timestamp"], node["token_count"],
-                             json.dumps(node["metadata"]), now_iso),
+                            (
+                                node["id"],
+                                node["parent_id"],
+                                node["role"],
+                                node["content"],
+                                node["model"],
+                                node["provider"],
+                                node["timestamp"],
+                                node["token_count"],
+                                json.dumps(node["metadata"]),
+                                now_iso,
+                            ),
                         )
                         archived_count += 1
                     except Exception:
@@ -963,7 +986,9 @@ class ConversationDAG:
         """Permanently delete archived data older than specified days."""
         try:
             self._ensure_archive_table()
-            cutoff = (datetime.datetime.now() - datetime.timedelta(days=older_than_days)).strftime("%Y-%m-%dT%H:%M:%S")
+            cutoff = (
+                datetime.datetime.now() - datetime.timedelta(days=older_than_days)
+            ).strftime("%Y-%m-%dT%H:%M:%S")
             c1 = self._db.execute(
                 "DELETE FROM nodes_archive WHERE archived_at < ?", (cutoff,)
             ).rowcount

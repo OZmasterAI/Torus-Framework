@@ -34,7 +34,7 @@ docker run -d \
     --name "$CONTAINER_NAME" \
     --network host \
     -v "$REPO_DIR:/mnt/repo:ro" \
-    -v "$HOME/.claude.json:$HOME/.claude.json:rw" \
+    -v "/home/crab/.claude.json:/home/crab/.claude.json:rw" \
     -e "TERM=xterm-256color" \
     -e "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1" \
     "$IMAGE_NAME"

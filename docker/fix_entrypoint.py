@@ -3,7 +3,7 @@
 
 import os
 
-path = os.path.expanduser("~/.claude/docker/entrypoint.sh")
+path = "/home/crab/.claude/docker/entrypoint.sh"
 with open(path, "r") as f:
     content = f.read()
 

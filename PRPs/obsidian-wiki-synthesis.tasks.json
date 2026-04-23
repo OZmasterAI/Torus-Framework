@@ -1,0 +1,122 @@
+{
+  "prp": "obsidian-wiki-synthesis",
+  "created": "2026-04-23T12:00:00Z",
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Tag and reset vault",
+      "status": "pending",
+      "files": ["~/vault/"],
+      "validate": "ls ~/vault/ | grep -v .obsidian | grep -v .git | wc -l && ls ~/vault/wiki/",
+      "depends_on": []
+    },
+    {
+      "id": 2,
+      "name": "Create _index.md and log.md seed files",
+      "status": "pending",
+      "files": ["~/vault/wiki/_index.md", "~/vault/wiki/log.md"],
+      "validate": "head -5 ~/vault/wiki/_index.md && head -5 ~/vault/wiki/log.md",
+      "depends_on": [1]
+    },
+    {
+      "id": 3,
+      "name": "Create wiki-update skill",
+      "status": "pending",
+      "files": ["~/.claude/skill-library/wiki-update/SKILL.md"],
+      "validate": "cat ~/.claude/skill-library/wiki-update/SKILL.md | head -5",
+      "depends_on": [2]
+    },
+    {
+      "id": 4,
+      "name": "Create wiki-lint skill",
+      "status": "pending",
+      "files": ["~/.claude/skill-library/wiki-lint/SKILL.md"],
+      "validate": "cat ~/.claude/skill-library/wiki-lint/SKILL.md | head -5",
+      "depends_on": [3]
+    },
+    {
+      "id": 5,
+      "name": "Add wiki-update step to wrap-up skill",
+      "status": "pending",
+      "files": [
+        "~/.claude/skill-library/wrap-up/SKILL.md",
+        "~/.claude/skill-library/wrap-up/scripts/gather.py"
+      ],
+      "validate": "grep -c wiki ~/.claude/skill-library/wrap-up/SKILL.md",
+      "depends_on": [3]
+    },
+    {
+      "id": 6,
+      "name": "Rewrite session_end.py vault functions for wiki",
+      "status": "pending",
+      "files": [
+        "~/.claude/hooks/session_end.py",
+        "~/.claude/hooks/tests/test_session_end.py"
+      ],
+      "validate": "cd ~/.claude/hooks && python3 -m pytest tests/test_session_end.py -x",
+      "depends_on": [1, 2]
+    },
+    {
+      "id": 7,
+      "name": "Wire project instances into wiki",
+      "status": "pending",
+      "files": [
+        "~/.claude/skill-library/wiki-update/SKILL.md",
+        "~/.claude/skill-library/wrap-up/scripts/gather.py"
+      ],
+      "validate": "grep -c project ~/.claude/skill-library/wiki-update/SKILL.md",
+      "depends_on": [5, 6]
+    },
+    {
+      "id": 8,
+      "name": "Create wiki-ingest skill",
+      "status": "pending",
+      "files": ["~/.claude/skill-library/wiki-ingest/SKILL.md"],
+      "validate": "cat ~/.claude/skill-library/wiki-ingest/SKILL.md | head -5",
+      "depends_on": [2]
+    },
+    {
+      "id": 9,
+      "name": "Add query-against-wiki to session workflow",
+      "status": "pending",
+      "files": ["~/.claude/CLAUDE.md"],
+      "validate": "grep -c wiki ~/.claude/CLAUDE.md",
+      "depends_on": [2]
+    },
+    {
+      "id": 10,
+      "name": "Add file-answers-back to wiki-update skill",
+      "status": "pending",
+      "files": [
+        "~/.claude/skill-library/wiki-update/SKILL.md",
+        "~/.claude/skill-library/wrap-up/SKILL.md"
+      ],
+      "validate": "grep -ci 'file.*back\\|synthesis.*page' ~/.claude/skill-library/wiki-update/SKILL.md",
+      "depends_on": [3]
+    },
+    {
+      "id": 11,
+      "name": "Seed initial wiki pages from conversation context",
+      "status": "pending",
+      "files": ["~/vault/wiki/"],
+      "validate": "ls ~/vault/wiki/gates/ ~/vault/wiki/systems/ ~/vault/wiki/projects/ && cat ~/vault/wiki/_index.md",
+      "depends_on": [2]
+    },
+    {
+      "id": 12,
+      "name": "Add Dataview queries to wiki pages",
+      "status": "pending",
+      "files": ["~/vault/wiki/_index.md"],
+      "validate": "grep -c dataview ~/vault/wiki/_index.md",
+      "depends_on": [11]
+    },
+    {
+      "id": 13,
+      "name": "Add Marp slide generation support",
+      "status": "pending",
+      "files": ["~/.claude/skill-library/wiki-present/SKILL.md"],
+      "validate": "cat ~/.claude/skill-library/wiki-present/SKILL.md | head -5",
+      "depends_on": [2]
+    }
+  ]
+}
