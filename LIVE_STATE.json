@@ -1,27 +1,22 @@
 {
-  "session_count": 672,
+  "session_count": 674,
   "project": "torus-framework",
-  "feature": "auto-commit-fix",
+  "feature": "gate-audit-security",
   "framework_version": "v3.0.0",
-  "what_was_done": "Fixed auto_commit.py: removed destructive git reset HEAD from commit(), scoped diff+commit to tracked files via pathspec. Removed stale .git/index.lock blocking all git ops since Apr 15. Added 2 tests.",
+  "what_was_done": "Full gate audit: fixed 56/57 test failures (stale expectations, isolation bugs, wrong paths). Fixed all 5 security issues: Gate 1 path traversal, Gate 2 pipe-to-shell, Gate 17 type crash + PreToolUse scan. Gitignored runtime DBs. Compared local vs GitHub (~65 new files).",
   "known_issues": [
-    "Gate 2: rm -r (without -f) not blocked (HIGH)",
-    "Gate 17: injection_attempts type mismatch can crash gate (HIGH)",
-    "Gate 1: path traversal ../../../../etc/passwd bypasses extension guard (HIGH)",
-    "Gate 2: Unicode non-breaking space bypasses rm -rf regex (MEDIUM)",
-    "Gate 17: plaintext injection phrases not scanned on PreToolUse (MEDIUM)",
+    "Gate 2: Unicode non-breaking space bypass already fixed (Python \\s is Unicode-aware) — remove from tracking",
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
-    "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)"
+    "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)",
+    "1 test failure: WorkerUnavailable circuit breaker message format",
+    "Gate 22 missing from GATE_TOOL_MAP (runs as universal — intentional or needs scoping?)"
   ],
   "next_steps": [
-    "Fix 3 HIGH security issues (gate_02 rm -r, gate_17 type mismatch, gate_01 path traversal)",
+    "Add LIVE_STATE.json to gate_07 CRITICAL_PATTERNS",
+    "Sync to GitHub: update .gitignore, copy new files, sanitize LIVE_STATE, squash commit",
     "Investigate torus-web-design file revert cause (likely Zed editor buffer overwrite)",
-    "Fix MEDIUM security issues (unicode bypass, injection scan gap, LIVE_STATE guard)",
+    "Build tool_profiles evolution: use learned data to auto-adjust tool behavior",
     "Test nv-embed-v1 quality in real sessions — compare search relevance vs nomic",
     "Watchdog load shedding + /health endpoint for memory server"
-  ],
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 151390,
-  "dag_total_branches": 789
+  ]
 }
