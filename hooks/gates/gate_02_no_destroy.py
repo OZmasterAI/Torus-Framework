@@ -344,6 +344,12 @@ def _strip_data_args(command):
     if not tokens:
         return command
 
+    # If the pipeline feeds into a shell, "data" args are executable code — don't strip
+    for i, token in enumerate(tokens):
+        if token == "|" and i + 1 < len(tokens):
+            if os.path.basename(tokens[i + 1]) in SHELL_CMDS:
+                return command
+
     # Find the base command (skip env vars, sudo, etc.)
     cmd_base = None
     for t in tokens:
