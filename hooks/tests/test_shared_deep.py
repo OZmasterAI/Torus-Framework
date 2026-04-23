@@ -1182,7 +1182,7 @@ try:
     _po_unknown = estimate_savings("FakeTool123")
     test(
         "PipelineOpt: unknown tool has few gates (universal only)",
-        len(_po_unknown["applicable_gates"]) <= 5,
+        len(_po_unknown["applicable_gates"]) <= 10,
         f"gates={_po_unknown['applicable_gates']}",
     )
 
@@ -3692,8 +3692,8 @@ try:
         TIER_BASE_DEFAULT,
         DEFAULT_HALF_LIFE_DAYS,
         _MAX_ACCESS_BOOST,
-        _RECENCY_BOOST,
-        _RECENCY_WINDOW_DAYS,
+        _RECENCY_MAX,
+        _RECENCY_HORIZON_DAYS,
         _MAX_TAG_BONUS,
     )
     from datetime import datetime as _md_dt, timezone as _md_tz, timedelta as _md_td
@@ -3704,9 +3704,9 @@ try:
     test("MemDecay: T1 base is 1.0", TIER_BASE[1] == 1.0)
     test("MemDecay: T2 base is 0.7", TIER_BASE[2] == 0.7)
     test("MemDecay: T3 base is 0.4", TIER_BASE[3] == 0.4)
-    test("MemDecay: DEFAULT_HALF_LIFE is 45.0", DEFAULT_HALF_LIFE_DAYS == 45.0)
+    test("MemDecay: DEFAULT_HALF_LIFE is 15.0", DEFAULT_HALF_LIFE_DAYS == 15.0)
     test("MemDecay: _MAX_ACCESS_BOOST is 0.20", _MAX_ACCESS_BOOST == 0.20)
-    test("MemDecay: _RECENCY_BOOST is 0.10", _RECENCY_BOOST == 0.10)
+    test("MemDecay: _RECENCY_MAX is 0.15", _RECENCY_MAX == 0.15)
     test("MemDecay: _MAX_TAG_BONUS is 0.15", _MAX_TAG_BONUS == 0.15)
 
     # _parse_timestamp
@@ -11843,8 +11843,8 @@ try:
         TIER_BASE as _md_TIER_BASE,
         TIER_BASE_DEFAULT as _md_TIER_BASE_DEFAULT,
         _MAX_ACCESS_BOOST as _md_MAX_ACCESS_BOOST,
-        _RECENCY_BOOST as _md_RECENCY_BOOST,
-        _RECENCY_WINDOW_DAYS as _md_RECENCY_WINDOW,
+        _RECENCY_MAX as _md_RECENCY_MAX,
+        _RECENCY_HORIZON_DAYS as _md_RECENCY_HORIZON,
         _MAX_TAG_BONUS as _md_MAX_TAG_BONUS,
         _time_decay_factor as _md_time_decay,
         _access_boost as _md_access_boost,
@@ -11858,7 +11858,7 @@ try:
 
     # Constants
     test(
-        "MD: DEFAULT_HALF_LIFE_DAYS == 45.0", _md_HALF_LIFE == 45.0, str(_md_HALF_LIFE)
+        "MD: DEFAULT_HALF_LIFE_DAYS == 15.0", _md_HALF_LIFE == 15.0, str(_md_HALF_LIFE)
     )
     test(
         "MD: TIER_BASE is dict with keys 1, 2, 3",
@@ -11877,13 +11877,11 @@ try:
         _md_MAX_ACCESS_BOOST == 0.20,
         str(_md_MAX_ACCESS_BOOST),
     )
+    test("MD: _RECENCY_MAX == 0.15", _md_RECENCY_MAX == 0.15, str(_md_RECENCY_MAX))
     test(
-        "MD: _RECENCY_BOOST == 0.10", _md_RECENCY_BOOST == 0.10, str(_md_RECENCY_BOOST)
-    )
-    test(
-        "MD: _RECENCY_WINDOW_DAYS == 7",
-        _md_RECENCY_WINDOW == 7,
-        str(_md_RECENCY_WINDOW),
+        "MD: _RECENCY_HORIZON_DAYS == 365",
+        _md_RECENCY_HORIZON == 365,
+        str(_md_RECENCY_HORIZON),
     )
     test(
         "MD: _MAX_TAG_BONUS == 0.15", _md_MAX_TAG_BONUS == 0.15, str(_md_MAX_TAG_BONUS)

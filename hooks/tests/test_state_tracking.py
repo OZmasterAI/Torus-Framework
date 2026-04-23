@@ -321,6 +321,63 @@ test(
     len(_st4.get("pending_verification", [])) == 0,
 )
 
+# tsc --noEmit (exit 0) clears pending — TS typecheck is broad verification
+_st4b = default_state()
+_post("Edit", {"file_path": "/tmp/a.ts"}, _st4b)
+_post("Edit", {"file_path": "/tmp/b.ts"}, _st4b)
+_post("Bash", {"command": "npx tsc --noEmit"}, _st4b, tool_response={"exit_code": 0})
+test(
+    "tsc --noEmit (exit 0) clears pending_verification",
+    len(_st4b.get("pending_verification", [])) == 0,
+    f"pending={_st4b.get('pending_verification', [])}",
+)
+
+# tsc --noEmit (exit 1 / failing typecheck) does NOT clear pending
+_st4b_fail = default_state()
+_post("Edit", {"file_path": "/tmp/a.ts"}, _st4b_fail)
+_post("Edit", {"file_path": "/tmp/b.ts"}, _st4b_fail)
+_post(
+    "Bash",
+    {"command": "npx tsc --noEmit"},
+    _st4b_fail,
+    tool_response={"exit_code": 1},
+)
+test(
+    "tsc --noEmit (exit 1) leaves pending_verification intact",
+    len(_st4b_fail.get("pending_verification", [])) == 2,
+    f"pending={_st4b_fail.get('pending_verification', [])}",
+)
+
+# npm run typecheck (exit 0) clears pending
+_st4c = default_state()
+_post("Edit", {"file_path": "/tmp/x.ts"}, _st4c)
+_post(
+    "Bash",
+    {"command": "npm run typecheck"},
+    _st4c,
+    tool_response={"exit_code": 0},
+)
+test(
+    "npm run typecheck (exit 0) clears pending_verification",
+    len(_st4c.get("pending_verification", [])) == 0,
+    f"pending={_st4c.get('pending_verification', [])}",
+)
+
+# Failing pytest does NOT clear pending_verification
+_st4d = default_state()
+_post("Edit", {"file_path": "/home/test/broken.py"}, _st4d)
+_post(
+    "Bash",
+    {"command": "pytest tests/"},
+    _st4d,
+    tool_response={"exit_code": 1},
+)
+test(
+    "Failing pytest (exit 1) does not clear pending_verification",
+    "/home/test/broken.py" in _st4d.get("pending_verification", []),
+    f"pending={_st4d.get('pending_verification', [])}",
+)
+
 # Test 1: Edit tool adds file to files_edited list
 _st_ft1 = default_state()
 _post("Read", {"file_path": "/tmp/foo226.py"}, _st_ft1)
@@ -697,8 +754,14 @@ test(
     "DEDUP_WINDOW is 30 seconds", DEDUP_WINDOW == 30, f"Expected 30, got {DEDUP_WINDOW}"
 )
 
-# Test 11: First call returns False (not duplicate)
-_dedup_result1 = _is_duplicate_prompt("test_prompt_237_unique_abc")
+# Test 11: First call returns False (not duplicate) — clean hash file to avoid corrupt state
+import uuid as _dedup_uuid
+
+_dedup_hash_file = os.path.join(os.path.dirname(__file__), "..", ".prompt_last_hash")
+if os.path.exists(_dedup_hash_file):
+    os.remove(_dedup_hash_file)
+_dedup_unique = f"test_prompt_{_dedup_uuid.uuid4().hex}"
+_dedup_result1 = _is_duplicate_prompt(_dedup_unique)
 test(
     "First prompt is not duplicate",
     _dedup_result1 == False,
@@ -706,7 +769,7 @@ test(
 )
 
 # Test 12: Same prompt immediately after returns True (duplicate)
-_dedup_result2 = _is_duplicate_prompt("test_prompt_237_unique_abc")
+_dedup_result2 = _is_duplicate_prompt(_dedup_unique)
 test(
     "Same prompt immediately after is duplicate",
     _dedup_result2 == True,
@@ -897,7 +960,7 @@ print("\n--- Outcome Tag Suggestions ---")
 
 # Test: Gate 6 blocks on verified_fixes at threshold with remember_this suggestion
 _g6_os = {
-    "verified_fixes": ["/tmp/fix1.py", "/tmp/fix2.py"],
+    "verified_fixes": [f"/tmp/fix_{i}.py" for i in range(51)],
     "files_read": ["/tmp/outcome_s.py"],
     "memory_last_queried": time.time(),
     "unlogged_errors": [],

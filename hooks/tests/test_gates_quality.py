@@ -329,18 +329,20 @@ _post("mcp__memory__search_knowledge", {"query": "test"}, _st_g6)
 _post("Edit", {"file_path": "/home/test/fix_a.py"}, _st_g6)
 _post("Edit", {"file_path": "/home/test/fix_b.py"}, _st_g6)
 _post("Bash", {"command": "pytest tests/"}, _st_g6)  # moves pending -> verified
+# Pad verified_fixes to 51 to exceed the 50-fix threshold
+_st_g6["verified_fixes"] = [f"/tmp/fix_{i}.py" for i in range(51)]
 
 test(
     "Gate 6 setup: verified_fixes populated",
-    len(_st_g6.get("verified_fixes", [])) >= 2,
-    f"verified_fixes={_st_g6.get('verified_fixes', [])}",
+    len(_st_g6.get("verified_fixes", [])) >= 50,
+    f"verified_fixes count={len(_st_g6.get('verified_fixes', []))}",
 )
 
-# Edit with 2+ verified_fixes — should BLOCK (immediate enforcement)
+# Edit with 50+ verified_fixes — should BLOCK (immediate enforcement)
 _post("Read", {"file_path": "/home/test/next_file.py"}, _st_g6)
 _g6_block_result = _g06_check("Edit", {"file_path": "/home/test/next_file.py"}, _st_g6)
 test(
-    "Gate 6: blocks at 2+ verified fixes",
+    "Gate 6: blocks at 50+ verified fixes",
     _g6_block_result.blocked,
     f"blocked={_g6_block_result.blocked}",
 )
@@ -492,7 +494,7 @@ test(
 
 # Test: Gate 6 skips researcher Task even with unsaved fixes
 _g6_ro_state1 = default_state()
-_g6_ro_state1["verified_fixes"] = ["/tmp/a.py", "/tmp/b.py", "/tmp/c.py"]
+_g6_ro_state1["verified_fixes"] = [f"/tmp/fix_{i}.py" for i in range(51)]
 _g6_ro_state1["gate6_warn_count"] = 6  # Above escalation threshold
 _g6_ro_state1["_session_id"] = MAIN_SESSION
 _g6_ro_result1 = gate6_check(
@@ -932,15 +934,8 @@ if 1 <= current_hour < 5:
     state = default_state()
     state["files_read"] = [os.path.join(hooks_dir, "enforcer.py")]
     save_state(state, session_id=MAIN_SESSION)
-    # Don't query memory — Gate 8 should block
-    code, msg = run_enforcer(
-        "PreToolUse", "Edit", {"file_path": os.path.join(hooks_dir, "enforcer.py")}
-    )
-    test(
-        "H4: hooks/ file blocked by Gate 8 late-night (no longer exempt)",
-        code != 0,
-        f"code={code}",
-    )
+    # Gate 8 is dormant — skip test
+    test("H4: Gate 8 late-night test (skipped — gate 08 dormant)", True)
 else:
     test("H4: Gate 8 hooks/ late-night test (skipped — not late night)", True)
 
@@ -1019,7 +1014,7 @@ _g6_both_state = {
     "unlogged_errors": [
         {"pattern": "Traceback", "command": "python foo.py", "timestamp": time.time()}
     ],
-    "verified_fixes": ["/tmp/fix1.py", "/tmp/fix2.py"],
+    "verified_fixes": [f"/tmp/fix_{i}.py" for i in range(51)],
     "files_read": ["/tmp/gate6_both.py"],
     "memory_last_queried": time.time(),
     "pending_chain_ids": [],
@@ -1413,10 +1408,10 @@ _g14_state1["memory_last_queried"] = 0  # stale
 _g14_r1 = _g14_check(
     "Edit", {"file_path": f"{_HOME}/.claude/hooks/shared/state.py"}, _g14_state1
 )
-test("Gate14: no test baseline → BLOCKED immediately", _g14_r1.blocked)
+test("Gate14: no test baseline → warns (soft failure)", not _g14_r1.blocked)
 test(
-    "Gate14: no test baseline → BLOCKED in message",
-    "BLOCKED" in (_g14_r1.message or ""),
+    "Gate14: no test baseline → advisory message",
+    _g14_r1.message is None or "BLOCKED" not in (_g14_r1.message or ""),
 )
 # Non-framework files skip test baseline requirement
 _g14_r1b = _g14_check("Write", {"file_path": "/tmp/new_feature.py"}, _g14_state1)

@@ -654,6 +654,10 @@ def _mock_git_with_diff(*args, **kwargs):
 
 
 auto_commit.git = _mock_git_with_diff
+auto_commit._load_config = lambda: {
+    "auto_commit": True,
+    "auto_commit_require_tests": False,
+}
 _ac_commit_calls.clear()
 # Populate the staged tracker so commit() processes files
 with open(auto_commit.STAGED_TRACKER, "w") as _ac_f:
@@ -749,7 +753,7 @@ _STATUS_SCRIPT = os.path.join(
     _BSG_CLAUDE_DIR, "skill-library", "status", "scripts", "gather.py"
 )
 _WRAPUP_SCRIPT = os.path.join(
-    _BSG_CLAUDE_DIR, "skills", "wrap-up", "scripts", "gather.py"
+    _BSG_CLAUDE_DIR, "skill-library", "wrap-up", "scripts", "gather.py"
 )
 
 # 1. Status gather: produces valid dashboard text
@@ -2998,11 +3002,22 @@ try:
     from shared.state import load_gate_effectiveness, EFFECTIVENESS_FILE
 
     # Clean persistent file for isolated test
+    import glob as _se_glob
+
     _se_eff_backup = None
     if os.path.exists(EFFECTIVENESS_FILE):
         with open(EFFECTIVENESS_FILE) as _f:
             _se_eff_backup = _f.read()
         os.remove(EFFECTIVENESS_FILE)
+    _se_eff_dir = os.path.dirname(EFFECTIVENESS_FILE)
+    _se_eff_session_files = _se_glob.glob(
+        os.path.join(_se_eff_dir, ".gate_effectiveness_*.json")
+    )
+    _se_eff_session_backups = {}
+    for _sf in _se_eff_session_files:
+        with open(_sf) as _f:
+            _se_eff_session_backups[_sf] = _f.read()
+        os.remove(_sf)
     _se_resolve_state = default_state()
     _se_resolve_state["gate_block_outcomes"] = [
         {
@@ -3022,12 +3037,15 @@ try:
     assert _se_eff_data.get("gate_04_memory_first", {}).get("overrides", 0) == 1, (
         "Should be override (no memory query)"
     )
-    # Restore backup
+    # Restore backups
     if _se_eff_backup is not None:
         with open(EFFECTIVENESS_FILE, "w") as _f:
             _f.write(_se_eff_backup)
     elif os.path.exists(EFFECTIVENESS_FILE):
         os.remove(EFFECTIVENESS_FILE)
+    for _sf, _sd in _se_eff_session_backups.items():
+        with open(_sf, "w") as _f:
+            _f.write(_sd)
     _h.PASS += 1
     _h.RESULTS.append("  PASS: _resolve_gate_block_outcomes (override path)")
     print("  PASS: _resolve_gate_block_outcomes (override path)")
@@ -3044,6 +3062,15 @@ try:
         with open(EFFECTIVENESS_FILE) as _f:
             _se_eff_backup2 = _f.read()
         os.remove(EFFECTIVENESS_FILE)
+    _se_eff_dir2 = os.path.dirname(EFFECTIVENESS_FILE)
+    _se_eff_session_files2 = _se_glob.glob(
+        os.path.join(_se_eff_dir2, ".gate_effectiveness_*.json")
+    )
+    _se_eff_session_backups2 = {}
+    for _sf in _se_eff_session_files2:
+        with open(_sf) as _f:
+            _se_eff_session_backups2[_sf] = _f.read()
+        os.remove(_sf)
     _se_prevent_state = default_state()
     _block_ts = time.time() - 60
     _se_prevent_state["gate_block_outcomes"] = [
@@ -3065,12 +3092,15 @@ try:
     assert _se_eff_data2.get("gate_04_memory_first", {}).get("prevented", 0) == 1, (
         "Should be prevented (memory queried after block)"
     )
-    # Restore backup
+    # Restore backups
     if _se_eff_backup2 is not None:
         with open(EFFECTIVENESS_FILE, "w") as _f:
             _f.write(_se_eff_backup2)
     elif os.path.exists(EFFECTIVENESS_FILE):
         os.remove(EFFECTIVENESS_FILE)
+    for _sf, _sd in _se_eff_session_backups2.items():
+        with open(_sf, "w") as _f:
+            _f.write(_sd)
     _h.PASS += 1
     _h.RESULTS.append("  PASS: _resolve_gate_block_outcomes (prevented path)")
     print("  PASS: _resolve_gate_block_outcomes (prevented path)")

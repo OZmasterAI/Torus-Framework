@@ -54,6 +54,14 @@ UNDERREPRESENTED_SHARE = 0.03  # 3 % of total
 # Minimum memories required for meaningful analysis
 MIN_MEMORIES_FOR_ANALYSIS = 10
 
+# Tags that are noise/meta and should be excluded from tag distribution analysis
+_NOISE_TAGS = frozenset({
+    "needs-enrichment",
+    "possible-dupe",
+    "auto-captured",
+    "tag_expanded",
+})
+
 # Known session-reference patterns in content (old session anchors)
 _SESSION_REF_RE = re.compile(
     r'\b(session\s*#?\s*\d{1,3}|session_?id|sprint[\s-]\d)\b',
