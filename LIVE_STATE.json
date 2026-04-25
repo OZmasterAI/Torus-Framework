@@ -1,9 +1,9 @@
 {
-  "session_count": 687,
+  "session_count": 689,
   "project": "torus-framework",
   "feature": "security-findings-system",
   "framework_version": "v3.2.0",
-  "what_was_done": "Built security-findings repo at ~/projects/security-findings/. 88-pattern PostToolUse auto-detector across 5 categories (security, bugs, smart-contract, economic, errors). Manual save script. Obsidian-ready. Global hook, auto-commits each finding.",
+  "what_was_done": "Expanded findings_detector.py: code scanning (Read/Edit/Write/Grep), 175 patterns (87 code + 88 output), language-aware filtering, memory recall false-positive fix. Reviewed old-chain: 23 findings saved to reviewed/.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)",
@@ -11,10 +11,15 @@
     "Analytics server added to toolshed.json but toolshed not yet restarted"
   ],
   "next_steps": [
+    "Implement companion pattern checking (detect missing chainId near encodePacked, etc.)",
+    "Add comment/string-literal stripping to reduce false positives",
     "Restart toolshed to activate analytics backend",
-    "Clean up 18 stale dormant skill copies (already live in skills-v2)",
-    "Memory maintenance: 5291 entries, run stale cleanup",
-    "Add LIVE_STATE.json to gate_07 CRITICAL_PATTERNS",
-    "Watchdog load shedding + /health endpoint for memory server"
-  ]
+    "Memory maintenance: 5318 entries, run stale cleanup",
+    "Clean up 18 stale dormant skill copies (already live in skills-v2)"
+  ],
+  "last_response_preview": "**Session 688 wrap-up.**\n\nExpanded security-findings detector:\n- Code scanning: Read/Edit/Write/Grep now scanned (was Bash-only)\n- 175 patterns: 87 code + 88 output (was 88 output only)\n- Language-aware: Solidity patterns on .sol, C on .c/.cpp, Python on .py, etc.\n- Fixed memory recall false positives\n- Reviewed old-chain: 23 findings (5C/9H/7M/4L) to reviewed/\n\nCommit: 401b763 (dag-claude)\n",
+  "dag_branch": "main",
+  "dag_branch_label": "",
+  "dag_node_count": 166208,
+  "dag_total_branches": 857
 }
