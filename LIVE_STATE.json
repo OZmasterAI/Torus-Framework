@@ -1,24 +1,25 @@
 {
-  "session_count": 691,
+  "session_count": 693,
   "project": "torus-framework",
-  "feature": "auto-commit-fix",
+  "feature": "http-transport-upgrade",
   "framework_version": "v3.2.0",
-  "what_was_done": "Fixed auto_commit.py session_id fallback bug (500 orphaned trackers cleaned). Rotated NVIDIA API key, removed hardcoded fallback. Brought model-router MCP online via toolshed (17 models healthy).",
+  "what_was_done": "HTTP transport for 4 MCP servers (search:8744, web-search:8745, analytics:8746, model-router:8747). Created torus-launcher.sh auto-start. Added toroidal-toolshed as submodule. Github-branch sync ready (56952a4), not pushed.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)",
-    "1 test failure: WorkerUnavailable circuit breaker message format"
+    "1 test failure: WorkerUnavailable circuit breaker message format",
+    "New HTTP servers started via nohup, need systemd units for persistence"
   ],
   "next_steps": [
-    "Implement companion pattern checking (detect missing chainId near encodePacked, etc.)",
-    "Add comment/string-literal stripping to reduce false positives",
-    "Memory maintenance: 5325 entries, run stale cleanup",
-    "Clean up 18 stale dormant skill copies (already live in skills-v2)",
-    "Test model-router tools in a real workflow (fan_out, compare, research)"
+    "Push toolshed (d4a02dc) and github-branch (56952a4) to GitHub",
+    "Split skills-v2 into standalone repo (toroidal-skills) as submodule",
+    "Create systemd units for 6 HTTP MCP servers (or rely on torus-launcher)",
+    "Memory maintenance: 5329 entries, run stale cleanup",
+    "Clean up 18 stale dormant skill copies (already live in skills-v2)"
   ],
-  "last_response_preview": "**Session 689 wrap-up.**\n\nFixed auto_commit.py: commit() now globs all tracker files when session_id missing (was falling back to nonexistent legacy path). Cleaned 500 orphaned files.\nRotated NVIDIA NIM API key, removed hardcoded fallback from source.\nBrought model-router MCP online via toolshed — 17 OpenRouter models healthy.\n\nCommits: ce5a868, 575fc94 (dag-claude)\n",
+  "last_response_preview": "Session 692 wrap-up. Converted all MCP servers to HTTP transport, created torus-launcher.sh for auto-start, added toolshed submodule. Token savings measured: 6,166/turn (96.3%). Github sync prepared but not pushed. Skills-v2 submodule separation designed with handoff prompt.",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 167004,
-  "dag_total_branches": 863
+  "dag_node_count": 167206,
+  "dag_total_branches": 864
 }
