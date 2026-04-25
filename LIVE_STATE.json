@@ -3,7 +3,7 @@
   "project": "torus-framework",
   "feature": "security-findings-system",
   "framework_version": "v3.2.0",
-  "what_was_done": "Built security-findings repo with 53-pattern auto-detector hook and manual save script. Obsidian-compatible MD files with YAML frontmatter. Global PostToolUse hook, auto-commits each finding.",
+  "what_was_done": "Built security-findings repo at ~/projects/security-findings/. 88-pattern PostToolUse auto-detector across 5 categories (security, bugs, smart-contract, economic, errors). Manual save script. Obsidian-ready. Global hook, auto-commits each finding.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)",
@@ -13,7 +13,7 @@
   "next_steps": [
     "Restart toolshed to activate analytics backend",
     "Clean up 18 stale dormant skill copies (already live in skills-v2)",
-    "Memory maintenance: 5290 entries, run stale cleanup",
+    "Memory maintenance: 5291 entries, run stale cleanup",
     "Add LIVE_STATE.json to gate_07 CRITICAL_PATTERNS",
     "Watchdog load shedding + /health endpoint for memory server"
   ]
