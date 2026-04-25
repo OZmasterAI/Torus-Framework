@@ -1,25 +1,24 @@
 {
-  "session_count": 689,
+  "session_count": 691,
   "project": "torus-framework",
-  "feature": "security-findings-system",
+  "feature": "auto-commit-fix",
   "framework_version": "v3.2.0",
-  "what_was_done": "Expanded findings_detector.py: code scanning (Read/Edit/Write/Grep), 175 patterns (87 code + 88 output), language-aware filtering, memory recall false-positive fix. Reviewed old-chain: 23 findings saved to reviewed/.",
+  "what_was_done": "Fixed auto_commit.py session_id fallback bug (500 orphaned trackers cleaned). Rotated NVIDIA API key, removed hardcoded fallback. Brought model-router MCP online via toolshed (17 models healthy).",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)",
-    "1 test failure: WorkerUnavailable circuit breaker message format",
-    "Analytics server added to toolshed.json but toolshed not yet restarted"
+    "1 test failure: WorkerUnavailable circuit breaker message format"
   ],
   "next_steps": [
     "Implement companion pattern checking (detect missing chainId near encodePacked, etc.)",
     "Add comment/string-literal stripping to reduce false positives",
-    "Restart toolshed to activate analytics backend",
-    "Memory maintenance: 5318 entries, run stale cleanup",
-    "Clean up 18 stale dormant skill copies (already live in skills-v2)"
+    "Memory maintenance: 5325 entries, run stale cleanup",
+    "Clean up 18 stale dormant skill copies (already live in skills-v2)",
+    "Test model-router tools in a real workflow (fan_out, compare, research)"
   ],
-  "last_response_preview": "**Session 688 wrap-up.**\n\nExpanded security-findings detector:\n- Code scanning: Read/Edit/Write/Grep now scanned (was Bash-only)\n- 175 patterns: 87 code + 88 output (was 88 output only)\n- Language-aware: Solidity patterns on .sol, C on .c/.cpp, Python on .py, etc.\n- Fixed memory recall false positives\n- Reviewed old-chain: 23 findings (5C/9H/7M/4L) to reviewed/\n\nCommit: 401b763 (dag-claude)\n",
+  "last_response_preview": "**Session 689 wrap-up.**\n\nFixed auto_commit.py: commit() now globs all tracker files when session_id missing (was falling back to nonexistent legacy path). Cleaned 500 orphaned files.\nRotated NVIDIA NIM API key, removed hardcoded fallback from source.\nBrought model-router MCP online via toolshed — 17 OpenRouter models healthy.\n\nCommits: ce5a868, 575fc94 (dag-claude)\n",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 166208,
-  "dag_total_branches": 857
+  "dag_node_count": 167004,
+  "dag_total_branches": 863
 }

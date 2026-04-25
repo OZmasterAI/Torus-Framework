@@ -1,15 +1,15 @@
 {
   "memory_socket": {
     "state": "CLOSED",
-    "failure_count": 0,
+    "failure_count": 1,
     "success_count": 0,
-    "last_failure_time": 1774606046.1632526,
+    "last_failure_time": 1777061173.7693245,
     "opened_at": null,
     "failure_threshold": 3,
     "recovery_timeout": 30,
     "success_threshold": 1,
-    "total_failures": 5,
-    "total_successes": 20,
+    "total_failures": 8,
+    "total_successes": 25,
     "total_rejections": 0
   }
 }
