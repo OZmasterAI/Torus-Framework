@@ -44,6 +44,11 @@
             "type": "command",
             "command": "python3 \"$HOME/.claude/hooks/skill_outcome_tracker.py\"",
             "timeout": 2
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/findings_detector.py\"",
+            "timeout": 3
           }
         ]
       },
@@ -289,11 +294,24 @@
   },
   "effortLevel": "high",
   "awaySummaryEnabled": false,
+  "autoUpdatesChannel": "stable",
+  "minimumVersion": "2.1.112",
   "tui": "default",
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "voiceEnabled": true,
-  "mcpServers": {},
+  "mcpServers": {
+    "torus": {
+      "command": "node",
+      "args": [
+        "/home/crab/projects/torus-mcp-server/dist/cli.js",
+        "serve"
+      ],
+      "env": {
+        "TORUS_API_URL": "http://localhost:3000"
+      }
+    }
+  },
   "effort": "max",
   "disabled_hooks": {
     "TeammateIdle": [
@@ -334,6 +352,5 @@
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
   ],
-  "autoUpdatesChannel": "stable",
-  "minimumVersion": "2.1.112"
+  "teammateMode": "in-process"
 }
