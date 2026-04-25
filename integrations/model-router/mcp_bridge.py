@@ -1,5 +1,6 @@
 """MCP Bridge — thin FastMCP wrapper over model-router REST API."""
 
+import argparse
 import os
 import socket
 import subprocess
@@ -14,7 +15,48 @@ ROUTER_URL = "http://127.0.0.1:18800"
 ROUTER_PORT = 18800
 _server_proc = None
 
-mcp = FastMCP("model-router")
+# ── Transport config — streamable-http default, --stdio for pipe mode ──
+_NET_HOST = os.environ.get("MODEL_ROUTER_MCP_HOST", "127.0.0.1")
+_NET_PORT = int(os.environ.get("MODEL_ROUTER_MCP_PORT", "8747"))
+
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--http", action="store_true", default=True)
+_parser.add_argument("--stdio", action="store_true", default=False)
+_parser.add_argument("--port", type=int, default=_NET_PORT)
+_args, _ = _parser.parse_known_args()
+
+if _args.stdio:
+    _args.http = False
+
+if _args.http:
+    mcp = FastMCP("model-router", host=_NET_HOST, port=_args.port)
+else:
+    mcp = FastMCP("model-router")
+
+# ── OAuth discovery stubs (Claude Code does RFC 9728/8414 probing) ──
+if _args.http:
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    @mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])
+    async def _oauth_as_metadata(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+    async def _oauth_protected_resource(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/.well-known/openid-configuration", methods=["GET"])
+    async def _openid_config(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/register", methods=["POST"])
+    async def _oauth_register(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/authorize", methods=["GET"])
+    async def _oauth_authorize(request: Request) -> Response:
+        return Response(status_code=404)
 
 
 def _port_open(port: int) -> bool:
@@ -170,4 +212,10 @@ async def list_models() -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    _mode = "stdio" if _args.stdio else "streamable-http"
+    if _args.http:
+        print(
+            f"[Model Router MCP] Starting {_mode} on {_NET_HOST}:{_args.port}",
+            file=sys.stderr,
+        )
+    mcp.run(transport=_mode)

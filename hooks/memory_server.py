@@ -269,9 +269,7 @@ _EMBEDDING_MODEL = "nvidia/nv-embed-v1"
 _EMBEDDING_DIM = 4096
 _embedding_fn = True  # Always "loaded" — API-based, no local model
 _NIM_URL = "https://integrate.api.nvidia.com/v1/embeddings"
-_NIM_KEY_FALLBACK = (
-    "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"
-)
+_NIM_KEY_FALLBACK = None
 TAGS_DB_PATH = os.path.join(MEMORY_DIR, "tags.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
@@ -406,7 +404,7 @@ def _embed_texts(texts):
             _NIM_URL,
             headers={
                 "Authorization": "Bearer "
-                + _read_config_toggles().get("nim_api_key", _NIM_KEY_FALLBACK),
+                + _read_config_toggles().get("nim_api_key", ""),
                 "Content-Type": "application/json",
             },
             json={

@@ -12,6 +12,7 @@ Run standalone: python3 analytics_server.py
 Used via MCP: configured in .claude/mcp.json
 """
 
+import argparse
 import functools
 import glob as _glob
 import os
@@ -25,7 +26,48 @@ _HOOKS_DIR = os.path.dirname(__file__)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-mcp = FastMCP("analytics")
+# ── Transport config — streamable-http default, --stdio for pipe mode ──
+_NET_HOST = os.environ.get("ANALYTICS_HOST", "127.0.0.1")
+_NET_PORT = int(os.environ.get("ANALYTICS_PORT", "8746"))
+
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--http", action="store_true", default=True)
+_parser.add_argument("--stdio", action="store_true", default=False)
+_parser.add_argument("--port", type=int, default=_NET_PORT)
+_args, _ = _parser.parse_known_args()
+
+if _args.stdio:
+    _args.http = False
+
+if _args.http:
+    mcp = FastMCP("analytics", host=_NET_HOST, port=_args.port)
+else:
+    mcp = FastMCP("analytics")
+
+# ── OAuth discovery stubs (Claude Code does RFC 9728/8414 probing) ──
+if _args.http:
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    @mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])
+    async def _oauth_as_metadata(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+    async def _oauth_protected_resource(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/.well-known/openid-configuration", methods=["GET"])
+    async def _openid_config(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/register", methods=["POST"])
+    async def _oauth_register(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/authorize", methods=["GET"])
+    async def _oauth_authorize(request: Request) -> Response:
+        return Response(status_code=404)
 
 # ── Crash-proof decorator ────────────────────────────────────────────────────
 
@@ -2341,4 +2383,10 @@ def telegram_search(query: str, limit: int = 10) -> dict:
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    mcp.run()
+    _mode = "stdio" if _args.stdio else "streamable-http"
+    if _args.http:
+        print(
+            f"[Analytics MCP] Starting {_mode} on {_NET_HOST}:{_args.port}",
+            file=sys.stderr,
+        )
+    mcp.run(transport=_mode)

@@ -309,7 +309,8 @@ class TestCommitNoReset(unittest.TestCase):
         finally:
             auto_commit._tracker_path = orig_tracker
             auto_commit.CONFIG_FILE = orig_config
-            os.unlink(tracker.name)
+            if os.path.exists(tracker.name):
+                os.unlink(tracker.name)
 
     def test_commit_new_untracked_file(self):
         """New files (previously untracked) must be committed successfully."""
@@ -359,7 +360,8 @@ class TestCommitNoReset(unittest.TestCase):
         finally:
             auto_commit._tracker_path = orig_tracker
             auto_commit.CONFIG_FILE = orig_config
-            os.unlink(tracker.name)
+            if os.path.exists(tracker.name):
+                os.unlink(tracker.name)
 
 
 if __name__ == "__main__":

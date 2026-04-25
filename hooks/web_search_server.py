@@ -7,6 +7,7 @@ Run standalone: python3 web_search_server.py
 Used via MCP: configured in .claude/mcp.json
 """
 
+import argparse
 import functools
 import os
 import sys
@@ -18,11 +19,53 @@ _HOOKS_DIR = os.path.dirname(__file__)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-mcp = FastMCP("web-search")
+# ── Transport config — streamable-http default, --stdio for pipe mode ──
+_NET_HOST = os.environ.get("WEB_SEARCH_HOST", "127.0.0.1")
+_NET_PORT = int(os.environ.get("WEB_SEARCH_PORT", "8745"))
+
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--http", action="store_true", default=True)
+_parser.add_argument("--stdio", action="store_true", default=False)
+_parser.add_argument("--port", type=int, default=_NET_PORT)
+_args, _ = _parser.parse_known_args()
+
+if _args.stdio:
+    _args.http = False
+
+if _args.http:
+    mcp = FastMCP("web-search", host=_NET_HOST, port=_args.port)
+else:
+    mcp = FastMCP("web-search")
+
+# ── OAuth discovery stubs (Claude Code does RFC 9728/8414 probing) ──
+if _args.http:
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    @mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])
+    async def _oauth_as_metadata(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+    async def _oauth_protected_resource(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/.well-known/openid-configuration", methods=["GET"])
+    async def _openid_config(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/register", methods=["POST"])
+    async def _oauth_register(request: Request) -> Response:
+        return Response(status_code=404)
+
+    @mcp.custom_route("/authorize", methods=["GET"])
+    async def _oauth_authorize(request: Request) -> Response:
+        return Response(status_code=404)
 
 
 def crash_proof(fn):
     """Wrap MCP tool handler so exceptions return error dicts instead of crashing the server."""
+
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         try:
@@ -31,6 +74,7 @@ def crash_proof(fn):
             tb = traceback.format_exc()
             print(f"[Web Search MCP] {fn.__name__} error: {e}\n{tb}", file=sys.stderr)
             return {"error": f"{fn.__name__} failed: {type(e).__name__}: {e}"}
+
     return wrapper
 
 
@@ -79,18 +123,26 @@ def web_search(query: str, n_results: int = 5) -> dict:
         dist = dists[i] if i < len(dists) else 1.0
         similarity = round(1.0 - dist, 3)
 
-        hits.append({
-            "id": doc_id,
-            "url": meta.get("url", "unknown"),
-            "title": meta.get("title", "Untitled"),
-            "chunk_index": meta.get("chunk_index", 0),
-            "total_chunks": meta.get("total_chunks", 1),
-            "similarity": similarity,
-            "preview": doc[:200] + "..." if len(doc) > 200 else doc,
-        })
+        hits.append(
+            {
+                "id": doc_id,
+                "url": meta.get("url", "unknown"),
+                "title": meta.get("title", "Untitled"),
+                "chunk_index": meta.get("chunk_index", 0),
+                "total_chunks": meta.get("total_chunks", 1),
+                "similarity": similarity,
+                "preview": doc[:200] + "..." if len(doc) > 200 else doc,
+            }
+        )
 
     return {"results": hits, "count": len(hits), "source": "web_lancedb"}
 
 
 if __name__ == "__main__":
-    mcp.run()
+    _mode = "stdio" if _args.stdio else "streamable-http"
+    if _args.http:
+        print(
+            f"[Web Search MCP] Starting {_mode} on {_NET_HOST}:{_args.port}",
+            file=sys.stderr,
+        )
+    mcp.run(transport=_mode)

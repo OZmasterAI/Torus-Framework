@@ -1,0 +1,3 @@
+[submodule "toolshed"]
+	path = toolshed
+	url = https://github.com/OZmasterAI/toroidal-toolshed.git

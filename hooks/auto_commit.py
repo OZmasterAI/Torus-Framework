@@ -12,6 +12,7 @@ Usage:
 FAIL-OPEN: Always exits 0. Auto-commit failures must never block work.
 """
 
+import glob
 import json
 import os
 import subprocess
@@ -279,24 +280,34 @@ def commit():
     except Exception:
         pass
 
-    # Read per-session tracker — group files by repo root
-    tracker = _tracker_path(_session_id)
+    # Find tracker file(s) — per-session if known, else scan all
+    if _session_id:
+        trackers = [_tracker_path(_session_id)]
+    else:
+        trackers = sorted(
+            glob.glob(os.path.join(_TRACKER_DIR, ".auto_commit_staged_*.txt"))
+        )
+        if os.path.exists(STAGED_TRACKER):
+            trackers.append(STAGED_TRACKER)
+
     repos = {}  # repo_root -> set of file paths
-    try:
-        with open(tracker) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                if "\t" in line:
-                    repo_root, fpath = line.split("\t", 1)
-                else:
-                    # Legacy format: bare path, assume ~/.claude
-                    fpath = line
-                    repo_root = CLAUDE_DIR
-                repos.setdefault(repo_root, set()).add(fpath)
-    except (FileNotFoundError, OSError):
-        repos = {}
+    _active_trackers = []
+    for tracker in trackers:
+        try:
+            with open(tracker) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if "\t" in line:
+                        repo_root, fpath = line.split("\t", 1)
+                    else:
+                        fpath = line
+                        repo_root = CLAUDE_DIR
+                    repos.setdefault(repo_root, set()).add(fpath)
+            _active_trackers.append(tracker)
+        except (FileNotFoundError, OSError):
+            pass
 
     if not repos:
         return
@@ -326,11 +337,12 @@ def commit():
                 print(f"⏸ Holding commit: tests failed — {summary}", file=sys.stderr)
                 return
 
-    # Clear tracker (after test check so held files persist)
-    try:
-        open(tracker, "w").close()
-    except OSError:
-        pass
+    # Remove processed tracker files
+    for t in _active_trackers:
+        try:
+            os.remove(t)
+        except OSError:
+            pass
 
     # Commit per repo
     for repo_root, tracked in repos.items():

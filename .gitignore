@@ -182,3 +182,4 @@ usage-data/
 
 # Backup files
 hooks/memory_server.py.bak
+LIVE_STATE.json
