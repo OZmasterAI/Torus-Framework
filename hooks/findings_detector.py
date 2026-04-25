@@ -51,6 +51,63 @@ SECURITY_PATTERNS = [
         "security",
         "medium",
     ),
+    # Web/API
+    (r"open\s+redirect", "open-redirect", "security", "medium"),
+    (r"prototype\s+pollution", "prototype-pollution", "security", "high"),
+    (r"XXE|xml\s+external\s+entity", "xxe", "security", "high"),
+    (r"server.side\s+template\s+injection|\bSSTI\b", "ssti", "security", "high"),
+    (
+        r"insecure\s+deserialization|unsafe\s+deserialization",
+        "insecure-deser",
+        "security",
+        "high",
+    ),
+    (
+        r"alg[\"']?\s*:\s*[\"']?none|algorithm\s+confusion",
+        "jwt-alg-none",
+        "security",
+        "high",
+    ),
+    (
+        r"CORS\s+misconfig|Access-Control-Allow-Origin:\s*\*",
+        "cors-misconfig",
+        "security",
+        "medium",
+    ),
+    # Crypto
+    (r"weak\s+(cipher|hash|encryption)", "weak-crypto", "security", "medium"),
+    (
+        r"\bMD5\b.*(?:password|auth|sign|verif|token)",
+        "md5-security",
+        "security",
+        "medium",
+    ),
+    (
+        r"\bSHA-?1\b.*(?:password|auth|sign|verif|token)",
+        "sha1-security",
+        "security",
+        "medium",
+    ),
+    (r"\bECB\b\s*mode", "ecb-mode", "security", "medium"),
+    (r"hardcoded\s+(IV|nonce)|nonce\s+reuse", "nonce-reuse", "security", "high"),
+    # Dependency audit tools
+    (r"npm\s+warn.*audit|yarn\s+audit", "npm-audit", "security", "medium"),
+    (r"pip-audit.*found\s+\d+\s+vuln", "pip-audit", "security", "medium"),
+    (
+        r"govulncheck.*(?:GO-\d{4}-\d+|found\s+\d+\s+vuln)",
+        "govulncheck",
+        "security",
+        "high",
+    ),
+    (
+        r"cargo\s+audit.*(?:RUSTSEC|found\s+\d+\s+vuln)",
+        "cargo-audit",
+        "security",
+        "medium",
+    ),
+    (r"bandit.*(?:Issue|severity:\s*(?:HIGH|MEDIUM))", "bandit", "security", "medium"),
+    (r"semgrep.*(?:error|warning).*(?:security|vuln)", "semgrep", "security", "medium"),
+    (r"gosec.*(?:G\d{3}|found\s+\d+\s+issue)", "gosec", "security", "medium"),
 ]
 
 BUG_PATTERNS = [
@@ -61,6 +118,26 @@ BUG_PATTERNS = [
     (r"deadlock\s+detected", "deadlock", "bugs", "high"),
     (r"fatal\s+error:\s+concurrent\s+map", "concurrent-map", "bugs", "high"),
     (r"out\s+of\s+memory|OOM\s+killed", "oom", "errors", "high"),
+    # Python
+    (r"Traceback \(most recent call last\)", "python-traceback", "bugs", "medium"),
+    # Node.js
+    (r"UnhandledPromiseRejection", "unhandled-promise", "bugs", "medium"),
+    (r"MaxListenersExceededWarning", "listener-leak", "bugs", "medium"),
+    # Go
+    (r"WARNING:\s*DATA\s*RACE", "go-race", "bugs", "high"),
+    (
+        r"fatal\s+error:\s+all\s+goroutines\s+are\s+asleep",
+        "goroutine-deadlock",
+        "bugs",
+        "high",
+    ),
+    (r"goroutine\s+leak", "goroutine-leak", "bugs", "medium"),
+    # General
+    (r"integer\s+overflow|integer\s+underflow", "integer-overflow", "bugs", "high"),
+    (r"division\s+by\s+zero|divide\s+by\s+zero", "div-by-zero", "bugs", "high"),
+    (r"SIGABRT|abort\s+trap", "sigabrt", "bugs", "high"),
+    (r"core\s+dumped", "core-dump", "bugs", "high"),
+    (r"assertion\s+failed|assert.*failed", "assertion-failure", "bugs", "medium"),
 ]
 
 ALL_PATTERNS = [
