@@ -22,8 +22,11 @@ Torus wraps Claude Code with persistent memory, 19 quality gates, automated hook
 ## ⚡ Quick Start
 
 ```bash
-# 1. Clone into your Claude Code config directory
-git clone https://github.com/OZmasterAI/Torus-Framework.git ~/.claude
+# 1. Clone with submodules (toolshed + toroidal-skills)
+git clone --recurse-submodules https://github.com/OZmasterAI/Torus-Framework.git ~/.claude
+
+# Or: plain clone then run setup script
+# git clone https://github.com/OZmasterAI/Torus-Framework.git ~/.claude && bash ~/.claude/setup.sh
 
 # 2. Install Python dependencies
 pip install -r ~/.claude/hooks/requirements.txt
