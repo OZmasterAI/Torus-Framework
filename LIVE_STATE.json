@@ -1,21 +1,19 @@
 {
-  "session_count": 682,
+  "session_count": 687,
   "project": "torus-framework",
-  "feature": "resource-audit-github-sync",
+  "feature": "security-findings-system",
   "framework_version": "v3.2.0",
-  "what_was_done": "Audited MCP server resource usage. Mapped dormant skills. Added analytics server to toolshed. Documented working-memory/working-summary systems. Synced v3.2.0 to GitHub main.",
+  "what_was_done": "Built security-findings repo with 53-pattern auto-detector hook and manual save script. Obsidian-compatible MD files with YAML frontmatter. Global PostToolUse hook, auto-commits each finding.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "2 pre-existing test failures in toolshed: TestStdioBackend (test_spawn, test_cleanup)",
     "1 test failure: WorkerUnavailable circuit breaker message format",
-    "Gate 22 missing from GATE_TOOL_MAP (runs as universal — intentional or needs scoping?)",
-    "Obsidian wiki disabled at user request — re-enable by uncommenting wrap-up step 3.5, CLAUDE.md WIKI section, session_end.py append_wiki_log call",
-    "Analytics server added to toolshed.json but toolshed not yet restarted — restart needed to activate"
+    "Analytics server added to toolshed.json but toolshed not yet restarted"
   ],
   "next_steps": [
     "Restart toolshed to activate analytics backend",
     "Clean up 18 stale dormant skill copies (already live in skills-v2)",
-    "Memory maintenance: 5213 entries, run stale cleanup",
+    "Memory maintenance: 5290 entries, run stale cleanup",
     "Add LIVE_STATE.json to gate_07 CRITICAL_PATTERNS",
     "Watchdog load shedding + /health endpoint for memory server"
   ]
