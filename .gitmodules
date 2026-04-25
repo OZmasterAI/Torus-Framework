@@ -1,3 +1,6 @@
 [submodule "toolshed"]
 	path = toolshed
 	url = https://github.com/OZmasterAI/toroidal-toolshed.git
+[submodule "torus-skills"]
+	path = torus-skills
+	url = https://github.com/OZmasterAI/toroidal-skills.git
