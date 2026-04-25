@@ -140,15 +140,131 @@ BUG_PATTERNS = [
     (r"assertion\s+failed|assert.*failed", "assertion-failure", "bugs", "medium"),
 ]
 
+SMART_CONTRACT_PATTERNS = [
+    (r"reentrancy|re-entrancy", "reentrancy", "smart-contract", "critical"),
+    (
+        r"unchecked\s+(external\s+)?call|unchecked\s+send",
+        "unchecked-call",
+        "smart-contract",
+        "high",
+    ),
+    (
+        r"delegatecall.*untrusted|untrusted.*delegatecall",
+        "unsafe-delegatecall",
+        "smart-contract",
+        "critical",
+    ),
+    (
+        r"tx\.origin\s+(auth|check|require|==)",
+        "tx-origin-auth",
+        "smart-contract",
+        "high",
+    ),
+    (r"selfdestruct|suicide\(\)", "selfdestruct", "smart-contract", "critical"),
+    (
+        r"unprotected\s+(self-?destruct|initializ|upgrade)",
+        "unprotected-admin",
+        "smart-contract",
+        "critical",
+    ),
+    (r"front.?running|front.?run", "front-running", "smart-contract", "high"),
+    (
+        r"\bMEV\b.*(?:exploit|extract|attack|vulnerab)",
+        "mev-exploit",
+        "smart-contract",
+        "high",
+    ),
+    (r"storage\s+collision", "storage-collision", "smart-contract", "high"),
+    (
+        r"signature\s+replay|replay\s+attack",
+        "signature-replay",
+        "smart-contract",
+        "high",
+    ),
+    (
+        r"access\s+control.*missing|missing\s+access\s+control",
+        "missing-access-control",
+        "smart-contract",
+        "high",
+    ),
+    (
+        r"uninitialized\s+(storage|proxy|contract)",
+        "uninitialized-storage",
+        "smart-contract",
+        "high",
+    ),
+    (
+        r"oracle\s+manipulation|price\s+oracle.*manipulat",
+        "oracle-manipulation",
+        "smart-contract",
+        "critical",
+    ),
+    (
+        r"timestamp\s+dependence|block\.timestamp.*manipulat",
+        "timestamp-dependence",
+        "smart-contract",
+        "medium",
+    ),
+    (r"gas\s+griefing|unbounded\s+loop", "gas-griefing", "smart-contract", "medium"),
+]
+
+ECONOMIC_PATTERNS = [
+    (r"flash\s+loan\s+attack", "flash-loan", "economic", "critical"),
+    (r"sandwich\s+attack", "sandwich-attack", "economic", "high"),
+    (r"price\s+manipulation", "price-manipulation", "economic", "critical"),
+    (r"liquidity\s+drain", "liquidity-drain", "economic", "critical"),
+    (r"infinite\s+mint", "infinite-mint", "economic", "critical"),
+    (
+        r"governance\s+attack|governance\s+takeover",
+        "governance-attack",
+        "economic",
+        "critical",
+    ),
+    (
+        r"token\s+approval\s+exploit|unlimited\s+approval",
+        "token-approval",
+        "economic",
+        "high",
+    ),
+    (r"double\s+spend", "double-spend", "economic", "critical"),
+    (r"51\s*%\s*attack|majority\s+attack", "majority-attack", "economic", "critical"),
+    (r"nothing.at.stake", "nothing-at-stake", "economic", "high"),
+    (r"long.range\s+attack", "long-range-attack", "economic", "high"),
+    (r"eclipse\s+attack", "eclipse-attack", "economic", "high"),
+    (r"sybil\s+attack", "sybil-attack", "economic", "high"),
+    (r"byzantine\s+fault|byzantine\s+failure", "byzantine-fault", "economic", "high"),
+    (r"equivocation\s+(detect|attack|evidence)", "equivocation", "economic", "high"),
+    (r"slashing\s+condition\s+violat", "slashing-violation", "economic", "high"),
+    (
+        r"economic\s+exploit|incentive\s+misalign",
+        "incentive-misalign",
+        "economic",
+        "high",
+    ),
+    (
+        r"arbitrage\s+exploit|risk.free\s+arbitrage",
+        "arbitrage-exploit",
+        "economic",
+        "medium",
+    ),
+    (r"fee\s+bypass|fee\s+evasion", "fee-bypass", "economic", "high"),
+    (r"inflation\s+bug|inflation\s+attack", "inflation-bug", "economic", "critical"),
+]
+
 ALL_PATTERNS = [
     (re.compile(p, re.IGNORECASE), name, cat, sev)
-    for p, name, cat, sev in SECURITY_PATTERNS + BUG_PATTERNS
+    for p, name, cat, sev in SECURITY_PATTERNS
+    + BUG_PATTERNS
+    + SMART_CONTRACT_PATTERNS
+    + ECONOMIC_PATTERNS
 ]
 
 CATEGORY_DIRS = {
     "security": "detected/security",
     "bugs": "detected/bugs",
     "errors": "detected/errors",
+    "smart-contract": "detected/smart-contract",
+    "economic": "detected/economic",
 }
 
 
