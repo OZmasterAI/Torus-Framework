@@ -1,26 +1,19 @@
 {
   "session_count": 697,
   "project": "torus-framework",
-  "feature": "repo-extraction-reranker",
+  "feature": "search-pipeline-upgrade",
   "framework_version": "v3.2.0",
-  "what_was_done": "Created toroidal-detector repo (150+ patterns, Apache-2.0). Unified all repos to Apache-2.0. Added NIM cross-encoder reranker to search_pipeline.py. Updated READMEs with cross-references. Wired detector+toolshed to new paths in settings.json/mcp.json.",
+  "what_was_done": "Search pipeline upgrade sprint: added NIM reranker, Groq query expansion (keyword/hybrid), HyDE (semantic), query decomposition (compound queries). Verified detector cross-project. Cleaned up skill-library.bak/ and mcp.json.pre-toolshed.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
-    "skill-library.bak/ and mcp.json.pre-toolshed still uncleaned",
-    "hooks/findings_detector.py now dormant (replaced by ~/projects/toroidal-detector/detector.py)",
-    "nomic references in memory_server.py comments are stale (actually uses nvidia nv-embed-v1)"
+    "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
+    "nomic references in memory_server.py comments are stale (uses nvidia nv-embed-v1)",
+    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code"
   ],
   "next_steps": [
-    "Commit search_pipeline.py reranker + config.json nim_rerank toggle",
-    "Test reranker in fresh session with before/after comparison",
-    "Consider query expansion or HyDE for further retrieval quality",
     "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001",
-    "Clean up skill-library.bak/ and mcp.json.pre-toolshed",
-    "Push Torus-Framework dag-claude branch when ready"
-  ],
-  "last_response_preview": "## Session 694 Handoff\n\n### What was done\n1. **Verified all 7 MCP services** online after skills-v2 submodule split\n2. **Created toroidal-detector repo** \u2014 packaged findings_detector.py + save_finding.py + templates as standalone repo (OZmasterAI/toroidal-detector, Apache-2.0, 150+ detection patterns)\n3. **Unified licenses** \u2014 all 3 repos (toolshed, skills, detector) now Apache-2.0\n4. **Updated all READMEs** \u2014 standalone setup, cross-references (\"Works with Toolshed/Skills\"), \"Built with Torus F",
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 168897,
-  "dag_total_branches": 870
+    "Push Torus-Framework dag-claude branch when ready",
+    "SPLADE learned sparse vectors (high effort, medium impact — last search improvement)",
+    "Widen toroidal-detector CORS pattern to catch Python/JS assignment syntax"
+  ]
 }
