@@ -163,7 +163,43 @@ def _record_to_db(skill_name: str, success: bool, context: str, db_path: str) ->
         conn = init_db(db_path)
         skill_id = get_or_create_skill(conn, skill_name)
         record_outcome(conn, skill_id, applied=True, completed=success)
+        _write_evolution_trigger(conn, skill_name, skill_id)
         conn.close()
+    except Exception:
+        pass
+
+
+_EVOLUTION_TRIGGER_DIR = os.path.join(_RAMDISK_DIR, "evolution_triggers")
+
+
+def _write_evolution_trigger(conn, skill_name: str, skill_id: str) -> None:
+    """If skill is evolution-eligible, write trigger file to ramdisk for the MCP server to pick up."""
+    try:
+        from shared.skill_triggers import is_evolution_eligible
+        from shared.skill_db import computed_rates, get_skill_record
+
+        if not is_evolution_eligible(conn, skill_id):
+            return
+
+        rec = get_skill_record(conn, skill_id)
+        if rec is None:
+            return
+        rates = computed_rates(rec)
+
+        os.makedirs(_EVOLUTION_TRIGGER_DIR, exist_ok=True)
+        trigger_path = os.path.join(_EVOLUTION_TRIGGER_DIR, f"{skill_name}.json")
+        with open(trigger_path, "w") as f:
+            json.dump(
+                {
+                    "skill_name": skill_name,
+                    "skill_id": skill_id,
+                    "evolution_type": "FIX",
+                    "completion_rate": rates["completion_rate"],
+                    "fallback_rate": rates["fallback_rate"],
+                    "triggered_at": time.time(),
+                },
+                f,
+            )
     except Exception:
         pass
 
