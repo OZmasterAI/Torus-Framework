@@ -1361,15 +1361,20 @@ def _flush_capture_queue():
             pass  # empty file
         os.replace(tmp, CAPTURE_QUEUE_FILE)
 
-        # Parse and batch upsert
+        # Parse and batch-deduplicate before upsert
         docs, metas, ids = [], [], []
+        seen_ids = set()
         for line in lines:
             try:
                 obs = json.loads(line.strip())
                 if "document" in obs and "id" in obs:
+                    oid = obs["id"]
+                    if oid in seen_ids:
+                        continue
+                    seen_ids.add(oid)
                     docs.append(obs["document"])
                     metas.append(obs.get("metadata", {}))
-                    ids.append(obs["id"])
+                    ids.append(oid)
             except (json.JSONDecodeError, KeyError):
                 continue  # skip corrupted lines
 

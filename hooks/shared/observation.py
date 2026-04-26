@@ -8,27 +8,22 @@ Each observation gets a deterministic ID (obs_{hash}) for dedup.
 
 import hashlib
 import json
-import os
-import threading
 import time
-import uuid
 from datetime import datetime
 
 from shared.secrets_filter import scrub
-
-_obs_lock = threading.Lock()
-_obs_counter = 0
 
 # Import fnv1a_hash for command dedup
 try:
     from shared.error_normalizer import fnv1a_hash
 except ImportError:
+
     def fnv1a_hash(text):
         h = 14695981039346656037
-        for byte in text.encode('utf-8'):
+        for byte in text.encode("utf-8"):
             h ^= byte
             h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-        return format(h, '016x')[:8]
+        return format(h, "016x")[:8]
 
 
 # Tools worth capturing (high signal)
@@ -36,18 +31,40 @@ CAPTURABLE_TOOLS = {"Bash", "Edit", "Write", "NotebookEdit", "UserPrompt"}
 
 # Error patterns to detect in Bash output
 _ERROR_PATTERNS = [
-    "Traceback", "SyntaxError:", "ImportError:", "ModuleNotFoundError:",
-    "Permission denied", "npm ERR!", "fatal:", "error[E", "FAILED",
-    "command not found", "No such file or directory",
-    "ConnectionRefusedError", "OSError:",
+    "Traceback",
+    "SyntaxError:",
+    "ImportError:",
+    "ModuleNotFoundError:",
+    "Permission denied",
+    "npm ERR!",
+    "fatal:",
+    "error[E",
+    "FAILED",
+    "command not found",
+    "No such file or directory",
+    "ConnectionRefusedError",
+    "OSError:",
     # Common Python exceptions
-    "AssertionError:", "KeyError:", "ValueError:", "TypeError:",
-    "AttributeError:", "IndexError:", "NameError:", "FileNotFoundError:",
-    "RuntimeError:", "TimeoutError:",
+    "AssertionError:",
+    "KeyError:",
+    "ValueError:",
+    "TypeError:",
+    "AttributeError:",
+    "IndexError:",
+    "NameError:",
+    "FileNotFoundError:",
+    "RuntimeError:",
+    "TimeoutError:",
     # Test and build failures
-    "pytest FAILED", "test failed", "ERRORS:", "CalledProcessError",
+    "pytest FAILED",
+    "test failed",
+    "ERRORS:",
+    "CalledProcessError",
     # System-level errors
-    "panic:", "segmentation fault", "core dumped", "killed",
+    "panic:",
+    "segmentation fault",
+    "core dumped",
+    "killed",
 ]
 
 
@@ -62,16 +79,19 @@ def _detect_error_pattern(output: str) -> str:
 def _extract_exit_code(tool_response) -> str:
     """Extract exit code from tool_response (str or dict)."""
     if isinstance(tool_response, dict):
-        return str(tool_response.get("exit_code",
-                   tool_response.get("exitCode",
-                   tool_response.get("status", ""))))
+        return str(
+            tool_response.get(
+                "exit_code",
+                tool_response.get("exitCode", tool_response.get("status", "")),
+            )
+        )
     if isinstance(tool_response, str):
         try:
             resp = json.loads(tool_response)
             if isinstance(resp, dict):
-                return str(resp.get("exit_code",
-                           resp.get("exitCode",
-                           resp.get("status", ""))))
+                return str(
+                    resp.get("exit_code", resp.get("exitCode", resp.get("status", "")))
+                )
         except (json.JSONDecodeError, TypeError):
             pass
     return ""
@@ -109,6 +129,7 @@ def _extract_file_extension(file_path):
     if not file_path:
         return ""
     import os
+
     _, ext = os.path.splitext(file_path)
     return ext
 
@@ -174,7 +195,9 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
         error_pattern = _detect_error_pattern(_get_output_text(tool_response))
         has_error = bool(error_pattern) or (exit_code and exit_code not in ("", "0"))
         command_hash = fnv1a_hash(tool_input.get("command", ""))
-        document = f"Bash: {command} → EXIT {exit_code} | {error_pattern} | {output_text}"
+        document = (
+            f"Bash: {command} → EXIT {exit_code} | {error_pattern} | {output_text}"
+        )
         context = {
             "exit_code": exit_code,
             "cmd": _extract_command_name(tool_input.get("command", "")),
@@ -188,7 +211,7 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
         old_str = tool_input.get("old_string", "")
         new_str = tool_input.get("new_string", "")
         # Approximate line range from old_string length
-        lines_hint = old_str.count('\n') + 1 if old_str else 0
+        lines_hint = old_str.count("\n") + 1 if old_str else 0
         document = f"Edit: {file_path} (~{lines_hint} lines changed)"
         context = {
             "file_path": file_path,
@@ -291,12 +314,8 @@ def compress_observation(tool_name, tool_input, tool_response, session_id, state
         if mc is not None and mc != 1.0:
             mentor_chain_score = str(round(mc, 2))
 
-    # Generate deterministic ID
-    global _obs_counter
-    with _obs_lock:
-        _obs_counter += 1
-        count = _obs_counter
-    id_source = f"{document}_{session_id}_{now}_{os.getpid()}_{count}_{uuid.uuid4().hex[:8]}"
+    # Content-deterministic ID: same document + session = same ID (enables upsert dedup)
+    id_source = f"{document}_{session_id}"
     obs_id = "obs_" + hashlib.sha256(id_source.encode()).hexdigest()[:12]
 
     return {
