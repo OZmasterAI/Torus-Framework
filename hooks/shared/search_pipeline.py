@@ -363,6 +363,9 @@ class SearchPipeline:
         except Exception:
             pass
 
+        # ── Step 6b: Cross-encoder rerank (NVIDIA NIM) ──
+        formatted = self._rerank_nim(query, formatted, top_k)
+
         # ── Step 7: Trim to top_k ──
         formatted = formatted[:top_k]
 
@@ -485,6 +488,59 @@ class SearchPipeline:
         return result
 
     # ── Internal helpers ──────────────────────────────────────────────────
+
+    def _rerank_nim(self, query, candidates, top_k):
+        """Rerank candidates using NVIDIA NIM cross-encoder. Fail-open."""
+        config = self.config
+        if not config.get("nim_rerank", False):
+            return candidates
+        if len(candidates) <= 3:
+            return candidates
+
+        rerank_k = min(len(candidates), max(top_k * 2, 30))
+        passages = []
+        for c in candidates[:rerank_k]:
+            text = c.get("content") or c.get("preview") or ""
+            if text:
+                passages.append({"text": text[:2000]})
+        if not passages:
+            return candidates
+
+        try:
+            import requests
+
+            nim_key = config.get("nim_api_key", "")
+            if not nim_key:
+                return candidates
+            resp = requests.post(
+                "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-3_2-nv-rerankqa-1b-v2/reranking",
+                headers={
+                    "Authorization": f"Bearer {nim_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "nvidia/llama-3.2-nv-rerankqa-1b-v2",
+                    "query": {"text": query},
+                    "passages": passages,
+                    "truncate": "END",
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            rankings = resp.json().get("rankings", [])
+            reranked = []
+            for r in sorted(rankings, key=lambda x: x.get("logit", 0), reverse=True):
+                idx = r.get("index", 0)
+                if idx < len(candidates):
+                    candidates[idx]["rerank_score"] = r.get("logit", 0)
+                    reranked.append(candidates[idx])
+            remaining = [c for c in candidates[rerank_k:]]
+            return reranked + remaining
+        except Exception as e:
+            print(
+                f"[SearchPipeline] NIM rerank failed (fail-open): {e}", file=_sys.stderr
+            )
+            return candidates
 
     def _touch_timestamp(self):
         fn = self.h.get("touch_memory_timestamp")
