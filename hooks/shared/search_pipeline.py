@@ -184,12 +184,17 @@ class SearchPipeline:
             _where["state_type"] = state_type
         _where = _where or None
 
+        # ── Step 1c: HyDE — embed hypothetical answer instead of question ──
+        _hyde_doc = None
+        if mode in ("semantic", "hybrid", ""):
+            _hyde_doc = self._hyde_generate(query)
+
         # Embed once for all vector searches (LanceDB + DAG)
         _embed_fn = h.get("embed_text")
         _query_vec = None
         if _embed_fn and mode in ("semantic", "hybrid", ""):
             try:
-                _query_vec = _embed_fn(query)
+                _query_vec = _embed_fn(_hyde_doc if _hyde_doc else query)
             except Exception:
                 pass
 
@@ -645,6 +650,88 @@ class SearchPipeline:
                 file=_sys.stderr,
             )
             return None
+
+    def _hyde_generate(self, query):
+        """Generate a hypothetical document for HyDE embedding. Fail-open."""
+        config = self.config
+        if not config.get("hyde", False):
+            return None
+        if len(query.split()) > 30:
+            return None
+
+        if not hasattr(self, "_hyde_cache"):
+            self._hyde_cache = {}
+        cached = self._hyde_cache.get(query)
+        if cached is not None:
+            return cached
+
+        prompt_msgs = [
+            {
+                "role": "system",
+                "content": "Write a brief factual statement that answers this query. "
+                "One or two sentences, as if from a knowledge base entry. No preamble.",
+            },
+            {"role": "user", "content": query},
+        ]
+
+        doc = None
+        groq_key = config.get("groq_api_key", "") or os.environ.get("GROQ_API_KEY", "")
+        if groq_key:
+            try:
+                import requests
+
+                resp = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {groq_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "llama-3.1-8b-instant",
+                        "messages": prompt_msgs,
+                        "max_tokens": 120,
+                        "temperature": 0,
+                    },
+                    timeout=5,
+                )
+                resp.raise_for_status()
+                doc = resp.json()["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                print(
+                    f"[SearchPipeline] Groq HyDE failed (fail-open): {e}",
+                    file=_sys.stderr,
+                )
+
+        if not doc:
+            nim_key = config.get("nim_api_key", "")
+            if nim_key:
+                try:
+                    import requests
+
+                    resp = requests.post(
+                        "https://integrate.api.nvidia.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {nim_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": "meta/llama-3.1-8b-instruct",
+                            "messages": prompt_msgs,
+                            "max_tokens": 120,
+                            "temperature": 0,
+                        },
+                        timeout=8,
+                    )
+                    resp.raise_for_status()
+                    doc = resp.json()["choices"][0]["message"]["content"].strip()
+                except Exception as e:
+                    print(
+                        f"[SearchPipeline] NIM HyDE failed (fail-open): {e}",
+                        file=_sys.stderr,
+                    )
+
+        self._hyde_cache[query] = doc
+        return doc
 
     def _touch_timestamp(self):
         fn = self.h.get("touch_memory_timestamp")
