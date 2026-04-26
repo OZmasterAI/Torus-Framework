@@ -82,7 +82,7 @@ def cluster_label(content: str) -> str:
 class ClusterStore:
     """SQLite-backed centroid store for incremental clustering.
 
-    Stores cluster centroids as normalized float32 numpy arrays (768-dim).
+    Stores cluster centroids as normalized float32 numpy arrays (nv-embed-v1 4096-dim).
     Provides fast nearest-centroid lookup via in-memory cache.
     """
 
@@ -122,7 +122,7 @@ class ClusterStore:
         """Assign a vector to the nearest cluster or create a new one.
 
         Args:
-            vec_list: 768-dim embedding as list of floats
+            vec_list: embedding as list of floats (dimension matches model)
             content: original text (used for label generation)
 
         Returns cluster_id string.
