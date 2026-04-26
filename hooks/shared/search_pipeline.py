@@ -170,9 +170,30 @@ class SearchPipeline:
             self._touch_timestamp()
             return self._search_transcript(query, count, config)
 
-        # ── Step 1b: LLM query expansion (Groq primary, NIM fallback) ──
+        # ── Step 1a: Query decomposition (split compound queries) ──
         if mode not in ("tags",):
+            sub_queries = self._decompose_query(query)
+            if sub_queries and len(sub_queries) > 1:
+                return self._search_decomposed(
+                    sub_queries,
+                    top_k,
+                    mode,
+                    recency_weight,
+                    match_all,
+                    counterfactual,
+                    memory_type,
+                    state_type,
+                    count,
+                )
+
+        # ── Step 1b: Query expansion for keyword/hybrid only ──
+        if mode in ("keyword", "hybrid"):
             query = self._expand_query(query)
+
+        # ── Step 1c: HyDE for semantic only ──
+        _hyde_doc = None
+        if mode in ("semantic", ""):
+            _hyde_doc = self._hyde_generate(query)
 
         # ── Step 2: Primary retrieval ──
         actual_k = min(top_k * 2, count)
@@ -183,11 +204,6 @@ class SearchPipeline:
         if state_type:
             _where["state_type"] = state_type
         _where = _where or None
-
-        # ── Step 1c: HyDE — embed hypothetical answer instead of question ──
-        _hyde_doc = None
-        if mode in ("semantic", "hybrid", ""):
-            _hyde_doc = self._hyde_generate(query)
 
         # Embed once for all vector searches (LanceDB + DAG)
         _embed_fn = h.get("embed_text")
@@ -650,6 +666,99 @@ class SearchPipeline:
                 file=_sys.stderr,
             )
             return None
+
+    def _decompose_query(self, query):
+        """Split compound queries into sub-queries. Returns list or None. Fail-open."""
+        config = self.config
+        if not config.get("query_decomposition", False):
+            return None
+        if len(query.split()) < 6:
+            return None
+        if not any(
+            w in query.lower() for w in ("and", "also", "plus", "as well", "both")
+        ):
+            return None
+
+        if not hasattr(self, "_qd_cache"):
+            self._qd_cache = {}
+        cached = self._qd_cache.get(query)
+        if cached is not None:
+            return cached
+
+        prompt_msgs = [
+            {
+                "role": "system",
+                "content": "Decide if this search query contains multiple distinct questions. "
+                "If yes, split into separate queries (one per line). "
+                "If it's a single question, return ONLY the word SINGLE. "
+                "No numbering, no explanation.",
+            },
+            {"role": "user", "content": query},
+        ]
+
+        response = self._expand_via_groq(query, prompt_msgs)
+        if not response:
+            response = self._expand_via_nim_chat(query, prompt_msgs)
+
+        if not response or response.strip().upper() == "SINGLE":
+            self._qd_cache[query] = None
+            return None
+
+        sub_queries = [q.strip() for q in response.strip().splitlines() if q.strip()]
+        if len(sub_queries) < 2 or len(sub_queries) > 5:
+            self._qd_cache[query] = None
+            return None
+
+        self._qd_cache[query] = sub_queries
+        return sub_queries
+
+    def _search_decomposed(
+        self,
+        sub_queries,
+        top_k,
+        mode,
+        recency_weight,
+        match_all,
+        counterfactual,
+        memory_type,
+        state_type,
+        total_count,
+    ):
+        """Run each sub-query through the full pipeline, merge and deduplicate."""
+        per_query_k = max(5, top_k // len(sub_queries) + 2)
+        all_results = []
+        seen_ids = set()
+
+        for sq in sub_queries:
+            result = self.search(
+                sq,
+                top_k=per_query_k,
+                mode=mode,
+                recency_weight=recency_weight,
+                match_all=match_all,
+                counterfactual=counterfactual,
+                memory_type=memory_type,
+                state_type=state_type,
+            )
+            for r in result.get("results", []):
+                rid = r.get("id", "")
+                if rid and rid not in seen_ids:
+                    r["decomposed_from"] = sq
+                    all_results.append(r)
+                    seen_ids.add(rid)
+
+        all_results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+        all_results = all_results[:top_k]
+
+        return {
+            "results": all_results,
+            "total_memories": total_count,
+            "query": " | ".join(sub_queries),
+            "mode": mode,
+            "decomposed": True,
+            "sub_queries": sub_queries,
+            "compressed_results": compress_results(all_results) if all_results else [],
+        }
 
     def _hyde_generate(self, query):
         """Generate a hypothetical document for HyDE embedding. Fail-open."""
