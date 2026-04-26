@@ -3750,3 +3750,15 @@
 - **Failures**: 3
 - **Action needed**: Try different approach or escalate to human review
 
+### 2026-04-26T00:21:24 — Strategy `fix-auth` banned
+- **Error**: 
+- **File**: /tmp/x.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+
+### 2026-04-26T00:21:25 — Strategy `pip-install-foo` banned
+- **Error**: 17a6ad6f
+- **File**: /tmp/integration.py
+- **Failures**: 3
+- **Action needed**: Try different approach or escalate to human review
+

@@ -1,9 +1,9 @@
 {
-  "session_count": 697,
+  "session_count": 699,
   "project": "torus-framework",
-  "feature": "search-pipeline-upgrade",
+  "feature": "skill-self-evolution",
   "framework_version": "v3.2.0",
-  "what_was_done": "Search pipeline upgrade sprint: added NIM reranker, Groq query expansion (keyword/hybrid), HyDE (semantic), query decomposition (compound queries). Verified detector cross-project. Cleaned up skill-library.bak/ and mcp.json.pre-toolshed.",
+  "what_was_done": "Closed the self-evolution loop: hook writes trigger files to ramdisk when skills degrade, MCP server auto-picks up and spawns background evolution threads on next invoke_skill(). Two commits across torus-skills + framework.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
@@ -13,6 +13,7 @@
   "next_steps": [
     "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001",
     "Push Torus-Framework dag-claude branch when ready",
+    "Push torus-skills main branch with auto-evolution commit",
     "SPLADE learned sparse vectors (high effort, medium impact — last search improvement)",
     "Widen toroidal-detector CORS pattern to catch Python/JS assignment syntax"
   ]
