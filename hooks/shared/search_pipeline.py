@@ -170,6 +170,10 @@ class SearchPipeline:
             self._touch_timestamp()
             return self._search_transcript(query, count, config)
 
+        # ── Step 1b: LLM query expansion (Groq primary, NIM fallback) ──
+        if mode not in ("tags",):
+            query = self._expand_query(query)
+
         # ── Step 2: Primary retrieval ──
         actual_k = min(top_k * 2, count)
         format_summaries = h.get("format_summaries", lambda x: [])
@@ -541,6 +545,106 @@ class SearchPipeline:
                 f"[SearchPipeline] NIM rerank failed (fail-open): {e}", file=_sys.stderr
             )
             return candidates
+
+    def _expand_query(self, query):
+        """Expand query with LLM-generated related terms. Groq primary, NIM fallback. Fail-open."""
+        config = self.config
+        if not config.get("query_expansion", False):
+            return query
+        if len(query.split()) > 20:
+            return query
+
+        if not hasattr(self, "_qe_cache"):
+            self._qe_cache = {}
+        cached = self._qe_cache.get(query)
+        if cached is not None:
+            return cached
+
+        prompt_msgs = [
+            {
+                "role": "system",
+                "content": "Expand this search query with related terms to improve retrieval. "
+                "Return ONLY a comma-separated list of 3-5 related terms. No explanation.",
+            },
+            {"role": "user", "content": query},
+        ]
+
+        expanded_terms = self._expand_via_groq(query, prompt_msgs)
+        if not expanded_terms:
+            expanded_terms = self._expand_via_nim_chat(query, prompt_msgs)
+
+        if expanded_terms:
+            terms = expanded_terms.replace('"', "").replace("'", "")
+            result = f"{query} {terms}"
+        else:
+            result = query
+
+        self._qe_cache[query] = result
+        return result
+
+    def _expand_via_groq(self, query, prompt_msgs):
+        """Call Groq llama-3.1-8b-instant for query expansion. Returns expanded terms or None."""
+        groq_key = self.config.get("groq_api_key", "") or os.environ.get(
+            "GROQ_API_KEY", ""
+        )
+        if not groq_key:
+            return None
+        try:
+            import requests
+
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": prompt_msgs,
+                    "max_tokens": 60,
+                    "temperature": 0,
+                },
+                timeout=5,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(
+                f"[SearchPipeline] Groq expansion failed (fail-open): {e}",
+                file=_sys.stderr,
+            )
+            return None
+
+    def _expand_via_nim_chat(self, query, prompt_msgs):
+        """Call NIM llama-3.1-8b-instruct for query expansion. Returns expanded terms or None."""
+        nim_key = self.config.get("nim_api_key", "")
+        if not nim_key:
+            return None
+        try:
+            import requests
+
+            resp = requests.post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {nim_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "meta/llama-3.1-8b-instruct",
+                    "messages": prompt_msgs,
+                    "max_tokens": 60,
+                    "temperature": 0,
+                },
+                timeout=8,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(
+                f"[SearchPipeline] NIM expansion failed (fail-open): {e}",
+                file=_sys.stderr,
+            )
+            return None
 
     def _touch_timestamp(self):
         fn = self.h.get("touch_memory_timestamp")
