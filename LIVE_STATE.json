@@ -1,20 +1,21 @@
 {
-  "session_count": 699,
+  "session_count": 701,
   "project": "torus-framework",
-  "feature": "skill-self-evolution",
+  "feature": "memory-maintenance",
   "framework_version": "v3.2.0",
-  "what_was_done": "Closed the self-evolution loop: hook writes trigger files to ramdisk when skills degrade, MCP server auto-picks up and spawns background evolution threads on next invoke_skill(). Two commits across torus-skills + framework.",
+  "what_was_done": "Audited evolution features and memory DB health. Fixed observation dedup bug (non-deterministic IDs). Added batch dedup to flush. Commit ecb0380.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
     "nomic references in memory_server.py comments are stale (uses nvidia nv-embed-v1)",
-    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code"
+    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code",
+    "knowledge table 1.6GB — likely mixed-dim vectors from embedding migration"
   ],
   "next_steps": [
-    "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001",
-    "Push Torus-Framework dag-claude branch when ready",
-    "Push torus-skills main branch with auto-evolution commit",
-    "SPLADE learned sparse vectors (high effort, medium impact — last search improvement)",
-    "Widen toroidal-detector CORS pattern to catch Python/JS assignment syntax"
+    "Purge 109 possible-dupe + never-retrieved knowledge entries",
+    "Run compactor dry-run on observations table",
+    "Knowledge vector dimension cleanup (1.6GB for 5.3K entries)",
+    "Push dag-claude branch when ready",
+    "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001"
   ]
 }
