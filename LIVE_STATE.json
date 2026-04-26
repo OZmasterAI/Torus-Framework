@@ -1,20 +1,19 @@
 {
-  "session_count": 701,
+  "session_count": 707,
   "project": "torus-framework",
   "feature": "memory-maintenance",
   "framework_version": "v3.2.0",
-  "what_was_done": "Audited evolution features and memory DB health. Fixed observation dedup bug (non-deterministic IDs). Added batch dedup to flush. Commit ecb0380.",
+  "what_was_done": "Memory server optimization: fixed stale nomic refs, LanceDB compaction (2.8GB→268MB), PyArrow system malloc, rebuilt clusters 768→4096-dim. Commit 0b08423.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
-    "nomic references in memory_server.py comments are stale (uses nvidia nv-embed-v1)",
     "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code",
-    "knowledge table 1.6GB — likely mixed-dim vectors from embedding migration"
+    "knowledge rows still have stale cluster_id metadata (need LanceDB write after server restart)"
   ],
   "next_steps": [
+    "Restart memory server to activate PyArrow fix + pick up compacted lance files, then backfill cluster_id metadata",
     "Purge 109 possible-dupe + never-retrieved knowledge entries",
     "Run compactor dry-run on observations table",
-    "Knowledge vector dimension cleanup (1.6GB for 5.3K entries)",
     "Push dag-claude branch when ready",
     "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001"
   ]
