@@ -47,7 +47,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/findings_detector.py\"",
+            "command": "python3 \"$HOME/projects/toroidal-detector/detector.py\"",
             "timeout": 3
           }
         ]
