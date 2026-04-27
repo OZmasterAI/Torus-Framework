@@ -99,7 +99,8 @@
     {
       "id": 12,
       "name": "Archive maintenance scripts",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-28T00:02:00Z",
       "files": [],
       "validate": "ls hooks/scripts/archived/ | wc -l | grep -q '[1-9]'",
       "depends_on": []
