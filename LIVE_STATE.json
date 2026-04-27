@@ -3,7 +3,7 @@
   "project": "torus-framework",
   "feature": "surrealdb-migration",
   "framework_version": "v3.2.0",
-  "what_was_done": "Planned LanceDB→SurrealDB migration. Updated 3 stale docs. Created checkpoint 65193e9 + 2.9GB data backup. Evaluated 4 DBs, chose SurrealDB for graph RELATE + consolidation. Plan v2: 16 tasks.",
+  "what_was_done": "Planned LanceDB→SurrealDB migration (SurrealKV backend). Updated 3 stale docs (nomic→nvidia). Checkpoint 65193e9 + 2.9GB backup. Evaluated 4 DBs, chose SurrealDB for RELATE graphs + consolidation. Plan v2: 16 tasks. Prompt ready for implementation session.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
