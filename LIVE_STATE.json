@@ -1,26 +1,25 @@
 {
-  "session_count": 710,
+  "session_count": 711,
   "project": "torus-framework",
   "feature": "memory-maintenance",
   "framework_version": "v3.2.0",
-  "what_was_done": "Backfilled cluster_id on all 5402 knowledge rows (40%\u2192100%). Re-embedded 32 zero-vector rows via NIM API. Rewrote knowledge table in single pass to fix LanceDB version fragmentation from row-by-row updates. Also set tmux history-limit 50000\u219210000. Commit 49ff510.",
+  "what_was_done": "Restored broken knowledge table from LanceDB v1 (2\u21925402 rows). Purged 122 dupe+never-retrieved knowledge entries (5403\u21925281). Compacted observations at 0.95 cosine threshold (4919\u21923421, 30% reduction). Fixed compactor bug (tags column missing on observations schema).",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
     "toroidal-detector SKIP_PATH_SEGMENTS includes .claude \u2014 won't scan framework code",
-    "LanceDB knowledge table lost 1 row during restore (5403\u21925402) \u2014 low priority",
+    "memory_compactor.py assumes tags column exists on all tables (fails on observations)",
     "Terminal scrollback duplication on this machine across all emulators \u2014 possibly Node v25.6.0 related"
   ],
   "next_steps": [
-    "Purge 109 possible-dupe + never-retrieved knowledge entries",
-    "Run compactor dry-run on observations table",
     "Investigate skill server 1.2 GB RSS + search timeout",
+    "Fix memory_compactor.py to handle observations schema (no tags column)",
     "Push dag-claude branch when ready",
     "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001"
   ],
-  "last_response_preview": "Yes \u2014 your Zed is using that exact theme. Line 5 of your `~/.config/zed/settings.json`:\n\n```json\n\"dark\": \"Claude Code Inspired Dark\"\n```\n\nThat matches the theme from `ericbuess/claude-code-inspired-dark`. It's your active dark mode theme right now, with the warm brown background, cream text, and Claude Orange accents.",
+  "last_response_preview": "wrap up via toolshed",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 172589,
-  "dag_total_branches": 894
+  "dag_node_count": 173069,
+  "dag_total_branches": 895
 }
