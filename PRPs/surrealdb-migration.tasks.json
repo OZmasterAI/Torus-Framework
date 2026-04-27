@@ -6,15 +6,18 @@
     {
       "id": 1,
       "name": "Install surrealdb (SDK v2.0.0 / server v3.0.5+) + verify embedded mode",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-27T23:05:00Z",
+      "notes": "RecordID not RecordId. No signin for surrealkv. query() returns flat list. BM25 scores negative. Multi-stmt returns LAST only.",
       "files": [],
-      "validate": "python3 -c \"from surrealdb import Surreal, RecordId; db=Surreal('memory'); db.use('ns','db'); db.query('UPSERT test:1 SET x=1'); r=db.query('SELECT * FROM test'); c=db.query('SELECT count() FROM test GROUP ALL'); print('OK' if r and c else 'FAIL')\"",
+      "validate": "python3 -c \"from surrealdb import Surreal, RecordID; db=Surreal('surrealkv:///tmp/t1check'); db.use('ns','db'); db.query('UPSERT test:1 SET x=1'); r=db.query('SELECT * FROM test'); c=db.query('SELECT count() FROM test GROUP ALL'); print('OK' if r and c else 'FAIL')\"",
       "depends_on": []
     },
     {
       "id": 2,
       "name": "Build surreal_collection.py — CRUD skeleton",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-27T23:12:00Z",
       "files": ["hooks/shared/surreal_collection.py", "hooks/tests/test_surreal_collection.py"],
       "validate": "python3 -m pytest hooks/tests/test_surreal_collection.py -v -k 'crud'",
       "depends_on": [1]
@@ -22,7 +25,8 @@
     {
       "id": 3,
       "name": "Add vector search + BM25 + where-clauses",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-27T23:18:00Z",
       "files": ["hooks/shared/surreal_collection.py", "hooks/tests/test_surreal_collection.py"],
       "validate": "python3 -m pytest hooks/tests/test_surreal_collection.py -v",
       "depends_on": [2]
@@ -30,7 +34,8 @@
     {
       "id": 4,
       "name": "Define schemas for all 5 tables + clusters",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-27T23:28:00Z",
       "files": ["hooks/shared/surreal_collection.py"],
       "validate": "python3 -c \"print('schemas OK')\"",
       "depends_on": [3]
