@@ -10,7 +10,7 @@ globs: .claude/hooks/memory_server.py, **/mcp_server/**
 
 ## LanceDB Storage
 - 5 tables: knowledge (curated), observations (auto-captured), fix_outcomes, quarantine, web_pages
-- Embedding: nomic-embed-text-v2-moe (768-dim), cosine similarity, flat scan
+- Embedding: nvidia/nv-embed-v1 (4096-dim), cosine similarity, flat scan
 - ChromaDB is backup only at ~/data/memory/chroma.sqlite3
 
 ## Ingestion

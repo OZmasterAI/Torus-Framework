@@ -1,5 +1,5 @@
 {
-  "session_count": 714,
+  "session_count": 715,
   "project": "torus-framework",
   "feature": "memory-maintenance",
   "framework_version": "v3.2.0",
@@ -7,18 +7,17 @@
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
-    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code",
-    "Terminal scrollback duplication on this machine across all emulators — possibly Node v25.6.0 related",
-    "Stale docs reference nomic-embed (ARCHITECTURE.md, USAGE_GUIDE.md, rules/memory.md) — should say nvidia/nv-embed-v1"
+    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude \u2014 won't scan framework code",
+    "Terminal scrollback duplication on this machine across all emulators \u2014 possibly Node v25.6.0 related"
   ],
   "next_steps": [
-    "Update stale docs (ARCHITECTURE.md, USAGE_GUIDE.md, rules/memory.md) to reference nvidia/nv-embed-v1",
     "Push dag-claude branch when ready",
     "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001",
-    "Run memory maintenance(action='stale') — DB at 5296 entries"
+    "Run memory maintenance(action='stale') \u2014 DB at 5296 entries"
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 173600,
-  "dag_total_branches": 898
+  "dag_node_count": 174027,
+  "dag_total_branches": 901,
+  "last_response_preview": "PoW difficulty crashed from 0.20 down to **0.0000086** \u2014 that's the >>15 floor. Already at block 209, climbing fast. This is going to blast through the remaining 1791 blocks in a few hours.\n\n**Summary of changes:**\n- `src/main.h`: Added `FAST_POW_FORK_HEIGHT = 203`\n- `src/main.cpp`: Added `bnFastPoWLimit` (>>15), fast PoW retarget (8s spacing, 240s timespan), one-time difficulty reset at block 203\n- `src/rpcmining.cpp`: Removed peer connection requirement from 3 mining RPCs\n\nThe Windows node wil"
 }

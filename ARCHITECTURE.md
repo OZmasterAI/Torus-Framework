@@ -585,7 +585,7 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 
 ### Memory Server (memory_server.py — 4,627 lines)
 
-- **Embedding:** nomic-ai/nomic-embed-text-v2-moe (768-dim, 8192 tokens)
+- **Embedding:** nvidia/nv-embed-v1 (4096-dim)
 - **Storage:** ~/data/memory/lancedb/ (LanceDB, flat scan; ChromaDB backup at ~/data/memory/chroma.sqlite3)
 - **Tables:** "knowledge" (1,402, curated, from remember_this) + "observations" (4,579, auto-captured) + "fix_outcomes" (264, causal chains) + "web_pages" (indexed URLs) + "quarantine" (2, dedup victims)
 - **Search:** BM25 FTS (~19ms keyword), semantic (~30ms flat scan), hybrid; tags in separate SQLite tags.db
