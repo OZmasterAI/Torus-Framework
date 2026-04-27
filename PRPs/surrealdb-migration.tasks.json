@@ -5,10 +5,10 @@
   "tasks": [
     {
       "id": 1,
-      "name": "Install surrealdb + verify embedded mode",
+      "name": "Install surrealdb (SDK v2.0.0 / server v3.0.5+) + verify embedded mode",
       "status": "pending",
       "files": [],
-      "validate": "python3 -c \"from surrealdb import Surreal, RecordId; db=Surreal('memory'); db.use('ns','db'); db.query('UPSERT test:1 SET x=1'); r=db.query('SELECT * FROM test'); print('OK' if r else 'FAIL')\"",
+      "validate": "python3 -c \"from surrealdb import Surreal, RecordId; db=Surreal('memory'); db.use('ns','db'); db.query('UPSERT test:1 SET x=1'); r=db.query('SELECT * FROM test'); c=db.query('SELECT count() FROM test GROUP ALL'); print('OK' if r and c else 'FAIL')\"",
       "depends_on": []
     },
     {
