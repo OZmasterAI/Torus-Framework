@@ -1,25 +1,23 @@
 {
-  "session_count": 711,
+  "session_count": 713,
   "project": "torus-framework",
   "feature": "memory-maintenance",
   "framework_version": "v3.2.0",
-  "what_was_done": "Restored broken knowledge table from LanceDB v1 (2\u21925402 rows). Purged 122 dupe+never-retrieved knowledge entries (5403\u21925281). Compacted observations at 0.95 cosine threshold (4919\u21923421, 30% reduction). Fixed compactor bug (tags column missing on observations schema).",
+  "what_was_done": "Fixed memory_compactor.py tags-column crash on observations/fix_outcomes. Replaced skill server local nomic model (900MB) with BM25-only default + optional NIM API (--embeddings flag). Expected RSS 1.2GB to ~250MB.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
-    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude \u2014 won't scan framework code",
-    "memory_compactor.py assumes tags column exists on all tables (fails on observations)",
-    "Terminal scrollback duplication on this machine across all emulators \u2014 possibly Node v25.6.0 related"
+    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code",
+    "Terminal scrollback duplication on this machine across all emulators — possibly Node v25.6.0 related"
   ],
   "next_steps": [
-    "Investigate skill server 1.2 GB RSS + search timeout",
-    "Fix memory_compactor.py to handle observations schema (no tags column)",
+    "Restart skill server to verify RSS drop (currently 1185MB)",
     "Push dag-claude branch when ready",
-    "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001"
+    "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001",
+    "Run memory maintenance(action='stale') — DB at 5293 entries"
   ],
-  "last_response_preview": "wrap up via toolshed",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 173069,
-  "dag_total_branches": 895
+  "dag_node_count": 173600,
+  "dag_total_branches": 898
 }
