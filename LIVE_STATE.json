@@ -1,20 +1,21 @@
 {
-  "session_count": 713,
+  "session_count": 714,
   "project": "torus-framework",
   "feature": "memory-maintenance",
   "framework_version": "v3.2.0",
-  "what_was_done": "Fixed memory_compactor.py tags-column crash on observations/fix_outcomes. Replaced skill server local nomic model (900MB) with BM25-only default + optional NIM API (--embeddings flag). Expected RSS 1.2GB to ~250MB.",
+  "what_was_done": "Cleaned up all local embedding models. Replaced nomic in compactor with NIM stub. Deleted migrate_to_minilm.py + 2.4GB dead model caches. Skill server RSS verified 1185MB to 75MB.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
     "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code",
-    "Terminal scrollback duplication on this machine across all emulators — possibly Node v25.6.0 related"
+    "Terminal scrollback duplication on this machine across all emulators — possibly Node v25.6.0 related",
+    "Stale docs reference nomic-embed (ARCHITECTURE.md, USAGE_GUIDE.md, rules/memory.md) — should say nvidia/nv-embed-v1"
   ],
   "next_steps": [
-    "Restart skill server to verify RSS drop (currently 1185MB)",
+    "Update stale docs (ARCHITECTURE.md, USAGE_GUIDE.md, rules/memory.md) to reference nvidia/nv-embed-v1",
     "Push dag-claude branch when ready",
     "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001",
-    "Run memory maintenance(action='stale') — DB at 5293 entries"
+    "Run memory maintenance(action='stale') — DB at 5296 entries"
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
