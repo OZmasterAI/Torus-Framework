@@ -1,0 +1,135 @@
+{
+  "prp": "surrealdb-migration",
+  "created": "2026-04-27T14:15:00Z",
+  "version": 2,
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Install surrealdb + verify embedded mode",
+      "status": "pending",
+      "files": [],
+      "validate": "python3 -c \"from surrealdb import Surreal, RecordId; db=Surreal('memory'); db.use('ns','db'); db.query('UPSERT test:1 SET x=1'); r=db.query('SELECT * FROM test'); print('OK' if r else 'FAIL')\"",
+      "depends_on": []
+    },
+    {
+      "id": 2,
+      "name": "Build surreal_collection.py — CRUD skeleton",
+      "status": "pending",
+      "files": ["hooks/shared/surreal_collection.py", "hooks/tests/test_surreal_collection.py"],
+      "validate": "python3 -m pytest hooks/tests/test_surreal_collection.py -v -k 'crud'",
+      "depends_on": [1]
+    },
+    {
+      "id": 3,
+      "name": "Add vector search + BM25 + where-clauses",
+      "status": "pending",
+      "files": ["hooks/shared/surreal_collection.py", "hooks/tests/test_surreal_collection.py"],
+      "validate": "python3 -m pytest hooks/tests/test_surreal_collection.py -v",
+      "depends_on": [2]
+    },
+    {
+      "id": 4,
+      "name": "Define schemas for all 5 tables + clusters",
+      "status": "pending",
+      "files": ["hooks/shared/surreal_collection.py"],
+      "validate": "python3 -c \"print('schemas OK')\"",
+      "depends_on": [3]
+    },
+    {
+      "id": 5,
+      "name": "Build data migration script + quality validation",
+      "status": "pending",
+      "files": ["hooks/migrate_to_surrealdb.py"],
+      "validate": "python3 hooks/migrate_to_surrealdb.py --verify --validate",
+      "depends_on": [4]
+    },
+    {
+      "id": 6,
+      "name": "Wire SurrealCollection into memory_server.py init",
+      "status": "pending",
+      "files": ["hooks/memory_server.py"],
+      "validate": "timeout 15 python3 hooks/memory_server.py --test-init 2>&1 | grep -q 'ok\\|OK'",
+      "depends_on": [5]
+    },
+    {
+      "id": 7,
+      "name": "Update search_pipeline.py + search_helpers.py",
+      "status": "pending",
+      "files": ["hooks/shared/search_pipeline.py", "hooks/shared/search_helpers.py"],
+      "validate": "python3 -c \"from shared.search_pipeline import SearchPipeline; print('OK')\"",
+      "depends_on": [6]
+    },
+    {
+      "id": 8,
+      "name": "Update write_pipeline.py — remove DAG dual-write",
+      "status": "pending",
+      "files": ["hooks/shared/write_pipeline.py"],
+      "validate": "python3 -c \"from shared.write_pipeline import WritePipeline; print('OK')\"",
+      "depends_on": [6]
+    },
+    {
+      "id": 9,
+      "name": "Replace tag_index + cluster_store with SurrealDB",
+      "status": "pending",
+      "files": ["hooks/memory_server.py", "hooks/shared/search_helpers.py"],
+      "validate": "python3 -c \"print('tags+clusters OK')\"",
+      "depends_on": [6]
+    },
+    {
+      "id": 10,
+      "name": "Add RELATE graph edges for causal chains",
+      "status": "pending",
+      "files": ["hooks/memory_server.py"],
+      "validate": "python3 -c \"print('RELATE OK')\"",
+      "depends_on": [6]
+    },
+    {
+      "id": 11,
+      "name": "Update auxiliary servers + hooks",
+      "status": "pending",
+      "files": ["hooks/session_end.py", "hooks/statusline.py", "hooks/analytics_server.py", "hooks/shared/dag_memory.py"],
+      "validate": "python3 -c \"import importlib; [importlib.import_module(m) for m in ['hooks.session_end']]; print('OK')\"",
+      "depends_on": [6]
+    },
+    {
+      "id": 12,
+      "name": "Archive maintenance scripts",
+      "status": "pending",
+      "files": [],
+      "validate": "ls hooks/scripts/archived/ | wc -l | grep -q '[1-9]'",
+      "depends_on": []
+    },
+    {
+      "id": 13,
+      "name": "Rewrite test files",
+      "status": "pending",
+      "files": ["hooks/tests/test_dag_memory_layer.py", "hooks/tests/test_pipeline_parity.py", "hooks/tests/test_memory_type.py", "hooks/tests/test_zero_coverage_modules.py", "hooks/tests/test_evolution.py"],
+      "validate": "python3 -m pytest hooks/tests/ -v --tb=short 2>&1 | tail -5",
+      "depends_on": [7, 8, 9, 10, 11]
+    },
+    {
+      "id": 14,
+      "name": "Cleanup — remove all LanceDB/DAG remnants",
+      "status": "pending",
+      "files": ["hooks/shared/lance_collection.py", "hooks/shared/tag_index.py", "hooks/shared/cluster_store.py", "hooks/shared/dag_memory_layer.py", "hooks/shared/dag_memory.py"],
+      "validate": "! grep -rn 'lancedb\\|pyarrow\\|lance_collection\\|dag_memory_layer\\|tag_index\\|cluster_store' hooks/ --include='*.py' | grep -v archived | grep -v migrate | grep -v test | grep -q .",
+      "depends_on": [7, 8, 9, 10, 11, 13]
+    },
+    {
+      "id": 15,
+      "name": "End-to-end verification + performance check",
+      "status": "pending",
+      "files": ["hooks/tests/test_surrealdb_integration.py"],
+      "validate": "python3 -m pytest hooks/tests/test_surrealdb_integration.py -v",
+      "depends_on": [14]
+    },
+    {
+      "id": 16,
+      "name": "Dep cleanup + docs update + final commit",
+      "status": "pending",
+      "files": ["ARCHITECTURE.md", "USAGE_GUIDE.md", "rules/memory.md", "LIVE_STATE.json"],
+      "validate": "python3 -c \"from shared.surreal_collection import SurrealCollection; print('OK')\" && ! pip show lancedb 2>/dev/null | grep -q Name",
+      "depends_on": [15]
+    }
+  ]
+}

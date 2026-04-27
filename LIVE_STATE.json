@@ -1,23 +1,21 @@
 {
-  "session_count": 715,
+  "session_count": 716,
   "project": "torus-framework",
-  "feature": "memory-maintenance",
+  "feature": "surrealdb-migration",
   "framework_version": "v3.2.0",
-  "what_was_done": "Cleaned up all local embedding models. Replaced nomic in compactor with NIM stub. Deleted migrate_to_minilm.py + 2.4GB dead model caches. Skill server RSS verified 1185MB to 75MB.",
+  "what_was_done": "Planned LanceDB→SurrealDB migration. Updated 3 stale docs. Created checkpoint 65193e9 + 2.9GB data backup. Evaluated 4 DBs, chose SurrealDB for graph RELATE + consolidation. Plan v2: 16 tasks.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
-    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude \u2014 won't scan framework code",
-    "Terminal scrollback duplication on this machine across all emulators \u2014 possibly Node v25.6.0 related"
+    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code",
+    "Terminal scrollback duplication on this machine across all emulators — possibly Node v25.6.0 related"
   ],
   "next_steps": [
-    "Push dag-claude branch when ready",
-    "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001",
-    "Run memory maintenance(action='stale') \u2014 DB at 5296 entries"
-  ],
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 174027,
-  "dag_total_branches": 901,
-  "last_response_preview": "PoW difficulty crashed from 0.20 down to **0.0000086** \u2014 that's the >>15 floor. Already at block 209, climbing fast. This is going to blast through the remaining 1791 blocks in a few hours.\n\n**Summary of changes:**\n- `src/main.h`: Added `FAST_POW_FORK_HEIGHT = 203`\n- `src/main.cpp`: Added `bnFastPoWLimit` (>>15), fast PoW retarget (8s spacing, 240s timespan), one-time difficulty reset at block 203\n- `src/rpcmining.cpp`: Removed peer connection requirement from 3 mining RPCs\n\nThe Windows node wil"
+    "Execute SurrealDB migration plan — start Task 1 (pip install surrealdb)",
+    "Implementation plan: docs/plans/surrealdb-migration-impl.md (16 tasks, sequential)",
+    "Task orchestrator: PRPs/surrealdb-migration.tasks.json",
+    "Checkpoint: git 65193e9, data ~/data/memory/backups/pre_surrealdb_migration_20260427_133952/",
+    "Push dag-claude branch when migration complete",
+    "Memory maintenance deferred until after migration (5304 entries)"
+  ]
 }
