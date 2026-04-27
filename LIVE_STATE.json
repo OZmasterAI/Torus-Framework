@@ -1,19 +1,20 @@
 {
-  "session_count": 709,
+  "session_count": 710,
   "project": "torus-framework",
   "feature": "memory-maintenance",
   "framework_version": "v3.2.0",
-  "what_was_done": "Memory server optimization: fixed stale nomic refs, LanceDB compaction (2.8GB\u2192268MB), PyArrow system malloc, rebuilt clusters 768\u21924096-dim. Commit 0b08423.",
+  "what_was_done": "Backfilled cluster_id on all 5402 knowledge rows (40%\u2192100%). Re-embedded 32 zero-vector rows via NIM API. Rewrote knowledge table in single pass to fix LanceDB version fragmentation from row-by-row updates. Also set tmux history-limit 50000\u219210000. Commit 49ff510.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
     "toroidal-detector SKIP_PATH_SEGMENTS includes .claude \u2014 won't scan framework code",
-    "knowledge rows still have stale cluster_id metadata (need LanceDB write after server restart)"
+    "LanceDB knowledge table lost 1 row during restore (5403\u21925402) \u2014 low priority",
+    "Terminal scrollback duplication on this machine across all emulators \u2014 possibly Node v25.6.0 related"
   ],
   "next_steps": [
-    "Restart memory server to activate PyArrow fix + pick up compacted lance files, then backfill cluster_id metadata",
     "Purge 109 possible-dupe + never-retrieved knowledge entries",
     "Run compactor dry-run on observations table",
+    "Investigate skill server 1.2 GB RSS + search timeout",
     "Push dag-claude branch when ready",
     "Consider switching embedding model from nv-embed-v1 to gemini-embedding-001"
   ],
