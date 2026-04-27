@@ -46,34 +46,60 @@ COMPACTABLE_TABLES = {"knowledge", "observations", "fix_outcomes"}
 TIER_PRIORITY = {1: 3, 2: 2, 3: 1, 0: 0}
 
 
-# ── Embedding ─────────────────────────────────────────────────────────────────
+# ── Embedding (NIM API) ──────────────────────────────────────────────────────
 
-_embedding_fn = None
+_NIM_URL = "https://integrate.api.nvidia.com/v1/embeddings"
+_NIM_MODEL = "nvidia/nv-embed-v1"
+_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
 
 
-def _get_embedding_fn():
-    """Lazy-load the embedding model."""
-    global _embedding_fn
-    if _embedding_fn is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-
-            model = SentenceTransformer(
-                "nomic-ai/nomic-embed-text-v2-moe",
-                trust_remote_code=True,
-            )
-            _embedding_fn = model
-        except Exception as e:
-            print(f"[COMPACTOR] Failed to load embedding model: {e}", file=sys.stderr)
-            sys.exit(1)
-    return _embedding_fn
+def _get_nim_api_key():
+    """Read NIM API key from config.json."""
+    try:
+        if os.path.exists(_CONFIG_PATH):
+            with open(_CONFIG_PATH) as f:
+                return json.load(f).get("nim_api_key", "")
+    except Exception:
+        pass
+    return os.environ.get("NIM_API_KEY", "")
 
 
 def _embed(texts):
-    """Embed a list of texts."""
-    model = _get_embedding_fn()
-    prefixed = [f"search_query: {t}" for t in texts]
-    return model.encode(prefixed, normalize_embeddings=True)
+    """Embed texts via NVIDIA NIM API (nv-embed-v1, 4096-dim).
+
+    Used by smart-merge (tier 2 compaction) to re-embed merged entries.
+    Not called by standard dedup which reuses existing vectors.
+    """
+    import requests
+
+    key = _get_nim_api_key()
+    if not key:
+        print(
+            "[COMPACTOR] NIM API key not configured, cannot re-embed", file=sys.stderr
+        )
+        return None
+    safe = [t if t and t.strip() else "[empty]" for t in texts]
+    try:
+        resp = requests.post(
+            _NIM_URL,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": _NIM_MODEL,
+                "input": safe,
+                "input_type": "passage",
+                "encoding_format": "float",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return [d["embedding"] for d in data["data"]]
+    except Exception as e:
+        print(f"[COMPACTOR] NIM embed error: {e}", file=sys.stderr)
+        return None
 
 
 # ── Core Functions ────────────────────────────────────────────────────────────
