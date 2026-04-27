@@ -57,6 +57,7 @@ def _get_embedding_fn():
     if _embedding_fn is None:
         try:
             from sentence_transformers import SentenceTransformer
+
             model = SentenceTransformer(
                 "nomic-ai/nomic-embed-text-v2-moe",
                 trust_remote_code=True,
@@ -91,7 +92,7 @@ def _open_table(table_name="knowledge"):
 def scan_duplicates(table_name="knowledge", threshold=DEFAULT_THRESHOLD):
     """Scan a LanceDB table for duplicate clusters.
 
-    Returns list of clusters, each cluster is a list of (id, text, tier, timestamp, tags) tuples.
+    Returns list of clusters, each cluster is a list of entry dicts.
     The first entry in each cluster is the recommended survivor.
     """
     table = _open_table(table_name)
@@ -106,7 +107,10 @@ def scan_duplicates(table_name="knowledge", threshold=DEFAULT_THRESHOLD):
         return []
 
     total = len(df)
-    print(f"[COMPACTOR] Scanning {total} entries in '{table_name}' (threshold={threshold})")
+    has_tags = "tags" in df.columns
+    print(
+        f"[COMPACTOR] Scanning {total} entries in '{table_name}' (threshold={threshold})"
+    )
 
     if total < 2:
         print("[COMPACTOR] Not enough entries to compare")
@@ -121,8 +125,9 @@ def scan_duplicates(table_name="knowledge", threshold=DEFAULT_THRESHOLD):
             "vector": row.get("vector"),
             "tier": int(row.get("tier", 2)) if "tier" in df.columns else 2,
             "timestamp": str(row.get("timestamp", "")),
-            "tags": str(row.get("tags", "")),
         }
+        if has_tags:
+            entry["tags"] = str(row.get("tags", ""))
         if entry["vector"] is not None and len(entry["text"]) > 0:
             entries.append(entry)
 
@@ -147,7 +152,8 @@ def scan_duplicates(table_name="knowledge", threshold=DEFAULT_THRESHOLD):
         # Find all similar entries
         sims = vectors[i] @ vectors.T
         similar_indices = [
-            j for j in range(len(entries))
+            j
+            for j in range(len(entries))
             if j != i and j not in clustered and sims[j] >= threshold
         ]
 
@@ -159,24 +165,31 @@ def scan_duplicates(table_name="knowledge", threshold=DEFAULT_THRESHOLD):
         cluster = []
         for idx in cluster_indices:
             e = entries[idx]
-            cluster.append({
+            item = {
                 "id": e["id"],
                 "text": e["text"][:200],
                 "tier": e["tier"],
                 "timestamp": e["timestamp"],
-                "tags": e["tags"],
-            })
+            }
+            if "tags" in e:
+                item["tags"] = e["tags"]
+            cluster.append(item)
             clustered.add(idx)
 
         # Sort by tier (highest first), then timestamp (newest first)
-        cluster.sort(key=lambda x: (
-            TIER_PRIORITY.get(x["tier"], 0),
-            x["timestamp"],
-        ), reverse=True)
+        cluster.sort(
+            key=lambda x: (
+                TIER_PRIORITY.get(x["tier"], 0),
+                x["timestamp"],
+            ),
+            reverse=True,
+        )
 
         clusters.append(cluster)
 
-    print(f"[COMPACTOR] Found {len(clusters)} duplicate clusters ({sum(len(c) - 1 for c in clusters)} removable)")
+    print(
+        f"[COMPACTOR] Found {len(clusters)} duplicate clusters ({sum(len(c) - 1 for c in clusters)} removable)"
+    )
     return clusters
 
 
@@ -201,57 +214,72 @@ def compact(clusters, table_name="knowledge", dry_run=True):
     total_compacted = 0
     total_survivors = 0
     actions = []
+    has_tags = "tags" in clusters[0][0] if clusters and clusters[0] else False
 
     for cluster in clusters:
         survivor = cluster[0]
         duplicates = cluster[1:]
 
-        # Merge tags from duplicates into survivor
-        all_tags = set()
-        if survivor["tags"]:
-            all_tags.update(t.strip() for t in survivor["tags"].split(",") if t.strip())
-        for dup in duplicates:
-            if dup["tags"]:
-                all_tags.update(t.strip() for t in dup["tags"].split(",") if t.strip())
-
-        # Add possible-dupe tags
-        for dup in duplicates:
-            all_tags.add(f"possible-dupe:{dup['id'][:16]}")
-
-        merged_tags = ",".join(sorted(all_tags))
+        merged_tags = ""
+        if has_tags:
+            all_tags = set()
+            if survivor.get("tags"):
+                all_tags.update(
+                    t.strip() for t in survivor["tags"].split(",") if t.strip()
+                )
+            for dup in duplicates:
+                if dup.get("tags"):
+                    all_tags.update(
+                        t.strip() for t in dup["tags"].split(",") if t.strip()
+                    )
+            for dup in duplicates:
+                all_tags.add(f"possible-dupe:{dup['id'][:16]}")
+            merged_tags = ",".join(sorted(all_tags))
 
         action = {
             "survivor_id": survivor["id"],
             "survivor_text": survivor["text"],
             "duplicate_ids": [d["id"] for d in duplicates],
-            "merged_tags": merged_tags,
             "duplicate_count": len(duplicates),
         }
+        if has_tags:
+            action["merged_tags"] = merged_tags
         actions.append(action)
 
         if not dry_run:
             try:
-                # Update survivor's tags with merged tags
-                table.update(
-                    where=f"id = '{survivor['id']}'",
-                    values={"tags": merged_tags},
-                )
+                if has_tags:
+                    table.update(
+                        where=f"id = '{survivor['id']}'",
+                        values={"tags": merged_tags},
+                    )
 
                 # Move duplicates to quarantine
                 for dup in duplicates:
                     try:
                         # Read full duplicate record
-                        dup_df = table.search().where(f"id = '{dup['id']}'").limit(1).to_pandas()
+                        dup_df = (
+                            table.search()
+                            .where(f"id = '{dup['id']}'")
+                            .limit(1)
+                            .to_pandas()
+                        )
                         if len(dup_df) > 0:
                             # Delete from source table
                             table.delete(f"id = '{dup['id']}'")
                             total_compacted += 1
                     except Exception as e:
-                        print(f"[COMPACTOR] Failed to quarantine {dup['id']}: {e}", file=sys.stderr)
+                        print(
+                            f"[COMPACTOR] Failed to quarantine {dup['id']}: {e}",
+                            file=sys.stderr,
+                        )
 
                 total_survivors += 1
             except Exception as e:
-                print(f"[COMPACTOR] Failed to process cluster {survivor['id']}: {e}", file=sys.stderr)
+                print(
+                    f"[COMPACTOR] Failed to process cluster {survivor['id']}: {e}",
+                    file=sys.stderr,
+                )
         else:
             total_compacted += len(duplicates)
             total_survivors += 1
@@ -287,7 +315,9 @@ def format_report(result):
             lines.append(f"  {i}. Survivor: {action['survivor_id'][:16]}...")
             lines.append(f"     Text: {action['survivor_text'][:80]}...")
             lines.append(f"     Removes: {action['duplicate_count']} duplicates")
-            lines.append(f"     IDs: {', '.join(d[:16] for d in action['duplicate_ids'][:5])}")
+            lines.append(
+                f"     IDs: {', '.join(d[:16] for d in action['duplicate_ids'][:5])}"
+            )
             lines.append("")
 
     return "\n".join(lines)
@@ -295,11 +325,26 @@ def format_report(result):
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="Memory Compactor for LanceDB")
-    parser.add_argument("--execute", action="store_true", help="Actually perform compaction (default: dry run)")
-    parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD, help="Cosine similarity threshold (default: 0.85)")
-    parser.add_argument("--table", default="knowledge", choices=list(COMPACTABLE_TABLES), help="Table to compact")
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually perform compaction (default: dry run)",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=DEFAULT_THRESHOLD,
+        help="Cosine similarity threshold (default: 0.85)",
+    )
+    parser.add_argument(
+        "--table",
+        default="knowledge",
+        choices=list(COMPACTABLE_TABLES),
+        help="Table to compact",
+    )
     args = parser.parse_args()
 
     print(f"[COMPACTOR] Starting {'execution' if args.execute else 'dry run'}...")

@@ -1,51 +1,70 @@
 #!/usr/bin/env python3
-"""BM25 + nomic embedding hybrid search for Skill MCP v2.
+"""BM25 + optional NIM embedding hybrid search for Skill MCP v2.
 
 Provides three index classes:
-- BM25Index: keyword search via rank_bm25
-- EmbeddingIndex: semantic search via nomic-embed-text-v1.5 (lazy loaded)
+- BM25Index: keyword search via rank_bm25 (default, zero dependencies)
+- EmbeddingIndex: semantic search via NVIDIA NIM API (opt-in, no local model)
 - HybridSearch: combines both with configurable weights
 
-Embedding model loads in background — BM25 works immediately,
-semantic search activates once the model is ready.
+BM25 is the default. Pass use_embeddings=True to HybridSearch to enable
+NIM-based semantic search (requires nim_api_key in config.json).
 """
 
+import json
 import logging
+import os
+
 import numpy as np
 from rank_bm25 import BM25Okapi
 
 logger = logging.getLogger(__name__)
 
-# Lazy-loaded embedding model
-_model = None
-_model_failed = False
+_NIM_URL = "https://integrate.api.nvidia.com/v1/embeddings"
+_NIM_MODEL = "nvidia/nv-embed-v1"
+_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".claude", "config.json")
 
 
-def _get_embedding_model():
-    """Load nomic embedding model. Returns None if unavailable."""
-    global _model, _model_failed
-    if _model_failed:
+def _get_nim_api_key():
+    """Read NIM API key from config.json."""
+    try:
+        if os.path.exists(_CONFIG_PATH):
+            with open(_CONFIG_PATH) as f:
+                return json.load(f).get("nim_api_key", "")
+    except Exception:
+        pass
+    return os.environ.get("NIM_API_KEY", "")
+
+
+def _nim_embed(texts):
+    """Embed texts via NVIDIA NIM API. Returns list of numpy arrays or None on failure."""
+    import requests
+
+    key = _get_nim_api_key()
+    if not key:
+        logger.warning("NIM API key not configured, skipping embeddings")
         return None
-    if _model is None:
-        try:
-            import torch
-
-            torch.set_num_threads(2)
-            try:
-                torch.set_num_interop_threads(2)
-            except RuntimeError:
-                pass  # already set or parallel work started
-            from sentence_transformers import SentenceTransformer
-
-            _model = SentenceTransformer(
-                "nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True
-            )
-            logger.info("Embedding model loaded (v1.5, 137M params)")
-        except Exception as e:
-            logger.warning("Embedding model unavailable, BM25-only: %s", e)
-            _model_failed = True
-            return None
-    return _model
+    safe = [t if t and t.strip() else "[empty]" for t in texts]
+    try:
+        resp = requests.post(
+            _NIM_URL,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": _NIM_MODEL,
+                "input": safe,
+                "input_type": "passage",
+                "encoding_format": "float",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return [np.array(d["embedding"], dtype=np.float32) for d in data["data"]]
+    except Exception as e:
+        logger.warning("NIM embed failed: %s", e)
+        return None
 
 
 class BM25Index:
@@ -58,7 +77,6 @@ class BM25Index:
         self._dirty = True
 
     def add(self, name: str, text: str) -> None:
-        """Add a skill to the index."""
         self._names.append(name)
         self._corpus.append(text.lower().split())
         self._dirty = True
@@ -69,7 +87,6 @@ class BM25Index:
         self._dirty = False
 
     def search(self, query: str, top_k: int = 5) -> list[tuple[str, float]]:
-        """Search by keywords. Returns [(name, score), ...]."""
         if not query.strip() or not self._corpus:
             return []
         if self._dirty:
@@ -80,11 +97,9 @@ class BM25Index:
 
 
 class EmbeddingIndex:
-    """Semantic search using nomic-embed-text-v2-moe.
+    """Semantic search via NVIDIA NIM API (nv-embed-v1, 4096-dim).
 
-    add() never blocks on model loading — stores raw text.
-    search() computes embeddings lazily when model is available.
-    Embeddings are cached — only new items get encoded.
+    No local model — embeddings are computed via HTTP API call.
     """
 
     def __init__(self):
@@ -93,16 +108,11 @@ class EmbeddingIndex:
         self._embeddings: list[np.ndarray | None] = []
 
     def add(self, name: str, text: str) -> None:
-        """Add a skill to the index. Never blocks on model loading."""
         self._names.append(name)
         self._texts.append(text)
         self._embeddings.append(None)
 
     def _ensure_embeddings(self) -> None:
-        """Batch-compute embeddings for any pending items if model is ready."""
-        model = _get_embedding_model()
-        if model is None:
-            return
         pending = [
             (i, self._texts[i])
             for i in range(len(self._texts))
@@ -111,55 +121,68 @@ class EmbeddingIndex:
         if not pending:
             return
         indices, texts = zip(*pending)
-        vecs = model.encode(list(texts), normalize_embeddings=True, batch_size=32)
+        vecs = _nim_embed(list(texts))
+        if vecs is None:
+            return
         for i, vec in zip(indices, vecs):
             self._embeddings[i] = vec
 
     def search(self, query: str, top_k: int = 5) -> list[tuple[str, float]]:
-        """Search by semantic similarity. Returns [(name, score), ...]."""
         self._ensure_embeddings()
         valid = [(n, e) for n, e in zip(self._names, self._embeddings) if e is not None]
         if not valid:
             return []
-        model = _get_embedding_model()
-        if model is None:
+        query_vecs = _nim_embed([query])
+        if query_vecs is None:
             return []
-        query_emb = model.encode(query, normalize_embeddings=True)
+        query_emb = query_vecs[0]
         names = [n for n, _ in valid]
         emb_matrix = np.stack([e for _, e in valid])
+        norms = np.linalg.norm(emb_matrix, axis=1, keepdims=True)
+        norms[norms == 0] = 1
+        emb_matrix = emb_matrix / norms
+        query_norm = np.linalg.norm(query_emb)
+        if query_norm > 0:
+            query_emb = query_emb / query_norm
         scores = emb_matrix @ query_emb
         ranked = sorted(zip(names, scores.tolist()), key=lambda x: -x[1])
         return [(n, s) for n, s in ranked[:top_k]]
 
 
 class HybridSearch:
-    """Combined BM25 + embedding search with configurable weights."""
+    """Combined BM25 + optional NIM embedding search.
 
-    def __init__(self, bm25_weight: float = 0.4, embedding_weight: float = 0.6):
+    Default: BM25-only (use_embeddings=False).
+    Set use_embeddings=True to add NIM semantic search.
+    """
+
+    def __init__(
+        self,
+        bm25_weight: float = 0.4,
+        embedding_weight: float = 0.6,
+        use_embeddings: bool = False,
+    ):
         self.bm25 = BM25Index()
-        self.embedding = EmbeddingIndex()
+        self.embedding = EmbeddingIndex() if use_embeddings else None
         self.bm25_weight = bm25_weight
         self.embedding_weight = embedding_weight
 
     def add(self, name: str, text: str) -> None:
-        """Add a skill to both indexes. Never blocks on model loading."""
         self.bm25.add(name, text)
-        self.embedding.add(name, text)
+        if self.embedding is not None:
+            self.embedding.add(name, text)
 
     def search(self, query: str, top_k: int = 5) -> list[tuple[str, float]]:
-        """Hybrid search combining BM25 and embedding scores.
-
-        BM25 scores are normalized to [0, 1] before combining.
-        Falls back to BM25-only if embeddings aren't available yet.
-        Returns [(name, combined_score), ...].
-        """
         if not query.strip():
             return []
 
         bm25_results = self.bm25.search(query, top_k=top_k * 2)
+
+        if self.embedding is None:
+            return bm25_results[:top_k]
+
         emb_results = self.embedding.search(query, top_k=top_k * 2)
 
-        # Normalize BM25 scores to [0, 1]
         bm25_scores = {}
         if bm25_results:
             max_bm25 = max(s for _, s in bm25_results) or 1.0
@@ -167,12 +190,10 @@ class HybridSearch:
 
         emb_scores = {n: s for n, s in emb_results}
 
-        # If no embeddings yet, return BM25-only (normalized to [0, 1])
         if not emb_scores and bm25_scores:
             ranked = sorted(bm25_scores.items(), key=lambda x: -x[1])
             return ranked[:top_k]
 
-        # Combine all skill names
         all_names = set(bm25_scores.keys()) | set(emb_scores.keys())
         combined = []
         for name in all_names:
