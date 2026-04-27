@@ -1,26 +1,29 @@
 {
-  "session_count": 718,
+  "session_count": 719,
   "project": "torus-framework",
   "feature": "surrealdb-migration",
   "framework_version": "v3.2.0",
-  "what_was_done": "Verified SurrealDB v3 claims (20 checks, 2 denied). Updated migration plan+tasks from v2 to v3 (server v3.0.5+, SDK v2.0.0). Crafted implementation prompt for next session.",
+  "what_was_done": "SurrealDB migration Tasks 1-6+12 of 16 done. SDK installed+verified (RecordID not RecordId, no signin for embedded, flat response format). surreal_collection.py built (CRUD+vector+BM25+where, 21 tests). All 6 table schemas defined. Data migrated (5311 knowledge, 955 fix_outcomes, 4104 observations, 88 web_pages, 2 quarantine, 1748 clusters, 617 KG edges; 100% top-5 search quality overlap). memory_server.py init rewired from LanceDB to SurrealDB. 12 maintenance scripts archived.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
-    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code",
-    "Terminal scrollback duplication on this machine across all emulators — possibly Node v25.6.0 related"
+    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude \u2014 won't scan framework code",
+    "Terminal scrollback duplication on this machine across all emulators \u2014 possibly Node v25.6.0 related"
   ],
   "next_steps": [
-    "Execute SurrealDB migration — paste implementation prompt into /clear session",
-    "Implementation plan: docs/plans/surrealdb-migration-impl.md (16 tasks, targeting v3.0.5+)",
+    "Task 7: Update search_pipeline.py + search_helpers.py (remove lance_keyword_search, DAG fallback)",
+    "Task 8: Update write_pipeline.py (remove DAG dual-write)",
+    "Task 9: Replace tag_index + cluster_store with SurrealDB queries",
+    "Task 10: Add RELATE graph edges for causal chains",
+    "Task 11: Update auxiliary servers (session_end, statusline, analytics_server)",
+    "Tasks 13-16: Rewrite tests, cleanup dead code, e2e verification, dep cleanup",
+    "Implementation plan: docs/plans/surrealdb-migration-impl.md",
     "Task tracker: PRPs/surrealdb-migration.tasks.json",
-    "Checkpoint: git 65193e9, data ~/data/memory/backups/pre_surrealdb_migration_20260427_133952/",
-    "Push dag-claude branch when migration complete",
-    "Memory maintenance deferred until after migration (5313 entries)"
+    "Rollback: git 65193e9, data ~/data/memory/backups/pre_surrealdb_migration_20260427_133952/"
   ],
-  "last_response_preview": "Session 717: Verified v3 claims, updated plan docs, crafted implementation prompt. Ready for /clear + implement.",
+  "last_response_preview": "**Session 717 wrapped up.**\n\n- 2 memories saved (v3 verification, session summary)\n- State saved to LIVE_STATE.json\n- Committed `2217f5f` on dag-claude\n- Risk: GREEN \u2014 clean git, memory accessible (5313 entries)\n\n**Next session:** `/clear`, paste the implementation prompt, start Task 1.",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 174455,
-  "dag_total_branches": 902
+  "dag_node_count": 174624,
+  "dag_total_branches": 906
 }

@@ -151,20 +151,20 @@ def migrate_kg_edges(surreal_db):
 
     conn = sqlite3.connect(KG_DB)
     edges = conn.execute(
-        "SELECT source, target, relation, weight FROM edges"
+        "SELECT from_id, to_id, relation_type, strength FROM edges"
     ).fetchall()
     conn.close()
 
     migrated = 0
-    for source, target, relation, weight in edges:
-        safe_src = str(source).replace("'", "")
-        safe_tgt = str(target).replace("'", "")
-        safe_rel = str(relation).replace("'", "").replace(" ", "_").lower()
+    for from_id, to_id, relation_type, strength in edges:
+        safe_src = str(from_id).replace("'", "")
+        safe_tgt = str(to_id).replace("'", "")
+        safe_rel = str(relation_type).replace("'", "").replace(" ", "_").lower()
         try:
             surreal_db.query(
                 f"RELATE knowledge:`{safe_src}`->{safe_rel}->knowledge:`{safe_tgt}` "
-                "SET weight = $w, migrated = true",
-                {"w": weight or 1.0},
+                "SET strength = $w, migrated = true",
+                {"w": strength or 0.0},
             )
             migrated += 1
         except Exception:
@@ -229,7 +229,7 @@ def validate_quality(lance_db, surreal_colls, n_queries=20):
 
     for idx in sample_indices:
         row = df.iloc[idx]
-        query_vec = list(row["vector"])
+        query_vec = [float(x) for x in row["vector"]]
         query_id = str(row["id"])
 
         lance_results = (

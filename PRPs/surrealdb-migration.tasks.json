@@ -43,7 +43,9 @@
     {
       "id": 5,
       "name": "Build data migration script + quality validation",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-28T00:25:00Z",
+      "notes": "100% top-5 overlap on 20 queries. Small count mismatches from records written during 30min migration window.",
       "files": ["hooks/migrate_to_surrealdb.py"],
       "validate": "python3 hooks/migrate_to_surrealdb.py --verify --validate",
       "depends_on": [4]
@@ -51,7 +53,8 @@
     {
       "id": 6,
       "name": "Wire SurrealCollection into memory_server.py init",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-28T00:45:00Z",
       "files": ["hooks/memory_server.py"],
       "validate": "timeout 15 python3 hooks/memory_server.py --test-init 2>&1 | grep -q 'ok\\|OK'",
       "depends_on": [5]

@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """Self-Healing Claude Framework — Memory MCP Server
 
-A LanceDB-backed persistent memory system exposed as MCP tools.
+A SurrealDB-embedded persistent memory system exposed as MCP tools.
 Claude Code connects to this server and gets search_knowledge, remember_this,
 get_memory, and maintenance as native tools.
 
-The memory persists across sessions in ~/data/memory/lancedb/, enabling cross-session
+The memory persists across sessions in ~/data/memory/surrealdb/, enabling cross-session
 knowledge retention.
 
 Run standalone: python3 memory_server.py
 Used via MCP: configured in .claude/mcp.json
 
-Migrated from ChromaDB → LanceDB in Session 232.
-LanceDB provides optimistic concurrency control (no more segfaults),
-native TS bindings, and built-in BM25 FTS.
+Migrated from ChromaDB → LanceDB (Session 232) → SurrealDB embedded (Session 719).
+SurrealDB provides HNSW vector search, BM25 FTS, RELATE graph edges, and embedded mode.
 """
 
 import asyncio
@@ -33,18 +32,12 @@ from datetime import datetime, timedelta
 # Reduce thread pool sizes before libraries are imported.
 # Defaults = CPU count per pool (8 each) = 52 threads + ~320MB in memory arenas.
 # We process one query at a time, so 2 threads per pool is plenty.
-os.environ.setdefault("OMP_NUM_THREADS", "2")  # PyTorch OpenMP threads
-os.environ.setdefault("MKL_NUM_THREADS", "2")  # PyTorch MKL threads
-os.environ.setdefault("TOKIO_WORKER_THREADS", "2")  # LanceDB async I/O (Tokio)
-os.environ.setdefault("RAYON_NUM_THREADS", "2")  # LanceDB CPU compute (Rayon)
-os.environ.setdefault("MALLOC_ARENA_MAX", "2")  # Limit glibc arena fragmentation
-os.environ.setdefault(
-    "ARROW_DEFAULT_MEMORY_POOL", "system"
-)  # Use system malloc so OS reclaims freed pages
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+os.environ.setdefault("MALLOC_ARENA_MAX", "2")
 
 import ctypes as _ctypes
-import lancedb
-import pyarrow as pa
+from surrealdb import Surreal
 from mcp.server.fastmcp import FastMCP
 
 # Sideband file: write memory query timestamps here so the enforcer
@@ -263,8 +256,8 @@ except Exception:
 
 # Persistent LanceDB storage
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
-LANCE_DIR = os.path.join(MEMORY_DIR, "lancedb")
-os.makedirs(LANCE_DIR, exist_ok=True)
+SURREAL_DIR = os.path.join(MEMORY_DIR, "surrealdb")
+os.makedirs(SURREAL_DIR, exist_ok=True)
 
 # Embedding model: nvidia/nv-embed-v1 via NIM API (4096-dim, 7B params, MTEB 69.3)
 # API-based — no local model, near-zero RAM, ~1s per embed
@@ -281,115 +274,17 @@ _socket_server = None  # threading server reference for cleanup
 _uds_shutting_down = False  # prevents rebind during intentional shutdown
 _socket_owner_pid = None  # PID that successfully bound the socket
 
-# Lazy LanceDB initialization
-_lance_db = None  # lancedb.DBConnection
-collection = None  # LanceCollection wrapper for knowledge table
-fix_outcomes = None  # LanceCollection wrapper for fix_outcomes table
-observations = None  # LanceCollection wrapper for observations table
-web_pages = None  # LanceCollection wrapper for web_pages table
-quarantine = None  # LanceCollection wrapper for quarantine table
-_lance_degraded = False  # kept for backward compat (now means "lance degraded")
+# Lazy SurrealDB initialization
+_surreal_db = None  # Surreal embedded connection
+collection = None  # SurrealCollection wrapper for knowledge table
+fix_outcomes = None  # SurrealCollection wrapper for fix_outcomes table
+observations = None  # SurrealCollection wrapper for observations table
+web_pages = None  # SurrealCollection wrapper for web_pages table
+quarantine = None  # SurrealCollection wrapper for quarantine table
+_surreal_degraded = False
 
 
-# ── Arrow Schemas for LanceDB Tables (knowledge, fix_outcomes, etc.) ────────
-
-_KNOWLEDGE_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("context", pa.string()),
-        pa.field("tags", pa.string()),
-        pa.field("timestamp", pa.string()),
-        pa.field("session_time", pa.float64()),
-        pa.field("preview", pa.string()),
-        pa.field("primary_source", pa.string()),
-        pa.field("related_urls", pa.string()),
-        pa.field("source_method", pa.string()),
-        pa.field("tier", pa.int32()),
-        pa.field("retrieval_count", pa.int32()),
-        pa.field("last_retrieved", pa.string()),
-        pa.field("source_session_id", pa.string()),
-        pa.field("source_observation_ids", pa.string()),
-        pa.field("cluster_id", pa.string()),
-        pa.field("memory_type", pa.string()),
-        pa.field("state_type", pa.string()),
-        pa.field("quality_score", pa.float64()),
-    ]
-)
-
-_FIX_OUTCOMES_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("error_hash", pa.string()),
-        pa.field("strategy_id", pa.string()),
-        pa.field("chain_id", pa.string()),
-        pa.field("outcome", pa.string()),
-        pa.field("confidence", pa.string()),
-        pa.field("attempts", pa.string()),
-        pa.field("successes", pa.string()),
-        pa.field("timestamp", pa.string()),
-        pa.field("last_outcome_time", pa.string()),
-        pa.field("banned", pa.string()),
-        pa.field("bridged", pa.string()),
-    ]
-)
-
-_OBSERVATIONS_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("session_id", pa.string()),
-        pa.field("tool_name", pa.string()),
-        pa.field("timestamp", pa.string()),
-        pa.field("session_time", pa.float64()),
-        pa.field("has_error", pa.string()),
-        pa.field("error_pattern", pa.string()),
-        pa.field("preview", pa.string()),
-    ]
-)
-
-_WEB_PAGES_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("url", pa.string()),
-        pa.field("title", pa.string()),
-        pa.field("chunk_index", pa.string()),
-        pa.field("total_chunks", pa.string()),
-        pa.field("indexed_at", pa.string()),
-        pa.field("content_hash", pa.string()),
-        pa.field("word_count", pa.string()),
-    ]
-)
-
-_QUARANTINE_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("quarantine_reason", pa.string()),
-        pa.field("quarantine_pair", pa.string()),
-        pa.field("quarantined_at", pa.string()),
-        pa.field("context", pa.string()),
-        pa.field("tags", pa.string()),
-        pa.field("timestamp", pa.string()),
-        pa.field("session_time", pa.float64()),
-        pa.field("preview", pa.string()),
-    ]
-)
-
-_TABLE_SCHEMAS = {
-    "knowledge": _KNOWLEDGE_SCHEMA,
-    "fix_outcomes": _FIX_OUTCOMES_SCHEMA,
-    "observations": _OBSERVATIONS_SCHEMA,
-    "web_pages": _WEB_PAGES_SCHEMA,
-    "quarantine": _QUARANTINE_SCHEMA,
-}
+from shared.surreal_collection import SurrealCollection, init_surreal_db
 
 
 def _embed_texts(texts):
@@ -438,111 +333,49 @@ _tool_executor = concurrent.futures.ThreadPoolExecutor(
 )
 
 
-from shared.lance_collection import (
-    LanceCollection as _LanceCollectionBase,
-    lance_retry as _lance_retry,
-)
-
-
-# Thin wrapper to inject embedding functions at construction time
-def _make_lance_collection(table, schema, name):
-    return _LanceCollectionBase(
-        table,
-        schema,
-        name,
-        embed_text=_embed_text,
-        embed_texts=_embed_texts,
-        embedding_dim=_EMBEDDING_DIM,
-    )
-
-
-def _init_lancedb():
-    """Lazy initialization of LanceDB connection and table wrappers.
-
-    Called from _ensure_initialized() on first MCP tool use.
-    Safe to call multiple times — idempotent after first run.
-    Uses nvidia/nv-embed-v1 via NIM API (4096-dim).
-    """
+def _init_surrealdb():
+    """Lazy initialization of SurrealDB embedded connection and table wrappers."""
     global \
-        _lance_db, \
+        _surreal_db, \
         collection, \
         fix_outcomes, \
         observations, \
         web_pages, \
         quarantine, \
-        _lance_degraded, \
-        _embedding_fn
-    if _lance_db is not None:
+        _surreal_degraded
+    if _surreal_db is not None:
         return
     try:
-        # nv-embed-v1 via NIM API — no local model to load
         print(
             f"[MCP] Embedding via NIM API: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim)",
             file=_sys.stderr,
         )
 
-        _lance_db = lancedb.connect(LANCE_DIR)
+        _surreal_db = Surreal(f"surrealkv://{SURREAL_DIR}")
+        _surreal_db.use("memory", "main")
 
-        def _open_or_create(name: str, schema):
-            """Open table if exists, create with schema if not."""
-            try:
-                tbl = _lance_db.open_table(name)
-                # Migrate: add missing columns or fix type mismatches
-                existing_cols = {f.name: f.type for f in tbl.schema}
-                for field in schema:
-                    existing_type = existing_cols.get(field.name)
-                    if existing_type is None:
-                        # Column missing — add it
-                        if pa.types.is_list(field.type):
-                            print(
-                                f"[MCP] {name}: new vector column {field.name} needs backfill (run migrate_vector_256.py)",
-                                file=_sys.stderr,
-                            )
-                            continue
-                        elif pa.types.is_float64(field.type):
-                            default = "0.0"
-                        elif pa.types.is_int32(field.type):
-                            default = "0"
-                        else:
-                            default = "''"
-                        try:
-                            tbl.add_columns({field.name: default})
-                            print(
-                                f"[MCP] Migrated {name}: added column {field.name}",
-                                file=_sys.stderr,
-                            )
-                        except Exception as e:
-                            print(
-                                f"[MCP] Migration failed for {name}.{field.name}: {e}",
-                                file=_sys.stderr,
-                            )
-                    elif pa.types.is_list(field.type) and not pa.types.is_list(
-                        existing_type
-                    ):
-                        # Type mismatch: schema wants list but column is string/other
-                        print(
-                            f"[MCP] WARNING: {name}.{field.name} has wrong type ({existing_type}, expected {field.type}). Run migrate_vector_256.py to fix.",
-                            file=_sys.stderr,
-                        )
-            except Exception:
-                tbl = _lance_db.create_table(name, schema=schema)
-            return _make_lance_collection(tbl, schema, name)
+        colls = init_surreal_db(
+            _surreal_db,
+            embed_text=_embed_text,
+            embed_texts=_embed_texts,
+            embedding_dim=_EMBEDDING_DIM,
+        )
 
-        collection = _open_or_create("knowledge", _KNOWLEDGE_SCHEMA)
-        fix_outcomes = _open_or_create("fix_outcomes", _FIX_OUTCOMES_SCHEMA)
-        observations = _open_or_create("observations", _OBSERVATIONS_SCHEMA)
-        web_pages = _open_or_create("web_pages", _WEB_PAGES_SCHEMA)
-        quarantine = _open_or_create("quarantine", _QUARANTINE_SCHEMA)
+        collection = colls["knowledge"]
+        fix_outcomes = colls["fix_outcomes"]
+        observations = colls["observations"]
+        web_pages = colls["web_pages"]
+        quarantine = colls["quarantine"]
 
-        print(f"[MCP] LanceDB initialized at {LANCE_DIR}", file=_sys.stderr)
+        print(f"[MCP] SurrealDB initialized at {SURREAL_DIR}", file=_sys.stderr)
     except Exception as e:
         import traceback
 
         print(
-            f"[MCP] LanceDB init failed: {e}\n{traceback.format_exc()}",
+            f"[MCP] SurrealDB init failed: {e}\n{traceback.format_exc()}",
             file=_sys.stderr,
         )
-        _lance_degraded = True
+        _surreal_degraded = True
 
 
 # Progressive disclosure: preview length for search summaries
@@ -816,7 +649,6 @@ _initialized = False
 _initializing = False  # True during _ensure_initialized() — watchdog skips strikes
 _init_lock = threading.Lock()  # Serializes warmup thread vs tool call initialization
 _init_done = threading.Event()  # Signaled when initialization completes
-_lance_fts_ready = False  # True once LanceDB FTS index is built
 _knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None  # LTPTracker instance (initialized lazily)
 _adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
@@ -898,18 +730,16 @@ def _generate_counterfactual_query(original_query, initial_results, model_key="h
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
-from shared.search_helpers import (
-    lance_keyword_search as _sh_lance_kw,
-    lance_fts_to_summary,
-)
-
-
-def _lance_fts_to_summary(row):
-    return lance_fts_to_summary(row, SUMMARY_LENGTH)
-
-
-def _lance_keyword_search(query, top_k=15):
-    return _sh_lance_kw(query, top_k, collection, _lance_fts_ready, SUMMARY_LENGTH)
+def _keyword_search(query, top_k=15):
+    if collection is None:
+        return []
+    results = collection.keyword_search(query, top_k=top_k)
+    for r in results:
+        text = r.get("text", "")
+        r["summary"] = (
+            text[:SUMMARY_LENGTH] + "..." if len(text) > SUMMARY_LENGTH else text
+        )
+    return results
 
 
 from shared.search_helpers import (
@@ -929,7 +759,7 @@ def _fuzzy_keyword_search(query: str, table_name: str = "knowledge", top_k: int 
             "fix_outcomes": fix_outcomes,
             "web_pages": web_pages,
         },
-        fts_ready=_lance_fts_ready,
+        fts_ready=True,
     )
 
 
@@ -953,7 +783,7 @@ def _ensure_initialized():
     Called lazily on first MCP tool use or explicitly at server startup.
     Safe to call multiple times — idempotent after first run.
     """
-    global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
+    global _preview_migrated, tag_index, _tag_count, _initialized
     global _knowledge_graph, _ltp_tracker, _adaptive_weights, _cluster_store
     global _initializing
     if _initialized:
@@ -967,43 +797,17 @@ def _ensure_initialized():
             return  # Completed while we waited for the lock
         _initializing = True
     _t_total = time.monotonic()
-    _init_lancedb()
+    _init_surrealdb()
     _t_model = time.monotonic()
     if collection is None:
         print(
-            "[MCP] LanceDB unavailable — starting in degraded mode.", file=_sys.stderr
+            "[MCP] SurrealDB unavailable — starting in degraded mode.", file=_sys.stderr
         )
         _initialized = True
         _initializing = False
         _init_done.set()
         return
 
-    # Build LanceDB native FTS index on text column (incremental if possible)
-    try:
-        _fts_count_path = os.path.join(MEMORY_DIR, ".fts_last_count")
-        _current_rows = collection._table.count_rows()
-        _last_count = 0
-        if os.path.exists(_fts_count_path):
-            try:
-                _last_count = int(open(_fts_count_path).read().strip())
-            except (ValueError, OSError):
-                pass
-        if _last_count == 0 or _current_rows == 0:
-            # No prior index or empty table — full build needed
-            collection._table.create_fts_index("text", replace=True)
-        elif _current_rows != _last_count:
-            # New rows since last index — incremental optimize
-            try:
-                collection._table.optimize()
-            except Exception:
-                # optimize failed — fall back to full rebuild
-                collection._table.create_fts_index("text", replace=True)
-        # else: row count unchanged — skip entirely
-        with open(_fts_count_path, "w") as f:
-            f.write(str(_current_rows))
-        _lance_fts_ready = True
-    except Exception:
-        pass  # FTS is optional — keyword search degrades gracefully
     _t_fts = time.monotonic()
 
     # Initialize knowledge graph and LTP tracker (fail-open)
@@ -1043,23 +847,27 @@ def _ensure_initialized():
             from shared.memory_replay import run_replay_cycle
 
             _cutoff = time.time() - 30 * 86400  # 30 days
-            _recent_rows = (
-                collection._table.search()
-                .where(f"session_time > {_cutoff}", prefilter=True)
-                .limit(50)
-                .to_list()
+            _recent = collection.get(
+                where={"session_time": {"$gt": _cutoff}},
+                limit=50,
+                include=["metadatas"],
             )
-            if _recent_rows:
+            if _recent and _recent.get("ids"):
                 _replay_mems = []
-                for _r in _recent_rows:
+                for i, _rid in enumerate(_recent["ids"]):
+                    _m = (
+                        _recent["metadatas"][i]
+                        if i < len(_recent.get("metadatas", []))
+                        else {}
+                    )
                     _replay_mems.append(
                         {
-                            "id": _r.get("id", ""),
-                            "tier": _r.get("tier", 2),
-                            "retrieval_count": _r.get("retrieval_count", 0),
-                            "session_time": _r.get("session_time", 0),
-                            "timestamp": _r.get("timestamp", ""),
-                            "tags": _r.get("tags", ""),
+                            "id": _rid,
+                            "tier": _m.get("tier", 2),
+                            "retrieval_count": _m.get("retrieval_count", 0),
+                            "session_time": _m.get("session_time", 0),
+                            "timestamp": _m.get("timestamp", ""),
+                            "tags": _m.get("tags", ""),
                         }
                     )
                 _replay_stats = run_replay_cycle(
@@ -1073,12 +881,8 @@ def _ensure_initialized():
     except Exception:
         pass  # Replay failure must not block initialization
 
-    # Check if persisted tag index is already synced with LanceDB
-    lance_count = collection.count()
-    if tag_index.is_synced(lance_count):
-        _tag_count = lance_count
-    else:
-        _tag_count = tag_index.build_from_lance(collection)
+    # Sync tag count from collection
+    _tag_count = collection.count()
 
     # Initialize pipeline instances (fail-open — fall back to inline logic)
     _init_pipelines()
@@ -1103,7 +907,7 @@ def _init_pipelines():
         _config = _read_config_toggles()
         _search_helpers = {
             "format_summaries": format_summaries,
-            "lance_keyword_search": _lance_keyword_search,
+            "keyword_search": _keyword_search,
             "merge_results": _merge_results,
             "detect_query_mode": _detect_query_mode,
             "search_observations_internal": _search_observations_internal,
@@ -1721,9 +1525,9 @@ def search_knowledge(
     """
     global _last_search_ids
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
 
@@ -2006,9 +1810,9 @@ def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
         table: Table to search (knowledge, observations, fix_outcomes)
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
 
@@ -2046,9 +1850,9 @@ def remember_this(
     """
     global _tag_cooccurrence_dirty
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
 
@@ -2086,8 +1890,8 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
         threshold: Cosine distance threshold for duplicate detection (default 0.15)
     """
     _ensure_initialized()
-    if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode"}
+    if _surreal_degraded:
+        return {"error": "Storage unavailable ��� running in degraded mode"}
     threshold = _validate_distance_threshold(
         threshold, default=0.15, min_val=0.03, max_val=0.5
     )
@@ -2222,9 +2026,9 @@ def get_memory(id: str) -> dict:
         id: The memory ID (from search results)
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     try:
@@ -2324,9 +2128,9 @@ def delete_memory(id: str) -> dict:
     Args:
         id: The memory ID to delete (from search results). Comma-separated for batch delete.
     """
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     try:
@@ -2473,9 +2277,9 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
         strategy_id: A short name for the fix strategy (e.g., "fix-type-cast")
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     normalized, error_hash = error_signature(error_text)
@@ -2534,9 +2338,9 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
         outcome: "success" or "failure"
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     if outcome not in ("success", "failure"):
@@ -2601,9 +2405,9 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
         top_k: Maximum number of results (default 10)
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
@@ -2756,8 +2560,8 @@ def health_check() -> dict:
     # Disk usage of lancedb directory
     disk_bytes = 0
     try:
-        if os.path.isdir(LANCE_DIR):
-            for dirpath, _dirs, files in os.walk(LANCE_DIR):
+        if os.path.isdir(SURREAL_DIR):
+            for dirpath, _dirs, files in os.walk(SURREAL_DIR):
                 for fname in files:
                     try:
                         disk_bytes += os.path.getsize(os.path.join(dirpath, fname))
@@ -2767,16 +2571,16 @@ def health_check() -> dict:
         disk_bytes = -1
 
     return {
-        "status": "ok" if not _lance_degraded else "degraded",
+        "status": "ok" if not _surreal_degraded else "degraded",
         "uptime": uptime_str,
         "uptime_seconds": uptime_s,
         "table_counts": table_counts,
         "total_memories": total_count,
         "last_write": last_write,
         "embedding_model": "loaded" if _embedding_fn is not None else "not_loaded",
-        "lancedb": "connected"
-        if (_lance_db is not None and not _lance_degraded)
-        else ("degraded" if _lance_degraded else "not_connected"),
+        "surrealdb": "connected"
+        if (_surreal_db is not None and not _surreal_degraded)
+        else ("degraded" if _surreal_degraded else "not_connected"),
         "tags_db": "ok" if os.path.exists(TAGS_DB_PATH) else "missing",
         "disk_usage_mb": round(disk_bytes / (1024 * 1024), 2)
         if disk_bytes >= 0
@@ -3712,9 +3516,9 @@ def maintenance(
         min_cluster_size: Min memories per cluster (used by cluster).
         distance_threshold: Max cosine distance for clustering (used by cluster).
     """
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     if action == "promotions":
@@ -3761,27 +3565,19 @@ def maintenance(
 
 
 def _optimize_tables() -> dict:
-    """Compact all LanceDB tables, prune old versions, recover disk space."""
-    from datetime import timedelta
-    import time
-
-    global _lance_db
-    if _lance_db is None:
-        return {"action": "optimize", "error": "LanceDB not initialized"}
+    """SurrealDB maintenance — report table counts."""
+    if _surreal_db is None:
+        return {"action": "optimize", "error": "SurrealDB not initialized"}
     results = {}
-    for name in _lance_db.table_names():
-        t = _lance_db.open_table(name)
-        before = t.count_rows()
-        start = time.time()
-        t.optimize(cleanup_older_than=timedelta(0), delete_unverified=True)
-        elapsed = time.time() - start
-        after = t.count_rows()
-        results[name] = {
-            "rows_before": before,
-            "rows_after": after,
-            "duration_s": round(elapsed, 1),
-            "rows_ok": before == after,
-        }
+    for name, coll in [
+        ("knowledge", collection),
+        ("fix_outcomes", fix_outcomes),
+        ("observations", observations),
+        ("web_pages", web_pages),
+        ("quarantine", quarantine),
+    ]:
+        if coll:
+            results[name] = {"rows": coll.count(), "status": "ok"}
     return {"action": "optimize", "tables": results}
 
 
@@ -4015,8 +3811,8 @@ def _backup_database():
     """
     import shutil
 
-    if not os.path.isdir(LANCE_DIR):
-        raise RuntimeError(f"LanceDB directory not found: {LANCE_DIR}")
+    if not os.path.isdir(SURREAL_DIR):
+        raise RuntimeError(f"LanceDB directory not found: {SURREAL_DIR}")
 
     bak_path = os.path.join(MEMORY_DIR, "lancedb.backup")
     tmp_path = bak_path + ".tmp"
@@ -4026,7 +3822,7 @@ def _backup_database():
         shutil.rmtree(tmp_path)
 
     try:
-        shutil.copytree(LANCE_DIR, tmp_path)
+        shutil.copytree(SURREAL_DIR, tmp_path)
         # Atomic swap: remove old backup, rename tmp
         if os.path.exists(bak_path):
             shutil.rmtree(bak_path)
