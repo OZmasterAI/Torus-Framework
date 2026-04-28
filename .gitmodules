@@ -7,3 +7,6 @@
 [submodule "toroidal-detector"]
 	path = toroidal-detector
 	url = https://github.com/OZmasterAI/toroidal-detector.git
+[submodule "toroidal-agent-protocol"]
+	path = toroidal-agent-protocol
+	url = https://github.com/OZmasterAI/toroidal-agent-protocol.git
