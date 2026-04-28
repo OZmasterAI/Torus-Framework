@@ -517,7 +517,9 @@ def memory_health() -> dict:
     _ensure_initialized()
     import glob as _mh_glob
 
-    surreal_dir = os.path.join(os.path.expanduser("~"), "data", "memory", "surrealdb")
+    surreal_dir = os.path.join(
+        os.path.expanduser("~"), "data", "memory", "surrealdb_v3"
+    )
     result = {
         "surreal_dir": surreal_dir,
         "surreal_exists": os.path.isdir(surreal_dir),
@@ -538,7 +540,8 @@ def memory_health() -> dict:
         try:
             from surrealdb import Surreal
 
-            db = Surreal(f"surrealkv://{surreal_dir}")
+            db = Surreal("ws://127.0.0.1:8822")
+            db.signin({"username": "root", "password": "root"})
             db.use("memory", "main")
             for table_name in [
                 "knowledge",
@@ -1933,10 +1936,8 @@ def query_observations(
     try:
         from surrealdb import Surreal
 
-        surreal_dir = os.path.join(
-            os.path.expanduser("~"), "data", "memory", "surrealdb"
-        )
-        db = Surreal(f"surrealkv://{surreal_dir}")
+        db = Surreal("ws://127.0.0.1:8822")
+        db.signin({"username": "root", "password": "root"})
         db.use("memory", "main")
 
         # Build WHERE clauses

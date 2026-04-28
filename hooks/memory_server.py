@@ -5,14 +5,14 @@ A SurrealDB-embedded persistent memory system exposed as MCP tools.
 Claude Code connects to this server and gets search_knowledge, remember_this,
 get_memory, and maintenance as native tools.
 
-The memory persists across sessions in ~/data/memory/surrealdb/, enabling cross-session
+The memory persists across sessions in ~/data/memory/surrealdb_v3/, enabling cross-session
 knowledge retention.
 
 Run standalone: python3 memory_server.py
 Used via MCP: configured in .claude/mcp.json
 
-Migrated from ChromaDB → LanceDB (Session 232) → SurrealDB embedded (Session 719).
-SurrealDB provides HNSW vector search, BM25 FTS, RELATE graph edges, and embedded mode.
+Migrated from ChromaDB → LanceDB (Session 232) → SurrealDB embedded (Session 719) → SurrealDB v3 server (Session 722).
+SurrealDB v3 provides HNSW vector search, BM25 FTS, RELATE graph edges. Runs as standalone server (ws://).
 """
 
 import asyncio
@@ -254,9 +254,10 @@ try:
 except Exception:
     pass
 
-# Persistent LanceDB storage
+# Persistent storage
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
-SURREAL_DIR = os.path.join(MEMORY_DIR, "surrealdb")
+SURREAL_DIR = os.path.join(MEMORY_DIR, "surrealdb_v3")
+SURREAL_URL = "ws://127.0.0.1:8822"
 os.makedirs(SURREAL_DIR, exist_ok=True)
 
 # Embedding model: nvidia/nv-embed-v1 via NIM API (4096-dim, 7B params, MTEB 69.3)
@@ -334,7 +335,7 @@ _tool_executor = concurrent.futures.ThreadPoolExecutor(
 
 
 def _init_surrealdb():
-    """Lazy initialization of SurrealDB embedded connection and table wrappers."""
+    """Lazy initialization of SurrealDB v3 connection (ws://) and table wrappers."""
     global \
         _surreal_db, \
         collection, \
@@ -352,7 +353,8 @@ def _init_surrealdb():
             file=_sys.stderr,
         )
 
-        _surreal_db = Surreal(f"surrealkv://{SURREAL_DIR}")
+        _surreal_db = Surreal(SURREAL_URL)
+        _surreal_db.signin({"username": "root", "password": "root"})
         _surreal_db.use("memory", "main")
 
         colls = init_surreal_db(
@@ -369,7 +371,7 @@ def _init_surrealdb():
         quarantine = colls["quarantine"]
         _clusters_coll = colls["clusters"]
 
-        print(f"[MCP] SurrealDB initialized at {SURREAL_DIR}", file=_sys.stderr)
+        print(f"[MCP] SurrealDB v3 connected via {SURREAL_URL}", file=_sys.stderr)
     except Exception as e:
         import traceback
 

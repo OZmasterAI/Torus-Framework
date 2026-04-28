@@ -618,8 +618,8 @@ def flush_capture_queue():
 
 def backup_database():
     """Backup database if DB changed since last backup. Fail-open."""
-    surreal_dir = os.path.join(MEMORY_DIR, "surrealdb")
-    bak_path = os.path.join(MEMORY_DIR, "surrealdb.backup.tar.gz")
+    surreal_dir = os.path.join(MEMORY_DIR, "surrealdb_v3")
+    bak_path = os.path.join(MEMORY_DIR, "surrealdb_v3.backup.tar.gz")
     try:
         if os.path.isdir(surreal_dir) and os.path.exists(bak_path):
             db_mtime = os.path.getmtime(surreal_dir)

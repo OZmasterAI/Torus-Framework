@@ -142,19 +142,29 @@ class SurrealCollection:
     def init_indexes(self):
         self._ensure_table()
         vf = self._vector_field
-        self._db.query(
-            f"DEFINE INDEX IF NOT EXISTS {self._name}_vec ON {self._name} FIELDS {vf} "
-            f"HNSW DIMENSION {self._embedding_dim} TYPE F32 DIST COSINE EFC 150 M 12"
-        )
-        if "text" in self._fields:
-            self._db.query(
-                "DEFINE ANALYZER IF NOT EXISTS mem_analyzer "
-                "TOKENIZERS blank,class FILTERS lowercase,snowball(english)"
-            )
-            self._db.query(
-                f"DEFINE INDEX IF NOT EXISTS {self._name}_fts ON {self._name} FIELDS text "
-                "SEARCH ANALYZER mem_analyzer BM25(1.2, 0.75)"
-            )
+        import time as _time
+
+        for _attempt in range(3):
+            try:
+                self._db.query(
+                    f"DEFINE INDEX IF NOT EXISTS {self._name}_vec ON {self._name} FIELDS {vf} "
+                    f"HNSW DIMENSION {self._embedding_dim} TYPE F32 DIST COSINE EFC 150 M 12"
+                )
+                if "text" in self._fields:
+                    self._db.query(
+                        "DEFINE ANALYZER IF NOT EXISTS mem_analyzer "
+                        "TOKENIZERS blank,class FILTERS lowercase,snowball(english)"
+                    )
+                    self._db.query(
+                        f"DEFINE INDEX IF NOT EXISTS {self._name}_fts ON {self._name} FIELDS text "
+                        "FULLTEXT ANALYZER mem_analyzer BM25(1.2, 0.75)"
+                    )
+                break
+            except Exception as e:
+                if "retry" in str(e).lower() and _attempt < 2:
+                    _time.sleep(2)
+                    continue
+                raise
 
     def count(self):
         try:

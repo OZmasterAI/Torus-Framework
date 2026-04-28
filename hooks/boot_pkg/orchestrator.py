@@ -294,7 +294,7 @@ def main():
     # Watchdog: verify SurrealDB directory exists
     db_size_warning = None
     _mem_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
-    _surreal_dir = os.path.join(_mem_dir, "surrealdb")
+    _surreal_dir = os.path.join(_mem_dir, "surrealdb_v3")
     try:
         if not os.path.isdir(_surreal_dir):
             db_size_warning = (
