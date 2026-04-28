@@ -1,0 +1,54 @@
+{
+  "prp": "worktree-isolation",
+  "created": "2026-04-29T00:15:00Z",
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Add worktree constants and isolation mode",
+      "status": "pending",
+      "files": ["tap/constants.py"],
+      "validate": "python3 -c \"from tap.constants import ISOLATION_WORKTREE, WORKTREE_BASE_DIR; assert ISOLATION_WORKTREE == 'worktree'\"",
+      "depends_on": []
+    },
+    {
+      "id": 2,
+      "name": "Build WorktreeManager — create/remove/list",
+      "status": "pending",
+      "files": ["tap/worktree.py", "tap/tests/test_worktree.py"],
+      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_worktree.py -v",
+      "depends_on": [1]
+    },
+    {
+      "id": 3,
+      "name": "Add isolation field to ManagedAgent and SpawnRequest",
+      "status": "pending",
+      "files": ["tap/agent_manager.py", "tap/protocol.py"],
+      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_agent_manager.py -v",
+      "depends_on": [1]
+    },
+    {
+      "id": 4,
+      "name": "Wire worktree into AgentManager.spawn() and kill()",
+      "status": "pending",
+      "files": ["tap/agent_manager.py"],
+      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_agent_manager.py tap/tests/test_worktree.py -v",
+      "depends_on": [2, 3]
+    },
+    {
+      "id": 5,
+      "name": "Wire isolation into daemon RPC and CLI",
+      "status": "pending",
+      "files": ["tap/daemon.py", "tap/cli.py", "tap/client.py"],
+      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_daemon.py -v",
+      "depends_on": [4]
+    },
+    {
+      "id": 6,
+      "name": "Integration test — full lifecycle with worktree",
+      "status": "pending",
+      "files": ["tap/tests/test_worktree.py"],
+      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_worktree.py -v",
+      "depends_on": [5]
+    }
+  ]
+}
