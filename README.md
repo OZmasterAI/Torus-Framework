@@ -66,7 +66,7 @@ All MCP tools route through a single gateway — **Toolshed** — which multiple
 | Server | Port | Purpose |
 |--------|------|---------|
 | **memory** | 8742 | LanceDB semantic search, causal fix tracking, observations |
-| **skills-v2** | 8743 | 54 skills with usage tracking, self-evolution, lineage |
+| **torus-skills** | 8743 | 54 skills with usage tracking, self-evolution, lineage |
 | **search** | 8744 | Terminal history FTS5, transcript context |
 | **web-search** | 8745 | Web search integration |
 | **analytics** | 8746 | Read-only gate dashboard, framework health metrics |
@@ -76,7 +76,7 @@ All MCP tools route through a single gateway — **Toolshed** — which multiple
 Claude Code registers only toolshed in `mcp.json`. Toolshed handles routing, timeouts, and error isolation.
 
 ```
-Claude Code → mcp.json → Toolshed → { memory, skills-v2, search, web-search, analytics, model-router, torus }
+Claude Code → mcp.json → Toolshed → { memory, torus-skills, search, web-search, analytics, model-router, torus }
 ```
 
 Usage: `run_tool("memory", "search_knowledge", {"query": "..."})`
@@ -90,7 +90,7 @@ Usage: `run_tool("memory", "search_knowledge", {"query": "..."})`
 | **21 Quality Gates** | Mechanical enforcement — read before edit, test before deploy, memory-first, no-destroy, injection defense, self-check, and more |
 | **Persistent Memory** | LanceDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations |
 | **Hook Pipeline** | 14 lifecycle events — SessionStart, PreToolUse, PostToolUse, Stop, SubagentStart, PreCompact, ConfigChange, and more |
-| **54 Skills** | Slash commands via skills-v2 — `/commit`, `/brainstorm`, `/writing-plans`, `/prp`, `/sprint`, `/wrap-up`, and more |
+| **54 Skills** | Slash commands via torus-skills — `/commit`, `/brainstorm`, `/writing-plans`, `/prp`, `/sprint`, `/wrap-up`, and more |
 | **Skill Self-Evolution** | Skills track usage metrics; degraded skills auto-fix via LLM, derive variants, or capture new patterns |
 | **Toolshed Gateway** | Single MCP entry point multiplexing 7 backend servers over HTTP/stdio |
 | **4 Agent Types** | builder, explorer, planner, researcher — with delegation rules |

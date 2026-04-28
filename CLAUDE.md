@@ -3,7 +3,7 @@
 ## TOOLSHED (single MCP gateway)
 All tools route through toolshed: `run_tool(server, tool, args)`
 - **memory**: search_knowledge, get_memory, remember_this, fuzzy_search, record_attempt, record_outcome, query_fix_history, health_check, agent_coordination
-- **skills-v2**: list_skills, invoke_skill, search_skills, self_improve, skill_usage, skill_health, record_outcome, trigger_evolution, capture_skill, skill_lineage
+- **torus-skills**: list_skills, invoke_skill, search_skills, self_improve, skill_usage, skill_health, record_outcome, trigger_evolution, capture_skill, skill_lineage
 - **search**: terminal_history_search, transcript_context
 - **web-search**: web_search
 - Discovery: `list_tools(group="memory")` to see tools in a group
@@ -16,15 +16,15 @@ For errors: use Causal Chain (below) then remember_this()
 
 ## THE LOOP (mandatory — do not skip steps)
 memory → brainstorm → writing-plans → implement → test → review → commit
-- All steps are toolshed skills: `run_tool("skills-v2", "invoke_skill", {"name": "brainstorm"})`, etc.
+- All steps are toolshed skills: `run_tool("torus-skills", "invoke_skill", {"name": "brainstorm"})`, etc.
 - Do NOT use EnterPlanMode — brainstorm replaces it
 - For quick fixes: memory → fix → test → commit (skip brainstorm/writing-plans)
 
 ## SKILLS (via toolshed MCP — NOT the built-in Skill tool)
 **NEVER use the Skill tool for framework skills** (brainstorm, commit, wrap-up, etc.)
 The built-in Skill tool is ONLY for: update-config, simplify, loop, schedule, claude-api, keybindings-help.
-All framework skills route through: `run_tool("skills-v2", "invoke_skill", {"name": "..."})`
-Discovery: `run_tool("skills-v2", "search_skills", {"query": "..."})`
+All framework skills route through: `run_tool("torus-skills", "invoke_skill", {"name": "..."})`
+Discovery: `run_tool("torus-skills", "search_skills", {"query": "..."})`
 
 ## CAUSAL CHAIN (for errors)
 1. `run_tool("memory", "query_fix_history", {"error_text": "..."})` → 2. record_attempt → 3. Fix + test → 4. record_outcome → 5. remember_this(type:fix)
@@ -40,7 +40,7 @@ Discovery: `run_tool("skills-v2", "search_skills", {"query": "..."})`
 6. **Model selection** — Gate 10 enforces model_profile from config.json. Do not override.
 7. **Gate awareness** — Gates enforce Edit/Write/Bash/Task automatically. Read/Glob/Grep are ungated — self-enforce rule 5.
 8. **Ask before acting** — Never push, deploy, delete, or take irreversible actions beyond what the user explicitly requested. Ask first.
-9. **Working summary** — When you see `[# WARNING # CONTEXT` in tool output, immediately run `run_tool("skills-v2", "invoke_skill", {"name": "working-summary"})` before continuing other work. Do not dismiss or defer.
+9. **Working summary** — When you see `[# WARNING # CONTEXT` in tool output, immediately run `run_tool("torus-skills", "invoke_skill", {"name": "working-summary"})` before continuing other work. Do not dismiss or defer.
 
 ## SESSION START (Non-Negotiable)
 1. Read LIVE_STATE.json

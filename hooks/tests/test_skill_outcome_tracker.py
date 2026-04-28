@@ -35,13 +35,13 @@ def test(name, condition, detail=""):
 # ── Detect skill invocation ──
 print("\n--- outcome_tracker: Detect skill invocation ---")
 
-# MCP skills-v2 invoke
+# MCP torus-skills invoke
 result = detect_skill_invocation(
-    "mcp__skills-v2__invoke_skill",
+    "mcp__torus-skills__invoke_skill",
     {"name": "commit"},
     '{"name": "commit", "content": "# Commit..."}',
 )
-test("Detects skills-v2 invoke", result is not None)
+test("Detects torus-skills invoke", result is not None)
 test("Extracts skill name", result == "commit")
 
 # MCP skills (v1) invoke
@@ -56,12 +56,12 @@ test("Detects skills v1 invoke", result2 == "review")
 result3 = detect_skill_invocation("Bash", {"command": "ls"}, "file1\nfile2")
 test("Ignores Bash", result3 is None)
 
-result4 = detect_skill_invocation("mcp__skills-v2__list_skills", {}, '{"count": 49}')
+result4 = detect_skill_invocation("mcp__torus-skills__list_skills", {}, '{"count": 49}')
 test("Ignores list_skills", result4 is None)
 
 # Error response (skill not found)
 result5 = detect_skill_invocation(
-    "mcp__skills-v2__invoke_skill",
+    "mcp__torus-skills__invoke_skill",
     {"name": "nonexistent"},
     '{"error": "Skill \'nonexistent\' not found"}',
 )
@@ -148,7 +148,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
     # Step 1: invoke_skill detected
     result = process_post_tool_use(
-        tool_name="mcp__skills-v2__invoke_skill",
+        tool_name="mcp__torus-skills__invoke_skill",
         tool_input={"name": "commit"},
         tool_response='{"name": "commit", "content": "# Commit..."}',
         exit_code=0,
@@ -222,7 +222,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
     # invoke_skill
     process_post_tool_use(
-        tool_name="mcp__skills-v2__invoke_skill",
+        tool_name="mcp__torus-skills__invoke_skill",
         tool_input={"name": "deploy"},
         tool_response='{"name": "deploy", "content": "# Deploy..."}',
         exit_code=0,
@@ -275,7 +275,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
     # Start tracking commit
     process_post_tool_use(
-        tool_name="mcp__skills-v2__invoke_skill",
+        tool_name="mcp__torus-skills__invoke_skill",
         tool_input={"name": "commit"},
         tool_response='{"name": "commit", "content": "..."}',
         exit_code=0,
@@ -288,7 +288,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
     # New invoke for review — should finalize commit and start review
     process_post_tool_use(
-        tool_name="mcp__skills-v2__invoke_skill",
+        tool_name="mcp__torus-skills__invoke_skill",
         tool_input={"name": "review"},
         tool_response='{"name": "review", "content": "..."}',
         exit_code=0,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PostToolUse hook — auto-detect skill execution outcomes.
 
-Watches for invoke_skill calls from skills/skills-v2 MCP servers,
+Watches for invoke_skill calls from skills/torus-skills MCP servers,
 tracks subsequent tool calls for success/failure signals, then
 writes the outcome to SQLite via skill_db.
 
@@ -30,7 +30,7 @@ _DEFAULT_DB_PATH = os.path.join(
 
 # Tool name patterns for skill invocation
 _INVOKE_PATTERNS = (
-    "mcp__skills-v2__invoke_skill",
+    "mcp__torus-skills__invoke_skill",
     "mcp__skills__invoke_skill",
 )
 
@@ -63,7 +63,7 @@ def detect_skill_invocation(
     # Toolshed gateway path
     elif (
         tool_name == "mcp__toolshed__run_tool"
-        and tool_input.get("server") == "skills-v2"
+        and tool_input.get("server") == "torus-skills"
         and tool_input.get("tool") == "invoke_skill"
     ):
         skill_name = tool_input.get("args", {}).get("name", "")

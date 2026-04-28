@@ -4,3 +4,6 @@
 [submodule "torus-skills"]
 	path = torus-skills
 	url = https://github.com/OZmasterAI/toroidal-skills.git
+[submodule "toroidal-detector"]
+	path = toroidal-detector
+	url = https://github.com/OZmasterAI/toroidal-detector.git

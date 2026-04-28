@@ -901,7 +901,7 @@ def main():
 
     if tool_name == "mcp__toolshed__run_tool":
         server = tool_input.get("server", "")
-        if server in {"memory", "skills-v2", "search"}:
+        if server in {"memory", "torus-skills", "search"}:
             sys.exit(0)
 
     working_dir = command[:100] if tool_name == "Bash" else ""
