@@ -11,14 +11,14 @@
     "Terminal scrollback duplication on this machine across all emulators \u2014 possibly Node v25.6.0 related"
   ],
   "next_steps": [
-    "Restart memory server to activate traverse_graph + find_pattern MCP tools",
     "pip uninstall lancedb pyarrow (when ready to fully cut over)",
     "Merge dag-claude branch to main",
+    "RELATE syntax gotcha: use RecordID objects as $from/$to params (NOT string interpolation)",
     "Rollback (if needed): git 65193e9, data ~/data/memory/backups/pre_surrealdb_migration_20260427_133952/"
   ],
   "dag_branch": "main",
   "dag_branch_label": "",
   "dag_node_count": 175217,
   "dag_total_branches": 910,
-  "last_response_preview": "Committed `fed7de3`.\n\n**Session 720 wrap-up:**\n\n**Done this session (3 tasks, 10/16 total):**\n- Task 7: search_pipeline.py + search_helpers.py \u2014 removed DAG merge, two-stage search, lance_keyword_search\n- Task 8: write_pipeline.py \u2014 removed DAG dual-write, all tag_index.add_tags calls\n- Task 9: Replaced tag_index + cluster_store with SurrealDB queries\n\n**Net result:** -139 lines, 7 files changed. All imports clean.\n\n**Next session:** Task 10 (RELATE graph edges), Task 11 (auxiliary servers), Tas"
+  "last_response_preview": "Session 721: SurrealDB migration 16/16 COMPLETE. Tasks 10-16: RELATE graph edges (RecordID params), traverse_graph+find_pattern MCP tools, auxiliary servers updated, 5 legacy modules archived, e2e tests pass. Committed c6046d5. Memory server restarted with new tools. Gotcha: RELATE needs RecordID objects not string interpolation."
 }
