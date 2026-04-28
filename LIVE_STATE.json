@@ -1,29 +1,25 @@
 {
-  "session_count": 719,
+  "session_count": 720,
   "project": "torus-framework",
   "feature": "surrealdb-migration",
   "framework_version": "v3.2.0",
-  "what_was_done": "SurrealDB migration Tasks 1-6+12 of 16 done. SDK installed+verified (RecordID not RecordId, no signin for embedded, flat response format). surreal_collection.py built (CRUD+vector+BM25+where, 21 tests). All 6 table schemas defined. Data migrated (5311 knowledge, 955 fix_outcomes, 4104 observations, 88 web_pages, 2 quarantine, 1748 clusters, 617 KG edges; 100% top-5 search quality overlap). memory_server.py init rewired from LanceDB to SurrealDB. 12 maintenance scripts archived.",
+  "what_was_done": "SurrealDB migration Tasks 7-9 done (10/16 total). Removed DAG merge+dual-write+_two_stage_search from pipelines. Replaced tag_index+cluster_store with SurrealDB (tag_search on collection, _surreal_cluster_assign with HNSW KNN). Removed lance_keyword_search/lance_fts_to_summary. All pipeline imports clean.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
-    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude \u2014 won't scan framework code",
-    "Terminal scrollback duplication on this machine across all emulators \u2014 possibly Node v25.6.0 related"
+    "toroidal-detector SKIP_PATH_SEGMENTS includes .claude — won't scan framework code",
+    "Terminal scrollback duplication on this machine across all emulators — possibly Node v25.6.0 related"
   ],
   "next_steps": [
-    "Task 7: Update search_pipeline.py + search_helpers.py (remove lance_keyword_search, DAG fallback)",
-    "Task 8: Update write_pipeline.py (remove DAG dual-write)",
-    "Task 9: Replace tag_index + cluster_store with SurrealDB queries",
-    "Task 10: Add RELATE graph edges for causal chains",
-    "Task 11: Update auxiliary servers (session_end, statusline, analytics_server)",
+    "Task 10: Add RELATE graph edges for causal chains (record_attempt/record_outcome + traverse_graph/find_pattern MCP tools)",
+    "Task 11: Update auxiliary servers (session_end.py, statusline.py, analytics_server.py, dag_memory.py — remove DAG/LanceDB imports)",
     "Tasks 13-16: Rewrite tests, cleanup dead code, e2e verification, dep cleanup",
     "Implementation plan: docs/plans/surrealdb-migration-impl.md",
     "Task tracker: PRPs/surrealdb-migration.tasks.json",
     "Rollback: git 65193e9, data ~/data/memory/backups/pre_surrealdb_migration_20260427_133952/"
   ],
-  "last_response_preview": "**Session 717 wrapped up.**\n\n- 2 memories saved (v3 verification, session summary)\n- State saved to LIVE_STATE.json\n- Committed `2217f5f` on dag-claude\n- Risk: GREEN \u2014 clean git, memory accessible (5313 entries)\n\n**Next session:** `/clear`, paste the implementation prompt, start Task 1.",
   "dag_branch": "main",
   "dag_branch_label": "",
-  "dag_node_count": 174624,
+  "dag_node_count": 174948,
   "dag_total_branches": 906
 }

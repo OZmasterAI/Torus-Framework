@@ -266,7 +266,6 @@ _EMBEDDING_DIM = 4096
 _embedding_fn = True  # Always "loaded" — API-based, no local model
 _NIM_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 _NIM_KEY_FALLBACK = None
-TAGS_DB_PATH = os.path.join(MEMORY_DIR, "tags.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
 SOCKET_PATH = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".memory.sock")
@@ -281,6 +280,7 @@ fix_outcomes = None  # SurrealCollection wrapper for fix_outcomes table
 observations = None  # SurrealCollection wrapper for observations table
 web_pages = None  # SurrealCollection wrapper for web_pages table
 quarantine = None  # SurrealCollection wrapper for quarantine table
+_clusters_coll = None  # SurrealCollection wrapper for clusters table
 _surreal_degraded = False
 
 
@@ -342,6 +342,7 @@ def _init_surrealdb():
         observations, \
         web_pages, \
         quarantine, \
+        _clusters_coll, \
         _surreal_degraded
     if _surreal_db is not None:
         return
@@ -366,6 +367,7 @@ def _init_surrealdb():
         observations = colls["observations"]
         web_pages = colls["web_pages"]
         quarantine = colls["quarantine"]
+        _clusters_coll = colls["clusters"]
 
         print(f"[MCP] SurrealDB initialized at {SURREAL_DIR}", file=_sys.stderr)
     except Exception as e:
@@ -623,9 +625,6 @@ def _extract_citations(content: str, context: str) -> dict:
         return defaults
 
 
-from shared.tag_index import TagIndex
-
-
 from shared.search_helpers import detect_query_mode
 
 
@@ -643,7 +642,6 @@ def _merge_results(fts_results, lance_summaries, top_k=15):
 # Lazy initialization — only run when module is used as a server, not when imported
 # for testing. LanceDB uses optimistic concurrency control (no more segfaults).
 _preview_migrated = False
-tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
 _initializing = False  # True during _ensure_initialized() — watchdog skips strikes
@@ -652,7 +650,6 @@ _init_done = threading.Event()  # Signaled when initialization completes
 _knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None  # LTPTracker instance (initialized lazily)
 _adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
-_cluster_store = None  # _ClusterStore instance (initialized lazily)
 _last_search_ids = []  # IDs from last search_knowledge call (for implicit feedback)
 _search_pipeline = None  # SearchPipeline instance (initialized lazily)
 _write_pipeline = None  # WritePipeline instance (initialized lazily)
@@ -770,21 +767,76 @@ def _tag_ids_to_summaries(memory_ids, collection_ref=None):
     return _sh_tag_ids_to_summaries(memory_ids, collection_ref or collection)
 
 
-from shared.cluster_store import (
-    ClusterStore as _ClusterStore,
-    cluster_label as _cluster_label,
-    CLUSTER_THRESHOLD,
-)
+from shared.cluster_store import cluster_label as _cluster_label
+from shared.error_normalizer import fnv1a_hash as _fnv1a_hash
+
+CLUSTER_THRESHOLD = 0.7
+
+
+def _surreal_cluster_assign(vec_list, content=""):
+    if _clusters_coll is None or not vec_list:
+        return ""
+    try:
+        import numpy as np
+
+        vec = np.array(vec_list, dtype=np.float32)
+        norm = np.linalg.norm(vec)
+        if norm < 1e-10:
+            return ""
+        vec_norm = (vec / norm).tolist()
+
+        rows = _clusters_coll._db.query(
+            "SELECT *, vector::distance::knn() AS dist FROM clusters "
+            "WHERE centroid <|1, COSINE|> $vec ORDER BY dist ASC",
+            {"vec": vec_norm},
+        )
+        now = datetime.now().isoformat()
+
+        if rows and (1 - rows[0].get("dist", 1.0)) >= CLUSTER_THRESHOLD:
+            cid = _clusters_coll._extract_id(rows[0])
+            old_count = rows[0].get("member_count", 1)
+            old_centroid = np.array(rows[0].get("centroid", vec_norm), dtype=np.float32)
+            new_count = old_count + 1
+            new_centroid = (
+                old_centroid * old_count + np.array(vec_norm, dtype=np.float32)
+            ) / new_count
+            c_norm = np.linalg.norm(new_centroid)
+            if c_norm > 1e-10:
+                new_centroid = new_centroid / c_norm
+            _clusters_coll._db.query(
+                "UPDATE clusters:$id SET centroid=$c, member_count=$n, updated_at=$t",
+                {"id": cid, "c": new_centroid.tolist(), "n": new_count, "t": now},
+            )
+            return cid
+        else:
+            new_id = f"cl_{_fnv1a_hash(content)}"
+            label = _cluster_label(content)
+            _clusters_coll.upsert(
+                ids=[new_id],
+                vectors=[vec_norm],
+                documents=[""],
+                metadatas=[
+                    {
+                        "member_count": 1,
+                        "label": label,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ],
+            )
+            return new_id
+    except Exception:
+        return ""
 
 
 def _ensure_initialized():
-    """Run one-time initialization (LanceDB + TagIndex + LanceDB FTS + Knowledge Graph + LTP).
+    """Run one-time initialization (SurrealDB + Knowledge Graph + LTP).
 
     Called lazily on first MCP tool use or explicitly at server startup.
     Safe to call multiple times — idempotent after first run.
     """
-    global _preview_migrated, tag_index, _tag_count, _initialized
-    global _knowledge_graph, _ltp_tracker, _adaptive_weights, _cluster_store
+    global _preview_migrated, _tag_count, _initialized
+    global _knowledge_graph, _ltp_tracker, _adaptive_weights
     global _initializing
     if _initialized:
         return
@@ -832,14 +884,6 @@ def _ensure_initialized():
         _adaptive_weights = AdaptiveWeights()
     except Exception:
         _adaptive_weights = None
-
-    # Initialize incremental cluster store (fail-open)
-    try:
-        global _cluster_store
-        _clusters_path = os.path.join(MEMORY_DIR, "clusters.db")
-        _cluster_store = _ClusterStore(_clusters_path)
-    except Exception:
-        _cluster_store = None
 
     # Session-start memory replay cycle (fail-open)
     try:
@@ -917,14 +961,12 @@ def _init_pipelines():
             "touch_memory_timestamp": _touch_memory_timestamp,
             "validate_top_k": _validate_top_k,
             "fix_outcomes": fix_outcomes,
-            "cluster_store": _cluster_store,
             "server_project": _SERVER_PROJECT,
             "server_subproject": _SERVER_SUBPROJECT,
             "embed_text": _embed_text,
         }
         _search_pipeline = SearchPipeline(
             collection=collection,
-            tag_index=tag_index,
             graph=_knowledge_graph,
             ltp=_ltp_tracker,
             adaptive=_adaptive_weights,
@@ -945,7 +987,6 @@ def _init_pipelines():
             "touch_memory_timestamp": _touch_memory_timestamp,
             "generate_id": generate_id,
             "embed_text": _embed_text,
-            "cluster_store": _cluster_store,
             "noise_regexes": NOISE_REGEXES,
             "min_content_length": MIN_CONTENT_LENGTH,
             "summary_length": SUMMARY_LENGTH,
@@ -955,7 +996,6 @@ def _init_pipelines():
         }
         _write_pipeline = WritePipeline(
             collection=collection,
-            tag_index=tag_index,
             graph=_knowledge_graph,
             config=_config,
             helpers=_write_helpers,
@@ -998,18 +1038,31 @@ def _read_config_toggles():
     return _config_cache or {}
 
 
-from shared.search_helpers import TagCooccurrence as _TagCooccurrence
-
-_tag_cooccurrence_obj = _TagCooccurrence()
-_tag_cooccurrence_dirty = True  # kept for backward compat (WritePipeline sets this)
-
-
-def _build_tag_cooccurrence():
-    _tag_cooccurrence_obj.build(tag_index)
-
-
 def _get_expanded_tags(query):
-    return _tag_cooccurrence_obj.get_expanded_tags(query, tag_index)
+    if collection is None:
+        return []
+    try:
+        words = [w for w in query.lower().split() if len(w) > 3]
+        if not words:
+            return []
+        expanded = set()
+        for word in words:
+            tag_ids = collection.tag_search([word], match_all=False, top_k=20)
+            for tid in tag_ids:
+                try:
+                    data = collection.get(ids=[tid], include=["metadatas"])
+                    if data and data.get("metadatas"):
+                        for tag in (data["metadatas"][0].get("tags", "") or "").split(
+                            ","
+                        ):
+                            tag = tag.strip()
+                            if tag and tag.lower() not in query.lower():
+                                expanded.add(tag)
+                except Exception:
+                    pass
+        return list(expanded)[:15]
+    except Exception:
+        return []
 
 
 def format_results(results) -> list[dict]:
@@ -1848,7 +1901,6 @@ def remember_this(
         source_session_id: Session ID to record provenance (auto-detected if omitted)
         source_observation_ids: Comma-separated observation IDs this knowledge was derived from
     """
-    global _tag_cooccurrence_dirty
     _ensure_initialized()
     if _surreal_degraded:
         return {
@@ -1858,8 +1910,6 @@ def remember_this(
 
     # Delegate to WritePipeline (with inline fallback)
     if _write_pipeline is not None:
-        # Refresh mutable helpers
-        _write_pipeline.h["cluster_store"] = _cluster_store
         _write_pipeline.h["server_project"] = _SERVER_PROJECT
         _write_pipeline.h["server_subproject"] = _SERVER_SUBPROJECT
         result = _write_pipeline.write(
@@ -1870,9 +1920,6 @@ def remember_this(
             source_session_id=source_session_id,
             source_observation_ids=source_observation_ids,
         )
-        # Mark tag co-occurrence as dirty if tags changed
-        if tags:
-            _tag_cooccurrence_dirty = True
         return result
 
     # Pipeline not initialized — return error
@@ -1988,11 +2035,6 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
                         documents=[v_doc], metadatas=[v_meta], ids=[victim_id]
                     )
                     collection.delete(ids=[victim_id])
-                    # Remove from tag index
-                    try:
-                        tag_index.remove(victim_id)
-                    except Exception:
-                        pass
                     # Transfer graph edges from duplicate to survivor, then deactivate (fail-open)
                     try:
                         if _knowledge_graph:
@@ -2610,7 +2652,7 @@ def suggest_promotions(top_k: int = 5) -> dict:
 
     for tag in promotion_tags:
         try:
-            tag_ids = tag_index.tag_search([tag], match_all=False, top_k=200)
+            tag_ids = collection.tag_search([tag], match_all=False, top_k=200)
             tag_results = _tag_ids_to_summaries(tag_ids)
             for r in tag_results:
                 if r.get("id") and r["id"] not in [c["id"] for c in candidates]:
@@ -3091,8 +3133,8 @@ def _bootstrap_clusters() -> None:
     O(n) with centroid cache in memory — safe even for thousands of memories.
     """
     _ensure_initialized()
-    if not _cluster_store:
-        print("Bootstrap: cluster store unavailable", file=_sys.stderr)
+    if not _clusters_coll:
+        print("Bootstrap: clusters collection unavailable", file=_sys.stderr)
         return
     if not collection:
         print("Bootstrap: collection unavailable", file=_sys.stderr)
@@ -3124,7 +3166,7 @@ def _bootstrap_clusters() -> None:
                 vec = np.array(embeddings[i], dtype=np.float32)
             else:
                 vec = _embed_text(doc)
-            cid = _cluster_store.assign(vec, doc)
+            cid = _surreal_cluster_assign(vec, doc)
             if cid:
                 collection.update(ids=[doc_id], metadatas=[{"cluster_id": cid}])
                 processed += 1
@@ -3303,7 +3345,7 @@ def memory_health_report() -> dict:
         "total_memories": mem_count,
         "total_observations": obs_count,
         "total_fix_outcomes": fix_outcomes.count(),
-        "tag_index_count": _tag_count,
+        "tag_index_count": unique_tags,
         "capture_queue_lines": queue_lines,
         "capture_queue_bytes": queue_bytes,
         "added_24h": added_24h,
@@ -3325,21 +3367,8 @@ def memory_health_report() -> dict:
 
 
 def rebuild_tag_index() -> dict:
-    """Force rebuild the tag co-occurrence matrix.
-
-    Use when tag relationships seem stale or after bulk memory operations.
-    The matrix is normally rebuilt lazily when dirty, but this forces an
-    immediate rebuild.
-    """
-    try:
-        _build_tag_cooccurrence()
-        return {
-            "result": "Tag co-occurrence matrix rebuilt",
-            "unique_tags": len(_tag_counts),
-            "tags_with_cooccurrence": len(_tag_cooccurrence),
-        }
-    except Exception as e:
-        return {"error": f"Failed to rebuild tag index: {str(e)}"}
+    """No-op — tags are stored directly in SurrealDB records. Kept for API compat."""
+    return {"result": "No-op: tags stored in SurrealDB records directly"}
 
 
 def _batch_rename_memories():
@@ -3920,7 +3949,6 @@ def _dispatch_request(req):
                 ],
                 ids=[doc_id],
             )
-            tag_index.add_tags(doc_id, tags)
             return {"ok": True, "result": {"saved": True, "id": doc_id}}
 
         # Collection-based operations require a valid collection name

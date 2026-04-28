@@ -4,8 +4,8 @@ Extracted from memory_server.py as part of Memory v2 Layered Redesign.
 
 Public API:
     from shared.search_helpers import (
-        detect_query_mode, merge_results, lance_fts_to_summary,
-        lance_keyword_search, fuzzy_keyword_search, generate_fuzzy_variants,
+        detect_query_mode, merge_results,
+        fuzzy_keyword_search, generate_fuzzy_variants,
         tag_ids_to_summaries, TagCooccurrence,
     )
 """
@@ -65,7 +65,7 @@ def detect_query_mode(query, routing="default"):
 
 
 def merge_results(fts_results, lance_summaries, top_k=15):
-    """Merge FTS5 and LanceDB results using Reciprocal Rank Fusion (RRF).
+    """Merge keyword and vector results using Reciprocal Rank Fusion (RRF).
 
     RRF gives each engine equal weight: score = sum(1/(k+rank)) across engines.
     Items appearing in both engines naturally score ~2x higher.
@@ -85,7 +85,7 @@ def merge_results(fts_results, lance_summaries, top_k=15):
         entries[mid] = dict(entry)
         sources[mid] = {"semantic"}
 
-    # Score FTS5 results by rank
+    # Score keyword results by rank
     for rank, entry in enumerate(fts_results, start=1):
         mid = entry.get("id", "")
         if not mid:
@@ -104,42 +104,6 @@ def merge_results(fts_results, lance_summaries, top_k=15):
     results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
 
     return results[:top_k]
-
-
-def lance_fts_to_summary(row, summary_length=120):
-    """Convert a LanceDB FTS result row to the standard summary dict format."""
-    entry = {
-        "id": row.get("id", ""),
-        "preview": row.get("preview", row.get("text", "")[:summary_length]),
-        "tags": row.get("tags", ""),
-        "timestamp": row.get("timestamp", ""),
-        "fts_score": round(row.get("_score", 0.0), 4),
-    }
-    url = row.get("primary_source", "")
-    if url:
-        entry["url"] = url
-    return entry
-
-
-def lance_keyword_search(
-    query, top_k=15, collection=None, fts_ready=False, summary_length=120
-):
-    """LanceDB native BM25 keyword search. Falls back to empty on error.
-
-    Args:
-        query: Search query string
-        top_k: Max results
-        collection: LanceCollection instance (must have _table attribute)
-        fts_ready: Whether FTS index is built
-        summary_length: Preview truncation length
-    """
-    if not fts_ready or collection is None:
-        return []
-    try:
-        rows = collection._table.search(query).limit(top_k).to_list()
-        return [lance_fts_to_summary(r, summary_length) for r in rows]
-    except Exception:
-        return []
 
 
 def generate_fuzzy_variants(term, max_distance=1):
@@ -228,7 +192,7 @@ def fuzzy_keyword_search(
 
 
 def tag_ids_to_summaries(memory_ids, collection=None):
-    """Fetch full metadata from LanceDB for a list of memory IDs."""
+    """Fetch full metadata for a list of memory IDs."""
     if not memory_ids or collection is None:
         return []
     try:

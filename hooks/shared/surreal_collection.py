@@ -350,6 +350,26 @@ class SurrealCollection:
             if r.get("score", 0.0) != 0.0
         ]
 
+    def tag_search(self, tags_list, match_all=False, top_k=200):
+        if not tags_list:
+            return []
+        params = {}
+        conditions = []
+        for i, tag in enumerate(tags_list):
+            key = f"t{i}"
+            conditions.append(f"tags CONTAINS ${key}")
+            params[key] = tag.strip()
+        joiner = " AND " if match_all else " OR "
+        where = joiner.join(conditions)
+        try:
+            rows = self._db.query(
+                f"SELECT id FROM {self._name} WHERE {where} LIMIT {top_k}",
+                params,
+            )
+        except Exception:
+            return []
+        return [self._extract_id(r) for r in rows]
+
     def _extract_id(self, row):
         rid = row.get("id")
         if rid is None:

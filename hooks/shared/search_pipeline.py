@@ -16,7 +16,7 @@ import sys as _sys
 import re
 
 from shared.context_compressor import compress_results
-from shared.scoring_engine import ScoringContext, score_result, rerank_candidates
+from shared.scoring_engine import ScoringContext, score_result
 from shared.search_cache import SearchCache
 
 
@@ -49,17 +49,26 @@ class SearchPipeline:
     and counterfactual retrieval.
     """
 
-    def __init__(self, collection, tag_index, graph, ltp, adaptive, config, helpers):
+    def __init__(
+        self,
+        collection,
+        tag_index=None,
+        graph=None,
+        ltp=None,
+        adaptive=None,
+        config=None,
+        helpers=None,
+    ):
         """
         Args:
-            collection: ChromaDB/LanceDB collection for knowledge
-            tag_index: TagIndex instance for tag-based search
+            collection: SurrealCollection for knowledge
+            tag_index: Unused (kept for backward compat, tags searched via collection)
             graph: KnowledgeGraph instance (or None)
             ltp: LTPTracker instance (or None)
             adaptive: AdaptiveWeights instance (or None)
             config: dict of config toggles (from config.json)
             helpers: dict of server-level helper functions:
-                format_summaries, lance_keyword_search, merge_results,
+                format_summaries, keyword_search, merge_results,
                 detect_query_mode, search_observations_internal,
                 get_expanded_tags, tag_ids_to_summaries,
                 generate_counterfactual_query, touch_memory_timestamp,
@@ -93,7 +102,6 @@ class SearchPipeline:
             dict with results, total_memories, query, mode, and metadata counts
         """
         collection = self.collection
-        tag_index = self.tag_index
         h = self.h
         config = self.config
 
@@ -205,7 +213,7 @@ class SearchPipeline:
             _where["state_type"] = state_type
         _where = _where or None
 
-        # Embed once for all vector searches (LanceDB + DAG)
+        # Embed once for all vector searches
         _embed_fn = h.get("embed_text")
         _query_vec = None
         if _embed_fn and mode in ("semantic", "hybrid", ""):
@@ -217,16 +225,16 @@ class SearchPipeline:
         if mode == "tags":
             tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)
             tags_list = [t.strip() for t in tag_query.split(",") if t.strip()]
-            tag_ids = tag_index.tag_search(
+            tag_ids = collection.tag_search(
                 tags_list, match_all=match_all, top_k=actual_k
             )
             _tag_to_summaries = h.get("tag_ids_to_summaries")
             formatted = _tag_to_summaries(tag_ids) if _tag_to_summaries else []
         elif mode == "keyword":
-            _kw_search = h.get("lance_keyword_search")
+            _kw_search = h.get("keyword_search")
             formatted = _kw_search(query, top_k=actual_k) if _kw_search else []
         elif mode == "hybrid":
-            _kw_search = h.get("lance_keyword_search")
+            _kw_search = h.get("keyword_search")
             _merge = h.get("merge_results")
             fts_results = _kw_search(query, top_k=actual_k) if _kw_search else []
             lance_results = collection.query(
@@ -243,57 +251,14 @@ class SearchPipeline:
                 else lance_summaries
             )
         else:
-            # Semantic (default) — two-stage when enabled
-            _two_stage = config.get("two_stage_search", False)
-            if _two_stage and _query_vec is not None:
-                formatted = self._two_stage_search(
-                    query, _query_vec, actual_k, _where, format_summaries, h
-                )
-            else:
-                results = collection.query(
-                    query_texts=[query] if not _query_vec else None,
-                    query_vector=_query_vec,
-                    n_results=actual_k,
-                    include=["metadatas", "distances"],
-                    where=_where,
-                )
-                formatted = format_summaries(results)
-
-        # ── Step 2b: Merge SQLite DAG memory layer results ──
-        try:
-            from shared.dag import get_session_dag
-            from shared.dag_memory_layer import DAGMemoryLayer
-
-            _dag = get_session_dag("main")
-            _dag_layer = DAGMemoryLayer(_dag)
-            # Try semantic search using pre-computed vector, else keyword
-            if _query_vec is not None and mode in ("semantic", "hybrid", ""):
-                _sqlite_results = _dag_layer.semantic_search(
-                    query, top_k=top_k, query_vector=_query_vec
-                )
-            else:
-                _sqlite_results = _dag_layer.search(query, top_k=top_k, mode="keyword")
-            if _sqlite_results:
-                _existing = {r.get("content", "")[:100] for r in formatted}
-                for sr in _sqlite_results:
-                    if sr["content"][:100] not in _existing:
-                        formatted.append(
-                            {
-                                "id": sr["id"],
-                                "content": sr["content"],
-                                "preview": sr["content"][:200],
-                                "tags": sr.get("tags", ""),
-                                "tier": sr.get("tier", 1),
-                                "retrieval_count": sr.get("retrieval_count", 0),
-                                "timestamp": sr.get("created_at", ""),
-                                "source": "dag_sqlite",
-                                "relevance": sr.get("quality_score", 0.5),
-                            }
-                        )
-                        _existing.add(sr["content"][:100])
-                        _dag_layer.increment_retrieval(sr["id"])
-        except Exception:
-            pass  # Fail-open: SQLite search failure must not block LanceDB results
+            results = collection.query(
+                query_texts=[query] if not _query_vec else None,
+                query_vector=_query_vec,
+                n_results=actual_k,
+                include=["metadatas", "distances"],
+                where=_where,
+            )
+            formatted = format_summaries(results)
 
         # ── Step 3: Cascade (L2, L0, L3 after scoring) ──
         terminal_l2_count = self._cascade_terminal_l2(formatted, query, config)
@@ -309,7 +274,7 @@ class SearchPipeline:
                 expanded_tags = _get_expanded(query)
                 if expanded_tags:
                     seen_ids = {r.get("id") for r in formatted if r.get("id")}
-                    tag_ids = tag_index.tag_search(
+                    tag_ids = collection.tag_search(
                         expanded_tags, match_all=False, top_k=actual_k
                     )
                     _tag_to_summaries = h.get("tag_ids_to_summaries")
@@ -378,7 +343,12 @@ class SearchPipeline:
             )
 
             for entry in formatted:
-                base_sim = entry.get("relevance", 0) or entry.get("fts_score", 0) or 0
+                base_sim = (
+                    entry.get("relevance", 0)
+                    or entry.get("score", 0)
+                    or entry.get("fts_score", 0)
+                    or 0
+                )
                 entry["relevance"] = score_result(entry, base_sim, _scoring_ctx)
                 mem_id = entry.get("id", "")
                 if mem_id in _ltp_factors:
@@ -849,82 +819,6 @@ class SearchPipeline:
                 fn()
             except Exception:
                 pass
-
-    def _two_stage_search(
-        self, query, query_vec_768, top_k, where, format_summaries, h
-    ):
-        """Two-stage: approximate retrieval on vector_256 + full rerank."""
-        MIN_STAGE1 = 5
-        STAGE1_THRESHOLD = 0.3
-        n_candidates = max(top_k * 3, 50)
-
-        vec_256 = query_vec_768[:256]
-        candidates = self.collection.query_approximate(
-            query_vector_256=vec_256, n_candidates=n_candidates, where=where
-        )
-
-        # Cascade check: enough quality candidates?
-        quality = [
-            r for r in candidates if (1 - r.get("_distance", 1.0)) >= STAGE1_THRESHOLD
-        ]
-        if len(quality) < min(top_k, MIN_STAGE1):
-            print(
-                f"[Search] Two-stage cascade: {len(quality)} quality < "
-                f"{min(top_k, MIN_STAGE1)}, falling back to flat scan",
-                file=_sys.stderr,
-            )
-            results = self.collection.query(
-                query_vector=query_vec_768, n_results=top_k * 2, where=where
-            )
-            return format_summaries(results)
-
-        # Stage 2: rerank with full scoring
-        _ltp_factors = {}
-        if self.ltp:
-            for row in candidates:
-                mid = row.get("id", "")
-                if mid:
-                    try:
-                        _ltp_factors[mid] = self.ltp.get_decay_factor(mid)
-                    except Exception:
-                        pass
-
-        _graph_scores = {}
-        if self.graph:
-            top_ids = {r.get("id") for r in candidates[:5] if r.get("id")}
-            for row in candidates:
-                mid = row.get("id", "")
-                if mid:
-                    try:
-                        neighbors = self.graph._get_neighbors(mid)
-                        if neighbors:
-                            connected = len(set(neighbors) & top_ids - {mid})
-                            if connected > 0:
-                                _graph_scores[mid] = connected * 0.03
-                    except Exception:
-                        pass
-
-        _ltp_blend = 0.3
-        if self.adaptive:
-            _ltp_blend = self.adaptive.get_weights().get("ltp_blend", 0.3)
-
-        _server_project = h.get("server_project", "") or ""
-        _server_subproject = h.get("server_subproject", "") or ""
-        _query_tags = _derive_query_tags(
-            query, [{"tags": r.get("tags", "")} for r in candidates]
-        )
-
-        ctx = ScoringContext(
-            ltp_factors=_ltp_factors,
-            graph_scores=_graph_scores,
-            query_tags=_query_tags,
-            project=_server_project,
-            server_subproject=_server_subproject,
-            query=query,
-            ltp_blend=_ltp_blend,
-        )
-
-        return rerank_candidates(candidates, query_vec_768, ctx, top_k=top_k * 2)
 
     def _terminal_db_path(self):
         return os.path.join(
@@ -1424,7 +1318,7 @@ class SearchPipeline:
                     _activated_names = [
                         a["name"] for a in _activated[:5] if a["activation"] > 0.1
                     ]
-                    _kw_search = h.get("lance_keyword_search")
+                    _kw_search = h.get("keyword_search")
                     for _aname in _activated_names:
                         try:
                             if _kw_search:

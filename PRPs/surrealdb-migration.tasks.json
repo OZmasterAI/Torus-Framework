@@ -62,7 +62,9 @@
     {
       "id": 7,
       "name": "Update search_pipeline.py + search_helpers.py",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-28T09:33:00Z",
+      "notes": "Removed DAG merge block, _two_stage_search, lance_keyword_search refs. Added SurrealDB score fallback.",
       "files": ["hooks/shared/search_pipeline.py", "hooks/shared/search_helpers.py"],
       "validate": "python3 -c \"from shared.search_pipeline import SearchPipeline; print('OK')\"",
       "depends_on": [6]
@@ -70,7 +72,9 @@
     {
       "id": 8,
       "name": "Update write_pipeline.py — remove DAG dual-write",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-28T09:37:00Z",
+      "notes": "Removed DAG dual-write block, all tag_index.add_tags() calls, cleaned unused vars.",
       "files": ["hooks/shared/write_pipeline.py"],
       "validate": "python3 -c \"from shared.write_pipeline import WritePipeline; print('OK')\"",
       "depends_on": [6]
@@ -78,7 +82,9 @@
     {
       "id": 9,
       "name": "Replace tag_index + cluster_store with SurrealDB",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-04-28T09:53:00Z",
+      "notes": "Added tag_search() to SurrealCollection, created _surreal_cluster_assign(), removed TagIndex/ClusterStore globals+imports, rebuild_tag_index is no-op.",
       "files": ["hooks/memory_server.py", "hooks/shared/search_helpers.py"],
       "validate": "python3 -c \"print('tags+clusters OK')\"",
       "depends_on": [6]
