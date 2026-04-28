@@ -11,7 +11,6 @@ Exit 0 always (non-blocking, fail-open).
 import json
 import os
 import re
-import subprocess
 import sys
 from datetime import datetime
 
@@ -755,13 +754,6 @@ def save_detected(
 
     with open(filepath, "w") as f:
         f.write(content)
-
-    subprocess.run(["git", "add", filepath], cwd=REPO, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", f"detected({category}): {title}"],
-        cwd=REPO,
-        capture_output=True,
-    )
 
 
 def _should_skip_path(path: str) -> bool:
