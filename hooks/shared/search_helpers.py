@@ -227,19 +227,27 @@ class TagCooccurrence:
         self.total_memories = 0
         self._last_build = 0
 
-    def build(self, tag_index):
-        """Build tag co-occurrence matrix from tag index."""
+    def build_from_collection(self, collection):
+        """Build tag co-occurrence matrix from SurrealDB collection."""
         import time
 
         self._last_build = time.monotonic()
-        conn = tag_index.conn
-        rows = conn.execute("SELECT memory_id, tag FROM tags").fetchall()
+        try:
+            results = collection.get(limit=5000, include=["metadatas"])
+            metas = results.get("metadatas", []) if results else []
+        except Exception:
+            return
 
         mem_tags = {}
         tag_totals = {}
-        for mid, tag in rows:
-            mem_tags.setdefault(mid, set()).add(tag)
-            tag_totals[tag] = tag_totals.get(tag, 0) + 1
+        for i, meta in enumerate(metas):
+            tags_str = meta.get("tags", "") if meta else ""
+            if not tags_str:
+                continue
+            tag_list = [t.strip() for t in tags_str.split(",") if t.strip()]
+            mem_tags[i] = set(tag_list)
+            for tag in tag_list:
+                tag_totals[tag] = tag_totals.get(tag, 0) + 1
 
         cooccur = {}
         for _mid, tagset in mem_tags.items():
@@ -255,16 +263,16 @@ class TagCooccurrence:
         self.total_memories = len(mem_tags)
         self.dirty = False
 
-    def get_expanded_tags(self, query, tag_index=None):
+    def get_expanded_tags(self, query, collection=None):
         """Find tags that co-occur with tags matching the query (PMI > 1.0)."""
         import time
 
         if (
             self.dirty
-            and tag_index
+            and collection
             and (time.monotonic() - self._last_build >= self._REBUILD_COOLDOWN)
         ):
-            self.build(tag_index)
+            self.build_from_collection(collection)
 
         if not self.counts:
             return []

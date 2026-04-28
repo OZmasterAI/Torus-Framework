@@ -8,6 +8,10 @@ import tempfile
 
 import pytest
 
+pytestmark = pytest.mark.skip(
+    reason="DAGMemoryLayer removed in SurrealDB migration (Task 14)"
+)
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.dag import ConversationDAG
 from shared.dag_memory_layer import DAGMemoryLayer, promote_nodes
@@ -600,7 +604,6 @@ class TestGraphTraversal:
         assert len(edge_keys) == len(set(edge_keys))
 
 
-
 # --- Task 6: New features (FTS5 escaping, dedup, LIMIT param, semantic_search_nodes, timestamps) ---
 
 
@@ -633,6 +636,7 @@ class TestFTS5Escaping:
     def test_escape_fts5_function(self):
         """Unit-test _escape_fts5 directly."""
         from shared.dag_memory_layer import _escape_fts5
+
         # Hyphens, colons, parens should be removed
         assert "-" not in _escape_fts5("fix-it")
         assert ":" not in _escape_fts5("type:fix")
@@ -785,7 +789,6 @@ class TestSemanticSearchNodes:
         assert isinstance(results, list)
 
 
-
 class TestConstructorEmbedFn:
     """Verify embed_fn can be set at constructor level."""
 
@@ -799,6 +802,7 @@ class TestConstructorEmbedFn:
 
         # Create layer with embed_fn in constructor
         from shared.dag_memory_layer import DAGMemoryLayer
+
         layer = DAGMemoryLayer(dag, embed_fn=mock_embed)
 
         # Store embeddings for nodes
@@ -818,6 +822,7 @@ class TestConstructorEmbedFn:
             return [1.0, 0.0, 0.0]
 
         from shared.dag_memory_layer import DAGMemoryLayer
+
         layer = DAGMemoryLayer(dag, embed_fn=mock_embed)
         r1 = layer.store(content="vector similarity search", tags="type:learning")
         layer.store_embedding(r1["id"], "knowledge", [1.0, 0.0, 0.0])
@@ -841,6 +846,7 @@ class TestConstructorEmbedFn:
             return [1.0, 0.0, 0.0]
 
         from shared.dag_memory_layer import DAGMemoryLayer
+
         layer = DAGMemoryLayer(dag, embed_fn=constructor_embed)
         n1 = dag.add_node("", "user", "test content")
         layer.store_embedding(n1, "nodes", [1.0, 0.0, 0.0])
@@ -853,6 +859,7 @@ class TestConstructorEmbedFn:
     def test_no_embed_fn_falls_back_to_fts(self, dag_and_layer):
         dag, _ = dag_and_layer
         from shared.dag_memory_layer import DAGMemoryLayer
+
         layer = DAGMemoryLayer(dag)  # No embed_fn
         dag.add_node("", "user", "keyword search fallback test")
 
@@ -864,6 +871,7 @@ class TestConstructorEmbedFn:
         """Verify semantic_search_nodes defaults to top_k=20."""
         import inspect
         from shared.dag_memory_layer import DAGMemoryLayer
+
         sig = inspect.signature(DAGMemoryLayer.semantic_search_nodes)
         assert sig.parameters["top_k"].default == 20
 
@@ -871,6 +879,7 @@ class TestConstructorEmbedFn:
         """Existing code creating DAGMemoryLayer(dag) without embed_fn still works."""
         dag, _ = dag_and_layer
         from shared.dag_memory_layer import DAGMemoryLayer
+
         layer = DAGMemoryLayer(dag)
         assert layer._embed_fn is None
         # All existing methods should work
@@ -905,6 +914,7 @@ class TestPromoteNodesTimestamp:
     def test_format_node_timestamp_valid(self):
         """_format_node_timestamp converts unix int to ISO string."""
         from shared.dag_memory_layer import _format_node_timestamp
+
         ts = 1700000000  # A valid unix timestamp
         result = _format_node_timestamp(ts)
         assert "T" in result  # ISO format: YYYY-MM-DDTHH:MM:SS
@@ -912,10 +922,12 @@ class TestPromoteNodesTimestamp:
 
     def test_format_node_timestamp_none(self):
         from shared.dag_memory_layer import _format_node_timestamp
+
         assert _format_node_timestamp(None) == ""
 
     def test_format_node_timestamp_invalid(self):
         from shared.dag_memory_layer import _format_node_timestamp
+
         result = _format_node_timestamp("not-a-number")
         # Should return the string as-is rather than crash
         assert isinstance(result, str)
@@ -924,6 +936,7 @@ class TestPromoteNodesTimestamp:
         """_build_promotion_context should include @timestamp in ancestor parts."""
         dag, layer = dag_and_layer
         from shared.dag_memory_layer import _build_promotion_context
+
         n1 = dag.add_node("", "user", "first message in conversation")
         n2 = dag.add_node(n1, "assistant", "second message responding to first")
         ctx = _build_promotion_context(dag, n2)
@@ -943,6 +956,7 @@ class TestHebbianCoretrieval:
     def test_promote_with_kg_creates_coretrieval_edges(self, dag_and_layer):
         """When kg is provided and 2+ nodes promoted, strengthen_coretrieval is called."""
         from shared.knowledge_graph import KnowledgeGraph
+
         dag, layer = dag_and_layer
         dag.add_node(
             "",
@@ -979,6 +993,7 @@ class TestHebbianCoretrieval:
     def test_single_promotion_no_coretrieval(self, dag_and_layer):
         """With only 1 promoted node, no co-retrieval should be attempted."""
         from shared.knowledge_graph import KnowledgeGraph
+
         dag, layer = dag_and_layer
         dag.add_node(
             "",
@@ -994,6 +1009,7 @@ class TestHebbianCoretrieval:
     def test_spreading_activation_context_in_metadata(self, dag_and_layer):
         """When kg has pre-existing edges, activation context appears in metadata."""
         from shared.knowledge_graph import KnowledgeGraph
+
         dag, layer = dag_and_layer
         # Pre-populate KG with entities connected to a node ID we'll create
         with KnowledgeGraph(db_path=":memory:") as kg:
@@ -1018,6 +1034,7 @@ class TestHebbianCoretrieval:
             ).fetchone()
             if row and row[0]:
                 import json
+
                 meta = json.loads(row[0])
                 if "activated_context" in meta:
                     ctx = meta["activated_context"]
@@ -1029,6 +1046,7 @@ class TestHebbianCoretrieval:
     def test_promote_with_kg_node_ids_linked(self, dag_and_layer):
         """DAG node IDs should also be linked via co-retrieval."""
         from shared.knowledge_graph import KnowledgeGraph
+
         dag, layer = dag_and_layer
         n1 = dag.add_node(
             "",
@@ -1054,6 +1072,7 @@ class TestHebbianCoretrieval:
         """_get_activation_context returns empty list when no edges exist."""
         from shared.knowledge_graph import KnowledgeGraph
         from shared.dag_memory_layer import _get_activation_context
+
         with KnowledgeGraph(db_path=":memory:") as kg:
             result = _get_activation_context(kg, "nonexistent_node")
             assert result == []
@@ -1062,6 +1081,7 @@ class TestHebbianCoretrieval:
         """_get_activation_context returns activated entities when edges exist."""
         from shared.knowledge_graph import KnowledgeGraph
         from shared.dag_memory_layer import _get_activation_context
+
         with KnowledgeGraph(db_path=":memory:") as kg:
             kg.upsert_entity("seed_node", salience=0.8)
             kg.upsert_entity("related_a", salience=0.6)

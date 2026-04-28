@@ -22,15 +22,19 @@ from shared.write_pipeline import WritePipeline
 class FakeCollection:
     def __init__(self):
         self._docs = {}
+
     def count(self):
         return len(self._docs)
+
     def upsert(self, documents, metadatas, ids):
         for i, doc_id in enumerate(ids):
             self._docs[doc_id] = {"document": documents[i], "metadata": metadatas[i]}
+
     def update(self, ids, metadatas):
         for i, doc_id in enumerate(ids):
             if doc_id in self._docs:
                 self._docs[doc_id]["metadata"] = metadatas[i]
+
     def get(self, ids=None, include=None, limit=None):
         result_ids, result_docs, result_metas = [], [], []
         targets = ids if ids else list(self._docs.keys())
@@ -40,6 +44,7 @@ class FakeCollection:
                 result_docs.append(self._docs[doc_id]["document"])
                 result_metas.append(self._docs[doc_id]["metadata"])
         return {"ids": result_ids, "documents": result_docs, "metadatas": result_metas}
+
     def query(self, query_texts, n_results=5, include=None):
         query_words = set(query_texts[0].lower().split())
         scored = []
@@ -60,18 +65,12 @@ class FakeCollection:
         return result
 
 
-class FakeTagIndex:
-    def __init__(self):
-        self._tags = {}
-    def add_tags(self, doc_id, tags):
-        self._tags[doc_id] = tags
-
-
 def _make_pipeline(collection=None, config=None):
     col = collection or FakeCollection()
-    tag_idx = FakeTagIndex()
     pipeline = WritePipeline(
-        collection=col, tag_index=tag_idx, graph=None,
+        collection=col,
+        tag_index=None,
+        graph=None,
         config=config or {},
         helpers={
             "min_content_length": 20,
@@ -80,14 +79,16 @@ def _make_pipeline(collection=None, config=None):
             "touch_memory_timestamp": lambda: None,
         },
     )
-    return pipeline, col, tag_idx
+    return pipeline, col, None
 
 
 def test_evolution_enriches_neighbor_tags():
     pipeline, col, tag_idx = _make_pipeline()
     # Use high-overlap content so FakeCollection word-overlap similarity exceeds 0.3 threshold
     col.upsert(
-        documents=["LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"],
+        documents=[
+            "LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
+        ],
         metadatas=[{"tags": "type:learning,area:backend", "context": ""}],
         ids=["neighbor_1"],
     )
@@ -132,7 +133,9 @@ def test_evolution_max_3_updates():
     pipeline, col, tag_idx = _make_pipeline()
     for i in range(5):
         col.upsert(
-            documents=[f"Memory system LanceDB vector search variant {i} with embeddings"],
+            documents=[
+                f"Memory system LanceDB vector search variant {i} with embeddings"
+            ],
             metadatas=[{"tags": "type:learning", "context": ""}],
             ids=[f"neighbor_{i}"],
         )
@@ -141,7 +144,9 @@ def test_evolution_max_3_updates():
         tags="type:feature,area:memory-system",
     )
     updated_count = sum(
-        1 for i in range(5) if col._docs[f"neighbor_{i}"]["metadata"]["tags"] != "type:learning"
+        1
+        for i in range(5)
+        if col._docs[f"neighbor_{i}"]["metadata"]["tags"] != "type:learning"
     )
     assert updated_count <= 3
 
@@ -149,7 +154,9 @@ def test_evolution_max_3_updates():
 def test_evolution_no_tag_duplication():
     pipeline, col, tag_idx = _make_pipeline()
     col.upsert(
-        documents=["LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"],
+        documents=[
+            "LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
+        ],
         metadatas=[{"tags": "type:feature,area:backend", "context": ""}],
         ids=["neighbor_1"],
     )
@@ -157,7 +164,9 @@ def test_evolution_no_tag_duplication():
         content="LanceDB vector search supports fast semantic queries with embeddings and FTS hybrid mode",
         tags="type:feature,area:backend,area:memory-system",
     )
-    tag_list = [t.strip() for t in col._docs["neighbor_1"]["metadata"]["tags"].split(",")]
+    tag_list = [
+        t.strip() for t in col._docs["neighbor_1"]["metadata"]["tags"].split(",")
+    ]
     assert tag_list.count("type:feature") <= 1
     assert tag_list.count("area:backend") <= 1
 
@@ -165,7 +174,9 @@ def test_evolution_no_tag_duplication():
 def test_evolution_skips_id_prefixes():
     pipeline, col, tag_idx = _make_pipeline()
     col.upsert(
-        documents=["LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"],
+        documents=[
+            "LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
+        ],
         metadatas=[{"tags": "type:learning", "context": ""}],
         ids=["neighbor_1"],
     )
@@ -183,7 +194,9 @@ def test_evolution_tag_cap():
     pipeline, col, tag_idx = _make_pipeline()
     long_tags = ",".join(f"tag{i}:value{i}" for i in range(35))  # ~420 chars, under 500
     col.upsert(
-        documents=["LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"],
+        documents=[
+            "LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
+        ],
         metadatas=[{"tags": long_tags, "context": ""}],
         ids=["neighbor_1"],
     )
@@ -226,6 +239,7 @@ def test_evolution_disabled_flag():
 def test_evolution_fail_open():
     class BrokenQueryCollection(FakeCollection):
         _query_count = 0
+
         def query(self, *args, **kwargs):
             self._query_count += 1
             if self._query_count > 1:
@@ -254,7 +268,7 @@ def test_evolve_neighbors_direct():
         context="testing evolution",
         tags="type:feature,area:memory-system",
         collection=col,
-        tag_index=tag_idx,
+        tag_index=None,
     )
     assert isinstance(count, int)
     assert count >= 0

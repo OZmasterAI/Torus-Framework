@@ -170,14 +170,20 @@ class TestMemoryQuality:
         assert s1 > s2
 
     def test_error_signal_boosts_score(self):
-        content_error = "ImportError Exception in auth module causes crash at startup line 10"
-        content_plain = "The auth module has a problem that shows up at startup normally"
+        content_error = (
+            "ImportError Exception in auth module causes crash at startup line 10"
+        )
+        content_plain = (
+            "The auth module has a problem that shows up at startup normally"
+        )
         s1 = self.quality_score(content_error)
         s2 = self.quality_score(content_plain)
         assert s1 >= s2
 
     def test_outcome_signal_boosts_score(self):
-        content_outcome = "Fixed auth bug. Outcome: success. Verified by running test suite."
+        content_outcome = (
+            "Fixed auth bug. Outcome: success. Verified by running test suite."
+        )
         content_plain = "Fixed auth bug and things work better now and should be fine"
         s1 = self.quality_score(content_outcome)
         s2 = self.quality_score(content_plain)
@@ -243,13 +249,17 @@ class TestModelProfiles:
         for profile_name, profile in self.MODEL_PROFILES.items():
             role_models = profile["role_models"]
             for role in required_roles:
-                assert role in role_models, f"Profile {profile_name!r} missing role {role!r}"
+                assert role in role_models, (
+                    f"Profile {profile_name!r} missing role {role!r}"
+                )
 
     def test_profile_models_valid(self):
         valid_models = {"opus", "sonnet", "haiku"}
         for profile_name, profile in self.MODEL_PROFILES.items():
             for role, model in profile["role_models"].items():
-                assert model in valid_models, f"Invalid model {model!r} in {profile_name}/{role}"
+                assert model in valid_models, (
+                    f"Invalid model {model!r} in {profile_name}/{role}"
+                )
 
     def test_get_model_for_agent_builder_balanced(self):
         model = self.get_model_for_agent("balanced", "builder")
@@ -293,13 +303,11 @@ class TestSearchHelpers:
         from shared.search_helpers import (
             detect_query_mode,
             generate_fuzzy_variants,
-            lance_fts_to_summary,
             merge_results,
         )
 
         self.detect_query_mode = detect_query_mode
         self.merge_results = merge_results
-        self.lance_fts_to_summary = lance_fts_to_summary
         self.generate_fuzzy_variants = generate_fuzzy_variants
 
     def test_detect_tag_query(self):
@@ -330,7 +338,9 @@ class TestSearchHelpers:
         assert self.detect_query_mode("why does gate 01 block edits?") == "semantic"
 
     def test_detect_semantic_long_query(self):
-        result = self.detect_query_mode("memory not being queried before edit operations")
+        result = self.detect_query_mode(
+            "memory not being queried before edit operations"
+        )
         assert result in ("semantic", "hybrid")
 
     def test_detect_full_hybrid_routing(self):
@@ -385,28 +395,7 @@ class TestSearchHelpers:
         assert "relevance" in results[0]
         assert results[0]["relevance"] > 0
 
-    def test_lance_fts_to_summary_basic(self):
-        row = {"id": "k1", "text": "hello world content", "tags": "type:fix", "_score": 0.95}
-        summary = self.lance_fts_to_summary(row)
-        assert summary["id"] == "k1"
-        assert summary["tags"] == "type:fix"
-        assert summary["fts_score"] == 0.95
-
-    def test_lance_fts_to_summary_preview_truncated(self):
-        row = {"id": "k1", "text": "a" * 200, "_score": 0.5}
-        summary = self.lance_fts_to_summary(row, summary_length=100)
-        assert len(summary["preview"]) <= 100
-
-    def test_lance_fts_to_summary_url_included(self):
-        row = {"id": "k1", "text": "content", "primary_source": "https://example.com"}
-        summary = self.lance_fts_to_summary(row)
-        assert "url" in summary
-        assert summary["url"] == "https://example.com"
-
-    def test_lance_fts_to_summary_no_url_when_missing(self):
-        row = {"id": "k1", "text": "content"}
-        summary = self.lance_fts_to_summary(row)
-        assert "url" not in summary
+    pass  # lance_fts_to_summary tests removed (function removed in SurrealDB migration)
 
     def test_generate_fuzzy_variants_returns_original(self):
         variants = self.generate_fuzzy_variants("error")
@@ -481,7 +470,9 @@ class TestToolProfiles:
 
     def test_record_failure_increments_counter(self):
         profiles = self._fresh()
-        self.record_failure(profiles, "Edit", {}, "PermissionError: cannot write to file")
+        self.record_failure(
+            profiles, "Edit", {}, "PermissionError: cannot write to file"
+        )
         assert profiles["Edit"]["failure_count"] == 1
 
     def test_record_failure_new_pattern_returned(self):
@@ -495,7 +486,9 @@ class TestToolProfiles:
 
     def test_record_failure_duplicate_not_returned(self):
         profiles = self._fresh()
-        self.record_failure(profiles, "Edit", {}, "PermissionError: cannot write to file")
+        self.record_failure(
+            profiles, "Edit", {}, "PermissionError: cannot write to file"
+        )
         result2 = self.record_failure(
             profiles, "Edit", {}, "PermissionError: cannot write to file"
         )
@@ -508,7 +501,9 @@ class TestToolProfiles:
 
     def test_add_precondition_adds_entry(self):
         profiles = self._fresh()
-        added = self.add_precondition(profiles, "Edit", "File must exist before editing")
+        added = self.add_precondition(
+            profiles, "Edit", "File must exist before editing"
+        )
         assert added is True
         profile = self.get_profile(profiles, "Edit")
         assert len(profile["preconditions"]) == 1
@@ -517,7 +512,9 @@ class TestToolProfiles:
     def test_add_precondition_duplicate_reinforces(self):
         profiles = self._fresh()
         self.add_precondition(profiles, "Edit", "File must exist before editing")
-        added2 = self.add_precondition(profiles, "Edit", "File must exist before editing")
+        added2 = self.add_precondition(
+            profiles, "Edit", "File must exist before editing"
+        )
         assert added2 is False
         profile = self.get_profile(profiles, "Edit")
         assert len(profile["preconditions"]) == 1
@@ -549,7 +546,9 @@ class TestToolProfiles:
 
     def test_get_warnings_for_tool_empty_profile(self):
         profiles = self._fresh()
-        warnings = self.get_warnings_for_tool(profiles, "Edit", {"file_path": "/foo.py"})
+        warnings = self.get_warnings_for_tool(
+            profiles, "Edit", {"file_path": "/foo.py"}
+        )
         assert isinstance(warnings, list)
 
 
@@ -558,6 +557,7 @@ class TestToolProfiles:
 # ============================================================
 
 
+@pytest.mark.skip(reason="dag_memory.py removed in SurrealDB migration (Task 14)")
 class TestDagMemoryBridge:
     """Test dag_memory.py bridge — fail-open, no external deps required."""
 
@@ -577,16 +577,25 @@ class TestDagMemoryBridge:
         self.get_dag_head_tag = get_dag_head_tag
 
     def test_has_learning_signal_fix(self):
-        assert self._has_learning_signal("fixed the auth bug by adding null check") is True
+        assert (
+            self._has_learning_signal("fixed the auth bug by adding null check") is True
+        )
 
     def test_has_learning_signal_decision(self):
-        assert self._has_learning_signal("decided to use SQLite instead of Redis") is True
+        assert (
+            self._has_learning_signal("decided to use SQLite instead of Redis") is True
+        )
 
     def test_has_learning_signal_correction(self):
-        assert self._has_learning_signal("actually the root cause was different") is True
+        assert (
+            self._has_learning_signal("actually the root cause was different") is True
+        )
 
     def test_has_learning_signal_discovery(self):
-        assert self._has_learning_signal("discovered that FTS5 is faster than LIKE") is True
+        assert (
+            self._has_learning_signal("discovered that FTS5 is faster than LIKE")
+            is True
+        )
 
     def test_has_learning_signal_pattern(self):
         assert self._has_learning_signal("this is an anti-pattern to avoid") is True
@@ -633,6 +642,7 @@ class TestDagMemoryBridge:
 # ============================================================
 
 
+@pytest.mark.skip(reason="dag_memory_layer.py removed in SurrealDB migration (Task 14)")
 class TestDagMemoryLayerHelpers:
     """Test private helpers in dag_memory_layer.py."""
 
@@ -642,19 +652,27 @@ class TestDagMemoryLayerHelpers:
         self._infer_tags = _infer_tags
 
     def test_infer_tags_fix_assistant(self):
-        tags = self._infer_tags("fixed the null pointer bug root cause found", "assistant")
+        tags = self._infer_tags(
+            "fixed the null pointer bug root cause found", "assistant"
+        )
         assert "type:fix" in tags
 
     def test_infer_tags_decision_assistant(self):
-        tags = self._infer_tags("decided to use async approach going with asyncio", "assistant")
+        tags = self._infer_tags(
+            "decided to use async approach going with asyncio", "assistant"
+        )
         assert "type:decision" in tags
 
     def test_infer_tags_learning_assistant(self):
-        tags = self._infer_tags("turns out FTS5 is much faster than LIKE queries", "assistant")
+        tags = self._infer_tags(
+            "turns out FTS5 is much faster than LIKE queries", "assistant"
+        )
         assert "type:learning" in tags
 
     def test_infer_tags_correction_user(self):
-        tags = self._infer_tags("actually no that's wrong approach entirely here", "user")
+        tags = self._infer_tags(
+            "actually no that's wrong approach entirely here", "user"
+        )
         assert "type:correction" in tags
 
     def test_infer_tags_feature_request_user(self):
@@ -662,7 +680,9 @@ class TestDagMemoryLayerHelpers:
         assert "type:feature-request" in tags
 
     def test_infer_tags_high_priority(self):
-        tags = self._infer_tags("this is critical breaking security vulnerability", "assistant")
+        tags = self._infer_tags(
+            "this is critical breaking security vulnerability", "assistant"
+        )
         assert "priority:high" in tags
 
     def test_infer_tags_fallback(self):
@@ -670,5 +690,7 @@ class TestDagMemoryLayerHelpers:
         assert tags == "type:auto-captured"
 
     def test_infer_tags_multiple_tags_comma_separated(self):
-        tags = self._infer_tags("fixed critical security bug breaking production", "assistant")
+        tags = self._infer_tags(
+            "fixed critical security bug breaking production", "assistant"
+        )
         assert "," in tags

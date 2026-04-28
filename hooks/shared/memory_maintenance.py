@@ -354,7 +354,7 @@ def _similarity_groups(entries):
     """Group memories by tag overlap to identify clusters and gaps.
 
     Uses a lightweight tag-intersection approach rather than embedding
-    similarity (keeps this module dependency-free from lancedb).
+    similarity (keeps this module lightweight and dependency-free).
 
     Returns:
         {

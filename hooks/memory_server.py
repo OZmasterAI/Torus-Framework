@@ -37,7 +37,7 @@ os.environ.setdefault("MKL_NUM_THREADS", "2")
 os.environ.setdefault("MALLOC_ARENA_MAX", "2")
 
 import ctypes as _ctypes
-from surrealdb import Surreal
+from surrealdb import Surreal, RecordID
 from mcp.server.fastmcp import FastMCP
 
 # Sideband file: write memory query timestamps here so the enforcer
@@ -767,8 +767,67 @@ def _tag_ids_to_summaries(memory_ids, collection_ref=None):
     return _sh_tag_ids_to_summaries(memory_ids, collection_ref or collection)
 
 
-from shared.cluster_store import cluster_label as _cluster_label
 from shared.error_normalizer import fnv1a_hash as _fnv1a_hash
+
+
+def _cluster_label(content: str) -> str:
+    """Extract top-3 meaningful words from content for a cluster label."""
+    import re as _re_cl
+    from collections import Counter as _Counter_cl
+
+    _stop = {
+        "this",
+        "that",
+        "with",
+        "from",
+        "have",
+        "been",
+        "were",
+        "will",
+        "would",
+        "could",
+        "should",
+        "their",
+        "there",
+        "they",
+        "which",
+        "when",
+        "what",
+        "where",
+        "than",
+        "then",
+        "also",
+        "about",
+        "into",
+        "more",
+        "some",
+        "such",
+        "only",
+        "other",
+        "each",
+        "just",
+        "like",
+        "over",
+        "very",
+        "after",
+        "before",
+        "between",
+        "under",
+        "again",
+        "does",
+        "done",
+        "make",
+        "made",
+        "most",
+        "much",
+        "must",
+        "need",
+    }
+    words = _re_cl.findall(r"[a-zA-Z_]{4,}", content.lower())
+    counts = _Counter_cl(w for w in words if w not in _stop)
+    top = [w for w, _ in counts.most_common(3)]
+    return " / ".join(top) if top else "misc"
+
 
 CLUSTER_THRESHOLD = 0.7
 
@@ -1920,6 +1979,29 @@ def remember_this(
             source_session_id=source_session_id,
             source_observation_ids=source_observation_ids,
         )
+
+        # RELATE: knowledge->derived_from->observation (fail-open)
+        if (
+            source_observation_ids
+            and not result.get("rejected")
+            and not result.get("deduplicated")
+        ):
+            try:
+                doc_id = result.get("id", "")
+                if _surreal_db is not None and doc_id:
+                    for oid in source_observation_ids.split(","):
+                        oid = oid.strip()
+                        if oid:
+                            _surreal_db.query(
+                                "RELATE $from->derived_from->$to SET timestamp=time::now()",
+                                {
+                                    "from": RecordID("knowledge", doc_id),
+                                    "to": RecordID("observation", oid),
+                                },
+                            )
+            except Exception:
+                pass
+
         return result
 
     # Pipeline not initialized — return error
@@ -2360,6 +2442,20 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
         ids=[chain_id],
     )
 
+    # RELATE: attempt->tried_for->error (fail-open)
+    try:
+        if _surreal_db is not None:
+            _surreal_db.query(
+                "RELATE $from->tried_for->$to SET strategy=$s, timestamp=time::now()",
+                {
+                    "from": RecordID("attempt", chain_id),
+                    "to": RecordID("error", error_hash),
+                    "s": strategy_id,
+                },
+            )
+    except Exception:
+        pass
+
     _touch_memory_timestamp()
 
     return {
@@ -2421,6 +2517,32 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
                 }
             ],
         )
+
+        # RELATE: fix->resolved/failed_on->error (fail-open)
+        try:
+            error_hash = meta.get("error_hash", "")
+            if _surreal_db is not None and error_hash:
+                if outcome == "success":
+                    _surreal_db.query(
+                        "RELATE $from->resolved->$to SET confidence=$c, chain_id=$chain, timestamp=time::now()",
+                        {
+                            "from": RecordID("fix", chain_id),
+                            "to": RecordID("error", error_hash),
+                            "c": confidence,
+                            "chain": chain_id,
+                        },
+                    )
+                else:
+                    _surreal_db.query(
+                        "RELATE $from->failed_on->$to SET chain_id=$chain, timestamp=time::now()",
+                        {
+                            "from": RecordID("fix", chain_id),
+                            "to": RecordID("error", error_hash),
+                            "chain": chain_id,
+                        },
+                    )
+        except Exception:
+            pass
 
         _touch_memory_timestamp()
 
@@ -2558,12 +2680,226 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
 
 @mcp.tool()
 @crash_proof
+def traverse_graph(start_id: str, depth: int = 2, direction: str = "both") -> dict:
+    """Traverse graph edges from a starting node to find connected memories.
+
+    Args:
+        start_id: The record ID to start from (e.g., "dk_abc123" for knowledge, or "hash_xyz" for error)
+        depth: How many hops to traverse (default 2, max 5)
+        direction: "out" (forward edges), "in" (reverse edges), or "both" (default)
+    """
+    _ensure_initialized()
+    if _surreal_degraded:
+        return {
+            "error": "Storage unavailable — running in degraded mode",
+            "degraded": True,
+        }
+    if _surreal_db is None:
+        return {"error": "SurrealDB not initialized"}
+
+    depth = max(1, min(depth, 5))
+    if direction not in ("out", "in", "both"):
+        direction = "both"
+
+    edges_out = []
+    edges_in = []
+
+    try:
+        # Determine possible tables from ID prefix
+        tables = ["knowledge"]
+        if start_id.startswith("obs_"):
+            tables = ["observation"]
+        elif start_id.startswith("dk_"):
+            tables = ["knowledge"]
+        else:
+            tables = ["attempt", "fix", "error"]
+
+        edge_types = ["tried_for", "resolved", "failed_on", "derived_from"]
+
+        if direction in ("out", "both"):
+            for table in tables:
+                for edge_type in edge_types:
+                    results = _surreal_db.query(
+                        f"SELECT * FROM {edge_type} WHERE in = type::thing($table, $id)",
+                        {"table": table, "id": start_id},
+                    )
+                    for r in results if isinstance(results, list) else []:
+                        edges_out.append(
+                            {
+                                "edge_type": edge_type,
+                                "from_table": table,
+                                "target": str(r.get("out", "")),
+                                "metadata": {
+                                    k: v
+                                    for k, v in r.items()
+                                    if k not in ("id", "in", "out")
+                                },
+                            }
+                        )
+
+        if direction in ("in", "both"):
+            for table in tables:
+                for edge_type in edge_types:
+                    results = _surreal_db.query(
+                        f"SELECT * FROM {edge_type} WHERE out = type::thing($table, $id)",
+                        {"table": table, "id": start_id},
+                    )
+                    for r in results if isinstance(results, list) else []:
+                        edges_in.append(
+                            {
+                                "edge_type": edge_type,
+                                "from_table": table,
+                                "source": str(r.get("in", "")),
+                                "metadata": {
+                                    k: v
+                                    for k, v in r.items()
+                                    if k not in ("id", "in", "out")
+                                },
+                            }
+                        )
+
+    except Exception as e:
+        return {"error": f"Graph traversal failed: {str(e)}"}
+
+    return {
+        "start_id": start_id,
+        "direction": direction,
+        "depth": depth,
+        "edges_out": edges_out,
+        "edges_in": edges_in,
+        "total_edges": len(edges_out) + len(edges_in),
+    }
+
+
+@mcp.tool()
+@crash_proof
+def find_pattern(strategy_or_error: str, pattern_type: str = "failed_strategy") -> dict:
+    """Find patterns in fix history using graph edges.
+
+    Args:
+        strategy_or_error: Strategy name or error text to search for
+        pattern_type: "failed_strategy" (strategies that keep failing), "successful_strategy" (what works), or "error_cascade" (errors linked to same strategy)
+    """
+    _ensure_initialized()
+    if _surreal_degraded:
+        return {
+            "error": "Storage unavailable — running in degraded mode",
+            "degraded": True,
+        }
+    if _surreal_db is None:
+        return {"error": "SurrealDB not initialized"}
+
+    if pattern_type not in ("failed_strategy", "successful_strategy", "error_cascade"):
+        pattern_type = "failed_strategy"
+
+    results = []
+
+    try:
+        if pattern_type == "failed_strategy":
+            rows = _surreal_db.query(
+                "SELECT *, in AS fix_node, out AS error_node FROM failed_on WHERE chain_id CONTAINS $s OR in.strategy = $s",
+                {"s": strategy_or_error},
+            )
+            if not rows or not isinstance(rows, list):
+                # Fallback: search fix_outcomes by strategy
+                fo = fix_outcomes.get(where={"strategy_id": strategy_or_error})
+                if fo and fo.get("metadatas"):
+                    for meta in fo["metadatas"]:
+                        if (
+                            meta.get("outcome") == "failure"
+                            or float(meta.get("confidence", 1)) < 0.18
+                        ):
+                            results.append(
+                                {
+                                    "strategy_id": meta.get("strategy_id", ""),
+                                    "error_hash": meta.get("error_hash", ""),
+                                    "confidence": float(meta.get("confidence", 0)),
+                                    "attempts": int(meta.get("attempts", 0)),
+                                    "pattern": "repeatedly_failing",
+                                }
+                            )
+            else:
+                for r in rows:
+                    results.append(
+                        {
+                            "fix_node": str(r.get("fix_node", "")),
+                            "error_node": str(r.get("error_node", "")),
+                            "chain_id": r.get("chain_id", ""),
+                            "timestamp": str(r.get("timestamp", "")),
+                            "pattern": "failed_edge",
+                        }
+                    )
+
+        elif pattern_type == "successful_strategy":
+            rows = _surreal_db.query(
+                "SELECT *, in AS fix_node, out AS error_node FROM resolved WHERE chain_id CONTAINS $s OR in.strategy = $s",
+                {"s": strategy_or_error},
+            )
+            if not rows or not isinstance(rows, list):
+                fo = fix_outcomes.get(where={"strategy_id": strategy_or_error})
+                if fo and fo.get("metadatas"):
+                    for meta in fo["metadatas"]:
+                        if (
+                            meta.get("outcome") == "success"
+                            or float(meta.get("confidence", 0)) > 0.5
+                        ):
+                            results.append(
+                                {
+                                    "strategy_id": meta.get("strategy_id", ""),
+                                    "error_hash": meta.get("error_hash", ""),
+                                    "confidence": float(meta.get("confidence", 0)),
+                                    "successes": int(meta.get("successes", 0)),
+                                    "pattern": "proven_effective",
+                                }
+                            )
+            else:
+                for r in rows:
+                    results.append(
+                        {
+                            "fix_node": str(r.get("fix_node", "")),
+                            "error_node": str(r.get("error_node", "")),
+                            "chain_id": r.get("chain_id", ""),
+                            "confidence": r.get("confidence", 0),
+                            "pattern": "resolved_edge",
+                        }
+                    )
+
+        elif pattern_type == "error_cascade":
+            _, error_hash = error_signature(strategy_or_error)
+            rows = _surreal_db.query(
+                "SELECT *, in AS attempt_node FROM tried_for WHERE out = type::thing('error', $hash)",
+                {"hash": error_hash},
+            )
+            if isinstance(rows, list):
+                for r in rows:
+                    results.append(
+                        {
+                            "attempt_node": str(r.get("attempt_node", "")),
+                            "strategy": r.get("strategy", ""),
+                            "timestamp": str(r.get("timestamp", "")),
+                            "pattern": "attempted_strategy",
+                        }
+                    )
+
+    except Exception as e:
+        return {"error": f"Pattern search failed: {str(e)}"}
+
+    return {
+        "query": strategy_or_error,
+        "pattern_type": pattern_type,
+        "results": results,
+        "count": len(results),
+    }
+
+
+@mcp.tool()
+@crash_proof
 def health_check() -> dict:
     """Return lightweight server health metrics.
 
     Returns server uptime, table row counts, last write timestamp,
     embedding model status, LanceDB connection status, Tags DB status,
-    total memory count, and disk usage of ~/data/memory/lancedb/.
+    total memory count, and disk usage of ~/data/memory/surrealdb/.
 
     No heavy queries — reads only cached globals and filesystem metadata.
     """
@@ -2599,7 +2935,7 @@ def health_check() -> dict:
     except Exception:
         pass
 
-    # Disk usage of lancedb directory
+    # Disk usage of surrealdb directory
     disk_bytes = 0
     try:
         if os.path.isdir(SURREAL_DIR):
@@ -2623,7 +2959,7 @@ def health_check() -> dict:
         "surrealdb": "connected"
         if (_surreal_db is not None and not _surreal_degraded)
         else ("degraded" if _surreal_degraded else "not_connected"),
-        "tags_db": "ok" if os.path.exists(TAGS_DB_PATH) else "missing",
+        "tags_db": "integrated",
         "disk_usage_mb": round(disk_bytes / (1024 * 1024), 2)
         if disk_bytes >= 0
         else -1,
@@ -3345,7 +3681,7 @@ def memory_health_report() -> dict:
         "total_memories": mem_count,
         "total_observations": obs_count,
         "total_fix_outcomes": fix_outcomes.count(),
-        "tag_index_count": unique_tags,
+        "unique_tags": unique_tags,
         "capture_queue_lines": queue_lines,
         "capture_queue_bytes": queue_bytes,
         "added_24h": added_24h,
@@ -3366,8 +3702,8 @@ def memory_health_report() -> dict:
     }
 
 
-def rebuild_tag_index() -> dict:
-    """No-op — tags are stored directly in SurrealDB records. Kept for API compat."""
+def rebuild_tags() -> dict:
+    """No-op — tags are stored directly in SurrealDB records."""
     return {"result": "No-op: tags stored in SurrealDB records directly"}
 
 
@@ -3437,7 +3773,7 @@ def _batch_rename_memories():
     # Rebuild FTS index to reflect changes
     if content_updated > 0 or tag_updated > 0:
         try:
-            rebuild_tag_index()
+            rebuild_tags()
         except Exception:
             pass
 
@@ -3567,7 +3903,7 @@ def maintenance(
     elif action == "health":
         return memory_health_report()
     elif action == "rebuild_tags":
-        return rebuild_tag_index()
+        return rebuild_tags()
     elif action == "optimize":
         return _optimize_tables()
     elif action == "batch_rename":
@@ -3841,9 +4177,9 @@ def _backup_database():
     import shutil
 
     if not os.path.isdir(SURREAL_DIR):
-        raise RuntimeError(f"LanceDB directory not found: {SURREAL_DIR}")
+        raise RuntimeError(f"SurrealDB directory not found: {SURREAL_DIR}")
 
-    bak_path = os.path.join(MEMORY_DIR, "lancedb.backup")
+    bak_path = os.path.join(MEMORY_DIR, "surrealdb.backup")
     tmp_path = bak_path + ".tmp"
 
     # Remove stale tmp if exists

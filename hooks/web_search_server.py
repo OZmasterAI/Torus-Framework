@@ -88,7 +88,7 @@ def web_search(query: str, n_results: int = 5) -> dict:
         n_results: Max results to return (1-20, default 5).
     """
     if not query or not query.strip():
-        return {"results": [], "count": 0, "source": "web_lancedb"}
+        return {"results": [], "count": 0, "source": "web_surrealdb"}
 
     n_results = max(1, min(20, n_results))
 
@@ -102,14 +102,14 @@ def web_search(query: str, n_results: int = 5) -> dict:
             include=["metadatas", "documents", "distances"],
         )
     except memory_socket.WorkerUnavailable as e:
-        return {"error": f"Memory worker unavailable: {e}", "source": "web_lancedb"}
+        return {"error": f"Memory worker unavailable: {e}", "source": "web_surrealdb"}
     except RuntimeError as e:
         if "Unknown collection" in str(e):
-            return {"results": [], "count": 0, "source": "web_lancedb"}
+            return {"results": [], "count": 0, "source": "web_surrealdb"}
         raise
 
     if not result or not result.get("ids") or not result["ids"][0]:
-        return {"results": [], "count": 0, "source": "web_lancedb"}
+        return {"results": [], "count": 0, "source": "web_surrealdb"}
 
     hits = []
     ids = result["ids"][0]
@@ -135,7 +135,7 @@ def web_search(query: str, n_results: int = 5) -> dict:
             }
         )
 
-    return {"results": hits, "count": len(hits), "source": "web_lancedb"}
+    return {"results": hits, "count": len(hits), "source": "web_surrealdb"}
 
 
 if __name__ == "__main__":

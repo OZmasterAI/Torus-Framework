@@ -52,17 +52,16 @@ class SearchPipeline:
     def __init__(
         self,
         collection,
-        tag_index=None,
         graph=None,
         ltp=None,
         adaptive=None,
         config=None,
         helpers=None,
+        **kwargs,
     ):
         """
         Args:
             collection: SurrealCollection for knowledge
-            tag_index: Unused (kept for backward compat, tags searched via collection)
             graph: KnowledgeGraph instance (or None)
             ltp: LTPTracker instance (or None)
             adaptive: AdaptiveWeights instance (or None)
@@ -72,12 +71,11 @@ class SearchPipeline:
                 detect_query_mode, search_observations_internal,
                 get_expanded_tags, tag_ids_to_summaries,
                 generate_counterfactual_query, touch_memory_timestamp,
-                validate_top_k, fix_outcomes, cluster_store,
+                validate_top_k, fix_outcomes,
                 server_project, server_subproject, embed_text,
                 search_by_tags_path (terminal history DB path)
         """
         self.collection = collection
-        self.tag_index = tag_index
         self.graph = graph
         self.ltp = ltp
         self.adaptive = adaptive

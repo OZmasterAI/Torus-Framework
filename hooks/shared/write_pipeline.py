@@ -27,25 +27,21 @@ class WritePipeline:
     tier classification, storage, and side effects.
     """
 
-    def __init__(
-        self, collection, tag_index=None, graph=None, config=None, helpers=None
-    ):
+    def __init__(self, collection, graph=None, config=None, helpers=None, **kwargs):
         """
         Args:
             collection: SurrealCollection for knowledge
-            tag_index: Unused (kept for backward compat)
             graph: KnowledgeGraph instance (or None)
             config: dict of config toggles
             helpers: dict of server-level helper functions:
                 normalize_tags, inject_project_tag, build_project_prefix,
                 check_dedup, classify_tier, extract_citations,
                 bridge_to_fix_outcomes, touch_memory_timestamp,
-                generate_id, embed_text, cluster_store,
+                generate_id, embed_text,
                 fix_outcomes, noise_regexes, min_content_length,
                 summary_length, server_project, server_subproject
         """
         self.collection = collection
-        self.tag_index = tag_index
         self.graph = graph
         self.config = config or {}
         self.h = helpers or {}
@@ -220,9 +216,9 @@ class WritePipeline:
         # Cluster assignment (reuse cached embedding)
         _assigned_cluster_id = ""
         try:
-            _cluster_store = h.get("cluster_store")
-            if _cluster_store and _cached_vec:
-                _assigned_cluster_id = _cluster_store.assign(_cached_vec, content)
+            _cluster_assign = h.get("cluster_assign")
+            if _cluster_assign and _cached_vec:
+                _assigned_cluster_id = _cluster_assign(_cached_vec, content)
         except Exception:
             pass
 

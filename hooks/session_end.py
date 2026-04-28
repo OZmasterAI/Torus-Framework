@@ -460,15 +460,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 proj_state["what_was_done"] = what_was_done
             if last_response_preview is not None:
                 proj_state["last_response_preview"] = last_response_preview
-            try:
-                from shared.dag import get_session_dag as _get_dag_proj
-
-                _proj_dag = _get_dag_proj("main")
-                _proj_binfo = _proj_dag.current_branch_info()
-                proj_state["dag_branch"] = _proj_binfo.get("name", "")
-                proj_state["dag_node_count"] = _proj_binfo.get("msg_count", 0)
-            except Exception:
-                pass
+            pass
             save_project_state(project_dir, proj_state)
             print(
                 f"[SESSION_END] Project state written: {project_dir}/.claude-state.json (session {proj_state['session_count']})",
@@ -480,17 +472,7 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
                 live_state["what_was_done"] = what_was_done
             if last_response_preview is not None:
                 live_state["last_response_preview"] = last_response_preview
-            try:
-                from shared.dag import get_session_dag as _get_dag_se
-
-                _se_dag = _get_dag_se("main")
-                _se_binfo = _se_dag.current_branch_info()
-                live_state["dag_branch"] = _se_binfo.get("name", "")
-                live_state["dag_branch_label"] = _se_dag.get_branch_label()
-                live_state["dag_node_count"] = _se_binfo.get("msg_count", 0)
-                live_state["dag_total_branches"] = _se_binfo.get("total_branches", 0)
-            except Exception:
-                pass
+            pass
 
             tmp = LIVE_STATE_FILE + ".tmp"
             with open(tmp, "w") as f:
@@ -636,12 +618,11 @@ def flush_capture_queue():
 
 def backup_database():
     """Backup database if DB changed since last backup. Fail-open."""
-    lance_dir = os.path.join(MEMORY_DIR, "lancedb")
-    bak_path = os.path.join(MEMORY_DIR, "lancedb.backup.tar.gz")
+    surreal_dir = os.path.join(MEMORY_DIR, "surrealdb")
+    bak_path = os.path.join(MEMORY_DIR, "surrealdb.backup.tar.gz")
     try:
-        # Mtime skip: don't re-backup if DB hasn't changed
-        if os.path.isdir(lance_dir) and os.path.exists(bak_path):
-            db_mtime = os.path.getmtime(lance_dir)
+        if os.path.isdir(surreal_dir) and os.path.exists(bak_path):
+            db_mtime = os.path.getmtime(surreal_dir)
             bak_mtime = os.path.getmtime(bak_path)
             if bak_mtime >= db_mtime:
                 print("[SESSION_END] Backup skipped (DB unchanged)", file=sys.stderr)
@@ -657,46 +638,8 @@ def backup_database():
 
 
 def compact_if_needed(threshold=100):
-    """Compact LanceDB tables if any table exceeds the version threshold.
-
-    Checks _versions/ directory count for each .lance table. If any exceeds
-    the threshold, sends an optimize request to memory_server via UDS socket.
-    Runs in the background process so there's no time pressure.
-    """
-    lance_dir = os.path.join(MEMORY_DIR, "lancedb")
-    if not os.path.isdir(lance_dir):
-        return
-    for name in os.listdir(lance_dir):
-        if not name.endswith(".lance"):
-            continue
-        versions_dir = os.path.join(lance_dir, name, "_versions")
-        if not os.path.isdir(versions_dir):
-            continue
-        count = len(os.listdir(versions_dir))
-        if count > threshold:
-            if not is_worker_available(retries=1, delay=0.2):
-                print(
-                    f"[SESSION_END] Compaction needed ({name}: {count} versions) but worker unavailable",
-                    file=sys.stderr,
-                )
-                return
-            from shared.memory_socket import optimize as socket_optimize
-
-            result = socket_optimize()
-            tables = result.get("tables", {}) if isinstance(result, dict) else {}
-            summary = ", ".join(
-                f"{t}: {v.get('rows_before', '?')}r/{v.get('duration_s', '?')}s"
-                for t, v in tables.items()
-            )
-            print(
-                f"[SESSION_END] Compacted LanceDB (trigger: {name} had {count} versions) — {summary}",
-                file=sys.stderr,
-            )
-            return  # optimize hits all tables, one call suffices
-    print(
-        "[SESSION_END] Compaction not needed (all tables under threshold)",
-        file=sys.stderr,
-    )
+    """No-op — SurrealDB handles compaction internally via RocksDB."""
+    pass
 
 
 def increment_session_count(metrics=None):
@@ -847,24 +790,7 @@ def _run_background(data_path):
     except Exception as e:
         print(f"[SESSION_END:bg] Audit flush failed: {e}", file=sys.stderr)
 
-    # DAG auto-promotion: promote high-value conversation nodes to SQLite knowledge
-    try:
-        from shared.dag import get_session_dag
-        from shared.dag_memory_layer import DAGMemoryLayer, promote_nodes
-
-        _dag = get_session_dag("main")
-        _dag_layer = DAGMemoryLayer(_dag)
-        _promoted = promote_nodes(_dag, _dag_layer)
-        if _promoted:
-            print(
-                f"[SESSION_END:bg] DAG auto-promoted {len(_promoted)} nodes to knowledge",
-                file=sys.stderr,
-            )
-        # FTS5 optimize: merge b-tree segments on session close
-        _dag.optimize_fts()
-        print("[SESSION_END:bg] DAG FTS5 optimized", file=sys.stderr)
-    except Exception as e:
-        print(f"[SESSION_END:bg] DAG promotion failed: {e}", file=sys.stderr)
+    pass  # DAG auto-promotion removed (SurrealDB migration)
 
     try:
         _tg_notify = False
@@ -901,7 +827,7 @@ def _run_background(data_path):
     except Exception:
         pass
 
-    # Batch classification at session end
+    # Batch classification at session end (via memory_server UDS socket)
     try:
         _cfg_path = os.path.join(CLAUDE_DIR, "config.json")
         _classify_mode = ""
@@ -909,31 +835,12 @@ def _run_background(data_path):
             with open(_cfg_path) as _cf:
                 _classify_mode = json.load(_cf).get("memory_classify_mode", "")
         if _classify_mode == "batch_end":
-            import lancedb as _lancedb
-            from shared.memory_classification import (
-                classify_via_daemon as _classify_via_daemon,
-            )
+            from shared.memory_socket import request as _socket_request
 
-            _lance_path = os.path.join(MEMORY_DIR, "lancedb")
-            _db = _lancedb.connect(_lance_path)
-            _tbl = _db.open_table("knowledge")
-            _rows = (
-                _tbl.search()
-                .where("memory_type = ''", prefilter=True)
-                .limit(200)
-                .to_list()
+            _result = _socket_request("batch_classify", params={"limit": 200})
+            _classified = (
+                _result.get("classified", 0) if isinstance(_result, dict) else 0
             )
-            _classified = 0
-            for _row in _rows:
-                _row_id = _row.get("id", "")
-                if not _row_id:
-                    continue
-                _mt = _classify_via_daemon(
-                    _row.get("document", "")[:500], _row.get("tags", "")
-                )
-                if _mt:
-                    _tbl.update(where=f"id = '{_row_id}'", values={"memory_type": _mt})
-                    _classified += 1
             print(
                 f"[SESSION_END:bg] Batch classified {_classified} memories",
                 file=sys.stderr,
