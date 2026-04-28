@@ -47,6 +47,7 @@ ScanEntry = Tuple[str, List[str], str, str]
 # Module-type detection helpers
 # ---------------------------------------------------------------------------
 
+
 def _is_gate_module(path: str) -> bool:
     """Return True if *path* looks like a gate module."""
     basename = os.path.basename(path)
@@ -64,7 +65,7 @@ def _is_skill_module(path: str) -> bool:
     """Return True if *path* lives inside a skills/ or skill-library/ directory."""
     normalized = os.path.normpath(path)
     parts = normalized.split(os.sep)
-    return "skills" in parts or "skill-library" in parts
+    return "skills" in parts or "skill-library" in parts or "torus-skills" in parts
 
 
 def _classify_function(func_name: str, args: List[str], module_path: str) -> str:
@@ -91,6 +92,7 @@ def _classify_function(func_name: str, args: List[str], module_path: str) -> str
 # ---------------------------------------------------------------------------
 # AST-based scanner (safe -- does not import the module)
 # ---------------------------------------------------------------------------
+
 
 def scan_module(path: str) -> List[ScanEntry]:
     """Scan a Python source file and return metadata for each public function.
@@ -403,6 +405,7 @@ def _find_hooks_dir(module_path: str) -> Optional[str]:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def generate_tests(scan_result: List[ScanEntry], module_path: str) -> str:
     """Generate a complete test file string from a scan_module() result.
 
@@ -430,9 +433,7 @@ def generate_tests(scan_result: List[ScanEntry], module_path: str) -> str:
             module_name=module_name,
             module_path=abs_path,
         ),
-        f'print("=" * 60)\n'
-        f'print("  Tests for: {module_name}")\n'
-        f'print("=" * 60)\n\n',
+        f'print("=" * 60)\nprint("  Tests for: {module_name}")\nprint("=" * 60)\n\n',
     ]
 
     for func_name, args, docstring, func_type in scan_result:
@@ -449,9 +450,7 @@ def generate_tests(scan_result: List[ScanEntry], module_path: str) -> str:
 
         elif func_type == "shared_util":
             # Inject _state setup only when the function accepts a state arg
-            ctx["state_setup"] = (
-                _state_setup_block() if _needs_state_stub(args) else ""
-            )
+            ctx["state_setup"] = _state_setup_block() if _needs_state_stub(args) else ""
             parts.append(_SHARED_UTIL_TEMPLATE.format(**ctx))
 
         elif func_type == "skill_entry":
@@ -497,13 +496,11 @@ if __name__ == "__main__":
         "module",
         nargs="?",
         default=os.path.join(os.path.dirname(__file__), "gate_router.py"),
-        help=(
-            "Path to the Python module to scan "
-            "(default: shared/gate_router.py)"
-        ),
+        help=("Path to the Python module to scan (default: shared/gate_router.py)"),
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default=None,
         help="Write generated tests to this file (default: print to stdout)",
     )

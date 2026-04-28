@@ -39,7 +39,7 @@ _DEFAULT_SETTINGS_PATH = os.path.join(_CLAUDE_DIR, "settings.json")
 _DEFAULT_LIVE_STATE_PATH = os.path.join(_CLAUDE_DIR, "LIVE_STATE.json")
 _DEFAULT_ENFORCER_PATH = os.path.join(_HOOKS_DIR, "enforcer.py")
 _DEFAULT_SKILLS_DIR = os.path.join(_CLAUDE_DIR, "skills")
-_DEFAULT_SKILL_LIBRARY_DIR = os.path.join(_CLAUDE_DIR, "skill-library")
+_DEFAULT_SKILL_LIBRARY_DIR = os.path.join(_CLAUDE_DIR, "torus-skills", "skill-library")
 _ALL_DEFAULT_SKILL_DIRS = [_DEFAULT_SKILL_LIBRARY_DIR, _DEFAULT_SKILLS_DIR]
 
 # Valid Claude Code hook event types
@@ -73,6 +73,7 @@ _LIVE_STATE_REQUIRED = {
 
 
 # ── validate_settings ────────────────────────────────────────────────────────
+
 
 def validate_settings(path=None):
     """Validate settings.json.
@@ -121,9 +122,7 @@ def validate_settings(path=None):
             )
 
         if not isinstance(entries, list):
-            errors.append(
-                f"settings.json: hooks['{event_type}'] must be an array"
-            )
+            errors.append(f"settings.json: hooks['{event_type}'] must be an array")
             continue
 
         for i, entry in enumerate(entries):
@@ -175,6 +174,7 @@ def validate_settings(path=None):
 
 # ── validate_live_state ──────────────────────────────────────────────────────
 
+
 def validate_live_state(path=None):
     """Validate LIVE_STATE.json.
 
@@ -220,6 +220,7 @@ def validate_live_state(path=None):
 
 # ── validate_gates ───────────────────────────────────────────────────────────
 
+
 def validate_gates(enforcer_path=None):
     """Validate that all gate modules in the canonical registry exist as files.
 
@@ -252,6 +253,7 @@ def validate_gates(enforcer_path=None):
 
 
 # ── validate_skills ──────────────────────────────────────────────────────────
+
 
 def validate_skills(skills_dir=None):
     """Validate that every skill directory contains a SKILL.md file.
@@ -295,13 +297,19 @@ def validate_skills(skills_dir=None):
                 errors.append(f"skill '{entry}': missing SKILL.md at {skill_md}")
 
     if not any_dir_exists:
-        errors.append(f"skills directories not found: {', '.join(str(s) for s in sdirs)}")
+        errors.append(
+            f"skills directories not found: {', '.join(str(s) for s in sdirs)}"
+        )
     elif found_skills == 0:
-        errors.append(f"no skill subdirectories found in: {', '.join(str(s) for s in sdirs)}")
+        errors.append(
+            f"no skill subdirectories found in: {', '.join(str(s) for s in sdirs)}"
+        )
 
     return errors
 
+
 # ── validate_all ─────────────────────────────────────────────────────────────
+
 
 def validate_all(base_dir=None):
     """Run all validators and return a summary dict.

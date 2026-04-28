@@ -13,6 +13,8 @@ rules/working-memory.md
 rules/working-summary.md
 
 # Session & runtime state
+LIVE_STATE.json
+*.pid
 history.jsonl
 hooks/state_*.json
 hooks/state_*.json.lock

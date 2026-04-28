@@ -45,7 +45,7 @@ except ImportError:
     _HAS_RAMDISK = False
 GATES_DIR = os.path.join(HOOKS_DIR, "gates")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
-SKILL_LIBRARY_DIR = os.path.join(CLAUDE_DIR, "skill-library")
+SKILL_LIBRARY_DIR = os.path.join(CLAUDE_DIR, "torus-skills", "skill-library")
 MODES_DIR = os.path.join(CLAUDE_DIR, "modes")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
