@@ -1,9 +1,9 @@
 {
-  "session_count": 721,
+  "session_count": 722,
   "project": "torus-framework",
-  "feature": "surrealdb-migration",
+  "feature": "surrealdb-v3-upgrade",
   "framework_version": "v3.2.0",
-  "what_was_done": "SurrealDB migration COMPLETE (16/16 tasks). Tasks 10-16 done this session: RELATE graph edges + traverse_graph/find_pattern MCP tools, auxiliary servers updated, tests rewritten, all LanceDB/DAG remnants archived, e2e verified (13/14 pass). Migration done — restart memory server to activate new MCP tools.",
+  "what_was_done": "SurrealDB v3 upgrade: embedded v2.3.10 (surrealkv://) \u2192 standalone v3.0.5 (ws://). Fixed bincode clog corruption. Exported 12,213 records, imported into v3. Disk 4.4GB\u2192560MB. Updated 8 files, systemd service created. Commit e1e2694.",
   "known_issues": [
     "LIVE_STATE.json not guarded by gate_07 (MEDIUM)",
     "hooks/findings_detector.py dormant (replaced by ~/projects/toroidal-detector/detector.py)",
@@ -11,14 +11,9 @@
     "Terminal scrollback duplication on this machine across all emulators \u2014 possibly Node v25.6.0 related"
   ],
   "next_steps": [
-    "pip uninstall lancedb pyarrow (when ready to fully cut over)",
+    "pip uninstall lancedb pyarrow (safe now \u2014 v3 verified working)",
     "Merge dag-claude branch to main",
-    "RELATE syntax gotcha: use RecordID objects as $from/$to params (NOT string interpolation)",
-    "Rollback (if needed): git 65193e9, data ~/data/memory/backups/pre_surrealdb_migration_20260427_133952/"
-  ],
-  "dag_branch": "main",
-  "dag_branch_label": "",
-  "dag_node_count": 175217,
-  "dag_total_branches": 910,
-  "last_response_preview": "Session 721: SurrealDB migration 16/16 COMPLETE. Tasks 10-16: RELATE graph edges (RecordID params), traverse_graph+find_pattern MCP tools, auxiliary servers updated, 5 legacy modules archived, e2e tests pass. Committed c6046d5. Memory server restarted with new tools. Gotcha: RELATE needs RecordID objects not string interpolation."
+    "Clean up old surrealdb/ and surrealdb.backup/ dirs (8.8GB recoverable)",
+    "Table counts return -1 on first health_check \u2014 investigate count() timing"
+  ]
 }
