@@ -1,7 +1,7 @@
 {
   "extraPaths": [
     ".",
-    "../skill-library/wrap-up/scripts",
-    "../skill-library/web/scripts"
+    "../torus-skills/skill-library/wrap-up/scripts",
+    "../torus-skills/skill-library/web/scripts"
   ]
 }

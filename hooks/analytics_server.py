@@ -1318,7 +1318,7 @@ def gate_drift(hours: int = 24) -> dict:
 def skill_dependencies() -> dict:
     """Analyze skill dependencies and shared module usage patterns.
 
-    Scans ~/.claude/skill-library/, parses scripts for shared module imports,
+    Scans ~/.claude/torus-skills/skill-library/, parses scripts for shared module imports,
     identifies missing dependencies and reuse opportunities.  Returns
     per-skill health status (healthy/degraded/unhealthy) with coverage
     percentages and actionable recommendations.

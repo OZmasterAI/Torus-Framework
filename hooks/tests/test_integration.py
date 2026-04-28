@@ -750,10 +750,10 @@ import subprocess as _bsg_sp
 
 _BSG_CLAUDE_DIR = os.path.expanduser("~/.claude")
 _STATUS_SCRIPT = os.path.join(
-    _BSG_CLAUDE_DIR, "skill-library", "status", "scripts", "gather.py"
+    _BSG_CLAUDE_DIR, "torus-skills", "skill-library", "status", "scripts", "gather.py"
 )
 _WRAPUP_SCRIPT = os.path.join(
-    _BSG_CLAUDE_DIR, "skill-library", "wrap-up", "scripts", "gather.py"
+    _BSG_CLAUDE_DIR, "torus-skills", "skill-library", "wrap-up", "scripts", "gather.py"
 )
 
 # 1. Status gather: produces valid dashboard text
@@ -833,7 +833,12 @@ if _bsg_wj:
     test("Wrap-up gather: warnings is list", isinstance(_bsg_wj.get("warnings"), list))
 
 # 3. Test risk_level computation directly
-sys.path.insert(0, os.path.join(_BSG_CLAUDE_DIR, "skill-library", "wrap-up", "scripts"))
+sys.path.insert(
+    0,
+    os.path.join(
+        _BSG_CLAUDE_DIR, "torus-skills", "skill-library", "wrap-up", "scripts"
+    ),
+)
 from gather import compute_risk_level as _bsg_crl
 
 _bsg_green = _bsg_crl(
@@ -877,7 +882,12 @@ test("Wrap-up gather: risk RED when memory count zero", _bsg_red2 == "RED")
 print("\n--- Web Skill Scripts ---")
 
 _WEB_SCRIPTS = os.path.join(
-    os.path.expanduser("~"), ".claude", "skill-library", "web", "scripts"
+    os.path.expanduser("~"),
+    ".claude",
+    "torus-skills",
+    "skill-library",
+    "web",
+    "scripts",
 )
 sys.path.insert(0, _WEB_SCRIPTS)
 
@@ -1025,7 +1035,12 @@ if _WEB_SCRIPTS_AVAILABLE:
 
     # SKILL.md exists and has correct commands
     _ws_skill_path = os.path.join(
-        os.path.expanduser("~"), ".claude", "skill-library", "web", "SKILL.md"
+        os.path.expanduser("~"),
+        ".claude",
+        "torus-skills",
+        "skill-library",
+        "web",
+        "SKILL.md",
     )
     test("Web: SKILL.md exists", os.path.isfile(_ws_skill_path))
     with open(_ws_skill_path) as _ws_sf:
@@ -1057,7 +1072,7 @@ print("\n--- PRP Skill ---")
 _prp_base = os.path.expanduser("~/.claude")
 
 # SKILL.md exists
-_prp_skill = os.path.join(_prp_base, "skill-library", "prp", "SKILL.md")
+_prp_skill = os.path.join(_prp_base, "torus-skills", "skill-library", "prp", "SKILL.md")
 test("PRP: SKILL.md exists", os.path.isfile(_prp_skill))
 
 # SKILL.md has generate/execute/list commands
@@ -1111,7 +1126,9 @@ print("\n--- Browser Skill ---")
 _browser_base = os.path.expanduser("~/.claude")
 
 # Browser skill is dormant — skip if not present
-_browser_skill = os.path.join(_browser_base, "skill-library", "browser", "SKILL.md")
+_browser_skill = os.path.join(
+    _browser_base, "torus-skills", "skill-library", "browser", "SKILL.md"
+)
 if os.path.isfile(_browser_skill):
     test("Browser: SKILL.md exists", True)
     with open(_browser_skill) as _bf:
@@ -1150,7 +1167,9 @@ test(
 )
 
 # /ralph SKILL.md
-_ralph_skill = os.path.join(_browser_base, "skill-library", "ralph", "SKILL.md")
+_ralph_skill = os.path.join(
+    _browser_base, "torus-skills", "skill-library", "ralph", "SKILL.md"
+)
 if os.path.isfile(_ralph_skill):
     with open(_ralph_skill) as _rf:
         _ralph_skill_src = _rf.read()
@@ -1393,7 +1412,7 @@ with open(_base_tmpl) as _f:
 test("PRP: base.md has Validate field", "**Validate**:" in _base_src)
 
 # Test: prp SKILL.md has status command
-_prp_skill = os.path.expanduser("~/.claude/skill-library/prp/SKILL.md")
+_prp_skill = os.path.expanduser("~/.claude/torus-skills/skill-library/prp/SKILL.md")
 with open(_prp_skill) as _f:
     _prp_src = _f.read()
 test("PRP: SKILL.md has /prp status command", "/prp status" in _prp_src)

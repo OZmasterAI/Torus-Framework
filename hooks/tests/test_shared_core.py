@@ -3848,7 +3848,7 @@ test(
 # ─────────────────────────────────────────────────
 print("\n--- New Skills: learn, self-improve, evolve, benchmark ---")
 
-_new_skills_base = os.path.expanduser("~/.claude/skill-library")
+_new_skills_base = os.path.expanduser("~/.claude/torus-skills/skill-library")
 
 # /learn skill
 _learn_path = os.path.join(_new_skills_base, "learn", "SKILL.md")
@@ -3970,7 +3970,9 @@ print("\n--- Sprint 2: New Skills (report, sprint, teach) ---")
 for _s2_skill in [
     "sprint",
 ]:  # report/teach planned but not created; optimize removed session 183
-    _s2_path = os.path.expanduser(f"~/.claude/skill-library/{_s2_skill}/SKILL.md")
+    _s2_path = os.path.expanduser(
+        f"~/.claude/torus-skills/skill-library/{_s2_skill}/SKILL.md"
+    )
     test(
         f"Sprint2 Skills: {_s2_skill}/SKILL.md exists",
         os.path.isfile(_s2_path),
@@ -6743,7 +6745,7 @@ test("Exempt base: non-exempt file", is_exempt_base("/tmp/app.py") is False)
 test(
     "Exempt base: non-skills path with /skills/",
     is_exempt_base("/tmp/skills/hack.py") is False,
-    "Only ~/.claude/skill-library/ should match, not any /skills/ substring",
+    "Only ~/.claude/torus-skills/skill-library/ should match, not any /skills/ substring",
 )
 
 # ── Standard tier ──
