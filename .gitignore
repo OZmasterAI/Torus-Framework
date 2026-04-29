@@ -126,8 +126,9 @@ backupclaude.md
 architecture.html
 diagram.html
 
-# Generated diagrams (local reference only)
+# Generated diagrams and stale plans (local reference only)
 docs/diagrams/
+docs/plans/
 
 # Pycache in skill libraries
 dormant/**/scripts/__pycache__/

@@ -15,7 +15,8 @@ AFTER any fix/decision/failed-approach/preference: `run_tool("memory", "remember
 For errors: use Causal Chain (below) then remember_this()
 
 ## THE LOOP (mandatory — do not skip steps)
-memory → brainstorm → writing-plans → implement → test → review → commit
+memory → brainstorm → writing-plans → tests → implement → prove → review → commit
+- Write failing tests BEFORE implementation — define "correct" before coding
 - All steps are toolshed skills: `run_tool("torus-skills", "invoke_skill", {"name": "brainstorm"})`, etc.
 - Do NOT use EnterPlanMode — brainstorm replaces it
 - For quick fixes: memory → fix → test → commit (skip brainstorm/writing-plans)
@@ -58,7 +59,7 @@ Discovery: `run_tool("torus-skills", "search_skills", {"query": "..."})`
 - "again" → query memory | "still" → prove it | "why" → investigate | ALL CAPS → re-read
 
 ## TESTING RULE
-When editing code, write or update tests for changed behavior. Look for existing test runner (package.json scripts, Cargo.toml, Makefile, test_framework.py) in the project root.
+Tests first: write failing tests before implementation to define correct behavior. When editing existing code, update tests for changed behavior. Look for existing test runner (package.json scripts, Cargo.toml, Makefile, test_framework.py) in the project root.
 
 
 ## TAGS
