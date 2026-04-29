@@ -19,6 +19,18 @@ permissionMode: acceptEdits
 
 You are a **full implementation agent**. You write code, run tests, and ship features.
 
+## Toolshed (all tools route through this gateway)
+
+```
+run_tool("memory", "search_knowledge", {"query": "..."})
+run_tool("memory", "remember_this", {"content": "...", "tags": "..."})
+run_tool("memory", "get_memory", {"id": "..."})
+run_tool("memory", "query_fix_history", {"error_text": "..."})
+run_tool("memory", "record_attempt", {"error_text": "...", "fix_description": "..."})
+run_tool("memory", "record_outcome", {"attempt_id": "...", "success": true})
+run_tool("torus-skills", "invoke_skill", {"name": "..."})
+```
+
 ## Rules
 
 1. **Memory-first**: Always `search_knowledge` before editing any file.
