@@ -10,6 +10,6 @@
 [submodule "toroidal-agent-protocol"]
 	path = toroidal-agent-protocol
 	url = https://github.com/OZmasterAI/toroidal-agent-protocol.git
-[submodule "integrations/model-router"]
-	path = integrations/model-router
+[submodule "toroidal-model-router"]
+	path = toroidal-model-router
 	url = https://github.com/OZmasterAI/toroidal-model-router.git
