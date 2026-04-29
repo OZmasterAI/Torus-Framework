@@ -22,5 +22,5 @@ globs: .claude/hooks/**, .claude/hooks/gates/**
 
 ## Testing
 - `hooks/test_framework.py` — main suite (all gates + shared modules)
-- `hooks/tests/` — 11 focused test files (safety, quality, operational, integration, etc.)
+- `hooks/tests/` — 46 focused test files (safety, quality, operational, integration, etc.)
 - All gates must have coverage in at least one location
