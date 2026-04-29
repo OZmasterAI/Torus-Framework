@@ -245,7 +245,7 @@ _SERVER_PROJECT_DIR = None
 _SERVER_SUBPROJECT = None
 _SERVER_SUBPROJECT_DIR = None
 try:
-    _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+    _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state"))
     from boot_pkg.util import detect_project
 
     _SERVER_PROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT, _SERVER_SUBPROJECT_DIR = (
@@ -3795,7 +3795,7 @@ def _gate_effectiveness_report() -> dict:
     """
     import glob as _glob
 
-    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state")
     # Also check ramdisk
     ramdisk_dir = f"/run/user/{os.getuid()}/claude-hooks"
     search_dirs = (
@@ -4092,7 +4092,7 @@ def get_teammate_context(agent_name: str = "", max_actions: int = 5) -> dict:
     import glob as _glob
 
     # Reuse the same pattern as subagent_context.py:find_current_session_state()
-    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state")
     try:
         pattern = os.path.join(state_dir, "state_*.json")
         files = _glob.glob(pattern)

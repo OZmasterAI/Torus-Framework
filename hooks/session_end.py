@@ -60,7 +60,7 @@ def _load_latest_state():
     state_files = glob.glob(os.path.join(state_dir, "state_*.json"))
     # Also check disk fallback if ramdisk dir differs
     if state_dir != HOOKS_DIR:
-        state_files += glob.glob(os.path.join(HOOKS_DIR, "state_*.json"))
+        state_files += glob.glob(os.path.join(HOOKS_DIR, ".state", "state_*.json"))
     if not state_files:
         return {}
     latest = max(state_files, key=os.path.getmtime)

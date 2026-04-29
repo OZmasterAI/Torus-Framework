@@ -20,7 +20,7 @@ from typing import Dict, List, Tuple
 # ── Path constants ─────────────────────────────────────────────────────────────
 
 _HOOKS_DIR = os.path.dirname(os.path.dirname(__file__))  # hooks/
-EFFECTIVENESS_FILE = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
+EFFECTIVENESS_FILE = os.path.join(_HOOKS_DIR, ".gate_data", ".gate_effectiveness.json")
 CAPTURE_QUEUE_FILE = os.path.join(_HOOKS_DIR, ".capture_queue.jsonl")
 
 # Human-readable display labels keyed by normalised gate key

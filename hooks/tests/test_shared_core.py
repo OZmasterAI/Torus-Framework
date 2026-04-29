@@ -767,11 +767,9 @@ if not MEMORY_SERVER_RUNNING:
             generate_id,
             collection,
             SUMMARY_LENGTH,
-            tag_index,
             _detect_query_mode,
             _merge_results,
             _rerank_keyword_overlap,
-            TagIndex,
             _lance_keyword_search,
         )
 
@@ -855,66 +853,13 @@ if not MEMORY_SERVER_RUNNING:
         )
 
         # ─────────────────────────────────────────────────
-        # Phase 2: Hybrid Search (TagIndex + LanceDB FTS)
+        # Phase 2: Hybrid Search (LanceDB FTS)
         # ─────────────────────────────────────────────────
-        print("\n--- Phase 2: Hybrid Search (TagIndex + LanceDB FTS) ---")
-
-        # Test: TagIndex built from LanceDB
-        test(
-            "TagIndex built from LanceDB",
-            tag_index is not None and isinstance(tag_index, TagIndex),
-        )
+        print("\n--- Phase 2: Hybrid Search (LanceDB FTS) ---")
 
         # Test: LanceDB keyword search finds known terms
         _kw_results = _lance_keyword_search("OBSERVATION_TTL_DAYS", top_k=5)
         test("LanceDB FTS keyword search finds results", isinstance(_kw_results, list))
-
-        # Test: TagIndex tag search (any mode) returns IDs
-        _tag_any = tag_index.tag_search(["type:fix"], match_all=False, top_k=20)
-        test(
-            "TagIndex tag search (any) returns results",
-            isinstance(_tag_any, list)
-            and len(_tag_any) > 0
-            and isinstance(_tag_any[0], str),
-        )
-
-        # Test: TagIndex tag search (all mode) requires all tags present
-        _tag_all = tag_index.tag_search(
-            ["type:fix", "area:framework"], match_all=True, top_k=20
-        )
-        # Every returned ID must have BOTH tags in the tags table
-        _tag_all_check = True
-        for _tid in _tag_all[:5]:
-            _mem_tags = tag_index.conn.execute(
-                "SELECT tag FROM tags WHERE memory_id = ?", (_tid,)
-            ).fetchall()
-            _mem_tag_set = {r[0] for r in _mem_tags}
-            if "type:fix" not in _mem_tag_set or "area:framework" not in _mem_tag_set:
-                _tag_all_check = False
-                break
-        test(
-            "TagIndex tag search (all) requires all tags",
-            _tag_all_check and len(_tag_all) > 0,
-        )
-
-        # Test: TagIndex add_tags + search
-        _ti_test = TagIndex()
-        _ti_test.add_tags("test1", "type:fix,area:framework")
-        _ti_test.add_tags("test1", "type:fix,area:updated")  # upsert
-        _ti_found = _ti_test.tag_search(["area:updated"], match_all=False, top_k=5)
-        _ti_old = _ti_test.tag_search(["area:framework"], match_all=False, top_k=5)
-        test(
-            "TagIndex add_tags upserts correctly",
-            "test1" in _ti_found and "test1" not in _ti_old,
-        )
-
-        # Test: Empty TagIndex returns gracefully
-        _empty_ti = TagIndex()
-        _empty_tag = _empty_ti.tag_search(["none"], top_k=5)
-        test(
-            "Empty TagIndex returns empty lists",
-            isinstance(_empty_tag, list) and len(_empty_tag) == 0,
-        )
 
         # Test: _detect_query_mode routing (basic — full suite in always-run section)
         test(
@@ -3484,97 +3429,6 @@ test(
     "routing unknown: falls to default",
     _dqm("framework gate fix", routing="bogus") == "hybrid",
 )
-
-# ─────────────────────────────────────────────────
-# TagIndex Persistence Tests (no LanceDB needed — safe to run always)
-# ─────────────────────────────────────────────────
-print("\n--- TagIndex Persistence ---")
-
-import tempfile
-from memory_server import TagIndex
-
-with tempfile.TemporaryDirectory() as _tmpdir:
-    _db_path = os.path.join(_tmpdir, "test_tags.db")
-    _pidx = TagIndex(db_path=_db_path)
-    test("TagIndex persistent DB creates file", os.path.isfile(_db_path))
-
-# sync_meta table exists
-_sidx = TagIndex()  # in-memory
-_tables = _sidx.conn.execute(
-    "SELECT name FROM sqlite_master WHERE type='table'"
-).fetchall()
-_table_names = {r[0] for r in _tables}
-test(
-    "TagIndex sync_meta table exists",
-    "sync_meta" in _table_names and "tags" in _table_names,
-)
-
-# is_synced returns False when empty
-_sidx2 = TagIndex()
-test("TagIndex is_synced returns False when empty", not _sidx2.is_synced(100))
-
-# is_synced returns True when matching
-_sidx3 = TagIndex()
-_sidx3._update_sync_count(42)
-test("TagIndex is_synced returns True when matching", _sidx3.is_synced(42))
-
-# is_synced returns False on mismatch
-test("TagIndex is_synced returns False on mismatch", not _sidx3.is_synced(43))
-
-# add_tags works and increments sync_count
-_sidx4 = TagIndex()
-_sidx4._update_sync_count(10)
-_sidx4.add_tags("mem1", "type:fix,area:framework")
-_tags_found = _sidx4.tag_search(["type:fix"], top_k=5)
-test("TagIndex add_tags stores and finds tags", "mem1" in _tags_found)
-
-
-# build_from_lance populates tags from LanceDB table
-class _MockLanceCol:
-    def count(self):
-        return 3
-
-    def get(self, limit=10, include=None):
-        return {
-            "ids": ["a", "b", "c"],
-            "metadatas": [
-                {"tags": "type:fix,area:backend"},
-                {"tags": "type:learning"},
-                {"tags": "area:framework,priority:high"},
-            ],
-        }
-
-
-_sidx5 = TagIndex()
-_count5 = _sidx5.build_from_lance(_MockLanceCol())
-test("TagIndex build_from_lance sets sync_count", _count5 == 3 and _sidx5.is_synced(3))
-
-# reset_and_rebuild clears old data
-_sidx6 = TagIndex()
-_sidx6.add_tags("old1", "type:old")
-_sidx6.reset_and_rebuild(_MockLanceCol())
-_old_search = _sidx6.tag_search(["type:old"], top_k=5)
-_new_search = _sidx6.tag_search(["type:fix"], top_k=5)
-test(
-    "TagIndex reset_and_rebuild clears old + rebuilds",
-    len(_old_search) == 0 and len(_new_search) > 0,
-)
-
-# :memory: mode backward compatible
-_sidx7 = TagIndex()
-_sidx7.add_tags("compat1", "type:test")
-_compat_search = _sidx7.tag_search(["type:test"], top_k=5)
-test("TagIndex :memory: mode backward compatible", "compat1" in _compat_search)
-
-# Persistent DB survives reconnect
-with tempfile.TemporaryDirectory() as _tmpdir2:
-    _db_path2 = os.path.join(_tmpdir2, "persist_test.db")
-    _pidx2 = TagIndex(db_path=_db_path2)
-    _pidx2.add_tags("persist1", "type:persisted")
-    del _pidx2
-    _pidx3 = TagIndex(db_path=_db_path2)
-    _persist_search = _pidx3.tag_search(["type:persisted"], top_k=5)
-    test("TagIndex persistent DB survives reconnect", "persist1" in _persist_search)
 
 # ─────────────────────────────────────────────────
 # UDS Socket Client Tests (memory_socket.py)

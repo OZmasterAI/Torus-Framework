@@ -16,8 +16,9 @@ rules/working-summary.md
 LIVE_STATE.json
 *.pid
 history.jsonl
-hooks/state_*.json
-hooks/state_*.json.lock
+hooks/.state/
+hooks/.operations/
+hooks/.untested/
 hooks/.memory_last_queried
 hooks/.capture_queue.jsonl
 hooks/.prompt_last_hash
@@ -34,11 +35,9 @@ hooks/.memory_last_saved
 hooks/.memory_server.pid
 hooks/.session_cwd
 hooks/.auto_commit_staged*.txt
-hooks/.untested_code_files_*.json
 hooks/.audit_trail.jsonl
 hooks/.circuit_breaker_state.json
-hooks/.gate_effectiveness.json
-hooks/.gate_effectiveness_*.json
+hooks/.gate_data/
 hooks/.gate_qtable.json
 hooks/.gate_timings.json
 hooks/__pycache__/
@@ -111,7 +110,7 @@ hooks/.integrity_hashes.json
 hooks/.remediation_stats.json
 hooks/scripts/__pycache__/
 hooks/tests/__pycache__/
-hooks/.enforcer_sideband_*.json
+hooks/.sideband/
 hooks/.plugin_registry_cache.json
 
 # Integration runtime state
@@ -142,7 +141,7 @@ plugins/marketplaces/
 integrations/tts-voices/
 
 # Model router runtime config (contains API keys)
-integrations/model-router/router_config.toml
+toroidal-model-router/router_config.toml
 
 # Dormant (private/project-specific)
 dormant/skills/market/
@@ -169,10 +168,6 @@ results.tsv
 # Session end background logs
 hooks/.session_end_bg.log
 hooks/session_end.py.bak
-
-# Session operations (per-session, ephemeral)
-hooks/operations_*.json
-hooks/operations_*.json.lock
 
 # IDE lock files
 ide/*.lock

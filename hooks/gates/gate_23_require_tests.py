@@ -41,7 +41,8 @@ STATE_DIR = os.path.join(os.path.expanduser("~/.claude"), "hooks", ".state")
 
 STATE_KEY = "untested_code_files"
 
-_TRACKER_DIR = os.path.expanduser("~/.claude/hooks")
+_TRACKER_DIR = os.path.expanduser("~/.claude/hooks/.untested")
+os.makedirs(_TRACKER_DIR, exist_ok=True)
 _TRACKER_FILE = os.path.join(_TRACKER_DIR, ".untested_code_files.json")  # legacy
 
 

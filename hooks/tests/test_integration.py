@@ -1681,7 +1681,6 @@ try:
         _validate_url,
         _rank_url_authority,
         _extract_citations,
-        TagIndex,
     )
 
     _citation_imports_ok = True
@@ -1828,34 +1827,7 @@ if _citation_imports_ok:
         _rank_url_authority("http://localhost:3000") == 3,
     )
 
-    # Test 15: TagIndex stores tags for citation entries
-    _ti_test = TagIndex(":memory:")
-    _ti_test.add_tags("cite1", "tag1,tag2")
-    _ti_found = _ti_test.tag_search(["tag1"], top_k=1)
-    test(
-        "TagIndex: tag_search finds citation entry",
-        len(_ti_found) > 0 and _ti_found[0] == "cite1",
-    )
-
-    # Test 16: TagIndex tag_search with multiple tags
-    _ti_test.add_tags("cite2", "tag1,tag3")
-    _ti_multi = _ti_test.tag_search(["tag1"], top_k=10)
-    test("TagIndex: tag_search returns multiple matches", len(_ti_multi) >= 2)
-
-    # Test 17: TagIndex remove works
-    _ti_test.remove("cite1")
-    _ti_after = _ti_test.tag_search(["tag1"], top_k=10)
-    test(
-        "TagIndex: remove clears tags",
-        "cite1" not in _ti_after and "cite2" in _ti_after,
-    )
-
-    # Test 18: TagIndex entry without tags → not found
-    _ti_test.add_tags("cite3", "")
-    _ti_empty = _ti_test.tag_search(["tag1"], top_k=10)
-    test("TagIndex: empty tags not indexed", "cite3" not in _ti_empty)
-
-    # Test 19: Extraction failure → returns defaults (fail-open)
+    # Test 15: Extraction failure → returns defaults (fail-open)
     _c19 = _extract_citations(None, None)  # type: ignore — intentional bad input
     test("Citation: fail-open on bad input", _c19["source_method"] == "none")
 

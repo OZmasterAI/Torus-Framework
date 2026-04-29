@@ -224,7 +224,7 @@ def _collect_state_warnings():
         import glob as _glob
 
         state_files = sorted(
-            _glob.glob(os.path.join(_HOOKS_DIR, "state_*.json")),
+            _glob.glob(os.path.join(_HOOKS_DIR, ".state", "state_*.json")),
             key=os.path.getmtime,
             reverse=True,
         )

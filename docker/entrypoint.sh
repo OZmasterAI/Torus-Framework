@@ -26,10 +26,9 @@ if [ -d "$REPO_MOUNT" ]; then
         --exclude='file-history' --exclude='paste-cache' --exclude='plugins' \
         --exclude='__pycache__' \
         "$REPO_MOUNT/" "$CONF/"
-    # Copy model-router separately (rest of integrations/ is 1.5GB junk)
-    if [ -d "$REPO_MOUNT/integrations/model-router" ]; then
-        mkdir -p "$CONF/integrations"
-        cp -r "$REPO_MOUNT/integrations/model-router" "$CONF/integrations/"
+    # Copy model-router submodule (now at repo root)
+    if [ -d "$REPO_MOUNT/toroidal-model-router" ]; then
+        cp -r "$REPO_MOUNT/toroidal-model-router" "$CONF/toroidal-model-router"
         echo "  Model router: copied"
     fi
     echo "  Gates: $(ls $CONF/hooks/gates/gate_*.py 2>/dev/null | wc -l)"

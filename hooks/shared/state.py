@@ -77,7 +77,9 @@ def state_file_for(session_id="main"):
     safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
     if not safe_id:
         safe_id = "main"
-    return os.path.join(STATE_DIR, f"state_{safe_id}.json")
+    state_dir = os.path.join(STATE_DIR, ".state")
+    os.makedirs(state_dir, exist_ok=True)
+    return os.path.join(state_dir, f"state_{safe_id}.json")
 
 
 def _sideband_path_for(session_id="main"):
@@ -85,7 +87,9 @@ def _sideband_path_for(session_id="main"):
     safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
     if not safe_id:
         safe_id = "main"
-    return os.path.join(STATE_DIR, f".enforcer_sideband_{safe_id}.json")
+    sideband_dir = os.path.join(STATE_DIR, ".sideband")
+    os.makedirs(sideband_dir, exist_ok=True)
+    return os.path.join(sideband_dir, f".enforcer_sideband_{safe_id}.json")
 
 
 def write_enforcer_sideband(state, session_id="main"):
@@ -1063,7 +1067,8 @@ def cleanup_all_states():
     shared state file (state.json) from previous sessions.
     """
     # Remove per-session state files and their lock files
-    pattern = os.path.join(STATE_DIR, "state_*.json")
+    _state_subdir = os.path.join(STATE_DIR, ".state")
+    pattern = os.path.join(_state_subdir, "state_*.json")
     for f in glob.glob(pattern):
         # Don't remove .tmp files (in-progress writes)
         if not f.endswith(".tmp"):
@@ -1072,7 +1077,7 @@ def cleanup_all_states():
             except OSError:
                 pass
     # Clean up lock files
-    lock_pattern = os.path.join(STATE_DIR, "state_*.json.lock")
+    lock_pattern = os.path.join(_state_subdir, "state_*.json.lock")
     for f in glob.glob(lock_pattern):
         try:
             os.remove(f)
@@ -1090,7 +1095,9 @@ def cleanup_all_states():
 
 # --- Persistent gate effectiveness (survives across sessions) ---
 
-EFFECTIVENESS_FILE = os.path.join(_DISK_STATE_DIR, ".gate_effectiveness.json")
+_GATE_DATA_DIR = os.path.join(_DISK_STATE_DIR, ".gate_data")
+os.makedirs(_GATE_DATA_DIR, exist_ok=True)
+EFFECTIVENESS_FILE = os.path.join(_GATE_DATA_DIR, ".gate_effectiveness.json")
 
 
 def update_gate_effectiveness(gate: str, field: str, session_id=None):
@@ -1136,7 +1143,7 @@ def load_gate_effectiveness(session_id=None):
     try:
         import glob as _glob
 
-        pattern = os.path.join(_DISK_STATE_DIR, ".gate_effectiveness*.json")
+        pattern = os.path.join(_GATE_DATA_DIR, ".gate_effectiveness*.json")
         for path in _glob.glob(pattern):
             try:
                 with open(path) as f:

@@ -134,9 +134,10 @@ def _detect_session_id() -> str:
         except OSError:
             continue
 
-    # Also check hooks dir if different
-    if state_dir != _HOOKS_DIR:
-        for fpath in _glob.glob(os.path.join(_HOOKS_DIR, "state_*.json")):
+    # Also check hooks disk dir if different
+    _hooks_state_dir = os.path.join(_HOOKS_DIR, ".state")
+    if state_dir != _hooks_state_dir:
+        for fpath in _glob.glob(os.path.join(_hooks_state_dir, "state_*.json")):
             if fpath.endswith(".lock") or ".tmp." in fpath:
                 continue
             basename = os.path.basename(fpath)
@@ -2164,7 +2165,7 @@ def framework_health_score() -> dict:
 
     # 4. Gate effectiveness (20% weight)
     try:
-        eff_path = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
+        eff_path = os.path.join(_HOOKS_DIR, ".gate_data", ".gate_effectiveness.json")
         if os.path.exists(eff_path):
             with open(eff_path) as f:
                 eff = _json.load(f)
@@ -2241,7 +2242,8 @@ def session_context_snapshot() -> dict:
         import glob as _glob2
 
         state_files = sorted(
-            _glob2.glob(os.path.join(state_dir, "state_*.json")),
+            _glob2.glob(os.path.join(state_dir, "state_*.json"))
+            + _glob2.glob(os.path.join(state_dir, ".state", "state_*.json")),
             key=os.path.getmtime,
             reverse=True,
         )

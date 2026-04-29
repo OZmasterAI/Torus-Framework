@@ -1,0 +1,9 @@
+# Runtime config (contains API keys — use router_config.example.toml as template)
+router_config.toml
+
+# Python
+__pycache__/
+*.pyc
+
+# Results data
+results/
