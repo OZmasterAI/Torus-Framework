@@ -6,11 +6,8 @@ tools:
   - Glob
   - Grep
   - Bash
-  - mcp__memory__search_knowledge
-  - mcp__memory__get_memory
-  - mcp__memory__remember_this
-  - mcp__memory__record_attempt
-  - mcp__memory__record_outcome
+  - mcp__toolshed__run_tool
+  - mcp__toolshed__list_tools
 model: sonnet
 permissionMode: default
 ---

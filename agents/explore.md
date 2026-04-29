@@ -8,9 +8,8 @@ tools:
   - Bash
   - WebFetch
   - WebSearch
-  - mcp__memory__search_knowledge
-  - mcp__memory__get_memory
-  - mcp__memory__remember_this
+  - mcp__toolshed__run_tool
+  - mcp__toolshed__list_tools
 model: sonnet
 permissionMode: default
 ---
