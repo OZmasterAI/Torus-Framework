@@ -18,22 +18,27 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 ITERATIONS = 1000
-TMPFS_DIR = "/run/user/1000/claude-hooks"
+TMPFS_DIR = f"/run/user/{os.getuid()}/claude-hooks"
 DISK_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 
 
 def make_entry(i):
     """Create a realistic audit log entry."""
-    return json.dumps({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "gate": f"GATE {i % 12 + 1}: BENCHMARK",
-        "tool": "Bash",
-        "decision": "pass",
-        "reason": f"Benchmark iteration {i}",
-        "session_id": "bench-session",
-        "state_keys": ["files_read", "pending_verification"],
-        "severity": "info",
-    }) + "\n"
+    return (
+        json.dumps(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "gate": f"GATE {i % 12 + 1}: BENCHMARK",
+                "tool": "Bash",
+                "decision": "pass",
+                "reason": f"Benchmark iteration {i}",
+                "session_id": "bench-session",
+                "state_keys": ["files_read", "pending_verification"],
+                "severity": "info",
+            }
+        )
+        + "\n"
+    )
 
 
 def benchmark_writes(directory, fsync_each=False):
@@ -85,8 +90,14 @@ def print_speedup(tmpfs_stats, disk_stats):
         if tmpfs_stats[metric] > 0:
             factor = disk_stats[metric] / tmpfs_stats[metric]
             print(f"    {metric:>4}: {factor:6.1f}x faster on tmpfs")
-    total_factor = disk_stats["total_ms"] / tmpfs_stats["total_ms"] if tmpfs_stats["total_ms"] > 0 else 0
-    print(f"\n  Total: tmpfs={tmpfs_stats['total_ms']:.1f}ms vs disk={disk_stats['total_ms']:.1f}ms ({total_factor:.1f}x)")
+    total_factor = (
+        disk_stats["total_ms"] / tmpfs_stats["total_ms"]
+        if tmpfs_stats["total_ms"] > 0
+        else 0
+    )
+    print(
+        f"\n  Total: tmpfs={tmpfs_stats['total_ms']:.1f}ms vs disk={disk_stats['total_ms']:.1f}ms ({total_factor:.1f}x)"
+    )
 
 
 def main():
@@ -142,8 +153,12 @@ def main():
     print("\n" + "=" * 60)
     print("  SUMMARY")
     print("=" * 60)
-    buf_factor = disk_buf_s["mean"] / tmpfs_buf_s["mean"] if tmpfs_buf_s["mean"] > 0 else 0
-    sync_factor = disk_sync_s["mean"] / tmpfs_sync_s["mean"] if tmpfs_sync_s["mean"] > 0 else 0
+    buf_factor = (
+        disk_buf_s["mean"] / tmpfs_buf_s["mean"] if tmpfs_buf_s["mean"] > 0 else 0
+    )
+    sync_factor = (
+        disk_sync_s["mean"] / tmpfs_sync_s["mean"] if tmpfs_sync_s["mean"] > 0 else 0
+    )
     print(f"  Buffered:  {buf_factor:.1f}x faster (page cache masks disk latency)")
     print(f"  Durable:   {sync_factor:.1f}x faster (true hardware gap)")
     print(f"\n  Note: Hook I/O uses buffered writes (no fsync).")

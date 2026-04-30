@@ -20,7 +20,7 @@ from typing import Dict, List, Tuple
 
 AUDIT_DIRS = [
     os.path.join(os.path.expanduser("~"), ".claude", "hooks", "audit"),
-    "/run/user/1000/claude-hooks/audit",
+    f"/run/user/{os.getuid()}/claude-hooks/audit",
 ]
 
 

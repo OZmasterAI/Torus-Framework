@@ -151,6 +151,19 @@ dormant/teams/
 # Runtime state (operational data, not source)
 hooks/.experience_archive.csv
 hooks/.circuit_breaker.json
+hooks/.statusline_raw_keys.json
+hooks/.tool_fingerprints.json
+hooks/.enforcer_hash
+
+# Per-session operations & state files (runtime, auto-generated)
+hooks/operations_*.json
+hooks/operations_*.json.lock
+hooks/state_*.json.lock
+hooks/.untested_code_files_*.json
+
+# Plugin cache (fetched from marketplace, not source)
+plugins/install-counts-cache.json
+plugins/*.tmp
 
 # Skill library runtime logs
 skill-library/.usage_log.jsonl

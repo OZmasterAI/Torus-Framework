@@ -22,7 +22,7 @@ from datetime import date, timedelta
 
 AUDIT_DIRS = [
     os.path.join(os.path.expanduser("~"), ".claude", "hooks", "audit"),
-    "/run/user/1000/claude-hooks/audit",
+    f"/run/user/{os.getuid()}/claude-hooks/audit",
 ]
 
 DEFAULT_COMPRESS_DAYS = 7
@@ -63,23 +63,33 @@ def scan_audit_files():
             except ValueError:
                 continue
 
-            ext = ".jsonl.gz" if name.endswith(".jsonl.gz") else ".jsonl" if name.endswith(".jsonl") else ""
+            ext = (
+                ".jsonl.gz"
+                if name.endswith(".jsonl.gz")
+                else ".jsonl"
+                if name.endswith(".jsonl")
+                else ""
+            )
             if not ext:
                 continue
 
-            files.append({
-                "path": entry.path,
-                "filename": name,
-                "ext": ext,
-                "date_str": date_str,
-                "age_days": age_days,
-                "size_bytes": entry.stat().st_size,
-            })
+            files.append(
+                {
+                    "path": entry.path,
+                    "filename": name,
+                    "ext": ext,
+                    "date_str": date_str,
+                    "age_days": age_days,
+                    "size_bytes": entry.stat().st_size,
+                }
+            )
 
     return sorted(files, key=lambda x: x["date_str"])
 
 
-def rotate(compress_days=DEFAULT_COMPRESS_DAYS, delete_days=DEFAULT_DELETE_DAYS, dry_run=True):
+def rotate(
+    compress_days=DEFAULT_COMPRESS_DAYS, delete_days=DEFAULT_DELETE_DAYS, dry_run=True
+):
     """Execute audit log rotation.
 
     Returns dict with rotation results.
@@ -123,7 +133,9 @@ def rotate(compress_days=DEFAULT_COMPRESS_DAYS, delete_days=DEFAULT_DELETE_DAYS,
 
     # Calculate after size
     after_files = scan_audit_files() if not dry_run else files
-    after_size = sum(f["size_bytes"] for f in after_files) if not dry_run else before_size
+    after_size = (
+        sum(f["size_bytes"] for f in after_files) if not dry_run else before_size
+    )
 
     return {
         "dry_run": dry_run,
@@ -133,7 +145,9 @@ def rotate(compress_days=DEFAULT_COMPRESS_DAYS, delete_days=DEFAULT_DELETE_DAYS,
         "errors": errors,
         "before_size_mb": round(before_size / (1024 * 1024), 2),
         "after_size_mb": round(after_size / (1024 * 1024), 2),
-        "saved_mb": round((before_size - after_size) / (1024 * 1024), 2) if not dry_run else 0,
+        "saved_mb": round((before_size - after_size) / (1024 * 1024), 2)
+        if not dry_run
+        else 0,
     }
 
 
@@ -152,7 +166,7 @@ def main():
     print(f"  Compressed: {result['compressed']}")
     print(f"  Deleted: {result['deleted']}")
     print(f"  Disk: {result['before_size_mb']}MB -> {result['after_size_mb']}MB")
-    if result['errors']:
+    if result["errors"]:
         print(f"  Errors: {len(result['errors'])}")
 
 

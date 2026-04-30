@@ -245,7 +245,9 @@ _SERVER_PROJECT_DIR = None
 _SERVER_SUBPROJECT = None
 _SERVER_SUBPROJECT_DIR = None
 try:
-    _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state"))
+    _sys.path.insert(
+        0, os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state")
+    )
     from boot_pkg.util import detect_project
 
     _SERVER_PROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT, _SERVER_SUBPROJECT_DIR = (
@@ -354,7 +356,12 @@ def _init_surrealdb():
         )
 
         _surreal_db = Surreal(SURREAL_URL)
-        _surreal_db.signin({"username": "root", "password": "root"})
+        _surreal_db.signin(
+            {
+                "username": os.environ.get("SURREAL_USER", "root"),
+                "password": os.environ.get("SURREAL_PASS", "root"),
+            }
+        )
         _surreal_db.use("memory", "main")
 
         colls = init_surreal_db(

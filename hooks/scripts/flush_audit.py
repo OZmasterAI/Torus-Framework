@@ -15,7 +15,7 @@ import gzip
 import shutil
 from datetime import date, timedelta
 
-RAMDISK = "/run/user/1000/claude-hooks/audit"
+RAMDISK = f"/run/user/{os.getuid()}/claude-hooks/audit"
 DISK = os.path.expanduser("~/.claude/hooks/audit")
 KEEP_DAYS = 2
 
@@ -55,11 +55,15 @@ def flush(keep_days=KEEP_DAYS):
             os.unlink(src)
             flushed += 1
             bytes_freed += size
-            print(f"  {fname} ({size / 1024 / 1024:.1f}MB) -> {os.path.basename(dst_gz)}")
+            print(
+                f"  {fname} ({size / 1024 / 1024:.1f}MB) -> {os.path.basename(dst_gz)}"
+            )
         else:
             print(f"  SKIP {fname} -- gz verification failed")
 
-    print(f"\nFlushed: {flushed} files, freed {bytes_freed / 1024 / 1024:.1f}MB from ramdisk")
+    print(
+        f"\nFlushed: {flushed} files, freed {bytes_freed / 1024 / 1024:.1f}MB from ramdisk"
+    )
     return flushed, bytes_freed
 
 

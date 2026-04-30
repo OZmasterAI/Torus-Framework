@@ -102,7 +102,12 @@ def import_v3():
 
     print(f"[IMPORT] Connecting to {V3_URL}")
     db = Surreal(V3_URL)
-    db.signin({"username": "root", "password": "root"})
+    db.signin(
+        {
+            "username": os.environ.get("SURREAL_USER", "root"),
+            "password": os.environ.get("SURREAL_PASS", "root"),
+        }
+    )
     db.use("memory", "main")
 
     db.query(

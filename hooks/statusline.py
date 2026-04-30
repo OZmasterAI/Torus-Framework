@@ -110,7 +110,12 @@ def get_memory_count():
         from surrealdb import Surreal
 
         db = Surreal("ws://127.0.0.1:8822")
-        db.signin({"username": "root", "password": "root"})
+        db.signin(
+            {
+                "username": os.environ.get("SURREAL_USER", "root"),
+                "password": os.environ.get("SURREAL_PASS", "root"),
+            }
+        )
         db.use("memory", "main")
         result = db.query("SELECT count() FROM knowledge GROUP ALL")
         count = result[0]["count"] if result else 0

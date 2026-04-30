@@ -90,7 +90,7 @@ pgrep -f memory_server.py > /dev/null && echo "RUNNING" || echo "DOWN"
 
 **Ramdisk status:**
 ```bash
-mountpoint -q /run/user/1000/claude-hooks && echo "MOUNTED" || echo "NOT MOUNTED"
+mountpoint -q /run/user/$(id -u)/claude-hooks && echo "MOUNTED" || echo "NOT MOUNTED"
 ```
 
 **Framework metrics (via Analytics MCP):**

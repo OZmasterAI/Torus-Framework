@@ -15,7 +15,7 @@
       "name": "Build WorktreeManager — create/remove/list",
       "status": "done",
       "files": ["tap/worktree.py", "tap/tests/test_worktree.py"],
-      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_worktree.py -v",
+      "validate": "cd toroidal-agent-protocol && python3 -m pytest tap/tests/test_worktree.py -v",
       "depends_on": [1]
     },
     {
@@ -23,7 +23,7 @@
       "name": "Add isolation field to ManagedAgent and SpawnRequest",
       "status": "done",
       "files": ["tap/agent_manager.py", "tap/protocol.py"],
-      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_agent_manager.py -v",
+      "validate": "cd toroidal-agent-protocol && python3 -m pytest tap/tests/test_agent_manager.py -v",
       "depends_on": [1]
     },
     {
@@ -31,7 +31,7 @@
       "name": "Wire worktree into AgentManager.spawn() and kill()",
       "status": "done",
       "files": ["tap/agent_manager.py"],
-      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_agent_manager.py tap/tests/test_worktree.py -v",
+      "validate": "cd toroidal-agent-protocol && python3 -m pytest tap/tests/test_agent_manager.py tap/tests/test_worktree.py -v",
       "depends_on": [2, 3]
     },
     {
@@ -39,7 +39,7 @@
       "name": "Wire isolation into daemon RPC and CLI",
       "status": "done",
       "files": ["tap/daemon.py", "tap/cli.py", "tap/client.py"],
-      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_daemon.py -v",
+      "validate": "cd toroidal-agent-protocol && python3 -m pytest tap/tests/test_daemon.py -v",
       "depends_on": [4]
     },
     {
@@ -47,7 +47,7 @@
       "name": "Integration test — full lifecycle with worktree",
       "status": "done",
       "files": ["tap/tests/test_worktree.py"],
-      "validate": "cd /home/crab/.claude/toroidal-agent-protocol && python3 -m pytest tap/tests/test_worktree.py -v",
+      "validate": "cd toroidal-agent-protocol && python3 -m pytest tap/tests/test_worktree.py -v",
       "depends_on": [5]
     }
   ]

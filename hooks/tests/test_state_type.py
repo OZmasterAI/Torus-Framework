@@ -56,7 +56,7 @@ def test_ephemeral_daemon_socket():
     """daemon + socket → ephemeral."""
     assert (
         classify_state_type(
-            "Memory daemon connected via socket /run/user/1000/mem.sock", ""
+            "Memory daemon connected via socket /run/user/1001/mem.sock", ""
         )
         == "ephemeral"
     )
