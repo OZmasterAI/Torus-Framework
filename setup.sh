@@ -4,7 +4,7 @@ set -euo pipefail
 CLAUDE_DIR="${1:-$HOME/.claude}"
 cd "$CLAUDE_DIR"
 
-echo "==> Initializing submodules (toolshed + toroidal-skills)..."
+echo "==> Initializing submodules (toolshed + torus-skills)..."
 git submodule update --init --recursive
 
 echo "==> Installing Python dependencies..."
