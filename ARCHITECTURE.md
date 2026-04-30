@@ -664,36 +664,37 @@ Comprehensive framework analytics — lazy-loaded, no SurrealDB dependency. **15
 
 ---
 
-## Skills Catalog (36 skills)
+## Skills Catalog (54 skills)
 
 | Category | Skills |
 |----------|--------|
 | Dev Workflow (6) | fix, commit, test, review, refactor, document |
 | Research (6) | research, explore, deep-dive, analyze-errors, learn, teach |
-| Framework Ops (6) | diagnose, super-health, introspect, status, wrap-up, audit |
-| Quality/Security (2) | security-scan, benchmark |
+| Framework Ops (8) | diagnose, super-health, introspect, status, wrap-up, audit, gate-health-correlation, gate-timing |
+| Quality/Security (3) | security-scan, benchmark, generate-test-stubs |
 | Build/Deploy (3) | build, deploy, report |
-| Orchestration (5) | prp, wave, loop, chain, sprint |
+| Orchestration (6) | prp, prp-wave, wave, loop, chain, sprint |
 | Advanced (5) | web, browser, ralph, super-evolve, super-prof-optimize |
 | Creative (3) | brainstorm, writing-plans, domain |
+| Agent/Team (3) | agents, create-agents, create-skill |
+| Memory/Context (4) | recall, replay-events, trace-memory, clear-topic |
+| Session/Metrics (3) | session-metrics, tag-branch, tool-recommendations |
+| Wiki (4) | wiki-ingest, wiki-lint, wiki-present, wiki-update |
+| Testing (2) | test-mcp-http, generate-test-stubs |
+| UI/Design (2) | bubbletea-designer, obsidian-cli-ref |
+| Reference (1) | obsidian-markdown-ref |
 
 Skills with scripts/: security-scan, status, super-health, web, wrap-up
 User-invocable: benchmark, learn, introspect, security-scan, super-evolve, keybindings-help
 
 ---
 
-## Agent Definitions (8 agents)
+## Agent Definitions (2 agents)
 
-| Agent | Model (balanced profile) | Capabilities |
+| Agent | Model | Capabilities |
 |-------|-------|-------------|
-| researcher | sonnet | Read-only exploration: Glob, Grep, Read, WebFetch, WebSearch, memory |
-| builder | sonnet | Full implementation: Edit, Write, Bash, NotebookEdit, memory, causal chain |
-| debugger | sonnet | Diagnosis + fix: Edit, Write, Bash, causal chain tracking, log analysis |
-| explore | sonnet | Fast codebase exploration: Read, Glob, Grep, memory (custom, gate 10 controlled) |
-| plan | opus | Software architect: Read, Glob, Grep, Bash, memory (custom, gate 10 controlled) |
-| stress-tester | sonnet | Test execution + verification: Bash, memory |
-| perf-analyzer | sonnet | Performance profiling: Read-only + Bash for benchmarks |
-| security | sonnet | Security audit: Read-only + Bash for scanning |
+| builder | opus | Full implementation: Edit, Write, Bash, NotebookEdit, memory, causal chain |
+| explore | sonnet | Codebase exploration: Read, Glob, Grep, memory |
 
 ### Delegation Rules
 
@@ -707,15 +708,9 @@ Cross-session            → Sub-agents + memory
 
 ---
 
-## Teams (5 definitions)
+## Teams (0 active, archived in dormant/teams/)
 
-| Team | Purpose | Members |
-|------|---------|---------|
-| default | Inactive legacy | 2 (shutdown) |
-| eclipse-rebase | Rebase ProjectDawn to Eclipse L2 | 5 (lead + 4 specialized) |
-| framework-v2-4-1 | v2.4.1 sprint: dashboard, statusline | 1 builder |
-| sprint-team | Self-improvement sprint | 10 (builders + researchers) |
-| evolution-swarm-268 | Self-evolution swarm | — |
+No active team definitions. Historical team configs are preserved in dormant/teams/.
 
 ---
 
@@ -731,6 +726,10 @@ Plugin directory cleared. No plugins currently installed.
 |--------|-------|---------|
 | torus-loop.sh | 261 | Sequential fresh-context task executor. Spawns fresh Claude per task from PRP's tasks.json. Memory MCP bridges knowledge |
 | torus-wave.py | 477 | Parallel wave orchestrator. Groups tasks into waves with file-overlap guards. Spawns parallel `claude -p` processes |
+| cleanup-x-sessions.sh | — | X session cleanup utility |
+| memory-prefetch.py | — | Memory prefetch for boot optimization |
+| prp-phase-verify.py | — | PRP phase verification |
+| prp-plan-verify.py | — | PRP plan verification |
 
 **PRP System (Parallel Research Projects):**
 /prp skill → task_manager.py → torus-loop.sh (sequential) or torus-wave.py (parallel) → Memory MCP cross-instance continuity → Gate 9 auto-defer feedback loop
@@ -742,9 +741,11 @@ Plugin directory cleared. No plugins currently installed.
 | System | Location | Protocol |
 |--------|----------|----------|
 | Voice-Web | integrations/voice-web/ | WebSocket, Piper/edge-tts, multi-session tabs |
-| Telegram Bot | integrations/telegram-bot/ | Bot API, SQLite msg_log.db (532KB) |
-| Terminal History | integrations/terminal-history/ | FTS5, SQLite terminal_history.db (19.8MB) |
-| LanceDB | ~/data/memory/lancedb/ | UDS socket (.chromadb.sock, legacy name) |
+| Telegram Bot | integrations/telegram-bot/ | Bot API, SQLite msg_log.db |
+| Terminal History | integrations/terminal-history/ | FTS5, SQLite terminal_history.db |
+| TTS Voices | integrations/tts-voices/ | Piper TTS voice files |
+| SurrealDB | ~/data/memory/surrealdb_v3/ | ws://127.0.0.1:8822, UDS socket (.chromadb.sock, legacy name) |
+| Model Router | toroidal-model-router/ (submodule) | OpenRouter multi-model MCP |
 | Enforcer Daemon | hooks/.enforcer.sock | UDS socket (JSON-over-newline) |
 | Ramdisk | /run/user/{uid}/claude-hooks/ | tmpfs + async disk mirror backup |
 | Git Auto-Commit | hooks/auto_commit.py | Two-phase: stage (PostToolUse) → commit (UserPromptSubmit) |
@@ -804,24 +805,22 @@ Plugin directory cleared. No plugins currently installed.
 
 | Metric | Value |
 |--------|-------|
-| Python files (hooks/) | 194 |
-| Total lines (hooks/) | ~92,816 |
-| Active gates | 19 (+ 2 dormant) |
-| Shared modules | 83 |
-| Top-level hooks | 28 |
-| Boot pipeline files | 6 (1,241 lines) |
-| Tracker pipeline files | 10 (1,552 lines) |
-| Skills | 42 |
+| Python files (hooks/) | 248 |
+| Total lines (hooks/) | ~119,423 |
+| Active gates | 21 (+ 2 dormant) |
+| Shared modules | 97 |
+| Top-level hooks | 37 |
+| Boot pipeline files | 6 (1,529 lines) |
+| Tracker pipeline files | 10 (2,217 lines) |
+| Skills | 54 |
 | Plugins | 0 |
-| Agent definitions | 8 |
-| Teams | 5 |
-| MCP servers | 4 (memory, analytics, skills, model-router) |
+| Agent definitions | 2 |
+| Teams | 0 active |
+| MCP servers | 7 (via toolshed gateway) |
 | External orchestrators | 2 |
-| Integrations | 3 |
-| Session state files | 43 |
-| Total memories | 3,026 |
-| Largest file | hooks/tests/ (13 files, 29,417 lines) |
+| Integrations | 4 |
+| Submodules | 5 |
 
 ---
 
-*Generated by Torus Framework — Session 432 (2026-03-16)*
+*Generated by Torus Framework (2026-04-30)*
