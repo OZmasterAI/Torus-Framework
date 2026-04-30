@@ -569,7 +569,7 @@ def memory_health() -> dict:
             result["tables"] = {"error": str(e)}
 
     # Migration marker
-    marker = os.path.join(lance_dir, ".migration_complete")
+    marker = os.path.join(surreal_dir, ".migration_complete")
     result["migration_complete"] = os.path.isfile(marker)
 
     return result

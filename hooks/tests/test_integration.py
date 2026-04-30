@@ -1593,10 +1593,12 @@ except FileNotFoundError:
 # Test 10: get_teammate_context — with agent_name filter
 _t10_lines = [_assistant_tool_msg("Read", {"file_path": "/tmp/test.py"})]
 _t10_transcript = _make_transcript(_t10_lines)
+_t10_state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state")
+os.makedirs(_t10_state_dir, exist_ok=True)
 _t10_fd, _t10_state_path = tempfile.mkstemp(
     prefix="state_",
     suffix=".json",
-    dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"),
+    dir=_t10_state_dir,
 )
 with os.fdopen(_t10_fd, "w") as _f:
     json.dump(
@@ -1629,7 +1631,7 @@ os.remove(_t10_transcript)
 _t11_fd, _t11_state_path = tempfile.mkstemp(
     prefix="state_",
     suffix=".json",
-    dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"),
+    dir=_t10_state_dir,
 )
 with os.fdopen(_t11_fd, "w") as _f:
     json.dump(
@@ -1657,7 +1659,7 @@ os.remove(_t11_state_path)
 _t12_fd, _t12_state_path = tempfile.mkstemp(
     prefix="state_",
     suffix=".json",
-    dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"),
+    dir=_t10_state_dir,
 )
 with os.fdopen(_t12_fd, "w") as _f:
     json.dump({"active_subagents": []}, _f)

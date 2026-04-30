@@ -1,4 +1,5 @@
 """Context extraction from previous session state for boot dashboard."""
+
 import glob
 import json
 import os
@@ -6,6 +7,8 @@ import time
 from datetime import datetime
 
 from boot_pkg.util import STATE_DIR
+
+_STATE_SUBDIR = os.path.join(STATE_DIR, ".state")
 
 
 def _extract_recent_errors():
@@ -15,7 +18,7 @@ def _extract_recent_errors():
     Returns a list of strings like ["SyntaxError (3x)", "ImportError (2x)"].
     """
     try:
-        pattern = os.path.join(STATE_DIR, "state_*.json")
+        pattern = os.path.join(_STATE_SUBDIR, "state_*.json")
         state_files = glob.glob(pattern)
 
         if not state_files:
@@ -46,7 +49,7 @@ def _extract_test_status():
     Returns None if no test info found.
     """
     try:
-        pattern = os.path.join(STATE_DIR, "state_*.json")
+        pattern = os.path.join(_STATE_SUBDIR, "state_*.json")
         state_files = glob.glob(pattern)
         if not state_files:
             return None
@@ -86,7 +89,7 @@ def _extract_verification_quality():
     Returns {"verified": N, "pending": M} or None if no data found.
     """
     try:
-        pattern = os.path.join(STATE_DIR, "state_*.json")
+        pattern = os.path.join(_STATE_SUBDIR, "state_*.json")
         state_files = glob.glob(pattern)
 
         if not state_files:
@@ -115,7 +118,7 @@ def _extract_session_duration():
     Returns a formatted string like "2h 15m" or "45m" or None if no data.
     """
     try:
-        pattern = os.path.join(STATE_DIR, "state_*.json")
+        pattern = os.path.join(_STATE_SUBDIR, "state_*.json")
         state_files = glob.glob(pattern)
         if not state_files:
             return None
@@ -148,7 +151,7 @@ def _extract_tool_activity():
     Returns (tool_call_count, tool_summary_string) or (0, None).
     """
     try:
-        pattern = os.path.join(STATE_DIR, "state_*.json")
+        pattern = os.path.join(_STATE_SUBDIR, "state_*.json")
         state_files = glob.glob(pattern)
 
         if not state_files:
@@ -165,8 +168,12 @@ def _extract_tool_activity():
         if not tool_stats or tool_call_count == 0:
             return (0, None)
 
-        sorted_tools = sorted(tool_stats.items(), key=lambda x: x[1].get("count", 0), reverse=True)[:3]
-        tool_summary = ", ".join(f"{name}:{info.get('count', 0)}" for name, info in sorted_tools)
+        sorted_tools = sorted(
+            tool_stats.items(), key=lambda x: x[1].get("count", 0), reverse=True
+        )[:3]
+        tool_summary = ", ".join(
+            f"{name}:{info.get('count', 0)}" for name, info in sorted_tools
+        )
 
         return (tool_call_count, tool_summary)
 
@@ -176,11 +183,11 @@ def _extract_tool_activity():
 
 # Tunable gate parameters: gate_name -> (param_name, default, loosen_by, tighten_by, min_val, max_val)
 _TUNABLE_GATES = {
-    "gate_04_memory_first":      ("freshness_window",      300,  120,  -60,   120,  900),
-    "gate_05_proof_before_fixed": ("max_unverified",        3,    1,    -1,    2,    8),
-    "gate_06_save_fix":          ("escalation_threshold",   5,    2,    -1,    3,    10),
-    "gate_11_rate_limit":        ("block_threshold",        60,   10,   -5,    30,   120),
-    "gate_15_causal_chain":      ("fix_history_freshness",  300,  120,  -60,   120,  900),
+    "gate_04_memory_first": ("freshness_window", 300, 120, -60, 120, 900),
+    "gate_05_proof_before_fixed": ("max_unverified", 3, 1, -1, 2, 8),
+    "gate_06_save_fix": ("escalation_threshold", 5, 2, -1, 3, 10),
+    "gate_11_rate_limit": ("block_threshold", 60, 10, -5, 30, 120),
+    "gate_15_causal_chain": ("fix_history_freshness", 300, 120, -60, 120, 900),
 }
 
 
@@ -192,6 +199,7 @@ def _extract_gate_effectiveness_suggestions():
     """
     try:
         from shared.state import get_live_toggle, load_gate_effectiveness
+
         if not get_live_toggle("gate_auto_tune", False):
             return [], {}
 
@@ -199,7 +207,7 @@ def _extract_gate_effectiveness_suggestions():
         if not effectiveness:
             return [], {}
 
-        pattern = os.path.join(STATE_DIR, "state_*.json")
+        pattern = os.path.join(_STATE_SUBDIR, "state_*.json")
         state_files = glob.glob(pattern)
         prev_overrides = {}
         if state_files:
@@ -226,11 +234,15 @@ def _extract_gate_effectiveness_suggestions():
             if eff_pct < 50:
                 new_val = min(current + loosen_by, max_val)
                 overrides[gate] = {param: new_val}
-                suggestions.append(f"{gate} {eff_pct}% -> {param}: {current}->{new_val}")
+                suggestions.append(
+                    f"{gate} {eff_pct}% -> {param}: {current}->{new_val}"
+                )
             elif eff_pct >= 90:
                 new_val = max(current + tighten_by, min_val)
                 overrides[gate] = {param: new_val}
-                suggestions.append(f"{gate} {eff_pct}% -> {param}: {current}->{new_val}")
+                suggestions.append(
+                    f"{gate} {eff_pct}% -> {param}: {current}->{new_val}"
+                )
 
         return suggestions[:5], overrides
     except Exception:
@@ -244,12 +256,16 @@ def _extract_git_context():
     Returns None if not in a git repo or on error.
     """
     import subprocess
+
     try:
         cwd = os.path.dirname(os.path.dirname(__file__))
 
         branch_result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5, cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=cwd,
         )
         if branch_result.returncode != 0:
             return None
@@ -257,17 +273,29 @@ def _extract_git_context():
 
         status_result = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, timeout=5, cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=cwd,
         )
-        uncommitted = len([l for l in status_result.stdout.strip().splitlines() if l.strip()]) if status_result.returncode == 0 else 0
+        uncommitted = (
+            len([l for l in status_result.stdout.strip().splitlines() if l.strip()])
+            if status_result.returncode == 0
+            else 0
+        )
 
         log_result = subprocess.run(
             ["git", "log", "--oneline", "-5", "--no-decorate"],
-            capture_output=True, text=True, timeout=5, cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=cwd,
         )
         commits = []
         if log_result.returncode == 0:
-            commits = [l.strip() for l in log_result.stdout.strip().splitlines() if l.strip()]
+            commits = [
+                l.strip() for l in log_result.stdout.strip().splitlines() if l.strip()
+            ]
 
         return {
             "branch": branch,
@@ -286,9 +314,12 @@ def _extract_gate_blocks():
     try:
         try:
             from shared.audit_log import AUDIT_DIR
+
             audit_dir = AUDIT_DIR
         except ImportError:
-            audit_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "audit")
+            audit_dir = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "audit"
+            )
         if not os.path.isdir(audit_dir):
             return 0
 
