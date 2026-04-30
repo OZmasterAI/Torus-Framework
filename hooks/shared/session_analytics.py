@@ -35,12 +35,15 @@ from typing import Any, Dict, List, Optional, Tuple
 # ── File-system paths ────────────────────────────────────────────────────────
 
 _HOOKS_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-_GATE_EFFECTIVENESS_FILE = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
+_GATE_EFFECTIVENESS_FILE = os.path.join(
+    _HOOKS_DIR, ".gate_data", ".gate_effectiveness.json"
+)
 _CAPTURE_QUEUE_FILE = os.path.join(_HOOKS_DIR, ".capture_queue.jsonl")
 
 # State files live on the ramdisk when available, otherwise on disk
 try:
     from shared.ramdisk import get_state_dir
+
     _STATE_DIR = get_state_dir()
 except Exception:
     _STATE_DIR = _HOOKS_DIR
@@ -136,7 +139,7 @@ def _load_all_state_files() -> Dict[str, Dict]:
                 continue
             basename = os.path.basename(fpath)
             # Extract session_id from filename: state_<session_id>.json
-            session_id = basename[len("state_"):-len(".json")]
+            session_id = basename[len("state_") : -len(".json")]
             if session_id in seen_sessions:
                 continue  # ramdisk copy takes precedence
             try:
@@ -189,10 +192,12 @@ def _state_session_metrics(session_id: str, state: Dict) -> Dict[str, Any]:
 
     # Memory tool names used in state tracking
     _MEM_SEARCH_TOOLS = {
-        "mcp__memory__search_knowledge", "search_knowledge",
+        "mcp__memory__search_knowledge",
+        "search_knowledge",
     }
     _MEM_SAVE_TOOLS = {
-        "mcp__memory__remember_this", "remember_this",
+        "mcp__memory__remember_this",
+        "remember_this",
     }
     memory_queries = sum(v for k, v in tool_counts.items() if k in _MEM_SEARCH_TOOLS)
     memory_saves = sum(v for k, v in tool_counts.items() if k in _MEM_SAVE_TOOLS)
@@ -200,7 +205,9 @@ def _state_session_metrics(session_id: str, state: Dict) -> Dict[str, Any]:
     iso_start = ""
     if session_start > 0:
         try:
-            iso_start = datetime.fromtimestamp(session_start, tz=timezone.utc).isoformat()
+            iso_start = datetime.fromtimestamp(
+                session_start, tz=timezone.utc
+            ).isoformat()
         except (OSError, ValueError, OverflowError):
             pass
 
@@ -236,7 +243,9 @@ def aggregate_frustration(session_id: Optional[str] = None) -> Dict[str, Any]:
     """Aggregate frustration scores from capture queue. Display as bands not decimals."""
     queue = _load_capture_queue()
     if session_id:
-        queue = [e for e in queue if e.get("metadata", {}).get("session_id") == session_id]
+        queue = [
+            e for e in queue if e.get("metadata", {}).get("session_id") == session_id
+        ]
 
     scores = []
     for entry in queue:
@@ -407,7 +416,8 @@ def get_session_summary(
         queue_entries = _load_capture_queue()
         if session_id:
             scoped = [
-                e for e in queue_entries
+                e
+                for e in queue_entries
                 if e.get("metadata", {}).get("session_id") == session_id
             ]
         else:
@@ -590,11 +600,10 @@ def compare_sessions(
         "summary": summary,
     }
 
+
 # ── Audit log directory ──────────────────────────────────────────────────────
 
-_DEFAULT_AUDIT_DIR = os.path.join(
-    os.path.expanduser("~"), ".claude", "hooks", "audit"
-)
+_DEFAULT_AUDIT_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks", "audit")
 
 
 # ── Parsing ──────────────────────────────────────────────────────────────────
@@ -748,14 +757,29 @@ def error_frequency(entries: List[Dict]) -> Dict[str, int]:
     _PATTERNS: List[Tuple] = [
         (re.compile(r"must Read .* before editing", re.I), "gate1:read-before-edit"),
         (re.compile(r"NO DESTROY.*blocked", re.I), "gate2:no-destroy"),
-        (re.compile(r"rm\s*-rf|DROP TABLE|reset --hard|force.?push", re.I), "gate2:destructive-op"),
-        (re.compile(r"deploy.*no tests|tests.*before deploy", re.I), "gate3:deploy-without-tests"),
+        (
+            re.compile(r"rm\s*-rf|DROP TABLE|reset --hard|force.?push", re.I),
+            "gate2:destructive-op",
+        ),
+        (
+            re.compile(r"deploy.*no tests|tests.*before deploy", re.I),
+            "gate3:deploy-without-tests",
+        ),
         (re.compile(r"memory.*queried|query.*memory", re.I), "gate4:memory-first"),
-        (re.compile(r"verify.*before|proof.*fixed|evidence.*fix", re.I), "gate5:proof-needed"),
+        (
+            re.compile(r"verify.*before|proof.*fixed|evidence.*fix", re.I),
+            "gate5:proof-needed",
+        ),
         (re.compile(r"save.*memory|remember.*fix", re.I), "gate6:save-to-memory"),
         (re.compile(r"critical file|high.?risk file", re.I), "gate7:critical-file"),
-        (re.compile(r"rate limit|too many tool calls|runaway", re.I), "gate11:rate-limit"),
-        (re.compile(r"workspace.*claimed|file.*locked|concurrent edit", re.I), "gate13:workspace"),
+        (
+            re.compile(r"rate limit|too many tool calls|runaway", re.I),
+            "gate11:rate-limit",
+        ),
+        (
+            re.compile(r"workspace.*claimed|file.*locked|concurrent edit", re.I),
+            "gate13:workspace",
+        ),
         (re.compile(r"test.*fail|exit code [^0]", re.I), "test-failure"),
         (re.compile(r"traceback|exception|error:", re.I), "python-exception"),
         (re.compile(r"permission denied", re.I), "permission-denied"),
@@ -817,7 +841,8 @@ def session_productivity(
     # --- 1. edit_velocity (files modified per hour) ---
     edit_tools = {"Edit", "Write", "NotebookEdit"}
     edit_count = sum(
-        1 for e in entries
+        1
+        for e in entries
         if (e.get("tool") or e.get("tool_name", "")) in edit_tools
         and e.get("decision", "pass") == "pass"
     )
@@ -837,19 +862,25 @@ def session_productivity(
     resolve_score = _compute_resolve_score(entries) * 25.0
 
     # --- 4. memory_contrib ---
-    memory_tools = {"mcp__memory__search_knowledge", "mcp__memory__remember_this",
-                    "search_knowledge", "remember_this"}
+    memory_tools = {
+        "mcp__memory__search_knowledge",
+        "mcp__memory__remember_this",
+        "search_knowledge",
+        "remember_this",
+    }
     # In audit logs, memory tool calls appear as the tool name
     memory_calls = sum(
-        1 for e in entries
-        if (e.get("tool") or e.get("tool_name", "")) in memory_tools
+        1 for e in entries if (e.get("tool") or e.get("tool_name", "")) in memory_tools
     )
     memory_score = min(25.0, (memory_calls / 10.0) * 25.0)
 
     total_score = round(edit_score + block_score + resolve_score + memory_score, 2)
 
     grade_map = [
-        (90, "A"), (80, "B"), (70, "C"), (60, "D"),
+        (90, "A"),
+        (80, "B"),
+        (70, "C"),
+        (60, "D"),
     ]
     grade = "F"
     for threshold, letter in grade_map:
@@ -893,9 +924,7 @@ def _compute_resolve_score(entries: List[Dict]) -> float:
     Returns a float in [0.0, 1.0].  Returns 1.0 if there were no blocks
     (no errors to resolve -> perfect).
     """
-    blocked_indices = [
-        i for i, e in enumerate(entries) if e.get("decision") == "block"
-    ]
+    blocked_indices = [i for i, e in enumerate(entries) if e.get("decision") == "block"]
     if not blocked_indices:
         return 1.0
 

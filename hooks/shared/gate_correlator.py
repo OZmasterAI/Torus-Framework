@@ -37,7 +37,7 @@ from typing import Dict, Iterator, List, Optional, Set, Tuple
 # ---------------------------------------------------------------------------
 
 _HOOKS_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
-_EFFECTIVENESS_FILE = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
+_EFFECTIVENESS_FILE = os.path.join(_HOOKS_DIR, ".gate_data", ".gate_effectiveness.json")
 _AUDIT_TRAIL = os.path.join(_HOOKS_DIR, ".audit_trail.jsonl")
 _AUDIT_DIR = os.path.join(_HOOKS_DIR, "audit")
 
@@ -57,41 +57,41 @@ REDUNDANCY_JACCARD_THRESHOLD = 0.85
 
 _GATE_NAME_MAP: Dict[str, str] = {
     # Full module path form (used in audit log entries)
-    "gates.gate_01_read_before_edit":    "GATE 1: READ BEFORE EDIT",
-    "gates.gate_02_no_destroy":          "GATE 2: NO DESTROY",
-    "gates.gate_03_test_before_deploy":  "GATE 3: TEST BEFORE DEPLOY",
-    "gates.gate_04_memory_first":        "GATE 4: MEMORY FIRST",
-    "gates.gate_05_proof_before_fixed":  "GATE 5: PROOF BEFORE FIXED",
-    "gates.gate_06_save_fix":            "GATE 6: SAVE TO MEMORY",
+    "gates.gate_01_read_before_edit": "GATE 1: READ BEFORE EDIT",
+    "gates.gate_02_no_destroy": "GATE 2: NO DESTROY",
+    "gates.gate_03_test_before_deploy": "GATE 3: TEST BEFORE DEPLOY",
+    "gates.gate_04_memory_first": "GATE 4: MEMORY FIRST",
+    "gates.gate_05_proof_before_fixed": "GATE 5: PROOF BEFORE FIXED",
+    "gates.gate_06_save_fix": "GATE 6: SAVE TO MEMORY",
     "gates.gate_07_critical_file_guard": "GATE 7: CRITICAL FILE GUARD",
-    "gates.gate_08_temporal":            "GATE 8: TEMPORAL AWARENESS",
-    "gates.gate_09_strategy_ban":        "GATE 9: STRATEGY BAN",
-    "gates.gate_10_model_enforcement":   "GATE 10: MODEL COST GUARD",
-    "gates.gate_11_rate_limit":          "GATE 11: RATE LIMIT",
+    "gates.gate_08_temporal": "GATE 8: TEMPORAL AWARENESS",
+    "gates.gate_09_strategy_ban": "GATE 9: STRATEGY BAN",
+    "gates.gate_10_model_enforcement": "GATE 10: MODEL COST GUARD",
+    "gates.gate_11_rate_limit": "GATE 11: RATE LIMIT",
     # gate_12 MERGED into gate_06 — removed
     "gates.gate_13_workspace_isolation": "GATE 13: WORKSPACE ISOLATION",
-    "gates.gate_14_confidence_check":    "GATE 14: CONFIDENCE CHECK",
-    "gates.gate_15_causal_chain":        "GATE 15: CAUSAL CHAIN ENFORCEMENT",
-    "gates.gate_16_code_quality":        "GATE 16: CODE QUALITY",
-    "gates.gate_17_injection_defense":   "GATE 17: INJECTION DEFENSE",
+    "gates.gate_14_confidence_check": "GATE 14: CONFIDENCE CHECK",
+    "gates.gate_15_causal_chain": "GATE 15: CAUSAL CHAIN ENFORCEMENT",
+    "gates.gate_16_code_quality": "GATE 16: CODE QUALITY",
+    "gates.gate_17_injection_defense": "GATE 17: INJECTION DEFENSE",
     # Short form (keys in .gate_effectiveness.json, no package prefix)
-    "gate_01_read_before_edit":          "GATE 1: READ BEFORE EDIT",
-    "gate_02_no_destroy":                "GATE 2: NO DESTROY",
-    "gate_03_test_before_deploy":        "GATE 3: TEST BEFORE DEPLOY",
-    "gate_04_memory_first":              "GATE 4: MEMORY FIRST",
-    "gate_05_proof_before_fixed":        "GATE 5: PROOF BEFORE FIXED",
-    "gate_06_save_fix":                  "GATE 6: SAVE TO MEMORY",
-    "gate_07_critical_file_guard":       "GATE 7: CRITICAL FILE GUARD",
-    "gate_08_temporal":                  "GATE 8: TEMPORAL AWARENESS",
-    "gate_09_strategy_ban":              "GATE 9: STRATEGY BAN",
-    "gate_10_model_enforcement":         "GATE 10: MODEL COST GUARD",
-    "gate_11_rate_limit":                "GATE 11: RATE LIMIT",
+    "gate_01_read_before_edit": "GATE 1: READ BEFORE EDIT",
+    "gate_02_no_destroy": "GATE 2: NO DESTROY",
+    "gate_03_test_before_deploy": "GATE 3: TEST BEFORE DEPLOY",
+    "gate_04_memory_first": "GATE 4: MEMORY FIRST",
+    "gate_05_proof_before_fixed": "GATE 5: PROOF BEFORE FIXED",
+    "gate_06_save_fix": "GATE 6: SAVE TO MEMORY",
+    "gate_07_critical_file_guard": "GATE 7: CRITICAL FILE GUARD",
+    "gate_08_temporal": "GATE 8: TEMPORAL AWARENESS",
+    "gate_09_strategy_ban": "GATE 9: STRATEGY BAN",
+    "gate_10_model_enforcement": "GATE 10: MODEL COST GUARD",
+    "gate_11_rate_limit": "GATE 11: RATE LIMIT",
     # gate_12 MERGED into gate_06 — removed
-    "gate_13_workspace_isolation":       "GATE 13: WORKSPACE ISOLATION",
-    "gate_14_confidence_check":          "GATE 14: CONFIDENCE CHECK",
-    "gate_15_causal_chain":              "GATE 15: CAUSAL CHAIN ENFORCEMENT",
-    "gate_16_code_quality":              "GATE 16: CODE QUALITY",
-    "gate_17_injection_defense":         "GATE 17: INJECTION DEFENSE",
+    "gate_13_workspace_isolation": "GATE 13: WORKSPACE ISOLATION",
+    "gate_14_confidence_check": "GATE 14: CONFIDENCE CHECK",
+    "gate_15_causal_chain": "GATE 15: CAUSAL CHAIN ENFORCEMENT",
+    "gate_16_code_quality": "GATE 16: CODE QUALITY",
+    "gate_17_injection_defense": "GATE 17: INJECTION DEFENSE",
 }
 
 # Canonical gate ordering (module-name order from enforcer.py GATE_MODULES)
@@ -129,6 +129,7 @@ def _normalize_gate(name: str) -> str:
 # ---------------------------------------------------------------------------
 # Audit log loading
 # ---------------------------------------------------------------------------
+
 
 def _iter_audit_entries(max_entries: int = 50_000) -> Iterator[dict]:
     """Yield audit log entries from all available sources.
@@ -219,6 +220,7 @@ def _load_effectiveness() -> Dict[str, Dict[str, int]]:
 # Core helper: group audit entries by logical tool-call batch
 # ---------------------------------------------------------------------------
 
+
 def _ts_float(entry: dict) -> float:
     """Parse ISO timestamp from an audit entry to a float epoch."""
     ts = entry.get("timestamp", "")
@@ -251,12 +253,7 @@ def _group_by_tool_call(entries: List[dict]) -> List[List[dict]]:
         tool = entry.get("tool", "")
         gap = ts - last_ts if last_ts >= 0 else 0.0
 
-        if (
-            not current
-            or gap > 1.0
-            or session != last_session
-            or tool != last_tool
-        ):
+        if not current or gap > 1.0 or session != last_session or tool != last_tool:
             if current:
                 groups.append(current)
             current = [entry]
@@ -276,6 +273,7 @@ def _group_by_tool_call(entries: List[dict]) -> List[List[dict]]:
 # ---------------------------------------------------------------------------
 # Feature 1: Co-occurrence matrix
 # ---------------------------------------------------------------------------
+
 
 def build_cooccurrence_matrix(
     entries: List[dict],
@@ -299,7 +297,7 @@ def build_cooccurrence_matrix(
             dict.fromkeys(e.get("gate", "") for e in group if e.get("gate"))
         )
         for i, gate_a in enumerate(unique_gates):
-            for gate_b in unique_gates[i + 1:]:
+            for gate_b in unique_gates[i + 1 :]:
                 key = (min(gate_a, gate_b), max(gate_a, gate_b))
                 counts[key] += 1
 
@@ -324,6 +322,7 @@ def cooccurrence_summary(matrix: Dict[Tuple[str, str], int]) -> List[dict]:
 # ---------------------------------------------------------------------------
 # Feature 2: Gate chains (A fires -> B fires within window)
 # ---------------------------------------------------------------------------
+
 
 def detect_gate_chains(
     entries: List[dict],
@@ -366,7 +365,7 @@ def detect_gate_chains(
             a_ts = _ts_float(a_entry)
             if not a_gate:
                 continue
-            for b_entry in session_entries[i + 1:]:
+            for b_entry in session_entries[i + 1 :]:
                 b_ts = _ts_float(b_entry)
                 gap = b_ts - a_ts
                 if gap > window_seconds:
@@ -389,7 +388,7 @@ def detect_gate_chains(
             a_blocked = a_entry.get("decision") == "block"
             if not a_gate:
                 continue
-            for b_entry in session_entries[i + 1:]:
+            for b_entry in session_entries[i + 1 :]:
                 b_ts = _ts_float(b_entry)
                 gap = b_ts - a_ts
                 if gap > window_seconds:
@@ -410,12 +409,18 @@ def detect_gate_chains(
         for t in chain_tools[(from_gate, to_gate)]:
             if t:
                 tool_counts[t] += 1
-        example_tool = max(tool_counts, key=tool_counts.__getitem__) if tool_counts else ""
+        example_tool = (
+            max(tool_counts, key=tool_counts.__getitem__) if tool_counts else ""
+        )
 
         # P(B blocks | A blocks) — conditional block probability
         decisions = chain_blocks.get((from_gate, to_gate), [])
         a_blocks = [(a, b) for a, b in decisions if a]
-        cond_prob = sum(1 for _, b in a_blocks if b) / max(len(a_blocks), 1) if a_blocks else None
+        cond_prob = (
+            sum(1 for _, b in a_blocks if b) / max(len(a_blocks), 1)
+            if a_blocks
+            else None
+        )
 
         entry = {
             "from_gate": from_gate,
@@ -435,6 +440,7 @@ def detect_gate_chains(
 # ---------------------------------------------------------------------------
 # Feature 3: Redundancy detection
 # ---------------------------------------------------------------------------
+
 
 def detect_redundant_gates(
     entries: List[dict],
@@ -487,7 +493,7 @@ def detect_redundant_gates(
     results = []
 
     for i, gate_a in enumerate(all_gates):
-        for gate_b in all_gates[i + 1:]:
+        for gate_b in all_gates[i + 1 :]:
             set_a = gate_group_indices[gate_a]
             set_b = gate_group_indices[gate_b]
             intersection = set_a & set_b
@@ -504,8 +510,10 @@ def detect_redundant_gates(
             dec_a = gate_decisions[gate_a]
             dec_b = gate_decisions[gate_b]
             agreed = sum(
-                1 for idx in intersection
-                if (dec_a.get(idx, "pass") == "block") == (dec_b.get(idx, "pass") == "block")
+                1
+                for idx in intersection
+                if (dec_a.get(idx, "pass") == "block")
+                == (dec_b.get(idx, "pass") == "block")
             )
             agreement_rate = agreed / cooc if cooc > 0 else 0.0
 
@@ -518,14 +526,16 @@ def detect_redundant_gates(
             else:
                 note = "Moderate overlap"
 
-            results.append({
-                "gate_a": gate_a,
-                "gate_b": gate_b,
-                "jaccard_similarity": round(jaccard, 4),
-                "agreement_rate": round(agreement_rate, 4),
-                "cooccurrence_count": cooc,
-                "note": note,
-            })
+            results.append(
+                {
+                    "gate_a": gate_a,
+                    "gate_b": gate_b,
+                    "jaccard_similarity": round(jaccard, 4),
+                    "agreement_rate": round(agreement_rate, 4),
+                    "cooccurrence_count": cooc,
+                    "note": note,
+                }
+            )
 
     results.sort(key=lambda r: r["jaccard_similarity"], reverse=True)
     return results
@@ -534,6 +544,7 @@ def detect_redundant_gates(
 # ---------------------------------------------------------------------------
 # Feature 4: Optimal gate ordering
 # ---------------------------------------------------------------------------
+
 
 def optimize_gate_order(
     entries: List[dict],
@@ -569,7 +580,9 @@ def optimize_gate_order(
           - score: float
           - reason: str
     """
-    relevant = [e for e in entries if e.get("tool") == target_tool] if target_tool else entries
+    relevant = (
+        [e for e in entries if e.get("tool") == target_tool] if target_tool else entries
+    )
 
     gate_fires: Dict[str, int] = defaultdict(int)
     gate_blocks: Dict[str, int] = defaultdict(int)
@@ -604,21 +617,24 @@ def optimize_gate_order(
         block_rate = (blocks / fires) if fires > 0 else 0.0
         pinned = gate in _TIER1_GATES
         canonical_idx = (
-            _CANONICAL_ORDER.index(gate) if gate in _CANONICAL_ORDER
+            _CANONICAL_ORDER.index(gate)
+            if gate in _CANONICAL_ORDER
             else len(_CANONICAL_ORDER)
         )
         latency_proxy = 1.0 / (canonical_idx + 1)
         score = block_rate * 0.6 + latency_proxy * 0.4
 
-        rows.append({
-            "gate": gate,
-            "block_rate": round(block_rate, 4),
-            "total_fires": fires,
-            "blocks": blocks,
-            "pinned": pinned,
-            "score": round(score, 4),
-            "_canonical_idx": canonical_idx,
-        })
+        rows.append(
+            {
+                "gate": gate,
+                "block_rate": round(block_rate, 4),
+                "total_fires": fires,
+                "blocks": blocks,
+                "pinned": pinned,
+                "score": round(score, 4),
+                "_canonical_idx": canonical_idx,
+            }
+        )
 
     pinned_rows = sorted(
         [r for r in rows if r["pinned"]], key=lambda r: r["_canonical_idx"]
@@ -633,7 +649,9 @@ def optimize_gate_order(
         if row["pinned"]:
             reason = "Tier 1 safety gate — must run first (non-negotiable)"
         elif row["block_rate"] >= 0.5:
-            reason = f"High block rate ({row['block_rate']:.0%}) — reject-fast candidate"
+            reason = (
+                f"High block rate ({row['block_rate']:.0%}) — reject-fast candidate"
+            )
         elif row["block_rate"] >= 0.2:
             reason = f"Moderate block rate ({row['block_rate']:.0%})"
         elif row["total_fires"] == 0:
@@ -641,16 +659,18 @@ def optimize_gate_order(
         else:
             reason = f"Low block rate ({row['block_rate']:.0%}) — placed toward end"
 
-        result.append({
-            "rank": rank,
-            "gate": row["gate"],
-            "block_rate": row["block_rate"],
-            "total_fires": row["total_fires"],
-            "blocks": row["blocks"],
-            "pinned": row["pinned"],
-            "score": row["score"],
-            "reason": reason,
-        })
+        result.append(
+            {
+                "rank": rank,
+                "gate": row["gate"],
+                "block_rate": row["block_rate"],
+                "total_fires": row["total_fires"],
+                "blocks": row["blocks"],
+                "pinned": row["pinned"],
+                "score": row["score"],
+                "reason": reason,
+            }
+        )
 
     return result
 
@@ -658,6 +678,7 @@ def optimize_gate_order(
 # ---------------------------------------------------------------------------
 # GateCorrelator: main public class
 # ---------------------------------------------------------------------------
+
 
 class GateCorrelator:
     """Unified interface for gate correlation analysis.
@@ -755,9 +776,7 @@ class GateCorrelator:
             )
         return self._redundant
 
-    def optimize_gate_order(
-        self, target_tool: Optional[str] = None
-    ) -> List[dict]:
+    def optimize_gate_order(self, target_tool: Optional[str] = None) -> List[dict]:
         """Return (cached) suggested gate ordering.
 
         Args:

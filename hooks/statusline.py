@@ -45,7 +45,7 @@ except ImportError:
     _HAS_RAMDISK = False
 GATES_DIR = os.path.join(HOOKS_DIR, "gates")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
-SKILL_LIBRARY_DIR = os.path.join(CLAUDE_DIR, "skill-library")
+SKILL_LIBRARY_DIR = os.path.join(CLAUDE_DIR, "torus-skills", "skill-library")
 MODES_DIR = os.path.join(CLAUDE_DIR, "modes")
 LIVE_STATE_FILE = os.path.join(CLAUDE_DIR, "LIVE_STATE.json")
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
@@ -92,7 +92,7 @@ def count_gates():
 def get_memory_count():
     """Get curated memory count, cached for CACHE_TTL seconds.
 
-    Reads LanceDB directly (count_rows is O(1) metadata read).
+    Reads SurrealDB via COUNT index (O(1)).
     Falls back to stale cache on any error.
     """
     # Try cache first
@@ -105,12 +105,15 @@ def get_memory_count():
     except (json.JSONDecodeError, OSError):
         pass
 
-    # Cache miss — read LanceDB directly
+    # Cache miss — read SurrealDB directly
     try:
-        import lancedb
+        from surrealdb import Surreal
 
-        db = lancedb.connect(os.path.join(MEMORY_DIR, "lancedb"))
-        count = db.open_table("knowledge").count_rows()
+        db = Surreal("ws://127.0.0.1:8822")
+        db.signin({"username": "root", "password": "root"})
+        db.use("memory", "main")
+        result = db.query("SELECT count() FROM knowledge GROUP ALL")
+        count = result[0]["count"] if result else 0
         try:
             with open(STATS_CACHE, "w") as f:
                 json.dump({"ts": time.time(), "mem_count": count}, f)
@@ -120,7 +123,7 @@ def get_memory_count():
     except Exception:
         pass
 
-    # LanceDB unavailable — return stale cache or "?"
+    # SurrealDB unavailable — return stale cache or "?"
     try:
         if os.path.exists(STATS_CACHE):
             with open(STATS_CACHE) as f:
@@ -885,10 +888,7 @@ def main():
     # If statusline crashes during rendering, this ensures _check_context_threshold()
     # still reads fresh context_pct. Full snapshot overwrites at end of main().
     try:
-        from shared.state import session_namespaced_path as _snp
-
-        _snap_base = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
-        _snap_path = _snp(_snap_base, data.get("session_id"))
+        _snap_path = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
         _snap_tmp = _snap_path + ".tmp"
         _early_pct = (
             max(0, int(context_pct)) if isinstance(context_pct, (int, float)) else 0
@@ -1228,14 +1228,7 @@ def main():
         "health_pct": health_pct,
         "uds_ok": uds_ok,
     }
-    try:
-        from shared.state import session_namespaced_path as _snp2
-
-        snap_path = _snp2(
-            os.path.join(HOOKS_DIR, ".statusline_snapshot.json"), session_id
-        )
-    except ImportError:
-        snap_path = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
+    snap_path = os.path.join(HOOKS_DIR, ".statusline_snapshot.json")
     snap_tmp = snap_path + ".tmp"
     try:
         with open(snap_tmp, "w") as f:

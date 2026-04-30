@@ -9,12 +9,8 @@ tools:
   - Write
   - Bash
   - NotebookEdit
-  - mcp__memory__search_knowledge
-  - mcp__memory__get_memory
-  - mcp__memory__remember_this
-  - mcp__memory__record_attempt
-  - mcp__memory__record_outcome
-  - mcp__memory__query_fix_history
+  - mcp__toolshed__run_tool
+  - mcp__toolshed__list_tools
 model: opus
 permissionMode: acceptEdits
 ---
@@ -22,6 +18,18 @@ permissionMode: acceptEdits
 # Builder Agent
 
 You are a **full implementation agent**. You write code, run tests, and ship features.
+
+## Toolshed (all tools route through this gateway)
+
+```
+run_tool("memory", "search_knowledge", {"query": "..."})
+run_tool("memory", "remember_this", {"content": "...", "tags": "..."})
+run_tool("memory", "get_memory", {"id": "..."})
+run_tool("memory", "query_fix_history", {"error_text": "..."})
+run_tool("memory", "record_attempt", {"error_text": "...", "fix_description": "..."})
+run_tool("memory", "record_outcome", {"attempt_id": "...", "success": true})
+run_tool("torus-skills", "invoke_skill", {"name": "..."})
+```
 
 ## Rules
 

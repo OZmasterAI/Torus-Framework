@@ -134,9 +134,10 @@ def _detect_session_id() -> str:
         except OSError:
             continue
 
-    # Also check hooks dir if different
-    if state_dir != _HOOKS_DIR:
-        for fpath in _glob.glob(os.path.join(_HOOKS_DIR, "state_*.json")):
+    # Also check hooks disk dir if different
+    _hooks_state_dir = os.path.join(_HOOKS_DIR, ".state")
+    if state_dir != _hooks_state_dir:
+        for fpath in _glob.glob(os.path.join(_hooks_state_dir, "state_*.json")):
             if fpath.endswith(".lock") or ".tmp." in fpath:
                 continue
             basename = os.path.basename(fpath)
@@ -517,20 +518,19 @@ def memory_health() -> dict:
     _ensure_initialized()
     import glob as _mh_glob
 
-    lance_dir = os.path.join(os.path.expanduser("~"), "data", "memory", "lancedb")
-    tags_db = os.path.join(os.path.expanduser("~"), "data", "memory", "tags.db")
+    surreal_dir = os.path.join(
+        os.path.expanduser("~"), "data", "memory", "surrealdb_v3"
+    )
     result = {
-        "lance_dir": lance_dir,
-        "lance_exists": os.path.isdir(lance_dir),
+        "surreal_dir": surreal_dir,
+        "surreal_exists": os.path.isdir(surreal_dir),
         "tables": {},
-        "tags_db_exists": os.path.isfile(tags_db),
         "total_size_mb": 0,
     }
 
-    if result["lance_exists"]:
-        # Get total disk usage
+    if result["surreal_exists"]:
         total_bytes = 0
-        for dirpath, dirnames, filenames in os.walk(lance_dir):
+        for dirpath, dirnames, filenames in os.walk(surreal_dir):
             for f in filenames:
                 try:
                     total_bytes += os.path.getsize(os.path.join(dirpath, f))
@@ -538,29 +538,30 @@ def memory_health() -> dict:
                     pass
         result["total_size_mb"] = round(total_bytes / (1024 * 1024), 2)
 
-        # Count rows per table
         try:
-            import lancedb
+            from surrealdb import Surreal
 
-            db = lancedb.connect(lance_dir)
-            for table_name in db.list_tables():
+            db = Surreal("ws://127.0.0.1:8822")
+            db.signin({"username": "root", "password": "root"})
+            db.use("memory", "main")
+            for table_name in [
+                "knowledge",
+                "observations",
+                "fix_outcomes",
+                "web_pages",
+                "quarantine",
+                "clusters",
+            ]:
                 try:
-                    tbl = db.open_table(table_name)
-                    result["tables"][table_name] = {
-                        "row_count": tbl.count_rows(),
-                    }
+                    rows = db.query(f"SELECT count() FROM {table_name} GROUP ALL")
+                    count = rows[0]["count"] if rows else 0
+                    result["tables"][table_name] = {"row_count": count}
                 except Exception:
-                    result["tables"][table_name] = {"error": "cannot open"}
+                    result["tables"][table_name] = {"error": "cannot query"}
         except ImportError:
-            result["tables"] = {"error": "lancedb not installed"}
+            result["tables"] = {"error": "surrealdb not installed"}
         except Exception as e:
             result["tables"] = {"error": str(e)}
-
-    if result["tags_db_exists"]:
-        try:
-            result["tags_db_size_kb"] = round(os.path.getsize(tags_db) / 1024, 1)
-        except OSError:
-            pass
 
     # Migration marker
     marker = os.path.join(lance_dir, ".migration_complete")
@@ -1318,7 +1319,7 @@ def gate_drift(hours: int = 24) -> dict:
 def skill_dependencies() -> dict:
     """Analyze skill dependencies and shared module usage patterns.
 
-    Scans ~/.claude/skill-library/, parses scripts for shared module imports,
+    Scans ~/.claude/torus-skills/skill-library/, parses scripts for shared module imports,
     identifies missing dependencies and reuse opportunities.  Returns
     per-skill health status (healthy/degraded/unhealthy) with coverage
     percentages and actionable recommendations.
@@ -1932,78 +1933,49 @@ def query_observations(
     _ensure_initialized()
     limit = max(1, min(100, limit))
 
-    # Read observations from LanceDB
+    # Read observations from SurrealDB
     try:
-        import lancedb
+        from surrealdb import Surreal
 
-        lance_dir = os.path.join(os.path.expanduser("~"), "data", "memory", "lancedb")
-        db = lancedb.connect(lance_dir)
-        tbl = db.open_table("observations")
+        db = Surreal("ws://127.0.0.1:8822")
+        db.signin({"username": "root", "password": "root"})
+        db.use("memory", "main")
 
-        # Build filter
-        filters = []
+        # Build WHERE clauses
+        conditions = []
+        params = {}
         if error_only:
-            filters.append(
-                "metadata LIKE '%\"has_error\": \"true\"%' OR metadata LIKE '%has_error%true%'"
-            )
+            conditions.append("has_error = 'true'")
         if priority:
-            filters.append(f'metadata LIKE \'%"priority": "{priority}"%\'')
+            conditions.append("priority = $priority")
+            params["priority"] = priority
         if tool_name:
-            filters.append(f'metadata LIKE \'%"tool_name": "{tool_name}"%\'')
+            conditions.append("tool_name = $tool_name")
+            params["tool_name"] = tool_name
 
-        import json as _json
+        where_clause = " AND ".join(conditions) if conditions else ""
+        query = f"SELECT * FROM observations{' WHERE ' + where_clause if where_clause else ''} ORDER BY session_time DESC LIMIT $limit"
+        params["limit"] = limit
 
-        if filters:
-            # LanceDB SQL filter
-            try:
-                where_clause = " AND ".join(filters)
-                rows = tbl.search().where(where_clause).limit(limit).to_list()
-            except Exception:
-                # Fallback: scan and filter in Python
-                all_rows = tbl.search().limit(500).to_list()
-                rows = []
-                for r in all_rows:
-                    meta_str = r.get("metadata", "{}")
-                    try:
-                        meta = (
-                            _json.loads(meta_str)
-                            if isinstance(meta_str, str)
-                            else meta_str
-                        )
-                    except (ValueError, TypeError):
-                        meta = {}
-                    if error_only and meta.get("has_error") != "true":
-                        continue
-                    if priority and meta.get("priority") != priority:
-                        continue
-                    if tool_name and meta.get("tool_name") != tool_name:
-                        continue
-                    rows.append(r)
-                    if len(rows) >= limit:
-                        break
-        else:
-            rows = tbl.search().limit(limit).to_list()
+        rows = db.query(query, params)
+        if not isinstance(rows, list):
+            rows = []
 
         # Format results
         observations = []
         sentiment_counts = {}
         for r in rows[:limit]:
-            meta_str = r.get("metadata", "{}")
-            try:
-                meta = _json.loads(meta_str) if isinstance(meta_str, str) else meta_str
-            except (ValueError, TypeError):
-                meta = {}
-            sentiment = meta.get("sentiment", "")
+            sentiment = r.get("sentiment", "")
             if sentiment:
                 sentiment_counts[sentiment] = sentiment_counts.get(sentiment, 0) + 1
             observations.append(
                 {
-                    "id": r.get("id", ""),
-                    "document": str(r.get("text", r.get("document", "")))[:200],
-                    "tool_name": meta.get("tool_name", ""),
-                    "priority": meta.get("priority", ""),
-                    "has_error": meta.get("has_error", "false"),
-                    "error_pattern": meta.get("error_pattern", ""),
+                    "id": str(r.get("id", "")),
+                    "document": str(r.get("text", ""))[:200],
+                    "tool_name": r.get("tool_name", ""),
+                    "priority": r.get("priority", ""),
+                    "has_error": r.get("has_error", "false"),
+                    "error_pattern": r.get("error_pattern", ""),
                     "sentiment": sentiment,
                 }
             )
@@ -2019,7 +1991,7 @@ def query_observations(
             },
         }
     except ImportError:
-        return {"error": "lancedb not installed", "total": 0, "observations": []}
+        return {"error": "surrealdb not installed", "total": 0, "observations": []}
     except Exception as e:
         return {"error": str(e), "total": 0, "observations": []}
 
@@ -2193,7 +2165,7 @@ def framework_health_score() -> dict:
 
     # 4. Gate effectiveness (20% weight)
     try:
-        eff_path = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
+        eff_path = os.path.join(_HOOKS_DIR, ".gate_data", ".gate_effectiveness.json")
         if os.path.exists(eff_path):
             with open(eff_path) as f:
                 eff = _json.load(f)
@@ -2270,7 +2242,8 @@ def session_context_snapshot() -> dict:
         import glob as _glob2
 
         state_files = sorted(
-            _glob2.glob(os.path.join(state_dir, "state_*.json")),
+            _glob2.glob(os.path.join(state_dir, "state_*.json"))
+            + _glob2.glob(os.path.join(state_dir, ".state", "state_*.json")),
             key=os.path.getmtime,
             reverse=True,
         )

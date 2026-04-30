@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """Self-Healing Claude Framework — Memory MCP Server
 
-A LanceDB-backed persistent memory system exposed as MCP tools.
+A SurrealDB-embedded persistent memory system exposed as MCP tools.
 Claude Code connects to this server and gets search_knowledge, remember_this,
 get_memory, and maintenance as native tools.
 
-The memory persists across sessions in ~/data/memory/lancedb/, enabling cross-session
+The memory persists across sessions in ~/data/memory/surrealdb_v3/, enabling cross-session
 knowledge retention.
 
 Run standalone: python3 memory_server.py
 Used via MCP: configured in .claude/mcp.json
 
-Migrated from ChromaDB → LanceDB in Session 232.
-LanceDB provides optimistic concurrency control (no more segfaults),
-native TS bindings, and built-in BM25 FTS.
+Migrated from ChromaDB → LanceDB (Session 232) → SurrealDB embedded (Session 719) → SurrealDB v3 server (Session 722).
+SurrealDB v3 provides HNSW vector search, BM25 FTS, RELATE graph edges. Runs as standalone server (ws://).
 """
 
 import asyncio
@@ -33,15 +32,12 @@ from datetime import datetime, timedelta
 # Reduce thread pool sizes before libraries are imported.
 # Defaults = CPU count per pool (8 each) = 52 threads + ~320MB in memory arenas.
 # We process one query at a time, so 2 threads per pool is plenty.
-os.environ.setdefault("OMP_NUM_THREADS", "2")  # PyTorch OpenMP threads
-os.environ.setdefault("MKL_NUM_THREADS", "2")  # PyTorch MKL threads
-os.environ.setdefault("TOKIO_WORKER_THREADS", "2")  # LanceDB async I/O (Tokio)
-os.environ.setdefault("RAYON_NUM_THREADS", "2")  # LanceDB CPU compute (Rayon)
-os.environ.setdefault("MALLOC_ARENA_MAX", "2")  # Limit glibc arena fragmentation
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+os.environ.setdefault("MALLOC_ARENA_MAX", "2")
 
 import ctypes as _ctypes
-import lancedb
-import pyarrow as pa
+from surrealdb import Surreal, RecordID
 from mcp.server.fastmcp import FastMCP
 
 # Sideband file: write memory query timestamps here so the enforcer
@@ -249,7 +245,7 @@ _SERVER_PROJECT_DIR = None
 _SERVER_SUBPROJECT = None
 _SERVER_SUBPROJECT_DIR = None
 try:
-    _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks"))
+    _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state"))
     from boot_pkg.util import detect_project
 
     _SERVER_PROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT, _SERVER_SUBPROJECT_DIR = (
@@ -258,10 +254,11 @@ try:
 except Exception:
     pass
 
-# Persistent LanceDB storage
+# Persistent storage
 MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
-LANCE_DIR = os.path.join(MEMORY_DIR, "lancedb")
-os.makedirs(LANCE_DIR, exist_ok=True)
+SURREAL_DIR = os.path.join(MEMORY_DIR, "surrealdb_v3")
+SURREAL_URL = "ws://127.0.0.1:8822"
+os.makedirs(SURREAL_DIR, exist_ok=True)
 
 # Embedding model: nvidia/nv-embed-v1 via NIM API (4096-dim, 7B params, MTEB 69.3)
 # API-based — no local model, near-zero RAM, ~1s per embed
@@ -270,7 +267,6 @@ _EMBEDDING_DIM = 4096
 _embedding_fn = True  # Always "loaded" — API-based, no local model
 _NIM_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 _NIM_KEY_FALLBACK = None
-TAGS_DB_PATH = os.path.join(MEMORY_DIR, "tags.db")
 
 # Unix Domain Socket gateway for external consumers (hooks, dashboard)
 SOCKET_PATH = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".memory.sock")
@@ -278,115 +274,18 @@ _socket_server = None  # threading server reference for cleanup
 _uds_shutting_down = False  # prevents rebind during intentional shutdown
 _socket_owner_pid = None  # PID that successfully bound the socket
 
-# Lazy LanceDB initialization
-_lance_db = None  # lancedb.DBConnection
-collection = None  # LanceCollection wrapper for knowledge table
-fix_outcomes = None  # LanceCollection wrapper for fix_outcomes table
-observations = None  # LanceCollection wrapper for observations table
-web_pages = None  # LanceCollection wrapper for web_pages table
-quarantine = None  # LanceCollection wrapper for quarantine table
-_lance_degraded = False  # kept for backward compat (now means "lance degraded")
+# Lazy SurrealDB initialization
+_surreal_db = None  # Surreal embedded connection
+collection = None  # SurrealCollection wrapper for knowledge table
+fix_outcomes = None  # SurrealCollection wrapper for fix_outcomes table
+observations = None  # SurrealCollection wrapper for observations table
+web_pages = None  # SurrealCollection wrapper for web_pages table
+quarantine = None  # SurrealCollection wrapper for quarantine table
+_clusters_coll = None  # SurrealCollection wrapper for clusters table
+_surreal_degraded = False
 
 
-# ── Arrow Schemas for LanceDB Tables (knowledge, fix_outcomes, etc.) ────────
-
-_KNOWLEDGE_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("context", pa.string()),
-        pa.field("tags", pa.string()),
-        pa.field("timestamp", pa.string()),
-        pa.field("session_time", pa.float64()),
-        pa.field("preview", pa.string()),
-        pa.field("primary_source", pa.string()),
-        pa.field("related_urls", pa.string()),
-        pa.field("source_method", pa.string()),
-        pa.field("tier", pa.int32()),
-        pa.field("retrieval_count", pa.int32()),
-        pa.field("last_retrieved", pa.string()),
-        pa.field("source_session_id", pa.string()),
-        pa.field("source_observation_ids", pa.string()),
-        pa.field("cluster_id", pa.string()),
-        pa.field("memory_type", pa.string()),
-        pa.field("state_type", pa.string()),
-        pa.field("quality_score", pa.float64()),
-    ]
-)
-
-_FIX_OUTCOMES_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("error_hash", pa.string()),
-        pa.field("strategy_id", pa.string()),
-        pa.field("chain_id", pa.string()),
-        pa.field("outcome", pa.string()),
-        pa.field("confidence", pa.string()),
-        pa.field("attempts", pa.string()),
-        pa.field("successes", pa.string()),
-        pa.field("timestamp", pa.string()),
-        pa.field("last_outcome_time", pa.string()),
-        pa.field("banned", pa.string()),
-        pa.field("bridged", pa.string()),
-    ]
-)
-
-_OBSERVATIONS_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("session_id", pa.string()),
-        pa.field("tool_name", pa.string()),
-        pa.field("timestamp", pa.string()),
-        pa.field("session_time", pa.float64()),
-        pa.field("has_error", pa.string()),
-        pa.field("error_pattern", pa.string()),
-        pa.field("preview", pa.string()),
-    ]
-)
-
-_WEB_PAGES_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("url", pa.string()),
-        pa.field("title", pa.string()),
-        pa.field("chunk_index", pa.string()),
-        pa.field("total_chunks", pa.string()),
-        pa.field("indexed_at", pa.string()),
-        pa.field("content_hash", pa.string()),
-        pa.field("word_count", pa.string()),
-    ]
-)
-
-_QUARANTINE_SCHEMA = pa.schema(
-    [
-        pa.field("id", pa.string()),
-        pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), _EMBEDDING_DIM)),
-        pa.field("quarantine_reason", pa.string()),
-        pa.field("quarantine_pair", pa.string()),
-        pa.field("quarantined_at", pa.string()),
-        pa.field("context", pa.string()),
-        pa.field("tags", pa.string()),
-        pa.field("timestamp", pa.string()),
-        pa.field("session_time", pa.float64()),
-        pa.field("preview", pa.string()),
-    ]
-)
-
-_TABLE_SCHEMAS = {
-    "knowledge": _KNOWLEDGE_SCHEMA,
-    "fix_outcomes": _FIX_OUTCOMES_SCHEMA,
-    "observations": _OBSERVATIONS_SCHEMA,
-    "web_pages": _WEB_PAGES_SCHEMA,
-    "quarantine": _QUARANTINE_SCHEMA,
-}
+from shared.surreal_collection import SurrealCollection, init_surreal_db
 
 
 def _embed_texts(texts):
@@ -435,111 +334,52 @@ _tool_executor = concurrent.futures.ThreadPoolExecutor(
 )
 
 
-from shared.lance_collection import (
-    LanceCollection as _LanceCollectionBase,
-    lance_retry as _lance_retry,
-)
-
-
-# Thin wrapper to inject embedding functions at construction time
-def _make_lance_collection(table, schema, name):
-    return _LanceCollectionBase(
-        table,
-        schema,
-        name,
-        embed_text=_embed_text,
-        embed_texts=_embed_texts,
-        embedding_dim=_EMBEDDING_DIM,
-    )
-
-
-def _init_lancedb():
-    """Lazy initialization of LanceDB connection and table wrappers.
-
-    Called from _ensure_initialized() on first MCP tool use.
-    Safe to call multiple times — idempotent after first run.
-    Uses nomic-ai/nomic-embed-text-v2-moe embedding model (768-dim, 8192 tokens).
-    """
+def _init_surrealdb():
+    """Lazy initialization of SurrealDB v3 connection (ws://) and table wrappers."""
     global \
-        _lance_db, \
+        _surreal_db, \
         collection, \
         fix_outcomes, \
         observations, \
         web_pages, \
         quarantine, \
-        _lance_degraded, \
-        _embedding_fn
-    if _lance_db is not None:
+        _clusters_coll, \
+        _surreal_degraded
+    if _surreal_db is not None:
         return
     try:
-        # nv-embed-v1 via NIM API — no local model to load
         print(
             f"[MCP] Embedding via NIM API: {_EMBEDDING_MODEL} ({_EMBEDDING_DIM}-dim)",
             file=_sys.stderr,
         )
 
-        _lance_db = lancedb.connect(LANCE_DIR)
+        _surreal_db = Surreal(SURREAL_URL)
+        _surreal_db.signin({"username": "root", "password": "root"})
+        _surreal_db.use("memory", "main")
 
-        def _open_or_create(name: str, schema):
-            """Open table if exists, create with schema if not."""
-            try:
-                tbl = _lance_db.open_table(name)
-                # Migrate: add missing columns or fix type mismatches
-                existing_cols = {f.name: f.type for f in tbl.schema}
-                for field in schema:
-                    existing_type = existing_cols.get(field.name)
-                    if existing_type is None:
-                        # Column missing — add it
-                        if pa.types.is_list(field.type):
-                            print(
-                                f"[MCP] {name}: new vector column {field.name} needs backfill (run migrate_vector_256.py)",
-                                file=_sys.stderr,
-                            )
-                            continue
-                        elif pa.types.is_float64(field.type):
-                            default = "0.0"
-                        elif pa.types.is_int32(field.type):
-                            default = "0"
-                        else:
-                            default = "''"
-                        try:
-                            tbl.add_columns({field.name: default})
-                            print(
-                                f"[MCP] Migrated {name}: added column {field.name}",
-                                file=_sys.stderr,
-                            )
-                        except Exception as e:
-                            print(
-                                f"[MCP] Migration failed for {name}.{field.name}: {e}",
-                                file=_sys.stderr,
-                            )
-                    elif pa.types.is_list(field.type) and not pa.types.is_list(
-                        existing_type
-                    ):
-                        # Type mismatch: schema wants list but column is string/other
-                        print(
-                            f"[MCP] WARNING: {name}.{field.name} has wrong type ({existing_type}, expected {field.type}). Run migrate_vector_256.py to fix.",
-                            file=_sys.stderr,
-                        )
-            except Exception:
-                tbl = _lance_db.create_table(name, schema=schema)
-            return _make_lance_collection(tbl, schema, name)
+        colls = init_surreal_db(
+            _surreal_db,
+            embed_text=_embed_text,
+            embed_texts=_embed_texts,
+            embedding_dim=_EMBEDDING_DIM,
+        )
 
-        collection = _open_or_create("knowledge", _KNOWLEDGE_SCHEMA)
-        fix_outcomes = _open_or_create("fix_outcomes", _FIX_OUTCOMES_SCHEMA)
-        observations = _open_or_create("observations", _OBSERVATIONS_SCHEMA)
-        web_pages = _open_or_create("web_pages", _WEB_PAGES_SCHEMA)
-        quarantine = _open_or_create("quarantine", _QUARANTINE_SCHEMA)
+        collection = colls["knowledge"]
+        fix_outcomes = colls["fix_outcomes"]
+        observations = colls["observations"]
+        web_pages = colls["web_pages"]
+        quarantine = colls["quarantine"]
+        _clusters_coll = colls["clusters"]
 
-        print(f"[MCP] LanceDB initialized at {LANCE_DIR}", file=_sys.stderr)
+        print(f"[MCP] SurrealDB v3 connected via {SURREAL_URL}", file=_sys.stderr)
     except Exception as e:
         import traceback
 
         print(
-            f"[MCP] LanceDB init failed: {e}\n{traceback.format_exc()}",
+            f"[MCP] SurrealDB init failed: {e}\n{traceback.format_exc()}",
             file=_sys.stderr,
         )
-        _lance_degraded = True
+        _surreal_degraded = True
 
 
 # Progressive disclosure: preview length for search summaries
@@ -588,7 +428,7 @@ import re as _re
 
 NOISE_REGEXES = [_re.compile(p, _re.IGNORECASE) for p in NOISE_PATTERNS]
 
-# Near-dedup: cosine distance thresholds (tuned for nomic-embed-text-v2-moe 768-dim)
+# Near-dedup: cosine distance thresholds (tuned for nv-embed-v1 4096-dim)
 DEDUP_THRESHOLD = 0.12  # distance < 0.12 = hard skip (was 0.10 for 384-dim)
 DEDUP_SOFT_THRESHOLD = 0.20  # 0.12-0.20 = save but tag as possible-dupe (was 0.15)
 FIX_DEDUP_THRESHOLD = 0.05  # Stricter threshold for type:fix memories (was 0.03)
@@ -787,9 +627,6 @@ def _extract_citations(content: str, context: str) -> dict:
         return defaults
 
 
-from shared.tag_index import TagIndex
-
-
 from shared.search_helpers import detect_query_mode
 
 
@@ -807,17 +644,14 @@ def _merge_results(fts_results, lance_summaries, top_k=15):
 # Lazy initialization — only run when module is used as a server, not when imported
 # for testing. LanceDB uses optimistic concurrency control (no more segfaults).
 _preview_migrated = False
-tag_index = TagIndex(db_path=TAGS_DB_PATH)
 _tag_count = 0
 _initialized = False
 _initializing = False  # True during _ensure_initialized() — watchdog skips strikes
 _init_lock = threading.Lock()  # Serializes warmup thread vs tool call initialization
 _init_done = threading.Event()  # Signaled when initialization completes
-_lance_fts_ready = False  # True once LanceDB FTS index is built
 _knowledge_graph = None  # KnowledgeGraph instance (initialized lazily)
 _ltp_tracker = None  # LTPTracker instance (initialized lazily)
 _adaptive_weights = None  # AdaptiveWeights instance (initialized lazily)
-_cluster_store = None  # _ClusterStore instance (initialized lazily)
 _last_search_ids = []  # IDs from last search_knowledge call (for implicit feedback)
 _search_pipeline = None  # SearchPipeline instance (initialized lazily)
 _write_pipeline = None  # WritePipeline instance (initialized lazily)
@@ -895,18 +729,16 @@ def _generate_counterfactual_query(original_query, initial_results, model_key="h
 _SERVER_START_TIME = time.time()  # Module load time — used for uptime reporting
 
 
-from shared.search_helpers import (
-    lance_keyword_search as _sh_lance_kw,
-    lance_fts_to_summary,
-)
-
-
-def _lance_fts_to_summary(row):
-    return lance_fts_to_summary(row, SUMMARY_LENGTH)
-
-
-def _lance_keyword_search(query, top_k=15):
-    return _sh_lance_kw(query, top_k, collection, _lance_fts_ready, SUMMARY_LENGTH)
+def _keyword_search(query, top_k=15):
+    if collection is None:
+        return []
+    results = collection.keyword_search(query, top_k=top_k)
+    for r in results:
+        text = r.get("text", "")
+        r["summary"] = (
+            text[:SUMMARY_LENGTH] + "..." if len(text) > SUMMARY_LENGTH else text
+        )
+    return results
 
 
 from shared.search_helpers import (
@@ -926,7 +758,7 @@ def _fuzzy_keyword_search(query: str, table_name: str = "knowledge", top_k: int 
             "fix_outcomes": fix_outcomes,
             "web_pages": web_pages,
         },
-        fts_ready=_lance_fts_ready,
+        fts_ready=True,
     )
 
 
@@ -937,21 +769,135 @@ def _tag_ids_to_summaries(memory_ids, collection_ref=None):
     return _sh_tag_ids_to_summaries(memory_ids, collection_ref or collection)
 
 
-from shared.cluster_store import (
-    ClusterStore as _ClusterStore,
-    cluster_label as _cluster_label,
-    CLUSTER_THRESHOLD,
-)
+from shared.error_normalizer import fnv1a_hash as _fnv1a_hash
+
+
+def _cluster_label(content: str) -> str:
+    """Extract top-3 meaningful words from content for a cluster label."""
+    import re as _re_cl
+    from collections import Counter as _Counter_cl
+
+    _stop = {
+        "this",
+        "that",
+        "with",
+        "from",
+        "have",
+        "been",
+        "were",
+        "will",
+        "would",
+        "could",
+        "should",
+        "their",
+        "there",
+        "they",
+        "which",
+        "when",
+        "what",
+        "where",
+        "than",
+        "then",
+        "also",
+        "about",
+        "into",
+        "more",
+        "some",
+        "such",
+        "only",
+        "other",
+        "each",
+        "just",
+        "like",
+        "over",
+        "very",
+        "after",
+        "before",
+        "between",
+        "under",
+        "again",
+        "does",
+        "done",
+        "make",
+        "made",
+        "most",
+        "much",
+        "must",
+        "need",
+    }
+    words = _re_cl.findall(r"[a-zA-Z_]{4,}", content.lower())
+    counts = _Counter_cl(w for w in words if w not in _stop)
+    top = [w for w, _ in counts.most_common(3)]
+    return " / ".join(top) if top else "misc"
+
+
+CLUSTER_THRESHOLD = 0.7
+
+
+def _surreal_cluster_assign(vec_list, content=""):
+    if _clusters_coll is None or not vec_list:
+        return ""
+    try:
+        import numpy as np
+
+        vec = np.array(vec_list, dtype=np.float32)
+        norm = np.linalg.norm(vec)
+        if norm < 1e-10:
+            return ""
+        vec_norm = (vec / norm).tolist()
+
+        rows = _clusters_coll._db.query(
+            "SELECT *, vector::distance::knn() AS dist FROM clusters "
+            "WHERE centroid <|1, COSINE|> $vec ORDER BY dist ASC",
+            {"vec": vec_norm},
+        )
+        now = datetime.now().isoformat()
+
+        if rows and (1 - rows[0].get("dist", 1.0)) >= CLUSTER_THRESHOLD:
+            cid = _clusters_coll._extract_id(rows[0])
+            old_count = rows[0].get("member_count", 1)
+            old_centroid = np.array(rows[0].get("centroid", vec_norm), dtype=np.float32)
+            new_count = old_count + 1
+            new_centroid = (
+                old_centroid * old_count + np.array(vec_norm, dtype=np.float32)
+            ) / new_count
+            c_norm = np.linalg.norm(new_centroid)
+            if c_norm > 1e-10:
+                new_centroid = new_centroid / c_norm
+            _clusters_coll._db.query(
+                "UPDATE clusters:$id SET centroid=$c, member_count=$n, updated_at=$t",
+                {"id": cid, "c": new_centroid.tolist(), "n": new_count, "t": now},
+            )
+            return cid
+        else:
+            new_id = f"cl_{_fnv1a_hash(content)}"
+            label = _cluster_label(content)
+            _clusters_coll.upsert(
+                ids=[new_id],
+                vectors=[vec_norm],
+                documents=[""],
+                metadatas=[
+                    {
+                        "member_count": 1,
+                        "label": label,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ],
+            )
+            return new_id
+    except Exception:
+        return ""
 
 
 def _ensure_initialized():
-    """Run one-time initialization (LanceDB + TagIndex + LanceDB FTS + Knowledge Graph + LTP).
+    """Run one-time initialization (SurrealDB + Knowledge Graph + LTP).
 
     Called lazily on first MCP tool use or explicitly at server startup.
     Safe to call multiple times — idempotent after first run.
     """
-    global _preview_migrated, tag_index, _tag_count, _initialized, _lance_fts_ready
-    global _knowledge_graph, _ltp_tracker, _adaptive_weights, _cluster_store
+    global _preview_migrated, _tag_count, _initialized
+    global _knowledge_graph, _ltp_tracker, _adaptive_weights
     global _initializing
     if _initialized:
         return
@@ -964,43 +910,17 @@ def _ensure_initialized():
             return  # Completed while we waited for the lock
         _initializing = True
     _t_total = time.monotonic()
-    _init_lancedb()
+    _init_surrealdb()
     _t_model = time.monotonic()
     if collection is None:
         print(
-            "[MCP] LanceDB unavailable — starting in degraded mode.", file=_sys.stderr
+            "[MCP] SurrealDB unavailable — starting in degraded mode.", file=_sys.stderr
         )
         _initialized = True
         _initializing = False
         _init_done.set()
         return
 
-    # Build LanceDB native FTS index on text column (incremental if possible)
-    try:
-        _fts_count_path = os.path.join(MEMORY_DIR, ".fts_last_count")
-        _current_rows = collection._table.count_rows()
-        _last_count = 0
-        if os.path.exists(_fts_count_path):
-            try:
-                _last_count = int(open(_fts_count_path).read().strip())
-            except (ValueError, OSError):
-                pass
-        if _last_count == 0 or _current_rows == 0:
-            # No prior index or empty table — full build needed
-            collection._table.create_fts_index("text", replace=True)
-        elif _current_rows != _last_count:
-            # New rows since last index — incremental optimize
-            try:
-                collection._table.optimize()
-            except Exception:
-                # optimize failed — fall back to full rebuild
-                collection._table.create_fts_index("text", replace=True)
-        # else: row count unchanged — skip entirely
-        with open(_fts_count_path, "w") as f:
-            f.write(str(_current_rows))
-        _lance_fts_ready = True
-    except Exception:
-        pass  # FTS is optional — keyword search degrades gracefully
     _t_fts = time.monotonic()
 
     # Initialize knowledge graph and LTP tracker (fail-open)
@@ -1026,37 +946,33 @@ def _ensure_initialized():
     except Exception:
         _adaptive_weights = None
 
-    # Initialize incremental cluster store (fail-open)
-    try:
-        global _cluster_store
-        _clusters_path = os.path.join(MEMORY_DIR, "clusters.db")
-        _cluster_store = _ClusterStore(_clusters_path)
-    except Exception:
-        _cluster_store = None
-
     # Session-start memory replay cycle (fail-open)
     try:
         if _knowledge_graph and _ltp_tracker and collection:
             from shared.memory_replay import run_replay_cycle
 
             _cutoff = time.time() - 30 * 86400  # 30 days
-            _recent_rows = (
-                collection._table.search()
-                .where(f"session_time > {_cutoff}", prefilter=True)
-                .limit(50)
-                .to_list()
+            _recent = collection.get(
+                where={"session_time": {"$gt": _cutoff}},
+                limit=50,
+                include=["metadatas"],
             )
-            if _recent_rows:
+            if _recent and _recent.get("ids"):
                 _replay_mems = []
-                for _r in _recent_rows:
+                for i, _rid in enumerate(_recent["ids"]):
+                    _m = (
+                        _recent["metadatas"][i]
+                        if i < len(_recent.get("metadatas", []))
+                        else {}
+                    )
                     _replay_mems.append(
                         {
-                            "id": _r.get("id", ""),
-                            "tier": _r.get("tier", 2),
-                            "retrieval_count": _r.get("retrieval_count", 0),
-                            "session_time": _r.get("session_time", 0),
-                            "timestamp": _r.get("timestamp", ""),
-                            "tags": _r.get("tags", ""),
+                            "id": _rid,
+                            "tier": _m.get("tier", 2),
+                            "retrieval_count": _m.get("retrieval_count", 0),
+                            "session_time": _m.get("session_time", 0),
+                            "timestamp": _m.get("timestamp", ""),
+                            "tags": _m.get("tags", ""),
                         }
                     )
                 _replay_stats = run_replay_cycle(
@@ -1070,12 +986,8 @@ def _ensure_initialized():
     except Exception:
         pass  # Replay failure must not block initialization
 
-    # Check if persisted tag index is already synced with LanceDB
-    lance_count = collection.count()
-    if tag_index.is_synced(lance_count):
-        _tag_count = lance_count
-    else:
-        _tag_count = tag_index.build_from_lance(collection)
+    # Sync tag count from collection
+    _tag_count = collection.count()
 
     # Initialize pipeline instances (fail-open — fall back to inline logic)
     _init_pipelines()
@@ -1100,7 +1012,7 @@ def _init_pipelines():
         _config = _read_config_toggles()
         _search_helpers = {
             "format_summaries": format_summaries,
-            "lance_keyword_search": _lance_keyword_search,
+            "keyword_search": _keyword_search,
             "merge_results": _merge_results,
             "detect_query_mode": _detect_query_mode,
             "search_observations_internal": _search_observations_internal,
@@ -1110,14 +1022,12 @@ def _init_pipelines():
             "touch_memory_timestamp": _touch_memory_timestamp,
             "validate_top_k": _validate_top_k,
             "fix_outcomes": fix_outcomes,
-            "cluster_store": _cluster_store,
             "server_project": _SERVER_PROJECT,
             "server_subproject": _SERVER_SUBPROJECT,
             "embed_text": _embed_text,
         }
         _search_pipeline = SearchPipeline(
             collection=collection,
-            tag_index=tag_index,
             graph=_knowledge_graph,
             ltp=_ltp_tracker,
             adaptive=_adaptive_weights,
@@ -1138,7 +1048,6 @@ def _init_pipelines():
             "touch_memory_timestamp": _touch_memory_timestamp,
             "generate_id": generate_id,
             "embed_text": _embed_text,
-            "cluster_store": _cluster_store,
             "noise_regexes": NOISE_REGEXES,
             "min_content_length": MIN_CONTENT_LENGTH,
             "summary_length": SUMMARY_LENGTH,
@@ -1148,7 +1057,6 @@ def _init_pipelines():
         }
         _write_pipeline = WritePipeline(
             collection=collection,
-            tag_index=tag_index,
             graph=_knowledge_graph,
             config=_config,
             helpers=_write_helpers,
@@ -1191,18 +1099,31 @@ def _read_config_toggles():
     return _config_cache or {}
 
 
-from shared.search_helpers import TagCooccurrence as _TagCooccurrence
-
-_tag_cooccurrence_obj = _TagCooccurrence()
-_tag_cooccurrence_dirty = True  # kept for backward compat (WritePipeline sets this)
-
-
-def _build_tag_cooccurrence():
-    _tag_cooccurrence_obj.build(tag_index)
-
-
 def _get_expanded_tags(query):
-    return _tag_cooccurrence_obj.get_expanded_tags(query, tag_index)
+    if collection is None:
+        return []
+    try:
+        words = [w for w in query.lower().split() if len(w) > 3]
+        if not words:
+            return []
+        expanded = set()
+        for word in words:
+            tag_ids = collection.tag_search([word], match_all=False, top_k=20)
+            for tid in tag_ids:
+                try:
+                    data = collection.get(ids=[tid], include=["metadatas"])
+                    if data and data.get("metadatas"):
+                        for tag in (data["metadatas"][0].get("tags", "") or "").split(
+                            ","
+                        ):
+                            tag = tag.strip()
+                            if tag and tag.lower() not in query.lower():
+                                expanded.add(tag)
+                except Exception:
+                    pass
+        return list(expanded)[:15]
+    except Exception:
+        return []
 
 
 def format_results(results) -> list[dict]:
@@ -1361,15 +1282,20 @@ def _flush_capture_queue():
             pass  # empty file
         os.replace(tmp, CAPTURE_QUEUE_FILE)
 
-        # Parse and batch upsert
+        # Parse and batch-deduplicate before upsert
         docs, metas, ids = [], [], []
+        seen_ids = set()
         for line in lines:
             try:
                 obs = json.loads(line.strip())
                 if "document" in obs and "id" in obs:
+                    oid = obs["id"]
+                    if oid in seen_ids:
+                        continue
+                    seen_ids.add(oid)
                     docs.append(obs["document"])
                     metas.append(obs.get("metadata", {}))
-                    ids.append(obs["id"])
+                    ids.append(oid)
             except (json.JSONDecodeError, KeyError):
                 continue  # skip corrupted lines
 
@@ -1713,9 +1639,9 @@ def search_knowledge(
     """
     global _last_search_ids
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
 
@@ -1998,9 +1924,9 @@ def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
         table: Table to search (knowledge, observations, fix_outcomes)
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
 
@@ -2036,18 +1962,15 @@ def remember_this(
         source_session_id: Session ID to record provenance (auto-detected if omitted)
         source_observation_ids: Comma-separated observation IDs this knowledge was derived from
     """
-    global _tag_cooccurrence_dirty
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
 
     # Delegate to WritePipeline (with inline fallback)
     if _write_pipeline is not None:
-        # Refresh mutable helpers
-        _write_pipeline.h["cluster_store"] = _cluster_store
         _write_pipeline.h["server_project"] = _SERVER_PROJECT
         _write_pipeline.h["server_subproject"] = _SERVER_SUBPROJECT
         result = _write_pipeline.write(
@@ -2058,9 +1981,29 @@ def remember_this(
             source_session_id=source_session_id,
             source_observation_ids=source_observation_ids,
         )
-        # Mark tag co-occurrence as dirty if tags changed
-        if tags:
-            _tag_cooccurrence_dirty = True
+
+        # RELATE: knowledge->derived_from->observation (fail-open)
+        if (
+            source_observation_ids
+            and not result.get("rejected")
+            and not result.get("deduplicated")
+        ):
+            try:
+                doc_id = result.get("id", "")
+                if _surreal_db is not None and doc_id:
+                    for oid in source_observation_ids.split(","):
+                        oid = oid.strip()
+                        if oid:
+                            _surreal_db.query(
+                                "RELATE $from->derived_from->$to SET timestamp=time::now()",
+                                {
+                                    "from": RecordID("knowledge", doc_id),
+                                    "to": RecordID("observation", oid),
+                                },
+                            )
+            except Exception:
+                pass
+
         return result
 
     # Pipeline not initialized — return error
@@ -2078,8 +2021,8 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
         threshold: Cosine distance threshold for duplicate detection (default 0.15)
     """
     _ensure_initialized()
-    if _lance_degraded:
-        return {"error": "LanceDB unavailable — running in degraded mode"}
+    if _surreal_degraded:
+        return {"error": "Storage unavailable ��� running in degraded mode"}
     threshold = _validate_distance_threshold(
         threshold, default=0.15, min_val=0.03, max_val=0.5
     )
@@ -2176,11 +2119,6 @@ def deduplicate_sweep(dry_run: bool = True, threshold: float = 0.15) -> dict:
                         documents=[v_doc], metadatas=[v_meta], ids=[victim_id]
                     )
                     collection.delete(ids=[victim_id])
-                    # Remove from tag index
-                    try:
-                        tag_index.remove(victim_id)
-                    except Exception:
-                        pass
                     # Transfer graph edges from duplicate to survivor, then deactivate (fail-open)
                     try:
                         if _knowledge_graph:
@@ -2214,9 +2152,9 @@ def get_memory(id: str) -> dict:
         id: The memory ID (from search results)
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     try:
@@ -2316,9 +2254,9 @@ def delete_memory(id: str) -> dict:
     Args:
         id: The memory ID to delete (from search results). Comma-separated for batch delete.
     """
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     try:
@@ -2465,9 +2403,9 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
         strategy_id: A short name for the fix strategy (e.g., "fix-type-cast")
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     normalized, error_hash = error_signature(error_text)
@@ -2506,6 +2444,20 @@ def record_attempt(error_text: str, strategy_id: str) -> dict:
         ids=[chain_id],
     )
 
+    # RELATE: attempt->tried_for->error (fail-open)
+    try:
+        if _surreal_db is not None:
+            _surreal_db.query(
+                "RELATE $from->tried_for->$to SET strategy=$s, timestamp=time::now()",
+                {
+                    "from": RecordID("attempt", chain_id),
+                    "to": RecordID("error", error_hash),
+                    "s": strategy_id,
+                },
+            )
+    except Exception:
+        pass
+
     _touch_memory_timestamp()
 
     return {
@@ -2526,9 +2478,9 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
         outcome: "success" or "failure"
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     if outcome not in ("success", "failure"):
@@ -2568,6 +2520,32 @@ def record_outcome(chain_id: str, outcome: str) -> dict:
             ],
         )
 
+        # RELATE: fix->resolved/failed_on->error (fail-open)
+        try:
+            error_hash = meta.get("error_hash", "")
+            if _surreal_db is not None and error_hash:
+                if outcome == "success":
+                    _surreal_db.query(
+                        "RELATE $from->resolved->$to SET confidence=$c, chain_id=$chain, timestamp=time::now()",
+                        {
+                            "from": RecordID("fix", chain_id),
+                            "to": RecordID("error", error_hash),
+                            "c": confidence,
+                            "chain": chain_id,
+                        },
+                    )
+                else:
+                    _surreal_db.query(
+                        "RELATE $from->failed_on->$to SET chain_id=$chain, timestamp=time::now()",
+                        {
+                            "from": RecordID("fix", chain_id),
+                            "to": RecordID("error", error_hash),
+                            "chain": chain_id,
+                        },
+                    )
+        except Exception:
+            pass
+
         _touch_memory_timestamp()
 
         return {
@@ -2593,9 +2571,9 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
         top_k: Maximum number of results (default 10)
     """
     _ensure_initialized()
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
@@ -2704,12 +2682,226 @@ def query_fix_history(error_text: str, top_k: int = 10) -> dict:
 
 @mcp.tool()
 @crash_proof
+def traverse_graph(start_id: str, depth: int = 2, direction: str = "both") -> dict:
+    """Traverse graph edges from a starting node to find connected memories.
+
+    Args:
+        start_id: The record ID to start from (e.g., "dk_abc123" for knowledge, or "hash_xyz" for error)
+        depth: How many hops to traverse (default 2, max 5)
+        direction: "out" (forward edges), "in" (reverse edges), or "both" (default)
+    """
+    _ensure_initialized()
+    if _surreal_degraded:
+        return {
+            "error": "Storage unavailable — running in degraded mode",
+            "degraded": True,
+        }
+    if _surreal_db is None:
+        return {"error": "SurrealDB not initialized"}
+
+    depth = max(1, min(depth, 5))
+    if direction not in ("out", "in", "both"):
+        direction = "both"
+
+    edges_out = []
+    edges_in = []
+
+    try:
+        # Determine possible tables from ID prefix
+        tables = ["knowledge"]
+        if start_id.startswith("obs_"):
+            tables = ["observation"]
+        elif start_id.startswith("dk_"):
+            tables = ["knowledge"]
+        else:
+            tables = ["attempt", "fix", "error"]
+
+        edge_types = ["tried_for", "resolved", "failed_on", "derived_from"]
+
+        if direction in ("out", "both"):
+            for table in tables:
+                for edge_type in edge_types:
+                    results = _surreal_db.query(
+                        f"SELECT * FROM {edge_type} WHERE in = type::thing($table, $id)",
+                        {"table": table, "id": start_id},
+                    )
+                    for r in results if isinstance(results, list) else []:
+                        edges_out.append(
+                            {
+                                "edge_type": edge_type,
+                                "from_table": table,
+                                "target": str(r.get("out", "")),
+                                "metadata": {
+                                    k: v
+                                    for k, v in r.items()
+                                    if k not in ("id", "in", "out")
+                                },
+                            }
+                        )
+
+        if direction in ("in", "both"):
+            for table in tables:
+                for edge_type in edge_types:
+                    results = _surreal_db.query(
+                        f"SELECT * FROM {edge_type} WHERE out = type::thing($table, $id)",
+                        {"table": table, "id": start_id},
+                    )
+                    for r in results if isinstance(results, list) else []:
+                        edges_in.append(
+                            {
+                                "edge_type": edge_type,
+                                "from_table": table,
+                                "source": str(r.get("in", "")),
+                                "metadata": {
+                                    k: v
+                                    for k, v in r.items()
+                                    if k not in ("id", "in", "out")
+                                },
+                            }
+                        )
+
+    except Exception as e:
+        return {"error": f"Graph traversal failed: {str(e)}"}
+
+    return {
+        "start_id": start_id,
+        "direction": direction,
+        "depth": depth,
+        "edges_out": edges_out,
+        "edges_in": edges_in,
+        "total_edges": len(edges_out) + len(edges_in),
+    }
+
+
+@mcp.tool()
+@crash_proof
+def find_pattern(strategy_or_error: str, pattern_type: str = "failed_strategy") -> dict:
+    """Find patterns in fix history using graph edges.
+
+    Args:
+        strategy_or_error: Strategy name or error text to search for
+        pattern_type: "failed_strategy" (strategies that keep failing), "successful_strategy" (what works), or "error_cascade" (errors linked to same strategy)
+    """
+    _ensure_initialized()
+    if _surreal_degraded:
+        return {
+            "error": "Storage unavailable — running in degraded mode",
+            "degraded": True,
+        }
+    if _surreal_db is None:
+        return {"error": "SurrealDB not initialized"}
+
+    if pattern_type not in ("failed_strategy", "successful_strategy", "error_cascade"):
+        pattern_type = "failed_strategy"
+
+    results = []
+
+    try:
+        if pattern_type == "failed_strategy":
+            rows = _surreal_db.query(
+                "SELECT *, in AS fix_node, out AS error_node FROM failed_on WHERE chain_id CONTAINS $s OR in.strategy = $s",
+                {"s": strategy_or_error},
+            )
+            if not rows or not isinstance(rows, list):
+                # Fallback: search fix_outcomes by strategy
+                fo = fix_outcomes.get(where={"strategy_id": strategy_or_error})
+                if fo and fo.get("metadatas"):
+                    for meta in fo["metadatas"]:
+                        if (
+                            meta.get("outcome") == "failure"
+                            or float(meta.get("confidence", 1)) < 0.18
+                        ):
+                            results.append(
+                                {
+                                    "strategy_id": meta.get("strategy_id", ""),
+                                    "error_hash": meta.get("error_hash", ""),
+                                    "confidence": float(meta.get("confidence", 0)),
+                                    "attempts": int(meta.get("attempts", 0)),
+                                    "pattern": "repeatedly_failing",
+                                }
+                            )
+            else:
+                for r in rows:
+                    results.append(
+                        {
+                            "fix_node": str(r.get("fix_node", "")),
+                            "error_node": str(r.get("error_node", "")),
+                            "chain_id": r.get("chain_id", ""),
+                            "timestamp": str(r.get("timestamp", "")),
+                            "pattern": "failed_edge",
+                        }
+                    )
+
+        elif pattern_type == "successful_strategy":
+            rows = _surreal_db.query(
+                "SELECT *, in AS fix_node, out AS error_node FROM resolved WHERE chain_id CONTAINS $s OR in.strategy = $s",
+                {"s": strategy_or_error},
+            )
+            if not rows or not isinstance(rows, list):
+                fo = fix_outcomes.get(where={"strategy_id": strategy_or_error})
+                if fo and fo.get("metadatas"):
+                    for meta in fo["metadatas"]:
+                        if (
+                            meta.get("outcome") == "success"
+                            or float(meta.get("confidence", 0)) > 0.5
+                        ):
+                            results.append(
+                                {
+                                    "strategy_id": meta.get("strategy_id", ""),
+                                    "error_hash": meta.get("error_hash", ""),
+                                    "confidence": float(meta.get("confidence", 0)),
+                                    "successes": int(meta.get("successes", 0)),
+                                    "pattern": "proven_effective",
+                                }
+                            )
+            else:
+                for r in rows:
+                    results.append(
+                        {
+                            "fix_node": str(r.get("fix_node", "")),
+                            "error_node": str(r.get("error_node", "")),
+                            "chain_id": r.get("chain_id", ""),
+                            "confidence": r.get("confidence", 0),
+                            "pattern": "resolved_edge",
+                        }
+                    )
+
+        elif pattern_type == "error_cascade":
+            _, error_hash = error_signature(strategy_or_error)
+            rows = _surreal_db.query(
+                "SELECT *, in AS attempt_node FROM tried_for WHERE out = type::thing('error', $hash)",
+                {"hash": error_hash},
+            )
+            if isinstance(rows, list):
+                for r in rows:
+                    results.append(
+                        {
+                            "attempt_node": str(r.get("attempt_node", "")),
+                            "strategy": r.get("strategy", ""),
+                            "timestamp": str(r.get("timestamp", "")),
+                            "pattern": "attempted_strategy",
+                        }
+                    )
+
+    except Exception as e:
+        return {"error": f"Pattern search failed: {str(e)}"}
+
+    return {
+        "query": strategy_or_error,
+        "pattern_type": pattern_type,
+        "results": results,
+        "count": len(results),
+    }
+
+
+@mcp.tool()
+@crash_proof
 def health_check() -> dict:
     """Return lightweight server health metrics.
 
     Returns server uptime, table row counts, last write timestamp,
     embedding model status, LanceDB connection status, Tags DB status,
-    total memory count, and disk usage of ~/data/memory/lancedb/.
+    total memory count, and disk usage of ~/data/memory/surrealdb/.
 
     No heavy queries — reads only cached globals and filesystem metadata.
     """
@@ -2745,11 +2937,11 @@ def health_check() -> dict:
     except Exception:
         pass
 
-    # Disk usage of lancedb directory
+    # Disk usage of surrealdb directory
     disk_bytes = 0
     try:
-        if os.path.isdir(LANCE_DIR):
-            for dirpath, _dirs, files in os.walk(LANCE_DIR):
+        if os.path.isdir(SURREAL_DIR):
+            for dirpath, _dirs, files in os.walk(SURREAL_DIR):
                 for fname in files:
                     try:
                         disk_bytes += os.path.getsize(os.path.join(dirpath, fname))
@@ -2759,17 +2951,17 @@ def health_check() -> dict:
         disk_bytes = -1
 
     return {
-        "status": "ok" if not _lance_degraded else "degraded",
+        "status": "ok" if not _surreal_degraded else "degraded",
         "uptime": uptime_str,
         "uptime_seconds": uptime_s,
         "table_counts": table_counts,
         "total_memories": total_count,
         "last_write": last_write,
         "embedding_model": "loaded" if _embedding_fn is not None else "not_loaded",
-        "lancedb": "connected"
-        if (_lance_db is not None and not _lance_degraded)
-        else ("degraded" if _lance_degraded else "not_connected"),
-        "tags_db": "ok" if os.path.exists(TAGS_DB_PATH) else "missing",
+        "surrealdb": "connected"
+        if (_surreal_db is not None and not _surreal_degraded)
+        else ("degraded" if _surreal_degraded else "not_connected"),
+        "tags_db": "integrated",
         "disk_usage_mb": round(disk_bytes / (1024 * 1024), 2)
         if disk_bytes >= 0
         else -1,
@@ -2798,7 +2990,7 @@ def suggest_promotions(top_k: int = 5) -> dict:
 
     for tag in promotion_tags:
         try:
-            tag_ids = tag_index.tag_search([tag], match_all=False, top_k=200)
+            tag_ids = collection.tag_search([tag], match_all=False, top_k=200)
             tag_results = _tag_ids_to_summaries(tag_ids)
             for r in tag_results:
                 if r.get("id") and r["id"] not in [c["id"] for c in candidates]:
@@ -3279,8 +3471,8 @@ def _bootstrap_clusters() -> None:
     O(n) with centroid cache in memory — safe even for thousands of memories.
     """
     _ensure_initialized()
-    if not _cluster_store:
-        print("Bootstrap: cluster store unavailable", file=_sys.stderr)
+    if not _clusters_coll:
+        print("Bootstrap: clusters collection unavailable", file=_sys.stderr)
         return
     if not collection:
         print("Bootstrap: collection unavailable", file=_sys.stderr)
@@ -3312,7 +3504,7 @@ def _bootstrap_clusters() -> None:
                 vec = np.array(embeddings[i], dtype=np.float32)
             else:
                 vec = _embed_text(doc)
-            cid = _cluster_store.assign(vec, doc)
+            cid = _surreal_cluster_assign(vec, doc)
             if cid:
                 collection.update(ids=[doc_id], metadatas=[{"cluster_id": cid}])
                 processed += 1
@@ -3491,7 +3683,7 @@ def memory_health_report() -> dict:
         "total_memories": mem_count,
         "total_observations": obs_count,
         "total_fix_outcomes": fix_outcomes.count(),
-        "tag_index_count": _tag_count,
+        "unique_tags": unique_tags,
         "capture_queue_lines": queue_lines,
         "capture_queue_bytes": queue_bytes,
         "added_24h": added_24h,
@@ -3512,22 +3704,9 @@ def memory_health_report() -> dict:
     }
 
 
-def rebuild_tag_index() -> dict:
-    """Force rebuild the tag co-occurrence matrix.
-
-    Use when tag relationships seem stale or after bulk memory operations.
-    The matrix is normally rebuilt lazily when dirty, but this forces an
-    immediate rebuild.
-    """
-    try:
-        _build_tag_cooccurrence()
-        return {
-            "result": "Tag co-occurrence matrix rebuilt",
-            "unique_tags": len(_tag_counts),
-            "tags_with_cooccurrence": len(_tag_cooccurrence),
-        }
-    except Exception as e:
-        return {"error": f"Failed to rebuild tag index: {str(e)}"}
+def rebuild_tags() -> dict:
+    """No-op — tags are stored directly in SurrealDB records."""
+    return {"result": "No-op: tags stored in SurrealDB records directly"}
 
 
 def _batch_rename_memories():
@@ -3596,7 +3775,7 @@ def _batch_rename_memories():
     # Rebuild FTS index to reflect changes
     if content_updated > 0 or tag_updated > 0:
         try:
-            rebuild_tag_index()
+            rebuild_tags()
         except Exception:
             pass
 
@@ -3616,7 +3795,7 @@ def _gate_effectiveness_report() -> dict:
     """
     import glob as _glob
 
-    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state")
     # Also check ramdisk
     ramdisk_dir = f"/run/user/{os.getuid()}/claude-hooks"
     search_dirs = (
@@ -3704,9 +3883,9 @@ def maintenance(
         min_cluster_size: Min memories per cluster (used by cluster).
         distance_threshold: Max cosine distance for clustering (used by cluster).
     """
-    if _lance_degraded:
+    if _surreal_degraded:
         return {
-            "error": "LanceDB unavailable — running in degraded mode",
+            "error": "Storage unavailable ��� running in degraded mode",
             "degraded": True,
         }
     if action == "promotions":
@@ -3726,7 +3905,7 @@ def maintenance(
     elif action == "health":
         return memory_health_report()
     elif action == "rebuild_tags":
-        return rebuild_tag_index()
+        return rebuild_tags()
     elif action == "optimize":
         return _optimize_tables()
     elif action == "batch_rename":
@@ -3753,27 +3932,19 @@ def maintenance(
 
 
 def _optimize_tables() -> dict:
-    """Compact all LanceDB tables, prune old versions, recover disk space."""
-    from datetime import timedelta
-    import time
-
-    global _lance_db
-    if _lance_db is None:
-        return {"action": "optimize", "error": "LanceDB not initialized"}
+    """SurrealDB maintenance — report table counts."""
+    if _surreal_db is None:
+        return {"action": "optimize", "error": "SurrealDB not initialized"}
     results = {}
-    for name in _lance_db.table_names():
-        t = _lance_db.open_table(name)
-        before = t.count_rows()
-        start = time.time()
-        t.optimize(cleanup_older_than=timedelta(0), delete_unverified=True)
-        elapsed = time.time() - start
-        after = t.count_rows()
-        results[name] = {
-            "rows_before": before,
-            "rows_after": after,
-            "duration_s": round(elapsed, 1),
-            "rows_ok": before == after,
-        }
+    for name, coll in [
+        ("knowledge", collection),
+        ("fix_outcomes", fix_outcomes),
+        ("observations", observations),
+        ("web_pages", web_pages),
+        ("quarantine", quarantine),
+    ]:
+        if coll:
+            results[name] = {"rows": coll.count(), "status": "ok"}
     return {"action": "optimize", "tables": results}
 
 
@@ -3921,7 +4092,7 @@ def get_teammate_context(agent_name: str = "", max_actions: int = 5) -> dict:
     import glob as _glob
 
     # Reuse the same pattern as subagent_context.py:find_current_session_state()
-    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
+    state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state")
     try:
         pattern = os.path.join(state_dir, "state_*.json")
         files = _glob.glob(pattern)
@@ -4007,10 +4178,10 @@ def _backup_database():
     """
     import shutil
 
-    if not os.path.isdir(LANCE_DIR):
-        raise RuntimeError(f"LanceDB directory not found: {LANCE_DIR}")
+    if not os.path.isdir(SURREAL_DIR):
+        raise RuntimeError(f"SurrealDB directory not found: {SURREAL_DIR}")
 
-    bak_path = os.path.join(MEMORY_DIR, "lancedb.backup")
+    bak_path = os.path.join(MEMORY_DIR, "surrealdb.backup")
     tmp_path = bak_path + ".tmp"
 
     # Remove stale tmp if exists
@@ -4018,7 +4189,7 @@ def _backup_database():
         shutil.rmtree(tmp_path)
 
     try:
-        shutil.copytree(LANCE_DIR, tmp_path)
+        shutil.copytree(SURREAL_DIR, tmp_path)
         # Atomic swap: remove old backup, rename tmp
         if os.path.exists(bak_path):
             shutil.rmtree(bak_path)
@@ -4116,7 +4287,6 @@ def _dispatch_request(req):
                 ],
                 ids=[doc_id],
             )
-            tag_index.add_tags(doc_id, tags)
             return {"ok": True, "result": {"saved": True, "id": doc_id}}
 
         # Collection-based operations require a valid collection name

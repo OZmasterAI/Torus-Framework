@@ -44,7 +44,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 _HOOKS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-_EFFECTIVENESS_PATH = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
+_EFFECTIVENESS_PATH = os.path.join(_HOOKS_DIR, ".gate_data", ".gate_effectiveness.json")
 _QTABLE_PATH = os.path.join(_HOOKS_DIR, ".gate_qtable.json")
 _TIMINGS_PATH = os.path.join(_HOOKS_DIR, ".gate_timings.json")
 
@@ -69,51 +69,79 @@ _TIER1: Set[str] = {
 
 # Per-gate: which tools it watches.  None = watches all tools (universal).
 _GATE_TOOL_MAP: Dict[str, Optional[Set[str]]] = {
-    "gates.gate_01_read_before_edit":    {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_02_no_destroy":          {"Bash"},
-    "gates.gate_03_test_before_deploy":  {"Bash"},
-    "gates.gate_04_memory_first":        {"Edit", "Write", "NotebookEdit", "Task"},
-    "gates.gate_05_proof_before_fixed":  {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_06_save_fix":            {"Edit", "Write", "Task", "Bash", "NotebookEdit"},
+    "gates.gate_01_read_before_edit": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_02_no_destroy": {"Bash"},
+    "gates.gate_03_test_before_deploy": {"Bash"},
+    "gates.gate_04_memory_first": {"Edit", "Write", "NotebookEdit", "Task"},
+    "gates.gate_05_proof_before_fixed": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_06_save_fix": {"Edit", "Write", "Task", "Bash", "NotebookEdit"},
     "gates.gate_07_critical_file_guard": {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_09_strategy_ban":        {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_10_model_enforcement":   {"Task"},
-    "gates.gate_11_rate_limit":          None,
+    "gates.gate_09_strategy_ban": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_10_model_enforcement": {"Task"},
+    "gates.gate_11_rate_limit": None,
     "gates.gate_13_workspace_isolation": {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_14_confidence_check":    {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_15_causal_chain":        {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_16_code_quality":        {"Edit", "Write", "NotebookEdit"},
-    "gates.gate_17_injection_defense":   {"WebFetch", "WebSearch"},
+    "gates.gate_14_confidence_check": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_15_causal_chain": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_16_code_quality": {"Edit", "Write", "NotebookEdit"},
+    "gates.gate_17_injection_defense": {"WebFetch", "WebSearch"},
 }
 
 # State keys each gate reads and writes (from enforcer.GATE_DEPENDENCIES).
 # Used for parallelization safety: two gates are parallelizable if no gate's
 # *writes* overlap with another gate's *reads or writes* in the same group.
 _GATE_STATE_DEPS: Dict[str, Dict[str, List[str]]] = {
-    "gate_01_read_before_edit":   {"reads": ["files_read"],              "writes": []},
-    "gate_02_no_destroy":         {"reads": [],                          "writes": []},
-    "gate_03_test_before_deploy": {"reads": ["last_test_run", "last_test_exit_code"], "writes": []},
-    "gate_04_memory_first":       {"reads": ["memory_last_queried"],     "writes": []},
-    "gate_05_proof_before_fixed": {"reads": ["pending_verification", "verification_scores"], "writes": []},
-    "gate_06_save_fix":           {
-        "reads":  ["gate6_warn_count", "verified_fixes", "unlogged_errors",
-                   "error_pattern_counts", "pending_chain_ids", "last_exit_plan_mode",
-                   "memory_last_queried"],
+    "gate_01_read_before_edit": {"reads": ["files_read"], "writes": []},
+    "gate_02_no_destroy": {"reads": [], "writes": []},
+    "gate_03_test_before_deploy": {
+        "reads": ["last_test_run", "last_test_exit_code"],
+        "writes": [],
+    },
+    "gate_04_memory_first": {"reads": ["memory_last_queried"], "writes": []},
+    "gate_05_proof_before_fixed": {
+        "reads": ["pending_verification", "verification_scores"],
+        "writes": [],
+    },
+    "gate_06_save_fix": {
+        "reads": [
+            "gate6_warn_count",
+            "verified_fixes",
+            "unlogged_errors",
+            "error_pattern_counts",
+            "pending_chain_ids",
+            "last_exit_plan_mode",
+            "memory_last_queried",
+        ],
         "writes": ["gate6_warn_count"],
     },
-    "gate_07_critical_file_guard": {"reads": ["memory_last_queried"],   "writes": []},
-    "gate_09_strategy_ban":        {"reads": ["current_strategy_id", "active_bans", "successful_strategies"], "writes": []},
-    "gate_10_model_enforcement":   {"reads": [],                        "writes": ["model_agent_usage"]},
-    "gate_11_rate_limit":          {"reads": ["tool_call_count", "session_start"], "writes": []},
-    "gate_13_workspace_isolation": {"reads": [],                        "writes": []},
-    "gate_14_confidence_check":    {
-        "reads":  ["session_test_baseline", "pending_verification",
-                   "memory_last_queried", "confidence_warnings_per_file"],
+    "gate_07_critical_file_guard": {"reads": ["memory_last_queried"], "writes": []},
+    "gate_09_strategy_ban": {
+        "reads": ["current_strategy_id", "active_bans", "successful_strategies"],
+        "writes": [],
+    },
+    "gate_10_model_enforcement": {"reads": [], "writes": ["model_agent_usage"]},
+    "gate_11_rate_limit": {"reads": ["tool_call_count", "session_start"], "writes": []},
+    "gate_13_workspace_isolation": {"reads": [], "writes": []},
+    "gate_14_confidence_check": {
+        "reads": [
+            "session_test_baseline",
+            "pending_verification",
+            "memory_last_queried",
+            "confidence_warnings_per_file",
+        ],
         "writes": ["confidence_warnings_per_file", "confidence_warned_signals"],
     },
-    "gate_15_causal_chain":   {"reads": ["recent_test_failure", "fix_history_queried", "fixing_error"], "writes": []},
-    "gate_16_code_quality":   {"reads": ["code_quality_warnings_per_file"], "writes": ["code_quality_warnings_per_file"]},
-    "gate_17_injection_defense": {"reads": ["injection_attempts"], "writes": ["injection_attempts"]},
+    "gate_15_causal_chain": {
+        "reads": ["recent_test_failure", "fix_history_queried", "fixing_error"],
+        "writes": [],
+    },
+    "gate_16_code_quality": {
+        "reads": ["code_quality_warnings_per_file"],
+        "writes": ["code_quality_warnings_per_file"],
+    },
+    "gate_17_injection_defense": {
+        "reads": ["injection_attempts"],
+        "writes": ["injection_attempts"],
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -124,6 +152,7 @@ _GATE_STATE_DEPS: Dict[str, Dict[str, List[str]]] = {
 try:
     from shared.gate_helpers import load_json_safe as _load_json
 except ImportError:
+
     def _load_json(path: str) -> dict:
         """Load JSON file; return empty dict on any failure."""
         try:
@@ -368,14 +397,14 @@ def estimate_savings(tool_name: str) -> dict:
     saving_pct = (estimated_saving_ms / baseline_ms) if baseline_ms > 0 else 0.0
 
     # Block rates for all applicable gates
-    gate_block_rates = {
-        g: int(_block_rate(g, effectiveness)) for g in current_short
-    }
+    gate_block_rates = {g: int(_block_rate(g, effectiveness)) for g in current_short}
 
     # Human-readable notes
     notes: List[str] = []
     if not timings:
-        notes.append("No timing data recorded yet — savings are estimated as 0ms until gates have run")
+        notes.append(
+            "No timing data recorded yet — savings are estimated as 0ms until gates have run"
+        )
 
     # Identify the highest-blocking gate and its current position
     if gate_block_rates:
@@ -396,7 +425,9 @@ def estimate_savings(tool_name: str) -> dict:
             f"are parallelizable across {len(parallel_groups)} group(s)"
         )
     else:
-        notes.append("No non-Tier-1 gates are currently parallelizable (state write conflicts)")
+        notes.append(
+            "No non-Tier-1 gates are currently parallelizable (state write conflicts)"
+        )
 
     if saving_pct > 0.15:
         notes.append(
@@ -521,7 +552,9 @@ if __name__ == "__main__":
         print(f"  Parallel groups: {result['parallel_groups']}")
         print(f"  Baseline ms    : {result['baseline_sequential_ms']:.2f}")
         print(f"  Optimized ms   : {result['optimized_parallel_ms']:.2f}")
-        print(f"  Saving         : {result['estimated_saving_ms']:.2f}ms  ({result['saving_pct'] * 100:.1f}%)")
+        print(
+            f"  Saving         : {result['estimated_saving_ms']:.2f}ms  ({result['saving_pct'] * 100:.1f}%)"
+        )
         print(f"  Block rates    : {result['gate_block_rates']}")
         print("  Notes:")
         for note in result["notes"]:

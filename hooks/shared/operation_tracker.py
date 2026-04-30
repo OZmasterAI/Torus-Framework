@@ -75,7 +75,9 @@ except ImportError:
 
 def _op_state_file(session_id: str) -> str:
     """Return path to the operations state file for a session."""
-    return os.path.join(_STATE_DIR, f"operations_{session_id}.json")
+    ops_dir = os.path.join(_STATE_DIR, ".operations")
+    os.makedirs(ops_dir, exist_ok=True)
+    return os.path.join(ops_dir, f"operations_{session_id}.json")
 
 
 # ── Default state factory ─────────────────────────────────────────────────────

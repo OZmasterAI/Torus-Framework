@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 from datetime import datetime
 
@@ -212,6 +213,41 @@ def main():
             _hooks_dir = os.path.join(CLAUDE_DIR, "hooks")
             _daemon_path = os.path.join(_hooks_dir, "enforcer_daemon.py")
             _sock_path = os.path.join(_hooks_dir, ".enforcer.sock")
+            _hash_path = os.path.join(_hooks_dir, ".enforcer_hash")
+            _pid_path = os.path.join(_hooks_dir, ".enforcer.pid")
+
+            # Hash gate/shared module mtimes to detect code changes
+            import hashlib as _hashlib
+
+            _mtimes = []
+            for _subdir in ("gates", "shared"):
+                _dirpath = os.path.join(_hooks_dir, _subdir)
+                if os.path.isdir(_dirpath):
+                    for _fname in sorted(os.listdir(_dirpath)):
+                        if _fname.endswith(".py"):
+                            try:
+                                _st = os.stat(os.path.join(_dirpath, _fname))
+                                _mtimes.append(
+                                    f"{_fname}:{_st.st_mtime_ns}:{_st.st_size}"
+                                )
+                            except OSError:
+                                pass
+            for _fname in ("enforcer.py", "enforcer_daemon.py"):
+                try:
+                    _st = os.stat(os.path.join(_hooks_dir, _fname))
+                    _mtimes.append(f"{_fname}:{_st.st_mtime_ns}:{_st.st_size}")
+                except OSError:
+                    pass
+            _current_hash = _hashlib.md5("|".join(_mtimes).encode()).hexdigest()[:16]
+
+            _stored_hash = ""
+            try:
+                with open(_hash_path) as _f:
+                    _stored_hash = _f.read().strip()
+            except OSError:
+                pass
+
+            # Ping daemon
             _daemon_running = False
             if os.path.exists(_sock_path):
                 try:
@@ -226,16 +262,63 @@ def main():
                     _daemon_running = b"pong" in _resp
                 except Exception:
                     pass
-            if not _daemon_running and os.path.isfile(_daemon_path):
+
+            _needs_restart = _daemon_running and _current_hash != _stored_hash
+            _needs_start = not _daemon_running
+
+            if _needs_restart:
+                try:
+                    with open(_pid_path) as _f:
+                        _old_pid = int(_f.read().strip())
+                    os.kill(_old_pid, 15)  # SIGTERM
+                    time.sleep(0.5)
+                except (OSError, ValueError):
+                    pass
+                _needs_start = True
+
+            if _needs_start and os.path.isfile(_daemon_path):
                 subprocess.Popen(
                     [sys.executable, _daemon_path],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,
                 )
-                print("  [BOOT] Enforcer daemon started", file=sys.stderr)
-            elif _daemon_running:
-                print("  [BOOT] Enforcer daemon already running", file=sys.stderr)
+                time.sleep(0.3)
+                if _needs_restart:
+                    print(
+                        "  [BOOT] Enforcer daemon restarted (code changed)",
+                        file=sys.stderr,
+                    )
+                else:
+                    print("  [BOOT] Enforcer daemon started", file=sys.stderr)
+            elif _daemon_running and not _needs_restart:
+                print(
+                    "  [BOOT] Enforcer daemon already running (hash match)",
+                    file=sys.stderr,
+                )
+
+            # Write current hash
+            try:
+                _tmp_hash = _hash_path + ".tmp"
+                with open(_tmp_hash, "w") as _f:
+                    _f.write(_current_hash)
+                os.replace(_tmp_hash, _hash_path)
+            except OSError:
+                pass
+
+            # Register this session's parent PID for daemon auto-exit
+            try:
+                import socket as _sock
+
+                _s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
+                _s.settimeout(2)
+                _s.connect(_sock_path)
+                _reg = json.dumps({"method": "register", "pid": os.getppid()}) + "\n"
+                _s.sendall(_reg.encode())
+                _s.recv(1024)
+                _s.close()
+            except Exception:
+                pass
     except Exception:
         pass  # Daemon startup is optional, never block boot
 
@@ -274,39 +357,16 @@ def main():
     except Exception:
         pass  # Memory server startup is optional, never block boot
 
-    # Batch classification at session start
+    # Batch classification at session start (via memory_server UDS socket)
     try:
         if _cfg.get("memory_classify_mode") == "batch_start":
-            import lancedb as _lancedb
-
             sys.path.insert(0, os.path.join(CLAUDE_DIR, "hooks"))
-            from shared.memory_classification import (
-                classify_via_daemon as _classify_via_daemon,
-            )
+            from shared.memory_socket import request as _socket_request
 
-            _mem_dir_batch = os.path.join(os.path.expanduser("~"), "data", "memory")
-            _lance_path_batch = os.path.join(_mem_dir_batch, "lancedb")
-            _db_batch = _lancedb.connect(_lance_path_batch)
-            _tbl_batch = _db_batch.open_table("knowledge")
-            _rows_batch = (
-                _tbl_batch.search()
-                .where("memory_type = ''", prefilter=True)
-                .limit(200)
-                .to_list()
+            _result = _socket_request("batch_classify", params={"limit": 200})
+            _classified_batch = (
+                _result.get("classified", 0) if isinstance(_result, dict) else 0
             )
-            _classified_batch = 0
-            for _row_b in _rows_batch:
-                _row_id_b = _row_b.get("id", "")
-                if not _row_id_b:
-                    continue
-                _mt_b = _classify_via_daemon(
-                    _row_b.get("document", "")[:500], _row_b.get("tags", "")
-                )
-                if _mt_b:
-                    _tbl_batch.update(
-                        where=f"id = '{_row_id_b}'", values={"memory_type": _mt_b}
-                    )
-                    _classified_batch += 1
             print(
                 f"  [BOOT] Batch classified {_classified_batch} memories",
                 file=sys.stderr,
@@ -314,14 +374,14 @@ def main():
     except Exception:
         pass  # Batch classification is non-fatal
 
-    # Watchdog: verify LanceDB directory exists
+    # Watchdog: verify SurrealDB directory exists
     db_size_warning = None
     _mem_dir = os.path.join(os.path.expanduser("~"), "data", "memory")
-    _lance_dir = os.path.join(_mem_dir, "lancedb")
+    _surreal_dir = os.path.join(_mem_dir, "surrealdb_v3")
     try:
-        if not os.path.isdir(_lance_dir):
+        if not os.path.isdir(_surreal_dir):
             db_size_warning = (
-                "LanceDB directory missing — memory database may not be initialized"
+                "SurrealDB directory missing — memory database may not be initialized"
             )
     except OSError:
         pass

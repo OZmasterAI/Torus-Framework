@@ -13,9 +13,12 @@ rules/working-memory.md
 rules/working-summary.md
 
 # Session & runtime state
+LIVE_STATE.json
+*.pid
 history.jsonl
-hooks/state_*.json
-hooks/state_*.json.lock
+hooks/.state/
+hooks/.operations/
+hooks/.untested/
 hooks/.memory_last_queried
 hooks/.capture_queue.jsonl
 hooks/.prompt_last_hash
@@ -32,11 +35,9 @@ hooks/.memory_last_saved
 hooks/.memory_server.pid
 hooks/.session_cwd
 hooks/.auto_commit_staged*.txt
-hooks/.untested_code_files_*.json
 hooks/.audit_trail.jsonl
 hooks/.circuit_breaker_state.json
-hooks/.gate_effectiveness.json
-hooks/.gate_effectiveness_*.json
+hooks/.gate_data/
 hooks/.gate_qtable.json
 hooks/.gate_timings.json
 hooks/__pycache__/
@@ -109,7 +110,7 @@ hooks/.integrity_hashes.json
 hooks/.remediation_stats.json
 hooks/scripts/__pycache__/
 hooks/tests/__pycache__/
-hooks/.enforcer_sideband_*.json
+hooks/.sideband/
 hooks/.plugin_registry_cache.json
 
 # Integration runtime state
@@ -124,8 +125,9 @@ backupclaude.md
 architecture.html
 diagram.html
 
-# Generated diagrams (local reference only)
+# Generated diagrams and stale plans (local reference only)
 docs/diagrams/
+docs/plans/
 
 # Pycache in skill libraries
 dormant/**/scripts/__pycache__/
@@ -139,7 +141,7 @@ plugins/marketplaces/
 integrations/tts-voices/
 
 # Model router runtime config (contains API keys)
-integrations/model-router/router_config.toml
+toroidal-model-router/router_config.toml
 
 # Dormant (private/project-specific)
 dormant/skills/market/
@@ -167,10 +169,6 @@ results.tsv
 hooks/.session_end_bg.log
 hooks/session_end.py.bak
 
-# Session operations (per-session, ephemeral)
-hooks/operations_*.json
-hooks/operations_*.json.lock
-
 # IDE lock files
 ide/*.lock
 
@@ -182,4 +180,21 @@ usage-data/
 
 # Backup files
 hooks/memory_server.py.bak
-LIVE_STATE.json
+
+# Per-session gate effectiveness files (generated at runtime)
+hooks/.gate_effectiveness_*.json
+
+# Per-session operations & state files (runtime, auto-generated)
+hooks/operations_*.json
+hooks/operations_*.json.lock
+hooks/state_*.json.lock
+hooks/.untested_code_files_*.json
+hooks/.enforcer_hash
+
+# Runtime tool/statusline state
+hooks/.statusline_raw_keys.json
+hooks/.tool_fingerprints.json
+
+# Plugin cache (fetched from marketplace, not source)
+plugins/install-counts-cache.json
+plugins/*.tmp

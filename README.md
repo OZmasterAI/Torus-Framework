@@ -7,41 +7,79 @@
     <a href="https://github.com/OZmasterAI/Torus-Framework/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
     <img src="https://img.shields.io/badge/Python-3.10+-green.svg" alt="Python">
     <img src="https://img.shields.io/badge/Platform-Linux-lightgrey.svg" alt="Platform">
-    <img src="https://img.shields.io/badge/Framework-v2.5.8-orange.svg" alt="Version">
+    <img src="https://img.shields.io/badge/Framework-v3.2.0-orange.svg" alt="Version">
   </p>
 </p>
 
 ---
 
-Torus wraps Claude Code with persistent memory, 19 quality gates, automated hooks, and structured workflows — turning it from a stateless CLI into a disciplined, self-improving development partner.
+Torus wraps Claude Code with persistent memory, 21 quality gates, automated hooks, self-evolving skills, and a unified MCP gateway — turning it from a stateless CLI into a disciplined, self-improving development partner.
 
-> **151 Python files** · **~76K lines** · **17 active gates** · **36 skills** · **6 specialized agents** · **2 MCP servers**
+> **248 Python files** · **~119K lines** · **21 active gates** · **54 skills** · **7 MCP servers** · **14 hook events**
 
 ---
 
 ## ⚡ Quick Start
 
 ```bash
-# 1. Clone into your Claude Code config directory
-git clone https://github.com/OZmasterAI/Torus-Framework.git ~/.claude
+# 1. Clone with submodules (toolshed + torus-skills)
+git clone --recurse-submodules https://github.com/OZmasterAI/Torus-Framework.git ~/.claude
 
-# 2. Install Python dependencies
-pip install -r ~/.claude/hooks/requirements.txt
+# 2. Run setup (installs deps, copies templates, sets up ramdisk)
+bash ~/.claude/setup.sh
 
-# 3. Copy config templates
-cp ~/.claude/config.example.json ~/.claude/config.json
-cp ~/.claude/mcp.example.json ~/.claude/mcp.json
+# 3. Edit mcp.json — replace $HOME with your actual home directory path
+$EDITOR ~/.claude/mcp.json
 
-# 4. Edit mcp.json — replace $HOME with your actual home directory path
-
-# 5. Set up the ramdisk (persistent tmpfs for fast state I/O)
-bash ~/.claude/hooks/setup_ramdisk.sh
-
-# 6. Launch Claude Code
+# 4. Launch Claude Code
 cd ~/.claude && claude
 ```
 
-On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, and initialize state.
+On first launch, SessionStart hooks bootstrap the enforcer daemon, start MCP servers, load memory, and initialize state.
+
+<details>
+<summary><strong>Manual setup (if not using setup.sh)</strong></summary>
+
+```bash
+# Initialize submodules
+cd ~/.claude && git submodule update --init --recursive
+
+# Install Python dependencies
+pip install -r ~/.claude/hooks/requirements.txt
+
+# Copy config templates
+cp ~/.claude/config.example.json ~/.claude/config.json
+cp ~/.claude/mcp.example.json ~/.claude/mcp.json
+
+# Set up the ramdisk (persistent tmpfs for fast state I/O)
+bash ~/.claude/hooks/setup_ramdisk.sh
+```
+
+</details>
+
+---
+
+## 🔌 Toolshed (MCP Gateway)
+
+All MCP tools route through a single gateway — **Toolshed** — which multiplexes requests to backend servers over HTTP or stdio:
+
+| Server | Port | Purpose |
+|--------|------|---------|
+| **memory** | 8742 | SurrealDB semantic search, causal fix tracking, observations |
+| **torus-skills** | 8743 | 54 skills with usage tracking, self-evolution, lineage |
+| **search** | 8744 | Terminal history FTS5, transcript context |
+| **web-search** | 8745 | Web search integration |
+| **analytics** | 8746 | Read-only gate dashboard, framework health metrics |
+| **model-router** | 8747 | Model fan-out, comparison, scheduling |
+| **torus** | stdio | Torus web proxy (connects to localhost:3000) |
+
+Claude Code registers only toolshed in `mcp.json`. Toolshed handles routing, timeouts, and error isolation.
+
+```
+Claude Code → mcp.json → Toolshed → { memory, torus-skills, search, web-search, analytics, model-router, torus }
+```
+
+Usage: `run_tool("memory", "search_knowledge", {"query": "..."})`
 
 ---
 
@@ -49,15 +87,17 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
 
 | Feature | Description |
 |---------|-------------|
-| **19 Quality Gates** | Mechanical enforcement — read before edit, test before deploy, memory-first, no-destroy, injection defense, and more |
-| **Persistent Memory** | LanceDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations |
-| **Hook Pipeline** | 12 lifecycle events — SessionStart, PreToolUse, PostToolUse, Stop, SubagentStart, PreCompact, and more |
-| **36 Skills** | Slash commands — `/commit`, `/benchmark`, `/security-scan`, `/brainstorm`, `/writing-plans`, `/domain`, and more |
-| **6 Agents** | builder, debugger, researcher, security, perf-analyzer, stress-tester — with delegation rules |
-| **2 MCP Servers** | Memory (8 tools) + Analytics (50 tools), accessible as native Claude tools |
+| **21 Quality Gates** | Mechanical enforcement — read before edit, test before deploy, memory-first, no-destroy, injection defense, self-check, and more |
+| **Persistent Memory** | SurrealDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations |
+| **Hook Pipeline** | 14 lifecycle events — SessionStart, PreToolUse, PostToolUse, Stop, SubagentStart, PreCompact, ConfigChange, and more |
+| **54 Skills** | Slash commands via torus-skills — `/commit`, `/brainstorm`, `/writing-plans`, `/prp`, `/sprint`, `/wrap-up`, and more |
+| **Skill Self-Evolution** | Skills track usage metrics; degraded skills auto-fix via LLM, derive variants, or capture new patterns |
+| **Toolshed Gateway** | Single MCP entry point multiplexing 7 backend servers over HTTP/stdio |
+| **2 Agent Types** | builder, explore — with delegation rules |
 | **Enforcer Daemon** | Persistent UDS server — gate checks in ~5ms instead of ~134ms inline |
-| **Mentor System** | Real-time quality scoring (0.0–1.0) with deterministic verdicts, no LLM calls |
+| **Mentor System** | Real-time quality scoring (0.0-1.0) with deterministic verdicts, no LLM calls |
 | **Session Continuity** | LIVE_STATE.json carries context across sessions automatically |
+| **Anomaly Detector** | Observation persistence, burst detection, gate correlation analysis |
 | **Telegram Bot** | Remote Claude sessions via Telegram with message mirroring |
 
 ---
@@ -67,37 +107,38 @@ On first launch, SessionStart hooks bootstrap the enforcer daemon, load memory, 
 ```
                           ┌─────────────────────────────────┐
                           │      Claude Code Session         │
-                          │         (13 hook events)         │
+                          │        (14 hook events)          │
                           └──────┬───────────┬──────────┬────┘
                                  │           │          │
                     ┌────────────▼─┐  ┌──────▼────┐  ┌──▼──────────────┐
                     │ SessionStart  │  │PreToolUse │  │  PostToolUse    │
                     │ boot.py       │  │ enforcer  │  │  tracker.py     │
-                    │ (22 steps)    │  │(17 gates) │  │  (17 steps)     │
+                    │ (22 steps)    │  │(21 gates) │  │  (17 steps)     │
                     └──────┬───────┘  └─────┬─────┘  └──┬──────────────┘
                            │                │            │
                  ┌─────────▼──────┐  ┌──────▼──────┐  ┌─▼────────────┐
-                 │  Memory MCP    │  │ Gate Tiers   │  │ Mentor       │
-                 │  8 tools       │  │ T1: Safety   │  │ System       │
-                 │  LanceDB +     │  │ T2: Quality  │  │ 0.0–1.0     │
-                 │  4-tier search │  │ T3: Advanced │  │ No LLM      │
+                 │   Toolshed     │  │ Gate Tiers   │  │ Mentor       │
+                 │   (gateway)    │  │ T1: Safety   │  │ System       │
+                 │  7 MCP servers │  │ T2: Quality  │  │ 0.0-1.0     │
+                 │  HTTP + stdio  │  │ T3: Advanced │  │ No LLM      │
                  └───────┬────────┘  └─────────────┘  └─┬────────────┘
                          │                               │
            ┌─────────────▼───────────────────────────────▼─────────┐
-           │         Shared Infrastructure (67 modules)             │
+           │       Shared Infrastructure (~100 modules)             │
            │   state · resilience · analysis · monitoring · auth    │
+           │   skill_evolver · skill_triggers · anomaly_detector    │
            └─────────────────────────┬─────────────────────────────┘
                                      │
       ┌───────────┬──────────────────┼───────────────┬───────────┐
       │           │                  │               │           │
   ┌───▼────┐ ┌───▼─────┐  ┌────────▼────────┐ ┌────▼────┐ ┌────▼─────┐
-  │   L1   │ │   L2    │  │   L0 Raw        │ │   L3    │ │ Ramdisk  │
-  │LanceDB │ │Terminal │  │   Transcripts   │ │Telegram │ │  tmpfs   │
-  │ ~7K mem│ │  FTS5   │  │  JSONL windows  │ │  FTS5   │ │ 544 MB/s │
-  └────────┘ └─────────┘  └─────────────────┘ └─────────┘ └──────────┘
+  │   L1    │ │   L2    │  │   L0 Raw        │ │   L3    │ │ Ramdisk  │
+  │SurrealDB│ │Terminal │  │   Transcripts   │ │Telegram │ │  tmpfs   │
+  │         │ │  FTS5   │  │  JSONL windows  │ │  FTS5   │ │ 544 MB/s │
+  └─────────┘ └─────────┘  └─────────────────┘ └─────────┘ └──────────┘
 ```
 
-**285 files** · **67 shared modules** · **36 skills** · **6 agents**
+**248 Python files** · **~100 shared modules** · **54 skills** · **2 agents**
 
 For the full architecture reference, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
@@ -131,9 +172,12 @@ Three tiers of enforcement — safety gates fail-closed, quality gates fail-open
 | 10 | Model Cost Guard | Enforces model selection within budget tier |
 | 11 | Rate Limit | Blocks >60 tool calls/min |
 | 13 | Workspace Isolation | Prevents concurrent file edits across agents |
-| 14 | Confidence Check | Progressive warning → block on unverified edits |
+| 14 | Confidence Check | Progressive warning -> block on unverified edits |
 | 15 | Causal Chain | Blocks edits after test failure until fix history queried |
-| 16 | Code Quality | Catches debug prints, hardcoded secrets, broad excepts |
+| 16 | Code Quality | AST linting — debug prints, hardcoded secrets, broad excepts |
+| 20 | Self Check | Risk-score threshold triggers targeted verification questions |
+| 21 | Working Summary | Blocks edits after context threshold until working summary written |
+| 23 | Require Tests | Blocks code edits if session has no corresponding test files |
 
 </details>
 
@@ -145,8 +189,23 @@ Three tiers of enforcement — safety gates fail-closed, quality gates fail-open
 | 17 | Injection Defense | Detects prompt injection (base64, ROT13, homoglyphs, zero-width) |
 | 18 | Canary Monitor | Passive monitoring — never blocks. Detects bursts and anomalies |
 | 19 | Hindsight | Reads mentor signals; blocks on sustained poor quality |
+| 22 | Tool Profiles | Warns when tool calls match known failure patterns |
 
 </details>
+
+---
+
+## 🧬 Skill Self-Evolution
+
+Skills track usage metrics (selections, completions, fallbacks) in SQLite. When a skill degrades below thresholds, it becomes eligible for automatic evolution:
+
+| Evolution Type | Trigger | What Happens |
+|----------------|---------|--------------|
+| **FIX** | completion < 35% or fallback > 40% | LLM rewrites SKILL.md in-place using failure context and metrics |
+| **DERIVED** | Low applied rate + low completion | Creates a new specialized variant; parent stays active |
+| **CAPTURED** | Manual or pattern detection | Extracts a novel pattern from task executions into a brand-new skill |
+
+Each evolution creates a lineage record in SQLite, tracking parent-child relationships and generation numbers. Anti-loop protection requires 5 fresh selections after each evolution before re-evaluation.
 
 ---
 
@@ -155,7 +214,7 @@ Three tiers of enforcement — safety gates fail-closed, quality gates fail-open
 Four-tier memory architecture with automatic cascade:
 
 ```
-L1: LanceDB (curated, semantic search, ~6K memories)
+L1: SurrealDB (curated, semantic search, HNSW vectors, BM25 FTS)
  └── L2: Terminal History (FTS5 full-text, indexed session transcripts)
       └── L0: Raw Transcripts (JSONL session files, time-windowed retrieval)
            └── L3: Telegram (FTS5, message history fallback)
@@ -169,12 +228,12 @@ L0 activates when `transcript_l0: true` in config — pulls raw conversation win
 | `remember_this(content)` | Save memory with automatic dedup (cosine > 0.85) |
 | `get_memory(id)` | Retrieve full memory by ID |
 | `query_fix_history(error)` | Find what strategies worked or failed |
-| `record_attempt(error, strategy)` | Log a fix attempt → returns chain_id |
+| `record_attempt(error, strategy)` | Log a fix attempt -> returns chain_id |
 | `record_outcome(chain_id, result)` | Log whether the fix succeeded or failed |
 | `fuzzy_search(query)` | Typo-tolerant search with boosted relevance |
 | `health_check()` | Server health metrics, table counts, disk usage |
 
-**Causal chain workflow:** `query_fix_history` → `record_attempt` → fix + test → `record_outcome` → `remember_this`
+**Causal chain workflow:** `query_fix_history` -> `record_attempt` -> fix + test -> `record_outcome` -> `remember_this`
 
 ---
 
@@ -184,22 +243,33 @@ L0 activates when `transcript_l0: true` in config — pulls raw conversation win
 ~/.claude/
 ├── CLAUDE.md                # Rules injected into every Claude session
 ├── config.json              # Feature toggles (from config.example.json)
-├── mcp.json                 # MCP server registration (from mcp.example.json)
+├── mcp.json                 # MCP server registration (toolshed gateway)
 ├── settings.json            # Hook registrations and permissions
+├── setup.sh                 # One-command install script
 ├── hooks/
-│   ├── enforcer.py          # Gate engine (17 active gates)
+│   ├── enforcer.py          # Gate engine (21 active gates)
 │   ├── enforcer_daemon.py   # UDS daemon for low-latency gate checks (~5ms)
-│   ├── memory_server.py     # MCP server: LanceDB memory + semantic search
-│   ├── analytics_server.py  # MCP server: 50-tool analytics + gate dashboard
-│   ├── gates/               # Individual gate implementations
-│   ├── shared/              # 67 shared modules (state, audit, circuit breaker, etc.)
+│   ├── memory_server.py     # MCP server: SurrealDB memory + semantic search
+│   ├── analytics_server.py  # MCP server: analytics + gate dashboard
+│   ├── gates/               # 21 gate implementations
+│   ├── shared/              # ~97 shared modules (state, evolution, analysis, etc.)
 │   ├── tracker.py           # PostToolUse pipeline (mentor, observations, auto-remember)
 │   └── boot.py              # SessionStart orchestrator
-├── skills/                  # 36 slash commands (/commit, /benchmark, etc.)
-├── agents/                  # 6 specialized agent definitions
+├── toolshed/                # MCP gateway (submodule) — routes all tool calls
+│   ├── toolshed.py          # Gateway server
+│   └── toolshed.json        # Server registry (ports, transport, timeouts)
+├── torus-skills/            # Skill library (submodule) — self-evolving skills
+│   ├── trs_skill_server.py  # Skills-v2 MCP server with evolution engine
+│   └── skill-library/       # 54 skill directories (each with SKILL.md)
+├── agents/                  # 2 agent definitions (builder, explore)
+├── toroidal-agent-protocol/  # Multi-agent orchestration (submodule)
+├── toroidal-model-router/    # Model fan-out, comparison, scheduling (submodule)
+├── toroidal-detector/        # Gate anomaly detection (submodule)
 ├── integrations/
 │   ├── telegram-bot/        # Remote Claude via Telegram
-│   └── terminal-history/    # Session transcript indexer
+│   ├── terminal-history/    # Session transcript indexer (FTS5)
+│   ├── tts-voices/          # TTS voice integration
+│   └── voice-web/           # Voice/TTS integration
 └── scripts/                 # Orchestration (torus-loop, torus-wave, cleanup)
 ```
 
@@ -222,7 +292,8 @@ Copy the example files and customize:
 | Template | Target | Purpose |
 |----------|--------|---------|
 | `config.example.json` | `config.json` | Feature toggles (gates, memory, mentor, telegram) |
-| `mcp.example.json` | `mcp.json` | MCP server paths (memory + analytics) |
+| `mcp.example.json` | `mcp.json` | MCP server paths (toolshed gateway) |
+| `toolshed/toolshed.json` | — | Server registry (ports, transport, groups) |
 
 <details>
 <summary><strong>Optional: Telegram Bot</strong></summary>
@@ -252,6 +323,7 @@ pip install -r ~/.claude/skill-library/web/requirements.txt
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed
 - Python 3.10+
+- Node.js 20+ (for torus MCP server)
 - Linux with systemd (for ramdisk state storage)
 
 ---

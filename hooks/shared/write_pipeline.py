@@ -27,23 +27,21 @@ class WritePipeline:
     tier classification, storage, and side effects.
     """
 
-    def __init__(self, collection, tag_index, graph, config, helpers):
+    def __init__(self, collection, graph=None, config=None, helpers=None, **kwargs):
         """
         Args:
-            collection: ChromaDB/LanceDB collection for knowledge
-            tag_index: TagIndex instance
+            collection: SurrealCollection for knowledge
             graph: KnowledgeGraph instance (or None)
             config: dict of config toggles
             helpers: dict of server-level helper functions:
                 normalize_tags, inject_project_tag, build_project_prefix,
                 check_dedup, classify_tier, extract_citations,
                 bridge_to_fix_outcomes, touch_memory_timestamp,
-                generate_id, embed_text, cluster_store,
+                generate_id, embed_text,
                 fix_outcomes, noise_regexes, min_content_length,
                 summary_length, server_project, server_subproject
         """
         self.collection = collection
-        self.tag_index = tag_index
         self.graph = graph
         self.config = config or {}
         self.h = helpers or {}
@@ -65,7 +63,6 @@ class WritePipeline:
             dict with result status, id, total_memories, etc.
         """
         collection = self.collection
-        tag_index = self.tag_index
         h = self.h
 
         # Auto-detect source session ID (cached after first call)
@@ -219,9 +216,9 @@ class WritePipeline:
         # Cluster assignment (reuse cached embedding)
         _assigned_cluster_id = ""
         try:
-            _cluster_store = h.get("cluster_store")
-            if _cluster_store and _cached_vec:
-                _assigned_cluster_id = _cluster_store.assign(_cached_vec, content)
+            _cluster_assign = h.get("cluster_assign")
+            if _cluster_assign and _cached_vec:
+                _assigned_cluster_id = _cluster_assign(_cached_vec, content)
         except Exception:
             pass
 
@@ -253,9 +250,6 @@ class WritePipeline:
         if _cached_vec:
             _upsert_kwargs["vectors"] = [_cached_vec]
         collection.upsert(**_upsert_kwargs)
-
-        # Update tag index (keep synchronous — fast and needed for immediate queries)
-        tag_index.add_tags(doc_id, tags)
 
         # ── Build result and return immediately ──
         result = {
@@ -306,18 +300,12 @@ class WritePipeline:
 
     def _bg_inner(self, a):
         collection = self.collection
-        tag_index = self.tag_index
         h = self.h
 
         doc_id = a["doc_id"]
         content = a["content"]
         context = a["context"]
         tags = a["tags"]
-        tier = a["tier"]
-        memory_type = a["memory_type"]
-        state_type = a["state_type"]
-        quality_score = a["quality_score"]
-        cluster_id = a["cluster_id"]
         cached_vec = a["cached_vec"]
         cached_entities = a["cached_entities"]
 
@@ -355,33 +343,6 @@ class WritePipeline:
             self._retroactive_interference(
                 content, tags, False, collection, h, query_vector=cached_vec
             )
-        except Exception:
-            pass
-
-        # DAG dual-write (reuse cached embedding)
-        try:
-            from shared.dag import get_session_dag
-            from shared.dag_memory_layer import DAGMemoryLayer
-
-            _dag = get_session_dag("main")
-            _dag_layer = DAGMemoryLayer(_dag)
-            _dag_result = _dag_layer.store(
-                content=content,
-                tags=f"{tags},source:dual-write" if tags else "source:dual-write",
-                tier=tier,
-                memory_type=memory_type,
-                state_type=state_type,
-                context=context,
-                quality_score=quality_score,
-                cluster_id=cluster_id,
-            )
-            if _dag_result.get("stored") and cached_vec and len(cached_vec) > 0:
-                try:
-                    _dag_layer.store_embedding(
-                        _dag_result["id"], "knowledge", cached_vec
-                    )
-                except Exception:
-                    pass
         except Exception:
             pass
 
@@ -441,10 +402,8 @@ class WritePipeline:
                 self._evolve_neighbors_cached(
                     doc_id,
                     content,
-                    context,
                     tags,
                     collection,
-                    tag_index,
                     cached_entities,
                     cached_vec=cached_vec,
                 )
@@ -461,7 +420,7 @@ class WritePipeline:
 
         # Hybrid memory linking
         try:
-            self._hybrid_linking(doc_id, tags, collection, tag_index)
+            self._hybrid_linking(doc_id, tags, collection)
         except Exception:
             pass
 
@@ -509,10 +468,8 @@ class WritePipeline:
         self,
         doc_id,
         content,
-        context,
         tags,
         collection,
-        tag_index,
         cached_entities,
         cached_vec=None,
     ):
@@ -617,10 +574,6 @@ class WritePipeline:
                     ids=[neighbor_id],
                     metadatas=[updated_meta],
                 )
-                try:
-                    tag_index.add_tags(neighbor_id, merged_tags)
-                except Exception:
-                    pass
                 updated += 1
             except Exception:
                 pass
@@ -706,7 +659,7 @@ class WritePipeline:
         except Exception:
             pass
 
-    def _hybrid_linking(self, doc_id, tags, collection, tag_index):
+    def _hybrid_linking(self, doc_id, tags, collection):
         """Create bidirectional resolves:/resolved_by: links. Returns (resolves_id, linked_to, warning)."""
         resolves_id = None
         linked_to = None
@@ -756,10 +709,6 @@ class WritePipeline:
                                 ids=[resolves_id],
                                 metadatas=[target_meta_updated],
                             )
-                            try:
-                                tag_index.add_tags(resolves_id, new_tags)
-                            except Exception:
-                                pass
                     linked_to = resolves_id
             except Exception as e:
                 link_warning = f"Linking error: {e}"

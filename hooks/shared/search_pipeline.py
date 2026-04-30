@@ -16,7 +16,7 @@ import sys as _sys
 import re
 
 from shared.context_compressor import compress_results
-from shared.scoring_engine import ScoringContext, score_result, rerank_candidates
+from shared.scoring_engine import ScoringContext, score_result
 from shared.search_cache import SearchCache
 
 
@@ -49,26 +49,33 @@ class SearchPipeline:
     and counterfactual retrieval.
     """
 
-    def __init__(self, collection, tag_index, graph, ltp, adaptive, config, helpers):
+    def __init__(
+        self,
+        collection,
+        graph=None,
+        ltp=None,
+        adaptive=None,
+        config=None,
+        helpers=None,
+        **kwargs,
+    ):
         """
         Args:
-            collection: ChromaDB/LanceDB collection for knowledge
-            tag_index: TagIndex instance for tag-based search
+            collection: SurrealCollection for knowledge
             graph: KnowledgeGraph instance (or None)
             ltp: LTPTracker instance (or None)
             adaptive: AdaptiveWeights instance (or None)
             config: dict of config toggles (from config.json)
             helpers: dict of server-level helper functions:
-                format_summaries, lance_keyword_search, merge_results,
+                format_summaries, keyword_search, merge_results,
                 detect_query_mode, search_observations_internal,
                 get_expanded_tags, tag_ids_to_summaries,
                 generate_counterfactual_query, touch_memory_timestamp,
-                validate_top_k, fix_outcomes, cluster_store,
+                validate_top_k, fix_outcomes,
                 server_project, server_subproject, embed_text,
                 search_by_tags_path (terminal history DB path)
         """
         self.collection = collection
-        self.tag_index = tag_index
         self.graph = graph
         self.ltp = ltp
         self.adaptive = adaptive
@@ -93,7 +100,6 @@ class SearchPipeline:
             dict with results, total_memories, query, mode, and metadata counts
         """
         collection = self.collection
-        tag_index = self.tag_index
         h = self.h
         config = self.config
 
@@ -170,6 +176,31 @@ class SearchPipeline:
             self._touch_timestamp()
             return self._search_transcript(query, count, config)
 
+        # ── Step 1a: Query decomposition (split compound queries) ──
+        if mode not in ("tags",):
+            sub_queries = self._decompose_query(query)
+            if sub_queries and len(sub_queries) > 1:
+                return self._search_decomposed(
+                    sub_queries,
+                    top_k,
+                    mode,
+                    recency_weight,
+                    match_all,
+                    counterfactual,
+                    memory_type,
+                    state_type,
+                    count,
+                )
+
+        # ── Step 1b: Query expansion for keyword/hybrid only ──
+        if mode in ("keyword", "hybrid"):
+            query = self._expand_query(query)
+
+        # ── Step 1c: HyDE for semantic only ──
+        _hyde_doc = None
+        if mode in ("semantic", ""):
+            _hyde_doc = self._hyde_generate(query)
+
         # ── Step 2: Primary retrieval ──
         actual_k = min(top_k * 2, count)
         format_summaries = h.get("format_summaries", lambda x: [])
@@ -180,28 +211,28 @@ class SearchPipeline:
             _where["state_type"] = state_type
         _where = _where or None
 
-        # Embed once for all vector searches (LanceDB + DAG)
+        # Embed once for all vector searches
         _embed_fn = h.get("embed_text")
         _query_vec = None
         if _embed_fn and mode in ("semantic", "hybrid", ""):
             try:
-                _query_vec = _embed_fn(query)
+                _query_vec = _embed_fn(_hyde_doc if _hyde_doc else query)
             except Exception:
                 pass
 
         if mode == "tags":
             tag_query = re.sub(r"^tags?:\s*", "", query, flags=re.IGNORECASE)
             tags_list = [t.strip() for t in tag_query.split(",") if t.strip()]
-            tag_ids = tag_index.tag_search(
+            tag_ids = collection.tag_search(
                 tags_list, match_all=match_all, top_k=actual_k
             )
             _tag_to_summaries = h.get("tag_ids_to_summaries")
             formatted = _tag_to_summaries(tag_ids) if _tag_to_summaries else []
         elif mode == "keyword":
-            _kw_search = h.get("lance_keyword_search")
+            _kw_search = h.get("keyword_search")
             formatted = _kw_search(query, top_k=actual_k) if _kw_search else []
         elif mode == "hybrid":
-            _kw_search = h.get("lance_keyword_search")
+            _kw_search = h.get("keyword_search")
             _merge = h.get("merge_results")
             fts_results = _kw_search(query, top_k=actual_k) if _kw_search else []
             lance_results = collection.query(
@@ -218,57 +249,14 @@ class SearchPipeline:
                 else lance_summaries
             )
         else:
-            # Semantic (default) — two-stage when enabled
-            _two_stage = config.get("two_stage_search", False)
-            if _two_stage and _query_vec is not None:
-                formatted = self._two_stage_search(
-                    query, _query_vec, actual_k, _where, format_summaries, h
-                )
-            else:
-                results = collection.query(
-                    query_texts=[query] if not _query_vec else None,
-                    query_vector=_query_vec,
-                    n_results=actual_k,
-                    include=["metadatas", "distances"],
-                    where=_where,
-                )
-                formatted = format_summaries(results)
-
-        # ── Step 2b: Merge SQLite DAG memory layer results ──
-        try:
-            from shared.dag import get_session_dag
-            from shared.dag_memory_layer import DAGMemoryLayer
-
-            _dag = get_session_dag("main")
-            _dag_layer = DAGMemoryLayer(_dag)
-            # Try semantic search using pre-computed vector, else keyword
-            if _query_vec is not None and mode in ("semantic", "hybrid", ""):
-                _sqlite_results = _dag_layer.semantic_search(
-                    query, top_k=top_k, query_vector=_query_vec
-                )
-            else:
-                _sqlite_results = _dag_layer.search(query, top_k=top_k, mode="keyword")
-            if _sqlite_results:
-                _existing = {r.get("content", "")[:100] for r in formatted}
-                for sr in _sqlite_results:
-                    if sr["content"][:100] not in _existing:
-                        formatted.append(
-                            {
-                                "id": sr["id"],
-                                "content": sr["content"],
-                                "preview": sr["content"][:200],
-                                "tags": sr.get("tags", ""),
-                                "tier": sr.get("tier", 1),
-                                "retrieval_count": sr.get("retrieval_count", 0),
-                                "timestamp": sr.get("created_at", ""),
-                                "source": "dag_sqlite",
-                                "relevance": sr.get("quality_score", 0.5),
-                            }
-                        )
-                        _existing.add(sr["content"][:100])
-                        _dag_layer.increment_retrieval(sr["id"])
-        except Exception:
-            pass  # Fail-open: SQLite search failure must not block LanceDB results
+            results = collection.query(
+                query_texts=[query] if not _query_vec else None,
+                query_vector=_query_vec,
+                n_results=actual_k,
+                include=["metadatas", "distances"],
+                where=_where,
+            )
+            formatted = format_summaries(results)
 
         # ── Step 3: Cascade (L2, L0, L3 after scoring) ──
         terminal_l2_count = self._cascade_terminal_l2(formatted, query, config)
@@ -284,7 +272,7 @@ class SearchPipeline:
                 expanded_tags = _get_expanded(query)
                 if expanded_tags:
                     seen_ids = {r.get("id") for r in formatted if r.get("id")}
-                    tag_ids = tag_index.tag_search(
+                    tag_ids = collection.tag_search(
                         expanded_tags, match_all=False, top_k=actual_k
                     )
                     _tag_to_summaries = h.get("tag_ids_to_summaries")
@@ -353,7 +341,12 @@ class SearchPipeline:
             )
 
             for entry in formatted:
-                base_sim = entry.get("relevance", 0) or entry.get("fts_score", 0) or 0
+                base_sim = (
+                    entry.get("relevance", 0)
+                    or entry.get("score", 0)
+                    or entry.get("fts_score", 0)
+                    or 0
+                )
                 entry["relevance"] = score_result(entry, base_sim, _scoring_ctx)
                 mem_id = entry.get("id", "")
                 if mem_id in _ltp_factors:
@@ -362,6 +355,9 @@ class SearchPipeline:
             formatted.sort(key=lambda x: x.get("relevance", 0), reverse=True)
         except Exception:
             pass
+
+        # ── Step 6b: Cross-encoder rerank (NVIDIA NIM) ──
+        formatted = self._rerank_nim(query, formatted, top_k)
 
         # ── Step 7: Trim to top_k ──
         formatted = formatted[:top_k]
@@ -486,6 +482,334 @@ class SearchPipeline:
 
     # ── Internal helpers ──────────────────────────────────────────────────
 
+    def _rerank_nim(self, query, candidates, top_k):
+        """Rerank candidates using NVIDIA NIM cross-encoder. Fail-open."""
+        config = self.config
+        if not config.get("nim_rerank", False):
+            return candidates
+        if len(candidates) <= 3:
+            return candidates
+
+        rerank_k = min(len(candidates), max(top_k * 2, 30))
+        passages = []
+        for c in candidates[:rerank_k]:
+            text = c.get("content") or c.get("preview") or ""
+            if text:
+                passages.append({"text": text[:2000]})
+        if not passages:
+            return candidates
+
+        try:
+            import requests
+
+            nim_key = config.get("nim_api_key", "")
+            if not nim_key:
+                return candidates
+            resp = requests.post(
+                "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-3_2-nv-rerankqa-1b-v2/reranking",
+                headers={
+                    "Authorization": f"Bearer {nim_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "nvidia/llama-3.2-nv-rerankqa-1b-v2",
+                    "query": {"text": query},
+                    "passages": passages,
+                    "truncate": "END",
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            rankings = resp.json().get("rankings", [])
+            reranked = []
+            for r in sorted(rankings, key=lambda x: x.get("logit", 0), reverse=True):
+                idx = r.get("index", 0)
+                if idx < len(candidates):
+                    candidates[idx]["rerank_score"] = r.get("logit", 0)
+                    reranked.append(candidates[idx])
+            remaining = [c for c in candidates[rerank_k:]]
+            return reranked + remaining
+        except Exception as e:
+            print(
+                f"[SearchPipeline] NIM rerank failed (fail-open): {e}", file=_sys.stderr
+            )
+            return candidates
+
+    def _expand_query(self, query):
+        """Expand query with LLM-generated related terms. Groq primary, NIM fallback. Fail-open."""
+        config = self.config
+        if not config.get("query_expansion", False):
+            return query
+        if len(query.split()) > 20:
+            return query
+
+        if not hasattr(self, "_qe_cache"):
+            self._qe_cache = {}
+        cached = self._qe_cache.get(query)
+        if cached is not None:
+            return cached
+
+        prompt_msgs = [
+            {
+                "role": "system",
+                "content": "Expand this search query with related terms to improve retrieval. "
+                "Return ONLY a comma-separated list of 3-5 related terms. No explanation.",
+            },
+            {"role": "user", "content": query},
+        ]
+
+        expanded_terms = self._expand_via_groq(query, prompt_msgs)
+        if not expanded_terms:
+            expanded_terms = self._expand_via_nim_chat(query, prompt_msgs)
+
+        if expanded_terms:
+            terms = expanded_terms.replace('"', "").replace("'", "")
+            result = f"{query} {terms}"
+        else:
+            result = query
+
+        self._qe_cache[query] = result
+        return result
+
+    def _expand_via_groq(self, query, prompt_msgs):
+        """Call Groq llama-3.1-8b-instant for query expansion. Returns expanded terms or None."""
+        groq_key = self.config.get("groq_api_key", "") or os.environ.get(
+            "GROQ_API_KEY", ""
+        )
+        if not groq_key:
+            return None
+        try:
+            import requests
+
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": prompt_msgs,
+                    "max_tokens": 60,
+                    "temperature": 0,
+                },
+                timeout=5,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(
+                f"[SearchPipeline] Groq expansion failed (fail-open): {e}",
+                file=_sys.stderr,
+            )
+            return None
+
+    def _expand_via_nim_chat(self, query, prompt_msgs):
+        """Call NIM llama-3.1-8b-instruct for query expansion. Returns expanded terms or None."""
+        nim_key = self.config.get("nim_api_key", "")
+        if not nim_key:
+            return None
+        try:
+            import requests
+
+            resp = requests.post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {nim_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "meta/llama-3.1-8b-instruct",
+                    "messages": prompt_msgs,
+                    "max_tokens": 60,
+                    "temperature": 0,
+                },
+                timeout=8,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(
+                f"[SearchPipeline] NIM expansion failed (fail-open): {e}",
+                file=_sys.stderr,
+            )
+            return None
+
+    def _decompose_query(self, query):
+        """Split compound queries into sub-queries. Returns list or None. Fail-open."""
+        config = self.config
+        if not config.get("query_decomposition", False):
+            return None
+        if len(query.split()) < 6:
+            return None
+        if not any(
+            w in query.lower() for w in ("and", "also", "plus", "as well", "both")
+        ):
+            return None
+
+        if not hasattr(self, "_qd_cache"):
+            self._qd_cache = {}
+        cached = self._qd_cache.get(query)
+        if cached is not None:
+            return cached
+
+        prompt_msgs = [
+            {
+                "role": "system",
+                "content": "Decide if this search query contains multiple distinct questions. "
+                "If yes, split into separate queries (one per line). "
+                "If it's a single question, return ONLY the word SINGLE. "
+                "No numbering, no explanation.",
+            },
+            {"role": "user", "content": query},
+        ]
+
+        response = self._expand_via_groq(query, prompt_msgs)
+        if not response:
+            response = self._expand_via_nim_chat(query, prompt_msgs)
+
+        if not response or response.strip().upper() == "SINGLE":
+            self._qd_cache[query] = None
+            return None
+
+        sub_queries = [q.strip() for q in response.strip().splitlines() if q.strip()]
+        if len(sub_queries) < 2 or len(sub_queries) > 5:
+            self._qd_cache[query] = None
+            return None
+
+        self._qd_cache[query] = sub_queries
+        return sub_queries
+
+    def _search_decomposed(
+        self,
+        sub_queries,
+        top_k,
+        mode,
+        recency_weight,
+        match_all,
+        counterfactual,
+        memory_type,
+        state_type,
+        total_count,
+    ):
+        """Run each sub-query through the full pipeline, merge and deduplicate."""
+        per_query_k = max(5, top_k // len(sub_queries) + 2)
+        all_results = []
+        seen_ids = set()
+
+        for sq in sub_queries:
+            result = self.search(
+                sq,
+                top_k=per_query_k,
+                mode=mode,
+                recency_weight=recency_weight,
+                match_all=match_all,
+                counterfactual=counterfactual,
+                memory_type=memory_type,
+                state_type=state_type,
+            )
+            for r in result.get("results", []):
+                rid = r.get("id", "")
+                if rid and rid not in seen_ids:
+                    r["decomposed_from"] = sq
+                    all_results.append(r)
+                    seen_ids.add(rid)
+
+        all_results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+        all_results = all_results[:top_k]
+
+        return {
+            "results": all_results,
+            "total_memories": total_count,
+            "query": " | ".join(sub_queries),
+            "mode": mode,
+            "decomposed": True,
+            "sub_queries": sub_queries,
+            "compressed_results": compress_results(all_results) if all_results else [],
+        }
+
+    def _hyde_generate(self, query):
+        """Generate a hypothetical document for HyDE embedding. Fail-open."""
+        config = self.config
+        if not config.get("hyde", False):
+            return None
+        if len(query.split()) > 30:
+            return None
+
+        if not hasattr(self, "_hyde_cache"):
+            self._hyde_cache = {}
+        cached = self._hyde_cache.get(query)
+        if cached is not None:
+            return cached
+
+        prompt_msgs = [
+            {
+                "role": "system",
+                "content": "Write a brief factual statement that answers this query. "
+                "One or two sentences, as if from a knowledge base entry. No preamble.",
+            },
+            {"role": "user", "content": query},
+        ]
+
+        doc = None
+        groq_key = config.get("groq_api_key", "") or os.environ.get("GROQ_API_KEY", "")
+        if groq_key:
+            try:
+                import requests
+
+                resp = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {groq_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "llama-3.1-8b-instant",
+                        "messages": prompt_msgs,
+                        "max_tokens": 120,
+                        "temperature": 0,
+                    },
+                    timeout=5,
+                )
+                resp.raise_for_status()
+                doc = resp.json()["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                print(
+                    f"[SearchPipeline] Groq HyDE failed (fail-open): {e}",
+                    file=_sys.stderr,
+                )
+
+        if not doc:
+            nim_key = config.get("nim_api_key", "")
+            if nim_key:
+                try:
+                    import requests
+
+                    resp = requests.post(
+                        "https://integrate.api.nvidia.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {nim_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": "meta/llama-3.1-8b-instruct",
+                            "messages": prompt_msgs,
+                            "max_tokens": 120,
+                            "temperature": 0,
+                        },
+                        timeout=8,
+                    )
+                    resp.raise_for_status()
+                    doc = resp.json()["choices"][0]["message"]["content"].strip()
+                except Exception as e:
+                    print(
+                        f"[SearchPipeline] NIM HyDE failed (fail-open): {e}",
+                        file=_sys.stderr,
+                    )
+
+        self._hyde_cache[query] = doc
+        return doc
+
     def _touch_timestamp(self):
         fn = self.h.get("touch_memory_timestamp")
         if fn:
@@ -493,82 +817,6 @@ class SearchPipeline:
                 fn()
             except Exception:
                 pass
-
-    def _two_stage_search(
-        self, query, query_vec_768, top_k, where, format_summaries, h
-    ):
-        """Two-stage: approximate retrieval on vector_256 + full rerank."""
-        MIN_STAGE1 = 5
-        STAGE1_THRESHOLD = 0.3
-        n_candidates = max(top_k * 3, 50)
-
-        vec_256 = query_vec_768[:256]
-        candidates = self.collection.query_approximate(
-            query_vector_256=vec_256, n_candidates=n_candidates, where=where
-        )
-
-        # Cascade check: enough quality candidates?
-        quality = [
-            r for r in candidates if (1 - r.get("_distance", 1.0)) >= STAGE1_THRESHOLD
-        ]
-        if len(quality) < min(top_k, MIN_STAGE1):
-            print(
-                f"[Search] Two-stage cascade: {len(quality)} quality < "
-                f"{min(top_k, MIN_STAGE1)}, falling back to flat scan",
-                file=_sys.stderr,
-            )
-            results = self.collection.query(
-                query_vector=query_vec_768, n_results=top_k * 2, where=where
-            )
-            return format_summaries(results)
-
-        # Stage 2: rerank with full scoring
-        _ltp_factors = {}
-        if self.ltp:
-            for row in candidates:
-                mid = row.get("id", "")
-                if mid:
-                    try:
-                        _ltp_factors[mid] = self.ltp.get_decay_factor(mid)
-                    except Exception:
-                        pass
-
-        _graph_scores = {}
-        if self.graph:
-            top_ids = {r.get("id") for r in candidates[:5] if r.get("id")}
-            for row in candidates:
-                mid = row.get("id", "")
-                if mid:
-                    try:
-                        neighbors = self.graph._get_neighbors(mid)
-                        if neighbors:
-                            connected = len(set(neighbors) & top_ids - {mid})
-                            if connected > 0:
-                                _graph_scores[mid] = connected * 0.03
-                    except Exception:
-                        pass
-
-        _ltp_blend = 0.3
-        if self.adaptive:
-            _ltp_blend = self.adaptive.get_weights().get("ltp_blend", 0.3)
-
-        _server_project = h.get("server_project", "") or ""
-        _server_subproject = h.get("server_subproject", "") or ""
-        _query_tags = _derive_query_tags(
-            query, [{"tags": r.get("tags", "")} for r in candidates]
-        )
-
-        ctx = ScoringContext(
-            ltp_factors=_ltp_factors,
-            graph_scores=_graph_scores,
-            query_tags=_query_tags,
-            project=_server_project,
-            server_subproject=_server_subproject,
-            query=query,
-            ltp_blend=_ltp_blend,
-        )
-
-        return rerank_candidates(candidates, query_vec_768, ctx, top_k=top_k * 2)
 
     def _terminal_db_path(self):
         return os.path.join(
@@ -1068,7 +1316,7 @@ class SearchPipeline:
                     _activated_names = [
                         a["name"] for a in _activated[:5] if a["activation"] > 0.1
                     ]
-                    _kw_search = h.get("lance_keyword_search")
+                    _kw_search = h.get("keyword_search")
                     for _aname in _activated_names:
                         try:
                             if _kw_search:

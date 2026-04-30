@@ -8,9 +8,8 @@ tools:
   - Bash
   - WebFetch
   - WebSearch
-  - mcp__memory__search_knowledge
-  - mcp__memory__get_memory
-  - mcp__memory__remember_this
+  - mcp__toolshed__run_tool
+  - mcp__toolshed__list_tools
 model: sonnet
 permissionMode: default
 ---
@@ -18,6 +17,14 @@ permissionMode: default
 # Explore Agent
 
 You are a **codebase exploration specialist**. Your job is to quickly find files, search code, and answer questions about the codebase. You do NOT create or edit files.
+
+## Toolshed (all tools route through this gateway)
+
+```
+run_tool("memory", "search_knowledge", {"query": "..."})
+run_tool("memory", "remember_this", {"content": "...", "tags": "..."})
+run_tool("memory", "get_memory", {"id": "..."})
+```
 
 ## Rules
 

@@ -4,8 +4,8 @@ Extracted from memory_server.py as part of Memory v2 Layered Redesign.
 
 Public API:
     from shared.search_helpers import (
-        detect_query_mode, merge_results, lance_fts_to_summary,
-        lance_keyword_search, fuzzy_keyword_search, generate_fuzzy_variants,
+        detect_query_mode, merge_results,
+        fuzzy_keyword_search, generate_fuzzy_variants,
         tag_ids_to_summaries, TagCooccurrence,
     )
 """
@@ -65,7 +65,7 @@ def detect_query_mode(query, routing="default"):
 
 
 def merge_results(fts_results, lance_summaries, top_k=15):
-    """Merge FTS5 and LanceDB results using Reciprocal Rank Fusion (RRF).
+    """Merge keyword and vector results using Reciprocal Rank Fusion (RRF).
 
     RRF gives each engine equal weight: score = sum(1/(k+rank)) across engines.
     Items appearing in both engines naturally score ~2x higher.
@@ -85,7 +85,7 @@ def merge_results(fts_results, lance_summaries, top_k=15):
         entries[mid] = dict(entry)
         sources[mid] = {"semantic"}
 
-    # Score FTS5 results by rank
+    # Score keyword results by rank
     for rank, entry in enumerate(fts_results, start=1):
         mid = entry.get("id", "")
         if not mid:
@@ -104,42 +104,6 @@ def merge_results(fts_results, lance_summaries, top_k=15):
     results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
 
     return results[:top_k]
-
-
-def lance_fts_to_summary(row, summary_length=120):
-    """Convert a LanceDB FTS result row to the standard summary dict format."""
-    entry = {
-        "id": row.get("id", ""),
-        "preview": row.get("preview", row.get("text", "")[:summary_length]),
-        "tags": row.get("tags", ""),
-        "timestamp": row.get("timestamp", ""),
-        "fts_score": round(row.get("_score", 0.0), 4),
-    }
-    url = row.get("primary_source", "")
-    if url:
-        entry["url"] = url
-    return entry
-
-
-def lance_keyword_search(
-    query, top_k=15, collection=None, fts_ready=False, summary_length=120
-):
-    """LanceDB native BM25 keyword search. Falls back to empty on error.
-
-    Args:
-        query: Search query string
-        top_k: Max results
-        collection: LanceCollection instance (must have _table attribute)
-        fts_ready: Whether FTS index is built
-        summary_length: Preview truncation length
-    """
-    if not fts_ready or collection is None:
-        return []
-    try:
-        rows = collection._table.search(query).limit(top_k).to_list()
-        return [lance_fts_to_summary(r, summary_length) for r in rows]
-    except Exception:
-        return []
 
 
 def generate_fuzzy_variants(term, max_distance=1):
@@ -228,7 +192,7 @@ def fuzzy_keyword_search(
 
 
 def tag_ids_to_summaries(memory_ids, collection=None):
-    """Fetch full metadata from LanceDB for a list of memory IDs."""
+    """Fetch full metadata for a list of memory IDs."""
     if not memory_ids or collection is None:
         return []
     try:
@@ -263,19 +227,27 @@ class TagCooccurrence:
         self.total_memories = 0
         self._last_build = 0
 
-    def build(self, tag_index):
-        """Build tag co-occurrence matrix from tag index."""
+    def build_from_collection(self, collection):
+        """Build tag co-occurrence matrix from SurrealDB collection."""
         import time
 
         self._last_build = time.monotonic()
-        conn = tag_index.conn
-        rows = conn.execute("SELECT memory_id, tag FROM tags").fetchall()
+        try:
+            results = collection.get(limit=5000, include=["metadatas"])
+            metas = results.get("metadatas", []) if results else []
+        except Exception:
+            return
 
         mem_tags = {}
         tag_totals = {}
-        for mid, tag in rows:
-            mem_tags.setdefault(mid, set()).add(tag)
-            tag_totals[tag] = tag_totals.get(tag, 0) + 1
+        for i, meta in enumerate(metas):
+            tags_str = meta.get("tags", "") if meta else ""
+            if not tags_str:
+                continue
+            tag_list = [t.strip() for t in tags_str.split(",") if t.strip()]
+            mem_tags[i] = set(tag_list)
+            for tag in tag_list:
+                tag_totals[tag] = tag_totals.get(tag, 0) + 1
 
         cooccur = {}
         for _mid, tagset in mem_tags.items():
@@ -291,16 +263,16 @@ class TagCooccurrence:
         self.total_memories = len(mem_tags)
         self.dirty = False
 
-    def get_expanded_tags(self, query, tag_index=None):
+    def get_expanded_tags(self, query, collection=None):
         """Find tags that co-occur with tags matching the query (PMI > 1.0)."""
         import time
 
         if (
             self.dirty
-            and tag_index
+            and collection
             and (time.monotonic() - self._last_build >= self._REBUILD_COOLDOWN)
         ):
-            self.build(tag_index)
+            self.build_from_collection(collection)
 
         if not self.counts:
             return []

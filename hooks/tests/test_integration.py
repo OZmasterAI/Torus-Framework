@@ -750,10 +750,10 @@ import subprocess as _bsg_sp
 
 _BSG_CLAUDE_DIR = os.path.expanduser("~/.claude")
 _STATUS_SCRIPT = os.path.join(
-    _BSG_CLAUDE_DIR, "skill-library", "status", "scripts", "gather.py"
+    _BSG_CLAUDE_DIR, "torus-skills", "skill-library", "status", "scripts", "gather.py"
 )
 _WRAPUP_SCRIPT = os.path.join(
-    _BSG_CLAUDE_DIR, "skill-library", "wrap-up", "scripts", "gather.py"
+    _BSG_CLAUDE_DIR, "torus-skills", "skill-library", "wrap-up", "scripts", "gather.py"
 )
 
 # 1. Status gather: produces valid dashboard text
@@ -833,7 +833,12 @@ if _bsg_wj:
     test("Wrap-up gather: warnings is list", isinstance(_bsg_wj.get("warnings"), list))
 
 # 3. Test risk_level computation directly
-sys.path.insert(0, os.path.join(_BSG_CLAUDE_DIR, "skill-library", "wrap-up", "scripts"))
+sys.path.insert(
+    0,
+    os.path.join(
+        _BSG_CLAUDE_DIR, "torus-skills", "skill-library", "wrap-up", "scripts"
+    ),
+)
 from gather import compute_risk_level as _bsg_crl
 
 _bsg_green = _bsg_crl(
@@ -877,7 +882,12 @@ test("Wrap-up gather: risk RED when memory count zero", _bsg_red2 == "RED")
 print("\n--- Web Skill Scripts ---")
 
 _WEB_SCRIPTS = os.path.join(
-    os.path.expanduser("~"), ".claude", "skill-library", "web", "scripts"
+    os.path.expanduser("~"),
+    ".claude",
+    "torus-skills",
+    "skill-library",
+    "web",
+    "scripts",
 )
 sys.path.insert(0, _WEB_SCRIPTS)
 
@@ -1025,7 +1035,12 @@ if _WEB_SCRIPTS_AVAILABLE:
 
     # SKILL.md exists and has correct commands
     _ws_skill_path = os.path.join(
-        os.path.expanduser("~"), ".claude", "skill-library", "web", "SKILL.md"
+        os.path.expanduser("~"),
+        ".claude",
+        "torus-skills",
+        "skill-library",
+        "web",
+        "SKILL.md",
     )
     test("Web: SKILL.md exists", os.path.isfile(_ws_skill_path))
     with open(_ws_skill_path) as _ws_sf:
@@ -1057,7 +1072,7 @@ print("\n--- PRP Skill ---")
 _prp_base = os.path.expanduser("~/.claude")
 
 # SKILL.md exists
-_prp_skill = os.path.join(_prp_base, "skill-library", "prp", "SKILL.md")
+_prp_skill = os.path.join(_prp_base, "torus-skills", "skill-library", "prp", "SKILL.md")
 test("PRP: SKILL.md exists", os.path.isfile(_prp_skill))
 
 # SKILL.md has generate/execute/list commands
@@ -1111,7 +1126,9 @@ print("\n--- Browser Skill ---")
 _browser_base = os.path.expanduser("~/.claude")
 
 # Browser skill is dormant — skip if not present
-_browser_skill = os.path.join(_browser_base, "skill-library", "browser", "SKILL.md")
+_browser_skill = os.path.join(
+    _browser_base, "torus-skills", "skill-library", "browser", "SKILL.md"
+)
 if os.path.isfile(_browser_skill):
     test("Browser: SKILL.md exists", True)
     with open(_browser_skill) as _bf:
@@ -1150,7 +1167,9 @@ test(
 )
 
 # /ralph SKILL.md
-_ralph_skill = os.path.join(_browser_base, "skill-library", "ralph", "SKILL.md")
+_ralph_skill = os.path.join(
+    _browser_base, "torus-skills", "skill-library", "ralph", "SKILL.md"
+)
 if os.path.isfile(_ralph_skill):
     with open(_ralph_skill) as _rf:
         _ralph_skill_src = _rf.read()
@@ -1393,7 +1412,7 @@ with open(_base_tmpl) as _f:
 test("PRP: base.md has Validate field", "**Validate**:" in _base_src)
 
 # Test: prp SKILL.md has status command
-_prp_skill = os.path.expanduser("~/.claude/skill-library/prp/SKILL.md")
+_prp_skill = os.path.expanduser("~/.claude/torus-skills/skill-library/prp/SKILL.md")
 with open(_prp_skill) as _f:
     _prp_src = _f.read()
 test("PRP: SKILL.md has /prp status command", "/prp status" in _prp_src)
@@ -1662,7 +1681,6 @@ try:
         _validate_url,
         _rank_url_authority,
         _extract_citations,
-        TagIndex,
     )
 
     _citation_imports_ok = True
@@ -1809,34 +1827,7 @@ if _citation_imports_ok:
         _rank_url_authority("http://localhost:3000") == 3,
     )
 
-    # Test 15: TagIndex stores tags for citation entries
-    _ti_test = TagIndex(":memory:")
-    _ti_test.add_tags("cite1", "tag1,tag2")
-    _ti_found = _ti_test.tag_search(["tag1"], top_k=1)
-    test(
-        "TagIndex: tag_search finds citation entry",
-        len(_ti_found) > 0 and _ti_found[0] == "cite1",
-    )
-
-    # Test 16: TagIndex tag_search with multiple tags
-    _ti_test.add_tags("cite2", "tag1,tag3")
-    _ti_multi = _ti_test.tag_search(["tag1"], top_k=10)
-    test("TagIndex: tag_search returns multiple matches", len(_ti_multi) >= 2)
-
-    # Test 17: TagIndex remove works
-    _ti_test.remove("cite1")
-    _ti_after = _ti_test.tag_search(["tag1"], top_k=10)
-    test(
-        "TagIndex: remove clears tags",
-        "cite1" not in _ti_after and "cite2" in _ti_after,
-    )
-
-    # Test 18: TagIndex entry without tags → not found
-    _ti_test.add_tags("cite3", "")
-    _ti_empty = _ti_test.tag_search(["tag1"], top_k=10)
-    test("TagIndex: empty tags not indexed", "cite3" not in _ti_empty)
-
-    # Test 19: Extraction failure → returns defaults (fail-open)
+    # Test 15: Extraction failure → returns defaults (fail-open)
     _c19 = _extract_citations(None, None)  # type: ignore — intentional bad input
     test("Citation: fail-open on bad input", _c19["source_method"] == "none")
 

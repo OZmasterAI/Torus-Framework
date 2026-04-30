@@ -25,12 +25,33 @@ import time
 
 _DISK_STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 
-try:
-    from shared.ramdisk import get_state_dir, is_ramdisk_available
+_state_dir_cache = None
+_state_dir_cache_ts = 0
+_STATE_DIR_TTL = 30
 
-    STATE_DIR = get_state_dir()
+try:
+    from shared.ramdisk import get_state_dir as _ramdisk_get_state_dir
+
+    _HAS_RAMDISK_MODULE = True
 except ImportError:
-    STATE_DIR = _DISK_STATE_DIR
+    _ramdisk_get_state_dir = None
+    _HAS_RAMDISK_MODULE = False
+
+
+def _get_state_dir():
+    global _state_dir_cache, _state_dir_cache_ts
+    now = time.monotonic()
+    if _state_dir_cache is not None and (now - _state_dir_cache_ts) < _STATE_DIR_TTL:
+        return _state_dir_cache
+    if _HAS_RAMDISK_MODULE and _ramdisk_get_state_dir is not None:
+        _state_dir_cache = _ramdisk_get_state_dir()
+    else:
+        _state_dir_cache = _DISK_STATE_DIR
+    _state_dir_cache_ts = now
+    return _state_dir_cache
+
+
+STATE_DIR = _DISK_STATE_DIR
 
 # Memory timestamp sideband always lives on disk (read by gate_04, written by boot.py)
 MEMORY_TIMESTAMP_FILE = os.path.join(_DISK_STATE_DIR, ".memory_last_queried")
@@ -77,7 +98,9 @@ def state_file_for(session_id="main"):
     safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
     if not safe_id:
         safe_id = "main"
-    return os.path.join(STATE_DIR, f"state_{safe_id}.json")
+    state_dir = os.path.join(_get_state_dir(), ".state")
+    os.makedirs(state_dir, exist_ok=True)
+    return os.path.join(state_dir, f"state_{safe_id}.json")
 
 
 def _sideband_path_for(session_id="main"):
@@ -85,7 +108,9 @@ def _sideband_path_for(session_id="main"):
     safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
     if not safe_id:
         safe_id = "main"
-    return os.path.join(STATE_DIR, f".enforcer_sideband_{safe_id}.json")
+    sideband_dir = os.path.join(_get_state_dir(), ".sideband")
+    os.makedirs(sideband_dir, exist_ok=True)
+    return os.path.join(sideband_dir, f".enforcer_sideband_{safe_id}.json")
 
 
 def write_enforcer_sideband(state, session_id="main"):
@@ -1063,7 +1088,8 @@ def cleanup_all_states():
     shared state file (state.json) from previous sessions.
     """
     # Remove per-session state files and their lock files
-    pattern = os.path.join(STATE_DIR, "state_*.json")
+    _state_subdir = os.path.join(_get_state_dir(), ".state")
+    pattern = os.path.join(_state_subdir, "state_*.json")
     for f in glob.glob(pattern):
         # Don't remove .tmp files (in-progress writes)
         if not f.endswith(".tmp"):
@@ -1072,7 +1098,7 @@ def cleanup_all_states():
             except OSError:
                 pass
     # Clean up lock files
-    lock_pattern = os.path.join(STATE_DIR, "state_*.json.lock")
+    lock_pattern = os.path.join(_state_subdir, "state_*.json.lock")
     for f in glob.glob(lock_pattern):
         try:
             os.remove(f)
@@ -1080,7 +1106,7 @@ def cleanup_all_states():
             pass
 
     # Remove legacy shared state file
-    legacy = os.path.join(STATE_DIR, "state.json")
+    legacy = os.path.join(_get_state_dir(), "state.json")
     if os.path.exists(legacy):
         try:
             os.remove(legacy)
@@ -1090,7 +1116,9 @@ def cleanup_all_states():
 
 # --- Persistent gate effectiveness (survives across sessions) ---
 
-EFFECTIVENESS_FILE = os.path.join(_DISK_STATE_DIR, ".gate_effectiveness.json")
+_GATE_DATA_DIR = os.path.join(_DISK_STATE_DIR, ".gate_data")
+os.makedirs(_GATE_DATA_DIR, exist_ok=True)
+EFFECTIVENESS_FILE = os.path.join(_GATE_DATA_DIR, ".gate_effectiveness.json")
 
 
 def update_gate_effectiveness(gate: str, field: str, session_id=None):
@@ -1136,7 +1164,7 @@ def load_gate_effectiveness(session_id=None):
     try:
         import glob as _glob
 
-        pattern = os.path.join(_DISK_STATE_DIR, ".gate_effectiveness*.json")
+        pattern = os.path.join(_GATE_DATA_DIR, ".gate_effectiveness*.json")
         for path in _glob.glob(pattern):
             try:
                 with open(path) as f:

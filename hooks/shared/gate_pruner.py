@@ -19,59 +19,64 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
 _HOOKS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_EFFECTIVENESS_PATH = os.path.join(_HOOKS_DIR, ".gate_effectiveness.json")
-_TIMINGS_PATH       = os.path.join(_HOOKS_DIR, ".gate_timings.json")
-_QTABLE_PATH        = os.path.join(_HOOKS_DIR, ".gate_qtable.json")
+_EFFECTIVENESS_PATH = os.path.join(_HOOKS_DIR, ".gate_data", ".gate_effectiveness.json")
+_TIMINGS_PATH = os.path.join(_HOOKS_DIR, ".gate_timings.json")
+_QTABLE_PATH = os.path.join(_HOOKS_DIR, ".gate_qtable.json")
 
 # Tier 1 gates are mandatory safety rails — NEVER recommend removing them
-_TIER1 = frozenset({
-    "gate_01_read_before_edit",
-    "gate_02_no_destroy",
-    "gate_03_test_before_deploy",
-})
+_TIER1 = frozenset(
+    {
+        "gate_01_read_before_edit",
+        "gate_02_no_destroy",
+        "gate_03_test_before_deploy",
+    }
+)
 
 # Thresholds
-_LOW_BLOCK_RATE  = 0.005   # 0.5% block rate → low-value candidate
-_MIN_EVALS       = 1000    # minimum evaluations for a reliable dormant verdict
-_HIGH_LATENCY_MS = 10.0    # avg_ms above this with low value = latency drain
-_HIGH_OVERRIDE   = 0.15    # overrides/blocks > 15% → gate too aggressive
+_LOW_BLOCK_RATE = 0.005  # 0.5% block rate → low-value candidate
+_MIN_EVALS = 1000  # minimum evaluations for a reliable dormant verdict
+_HIGH_LATENCY_MS = 10.0  # avg_ms above this with low value = latency drain
+_HIGH_OVERRIDE = 0.15  # overrides/blocks > 15% → gate too aggressive
 
-KEEP            = "keep"
-OPTIMIZE        = "optimize"
+KEEP = "keep"
+OPTIMIZE = "optimize"
 MERGE_CANDIDATE = "merge_candidate"
-DORMANT         = "dormant"
+DORMANT = "dormant"
 
 _VERDICT_RANK = {DORMANT: 4, MERGE_CANDIDATE: 3, OPTIMIZE: 2, KEEP: 1}
 
 
 # ── Data containers ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class GateAnalysis:
     """Computed pruning metrics for one gate."""
-    gate:          str
-    tier1:         bool
-    blocks:        int
-    overrides:     int
-    prevented:     int
-    eval_count:    int    # timing-based evaluation count (best denominator)
-    avg_ms:        float
-    block_rate:    float  # blocks / eval_count (or 0 when eval_count < _MIN_EVALS)
+
+    gate: str
+    tier1: bool
+    blocks: int
+    overrides: int
+    prevented: int
+    eval_count: int  # timing-based evaluation count (best denominator)
+    avg_ms: float
+    block_rate: float  # blocks / eval_count (or 0 when eval_count < _MIN_EVALS)
     override_rate: float  # overrides / blocks (0 when blocks == 0)
-    has_q_data:    bool
-    verdict:       str    # keep | optimize | merge_candidate | dormant
-    reasons:       List[str] = field(default_factory=list)
+    has_q_data: bool
+    verdict: str  # keep | optimize | merge_candidate | dormant
+    reasons: List[str] = field(default_factory=list)
 
 
 @dataclass
 class PruneRecommendation:
     """Single ranked recommendation with context."""
-    rank:    int
-    gate:    str
+
+    rank: int
+    gate: str
     verdict: str
     reasons: List[str]
-    avg_ms:  float
-    blocks:  int
+    avg_ms: float
+    blocks: int
     prevented: int
 
 
@@ -80,6 +85,7 @@ class PruneRecommendation:
 try:
     from shared.gate_helpers import load_json_safe as _load_json
 except ImportError:
+
     def _load_json(path: str) -> dict:
         try:
             with open(path, "r") as fh:
@@ -91,14 +97,15 @@ except ImportError:
 
 # ── Core analysis ─────────────────────────────────────────────────────────────
 
+
 def analyze_gates() -> Dict[str, GateAnalysis]:
     """Analyze all known gates and assign a pruning verdict.
 
     Returns a dict keyed by short gate name (e.g. "gate_15_causal_chain").
     """
-    eff     = _load_json(_EFFECTIVENESS_PATH)
+    eff = _load_json(_EFFECTIVENESS_PATH)
     timings = _load_json(_TIMINGS_PATH)
-    qtable  = _load_json(_QTABLE_PATH)
+    qtable = _load_json(_QTABLE_PATH)
 
     # Collect all gate names from both sources
     all_gates = set(eff.keys()) | set(timings.keys())
@@ -110,26 +117,33 @@ def analyze_gates() -> Dict[str, GateAnalysis]:
     results: Dict[str, GateAnalysis] = {}
 
     for gate in sorted(all_gates):
-        e_entry  = eff.get(gate, {})
-        t_entry  = timings.get(gate, {})
+        e_entry = eff.get(gate, {})
+        t_entry = timings.get(gate, {})
         q_module = f"gates.{gate}"
-        has_q    = q_module in qtable and bool(qtable[q_module])
+        has_q = q_module in qtable and bool(qtable[q_module])
 
-        blocks    = int(e_entry.get("blocks", 0) or e_entry.get("block", 0))
+        blocks = int(e_entry.get("blocks", 0) or e_entry.get("block", 0))
         overrides = int(e_entry.get("overrides", 0))
         prevented = int(e_entry.get("prevented", 0))
 
         eval_count = int(t_entry.get("count", 0))
-        total_ms   = float(t_entry.get("total_ms", 0.0))
-        avg_ms     = total_ms / eval_count if eval_count > 0 else 0.0
+        total_ms = float(t_entry.get("total_ms", 0.0))
+        avg_ms = total_ms / eval_count if eval_count > 0 else 0.0
 
-        block_rate    = blocks / eval_count if eval_count >= _MIN_EVALS else 0.0
-        override_rate = overrides / blocks  if blocks > 0              else 0.0
+        block_rate = blocks / eval_count if eval_count >= _MIN_EVALS else 0.0
+        override_rate = overrides / blocks if blocks > 0 else 0.0
 
         is_tier1 = gate in _TIER1
         verdict, reasons = _classify(
-            gate, is_tier1, blocks, overrides, prevented,
-            eval_count, avg_ms, block_rate, override_rate,
+            gate,
+            is_tier1,
+            blocks,
+            overrides,
+            prevented,
+            eval_count,
+            avg_ms,
+            block_rate,
+            override_rate,
         )
 
         results[gate] = GateAnalysis(
@@ -182,7 +196,12 @@ def _classify(
         reasons.append(f"High latency: {avg_ms:.1f}ms avg per evaluation")
 
     # Merge candidate: some activity but block rate suggests low standalone value
-    if verdict == KEEP and eval_count >= _MIN_EVALS and block_rate < 0.02 and blocks < 50:
+    if (
+        verdict == KEEP
+        and eval_count >= _MIN_EVALS
+        and block_rate < 0.02
+        and blocks < 50
+    ):
         verdict = MERGE_CANDIDATE
         reasons.append(
             f"Low standalone impact: {blocks} blocks ({block_rate:.2%}) — "
@@ -215,6 +234,7 @@ def _classify(
 
 # ── Public recommendation list ─────────────────────────────────────────────────
 
+
 def get_prune_recommendations() -> List[PruneRecommendation]:
     """Return gates ranked by urgency of action (dormant first, keep last)."""
     analysis = analyze_gates()
@@ -239,6 +259,7 @@ def get_prune_recommendations() -> List[PruneRecommendation]:
 
 # ── Report rendering ───────────────────────────────────────────────────────────
 
+
 def render_pruner_report() -> str:
     """Render a human-readable pruning recommendation report."""
     recs = get_prune_recommendations()
@@ -262,7 +283,7 @@ def render_pruner_report() -> str:
 
     dormant = [r for r in recs if r.verdict == DORMANT]
     optimize = [r for r in recs if r.verdict == OPTIMIZE]
-    merge    = [r for r in recs if r.verdict == MERGE_CANDIDATE]
+    merge = [r for r in recs if r.verdict == MERGE_CANDIDATE]
 
     lines += [
         "",
@@ -294,16 +315,21 @@ if __name__ == "__main__":
             errors.append(name)
 
     _check("analyze_gates returns dict", isinstance(analysis, dict))
-    _check("analyze_gates non-empty",    len(analysis) > 0)
+    _check("analyze_gates non-empty", len(analysis) > 0)
     _check("get_prune_recommendations returns list", isinstance(recs, list))
     _check("recommendations non-empty", len(recs) > 0)
-    _check("tier1 gates always keep",
-           all(a.verdict == KEEP for g, a in analysis.items() if g in _TIER1),
-           str({g: a.verdict for g, a in analysis.items() if g in _TIER1}))
-    _check("ranks are sequential",
-           [r.rank for r in recs] == list(range(1, len(recs) + 1)))
-    _check("all verdicts are valid",
-           all(r.verdict in (KEEP, OPTIMIZE, MERGE_CANDIDATE, DORMANT) for r in recs))
+    _check(
+        "tier1 gates always keep",
+        all(a.verdict == KEEP for g, a in analysis.items() if g in _TIER1),
+        str({g: a.verdict for g, a in analysis.items() if g in _TIER1}),
+    )
+    _check(
+        "ranks are sequential", [r.rank for r in recs] == list(range(1, len(recs) + 1))
+    )
+    _check(
+        "all verdicts are valid",
+        all(r.verdict in (KEEP, OPTIMIZE, MERGE_CANDIDATE, DORMANT) for r in recs),
+    )
     _check("render returns str", isinstance(render_pruner_report(), str))
 
     print()

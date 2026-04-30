@@ -32,30 +32,28 @@ from shared.memory_decay import (
 
 # ── Test DB path ─────────────────────────────────────────────────────────
 
-TEST_DB_PATH = os.path.expanduser("~/data/memory/lancedb-v2-test")
-PROD_DB_PATH = os.path.expanduser("~/data/memory/lancedb")
+SURREAL_DB_PATH = os.path.expanduser("~/data/memory/surrealdb")
 
 
 def _test_db_available():
-    """Check if the test LanceDB snapshot exists."""
-    return os.path.isdir(TEST_DB_PATH) and os.path.isdir(
-        os.path.join(TEST_DB_PATH, "knowledge.lance")
-    )
+    """Check if the SurrealDB data directory exists."""
+    return os.path.isdir(SURREAL_DB_PATH)
 
 
 # Skip all tests if test DB not available
 pytestmark = pytest.mark.skipif(
     not _test_db_available(),
-    reason="Test LanceDB snapshot not available at ~/data/memory/lancedb-v2-test/",
+    reason="SurrealDB not available at ~/data/memory/surrealdb/",
 )
 
 
 @pytest.fixture(scope="module")
-def lance_db():
-    """Open LanceDB connection to test snapshot."""
-    import lancedb
+def surreal_db():
+    """Open SurrealDB connection."""
+    from surrealdb import Surreal
 
-    db = lancedb.connect(TEST_DB_PATH)
+    db = Surreal(f"surrealkv://{SURREAL_DB_PATH}")
+    db.use("memory", "main")
     return db
 
 
@@ -308,13 +306,9 @@ def test_write_validation_short_content():
         def count(self):
             return 100
 
-    class FakeTagIndex:
-        def add_tags(self, id, tags):
-            pass
-
     pipeline = WritePipeline(
         collection=FakeCollection(),
-        tag_index=FakeTagIndex(),
+        tag_index=None,
         graph=None,
         config={},
         helpers={"min_content_length": 20},
@@ -331,13 +325,9 @@ def test_write_validation_long_content():
         def count(self):
             return 100
 
-    class FakeTagIndex:
-        def add_tags(self, id, tags):
-            pass
-
     pipeline = WritePipeline(
         collection=FakeCollection(),
-        tag_index=FakeTagIndex(),
+        tag_index=None,
         graph=None,
         config={},
         helpers={"min_content_length": 20},
@@ -522,13 +512,9 @@ def test_tag_overlap_scoring():
 
 def test_production_db_not_modified():
     """Verify the production DB was not modified during testing."""
-    if not os.path.isdir(PROD_DB_PATH):
+    if not os.path.isdir(SURREAL_DB_PATH):
         pytest.skip("Production DB not found")
-    # Check mtime of production knowledge.lance — should not change
-    prod_lance = os.path.join(PROD_DB_PATH, "knowledge.lance")
-    if os.path.isdir(prod_lance):
-        # Just verify it exists and is accessible (read-only check)
-        assert os.access(prod_lance, os.R_OK), "Production DB not readable"
+    assert os.access(SURREAL_DB_PATH, os.R_OK), "Production DB not readable"
 
 
 # ── Test 9: Score determinism across real entries ──────────────────────
