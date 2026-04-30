@@ -54,7 +54,7 @@ Launch → boot.py runs → Handoff presented → You work → /wrap-up → sess
 - Initializes the ramdisk for fast I/O (~544 MB/s tmpfs at `/run/user/{uid}/claude-hooks/`)
 - Rotates and compresses audit logs
 - Reads `LIVE_STATE.json` from the previous session
-- Injects recent memories from LanceDB (L1)
+- Injects recent memories from SurrealDB (L1)
 - Pulls relevant Telegram message history (L2/L3 fallback)
 - Writes the Gate 4 sideband timestamp so memory-first checks pass
 - Resets per-session enforcement state
@@ -92,8 +92,8 @@ The `session_end.py` hook also runs automatically on exit to flush observations 
 5. Time warnings
 6. Gate count
 7. UDS check/daemon start
-8. LanceDB watchdog
-9. Memory injection (LanceDB UDS socket)
+8. SurrealDB watchdog
+9. Memory injection (SurrealDB UDS socket)
 10. Telegram L3 search
 11. Gate auto-tuning
 12. Error extraction
@@ -370,15 +370,15 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 │   ├── test_framework.py  # Gate test suite entry point (53 lines)
 │   ├── tests/             # 46 test files (~50K lines)
 │   ├── gates/             # 21 gate modules
-│   ├── shared/            # 67 shared modules (~25K lines)
+│   ├── shared/            # ~97 shared modules (~37K lines)
 │   ├── .audit_trail.jsonl # Full tool call audit trail (46.3 MB)
 │   ├── .capture_queue.jsonl # Observation queue (flushed each session)
-│   ├── .chromadb.sock     # Memory UDS socket (legacy name, connects to LanceDB)
+│   ├── .chromadb.sock     # Memory UDS socket (legacy name, serializes hook-side access)
 │   └── .enforcer.sock     # Enforcer daemon UDS socket
-├── skills/                # 36 slash command definitions
-├── agents/                # 6 agent type definitions
-├── teams/                 # 5 team configurations
+├── agents/                # 2 agent definitions (builder, explore)
 ├── plugins/               # 0 installed (cleared)
+├── toolshed/              # MCP gateway (toolshed.json config, router)
+├── torus-skills/          # Skills submodule (54 slash command definitions)
 ├── subagent_context.py    # SubagentStart hook (380 lines)
 ├── scripts/
 │   ├── torus-loop.sh      # Sequential task executor (261 lines)
@@ -390,18 +390,14 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 
 ---
 
-## Agent Types (6) and Teams (5)
+## Agent Types (2) and Teams (0 active)
 
 ### Agent Definitions
 
 | Agent | Model | Role |
 |---|---|---|
-| `researcher` | haiku | Read-only exploration: Glob, Grep, Read, WebFetch, memory |
-| `builder` | sonnet | Full implementation: Edit, Write, Bash, NotebookEdit, memory, causal chain |
-| `debugger` | sonnet | Diagnosis and fix: Edit, Write, Bash, causal chain, log analysis |
-| `stress-tester` | sonnet | Test execution and verification |
-| `perf-analyzer` | sonnet | Performance profiling (read-only + Bash for benchmarks) |
-| `security` | sonnet | Security audit (read-only + Bash scanning) |
+| `builder` | opus | Full implementation: Edit, Write, Bash, NotebookEdit, memory |
+| `explore` | sonnet | Fast codebase exploration: Read, Glob, Grep, memory |
 
 ### Delegation Rules
 
@@ -413,15 +409,9 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 Cross-session            → Sub-agents + memory
 ```
 
-### Team Definitions
+### Teams
 
-| Team | Purpose |
-|---|---|
-| `default` | Inactive legacy |
-| `eclipse-rebase` | Rebase ProjectDawn to Eclipse L2 (5 members) |
-| `evolution-swarm-268` | Self-evolution swarm |
-| `framework-v2-4-1` | v2.4.1 sprint: dashboard, statusline |
-| `sprint-team` | Self-improvement sprint (10 builders + researchers) |
+No active team configurations. Legacy team definitions are archived in `dormant/teams/`.
 
 ---
 
@@ -465,7 +455,7 @@ The enforcer runs as a persistent UDS server so gate evaluation costs ~5ms inste
 4. Fix is verified with tests before being marked done
 
 ### Searching memory across tiers
-- **L1 (LanceDB):** `search_knowledge("your query")` — semantic search, 7 modes
+- **L1 (SurrealDB):** `search_knowledge("your query")` — semantic search, 7 modes
 - **L2 (Terminal history):** `terminal_history_search("query")` via Analytics MCP — FTS5 over past sessions
 - **L3 (Telegram):** `telegram_search("query")` via Analytics MCP — FTS5 over message history
 - The cascade triggers automatically in `search_knowledge` when L1 results fall below the 0.3 relevance threshold
@@ -473,7 +463,7 @@ The enforcer runs as a persistent UDS server so gate evaluation costs ~5ms inste
 ### Ending a session cleanly
 1. Type `/wrap-up` before ending
 2. Review the generated handoff
-3. Exit — `session_end.py` saves metrics, flushes observations, and backs up LanceDB
+3. Exit — `session_end.py` saves metrics, flushes observations, and backs up SurrealDB
 4. Next session picks up right where you left off
 
 ---
@@ -489,8 +479,8 @@ The enforcer runs as a persistent UDS server so gate evaluation costs ~5ms inste
 **Session handoff is stale**
 → Run `/wrap-up` before ending sessions. If you forgot, `session_end.py` writes basic metrics automatically.
 
-**LanceDB connection issues**
-→ The UDS socket `.chromadb.sock` (legacy name) must be running. Restart the Memory MCP server if searches fail.
+**SurrealDB connection issues**
+→ The SurrealDB v3 server must be running (ws://127.0.0.1:8822). The UDS socket `.chromadb.sock` (legacy name) must also be active. Restart the Memory MCP server if searches fail.
 
 **Plan mode exit loop**
 → Known issue — if `ExitPlanMode` is rejected twice, you can get stuck. Ask Claude to stop and adjust the plan before trying again.
