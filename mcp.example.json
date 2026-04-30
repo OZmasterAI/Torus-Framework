@@ -1,11 +1,8 @@
 {
   "mcpServers": {
-    "memory": {
-      "command": "/usr/bin/python3",
-      "args": [
-        "$HOME/.claude/hooks/memory_server.py"
-      ],
-      "cwd": "$HOME"
+    "toolshed": {
+      "command": "bash",
+      "args": ["$HOME/.claude/toolshed/torus-launcher.sh"]
     }
   }
 }

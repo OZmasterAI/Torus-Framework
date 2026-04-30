@@ -297,18 +297,6 @@
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "voiceEnabled": true,
-  "mcpServers": {
-    "torus": {
-      "command": "node",
-      "args": [
-        "/home/crab/projects/torus-mcp-server/dist/cli.js",
-        "serve"
-      ],
-      "env": {
-        "TORUS_API_URL": "http://localhost:3000"
-      }
-    }
-  },
   "effort": "max",
   "disabled_hooks": {
     "TeammateIdle": [

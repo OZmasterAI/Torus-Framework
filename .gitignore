@@ -180,3 +180,6 @@ usage-data/
 
 # Backup files
 hooks/memory_server.py.bak
+
+# Per-session gate effectiveness files (generated at runtime)
+hooks/.gate_effectiveness_*.json

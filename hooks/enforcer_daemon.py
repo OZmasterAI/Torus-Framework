@@ -13,7 +13,7 @@ If this daemon isn't running, the shim falls back to inline enforcer.main()
 — zero downside risk.
 
 Started by: boot_pkg/orchestrator.py (when config.json enforcer_daemon=true)
-Stopped by: session_end.py (SIGTERM to PID file)
+Stopped by: auto-exit when no registered sessions remain (PID tracking)
 """
 
 import atexit
@@ -35,6 +35,13 @@ PID_FILE = os.path.join(HOOKS_DIR, ".enforcer.pid")
 
 _server_socket = None
 _lock = threading.Lock()
+
+_registered_pids = set()
+_pids_lock = threading.Lock()
+_ever_had_sessions = False
+_PRUNE_INTERVAL = 30
+_GRACE_PERIOD = 60
+_should_exit = threading.Event()
 
 
 def _run_enforcer(request_json: str) -> dict:
@@ -115,11 +122,35 @@ def _handle_client(conn):
             conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
             return
 
+        if parsed.get("method") == "register":
+            global _ever_had_sessions
+            pid = parsed.get("pid")
+            if pid:
+                with _pids_lock:
+                    _registered_pids.add(pid)
+                    _ever_had_sessions = True
+            resp = {"ok": True, "registered": pid}
+            conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
+            return
+
+        if parsed.get("method") == "unregister":
+            pid = parsed.get("pid")
+            if pid:
+                with _pids_lock:
+                    _registered_pids.discard(pid)
+            resp = {"ok": True, "unregistered": pid}
+            conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
+            return
+
         result = _run_enforcer(request_str)
         conn.sendall((json.dumps(result) + "\n").encode("utf-8"))
     except Exception as e:
         try:
-            resp = {"exit_code": 2, "stderr": f"[DAEMON] Handler error: {e}\n", "stdout": ""}
+            resp = {
+                "exit_code": 2,
+                "stderr": f"[DAEMON] Handler error: {e}\n",
+                "stdout": "",
+            }
             conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
         except Exception:
             pass
@@ -163,6 +194,42 @@ def _bind_socket():
     return srv
 
 
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _session_watchdog():
+    """Prune dead PIDs, signal exit when no sessions remain."""
+    grace_start = None
+    while not _should_exit.is_set():
+        time.sleep(_PRUNE_INTERVAL)
+        with _pids_lock:
+            dead = {p for p in _registered_pids if not _pid_alive(p)}
+            _registered_pids.difference_update(dead)
+            active = len(_registered_pids)
+            had_sessions = _ever_had_sessions
+        if active > 0:
+            grace_start = None
+        elif had_sessions:
+            if grace_start is None:
+                grace_start = time.time()
+                print(
+                    "[ENFORCER-DAEMON] No active sessions, grace period started",
+                    file=sys.stderr,
+                )
+            elif time.time() - grace_start >= _GRACE_PERIOD:
+                print(
+                    "[ENFORCER-DAEMON] No sessions for 60s, shutting down",
+                    file=sys.stderr,
+                )
+                _should_exit.set()
+                return
+
+
 def main():
     global _server_socket
 
@@ -184,12 +251,18 @@ def main():
         _shutting_down = True
         _cleanup()
         sys.exit(0)
+
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
-    print(f"[ENFORCER-DAEMON] Started (PID {os.getpid()}, socket {SOCKET_PATH})", file=sys.stderr)
+    threading.Thread(target=_session_watchdog, daemon=True).start()
+
+    print(
+        f"[ENFORCER-DAEMON] Started (PID {os.getpid()}, socket {SOCKET_PATH})",
+        file=sys.stderr,
+    )
 
     try:
-        while True:
+        while not _should_exit.is_set():
             try:
                 conn, _ = srv.accept()
                 t = threading.Thread(target=_handle_client, args=(conn,), daemon=True)
@@ -197,7 +270,10 @@ def main():
             except socket.timeout:
                 # Proactive watchdog: detect deleted socket file
                 if not os.path.exists(SOCKET_PATH):
-                    print("[ENFORCER-DAEMON] Socket file missing, rebinding", file=sys.stderr)
+                    print(
+                        "[ENFORCER-DAEMON] Socket file missing, rebinding",
+                        file=sys.stderr,
+                    )
                     try:
                         srv.close()
                     except Exception:
@@ -219,7 +295,10 @@ def main():
                     srv = _bind_socket()
                     _server_socket = srv
                 except OSError as e:
-                    print(f"[ENFORCER-DAEMON] Rebind failed, retry in 5s: {e}", file=sys.stderr)
+                    print(
+                        f"[ENFORCER-DAEMON] Rebind failed, retry in 5s: {e}",
+                        file=sys.stderr,
+                    )
                     time.sleep(5)
     except KeyboardInterrupt:
         pass

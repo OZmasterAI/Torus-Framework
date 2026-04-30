@@ -15,7 +15,7 @@
 
 Torus wraps Claude Code with persistent memory, 21 quality gates, automated hooks, self-evolving skills, and a unified MCP gateway — turning it from a stateless CLI into a disciplined, self-improving development partner.
 
-> **830 Python files** · **~217K lines** · **21 active gates** · **54 skills** · **7 MCP servers** · **14 hook events**
+> **248 Python files** · **~119K lines** · **21 active gates** · **54 skills** · **7 MCP servers** · **14 hook events**
 
 ---
 
@@ -65,7 +65,7 @@ All MCP tools route through a single gateway — **Toolshed** — which multiple
 
 | Server | Port | Purpose |
 |--------|------|---------|
-| **memory** | 8742 | LanceDB semantic search, causal fix tracking, observations |
+| **memory** | 8742 | SurrealDB semantic search, causal fix tracking, observations |
 | **torus-skills** | 8743 | 54 skills with usage tracking, self-evolution, lineage |
 | **search** | 8744 | Terminal history FTS5, transcript context |
 | **web-search** | 8745 | Web search integration |
@@ -88,12 +88,12 @@ Usage: `run_tool("memory", "search_knowledge", {"query": "..."})`
 | Feature | Description |
 |---------|-------------|
 | **21 Quality Gates** | Mechanical enforcement — read before edit, test before deploy, memory-first, no-destroy, injection defense, self-check, and more |
-| **Persistent Memory** | LanceDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations |
+| **Persistent Memory** | SurrealDB with semantic search, causal fix tracking, tag indexing, and auto-captured observations |
 | **Hook Pipeline** | 14 lifecycle events — SessionStart, PreToolUse, PostToolUse, Stop, SubagentStart, PreCompact, ConfigChange, and more |
 | **54 Skills** | Slash commands via torus-skills — `/commit`, `/brainstorm`, `/writing-plans`, `/prp`, `/sprint`, `/wrap-up`, and more |
 | **Skill Self-Evolution** | Skills track usage metrics; degraded skills auto-fix via LLM, derive variants, or capture new patterns |
 | **Toolshed Gateway** | Single MCP entry point multiplexing 7 backend servers over HTTP/stdio |
-| **4 Agent Types** | builder, explorer, planner, researcher — with delegation rules |
+| **2 Agent Types** | builder, explore — with delegation rules |
 | **Enforcer Daemon** | Persistent UDS server — gate checks in ~5ms instead of ~134ms inline |
 | **Mentor System** | Real-time quality scoring (0.0-1.0) with deterministic verdicts, no LLM calls |
 | **Session Continuity** | LIVE_STATE.json carries context across sessions automatically |
@@ -132,13 +132,13 @@ Usage: `run_tool("memory", "search_knowledge", {"query": "..."})`
       ┌───────────┬──────────────────┼───────────────┬───────────┐
       │           │                  │               │           │
   ┌───▼────┐ ┌───▼─────┐  ┌────────▼────────┐ ┌────▼────┐ ┌────▼─────┐
-  │   L1   │ │   L2    │  │   L0 Raw        │ │   L3    │ │ Ramdisk  │
-  │LanceDB │ │Terminal │  │   Transcripts   │ │Telegram │ │  tmpfs   │
-  │ ~7K mem│ │  FTS5   │  │  JSONL windows  │ │  FTS5   │ │ 544 MB/s │
-  └────────┘ └─────────┘  └─────────────────┘ └─────────┘ └──────────┘
+  │   L1    │ │   L2    │  │   L0 Raw        │ │   L3    │ │ Ramdisk  │
+  │SurrealDB│ │Terminal │  │   Transcripts   │ │Telegram │ │  tmpfs   │
+  │         │ │  FTS5   │  │  JSONL windows  │ │  FTS5   │ │ 544 MB/s │
+  └─────────┘ └─────────┘  └─────────────────┘ └─────────┘ └──────────┘
 ```
 
-**451 tracked files** · **~100 shared modules** · **54 skills** · **4 agents**
+**248 Python files** · **~100 shared modules** · **54 skills** · **2 agents**
 
 For the full architecture reference, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
@@ -214,7 +214,7 @@ Each evolution creates a lineage record in SQLite, tracking parent-child relatio
 Four-tier memory architecture with automatic cascade:
 
 ```
-L1: LanceDB (curated, semantic search, ~7K memories)
+L1: SurrealDB (curated, semantic search, HNSW vectors, BM25 FTS)
  └── L2: Terminal History (FTS5 full-text, indexed session transcripts)
       └── L0: Raw Transcripts (JSONL session files, time-windowed retrieval)
            └── L3: Telegram (FTS5, message history fallback)
@@ -249,10 +249,10 @@ L0 activates when `transcript_l0: true` in config — pulls raw conversation win
 ├── hooks/
 │   ├── enforcer.py          # Gate engine (21 active gates)
 │   ├── enforcer_daemon.py   # UDS daemon for low-latency gate checks (~5ms)
-│   ├── memory_server.py     # MCP server: LanceDB memory + semantic search
+│   ├── memory_server.py     # MCP server: SurrealDB memory + semantic search
 │   ├── analytics_server.py  # MCP server: analytics + gate dashboard
 │   ├── gates/               # 21 gate implementations
-│   ├── shared/              # ~100 shared modules (state, evolution, analysis, etc.)
+│   ├── shared/              # ~97 shared modules (state, evolution, analysis, etc.)
 │   ├── tracker.py           # PostToolUse pipeline (mentor, observations, auto-remember)
 │   └── boot.py              # SessionStart orchestrator
 ├── toolshed/                # MCP gateway (submodule) — routes all tool calls
@@ -261,12 +261,14 @@ L0 activates when `transcript_l0: true` in config — pulls raw conversation win
 ├── torus-skills/            # Skill library (submodule) — self-evolving skills
 │   ├── trs_skill_server.py  # Skills-v2 MCP server with evolution engine
 │   └── skill-library/       # 54 skill directories (each with SKILL.md)
-├── agents/                  # 4 agent definitions (builder, explorer, planner, researcher)
-├── tap/                     # Toroidal Agent Protocol — multi-agent orchestration (v0.1.0)
+├── agents/                  # 2 agent definitions (builder, explore)
+├── toroidal-agent-protocol/  # Multi-agent orchestration (submodule)
+├── toroidal-model-router/    # Model fan-out, comparison, scheduling (submodule)
+├── toroidal-detector/        # Gate anomaly detection (submodule)
 ├── integrations/
 │   ├── telegram-bot/        # Remote Claude via Telegram
 │   ├── terminal-history/    # Session transcript indexer (FTS5)
-│   ├── model-router/        # Model fan-out, comparison, scheduling
+│   ├── tts-voices/          # TTS voice integration
 │   └── voice-web/           # Voice/TTS integration
 └── scripts/                 # Orchestration (torus-loop, torus-wave, cleanup)
 ```

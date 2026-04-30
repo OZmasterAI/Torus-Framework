@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 from datetime import datetime
 
@@ -212,6 +213,41 @@ def main():
             _hooks_dir = os.path.join(CLAUDE_DIR, "hooks")
             _daemon_path = os.path.join(_hooks_dir, "enforcer_daemon.py")
             _sock_path = os.path.join(_hooks_dir, ".enforcer.sock")
+            _hash_path = os.path.join(_hooks_dir, ".enforcer_hash")
+            _pid_path = os.path.join(_hooks_dir, ".enforcer.pid")
+
+            # Hash gate/shared module mtimes to detect code changes
+            import hashlib as _hashlib
+
+            _mtimes = []
+            for _subdir in ("gates", "shared"):
+                _dirpath = os.path.join(_hooks_dir, _subdir)
+                if os.path.isdir(_dirpath):
+                    for _fname in sorted(os.listdir(_dirpath)):
+                        if _fname.endswith(".py"):
+                            try:
+                                _st = os.stat(os.path.join(_dirpath, _fname))
+                                _mtimes.append(
+                                    f"{_fname}:{_st.st_mtime_ns}:{_st.st_size}"
+                                )
+                            except OSError:
+                                pass
+            for _fname in ("enforcer.py", "enforcer_daemon.py"):
+                try:
+                    _st = os.stat(os.path.join(_hooks_dir, _fname))
+                    _mtimes.append(f"{_fname}:{_st.st_mtime_ns}:{_st.st_size}")
+                except OSError:
+                    pass
+            _current_hash = _hashlib.md5("|".join(_mtimes).encode()).hexdigest()[:16]
+
+            _stored_hash = ""
+            try:
+                with open(_hash_path) as _f:
+                    _stored_hash = _f.read().strip()
+            except OSError:
+                pass
+
+            # Ping daemon
             _daemon_running = False
             if os.path.exists(_sock_path):
                 try:
@@ -226,16 +262,63 @@ def main():
                     _daemon_running = b"pong" in _resp
                 except Exception:
                     pass
-            if not _daemon_running and os.path.isfile(_daemon_path):
+
+            _needs_restart = _daemon_running and _current_hash != _stored_hash
+            _needs_start = not _daemon_running
+
+            if _needs_restart:
+                try:
+                    with open(_pid_path) as _f:
+                        _old_pid = int(_f.read().strip())
+                    os.kill(_old_pid, 15)  # SIGTERM
+                    time.sleep(0.5)
+                except (OSError, ValueError):
+                    pass
+                _needs_start = True
+
+            if _needs_start and os.path.isfile(_daemon_path):
                 subprocess.Popen(
                     [sys.executable, _daemon_path],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,
                 )
-                print("  [BOOT] Enforcer daemon started", file=sys.stderr)
-            elif _daemon_running:
-                print("  [BOOT] Enforcer daemon already running", file=sys.stderr)
+                time.sleep(0.3)
+                if _needs_restart:
+                    print(
+                        "  [BOOT] Enforcer daemon restarted (code changed)",
+                        file=sys.stderr,
+                    )
+                else:
+                    print("  [BOOT] Enforcer daemon started", file=sys.stderr)
+            elif _daemon_running and not _needs_restart:
+                print(
+                    "  [BOOT] Enforcer daemon already running (hash match)",
+                    file=sys.stderr,
+                )
+
+            # Write current hash
+            try:
+                _tmp_hash = _hash_path + ".tmp"
+                with open(_tmp_hash, "w") as _f:
+                    _f.write(_current_hash)
+                os.replace(_tmp_hash, _hash_path)
+            except OSError:
+                pass
+
+            # Register this session's parent PID for daemon auto-exit
+            try:
+                import socket as _sock
+
+                _s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
+                _s.settimeout(2)
+                _s.connect(_sock_path)
+                _reg = json.dumps({"method": "register", "pid": os.getppid()}) + "\n"
+                _s.sendall(_reg.encode())
+                _s.recv(1024)
+                _s.close()
+            except Exception:
+                pass
     except Exception:
         pass  # Daemon startup is optional, never block boot
 

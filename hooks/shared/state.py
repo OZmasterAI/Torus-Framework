@@ -25,12 +25,33 @@ import time
 
 _DISK_STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 
-try:
-    from shared.ramdisk import get_state_dir, is_ramdisk_available
+_state_dir_cache = None
+_state_dir_cache_ts = 0
+_STATE_DIR_TTL = 30
 
-    STATE_DIR = get_state_dir()
+try:
+    from shared.ramdisk import get_state_dir as _ramdisk_get_state_dir
+
+    _HAS_RAMDISK_MODULE = True
 except ImportError:
-    STATE_DIR = _DISK_STATE_DIR
+    _ramdisk_get_state_dir = None
+    _HAS_RAMDISK_MODULE = False
+
+
+def _get_state_dir():
+    global _state_dir_cache, _state_dir_cache_ts
+    now = time.monotonic()
+    if _state_dir_cache is not None and (now - _state_dir_cache_ts) < _STATE_DIR_TTL:
+        return _state_dir_cache
+    if _HAS_RAMDISK_MODULE and _ramdisk_get_state_dir is not None:
+        _state_dir_cache = _ramdisk_get_state_dir()
+    else:
+        _state_dir_cache = _DISK_STATE_DIR
+    _state_dir_cache_ts = now
+    return _state_dir_cache
+
+
+STATE_DIR = _DISK_STATE_DIR
 
 # Memory timestamp sideband always lives on disk (read by gate_04, written by boot.py)
 MEMORY_TIMESTAMP_FILE = os.path.join(_DISK_STATE_DIR, ".memory_last_queried")
@@ -77,7 +98,7 @@ def state_file_for(session_id="main"):
     safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
     if not safe_id:
         safe_id = "main"
-    state_dir = os.path.join(STATE_DIR, ".state")
+    state_dir = os.path.join(_get_state_dir(), ".state")
     os.makedirs(state_dir, exist_ok=True)
     return os.path.join(state_dir, f"state_{safe_id}.json")
 
@@ -87,7 +108,7 @@ def _sideband_path_for(session_id="main"):
     safe_id = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
     if not safe_id:
         safe_id = "main"
-    sideband_dir = os.path.join(STATE_DIR, ".sideband")
+    sideband_dir = os.path.join(_get_state_dir(), ".sideband")
     os.makedirs(sideband_dir, exist_ok=True)
     return os.path.join(sideband_dir, f".enforcer_sideband_{safe_id}.json")
 
@@ -1067,7 +1088,7 @@ def cleanup_all_states():
     shared state file (state.json) from previous sessions.
     """
     # Remove per-session state files and their lock files
-    _state_subdir = os.path.join(STATE_DIR, ".state")
+    _state_subdir = os.path.join(_get_state_dir(), ".state")
     pattern = os.path.join(_state_subdir, "state_*.json")
     for f in glob.glob(pattern):
         # Don't remove .tmp files (in-progress writes)
@@ -1085,7 +1106,7 @@ def cleanup_all_states():
             pass
 
     # Remove legacy shared state file
-    legacy = os.path.join(STATE_DIR, "state.json")
+    legacy = os.path.join(_get_state_dir(), "state.json")
     if os.path.exists(legacy):
         try:
             os.remove(legacy)

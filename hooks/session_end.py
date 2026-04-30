@@ -913,8 +913,24 @@ def main():
         except Exception as e:
             print(f"[SESSION_END] Summary error (non-fatal): {e}", file=sys.stderr)
 
-        # Enforcer daemon is shared across sessions — don't kill on exit.
-        # Boot.py handles restart if needed.
+        # Unregister this session's PID for daemon auto-exit tracking
+        try:
+            _enforcer_sock = os.path.join(HOOKS_DIR, ".enforcer.sock")
+            if os.path.exists(_enforcer_sock):
+                import socket as _sock
+
+                _s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
+                _s.settimeout(1)
+                _s.connect(_enforcer_sock)
+                _s.sendall(
+                    (
+                        json.dumps({"method": "unregister", "pid": os.getppid()}) + "\n"
+                    ).encode()
+                )
+                _s.recv(1024)
+                _s.close()
+        except Exception:
+            pass
 
         if _project_dir is None:
             increment_session_count(metrics)
