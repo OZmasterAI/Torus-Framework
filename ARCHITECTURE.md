@@ -554,9 +554,9 @@ torus-framework/
 ## Hook Pipeline
 
 ```
-SessionStart ─→ boot.py ─→ boot_pkg/orchestrator.py (378 lines)
+SessionStart ─→ boot.py ─→ boot_pkg/orchestrator.py (766 lines)
                             ├── maintenance.py: audit rotation, state reset, agent model sync
-                            ├── memory.py: LanceDB injection via UDS, sideband write
+                            ├── memory.py: SurrealDB injection via UDS, sideband write
                             └── context.py: error/test/verification/duration extraction
 
 UserPromptSubmit ─→ user_prompt_capture.py (capture + context drop injection)
@@ -567,7 +567,7 @@ PreToolUse ─→ enforcer_shim.py ─→ enforcer_daemon.py (~43ms fast path, ~
               (fallback: inline enforcer.py ~134ms)
               └── gates/ (21 active, priority-ordered, Q-learning optimized)
 
-PostToolUse ─→ tracker.py ─→ tracker_pkg/orchestrator.py (537 lines)
+PostToolUse ─→ tracker.py ─→ tracker_pkg/orchestrator.py (1,041 lines)
                               ├── errors.py: error detection, 60s dedup
                               ├── observations.py: capture to .capture_queue.jsonl
                               ├── verification.py: test pass/fail classification
@@ -599,10 +599,16 @@ PostToolUseFailure ─→ event_logger.py (log failure)
 Notification ─→ event_logger.py (log notification)
 
 ConfigChange ─→ config_change.py (hot-reload config.json)
+
+Additional hooks ─→ findings_detector.py (findings detection)
+                ─→ search_server.py (search MCP server)
+                ─→ web_search_server.py (web search MCP server)
+                ─→ skill_outcome_tracker.py (skill outcome tracking)
+                ─→ tg_mirror_tools.py (Telegram tool mirroring)
 ```
 
 ### Boot Flow (22 steps)
-1. Bot session check → 2. Ramdisk init → 3. Audit rotation → 4. Load LIVE_STATE → 5. Time warnings → 6. Gate count → 7. UDS check/daemon start → 8. LanceDB watchdog → 9. Memory injection (LanceDB socket) → 10. Telegram L3 search → 11. Gate auto-tuning → 12. Error extraction → 13. Tool activity → 14. Test status → 15. Verification quality → 16. Session duration → 17. Gate block stats → 18. Dashboard (stderr) → 19. Context injection (stdout) → 20. State reset → 21. Capture queue flush → 22. Auto-remember ingestion + sideband write
+1. Bot session check → 2. Ramdisk init → 3. Audit rotation → 4. Load LIVE_STATE → 5. Time warnings → 6. Gate count → 7. UDS check/daemon start → 8. SurrealDB watchdog → 9. Memory injection (SurrealDB socket) → 10. Telegram L3 search → 11. Gate auto-tuning → 12. Error extraction → 13. Tool activity → 14. Test status → 15. Verification quality → 16. Session duration → 17. Gate block stats → 18. Dashboard (stderr) → 19. Context injection (stdout) → 20. State reset → 21. Capture queue flush → 22. Auto-remember ingestion + sideband write
 
 ### PostToolUse Flow (17 steps)
 1. Increment tool_call_count → 2. Token estimation → 3. Resolve gate blocks → 4. Auto-expire fixing_error → 5. Track reads → 6. Track edits → 7. Write file claims → 8. Track memory queries → 9. Error detection → 10. Observation capture → 11. Verification scoring → 12. Auto-remember → 13. Outcome chains → 14. Mentor evaluation → 15. Generate verdict → 16. Gate effectiveness → 17. Save state
@@ -611,21 +617,21 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 
 ## MCP Servers
 
-### Memory Server (memory_server.py — 4,627 lines)
+### Memory Server (memory_server.py — 4,838 lines)
 
-- **Embedding:** nvidia/nv-embed-v1 (4096-dim)
-- **Storage:** ~/data/memory/lancedb/ (LanceDB, flat scan; ChromaDB backup at ~/data/memory/chroma.sqlite3)
-- **Tables:** "knowledge" (1,402, curated, from remember_this) + "observations" (4,579, auto-captured) + "fix_outcomes" (264, causal chains) + "web_pages" (indexed URLs) + "quarantine" (2, dedup victims)
-- **Search:** BM25 FTS (~19ms keyword), semantic (~30ms flat scan), hybrid; tags in separate SQLite tags.db
+- **Embedding:** nvidia/nv-embed-v1 (4096-dim), HNSW index, cosine distance
+- **Storage:** ~/data/memory/surrealdb_v3/ (SurrealDB v3 standalone server, ws://127.0.0.1:8822)
+- **Tables:** 6 tables: knowledge (curated, from remember_this) + observations (auto-captured) + fix_outcomes (causal chains) + web_pages (indexed URLs) + quarantine (dedup victims) + clusters
+- **Search:** BM25 FTS (~19ms keyword), semantic (~30ms), hybrid; tags in separate SQLite tags.db
 - **3-tier memory classification:** Tier 1 (high-value, boosted in search), Tier 2 (standard), Tier 3 (low-priority, penalized)
-- **UDS gateway:** .chromadb.sock (legacy name, serializes all hook-side LanceDB access)
+- **UDS gateway:** .chromadb.sock (legacy name, serializes all hook-side SurrealDB access)
 
 **8 active tools, 5 dormant.**
 
 | Tool | Parameters | Purpose |
 |------|-----------|---------|
 | search_knowledge | query, top_k=15, mode, recency_weight=0.15, match_all | Modes: keyword, semantic, hybrid, tags, observations, all. Tag co-occurrence expansion. Keyword reranker. Recency boost (365-day decay) |
-| remember_this | content, context, tags, force | Dedup cosine > 0.85. FNV1a hash IDs. Noise filter (12 patterns). 3-way write: LanceDB + tags.db (SQLite BM25 FTS) + fix_outcomes bridge |
+| remember_this | content, context, tags, force | Dedup cosine > 0.85. FNV1a hash IDs. Noise filter (12 patterns). 3-way write: SurrealDB + tags.db (SQLite BM25 FTS) + fix_outcomes bridge |
 | get_memory | id | Full memory retrieval. Supports comma-separated batch |
 | record_attempt | error_text, strategy_id | Start causal chain → returns chain_id |
 | record_outcome | chain_id, outcome | Complete chain (success/failure) |
@@ -635,9 +641,9 @@ ConfigChange ─→ config_change.py (hot-reload config.json)
 
 **Dormant:** deduplicate_sweep, delete_memory, timeline, maintenance, get_teammate_transcripts
 
-### Analytics Server (analytics_server.py — 2,481 lines)
+### Analytics Server (analytics_server.py — 2,365 lines)
 
-Comprehensive framework analytics — lazy-loaded, no LanceDB dependency. **15 active tools** (trimmed from 50 to reduce context overhead).
+Comprehensive framework analytics — lazy-loaded, no SurrealDB dependency. **15 active tools** (trimmed from 50 to reduce context overhead).
 
 | Category | Tools |
 |----------|-------|
