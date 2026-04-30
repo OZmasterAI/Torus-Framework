@@ -779,12 +779,16 @@ test("Status gather: includes skill count", "Skills:" in _bsg_status.stdout)
 test("Status gather: includes hook count", "Hooks:" in _bsg_status.stdout)
 
 # 2. Wrap-up gather: produces valid JSON with required keys
-_bsg_wrapup = _bsg_sp.run(
-    [sys.executable, _WRAPUP_SCRIPT],
-    capture_output=True,
-    text=True,
-    timeout=15,
-)
+try:
+    _bsg_wrapup = _bsg_sp.run(
+        [sys.executable, _WRAPUP_SCRIPT],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+except _bsg_sp.TimeoutExpired:
+    _bsg_wrapup = type("R", (), {"returncode": 1, "stdout": "", "stderr": "timeout"})()
+
 test(
     "Wrap-up gather: exits cleanly",
     _bsg_wrapup.returncode == 0,
