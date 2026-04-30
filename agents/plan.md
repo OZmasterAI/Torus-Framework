@@ -10,7 +10,7 @@ tools:
   - WebSearch
   - mcp__toolshed__run_tool
   - mcp__toolshed__list_tools
-model: sonnet
+model: opus
 permissionMode: default
 ---
 
