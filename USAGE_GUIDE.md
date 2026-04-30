@@ -6,7 +6,7 @@
 
 ```
 ┌─────────────────────────────────────────┐
-│         torus-framework v2.5.8          │
+│         torus-framework v3.2.0          │
 │  (hooks, gates, memory, sessions)       │
 │                                         │
 │  ┌───────────────────────────────────┐  │
@@ -65,7 +65,7 @@ You'll be asked: **"Continue or New task?"**
 - **New task** — start fresh (handoff is archived, state is reset)
 
 ### During a Session
-Work normally — ask Claude to fix bugs, add features, explore code, etc. The framework enforces quality automatically via 17 gates (see below). The tracker pipeline (17 steps, PostToolUse) records every action and the Mentor System evaluates quality signals in real time.
+Work normally — ask Claude to fix bugs, add features, explore code, etc. The framework enforces quality automatically via 21 gates (see below). The tracker pipeline (17 steps, PostToolUse) records every action and the Mentor System evaluates quality signals in real time.
 
 ### Session End
 Before ending a session, run:
@@ -112,7 +112,7 @@ The `session_end.py` hook also runs automatically on exit to flush observations 
 
 ## Quality Gates
 
-The framework enforces 17 quality gates that run **before every tool call** via the enforcer pipeline. Gates either **block** (exit code 2) or **warn** (advisory).
+The framework enforces 21 quality gates that run **before every tool call** via the enforcer pipeline. Gates either **block** (exit code 2) or **warn** (advisory).
 
 The enforcer has 3 modes: **daemon** (persistent process, ~5ms via UDS socket), **shim** (connects to daemon), and **inline** (fallback, ~134ms). Gates are Q-learning optimized — high-block-rate gates get promoted to run earlier.
 
@@ -133,6 +133,7 @@ If these gates crash, a warning is logged but the tool call **proceeds**.
 | 4 | Memory First | Blocks edits if memory not queried in last 5 min. Uses sideband file for verification |
 | 5 | Proof Before Fixed | Blocks edits to new files when 3+ files are unverified |
 | 6 | Save To Memory | Warns (then blocks) when verified fixes aren't saved to memory |
+| 7 | Critical File Guard | Extra checks for high-risk files (settings.json, CLAUDE.md, enforcer.py) |
 | 9 | Strategy Ban | Blocks fix strategies that failed 3+ times; auto-defers to PRP |
 | 10 | Model Cost Guard | Enforces model selection within budget tier |
 | 11 | Rate Limit | Blocks >60 tool calls/min (warns at >40). 120s rolling window |
@@ -140,6 +141,9 @@ If these gates crash, a warning is logged but the tool call **proceeds**.
 | 14 | Confidence Check | Progressive: warn 2x per file, block on 3rd unverified edit |
 | 15 | Causal Chain | Blocks edits after test failure until `query_fix_history` is called |
 | 16 | Code Quality | Catches debug prints, hardcoded secrets, broad excepts. 3 warnings → block |
+| 20 | Self Check | Risk-score threshold triggers targeted verification questions |
+| 21 | Working Summary | Blocks edits after context threshold until working summary written |
+| 23 | Require Tests | Blocks code edits if session has no corresponding test files |
 
 ### Tier 3 — Advanced
 | Gate | Name | What It Does |
@@ -147,6 +151,7 @@ If these gates crash, a warning is logged but the tool call **proceeds**.
 | 17 | Injection Defense | Detects prompt injection in tool inputs (base64, ROT13, homoglyphs, zero-width) |
 | 18 | Canary Monitor | Passive monitoring — never blocks. Detects bursts and repeated sequences |
 | 19 | Hindsight | Reads mentor signals; blocks on sustained poor quality (score < 0.3) |
+| 22 | Tool Profiles | Warns when tool calls match known failure patterns (never blocks) |
 
 ---
 
@@ -155,25 +160,26 @@ If these gates crash, a warning is logged but the tool call **proceeds**.
 The framework has a **four-tier memory architecture**. Search cascades through tiers automatically — you do not need to manually pick a tier.
 
 ```
-L1: LanceDB (curated, semantic)
+L1: SurrealDB (curated, semantic)
  └── L2: Terminal History (FTS5, full-text, recent sessions)
       └── L0: Raw Transcripts (JSONL, time-windowed retrieval)
            └── L3: Telegram (FTS5, message history fallback)
 ```
 
-### L1 — LanceDB (Primary Curated Memory)
+### L1 — SurrealDB (Primary Curated Memory)
 
-The main memory store. 5 tables. Accessed via MCP tools (`search_knowledge`, `remember_this`, etc.).
+The main memory store. 6 tables. Accessed via MCP tools (`search_knowledge`, `remember_this`, etc.).
 
-- **Embedding model:** nvidia/nv-embed-v1 (4096-dim)
-- **Storage:** `~/data/memory/lancedb/` (LanceDB); backup at `~/data/memory/chroma.sqlite3`
-- **Access:** UDS socket (`.chromadb.sock` — legacy name, connects to LanceDB). Serializes hook-side access
+- **Embedding model:** nvidia/nv-embed-v1 (4096-dim), HNSW index, cosine distance
+- **Storage:** `~/data/memory/surrealdb_v3/` (SurrealDB v3 standalone server, ws://127.0.0.1:8822)
+- **Access:** UDS socket (`.chromadb.sock` — legacy name, serializes hook-side access)
 - **Tables:**
   - `knowledge` — curated memories: fixes, decisions, discoveries
   - `observations` — auto-captured tool call patterns
   - `fix_outcomes` — causal chain fix tracking
   - `web_pages` — indexed web content
   - `quarantine` — dedup victims
+  - `clusters` — clustered memory groupings
 - **Search modes:** keyword (BM25 FTS ~19ms), semantic (~30ms flat scan), hybrid, tags, observations, all, code
 - **Tag index:** Separate SQLite `tags.db` for fast tag lookups (<2ms)
 - **Dedup:** cosine similarity > 0.85 blocks duplicate writes
@@ -203,7 +209,7 @@ FTS5 search over the Telegram bot's message log. Useful for things discussed out
 
 ### Observations (Auto-Captured Patterns)
 
-Compressed tool call patterns are auto-captured on every PostToolUse event, queued to `.capture_queue.jsonl`, and flushed into the LanceDB `observations` table on SessionStart and SessionEnd.
+Compressed tool call patterns are auto-captured on every PostToolUse event, queued to `.capture_queue.jsonl`, and flushed into the SurrealDB `observations` table on SessionStart and SessionEnd.
 
 ### Memory Tools (MCP — L1)
 
@@ -211,7 +217,7 @@ Compressed tool call patterns are auto-captured on every PostToolUse event, queu
 |---|---|
 | `search_knowledge(query)` | Semantic search (7 modes). Triggers L2/L0/L3 cascade if L1 results are weak |
 | `fuzzy_search(query)` | Typo-tolerant search with edit-distance variants, exact match boosting |
-| `remember_this(content, context, tags)` | Save a new memory with automatic dedup check. 3-way write: LanceDB + tags.db + fix_outcomes bridge |
+| `remember_this(content, context, tags)` | Save a new memory with automatic dedup check. 3-way write: SurrealDB + tags.db + fix_outcomes bridge |
 | `get_memory(id)` | Retrieve full memory by ID (supports comma-separated batch) |
 | `query_fix_history(error_text)` | Find what strategies worked or failed for a given error |
 | `record_attempt(error_text, strategy_id)` | Log a fix attempt; returns `chain_id` |
@@ -270,33 +276,31 @@ Gate 19 (Hindsight) reads these verdicts and blocks on sustained poor quality. T
 
 ## MCP Servers
 
-### Memory MCP (`memory_server.py` — 4,627 lines)
+### Memory MCP (`memory_server.py` — 4,838 lines)
 - **Purpose:** Persistent knowledge storage and retrieval
-- **Backend:** LanceDB with UDS socket (`.chromadb.sock`, legacy name)
+- **Backend:** SurrealDB v3 with UDS socket (`.chromadb.sock`, legacy name)
 - **Tools:** 8 active (search_knowledge, fuzzy_search, remember_this, get_memory, record_attempt, record_outcome, query_fix_history, health_check), 5 dormant
-- **Tables:** 5 (knowledge, observations, fix_outcomes, web_pages, quarantine)
+- **Tables:** 6 (knowledge, observations, fix_outcomes, web_pages, quarantine, clusters)
 
-### Analytics MCP (`analytics_server.py` — 2,481 lines)
-- **Purpose:** Comprehensive framework analytics — lazy-loaded, no LanceDB dependency
-- **Tools:** 50 active, 1 dormant
+### Analytics MCP (`analytics_server.py` — 2,365 lines)
+- **Purpose:** Comprehensive framework analytics — lazy-loaded, no SurrealDB dependency
+- **Tools:** 15 active
 
 | Category | Tools |
 |---|---|
-| **Framework Health** | framework_health, framework_summary, framework_pulse, framework_health_score, all_metrics |
-| **Gate Analysis** | gate_dashboard, gate_timing, gate_health, gate_sla, gate_sla_status, gate_trends, gate_correlations, gate_dependencies, gate_drift, gate_pruning, gate_correlation_report, preview_gates, pipeline_analysis |
-| **Session** | session_summary, session_metrics, session_replay, session_context_snapshot |
-| **Audit & Errors** | audit_status, audit_trail, error_clusters, fix_effectiveness |
-| **Anomaly & Behavioral** | detect_anomalies, anomaly_summary, event_stats, replay_events, routing_stats, frustration_report, rw_ratio |
-| **Memory & Infra** | memory_health, memory_dedup_report, stale_memory_report, circuit_states, cache_health |
-| **Domain & Skills** | skill_health, skill_dependencies, skill_invocation_report, domain_info, inspect_domain |
-| **Dev & Code** | tool_predictions, tool_recommendations, code_hotspots, generate_test_stubs, causal_chain_analysis, query_observations |
-| **Search** | telegram_search |
+| **Framework Health** | framework_health, all_metrics |
+| **Gate Analysis** | gate_dashboard, gate_timing, preview_gates |
+| **Session** | session_summary, session_metrics |
+| **Audit & Errors** | audit_trail, error_clusters, fix_effectiveness |
+| **Memory & Infra** | memory_health, circuit_states |
+| **Skills & Observations** | skill_health, query_observations |
+| **Behavioral** | rw_ratio |
 
 ---
 
 ## Slash Commands (Skills)
 
-Type these during a session to trigger specialized workflows. **36 skills** available:
+Type these during a session to trigger specialized workflows. **54 skills** available:
 
 | Category | Commands |
 |---|---|
@@ -321,7 +325,7 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 |---|---|---|
 | **SessionStart** | `boot.py` | 22-step boot: ramdisk init, memory inject, context extraction, state reset |
 | **SessionStart** | `integrity_check.py` | SHA256 integrity verification of framework files |
-| **PreToolUse** | `enforcer_shim.py` | Run 17 quality gates via daemon (~5ms UDS) |
+| **PreToolUse** | `enforcer_shim.py` | Run 21 quality gates via daemon (~5ms UDS) |
 | **PostToolUse** | `tracker.py` | 17-step pipeline: errors, observations, mentor verdicts |
 | **PostToolUse** (Edit/Write) | `auto_commit.py stage` | Auto-stage changed files |
 | **PostToolUse** (Edit/Write) | `auto_format.py` | Auto-format edited Python files (ruff/black, 3s timeout) |
@@ -330,7 +334,7 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 | **PermissionRequest** | `auto_approve.py` | Auto-approve safe operations |
 | **SubagentStart** | `subagent_context.py` | Inject LIVE_STATE + session context into sub-agents |
 | **PreCompact** | `pre_compact.py` | Snapshot gate state before context compression |
-| **SessionEnd** | `session_end.py` | Flush observations, update LIVE_STATE, backup LanceDB |
+| **SessionEnd** | `session_end.py` | Flush observations, update LIVE_STATE, backup SurrealDB |
 | **Stop** | `tg_mirror.py` | Mirror response to Telegram |
 | **Stop** | `stop_cleanup.py` | Flush I/O, close handles, shutdown daemons |
 | **PostToolUseFailure** | `failure_recovery.py` | Error recovery triage |
@@ -351,21 +355,21 @@ Hooks are shell commands that run in response to Claude Code events. Registered 
 ├── rules/                 # Domain-specific rules (scoped, not always-injected)
 │   ├── framework.md       # Shared module and state rules
 │   ├── hooks.md           # Gate contract and exit codes
-│   └── memory.md          # LanceDB and MCP memory rules
-├── hooks/                 # All hook scripts and gates (151 Python files, ~76K lines)
+│   └── memory.md          # SurrealDB and MCP memory rules
+├── hooks/                 # All hook scripts and gates (248 Python files, ~119K lines)
 │   ├── enforcer_shim.py   # Gate dispatcher (UDS to daemon, ~5ms) (113 lines)
 │   ├── enforcer_daemon.py # Persistent gate executor
-│   ├── enforcer.py        # Inline fallback (651 lines, ~134ms)
+│   ├── enforcer.py        # Inline fallback (1,075 lines, ~134ms)
 │   ├── boot.py            # SessionStart shim → boot_pkg/
-│   ├── boot_pkg/          # Boot pipeline (6 files, 977 lines)
+│   ├── boot_pkg/          # Boot pipeline (6 files, 1,529 lines)
 │   ├── tracker.py         # PostToolUse shim → tracker_pkg/
-│   ├── tracker_pkg/       # Tracker pipeline + Mentor System (10 files, 1,552 lines)
-│   ├── session_end.py     # Session end handler (599 lines)
-│   ├── memory_server.py   # Memory MCP server (4,627 lines)
-│   ├── analytics_server.py# Analytics MCP server (2,481 lines)
+│   ├── tracker_pkg/       # Tracker pipeline + Mentor System (10 files, 2,217 lines)
+│   ├── session_end.py     # Session end handler (953 lines)
+│   ├── memory_server.py   # Memory MCP server (4,838 lines)
+│   ├── analytics_server.py# Analytics MCP server (2,365 lines)
 │   ├── test_framework.py  # Gate test suite entry point (53 lines)
-│   ├── tests/             # 13 focused test files (29,417 lines)
-│   ├── gates/             # 17 gate modules
+│   ├── tests/             # 46 test files (~50K lines)
+│   ├── gates/             # 21 gate modules
 │   ├── shared/            # 67 shared modules (~25K lines)
 │   ├── .audit_trail.jsonl # Full tool call audit trail (46.3 MB)
 │   ├── .capture_queue.jsonl # Observation queue (flushed each session)
