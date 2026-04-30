@@ -337,5 +337,6 @@
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
   ],
-  "teammateMode": "in-process"
+  "teammateMode": "in-process",
+  "fastMode": true
 }

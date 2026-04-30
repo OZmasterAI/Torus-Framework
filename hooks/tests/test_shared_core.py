@@ -2484,14 +2484,14 @@ test(
 print("\n--- Named Agents (Feature 4) ---")
 
 _agents_dir = os.path.join(os.path.expanduser("~"), ".claude", "agents")
-_expected_agents = ["researcher.md", "builder.md", "explore.md", "plan.md"]
+_expected_agents = ["builder.md", "explore.md"]
 
 # 1. All agent files exist
 _agents_exist = all(
     os.path.isfile(os.path.join(_agents_dir, a)) for a in _expected_agents
 )
 test(
-    "Agents: all 4 agent files exist",
+    "Agents: all 2 agent files exist",
     _agents_exist,
     f"missing={[a for a in _expected_agents if not os.path.isfile(os.path.join(_agents_dir, a))]}",
 )
@@ -2522,13 +2522,7 @@ for _afile in _expected_agents:
         break
 test("Agents: YAML frontmatter has required keys", _agent_yaml_ok, _agent_yaml_detail)
 
-# 3. researcher uses profile-appropriate model (synced by boot)
-with open(os.path.join(_agents_dir, "researcher.md")) as _rf:
-    _r_content = _rf.read()
-_r_fm = _r_content.split("---")[1] if "---" in _r_content else ""
-test("Agents: researcher uses valid model", "haiku" in _r_fm or "sonnet" in _r_fm)
-
-# 4. builder uses profile-appropriate model
+# 3. builder uses profile-appropriate model
 with open(os.path.join(_agents_dir, "builder.md")) as _bf:
     _b_content = _bf.read()
 _b_fm = _b_content.split("---")[1] if "---" in _b_content else ""
@@ -2540,15 +2534,13 @@ test("Agents: builder uses valid model", "sonnet" in _b_fm or "opus" in _b_fm)
 print("\n--- New Agent Definitions ---")
 
 _new_agents = [
-    "researcher.md",
     "builder.md",
     "explore.md",
-    "plan.md",
 ]
 
 # 1. All new agent files exist
 test(
-    "New Agents: all 4 files exist",
+    "New Agents: all 2 files exist",
     all(os.path.isfile(os.path.join(_agents_dir, a)) for a in _new_agents),
     f"missing={[a for a in _new_agents if not os.path.isfile(os.path.join(_agents_dir, a))]}",
 )
@@ -2578,20 +2570,9 @@ for _nafile in _new_agents:
         break
 test("New Agents: YAML frontmatter has required keys", _new_yaml_ok, _new_yaml_detail)
 
-# 3. Model assignments: researcher uses profile-appropriate model (haiku or sonnet)
-for _research_agent in ["researcher.md"]:
-    with open(os.path.join(_agents_dir, _research_agent)) as _hf:
-        _hcontent = _hf.read()
-    _hfm = _hcontent.split("---")[1] if "---" in _hcontent else ""
-    test(
-        f"New Agents: {_research_agent.replace('.md', '')} uses valid model",
-        "haiku" in _hfm or "sonnet" in _hfm,
-    )
-
-# 4. Model assignments: profile-appropriate model for builder, plan, explore
+# 3. Model assignments: profile-appropriate model for builder, explore
 for _exec_agent in [
     "builder.md",
-    "plan.md",
     "explore.md",
 ]:
     with open(os.path.join(_agents_dir, _exec_agent)) as _sf:
@@ -2616,7 +2597,7 @@ for _nafile in _new_agents:
 test("New Agents: tool lists are non-empty", _tools_nonempty, _tools_detail)
 
 # 6. No Edit or Write tool in read-only agents (researcher, explore)
-_readonly_agents = ["researcher.md", "explore.md"]
+_readonly_agents = ["explore.md"]
 _no_edit_write_ok = True
 _no_edit_write_detail = ""
 for _rofile in _readonly_agents:
