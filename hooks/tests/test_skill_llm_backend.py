@@ -119,6 +119,7 @@ with patch("subprocess.run", return_value=mock_ok) as mock_run:
         test("Max tokens value", cmd[idx + 1] == "2000")
 
 
-print(f"\n{'=' * 40}")
-print(f"skill_llm_backend: {passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+if __name__ == "__main__":
+    print(f"\n{'=' * 40}")
+    print(f"skill_llm_backend: {passed} passed, {failed} failed")
+    sys.exit(1 if failed else 0)

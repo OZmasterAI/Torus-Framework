@@ -511,7 +511,7 @@ def gate_dependencies() -> dict:
 @mcp.tool()
 @crash_proof
 def memory_health() -> dict:
-    """Memory subsystem health: LanceDB table sizes, disk usage, tag index status.
+    """Memory subsystem health: SurrealDB table sizes, disk usage, tag index status.
 
     Quick health check for the memory infrastructure without modifying anything.
     """
@@ -542,7 +542,12 @@ def memory_health() -> dict:
             from surrealdb import Surreal
 
             db = Surreal("ws://127.0.0.1:8822")
-            db.signin({"username": "root", "password": "root"})
+            db.signin(
+                {
+                    "username": os.environ.get("SURREAL_USER", "root"),
+                    "password": os.environ.get("SURREAL_PASS", "root"),
+                }
+            )
             db.use("memory", "main")
             for table_name in [
                 "knowledge",
@@ -564,7 +569,7 @@ def memory_health() -> dict:
             result["tables"] = {"error": str(e)}
 
     # Migration marker
-    marker = os.path.join(lance_dir, ".migration_complete")
+    marker = os.path.join(surreal_dir, ".migration_complete")
     result["migration_complete"] = os.path.isfile(marker)
 
     return result
@@ -579,7 +584,7 @@ def memory_dedup_report(table: str = "knowledge", threshold: float = 0.85) -> di
     Uses cosine similarity to detect near-duplicates.
 
     Args:
-        table: LanceDB table to scan (knowledge, observations, fix_outcomes)
+        table: SurrealDB table to scan (knowledge, observations, fix_outcomes)
         threshold: Cosine similarity threshold (0.0-1.0, default 0.85)
     """
     _ensure_initialized()
@@ -613,7 +618,7 @@ def stale_memory_report(table: str = "knowledge", days: int = 90) -> dict:
     Does not modify anything — reporting only.
 
     Args:
-        table: LanceDB table to scan (default: knowledge)
+        table: SurrealDB table to scan (default: knowledge)
         days: Age threshold in days (default: 90)
     """
     _ensure_initialized()
@@ -1938,7 +1943,12 @@ def query_observations(
         from surrealdb import Surreal
 
         db = Surreal("ws://127.0.0.1:8822")
-        db.signin({"username": "root", "password": "root"})
+        db.signin(
+            {
+                "username": os.environ.get("SURREAL_USER", "root"),
+                "password": os.environ.get("SURREAL_PASS", "root"),
+            }
+        )
         db.use("memory", "main")
 
         # Build WHERE clauses

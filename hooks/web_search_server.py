@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Torus Framework — Web Search MCP Server
 
-Semantic search over locally indexed web pages (LanceDB web_pages collection).
+Semantic search over locally indexed web pages (SurrealDB web_pages collection).
 
 Run standalone: python3 web_search_server.py
 Used via MCP: configured in .claude/mcp.json
@@ -81,14 +81,14 @@ def crash_proof(fn):
 @mcp.tool()
 @crash_proof
 def web_search(query: str, n_results: int = 5) -> dict:
-    """Search locally indexed web pages via LanceDB semantic search.
+    """Search locally indexed web pages via SurrealDB semantic search.
 
     Args:
         query: Search query for semantic matching. Empty returns no results.
         n_results: Max results to return (1-20, default 5).
     """
     if not query or not query.strip():
-        return {"results": [], "count": 0, "source": "web_lancedb"}
+        return {"results": [], "count": 0, "source": "web_surrealdb"}
 
     n_results = max(1, min(20, n_results))
 
@@ -102,14 +102,14 @@ def web_search(query: str, n_results: int = 5) -> dict:
             include=["metadatas", "documents", "distances"],
         )
     except memory_socket.WorkerUnavailable as e:
-        return {"error": f"Memory worker unavailable: {e}", "source": "web_lancedb"}
+        return {"error": f"Memory worker unavailable: {e}", "source": "web_surrealdb"}
     except RuntimeError as e:
         if "Unknown collection" in str(e):
-            return {"results": [], "count": 0, "source": "web_lancedb"}
+            return {"results": [], "count": 0, "source": "web_surrealdb"}
         raise
 
     if not result or not result.get("ids") or not result["ids"][0]:
-        return {"results": [], "count": 0, "source": "web_lancedb"}
+        return {"results": [], "count": 0, "source": "web_surrealdb"}
 
     hits = []
     ids = result["ids"][0]
@@ -135,7 +135,7 @@ def web_search(query: str, n_results: int = 5) -> dict:
             }
         )
 
-    return {"results": hits, "count": len(hits), "source": "web_lancedb"}
+    return {"results": hits, "count": len(hits), "source": "web_surrealdb"}
 
 
 if __name__ == "__main__":

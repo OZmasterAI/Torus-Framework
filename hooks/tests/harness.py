@@ -58,7 +58,7 @@ def _memory_server_running():
 MEMORY_SERVER_RUNNING = _memory_server_running()
 if MEMORY_SERVER_RUNNING:
     print("[INFO] Memory MCP server is running — skipping direct import tests")
-    print("[INFO] (LanceDB concurrent access avoided for test isolation)")
+    print("[INFO] (SurrealDB concurrent access avoided for test isolation)")
     print()
 
 # Back up sideband file so real memory queries don't interfere with gate tests

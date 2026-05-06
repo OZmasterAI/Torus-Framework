@@ -3,7 +3,7 @@
 
 import os
 
-path = "/home/crab/.claude/docker/entrypoint.sh"
+path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entrypoint.sh")
 with open(path, "r") as f:
     content = f.read()
 

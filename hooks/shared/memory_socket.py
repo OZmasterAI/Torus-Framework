@@ -1,8 +1,7 @@
 """Memory Unix Domain Socket Client.
 
 Connects to the UDS gateway exposed by memory_server.py to perform
-LanceDB operations without creating a separate connection.
-This eliminates segfaults from concurrent backend access.
+SurrealDB operations without creating a separate connection.
 
 Protocol: JSON-over-newline on Unix Domain Socket.
 One request/response per connection (short-lived).
@@ -26,6 +25,7 @@ METHOD_TIMEOUTS = {
     "get": 3.0,
     "upsert": 3.0,
     "remember": 3.0,
+    "auto_remember": 5.0,
     "delete": 3.0,
     "flush_queue": 5.0,
     "backup": 10.0,
@@ -125,8 +125,8 @@ def request(method, collection=None, params=None):
         # Send request as JSON + newline
         sock.sendall((json.dumps(req) + "\n").encode("utf-8"))
 
-        # Read response (accumulate until newline, cap at 10MB)
-        MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # 50MB
+        # Read response (accumulate until newline, cap at 50MB)
+        MAX_RESPONSE_SIZE = 50 * 1024 * 1024
         buf = b""
         while b"\n" not in buf:
             chunk = sock.recv(65536)
@@ -144,6 +144,8 @@ def request(method, collection=None, params=None):
         if not resp.get("ok"):
             raise RuntimeError(resp.get("error", "Unknown worker error"))
         return resp.get("result")
+    except (TimeoutError, socket.timeout) as e:
+        raise WorkerUnavailable(f"UDS worker timeout ({method}): {e}")
     finally:
         sock.close()
         if _reached_worker:
@@ -217,7 +219,7 @@ def remember(content, context="", tags=""):
 
 
 def flush_queue():
-    """Flush the capture queue to LanceDB observations."""
+    """Flush the capture queue to SurrealDB observations."""
     return request("flush_queue")
 
 
@@ -227,5 +229,5 @@ def backup():
 
 
 def optimize():
-    """Compact all LanceDB tables and prune old versions."""
+    """Compact all SurrealDB tables and prune old versions."""
     return request("optimize")

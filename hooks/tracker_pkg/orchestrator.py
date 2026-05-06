@@ -190,15 +190,6 @@ def _handle_causal_chain(tool_name, tool_input, tool_response, state):
                 pending = state.setdefault("pending_chain_ids", [])
                 if chain_id not in pending:
                     pending.append(chain_id)
-                # Task 14: tag chain with DAG context
-                try:
-                    from shared.dag_memory import get_dag_context_for_chain
-
-                    _dag_ctx = get_dag_context_for_chain()
-                    if _dag_ctx:
-                        state["chain_dag_context"] = _dag_ctx
-                except Exception:
-                    pass
         except Exception as e:
             _log_debug(f"record_attempt tracking failed: {e}")
 
@@ -930,29 +921,6 @@ def handle_post_tool_use(
                 pass  # Fail-open: gate sync is best-effort
     except Exception as _ctx_err:
         _log_debug(f"context threshold check failed (non-blocking): {_ctx_err}")
-
-    # ── DAG: record tool call (Task 6) ──
-    try:
-        from shared.dag import get_session_dag
-        from boot_pkg.util import detect_project
-
-        _dag = get_session_dag(session_id)
-        _dag_proj, _, _dag_subproj, _ = detect_project()
-        _dag.add_node(
-            parent_id=_dag.get_head(),
-            role="tool",
-            content=json.dumps(
-                {
-                    "tool_name": tool_name,
-                    "tool_input": str(tool_input)[:500],
-                    "tool_response": str(tool_response)[:1000],
-                }
-            ),
-            project=_dag_proj,
-            subproject=_dag_subproj,
-        )
-    except Exception:
-        pass  # Fail-open
 
 
 # ── Context threshold detection ────────────────────────────────────────

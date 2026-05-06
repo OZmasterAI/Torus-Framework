@@ -56,35 +56,8 @@ def main():
         except OSError:
             pass
 
-    # DAG: inject conversation summary after compaction (Task 8 + Phase 2 Tasks 13, 15)
-    dag_summary = ""
-    try:
-        from shared.dag import get_session_dag
-
-        _sid = data.get("session_id", "main")
-        dag = get_session_dag(_sid)
-        summary = dag.build_summary()
-        if summary:
-            # Task 15: enrich with related memory hits
-            try:
-                from shared.dag_memory import enrich_summary_with_memory
-
-                summary = enrich_summary_with_memory(summary, _sid)
-            except Exception:
-                pass
-            dag_summary = summary
-            # Task 13: save summary to memory for cross-session persistence
-            try:
-                from shared.dag_memory import save_compaction_summary
-
-                save_compaction_summary(_sid)
-            except Exception:
-                pass
-    except Exception:
-        pass  # Fail-open
-
     # Print compressed output (Task 4: context compression)
-    compressed = compress_postcompact(wm_content, ws_content, dag_summary)
+    compressed = compress_postcompact(wm_content, ws_content, "")
     if compressed:
         print(compressed)
 

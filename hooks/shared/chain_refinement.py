@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Tuple
 
 # ── Data containers ──────────────────────────────────────────────────────
 
+
 @dataclass
 class StrategyStats:
     """Aggregated stats for a single fix strategy.
@@ -37,6 +38,7 @@ class StrategyStats:
         avg_attempts_to_success: Average chain length before success.
         errors_addressed: Set of unique error patterns addressed.
     """
+
     strategy: str
     attempts: int = 0
     successes: int = 0
@@ -58,6 +60,7 @@ class RecurringPattern:
         best_success_rate: Success rate of the best strategy.
         is_chronic: True if failure rate > 70% across all attempts.
     """
+
     error_pattern: str
     occurrence_count: int = 0
     strategies_tried: List[str] = field(default_factory=list)
@@ -78,6 +81,7 @@ class Refinement:
         confidence: How confident the suggestion is (0.0-1.0).
         evidence: Supporting data points.
     """
+
     error_pattern: str
     current_strategy: str
     suggested_strategy: str
@@ -104,6 +108,7 @@ class FailureLesson:
         lesson: Human-readable lesson string.
         confidence: How confident the lesson is (0.0-1.0).
     """
+
     error_pattern: str
     failed_strategy: str
     failure_count: int = 0
@@ -127,6 +132,7 @@ class ChainHealth:
         health_score: 0-100 composite score.
         recommendations: List of actionable suggestions.
     """
+
     total_chains: int = 0
     overall_success_rate: float = 0.0
     chronic_failures: int = 0
@@ -159,6 +165,7 @@ MIN_FAILURES_FOR_LESSON = 2
 
 # ── Outcome parsing ─────────────────────────────────────────────────────
 
+
 def _normalize_error(error: str) -> str:
     """Normalize an error string for grouping.
 
@@ -174,36 +181,37 @@ def _normalize_error(error: str) -> str:
     if not error or not isinstance(error, str):
         return ""
     import re
+
     # Remove Python traceback file references: File "path/file.py"
     # Handles paths with spaces, commas, or other special chars inside quotes.
     normalized = re.sub(
         r'[Ff]ile\s+"[^"]*\.(?:py|js|ts|tsx|jsx|rs|go|java|rb|sh|c|cpp|h)"',
-        'File <file>',
+        "File <file>",
         error,
     )
     # Remove bare file paths (any common extension)
     normalized = re.sub(
-        r'/[\w/.-]+\.(?:py|js|ts|tsx|jsx|rs|go|java|rb|sh|c|cpp|h)',
-        '<file>',
+        r"/[\w/.-]+\.(?:py|js|ts|tsx|jsx|rs|go|java|rb|sh|c|cpp|h)",
+        "<file>",
         normalized,
     )
     # Remove line numbers
-    normalized = re.sub(r'line \d+', 'line N', normalized)
+    normalized = re.sub(r"line \d+", "line N", normalized)
     # Remove timestamps
-    normalized = re.sub(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}', '<ts>', normalized)
+    normalized = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", "<ts>", normalized)
     # Remove hex addresses
-    normalized = re.sub(r'0x[0-9a-fA-F]+', '<addr>', normalized)
+    normalized = re.sub(r"0x[0-9a-fA-F]+", "<addr>", normalized)
     # Remove numeric IDs (PIDs, ports, etc.) — standalone numbers of 4+ digits
-    normalized = re.sub(r'\b\d{4,}\b', '<num>', normalized)
+    normalized = re.sub(r"\b\d{4,}\b", "<num>", normalized)
     # Collapse whitespace
-    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized.lower()
 
 
 def _extract_outcome_fields(outcome: dict) -> dict:
     """Extract relevant fields from a fix_outcome entry.
 
-    Handles both the LanceDB format and the dict format.
+    Handles both the SurrealDB format and the dict format.
     """
     if not isinstance(outcome, dict):
         return {}
@@ -278,6 +286,7 @@ def _error_similarity(a: str, b: str) -> float:
 
 
 # ── Core analysis ────────────────────────────────────────────────────────
+
 
 def get_strategy_effectiveness(
     outcomes: List[dict],
@@ -425,21 +434,23 @@ def detect_recurring_failures(
 
         failure_rate = 1.0 - (data["total_successes"] / max(data["total_attempts"], 1))
 
-        patterns.append(RecurringPattern(
-            error_pattern=error,
-            occurrence_count=data["count"],
-            strategies_tried=sorted(data["strategies"].keys()),
-            best_strategy=best_strategy,
-            best_success_rate=round(best_rate, 4),
-            is_chronic=failure_rate > CHRONIC_FAILURE_THRESHOLD,
-        ))
+        patterns.append(
+            RecurringPattern(
+                error_pattern=error,
+                occurrence_count=data["count"],
+                strategies_tried=sorted(data["strategies"].keys()),
+                best_strategy=best_strategy,
+                best_success_rate=round(best_rate, 4),
+                is_chronic=failure_rate > CHRONIC_FAILURE_THRESHOLD,
+            )
+        )
 
     patterns.sort(key=lambda p: p.occurrence_count, reverse=True)
     return patterns
 
 
-
 # ── ReasoningBank-style failure learning ─────────────────────────────────
+
 
 def generate_failure_lessons(
     outcomes: List[dict],
@@ -537,7 +548,9 @@ def generate_failure_lessons(
 
         # Determine failure reason based on statistics
         if successes == 0:
-            failure_reason = f"it has never succeeded ({failures} failures in {attempts} attempts)"
+            failure_reason = (
+                f"it has never succeeded ({failures} failures in {attempts} attempts)"
+            )
         else:
             failure_reason = (
                 f"it succeeds only {success_rate:.0%} of the time "
@@ -569,16 +582,18 @@ def generate_failure_lessons(
         alt_quality = better_success_rate if better_strategy else 0.0
         confidence = round(min(1.0, 0.5 * failure_evidence + 0.5 * alt_quality), 4)
 
-        lessons.append(FailureLesson(
-            error_pattern=error,
-            failed_strategy=strategy,
-            failure_count=failures,
-            success_count=successes,
-            better_strategy=better_strategy,
-            better_success_rate=round(better_success_rate, 4),
-            lesson=lesson_str,
-            confidence=confidence,
-        ))
+        lessons.append(
+            FailureLesson(
+                error_pattern=error,
+                failed_strategy=strategy,
+                failure_count=failures,
+                success_count=successes,
+                better_strategy=better_strategy,
+                better_success_rate=round(better_success_rate, 4),
+                lesson=lesson_str,
+                confidence=confidence,
+            )
+        )
 
     lessons.sort(key=lambda l: l.confidence, reverse=True)
     return lessons
@@ -619,7 +634,11 @@ def _find_lesson_for_error(
                 continue
 
         # Strategy match bonus: if the lesson warns about the current strategy
-        strategy_bonus = 0.2 if (current_strategy and lesson.failed_strategy == current_strategy) else 0.0
+        strategy_bonus = (
+            0.2
+            if (current_strategy and lesson.failed_strategy == current_strategy)
+            else 0.0
+        )
 
         score = similarity * lesson.confidence + strategy_bonus
         if score > best_score:
@@ -748,16 +767,22 @@ def suggest_refinement(
     #   mapped to [0, 1].  Full contribution on 50%+ improvement.
     # - evidence_factor: sqrt-scaled sample count, saturates near 30 samples.
     # Blend: 60% improvement signal, 40% evidence weight.
-    improvement_factor = min(1.0, (improvement - MIN_IMPROVEMENT_DELTA) / (0.5 - MIN_IMPROVEMENT_DELTA))
+    improvement_factor = min(
+        1.0, (improvement - MIN_IMPROVEMENT_DELTA) / (0.5 - MIN_IMPROVEMENT_DELTA)
+    )
     evidence_factor = min(1.0, best_alt_attempts / 30.0) ** 0.5
     confidence = round(min(1.0, 0.6 * improvement_factor + 0.4 * evidence_factor), 4)
 
     evidence = []
     alt_data = strategy_results[best_alt]
-    evidence.append(f"{best_alt}: {alt_data['successes']}/{alt_data['attempts']} succeeded")
+    evidence.append(
+        f"{best_alt}: {alt_data['successes']}/{alt_data['attempts']} succeeded"
+    )
     if current_strategy and current_strategy in strategy_results:
         cur_data = strategy_results[current_strategy]
-        evidence.append(f"{current_strategy}: {cur_data['successes']}/{cur_data['attempts']} succeeded")
+        evidence.append(
+            f"{current_strategy}: {cur_data['successes']}/{cur_data['attempts']} succeeded"
+        )
 
     return Refinement(
         error_pattern=normalized_error,
@@ -786,14 +811,18 @@ def compute_chain_health(
     """
     if not outcomes:
         return ChainHealth(
-            recommendations=["No fix outcomes recorded yet. Start using causal chains to build history."]
+            recommendations=[
+                "No fix outcomes recorded yet. Start using causal chains to build history."
+            ]
         )
 
     # Basic counts
     total = len(outcomes)
     successes = sum(
-        1 for o in outcomes
-        if _extract_outcome_fields(o).get("result", "") in ("success", "resolved", "fixed")
+        1
+        for o in outcomes
+        if _extract_outcome_fields(o).get("result", "")
+        in ("success", "resolved", "fixed")
     )
     overall_rate = successes / max(total, 1)
 
@@ -812,12 +841,14 @@ def compute_chain_health(
     # Trend: compare thirds for more granular trend detection
     third = total // 3
     if third >= 3:
-        thirds = [outcomes[i*third:(i+1)*third] for i in range(3)]
+        thirds = [outcomes[i * third : (i + 1) * third] for i in range(3)]
         rates = []
         for t in thirds:
             rate = sum(
-                1 for o in t
-                if _extract_outcome_fields(o).get("result", "") in ("success", "resolved", "fixed")
+                1
+                for o in t
+                if _extract_outcome_fields(o).get("result", "")
+                in ("success", "resolved", "fixed")
             ) / max(len(t), 1)
             rates.append(rate)
         # Monotonic improvement/decline across all thirds
@@ -838,8 +869,12 @@ def compute_chain_health(
     score = 0.0
     score += overall_rate * 40  # Success rate: 40 points
     score += min(1.0, diversity / 10) * 20  # Strategy diversity: 20 points
-    score += max(0.0, 1.0 - (chronic / max(len(recurring), 1))) * 20  # Low chronic: 20 points
-    score += (1.0 if trend == "improving" else 0.5 if trend == "stable" else 0.0) * 20  # Trend: 20 points
+    score += (
+        max(0.0, 1.0 - (chronic / max(len(recurring), 1))) * 20
+    )  # Low chronic: 20 points
+    score += (
+        1.0 if trend == "improving" else 0.5 if trend == "stable" else 0.0
+    ) * 20  # Trend: 20 points
     score = round(min(100.0, score), 1)
 
     # Recommendations
@@ -865,7 +900,9 @@ def compute_chain_health(
             "Review recent changes for regressions in fix quality."
         )
     if not recs:
-        recs.append("Causal chain system is healthy. Keep tracking outcomes for continuous improvement.")
+        recs.append(
+            "Causal chain system is healthy. Keep tracking outcomes for continuous improvement."
+        )
 
     return ChainHealth(
         total_chains=total,
@@ -906,7 +943,7 @@ def _detect_strategy_combos(outcomes):
         unique = sorted(set(strategies))
         success = chain_results.get(chain_id, False)
         for i, a in enumerate(unique):
-            for b in unique[i + 1:]:
+            for b in unique[i + 1 :]:
                 key = (a, b)
                 combo_stats[key]["count"] += 1
                 if success:
@@ -953,8 +990,10 @@ def analyze_outcomes(
     # Build summary
     total_strats = len(effectiveness)
     ineffective = sum(
-        1 for s in effectiveness.values()
-        if s.attempts >= MIN_ATTEMPTS_FOR_STATS and s.success_rate < INEFFECTIVE_THRESHOLD
+        1
+        for s in effectiveness.values()
+        if s.attempts >= MIN_ATTEMPTS_FOR_STATS
+        and s.success_rate < INEFFECTIVE_THRESHOLD
     )
     combo_note = f", {len(strategy_combos)} effective combos" if strategy_combos else ""
     lesson_note = f", {len(lessons)} lessons" if lessons else ""

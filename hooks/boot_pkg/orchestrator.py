@@ -133,9 +133,13 @@ def main():
     # Load context
     live_state = load_live_state()
 
-    # Override with project-specific state if in a project session
+    # Override with project-specific state if in a project session.
+    # ~/.claude is the framework hub — always uses LIVE_STATE.json counter.
     _project_state = {}
-    if _is_project_session:
+    _is_framework_hub = os.path.realpath(_effective_dir or "") == os.path.realpath(
+        os.path.join(os.path.expanduser("~"), ".claude")
+    )
+    if _is_project_session and not _is_framework_hub:
         _project_state = load_project_state(_effective_dir)
         if _project_state:
             session_num = _project_state.get("session_count", 1)
@@ -143,7 +147,6 @@ def main():
                 _project_state.get("what_was_done", "") or "No prior session data"
             )[:100]
         else:
-            # First session for this project/subproject — don't inherit framework state
             session_num = 1
             summary = "First session for this project"
     else:
@@ -733,23 +736,6 @@ def main():
                     context_parts.append(_inject_content)
         except OSError:
             pass  # File missing at first session — skip silently
-    # DAG: create per-session branch + inject context (B+C model)
-    try:
-        sys.path.insert(0, os.path.join(CLAUDE_DIR, "hooks"))
-        from shared.dag import get_session_dag
-
-        _dag = get_session_dag("main")
-        # Create a new branch for this session with project scoping
-        _dag.start_session_branch(
-            session_num,
-            project=_project_name,
-            subproject=_subproject_name,
-        )
-        _dag_info = _dag.current_branch_info()
-        _dag_total = _dag._db.execute("SELECT COUNT(*) FROM branches").fetchone()[0]
-        context_parts.append(f"DAG: branch={_dag_info['name']} | {_dag_total} branches")
-    except Exception:
-        pass  # Fail-open
 
     context_parts.append("</session-start-context>")
     print("\n".join(context_parts))

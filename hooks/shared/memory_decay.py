@@ -1,6 +1,6 @@
 """Memory Decay and Relevance Scoring for the Torus Memory System.
 
-Provides time-decay relevance scoring for LanceDB memory entries.
+Provides time-decay relevance scoring for SurrealDB memory entries.
 All functions are pure — no side effects, no I/O.
 
 Public API:

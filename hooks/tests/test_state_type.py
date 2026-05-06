@@ -56,7 +56,7 @@ def test_ephemeral_daemon_socket():
     """daemon + socket → ephemeral."""
     assert (
         classify_state_type(
-            "Memory daemon connected via socket /run/user/1000/mem.sock", ""
+            "Memory daemon connected via socket /run/user/1001/mem.sock", ""
         )
         == "ephemeral"
     )
@@ -76,7 +76,7 @@ def test_conceptual_decision_architecture():
 def test_conceptual_tag_decision():
     """type:decision tag → conceptual (tag boost +2)."""
     assert (
-        classify_state_type("LanceDB uses cosine similarity", "type:decision")
+        classify_state_type("SurrealDB uses cosine similarity", "type:decision")
         == "conceptual"
     )
 

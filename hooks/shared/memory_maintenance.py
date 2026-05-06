@@ -1,7 +1,7 @@
 """Memory Maintenance — Health Analysis for the Torus Memory System.
 
-Provides ongoing health monitoring for the LanceDB knowledge collection
-(currently ~929 memories). All functions are read-only; nothing is deleted
+Provides ongoing health monitoring for the SurrealDB knowledge collection.
+All functions are read-only; nothing is deleted
 or modified. Results are pure recommendations.
 
 Design constraints:
@@ -118,7 +118,7 @@ _POSSIBLE_DUPE_TAG_PREFIX = "possible-dupe:"
 
 
 def _safe_fetch_all(collection_name="knowledge"):
-    """Fetch all entries from a LanceDB collection via the UDS socket.
+    """Fetch all entries from a SurrealDB collection via the UDS socket.
 
     Returns a list of dicts with keys: id, document, tags, timestamp, preview.
     Returns an empty list on any failure (fail-open).

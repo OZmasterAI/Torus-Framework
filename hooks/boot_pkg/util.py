@@ -101,13 +101,42 @@ def detect_project(cwd=None):
     claude_dir = os.path.realpath(CLAUDE_DIR)
     while d != os.sep and d != home:
         if d == claude_dir:
-            # ~/.claude is the framework hub, not a project
-            break
+            return "torus-framework", claude_dir, None, None
         if os.path.isdir(os.path.join(d, ".git")):
             return os.path.basename(d), d, None, None
         d = os.path.dirname(d)
 
     return None, None, None, None
+
+
+def parse_gitmodules(project_dir):
+    """Parse .gitmodules and return {local_path: repo_name}."""
+    path = os.path.join(project_dir, ".gitmodules")
+    if not os.path.isfile(path):
+        return {}
+
+    def _repo_name(url):
+        name = url.rstrip("/").rsplit("/", 1)[-1]
+        return name[:-4] if name.endswith(".git") else name
+
+    result = {}
+    current_path = None
+    current_url = None
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("[submodule"):
+                if current_path and current_url:
+                    result[current_path] = _repo_name(current_url)
+                current_path = None
+                current_url = None
+            elif line.startswith("path ="):
+                current_path = line.split("=", 1)[1].strip()
+            elif line.startswith("url ="):
+                current_url = line.split("=", 1)[1].strip()
+    if current_path and current_url:
+        result[current_path] = _repo_name(current_url)
+    return result
 
 
 def load_project_state(project_dir):

@@ -2,7 +2,7 @@
 # Prepare the evolution-sprint worktree with all dormant components activated
 set -euo pipefail
 
-WORKTREE="/home/crab/agents/evolution-sprint"
+WORKTREE="$HOME/agents/evolution-sprint"
 SOURCE_BRANCH="${1:-dag-claude}"
 REPO_DIR="$HOME/.claude"
 
@@ -126,7 +126,7 @@ if 'mcpServers' not in data:
     data['mcpServers'] = {}
 data['mcpServers']['analytics'] = {
     'command': '/usr/bin/python3',
-    'args': ['/home/crab/.claude/hooks/analytics_server.py'],
+    'args': ['$WORKTREE/hooks/analytics_server.py'],
     'type': 'stdio'
 }
 with open('$WORKTREE/mcp.json', 'w') as f:

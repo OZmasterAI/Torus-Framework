@@ -300,6 +300,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     test("Now tracking review", pending["skill_name"] == "review")
 
 
-print(f"\n{'=' * 40}")
-print(f"skill_outcome_tracker: {passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+if __name__ == "__main__":
+    print(f"\n{'=' * 40}")
+    print(f"skill_outcome_tracker: {passed} passed, {failed} failed")
+    sys.exit(1 if failed else 0)

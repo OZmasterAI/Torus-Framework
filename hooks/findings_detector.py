@@ -11,7 +11,6 @@ Exit 0 always (non-blocking, fail-open).
 import json
 import os
 import re
-import subprocess
 import sys
 from datetime import datetime
 
@@ -756,13 +755,6 @@ def save_detected(
     with open(filepath, "w") as f:
         f.write(content)
 
-    subprocess.run(["git", "add", filepath], cwd=REPO, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", f"detected({category}): {title}"],
-        cwd=REPO,
-        capture_output=True,
-    )
-
 
 def _should_skip_path(path: str) -> bool:
     parts = path.replace("\\", "/").split("/")
@@ -901,7 +893,7 @@ def main():
 
     if tool_name == "mcp__toolshed__run_tool":
         server = tool_input.get("server", "")
-        if server in {"memory", "skills-v2", "search"}:
+        if server in {"memory", "torus-skills", "search"}:
             sys.exit(0)
 
     working_dir = command[:100] if tool_name == "Bash" else ""

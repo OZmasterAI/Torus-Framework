@@ -3,7 +3,7 @@
 
 Fires on SessionEnd to:
 1. Update LIVE_STATE.json with session metrics and auto-summary if /wrap-up didn't run
-2. Flush the capture queue to LanceDB (observations collection)
+2. Flush the capture queue to SurrealDB (observations collection)
 3. Increment session_count in LIVE_STATE.json
 
 Fail-open: always exits 0.
@@ -366,7 +366,10 @@ def generate_handoff(state, transcript_path="", project_name=None, project_dir=N
 
     session_metrics are written to config.json (persist across task resets).
     """
-    _is_project = project_dir is not None
+    _is_framework_hub_handoff = os.path.realpath(project_dir or "") == os.path.realpath(
+        os.path.join(os.path.expanduser("~"), ".claude")
+    )
+    _is_project = project_dir is not None and not _is_framework_hub_handoff
     try:
         live_state = _load_live_state()
         session_num = live_state.get("session_count", "?")
@@ -594,7 +597,7 @@ def flush_capture_queue():
     with open(capture_queue, "r") as f:
         line_count = sum(1 for _ in f)
 
-    # Try UDS socket flush (memory_server.py handles the actual LanceDB upsert)
+    # Try UDS socket flush (memory_server.py handles the actual SurrealDB upsert)
     try:
         if is_worker_available(retries=2, delay=0.3):
             flushed = socket_flush()
@@ -932,7 +935,10 @@ def main():
         except Exception:
             pass
 
-        if _project_dir is None:
+        _is_framework_hub = os.path.realpath(_project_dir or "") == os.path.realpath(
+            os.path.join(os.path.expanduser("~"), ".claude")
+        )
+        if _project_dir is None or _is_framework_hub:
             increment_session_count(metrics)
         elif metrics:
             _update_config("last_session_metrics", metrics)

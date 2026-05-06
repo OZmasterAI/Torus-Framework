@@ -21,6 +21,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/indexer_inject.py\"",
+            "timeout": 2
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -68,6 +78,16 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/indexer_commit.py\"",
+            "timeout": 3
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -86,7 +106,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/toroidal/session_capture_hook.py\"",
+            "command": "python3 \"$HOME/projects/toroidal-teams/session_capture_hook.py\"",
             "timeout": 3
           }
         ]
@@ -254,7 +274,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/toroidal/idle_prompt_hook.sh\"",
+            "command": "bash \"$HOME/projects/toroidal-teams/idle_prompt_hook.sh\"",
             "timeout": 5
           }
         ]
@@ -275,7 +295,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "python3 \"$HOME/.claude/hooks/statusline.py\""
+    "command": "node \"$HOME/.torus/chain-wrapper.mjs\""
   },
   "enabledPlugins": {
     "pyright-lsp@claude-plugins-official": true,
@@ -296,6 +316,7 @@
   "tui": "default",
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
+  "teammateMode": "in-process",
   "voiceEnabled": true,
   "effort": "max",
   "disabled_hooks": {
@@ -337,5 +358,6 @@
     "Gate 5 — verify changes before making more edits",
     "Frustration signals — 'again', 'still', 'why', ALL CAPS = stop and verify"
   ],
-  "teammateMode": "in-process"
+  "teammateMode": "in-process",
+  "remoteControlAtStartup": false
 }

@@ -63,17 +63,28 @@ def test_calculate_relevance_score_unchanged():
     from shared.memory_decay import calculate_relevance_score
 
     # Recent T1 memory should score high
-    recent = {"tier": 1, "timestamp": "2026-03-09T00:00:00Z", "retrieval_count": 0, "tags": ""}
+    recent = {
+        "tier": 1,
+        "timestamp": "2026-03-09T00:00:00Z",
+        "retrieval_count": 0,
+        "tags": "",
+    }
     score = calculate_relevance_score(recent)
     assert score > 0.5, f"Recent T1 memory should score high, got {score}"
 
     # Old T3 memory should score lower
-    old = {"tier": 3, "timestamp": "2025-01-01T00:00:00Z", "retrieval_count": 0, "tags": ""}
+    old = {
+        "tier": 3,
+        "timestamp": "2025-01-01T00:00:00Z",
+        "retrieval_count": 0,
+        "tags": "",
+    }
     old_score = calculate_relevance_score(old)
     assert old_score < score, "Old memory should score lower than recent"
 
 
 ## --- Task 2: LTP Status Tracking ---
+
 
 def test_ltp_status():
     """Task 2: LTP transitions based on access patterns."""
@@ -93,13 +104,17 @@ def test_ltp_status():
         # 5 accesses → Burst
         for _ in range(5):
             tracker.record_access("mem1")
-        assert tracker.get_status("mem1") == "burst", f"Expected burst, got {tracker.get_status('mem1')}"
+        assert tracker.get_status("mem1") == "burst", (
+            f"Expected burst, got {tracker.get_status('mem1')}"
+        )
         assert tracker.get_decay_factor("mem1") == 0.5
 
         # 10+ total accesses → Full
         for _ in range(5):
             tracker.record_access("mem1")
-        assert tracker.get_status("mem1") == "full", f"Expected full, got {tracker.get_status('mem1')}"
+        assert tracker.get_status("mem1") == "full", (
+            f"Expected full, got {tracker.get_status('mem1')}"
+        )
         assert tracker.get_decay_factor("mem1") == 0.1
     finally:
         os.unlink(tmp)
@@ -148,6 +163,7 @@ def test_ltp_independent_memories():
 
 ## --- Task 3: Integrate Decay + LTP into Scoring ---
 
+
 def test_decay_with_ltp():
     """Task 3: High-retrieval memories score higher than zero-retrieval at same age."""
     from shared.memory_decay import calculate_relevance_score
@@ -175,6 +191,7 @@ def test_decay_with_ltp():
 
 ## --- Task 4: Hebbian Co-retrieval Strengthening ---
 
+
 def test_hebbian_coretrieval():
     """Task 4: Co-retrieved memories strengthen their connection."""
     from shared.knowledge_graph import KnowledgeGraph
@@ -188,7 +205,9 @@ def test_hebbian_coretrieval():
     assert graph.get_edge_strength("mem_b", "mem_c") > 0
     # Repeated co-retrieval strengthens
     graph.strengthen_coretrieval(["mem_a", "mem_b"])
-    assert graph.get_edge_strength("mem_a", "mem_b") > graph.get_edge_strength("mem_a", "mem_c")
+    assert graph.get_edge_strength("mem_a", "mem_b") > graph.get_edge_strength(
+        "mem_a", "mem_c"
+    )
 
 
 def test_hebbian_strength_bounds():
@@ -203,14 +222,17 @@ def test_hebbian_strength_bounds():
 
 ## --- Task 5: Entity Extraction Pipeline ---
 
+
 def test_entity_extraction():
     """Task 5: Extract meaningful entities from text."""
     from shared.entity_extraction import extract_entities
 
-    entities = extract_entities("Fixed the LanceDB migration bug in memory_server.py")
+    entities = extract_entities("Fixed the SurrealDB migration bug in memory_server.py")
     names = [e["name"] for e in entities]
-    assert "LanceDB" in names, f"Expected LanceDB in {names}"
-    assert any("memory_server" in n for n in names), f"Expected memory_server in {names}"
+    assert "SurrealDB" in names, f"Expected SurrealDB in {names}"
+    assert any("memory_server" in n for n in names), (
+        f"Expected memory_server in {names}"
+    )
     # Should not extract stop words
     assert "the" not in names
     assert "in" not in names
@@ -220,17 +242,25 @@ def test_entity_extraction_compounds():
     """Task 5: Compound noun detection."""
     from shared.entity_extraction import extract_entities
 
-    entities = extract_entities("The knowledge graph uses spreading activation for retrieval")
+    entities = extract_entities(
+        "The knowledge graph uses spreading activation for retrieval"
+    )
     names = [e["name"] for e in entities]
-    assert any("knowledge graph" in n or "knowledge_graph" in n for n in names), f"Expected knowledge graph in {names}"
-    assert any("spreading activation" in n or "spreading_activation" in n for n in names), f"Expected spreading activation in {names}"
+    assert any("knowledge graph" in n or "knowledge_graph" in n for n in names), (
+        f"Expected knowledge graph in {names}"
+    )
+    assert any(
+        "spreading activation" in n or "spreading_activation" in n for n in names
+    ), f"Expected spreading activation in {names}"
 
 
 def test_entity_cooccurrences():
     """Task 5: Extract co-occurring entity pairs."""
     from shared.entity_extraction import extract_cooccurrences
 
-    pairs = extract_cooccurrences("Fixed the LanceDB migration bug in memory_server.py")
+    pairs = extract_cooccurrences(
+        "Fixed the SurrealDB migration bug in memory_server.py"
+    )
     assert len(pairs) > 0, "Should find co-occurring entities"
     # All pairs should be tuples of strings
     for a, b in pairs:
@@ -239,38 +269,42 @@ def test_entity_cooccurrences():
 
 ## --- Task 6: Graph Population on Ingest ---
 
+
 def test_graph_population_on_ingest():
     """Task 6: Entities and co-occurrences populate the graph."""
     from shared.knowledge_graph import KnowledgeGraph
     from shared.entity_extraction import extract_entities, extract_cooccurrences
 
     graph = KnowledgeGraph(":memory:")
-    content = "Fixed the LanceDB vector search bug in memory_server.py"
+    content = "Fixed the SurrealDB vector search bug in memory_server.py"
     entities = extract_entities(content)
     cooccurrences = extract_cooccurrences(content)
     for entity in entities:
         graph.upsert_entity(entity["name"], entity["type"])
     for e1, e2 in cooccurrences:
         graph.add_edge(e1, e2, "co_occurs")
-    assert graph.entity_count() >= 2, f"Expected >=2 entities, got {graph.entity_count()}"
+    assert graph.entity_count() >= 2, (
+        f"Expected >=2 entities, got {graph.entity_count()}"
+    )
     assert graph.edge_count() >= 1, f"Expected >=1 edges, got {graph.edge_count()}"
 
 
 ## --- Task 7: Spreading Activation Search ---
+
 
 def test_spreading_activation():
     """Task 7: BFS activation traversal over knowledge graph."""
     from shared.knowledge_graph import KnowledgeGraph
 
     graph = KnowledgeGraph(":memory:")
-    graph.upsert_entity("LanceDB", "Technology")
+    graph.upsert_entity("SurrealDB", "Technology")
     graph.upsert_entity("vector_search", "Concept")
     graph.upsert_entity("memory_server", "Technology")
     graph.upsert_entity("embeddings", "Concept")
-    graph.add_edge("LanceDB", "vector_search", "uses", strength=0.8)
+    graph.add_edge("SurrealDB", "vector_search", "uses", strength=0.8)
     graph.add_edge("vector_search", "memory_server", "part_of", strength=0.7)
     graph.add_edge("memory_server", "embeddings", "uses", strength=0.6)
-    results = graph.spreading_activation(["LanceDB"], max_hops=3)
+    results = graph.spreading_activation(["SurrealDB"], max_hops=3)
     names = [r["name"] for r in results]
     assert "vector_search" in names, f"Expected vector_search in {names}"
     assert "embeddings" in names, f"Expected embeddings in {names}"
@@ -290,6 +324,7 @@ def test_spreading_activation_empty():
 
 
 ## --- Task 9: Graph-Aware Delete and Quarantine ---
+
 
 def test_graph_cleanup_on_delete():
     """Task 9: Removing entity edges cleans graph."""
@@ -311,11 +346,14 @@ def test_graph_deactivate_entity():
     graph = KnowledgeGraph(":memory:")
     graph.upsert_entity("A", "Concept", salience=0.8)
     graph.deactivate_entity("A")
-    row = graph._conn.execute("SELECT salience FROM entities WHERE name=?", ("A",)).fetchone()
+    row = graph._conn.execute(
+        "SELECT salience FROM entities WHERE name=?", ("A",)
+    ).fetchone()
     assert row[0] == 0.0
 
 
 ## --- Fix 1: Full LTP chain verification ---
+
 
 def test_ltp_full_chain():
     """Fix 1: LTP tracker → calculate_relevance_score with ltp_factor flows correctly."""
@@ -333,7 +371,9 @@ def test_ltp_full_chain():
         for _ in range(12):
             tracker.record_access("mem1")
 
-        assert tracker.get_status("mem1") == "full", f"Expected full, got {tracker.get_status('mem1')}"
+        assert tracker.get_status("mem1") == "full", (
+            f"Expected full, got {tracker.get_status('mem1')}"
+        )
         ltp_factor = tracker.get_decay_factor("mem1")
         assert ltp_factor == 0.1, f"Expected 0.1 for full LTP, got {ltp_factor}"
 
@@ -371,7 +411,12 @@ def test_ltp_factor_gradation():
     }
 
     scores = {}
-    for label, factor in [("none", 1.0), ("burst", 0.5), ("weekly", 0.33), ("full", 0.1)]:
+    for label, factor in [
+        ("none", 1.0),
+        ("burst", 0.5),
+        ("weekly", 0.33),
+        ("full", 0.1),
+    ]:
         scores[label] = calculate_relevance_score(memory, ltp_factor=factor)
 
     # Higher protection (lower factor) = higher score
@@ -379,12 +424,11 @@ def test_ltp_factor_gradation():
         f"LTP gradation should be monotonic: {scores}"
     )
     # Full and none should be meaningfully different
-    assert scores["full"] > scores["none"], (
-        f"Full LTP should beat no LTP: {scores}"
-    )
+    assert scores["full"] > scores["none"], f"Full LTP should beat no LTP: {scores}"
 
 
 ## --- Combo 2: Edge decay, pruning, clusters ---
+
 
 def test_edge_decay():
     """Combo2 Task 1: Edge strength decays over time."""
@@ -395,9 +439,7 @@ def test_edge_decay():
     kg.upsert_entity("B")
     kg.add_edge("A", "B", "co_occurs", 0.8)
     # Simulate 14-day-old edge
-    kg._conn.execute(
-        "UPDATE edges SET last_activated = strftime('%s','now') - 1209600"
-    )
+    kg._conn.execute("UPDATE edges SET last_activated = strftime('%s','now') - 1209600")
     kg._conn.commit()
     result = kg.decay_edges(half_life_hours=168)  # 7-day half-life
     strength = kg.get_edge_strength("A", "B")
@@ -434,10 +476,13 @@ def test_high_activation_clusters():
     kg.add_edge("A", "D", "co_retrieved", 0.1)
     clusters = kg.get_high_activation_clusters(min_activation=3)
     assert len(clusters) >= 1, "Should find at least one cluster"
-    assert {"A", "B", "C"}.issubset(clusters[0]), f"Cluster should contain A,B,C: {clusters[0]}"
+    assert {"A", "B", "C"}.issubset(clusters[0]), (
+        f"Cluster should contain A,B,C: {clusters[0]}"
+    )
 
 
 ## --- Combo 2: Memory replay ---
+
 
 def test_select_replay_candidates():
     """Combo2 Task 2: Replay candidate selection by priority."""
@@ -446,13 +491,33 @@ def test_select_replay_candidates():
 
     now = _time.time()
     memories = [
-        {"id": "a", "tier": 1, "retrieval_count": 8, "session_time": now - 86400, "tags": "type:fix"},
-        {"id": "b", "tier": 3, "retrieval_count": 1, "session_time": now - 2592000, "tags": ""},
-        {"id": "c", "tier": 2, "retrieval_count": 5, "session_time": now - 172800, "tags": "type:learning"},
+        {
+            "id": "a",
+            "tier": 1,
+            "retrieval_count": 8,
+            "session_time": now - 86400,
+            "tags": "type:fix",
+        },
+        {
+            "id": "b",
+            "tier": 3,
+            "retrieval_count": 1,
+            "session_time": now - 2592000,
+            "tags": "",
+        },
+        {
+            "id": "c",
+            "tier": 2,
+            "retrieval_count": 5,
+            "session_time": now - 172800,
+            "tags": "type:learning",
+        },
     ]
     candidates = select_replay_candidates(memories, max_candidates=2)
     assert len(candidates) == 2
-    assert candidates[0]["id"] == "a", f"T1 high-retrieval should be first, got {candidates[0]['id']}"
+    assert candidates[0]["id"] == "a", (
+        f"T1 high-retrieval should be first, got {candidates[0]['id']}"
+    )
 
 
 def test_compute_interference():
@@ -481,7 +546,12 @@ def test_evaluate_tier_flow_promote():
     import time as _time
     from shared.memory_replay import evaluate_tier_flow
 
-    mem = {"id": "x", "tier": 2, "retrieval_count": 10, "session_time": _time.time() - 86400}
+    mem = {
+        "id": "x",
+        "tier": 2,
+        "retrieval_count": 10,
+        "session_time": _time.time() - 86400,
+    }
     assert evaluate_tier_flow(mem, ltp_status="full") == 1  # T2->T1
 
 
@@ -490,7 +560,12 @@ def test_evaluate_tier_flow_demote():
     import time as _time
     from shared.memory_replay import evaluate_tier_flow
 
-    mem = {"id": "x", "tier": 1, "retrieval_count": 1, "session_time": _time.time() - 5184000}  # 60 days
+    mem = {
+        "id": "x",
+        "tier": 1,
+        "retrieval_count": 1,
+        "session_time": _time.time() - 5184000,
+    }  # 60 days
     assert evaluate_tier_flow(mem, ltp_status="none") == 2  # T1->T2
 
 
@@ -499,8 +574,15 @@ def test_evaluate_tier_flow_ltp_protects():
     import time as _time
     from shared.memory_replay import evaluate_tier_flow
 
-    mem = {"id": "x", "tier": 1, "retrieval_count": 1, "session_time": _time.time() - 5184000}
-    assert evaluate_tier_flow(mem, ltp_status="full") is None  # LTP protects — no change
+    mem = {
+        "id": "x",
+        "tier": 1,
+        "retrieval_count": 1,
+        "session_time": _time.time() - 5184000,
+    }
+    assert (
+        evaluate_tier_flow(mem, ltp_status="full") is None
+    )  # LTP protects — no change
 
 
 def test_no_interference_on_normal_save():
@@ -514,6 +596,7 @@ def test_no_interference_on_normal_save():
 
 
 ## --- Combo 2: Adaptive weights ---
+
 
 def test_adaptive_weights_default():
     """Combo2 Task 3: Default weights match expected values."""
@@ -569,6 +652,7 @@ def test_adaptive_weights_persistence():
 
 ## --- Combo 2: Replay cycle integration ---
 
+
 def test_replay_cycle_runs():
     """Combo2 Task 4: Full replay cycle with promotion."""
     import time as _time
@@ -582,9 +666,27 @@ def test_replay_cycle_runs():
 
     now = _time.time()
     memories = [
-        {"id": "m1", "tier": 1, "retrieval_count": 5, "session_time": now - 86400, "tags": "type:fix"},
-        {"id": "m2", "tier": 2, "retrieval_count": 12, "session_time": now - 172800, "tags": "type:learning"},
-        {"id": "m3", "tier": 3, "retrieval_count": 0, "session_time": now - 5184000, "tags": ""},
+        {
+            "id": "m1",
+            "tier": 1,
+            "retrieval_count": 5,
+            "session_time": now - 86400,
+            "tags": "type:fix",
+        },
+        {
+            "id": "m2",
+            "tier": 2,
+            "retrieval_count": 12,
+            "session_time": now - 172800,
+            "tags": "type:learning",
+        },
+        {
+            "id": "m3",
+            "tier": 3,
+            "retrieval_count": 0,
+            "session_time": now - 5184000,
+            "tags": "",
+        },
     ]
 
     stats = run_replay_cycle(memories, ltp_tracker=ltp, knowledge_graph=kg)
@@ -595,9 +697,11 @@ def test_replay_cycle_runs():
 
 ## --- Combo 2: Plan-specified integration tests ---
 
+
 def test_adaptive_weights_used_in_blend():
     """Combo2 Task 5: Default weights match search_knowledge hardcoded values."""
     from shared.memory_replay import _WEIGHT_DEFAULTS
+
     assert _WEIGHT_DEFAULTS["ltp_blend"] == 0.3
     assert _WEIGHT_DEFAULTS["graph_discount"] == 0.8
     assert _WEIGHT_DEFAULTS["tier_boost_t1"] == 0.05

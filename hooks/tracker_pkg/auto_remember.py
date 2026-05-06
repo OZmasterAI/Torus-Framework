@@ -61,18 +61,6 @@ def _auto_remember_event(content, context="", tags="", critical=False, state=Non
             return  # Rate limit hit
         state["auto_remember_count"] = count + 1
 
-        # Task 16: enrich tags with DAG node reference
-        try:
-            from shared.dag_memory import get_dag_head_tag
-
-            _dag_head = get_dag_head_tag()
-            if _dag_head:
-                tags = (
-                    f"{tags},dag_node:{_dag_head}" if tags else f"dag_node:{_dag_head}"
-                )
-        except Exception:
-            pass  # DAG enrichment is fail-open
-
         if critical and socket_remember is not None:
             try:
                 if _uds_available():

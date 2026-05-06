@@ -52,7 +52,7 @@ MEMORY_DIR = os.path.join(os.path.expanduser("~"), "data", "memory")
 STATS_CACHE = os.path.join(CLAUDE_DIR, "stats-cache.json")
 SETTINGS_FILE = os.path.join(CLAUDE_DIR, "settings.json")
 
-# Cache memory count for 60 seconds to avoid cold-starting LanceDB on every render
+# Cache memory count for 60 seconds to avoid cold-starting SurrealDB on every render
 CACHE_TTL = 60
 
 # Expected component counts (update when adding new gates/skills/hooks)
@@ -110,7 +110,12 @@ def get_memory_count():
         from surrealdb import Surreal
 
         db = Surreal("ws://127.0.0.1:8822")
-        db.signin({"username": "root", "password": "root"})
+        db.signin(
+            {
+                "username": os.environ.get("SURREAL_USER", "root"),
+                "password": os.environ.get("SURREAL_PASS", "root"),
+            }
+        )
         db.use("memory", "main")
         result = db.query("SELECT count() FROM knowledge GROUP ALL")
         count = result[0]["count"] if result else 0
@@ -159,7 +164,10 @@ def get_session_number():
 
         _proj_name, _proj_dir, _sub_name, _sub_dir = detect_project()
         _eff_dir = _sub_dir or _proj_dir
-        if _eff_dir:
+        _is_framework_hub = os.path.realpath(_eff_dir or "") == os.path.realpath(
+            CLAUDE_DIR
+        )
+        if _eff_dir and not _is_framework_hub:
             proj_state = load_project_state(_eff_dir)
             count = proj_state.get("session_count", 0)
             return count if isinstance(count, int) else "?"
@@ -483,7 +491,7 @@ def calculate_health(gate_count, mem_count, session_state=None):
     Dimensions (all lightweight filesystem checks):
       Gates present     (25%) — gate files vs expected
       Hooks registered  (20%) — hook events in settings vs expected
-      Memory accessible (15%) — LanceDB has memories
+      Memory accessible (15%) — SurrealDB has memories
       Skills present    (15%) — skill directories vs expected
       Core files exist  (15%) — CLAUDE.md, LIVE_STATE.json, enforcer.py
       Error pressure    (10%) — low errors in session state

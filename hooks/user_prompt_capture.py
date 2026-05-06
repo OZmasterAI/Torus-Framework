@@ -55,7 +55,7 @@ _UNCERTAINTY_RE = re.compile(
 # 3+ consecutive uppercase words (e.g. "THIS IS WRONG")
 _ALL_CAPS_RE = re.compile(r"(?:\b[A-Z]{2,}\b[\s]+){2,}\b[A-Z]{2,}\b")
 
-# URL detection for auto-indexing into LanceDB web_pages
+# URL detection for auto-indexing into SurrealDB web_pages
 _URL_RE = re.compile(r'https?://[^\s<>"\')\]]+', re.IGNORECASE)
 
 
@@ -148,7 +148,7 @@ _INDEX_SCRIPT = os.path.join(
 
 
 def _auto_index_urls(urls):
-    """Index URLs into LanceDB web_pages in the background. Fail-silent."""
+    """Index URLs into SurrealDB web_pages in the background. Fail-silent."""
     import subprocess
 
     for url in urls:
@@ -224,7 +224,7 @@ def _collect_state_warnings():
         import glob as _glob
 
         state_files = sorted(
-            _glob.glob(os.path.join(_HOOKS_DIR, "state_*.json")),
+            _glob.glob(os.path.join(_HOOKS_DIR, ".state", "state_*.json")),
             key=os.path.getmtime,
             reverse=True,
         )
@@ -273,31 +273,6 @@ def main():
             "before the session ends.</session_ending>"
         )
 
-    # --- DAG: record user message + /clear interception (Task 4 + Task 7) ---
-    try:
-        from shared.dag import get_session_dag
-        from boot_pkg.util import detect_project
-
-        _dag = get_session_dag(data.get("session_id", "main"))
-        _dag_proj, _, _dag_subproj, _ = detect_project()
-        # /clear interception: create new branch before Claude clears
-        if prompt.strip() == "/clear":
-            _dag.new_branch(
-                f"clear-{int(time.time())}",
-                project=_dag_proj,
-                subproject=_dag_subproj,
-            )
-        else:
-            _dag.add_node(
-                parent_id=_dag.get_head(),
-                role="user",
-                content=prompt[:2000],
-                project=_dag_proj,
-                subproject=_dag_subproj,
-            )
-    except Exception:
-        pass  # Fail-open — DAG failures must never crash the hook
-
     # --- Cache expiry detection ---
     try:
         _ts_path = os.path.join(_HOOKS_DIR, ".last_response_ts")
@@ -324,7 +299,7 @@ def main():
     else:
         print(f"<user-prompt-submit-hook>{baseline}</user-prompt-submit-hook>")
 
-    # --- Auto-index URLs into LanceDB web_pages ---
+    # --- Auto-index URLs into SurrealDB web_pages ---
 
     try:
         urls = _URL_RE.findall(prompt)

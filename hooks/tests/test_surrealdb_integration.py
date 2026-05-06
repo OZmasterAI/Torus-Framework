@@ -109,14 +109,6 @@ class TestSurrealDBDirect:
 
 
 class TestNoLegacyImports:
-    def test_no_lancedb_import(self):
-        try:
-            import lancedb
-
-            pytest.skip("lancedb still installed (Task 16 pending)")
-        except ImportError:
-            pass
-
     def test_pipelines_import_clean(self):
         from shared.write_pipeline import WritePipeline
         from shared.search_pipeline import SearchPipeline

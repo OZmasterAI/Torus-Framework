@@ -16,8 +16,7 @@ You are working within the **Torus framework** domain. These rules supplement al
 - Never break the enforcer while the enforcer is running (deadlock risk)
 
 ## Memory System
-- LanceDB tables: knowledge (curated), observations (auto-captured), fix_outcomes, quarantine, web_pages
+- SurrealDB tables: knowledge (curated), observations (auto-captured), fix_outcomes, quarantine, web_pages
 - UDS socket to memory_server.py for fast operations — subprocess fallback exists
-- Embedding: nomic-embed-text-v2-moe (768-dim), cosine similarity, flat scan
-- Keyword search: LanceDB BM25 FTS (~19ms) | Tag search: SQLite tags.db (<2ms)
-- ChromaDB is backup only at ~/data/memory/chroma.sqlite3 — not used at runtime
+- Embedding: nvidia/nv-embed-v1 (4096-dim), HNSW index, cosine distance
+- Keyword search: SurrealDB FTS | Tag search: SurrealDB tag fields (<2ms)

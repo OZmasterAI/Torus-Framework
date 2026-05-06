@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Search indexed web pages via LanceDB semantic search."""
+"""Search indexed web pages via SurrealDB semantic search."""
 
 import argparse
 import sys
@@ -19,7 +19,10 @@ def search_pages(query: str, n_results: int = 5) -> list[dict]:
             include=["metadatas", "documents", "distances"],
         )
     except memory_socket.WorkerUnavailable:
-        print("Error: Memory worker not available. Is memory_server running?", file=sys.stderr)
+        print(
+            "Error: Memory worker not available. Is memory_server running?",
+            file=sys.stderr,
+        )
         sys.exit(1)
     except RuntimeError as e:
         if "Unknown collection" in str(e):
@@ -43,16 +46,18 @@ def search_pages(query: str, n_results: int = 5) -> list[dict]:
         # Cosine distance to similarity score
         similarity = round(1.0 - dist, 3)
 
-        hits.append({
-            "id": doc_id,
-            "url": meta.get("url", "unknown"),
-            "title": meta.get("title", "Untitled"),
-            "chunk_index": meta.get("chunk_index", 0),
-            "total_chunks": meta.get("total_chunks", 1),
-            "similarity": similarity,
-            "preview": doc[:200] + "..." if len(doc) > 200 else doc,
-            "full_content": doc,
-        })
+        hits.append(
+            {
+                "id": doc_id,
+                "url": meta.get("url", "unknown"),
+                "title": meta.get("title", "Untitled"),
+                "chunk_index": meta.get("chunk_index", 0),
+                "total_chunks": meta.get("total_chunks", 1),
+                "similarity": similarity,
+                "preview": doc[:200] + "..." if len(doc) > 200 else doc,
+                "full_content": doc,
+            }
+        )
 
     return hits
 
@@ -60,8 +65,12 @@ def search_pages(query: str, n_results: int = 5) -> list[dict]:
 def main():
     parser = argparse.ArgumentParser(description="Search indexed web pages")
     parser.add_argument("query", help="Search query")
-    parser.add_argument("--n", type=int, default=5, help="Number of results (default: 5)")
-    parser.add_argument("--full", action="store_true", help="Show full content instead of preview")
+    parser.add_argument(
+        "--n", type=int, default=5, help="Number of results (default: 5)"
+    )
+    parser.add_argument(
+        "--full", action="store_true", help="Show full content instead of preview"
+    )
     args = parser.parse_args()
 
     hits = search_pages(args.query, n_results=args.n)
@@ -75,7 +84,9 @@ def main():
 
     for i, hit in enumerate(hits, 1):
         print(f"  [{i}] {hit['title']}")
-        print(f"      URL: {hit['url']} (chunk {hit['chunk_index']+1}/{hit['total_chunks']})")
+        print(
+            f"      URL: {hit['url']} (chunk {hit['chunk_index'] + 1}/{hit['total_chunks']})"
+        )
         print(f"      Score: {hit['similarity']}")
         if args.full:
             print(f"      Content:\n{hit['full_content']}")

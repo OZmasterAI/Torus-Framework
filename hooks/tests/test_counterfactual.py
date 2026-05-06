@@ -131,7 +131,7 @@ else:
             f"params={params}",
         )
 
-        # Verify it doesn't crash with counterfactual=False (LanceDB unavailable in test)
+        # Verify it doesn't crash with counterfactual=False (SurrealDB unavailable in test)
         # Just check the signature and code structure
         cf_param = sig.parameters.get("counterfactual")
         test(

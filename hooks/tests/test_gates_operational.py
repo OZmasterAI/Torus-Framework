@@ -1214,7 +1214,7 @@ try:
         "_tier_ms", _ms_path, submodule_search_locations=[]
     )
     _tier_mod = _tier_iu.module_from_spec(_tier_spec)
-    # Don't exec the full module (LanceDB side effects); extract function source instead
+    # Don't exec the full module (SurrealDB side effects); extract function source instead
     with open(_ms_path) as _tf:
         _tier_src = _tf.read()
     # Execute just the constants and _classify_tier function in isolated namespace

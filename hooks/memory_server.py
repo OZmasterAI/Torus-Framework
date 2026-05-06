@@ -245,7 +245,9 @@ _SERVER_PROJECT_DIR = None
 _SERVER_SUBPROJECT = None
 _SERVER_SUBPROJECT_DIR = None
 try:
-    _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state"))
+    _sys.path.insert(
+        0, os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state")
+    )
     from boot_pkg.util import detect_project
 
     _SERVER_PROJECT, _SERVER_PROJECT_DIR, _SERVER_SUBPROJECT, _SERVER_SUBPROJECT_DIR = (
@@ -286,6 +288,110 @@ _surreal_degraded = False
 
 
 from shared.surreal_collection import SurrealCollection, init_surreal_db
+
+import dataclasses as _dc
+
+
+@_dc.dataclass
+class ProjectDB:
+    name: str
+    conn: object
+    collections: dict
+
+
+_project_pool: dict[str, ProjectDB] = {}
+_pool_lock = threading.Lock()
+GLOBAL_DB = "main"
+
+
+def _get_project_db(project_name: str = None) -> ProjectDB:
+    name = project_name or GLOBAL_DB
+    if name in _project_pool:
+        return _project_pool[name]
+    with _pool_lock:
+        if name in _project_pool:
+            return _project_pool[name]
+        conn = Surreal(SURREAL_URL)
+        conn.signin(
+            {
+                "username": os.environ.get("SURREAL_USER", "root"),
+                "password": os.environ.get("SURREAL_PASS", "root"),
+            }
+        )
+        conn.use("memory", name)
+        colls = init_surreal_db(
+            conn,
+            embed_text=_embed_text,
+            embed_texts=_embed_texts,
+            embedding_dim=_EMBEDDING_DIM,
+        )
+        pdb = ProjectDB(name=name, conn=conn, collections=colls)
+        _project_pool[name] = pdb
+        return pdb
+
+
+def _get_current_project_db() -> ProjectDB:
+    if _SERVER_PROJECT:
+        db_name = _resolve_project_db_name(_SERVER_PROJECT)
+        return _get_project_db(db_name)
+    return _get_project_db(GLOBAL_DB)
+
+
+_shared_deps_cache: dict[str, list[ProjectDB]] = {}
+_shared_dep_names_cache: dict[str, set[str]] = {}
+
+
+def _get_shared_deps() -> list[ProjectDB]:
+    proj_dir = _SERVER_PROJECT_DIR
+    if not proj_dir:
+        return []
+    if proj_dir in _shared_deps_cache:
+        return _shared_deps_cache[proj_dir]
+    try:
+        from boot_pkg.util import parse_gitmodules
+
+        subs = parse_gitmodules(proj_dir)
+    except Exception:
+        subs = {}
+    deps = []
+    names = set()
+    for _path, repo_name in subs.items():
+        db_name = f"shared.{repo_name.lower()}"
+        deps.append(_get_project_db(db_name))
+        names.add(repo_name.lower())
+    _shared_deps_cache[proj_dir] = deps
+    _shared_dep_names_cache[proj_dir] = names
+    return deps
+
+
+def _known_shared_dep_names() -> set[str]:
+    proj_dir = _SERVER_PROJECT_DIR
+    if not proj_dir:
+        return set()
+    if proj_dir not in _shared_dep_names_cache:
+        _get_shared_deps()
+    return _shared_dep_names_cache.get(proj_dir, set())
+
+
+def _non_empty_shared_deps() -> list[ProjectDB]:
+    result = []
+    for dep in _get_shared_deps():
+        try:
+            if dep.collections["knowledge"].count() > 0:
+                result.append(dep)
+        except Exception:
+            pass
+    return result
+
+
+def _resolve_project_db_name(project_name):
+    if not project_name:
+        return project_name
+    normalized = project_name.lower()
+    known = _known_shared_dep_names()
+    if normalized in {n.lower() for n in known}:
+        return f"shared.{normalized}"
+    return normalized
 
 
 def _embed_texts(texts):
@@ -353,23 +459,14 @@ def _init_surrealdb():
             file=_sys.stderr,
         )
 
-        _surreal_db = Surreal(SURREAL_URL)
-        _surreal_db.signin({"username": "root", "password": "root"})
-        _surreal_db.use("memory", "main")
-
-        colls = init_surreal_db(
-            _surreal_db,
-            embed_text=_embed_text,
-            embed_texts=_embed_texts,
-            embedding_dim=_EMBEDDING_DIM,
-        )
-
-        collection = colls["knowledge"]
-        fix_outcomes = colls["fix_outcomes"]
-        observations = colls["observations"]
-        web_pages = colls["web_pages"]
-        quarantine = colls["quarantine"]
-        _clusters_coll = colls["clusters"]
+        pdb = _get_project_db(GLOBAL_DB)
+        _surreal_db = pdb.conn
+        collection = pdb.collections["knowledge"]
+        fix_outcomes = pdb.collections["fix_outcomes"]
+        observations = pdb.collections["observations"]
+        web_pages = pdb.collections["web_pages"]
+        quarantine = pdb.collections["quarantine"]
+        _clusters_coll = pdb.collections["clusters"]
 
         print(f"[MCP] SurrealDB v3 connected via {SURREAL_URL}", file=_sys.stderr)
     except Exception as e:
@@ -642,7 +739,7 @@ def _merge_results(fts_results, lance_summaries, top_k=15):
 
 
 # Lazy initialization — only run when module is used as a server, not when imported
-# for testing. LanceDB uses optimistic concurrency control (no more segfaults).
+# for testing. SurrealDB uses optimistic concurrency control.
 _preview_migrated = False
 _tag_count = 0
 _initialized = False
@@ -1260,7 +1357,7 @@ def _temporal_decay(confidence, timestamp_str):
 
 
 def _flush_capture_queue():
-    """Read the capture queue and upsert all observations to LanceDB.
+    """Read the capture queue and upsert all observations to SurrealDB.
 
     Atomically replaces the queue file with an empty one to prevent
     duplicate ingestion. Skips corrupted lines gracefully.
@@ -1300,7 +1397,7 @@ def _flush_capture_queue():
                 continue  # skip corrupted lines
 
         if docs:
-            # Batch upsert (LanceDB handles dedup via merge_insert)
+            # Batch upsert (SurrealDB handles dedup via merge_insert)
             batch_size = 100
             for i in range(0, len(docs), batch_size):
                 observations.upsert(
@@ -1647,22 +1744,81 @@ def search_knowledge(
 
     # Delegate to SearchPipeline (with inline fallback)
     if _search_pipeline is not None:
-        # Refresh config toggles (they may change between calls)
-        _search_pipeline.config = _read_config_toggles()
-        # Refresh mutable helpers that may change
+        config = _read_config_toggles()
+        _search_pipeline.config = config
         _search_pipeline.h["fix_outcomes"] = fix_outcomes
         _search_pipeline.h["server_project"] = _SERVER_PROJECT
         _search_pipeline.h["server_subproject"] = _SERVER_SUBPROJECT
-        result = _search_pipeline.search(
-            query,
-            top_k=top_k,
-            mode=mode,
-            recency_weight=recency_weight,
-            match_all=match_all,
-            counterfactual=counterfactual,
-            memory_type=memory_type,
-            state_type=state_type,
-        )
+
+        project_db = _get_current_project_db()
+        is_project_scoped = project_db.name != GLOBAL_DB
+
+        if is_project_scoped:
+            orig_collection = _search_pipeline.collection
+            _search_pipeline.collection = project_db.collections["knowledge"]
+            result = _search_pipeline.search(
+                query,
+                top_k=top_k,
+                mode=mode,
+                recency_weight=recency_weight,
+                match_all=match_all,
+                counterfactual=counterfactual,
+                memory_type=memory_type,
+                state_type=state_type,
+            )
+            _search_pipeline.collection = orig_collection
+
+            # Tier 2: shared deps (non-empty only)
+            shared_deps = _non_empty_shared_deps()
+            for dep_db in shared_deps:
+                _search_pipeline.collection = dep_db.collections["knowledge"]
+                dep_result = _search_pipeline.search(
+                    query,
+                    top_k=top_k,
+                    mode=mode,
+                    recency_weight=recency_weight,
+                    match_all=match_all,
+                    counterfactual=counterfactual,
+                    memory_type=memory_type,
+                    state_type=state_type,
+                )
+                _search_pipeline.collection = orig_collection
+                for r in dep_result.get("results", []):
+                    r["source"] = f"shared:{dep_db.name}"
+                result = _merge_project_results(result, dep_result)
+
+            # Tier 3: global fallback (only if best score still below threshold)
+            fallback_threshold = config.get("project_fallback_threshold", 0.35)
+            best_score = max(
+                (r.get("relevance", 0) for r in result.get("results", [])),
+                default=0,
+            )
+            if best_score < fallback_threshold:
+                global_result = _search_pipeline.search(
+                    query,
+                    top_k=top_k,
+                    mode=mode,
+                    recency_weight=recency_weight,
+                    match_all=match_all,
+                    counterfactual=counterfactual,
+                    memory_type=memory_type,
+                    state_type=state_type,
+                )
+                result = _merge_project_results(result, global_result)
+                result["fallback_triggered"] = True
+            result["project_db"] = project_db.name
+            result["shared_dbs_searched"] = [d.name for d in shared_deps]
+        else:
+            result = _search_pipeline.search(
+                query,
+                top_k=top_k,
+                mode=mode,
+                recency_weight=recency_weight,
+                match_all=match_all,
+                counterfactual=counterfactual,
+                memory_type=memory_type,
+                state_type=state_type,
+            )
         # Track search result IDs for implicit feedback (fail-open)
         try:
             _last_search_ids = [
@@ -1680,7 +1836,21 @@ def search_knowledge(
     }
 
 
-# Dead code below removed — inline fallback replaced by SearchPipeline
+def _merge_project_results(project_result: dict, global_result: dict) -> dict:
+    seen_ids = {r["id"] for r in project_result.get("results", []) if "id" in r}
+    merged = list(project_result.get("results", []))
+    for r in global_result.get("results", []):
+        if r.get("id") not in seen_ids:
+            r["source"] = "global"
+            merged.append(r)
+    merged.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+    return {
+        "results": merged,
+        "count": len(merged),
+        "total_memories": project_result.get("total_memories", 0),
+        "query": project_result.get("query", ""),
+        "mode": project_result.get("mode", ""),
+    }
 
 
 def _extract_error_text(content, context):
@@ -1938,8 +2108,63 @@ def fuzzy_search(query: str, top_k: int = 10, table: str = "knowledge") -> dict:
         table = "knowledge"
 
     top_k = _validate_top_k(top_k, default=10, min_val=1, max_val=100)
-    results = _fuzzy_keyword_search(query.strip(), table, top_k)
-    return {"query": query, "table": table, "results": results, "count": len(results)}
+
+    project_db = _get_current_project_db()
+    is_project_scoped = project_db.name != GLOBAL_DB
+
+    if is_project_scoped:
+        project_colls = project_db.collections
+        project_results = _sh_fuzzy(
+            query.strip(),
+            table,
+            top_k,
+            collections={
+                "knowledge": project_colls.get("knowledge", collection),
+                "observations": project_colls.get("observations", observations),
+                "fix_outcomes": project_colls.get("fix_outcomes", fix_outcomes),
+                "web_pages": project_colls.get("web_pages", web_pages),
+            },
+            fts_ready=True,
+        )
+        if not project_results:
+            project_results = _fuzzy_keyword_search(query.strip(), table, top_k)
+        results = project_results
+
+        # Shared deps search (non-empty only, deduped)
+        shared_deps = _non_empty_shared_deps()
+        seen_ids = {r.get("id") for r in (results or []) if r.get("id")}
+        for dep_db in shared_deps:
+            dep_colls = dep_db.collections
+            dep_results = _sh_fuzzy(
+                query.strip(),
+                table,
+                top_k,
+                collections={
+                    "knowledge": dep_colls.get("knowledge", collection),
+                    "observations": dep_colls.get("observations", observations),
+                    "fix_outcomes": dep_colls.get("fix_outcomes", fix_outcomes),
+                    "web_pages": dep_colls.get("web_pages", web_pages),
+                },
+                fts_ready=True,
+            )
+            for r in dep_results or []:
+                if r.get("id") not in seen_ids:
+                    r["source"] = f"shared:{dep_db.name}"
+                    results = (results or []) + [r]
+                    seen_ids.add(r.get("id"))
+    else:
+        results = _fuzzy_keyword_search(query.strip(), table, top_k)
+
+    out = {
+        "query": query,
+        "table": table,
+        "results": results,
+        "count": len(results or []),
+    }
+    if is_project_scoped:
+        out["project_db"] = project_db.name
+        out["shared_dbs_searched"] = [d.name for d in _non_empty_shared_deps()]
+    return out
 
 
 @mcp.tool()
@@ -1951,6 +2176,8 @@ def remember_this(
     force: bool = False,
     source_session_id: str = "",
     source_observation_ids: str = "",
+    scope: str = "",
+    dep: str = "",
 ) -> dict:
     """Save something to persistent memory. Use after every fix, discovery, or decision.
 
@@ -1961,6 +2188,8 @@ def remember_this(
         force: Skip dedup check entirely (escape hatch if threshold is wrong)
         source_session_id: Session ID to record provenance (auto-detected if omitted)
         source_observation_ids: Comma-separated observation IDs this knowledge was derived from
+        scope: "global" to write to global DB regardless of project context, "" for default routing
+        dep: Write to shared dep DB (e.g. "toroidal-toolshed"). Validated against .gitmodules.
     """
     _ensure_initialized()
     if _surreal_degraded:
@@ -1969,10 +2198,26 @@ def remember_this(
             "degraded": True,
         }
 
+    if scope == "global":
+        target_db = _get_project_db(GLOBAL_DB)
+    elif dep:
+        known = _known_shared_dep_names()
+        if known and dep not in known:
+            return {
+                "error": f"Unknown dep '{dep}'. Valid deps: {sorted(known)}",
+                "total_memories": 0,
+            }
+        target_db = _get_project_db(f"shared.{dep}")
+    else:
+        target_db = _get_current_project_db()
+    target_collection = target_db.collections["knowledge"]
+
     # Delegate to WritePipeline (with inline fallback)
     if _write_pipeline is not None:
         _write_pipeline.h["server_project"] = _SERVER_PROJECT
         _write_pipeline.h["server_subproject"] = _SERVER_SUBPROJECT
+        orig_collection = _write_pipeline.collection
+        _write_pipeline.collection = target_collection
         result = _write_pipeline.write(
             content,
             context=context,
@@ -1981,6 +2226,7 @@ def remember_this(
             source_session_id=source_session_id,
             source_observation_ids=source_observation_ids,
         )
+        _write_pipeline.collection = orig_collection
 
         # RELATE: knowledge->derived_from->observation (fail-open)
         if (
@@ -1990,11 +2236,12 @@ def remember_this(
         ):
             try:
                 doc_id = result.get("id", "")
-                if _surreal_db is not None and doc_id:
+                relate_conn = target_db.conn
+                if relate_conn is not None and doc_id:
                     for oid in source_observation_ids.split(","):
                         oid = oid.strip()
                         if oid:
-                            _surreal_db.query(
+                            relate_conn.query(
                                 "RELATE $from->derived_from->$to SET timestamp=time::now()",
                                 {
                                     "from": RecordID("knowledge", doc_id),
@@ -2004,6 +2251,8 @@ def remember_this(
             except Exception:
                 pass
 
+        if target_db.name != GLOBAL_DB:
+            result["project_db"] = target_db.name
         return result
 
     # Pipeline not initialized — return error
@@ -2163,7 +2412,29 @@ def get_memory(id: str) -> dict:
         if not ids:
             return {"error": "No valid ID provided"}
 
-        result = collection.get(ids=ids, include=["documents", "metadatas"])
+        project_db = _get_current_project_db()
+        target_collection = project_db.collections["knowledge"]
+        result = target_collection.get(ids=ids, include=["documents", "metadatas"])
+
+        # Fallback: shared deps (early-exit on first hit)
+        if (
+            not result or not result.get("documents") or len(result["documents"]) == 0
+        ) and project_db.name != GLOBAL_DB:
+            for dep_db in _get_shared_deps():
+                result = dep_db.collections["knowledge"].get(
+                    ids=ids, include=["documents", "metadatas"]
+                )
+                if result and result.get("documents") and len(result["documents"]) > 0:
+                    break
+
+        # Fallback: global
+        if (
+            not result or not result.get("documents") or len(result["documents"]) == 0
+        ) and project_db.name != GLOBAL_DB:
+            global_db = _get_project_db(GLOBAL_DB)
+            result = global_db.collections["knowledge"].get(
+                ids=ids, include=["documents", "metadatas"]
+            )
         if not result or not result.get("documents") or len(result["documents"]) == 0:
             return {"error": f"No memory found with id: {id}"}
 
@@ -2216,7 +2487,7 @@ def get_memory(id: str) -> dict:
                     updated_meta = dict(meta)
                     updated_meta["retrieval_count"] = retrieval_count
                     updated_meta["last_retrieved"] = datetime.now().isoformat()
-                    collection.update(ids=[ids[i]], metadatas=[updated_meta])
+                    target_collection.update(ids=[ids[i]], metadatas=[updated_meta])
                 except Exception:
                     pass  # Tracking failure must not break retrieval
 
@@ -2900,7 +3171,7 @@ def health_check() -> dict:
     """Return lightweight server health metrics.
 
     Returns server uptime, table row counts, last write timestamp,
-    embedding model status, LanceDB connection status, Tags DB status,
+    embedding model status, SurrealDB connection status, Tags DB status,
     total memory count, and disk usage of ~/data/memory/surrealdb/.
 
     No heavy queries — reads only cached globals and filesystem metadata.
@@ -2950,6 +3221,26 @@ def health_check() -> dict:
     except Exception:
         disk_bytes = -1
 
+    pool_info = {}
+    for pname, pdb in _project_pool.items():
+        try:
+            pool_info[pname] = pdb.collections["knowledge"].count()
+        except Exception:
+            pool_info[pname] = -1
+
+    config = _read_config_toggles()
+
+    shared = []
+    try:
+        for dep in _get_shared_deps():
+            try:
+                cnt = dep.collections["knowledge"].count()
+            except Exception:
+                cnt = -1
+            shared.append({"name": dep.name, "count": cnt})
+    except Exception:
+        pass
+
     return {
         "status": "ok" if not _surreal_degraded else "degraded",
         "uptime": uptime_str,
@@ -2966,6 +3257,11 @@ def health_check() -> dict:
         if disk_bytes >= 0
         else -1,
         "initialized": _initialized,
+        "project_pool": pool_info,
+        "current_project": _SERVER_PROJECT,
+        "project_fallback_threshold": config.get("project_fallback_threshold", 0.35),
+        "shared_deps": shared,
+        "shared_tier_enabled": len(shared) > 0,
     }
 
 
@@ -4171,9 +4467,9 @@ def _handle_socket_client(conn):
 
 
 def _backup_database():
-    """Create a consistent backup of the LanceDB directory.
+    """Create a consistent backup of the SurrealDB data directory.
 
-    LanceDB stores data as immutable Lance files, so a directory copy is safe.
+    SurrealDB data files are safe to copy while the server is running.
     Returns dict with backup_path and size_bytes.
     """
     import shutil
@@ -4209,7 +4505,7 @@ def _backup_database():
 
 
 def _dispatch_request(req):
-    """Route a UDS request to the appropriate LanceDB operation."""
+    """Route a UDS request to the appropriate SurrealDB operation."""
     method = req.get("method", "")
     col_name = req.get("collection", "")
     params = req.get("params", {})
@@ -4589,7 +4885,7 @@ def _start_sse_watchdog():
 
 
 # ──────────────────────────────────────────────────
-# Agent Coordination (agent_channel.py v2 wrapper)
+# Agent Coordination (Neon coordinator → SQLite fallback)
 # ──────────────────────────────────────────────────
 
 
@@ -4620,6 +4916,9 @@ def agent_coordination(
 ) -> dict:
     """Unified agent task and messaging coordination.
 
+    Uses Neon Postgres coordinator when COORDINATOR_DSN/NEON_DSN is set,
+    otherwise falls back to local SQLite agent_channel.
+
     Actions:
       create_task   — Create a task (title, created_by required)
       list_tasks    — List tasks (optional: status, agent_id, tag)
@@ -4628,20 +4927,24 @@ def agent_coordination(
       send_message  — Send a message (content required, optional: to_agent, msg_type)
       read_messages — Read recent messages (optional: agent_id, since_minutes)
     """
-    _ac_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    _ac_path = os.path.dirname(os.path.abspath(__file__))
     if _ac_path not in _sys.path:
         _sys.path.insert(0, _ac_path)
+    _tc_path = os.path.normpath(os.path.join(_ac_path, "..", "toroidal-coordinator"))
+    if _tc_path not in _sys.path:
+        _sys.path.insert(0, _tc_path)
     try:
-        from shared.agent_channel import (
-            create_task as _ac_create,
-            list_tasks as _ac_list,
-            claim_next_task as _ac_claim,
-            complete_task as _ac_complete,
-            post_message as _ac_post,
-            read_messages as _ac_read,
-        )
+        from coordinator.fallback import get_backend
+
+        _backend = get_backend()
+        _ac_create = _backend.create_task
+        _ac_list = _backend.list_tasks
+        _ac_claim = _backend.claim_next_task
+        _ac_complete = _backend.complete_task
+        _ac_post = _backend.post_message
+        _ac_read = _backend.read_messages
     except ImportError as e:
-        return {"error": f"agent_channel import failed: {e}"}
+        return {"error": f"coordinator backend import failed: {e}"}
 
     action = action.strip().lower().replace("-", "_")
 
@@ -4777,7 +5080,7 @@ if __name__ == "__main__":
             f"[{datetime.now().isoformat()}] PID={os.getpid()} args={_sys.argv} starting\n"
         )
 
-    # Background warmup: load embedding model + LanceDB while uvicorn starts.
+    # Background warmup: load embedding model + SurrealDB while uvicorn starts.
     # This eliminates the 80-160s cold-start timeout on first tool call.
     def _background_warmup():
         try:

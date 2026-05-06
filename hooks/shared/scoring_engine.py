@@ -92,7 +92,7 @@ def score_result(
     Args:
         result: Memory result dict with keys: id, tier, timestamp,
                 retrieval_count, tags, preview
-        base_similarity: Raw vector similarity from LanceDB (0.0-1.0)
+        base_similarity: Raw vector similarity from SurrealDB (0.0-1.0)
         ctx: ScoringContext with LTP factors, graph scores, etc.
 
     Returns:

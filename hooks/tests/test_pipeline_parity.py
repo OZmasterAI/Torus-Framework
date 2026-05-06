@@ -1,7 +1,7 @@
 """Parity tests for Memory v2 Layered Redesign — Phase 4.
 
 Verifies that SearchPipeline and WritePipeline produce correct results
-using the test LanceDB snapshot at ~/data/memory/lancedb-v2-test/.
+using the test SurrealDB snapshot at ~/data/memory/surrealdb_v3/.
 
 Tests:
 - Search: 50 real queries, verify top-5 results have valid structure
@@ -58,9 +58,9 @@ def surreal_db():
 
 
 @pytest.fixture(scope="module")
-def knowledge_table(lance_db):
+def knowledge_table(surreal_db):
     """Open the knowledge table."""
-    return lance_db.open_table("knowledge")
+    return surreal_db.select("knowledge")
 
 
 @pytest.fixture(scope="module")
@@ -74,7 +74,7 @@ def sample_rows(knowledge_table):
 REAL_QUERIES = [
     "gate fix error",
     "memory decay scoring",
-    "LanceDB FTS search",
+    "SurrealDB FTS search",
     "knowledge graph spreading activation",
     "LTP tracker access",
     "entity extraction",

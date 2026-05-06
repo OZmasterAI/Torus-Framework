@@ -224,3 +224,91 @@ def _test_agent_dir(projects_dir):
 
 
 _test_agent_dir(None)  # projects_dir unused but signature required
+
+
+# Test 12: ~/.claude detected as torus-framework
+def _test_claude_dir_as_framework(projects_dir):
+    import boot_pkg.util as _util
+
+    result = detect_project(_util.CLAUDE_DIR)
+    test(
+        "PD: ~/.claude returns torus-framework",
+        result[0] == "torus-framework" and result[2] is None,
+        f"got {result}",
+    )
+
+
+_with_temp_projects(_test_claude_dir_as_framework)
+
+
+# Test 13: parse_gitmodules returns submodules from real .gitmodules
+def _test_parse_gitmodules_real(projects_dir):
+    from boot_pkg.util import parse_gitmodules
+    import boot_pkg.util as _util
+
+    result = parse_gitmodules(_util.CLAUDE_DIR)
+    test(
+        "PD: parse_gitmodules finds 6 submodules",
+        len(result) == 6 and "toolshed" in result,
+        f"got {len(result)}: {result}",
+    )
+
+
+_with_temp_projects(_test_parse_gitmodules_real)
+
+
+# Test 14: parse_gitmodules with synthetic .gitmodules
+def _test_parse_gitmodules_synthetic(projects_dir):
+    from boot_pkg.util import parse_gitmodules
+    import tempfile, os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, ".gitmodules"), "w") as f:
+            f.write(
+                '[submodule "foo"]\n\tpath = foo\n\turl = https://github.com/org/bar.git\n'
+            )
+        result = parse_gitmodules(tmpdir)
+        test(
+            "PD: parse_gitmodules extracts repo name from URL",
+            result == {"foo": "bar"},
+            f"got {result}",
+        )
+
+
+_with_temp_projects(_test_parse_gitmodules_synthetic)
+
+
+# Test 15: parse_gitmodules returns {} when no .gitmodules
+def _test_parse_gitmodules_missing(projects_dir):
+    from boot_pkg.util import parse_gitmodules
+
+    result = parse_gitmodules("/tmp/nonexistent-dir-xyz")
+    test(
+        "PD: parse_gitmodules returns {} for missing file",
+        result == {},
+        f"got {result}",
+    )
+
+
+_with_temp_projects(_test_parse_gitmodules_missing)
+
+
+# Test 16: parse_gitmodules handles URL without .git suffix
+def _test_parse_gitmodules_no_suffix(projects_dir):
+    from boot_pkg.util import parse_gitmodules
+    import tempfile, os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, ".gitmodules"), "w") as f:
+            f.write(
+                '[submodule "x"]\n\tpath = x\n\turl = https://github.com/org/myrepo\n'
+            )
+        result = parse_gitmodules(tmpdir)
+        test(
+            "PD: parse_gitmodules handles URL without .git suffix",
+            result == {"x": "myrepo"},
+            f"got {result}",
+        )
+
+
+_with_temp_projects(_test_parse_gitmodules_no_suffix)

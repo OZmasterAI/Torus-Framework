@@ -15,7 +15,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 
-from shared.skill_db import (
+from .skill_db import (
     get_skill_record,
     add_lineage_parent,
 )
@@ -285,7 +285,9 @@ def _apply_evolution(
             old_rec.get("category", "workflow") if old_rec else "workflow",
             new_gen,
             change_summary,
-            "",  # content_diff (could compute later)
+            f"-{len(original_content)}+{len(new_content)} chars"
+            if original_content != new_content
+            else "no change",
             new_content[:500],  # snapshot
             now,
             "skill_evolver_v2",
@@ -472,6 +474,7 @@ def evolve_derived(
             return _apply_derived(
                 conn=conn,
                 parent_skill_id=parent_skill_id,
+                parent_skill_name=parent_skill_name,
                 new_name=parsed["new_name"],
                 new_content=parsed["content"],
                 change_summary=parsed["change_summary"],
@@ -489,6 +492,7 @@ def evolve_derived(
 def _apply_derived(
     conn: sqlite3.Connection,
     parent_skill_id: str,
+    parent_skill_name: str,
     new_name: str,
     new_content: str,
     change_summary: str,
@@ -517,7 +521,7 @@ def _apply_derived(
         (
             new_skill_id,
             new_name,
-            "",
+            f"Derived from {parent_skill_name}",
             new_dir,
             change_summary,
             new_content[:500],

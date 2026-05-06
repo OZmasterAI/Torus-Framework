@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PostToolUse hook — auto-detect skill execution outcomes.
 
-Watches for invoke_skill calls from skills/skills-v2 MCP servers,
+Watches for invoke_skill calls from skills/torus-skills MCP servers,
 tracks subsequent tool calls for success/failure signals, then
 writes the outcome to SQLite via skill_db.
 
@@ -30,7 +30,7 @@ _DEFAULT_DB_PATH = os.path.join(
 
 # Tool name patterns for skill invocation
 _INVOKE_PATTERNS = (
-    "mcp__skills-v2__invoke_skill",
+    "mcp__torus-skills__invoke_skill",
     "mcp__skills__invoke_skill",
 )
 
@@ -63,7 +63,7 @@ def detect_skill_invocation(
     # Toolshed gateway path
     elif (
         tool_name == "mcp__toolshed__run_tool"
-        and tool_input.get("server") == "skills-v2"
+        and tool_input.get("server") == "torus-skills"
         and tool_input.get("tool") == "invoke_skill"
     ):
         skill_name = tool_input.get("args", {}).get("name", "")
@@ -163,7 +163,43 @@ def _record_to_db(skill_name: str, success: bool, context: str, db_path: str) ->
         conn = init_db(db_path)
         skill_id = get_or_create_skill(conn, skill_name)
         record_outcome(conn, skill_id, applied=True, completed=success)
+        _write_evolution_trigger(conn, skill_name, skill_id)
         conn.close()
+    except Exception:
+        pass
+
+
+_EVOLUTION_TRIGGER_DIR = os.path.join(_RAMDISK_DIR, "evolution_triggers")
+
+
+def _write_evolution_trigger(conn, skill_name: str, skill_id: str) -> None:
+    """If skill is evolution-eligible, write trigger file to ramdisk for the MCP server to pick up."""
+    try:
+        from shared.skill_triggers import is_evolution_eligible
+        from shared.skill_db import computed_rates, get_skill_record
+
+        if not is_evolution_eligible(conn, skill_id):
+            return
+
+        rec = get_skill_record(conn, skill_id)
+        if rec is None:
+            return
+        rates = computed_rates(rec)
+
+        os.makedirs(_EVOLUTION_TRIGGER_DIR, exist_ok=True)
+        trigger_path = os.path.join(_EVOLUTION_TRIGGER_DIR, f"{skill_name}.json")
+        with open(trigger_path, "w") as f:
+            json.dump(
+                {
+                    "skill_name": skill_name,
+                    "skill_id": skill_id,
+                    "evolution_type": "FIX",
+                    "completion_rate": rates["completion_rate"],
+                    "fallback_rate": rates["fallback_rate"],
+                    "triggered_at": time.time(),
+                },
+                f,
+            )
     except Exception:
         pass
 

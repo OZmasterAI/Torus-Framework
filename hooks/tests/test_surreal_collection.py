@@ -183,7 +183,7 @@ def search_collection(db):
         documents=[
             "The framework gate system enforces safety checks",
             "Memory server stores knowledge vectors for retrieval",
-            "SurrealDB migration replaces LanceDB backend",
+            "SurrealDB migration replaces legacy vector backend",
             "Python testing with pytest and fixtures",
             "Git branching strategy for feature development",
         ],

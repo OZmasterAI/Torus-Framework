@@ -159,11 +159,24 @@ def fuzzy_keyword_search(
     expanded_query = " OR ".join(set(all_variants))
 
     try:
-        rows = (
-            tbl_coll._table.search(expanded_query, query_type="fts")
-            .limit(top_k * 2)
-            .to_list()
-        )
+        rows = tbl_coll.keyword_search(query, top_k=top_k * 2)
+
+        if len(rows) < top_k:
+            seen_ids = {str(r.get("id", "")) for r in rows}
+            swap_variants = []
+            for term in terms:
+                for i in range(len(term) - 1):
+                    swap_variants.append(
+                        term[:i] + term[i + 1] + term[i] + term[i + 2 :]
+                    )
+            if swap_variants:
+                fuzzy_q = " ".join(swap_variants[:20])
+                extra = tbl_coll.keyword_search(fuzzy_q, top_k=top_k)
+                for r in extra:
+                    if str(r.get("id", "")) not in seen_ids:
+                        rows.append(r)
+                        seen_ids.add(str(r.get("id", "")))
+
         if not rows:
             return []
 
@@ -179,7 +192,7 @@ def fuzzy_keyword_search(
                 {
                     "id": str(row.get("id", "")),
                     "text": str(row.get("text", ""))[:500],
-                    "relevance": float(row.get("_score", 0.5)) * boost,
+                    "relevance": float(row.get("score", 0.5)) * boost,
                     "tags": str(row.get("tags", "")),
                     "match_type": "exact" if boost > 1.0 else "fuzzy",
                 }

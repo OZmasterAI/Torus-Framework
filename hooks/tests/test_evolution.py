@@ -87,13 +87,13 @@ def test_evolution_enriches_neighbor_tags():
     # Use high-overlap content so FakeCollection word-overlap similarity exceeds 0.3 threshold
     col.upsert(
         documents=[
-            "LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
+            "SurrealDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
         ],
         metadatas=[{"tags": "type:learning,area:backend", "context": ""}],
         ids=["neighbor_1"],
     )
     result = pipeline.write(
-        content="LanceDB vector search supports fast semantic queries with embeddings and FTS hybrid mode",
+        content="SurrealDB vector search supports fast semantic queries with embeddings and FTS hybrid mode",
         tags="type:feature,area:backend,area:memory-system",
     )
     assert result.get("id")
@@ -123,7 +123,7 @@ def test_evolution_respects_similarity_threshold():
         ids=["unrelated_1"],
     )
     result = pipeline.write(
-        content="LanceDB vector search supports hybrid retrieval with FTS backend",
+        content="SurrealDB vector search supports hybrid retrieval with FTS backend",
         tags="type:feature,area:backend",
     )
     assert col._docs["unrelated_1"]["metadata"]["tags"] == "type:recipe"
@@ -134,13 +134,13 @@ def test_evolution_max_3_updates():
     for i in range(5):
         col.upsert(
             documents=[
-                f"Memory system LanceDB vector search variant {i} with embeddings"
+                f"Memory system SurrealDB vector search variant {i} with embeddings"
             ],
             metadatas=[{"tags": "type:learning", "context": ""}],
             ids=[f"neighbor_{i}"],
         )
     result = pipeline.write(
-        content="Memory system LanceDB vector search with embeddings and evolution",
+        content="Memory system SurrealDB vector search with embeddings and evolution",
         tags="type:feature,area:memory-system",
     )
     updated_count = sum(
@@ -155,13 +155,13 @@ def test_evolution_no_tag_duplication():
     pipeline, col, tag_idx = _make_pipeline()
     col.upsert(
         documents=[
-            "LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
+            "SurrealDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
         ],
         metadatas=[{"tags": "type:feature,area:backend", "context": ""}],
         ids=["neighbor_1"],
     )
     result = pipeline.write(
-        content="LanceDB vector search supports fast semantic queries with embeddings and FTS hybrid mode",
+        content="SurrealDB vector search supports fast semantic queries with embeddings and FTS hybrid mode",
         tags="type:feature,area:backend,area:memory-system",
     )
     tag_list = [
@@ -175,13 +175,13 @@ def test_evolution_skips_id_prefixes():
     pipeline, col, tag_idx = _make_pipeline()
     col.upsert(
         documents=[
-            "LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
+            "SurrealDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
         ],
         metadatas=[{"tags": "type:learning", "context": ""}],
         ids=["neighbor_1"],
     )
     result = pipeline.write(
-        content="LanceDB vector search supports fast semantic queries with embeddings and FTS hybrid mode",
+        content="SurrealDB vector search supports fast semantic queries with embeddings and FTS hybrid mode",
         tags="type:feature,resolves:abc123,source:dual-write,cluster:c42",
     )
     neighbor_tags = col._docs["neighbor_1"]["metadata"]["tags"]
@@ -195,13 +195,13 @@ def test_evolution_tag_cap():
     long_tags = ",".join(f"tag{i}:value{i}" for i in range(35))  # ~420 chars, under 500
     col.upsert(
         documents=[
-            "LanceDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
+            "SurrealDB vector search supports fast semantic queries with embeddings and hybrid retrieval"
         ],
         metadatas=[{"tags": long_tags, "context": ""}],
         ids=["neighbor_1"],
     )
     result = pipeline.write(
-        content="LanceDB vector search supports fast semantic queries with embeddings and FTS hybrid mode",
+        content="SurrealDB vector search supports fast semantic queries with embeddings and FTS hybrid mode",
         tags="type:feature,area:memory-system",
     )
     assert len(col._docs["neighbor_1"]["metadata"]["tags"]) <= 500
@@ -210,12 +210,12 @@ def test_evolution_tag_cap():
 def test_evolution_no_tags_no_evolution():
     pipeline, col, tag_idx = _make_pipeline()
     col.upsert(
-        documents=["LanceDB vector search is fast for semantic queries"],
+        documents=["SurrealDB vector search is fast for semantic queries"],
         metadatas=[{"tags": "type:learning", "context": ""}],
         ids=["neighbor_1"],
     )
     result = pipeline.write(
-        content="LanceDB vector search supports full-text search with hybrid mode",
+        content="SurrealDB vector search supports full-text search with hybrid mode",
         tags="",
     )
     assert col._docs["neighbor_1"]["metadata"]["tags"] == "type:learning"
@@ -224,12 +224,12 @@ def test_evolution_no_tags_no_evolution():
 def test_evolution_disabled_flag():
     pipeline, col, tag_idx = _make_pipeline(config={"enable_evolution": False})
     col.upsert(
-        documents=["LanceDB vector search is fast for semantic queries"],
+        documents=["SurrealDB vector search is fast for semantic queries"],
         metadatas=[{"tags": "type:learning", "context": ""}],
         ids=["neighbor_1"],
     )
     result = pipeline.write(
-        content="LanceDB vector search supports full-text search with hybrid mode",
+        content="SurrealDB vector search supports full-text search with hybrid mode",
         tags="type:feature,area:memory-system",
     )
     assert col._docs["neighbor_1"]["metadata"]["tags"] == "type:learning"
@@ -258,13 +258,13 @@ def test_evolution_fail_open():
 def test_evolve_neighbors_direct():
     pipeline, col, tag_idx = _make_pipeline()
     col.upsert(
-        documents=["LanceDB vector search with embeddings for semantic retrieval"],
+        documents=["SurrealDB vector search with embeddings for semantic retrieval"],
         metadatas=[{"tags": "type:learning", "context": "search context"}],
         ids=["n1"],
     )
     count = pipeline._evolve_neighbors(
         doc_id="new_doc",
-        content="LanceDB vector search with hybrid FTS and embeddings",
+        content="SurrealDB vector search with hybrid FTS and embeddings",
         context="testing evolution",
         tags="type:feature,area:memory-system",
         collection=col,

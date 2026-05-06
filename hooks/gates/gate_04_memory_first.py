@@ -21,7 +21,9 @@ GATE_NAME = "GATE 4: MEMORY FIRST"
 
 # Max time (seconds) since last memory query before edits are blocked
 MEMORY_FRESHNESS_WINDOW = 300  # 5 minutes
-WRITE_FRESHNESS_WINDOW = 600   # 10 minutes — Write gets more time (large file composition)
+WRITE_FRESHNESS_WINDOW = (
+    600  # 10 minutes — Write gets more time (large file composition)
+)
 
 # Tools that require recent memory query
 GATED_TOOLS = {"Edit", "Write", "NotebookEdit", "Task"}
@@ -38,8 +40,6 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
 
     if tool_name not in GATED_TOOLS:
         return GateResult(blocked=False, gate_name=GATE_NAME)
-
-
 
     tool_input = safe_tool_input(tool_input)
 
@@ -69,23 +69,35 @@ def check(tool_name, tool_input, state, event_type="PreToolUse"):
     # Check if memory was queried recently (checks both enforcer state AND MCP sideband file)
     last_query = get_memory_last_queried(state)
     import sys as _sys, json as _json, os as _os
-    _sf = '/run/user/1000/claude-hooks/state/state_main.json'
-    _sb = '/run/user/1000/claude-hooks/state/.enforcer_sideband_main.json'
-    _sf_mlq = 'N/A'
-    _sb_mlq = 'N/A'
+
+    _sf = f"/run/user/{_os.getuid()}/claude-hooks/state/state_main.json"
+    _sb = f"/run/user/{_os.getuid()}/claude-hooks/state/.enforcer_sideband_main.json"
+    _sf_mlq = "N/A"
+    _sb_mlq = "N/A"
     try:
-        with open(_sf) as _f: _sf_mlq = str(_json.load(_f).get('memory_last_queried', 0))
-    except: pass
+        with open(_sf) as _f:
+            _sf_mlq = str(_json.load(_f).get("memory_last_queried", 0))
+    except:
+        pass
     try:
         if _os.path.exists(_sb):
-            with open(_sb) as _f: _sb_mlq = str(_json.load(_f).get('memory_last_queried', 0))
-        else: _sb_mlq = 'DELETED'
-    except: pass
+            with open(_sb) as _f:
+                _sb_mlq = str(_json.load(_f).get("memory_last_queried", 0))
+        else:
+            _sb_mlq = "DELETED"
+    except:
+        pass
     elapsed = time.time() - last_query
 
     # F3: Per-tool freshness windows — Write gets 10 min (composition takes longer)
-    base_window = WRITE_FRESHNESS_WINDOW if tool_name == "Write" else MEMORY_FRESHNESS_WINDOW
-    freshness_window = state.get("gate_tune_overrides", {}).get("gate_04_memory_first", {}).get("freshness_window", base_window)
+    base_window = (
+        WRITE_FRESHNESS_WINDOW if tool_name == "Write" else MEMORY_FRESHNESS_WINDOW
+    )
+    freshness_window = (
+        state.get("gate_tune_overrides", {})
+        .get("gate_04_memory_first", {})
+        .get("freshness_window", base_window)
+    )
     if elapsed > freshness_window:
         if last_query == 0:
             msg = f"[{GATE_NAME}] BLOCKED: Query memory before editing. Use search_knowledge() to check for existing knowledge about what you're changing."

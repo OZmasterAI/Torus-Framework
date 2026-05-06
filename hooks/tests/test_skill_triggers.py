@@ -324,6 +324,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     conn.close()
 
 
-print(f"\n{'=' * 40}")
-print(f"skill_triggers: {passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+if __name__ == "__main__":
+    print(f"\n{'=' * 40}")
+    print(f"skill_triggers: {passed} passed, {failed} failed")
+    sys.exit(1 if failed else 0)

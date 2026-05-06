@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Web page indexer — fetch, clean, chunk, and upsert to LanceDB web_pages collection."""
+"""Web page indexer — fetch, clean, chunk, and upsert to SurrealDB web_pages collection."""
 
 import argparse
 import hashlib
@@ -18,9 +18,12 @@ from markdownify import markdownify as md
 
 def fetch_html(url: str) -> tuple[str, str]:
     """Fetch URL and return (html_content, final_url)."""
-    resp = httpx.get(url, follow_redirects=True, timeout=15, headers={
-        "User-Agent": "Mozilla/5.0 (compatible; ClaudeWebIndexer/1.0)"
-    })
+    resp = httpx.get(
+        url,
+        follow_redirects=True,
+        timeout=15,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; ClaudeWebIndexer/1.0)"},
+    )
     resp.raise_for_status()
     return resp.text, str(resp.url)
 
@@ -30,19 +33,36 @@ def extract_content(html: str) -> tuple[str, str]:
     soup = BeautifulSoup(html, "lxml")
 
     # Extract title before stripping
-    title = soup.title.string.strip() if soup.title and soup.title.string else "Untitled"
+    title = (
+        soup.title.string.strip() if soup.title and soup.title.string else "Untitled"
+    )
 
     # Remove noise elements
-    for tag in soup.find_all(["nav", "footer", "header", "script", "style",
-                               "noscript", "iframe", "svg", "aside"]):
+    for tag in soup.find_all(
+        [
+            "nav",
+            "footer",
+            "header",
+            "script",
+            "style",
+            "noscript",
+            "iframe",
+            "svg",
+            "aside",
+        ]
+    ):
         tag.decompose()
 
     # Remove common ad/tracking divs
     for attr in ["id", "class"]:
-        for el in soup.find_all(attrs={attr: re.compile(
-            r"(sidebar|menu|cookie|banner|popup|modal|social|share|comment|ad[s]?[-_]|tracking)",
-            re.I
-        )}):
+        for el in soup.find_all(
+            attrs={
+                attr: re.compile(
+                    r"(sidebar|menu|cookie|banner|popup|modal|social|share|comment|ad[s]?[-_]|tracking)",
+                    re.I,
+                )
+            }
+        ):
             el.decompose()
 
     # Find main content area (prefer article/main, fall back to body)
@@ -143,8 +163,13 @@ def index_url(url: str, preview: bool = False) -> dict:
     # Quality check
     passed, reason, score = quality_check(markdown)
     if not passed:
-        return {"status": "rejected", "url": final_url, "title": title,
-                "reason": reason, "score": score}
+        return {
+            "status": "rejected",
+            "url": final_url,
+            "title": title,
+            "reason": reason,
+            "score": score,
+        }
 
     # Check for duplicate
     c_hash = content_hash(markdown)
@@ -162,10 +187,12 @@ def index_url(url: str, preview: bool = False) -> dict:
             "words": total_words,
             "quality_score": score,
             "content_hash": c_hash,
-            "first_chunk_preview": chunks[0][:300] + "..." if len(chunks[0]) > 300 else chunks[0],
+            "first_chunk_preview": chunks[0][:300] + "..."
+            if len(chunks[0]) > 300
+            else chunks[0],
         }
 
-    # Upsert to LanceDB
+    # Upsert to SurrealDB
     from shared import memory_socket
 
     # Check for existing content with same hash (dedup)
@@ -174,9 +201,13 @@ def index_url(url: str, preview: bool = False) -> dict:
         if existing and existing.get("metadatas"):
             for meta in existing["metadatas"]:
                 if meta.get("content_hash") == c_hash:
-                    return {"status": "duplicate", "url": final_url, "title": title,
-                            "content_hash": c_hash,
-                            "existing_url": meta.get("url", "unknown")}
+                    return {
+                        "status": "duplicate",
+                        "url": final_url,
+                        "title": title,
+                        "content_hash": c_hash,
+                        "existing_url": meta.get("url", "unknown"),
+                    }
     except Exception:
         pass  # If check fails, proceed with upsert
 
@@ -189,15 +220,17 @@ def index_url(url: str, preview: bool = False) -> dict:
     for i, chunk in enumerate(chunks):
         chunk_id = f"web_{c_hash}_{i}"
         documents.append(chunk)
-        metadatas.append({
-            "url": final_url,
-            "title": title[:200],
-            "chunk_index": i,
-            "total_chunks": len(chunks),
-            "indexed_at": now,
-            "content_hash": c_hash,
-            "word_count": len(chunk.split()),
-        })
+        metadatas.append(
+            {
+                "url": final_url,
+                "title": title[:200],
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+                "indexed_at": now,
+                "content_hash": c_hash,
+                "word_count": len(chunk.split()),
+            }
+        )
         ids.append(chunk_id)
 
     memory_socket.upsert("web_pages", documents, metadatas, ids)
@@ -214,16 +247,21 @@ def index_url(url: str, preview: bool = False) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Index a web page into LanceDB")
+    parser = argparse.ArgumentParser(description="Index a web page into SurrealDB")
     parser.add_argument("url", help="URL to index")
-    parser.add_argument("--preview", action="store_true",
-                        help="Preview what would be indexed without storing")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Preview what would be indexed without storing",
+    )
     args = parser.parse_args()
 
     try:
         result = index_url(args.url, preview=args.preview)
     except httpx.HTTPStatusError as e:
-        print(f"HTTP error fetching {args.url}: {e.response.status_code}", file=sys.stderr)
+        print(
+            f"HTTP error fetching {args.url}: {e.response.status_code}", file=sys.stderr
+        )
         sys.exit(1)
     except httpx.ConnectError as e:
         print(f"Connection error: {e}", file=sys.stderr)

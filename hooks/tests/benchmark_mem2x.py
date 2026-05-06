@@ -18,9 +18,9 @@ from shared.entity_extraction import extract_entities, extract_cooccurrences
 
 
 def banner(msg):
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {msg}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def test_e2e_decay_curve():
@@ -28,7 +28,7 @@ def test_e2e_decay_curve():
     banner("1. Hybrid Decay Curve")
     ages = [0, 0.5, 1, 3, 7, 14, 30, 90, 180, 365]
     print(f"  {'Age (days)':>10}  {'Decay':>8}  {'Potentiated':>12}")
-    print(f"  {'-'*10}  {'-'*8}  {'-'*12}")
+    print(f"  {'-' * 10}  {'-' * 8}  {'-' * 12}")
     prev = 1.0
     for age in ages:
         d = _time_decay_factor(age)
@@ -85,7 +85,9 @@ def test_e2e_ltp_scoring_integration():
         score_high = calculate_relevance_score(high_access)
         score_low = calculate_relevance_score(low_access)
         delta = score_high - score_low
-        print(f"  Age {age_days:>3}d: high_access={score_high:.4f}  low_access={score_low:.4f}  delta={delta:+.4f}")
+        print(
+            f"  Age {age_days:>3}d: high_access={score_high:.4f}  low_access={score_low:.4f}  delta={delta:+.4f}"
+        )
         assert score_high > score_low, f"High access should score higher at {age_days}d"
     print("  PASS: LTP-protected memories score higher")
 
@@ -94,12 +96,18 @@ def test_e2e_entity_extraction():
     """Verify entity extraction quality."""
     banner("4. Entity Extraction")
     test_cases = [
-        ("Fixed the LanceDB migration bug in memory_server.py",
-         {"LanceDB", "memory_server.py"}),
-        ("The knowledge graph uses spreading activation for retrieval",
-         {"knowledge graph", "spreading activation"}),
-        ("ChromaDB was replaced by LanceDB in the vector search pipeline",
-         {"ChromaDB", "LanceDB"}),
+        (
+            "Fixed the SurrealDB migration bug in memory_server.py",
+            {"SurrealDB", "memory_server.py"},
+        ),
+        (
+            "The knowledge graph uses spreading activation for retrieval",
+            {"knowledge graph", "spreading activation"},
+        ),
+        (
+            "ChromaDB was replaced by SurrealDB in the vector search pipeline",
+            {"ChromaDB", "SurrealDB"},
+        ),
     ]
     for text, expected_subset in test_cases:
         entities = extract_entities(text)
@@ -111,7 +119,9 @@ def test_e2e_entity_extraction():
         if missing:
             print(f"    Missing: {missing}")
         # Allow partial matches (entity extraction is heuristic)
-        assert len(found) >= 1, f"Should find at least 1 expected entity, got none from {names}"
+        assert len(found) >= 1, (
+            f"Should find at least 1 expected entity, got none from {names}"
+        )
     print("  PASS: entity extraction finds key terms")
 
 
@@ -122,9 +132,9 @@ def test_e2e_knowledge_graph():
 
     # Populate from sample memories
     memories = [
-        "Fixed the LanceDB vector search bug in memory_server.py",
+        "Fixed the SurrealDB vector search bug in memory_server.py",
         "The knowledge graph uses spreading activation for enriched retrieval",
-        "LanceDB replaced ChromaDB for vector search in the memory system",
+        "SurrealDB replaced ChromaDB for vector search in the memory system",
         "Entity extraction pipeline extracts compounds like knowledge graph",
         "Spreading activation traverses the knowledge graph via BFS",
     ]
@@ -147,9 +157,9 @@ def test_e2e_knowledge_graph():
 
     # Spreading activation
     t0 = time.time()
-    results = graph.spreading_activation(["LanceDB"], max_hops=3)
+    results = graph.spreading_activation(["SurrealDB"], max_hops=3)
     activate_ms = (time.time() - t0) * 1000
-    print(f"  Activation from 'LanceDB': {len(results)} nodes reached")
+    print(f"  Activation from 'SurrealDB': {len(results)} nodes reached")
     for r in results[:5]:
         print(f"    {r['name']:>25}: activation={r['activation']:.4f} hops={r['hops']}")
     print(f"  Activation time: {activate_ms:.1f}ms")
@@ -205,7 +215,7 @@ def benchmark_performance():
     print(f"  _time_decay_factor: {decay_us:.1f} µs/call")
 
     # Entity extraction
-    text = "Fixed the LanceDB vector search bug in memory_server.py with spreading activation"
+    text = "Fixed the SurrealDB vector search bug in memory_server.py with spreading activation"
     t0 = time.time()
     for _ in range(1000):
         extract_entities(text)
@@ -217,7 +227,7 @@ def benchmark_performance():
     for i in range(100):
         graph.upsert_entity(f"entity_{i}", "Concept")
         if i > 0:
-            graph.add_edge(f"entity_{i-1}", f"entity_{i}", "related", strength=0.5)
+            graph.add_edge(f"entity_{i - 1}", f"entity_{i}", "related", strength=0.5)
 
     t0 = time.time()
     for _ in range(100):

@@ -8,7 +8,7 @@ selection gate (skills need >= 5 fresh selections after evolution).
 
 import sqlite3
 
-from shared.skill_db import get_all_skill_records, get_skill_record, computed_rates
+from .skill_db import get_all_skill_records, get_skill_record, computed_rates
 
 # Thresholds from OpenSpace (proven values)
 FALLBACK_THRESHOLD = 0.4  # >40% fallback rate -> candidate

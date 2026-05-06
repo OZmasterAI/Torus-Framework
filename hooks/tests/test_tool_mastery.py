@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for shared/tool_mastery.py"""
+
 import os
 import sys
 import json
@@ -8,12 +9,20 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from shared.tool_mastery import (
-    record_tool_use, get_mastery_level, get_task_preferences,
-    get_mastery_report, suggest_tool, load_mastery, save_mastery,
-    _default_mastery, infer_task_type, MASTERY_LEVELS,
+    record_tool_use,
+    get_mastery_level,
+    get_task_preferences,
+    get_mastery_report,
+    suggest_tool,
+    load_mastery,
+    save_mastery,
+    _default_mastery,
+    infer_task_type,
+    MASTERY_LEVELS,
 )
 
 passed = failed = 0
+
 
 def test(name, condition, detail=""):
     global passed, failed
@@ -41,7 +50,9 @@ test("Untracked tool ignored", "UnknownTool" not in data["tool_task_stats"])
 
 # Unknown task type normalized
 record_tool_use(data, "Bash", "INVALID_TYPE")
-test("Invalid task_type → unknown", "unknown" in data["tool_task_stats"].get("Bash", {}))
+test(
+    "Invalid task_type → unknown", "unknown" in data["tool_task_stats"].get("Bash", {})
+)
 
 print("\n--- Tool Mastery: mastery levels ---")
 
@@ -64,8 +75,11 @@ test("Proficient at 61 uses", get_mastery_level(data2, "Grep")["level"] == "prof
 # Expert: 200+ uses, > 90% success
 for _ in range(150):
     record_tool_use(data2, "Grep", "explore", success=True)
-test("Expert at 211 uses", get_mastery_level(data2, "Grep")["level"] == "expert",
-     f"got {get_mastery_level(data2, 'Grep')}")
+test(
+    "Expert at 211 uses",
+    get_mastery_level(data2, "Grep")["level"] == "expert",
+    f"got {get_mastery_level(data2, 'Grep')}",
+)
 
 # Low success rate prevents advancement
 data3 = _default_mastery()
@@ -96,7 +110,9 @@ for _ in range(8):
 
 prefs = get_task_preferences(data4, "fix")
 test("Preferences ordered by success", len(prefs) == 3, f"got {prefs}")
-test("Grep first (highest rate)", prefs[0] == "Grep" if prefs else False, f"got {prefs}")
+test(
+    "Grep first (highest rate)", prefs[0] == "Grep" if prefs else False, f"got {prefs}"
+)
 test("Edit last (lowest rate)", prefs[-1] == "Edit" if prefs else False, f"got {prefs}")
 
 print("\n--- Tool Mastery: suggest_tool ---")
@@ -119,6 +135,7 @@ print("\n--- Tool Mastery: load/save round-trip ---")
 
 with tempfile.TemporaryDirectory() as tmpdir:
     import shared.tool_mastery as tm
+
     old_disk = tm._DISK_DIR
     old_ramdisk = tm._RAMDISK_DIR
     tm._DISK_DIR = tmpdir
@@ -128,9 +145,11 @@ with tempfile.TemporaryDirectory() as tmpdir:
         record_tool_use(data5, "Edit", "feature", success=True)
         save_mastery(data5)
         loaded = load_mastery()
-        test("Round-trip preserves stats",
-             loaded["tool_task_stats"]["Edit"]["feature"]["success"] == 1,
-             f"got {loaded.get('tool_task_stats', {}).get('Edit', {})}")
+        test(
+            "Round-trip preserves stats",
+            loaded["tool_task_stats"]["Edit"]["feature"]["success"] == 1,
+            f"got {loaded.get('tool_task_stats', {}).get('Edit', {})}",
+        )
     finally:
         tm._DISK_DIR = old_disk
         tm._RAMDISK_DIR = old_ramdisk
@@ -138,10 +157,17 @@ with tempfile.TemporaryDirectory() as tmpdir:
 print("\n--- Tool Mastery: infer_task_type ---")
 
 test("Infer fix from state", infer_task_type({"fix_chain_active": True}) == "fix")
-test("Infer explore from early reads", infer_task_type({"tool_call_count": 3, "last_tool_name": "Read"}) == "explore")
-test("Infer from explicit type", infer_task_type({"current_task_type": "feature"}) == "feature")
+test(
+    "Infer explore from early reads",
+    infer_task_type({"tool_call_count": 3, "last_tool_name": "Read"}) == "explore",
+)
+test(
+    "Infer from explicit type",
+    infer_task_type({"current_task_type": "feature"}) == "feature",
+)
 test("Default to unknown", infer_task_type({}) == "unknown")
 
-print(f"\n{'='*40}")
-print(f"Tool Mastery: {passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+if __name__ == "__main__":
+    print(f"\n{'=' * 40}")
+    print(f"Tool Mastery: {passed} passed, {failed} failed")
+    sys.exit(1 if failed else 0)

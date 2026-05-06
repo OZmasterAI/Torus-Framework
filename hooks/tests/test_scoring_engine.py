@@ -233,9 +233,9 @@ def test_score_bounds():
 
 def test_keyword_overlap():
     """Keyword overlap with query terms adds a small bonus."""
-    ctx = _make_ctx(query="lancedb embeddings search")
-    result_match = _make_result(tags="lancedb,embeddings")
-    result_match["preview"] = "lancedb vector embeddings for search"
+    ctx = _make_ctx(query="surrealdb embeddings search")
+    result_match = _make_result(tags="surrealdb,embeddings")
+    result_match["preview"] = "surrealdb vector embeddings for search"
     result_no_match = _make_result(tags="unrelated")
     result_no_match["preview"] = "something completely different"
 

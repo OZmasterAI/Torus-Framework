@@ -13,3 +13,9 @@
 [submodule "toroidal-model-router"]
 	path = toroidal-model-router
 	url = https://github.com/OZmasterAI/toroidal-model-router.git
+[submodule "toroidal-coordinator"]
+	path = toroidal-coordinator
+	url = https://github.com/OZmasterAI/toroidal-coordinator.git
+[submodule "toroidal-indexer"]
+	path = toroidal-indexer
+	url = https://github.com/OZmasterAI/toroidal-indexer.git

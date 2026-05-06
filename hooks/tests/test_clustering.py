@@ -12,7 +12,7 @@ from tests.harness import test, MEMORY_SERVER_RUNNING
 print("\n--- Incremental Clustering ---")
 
 # --- Test 1: _cluster_label extracts top-3 meaningful words ---
-# Import from memory_server only if server not running (avoid LanceDB lock)
+# Import from memory_server only if server not running (avoid SurrealDB lock)
 if MEMORY_SERVER_RUNNING:
     print("  [SKIP] Memory server running — skipping direct import tests")
     # Register skips so harness counts are consistent

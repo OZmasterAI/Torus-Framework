@@ -429,25 +429,25 @@ if not MEMORY_SERVER_RUNNING:
         f"keys={list(_fs_get_out[0].keys())}",
     )
 
-    # --- suggest_promotions functional tests (requires LanceDB) ---
+    # --- suggest_promotions functional tests (requires SurrealDB) ---
 
     from memory_server import suggest_promotions, collection as _sp_coll
 
     if _sp_coll is None:
-        # LanceDB not initialized (lazy init) — skip all suggest_promotions tests
+        # SurrealDB not initialized (lazy init) — skip all suggest_promotions tests
         for _sp_skip in [
             "suggest_promotions returns dict with clusters key",
             "suggest_promotions has total_candidates key",
             "suggest_promotions has total_clusters key",
             "suggest_promotions clusters is a list",
-            "suggest_promotions cluster structure (no LanceDB)",
-            "suggest_promotions cluster supporting_ids (no LanceDB)",
-            "suggest_promotions cluster count (no LanceDB)",
-            "suggest_promotions cluster score (no LanceDB)",
-            "suggest_promotions cluster avg_age_days (no LanceDB)",
-            "suggest_promotions score formula (no LanceDB)",
-            "suggest_promotions sorted desc (no LanceDB)",
-            "suggest_promotions top_k (no LanceDB)",
+            "suggest_promotions cluster structure (no SurrealDB)",
+            "suggest_promotions cluster supporting_ids (no SurrealDB)",
+            "suggest_promotions cluster count (no SurrealDB)",
+            "suggest_promotions cluster score (no SurrealDB)",
+            "suggest_promotions cluster avg_age_days (no SurrealDB)",
+            "suggest_promotions score formula (no SurrealDB)",
+            "suggest_promotions sorted desc (no SurrealDB)",
+            "suggest_promotions top_k (no SurrealDB)",
         ]:
             skip(_sp_skip)
     else:
@@ -779,12 +779,16 @@ test("Status gather: includes skill count", "Skills:" in _bsg_status.stdout)
 test("Status gather: includes hook count", "Hooks:" in _bsg_status.stdout)
 
 # 2. Wrap-up gather: produces valid JSON with required keys
-_bsg_wrapup = _bsg_sp.run(
-    [sys.executable, _WRAPUP_SCRIPT],
-    capture_output=True,
-    text=True,
-    timeout=15,
-)
+try:
+    _bsg_wrapup = _bsg_sp.run(
+        [sys.executable, _WRAPUP_SCRIPT],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+except _bsg_sp.TimeoutExpired:
+    _bsg_wrapup = type("R", (), {"returncode": 1, "stdout": "", "stderr": "timeout"})()
+
 test(
     "Wrap-up gather: exits cleanly",
     _bsg_wrapup.returncode == 0,
@@ -1593,10 +1597,12 @@ except FileNotFoundError:
 # Test 10: get_teammate_context — with agent_name filter
 _t10_lines = [_assistant_tool_msg("Read", {"file_path": "/tmp/test.py"})]
 _t10_transcript = _make_transcript(_t10_lines)
+_t10_state_dir = os.path.join(os.path.expanduser("~"), ".claude", "hooks", ".state")
+os.makedirs(_t10_state_dir, exist_ok=True)
 _t10_fd, _t10_state_path = tempfile.mkstemp(
     prefix="state_",
     suffix=".json",
-    dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"),
+    dir=_t10_state_dir,
 )
 with os.fdopen(_t10_fd, "w") as _f:
     json.dump(
@@ -1629,7 +1635,7 @@ os.remove(_t10_transcript)
 _t11_fd, _t11_state_path = tempfile.mkstemp(
     prefix="state_",
     suffix=".json",
-    dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"),
+    dir=_t10_state_dir,
 )
 with os.fdopen(_t11_fd, "w") as _f:
     json.dump(
@@ -1657,7 +1663,7 @@ os.remove(_t11_state_path)
 _t12_fd, _t12_state_path = tempfile.mkstemp(
     prefix="state_",
     suffix=".json",
-    dir=os.path.join(os.path.expanduser("~"), ".claude", "hooks"),
+    dir=_t10_state_dir,
 )
 with os.fdopen(_t12_fd, "w") as _f:
     json.dump({"active_subagents": []}, _f)
@@ -1675,7 +1681,7 @@ os.remove(_t12_state_path)
 # ─────────────────────────────────────────────────
 print("\n--- Citation URL Extraction ---")
 
-# Import the citation functions directly (no LanceDB needed)
+# Import the citation functions directly (no SurrealDB needed)
 try:
     from memory_server import (
         _validate_url,
@@ -1849,7 +1855,7 @@ if not MEMORY_SERVER_RUNNING:
 
     if _hl_col is None:
         print(
-            "  [SKIP] Hybrid linking: LanceDB collection unavailable", file=sys.stderr
+            "  [SKIP] Hybrid linking: SurrealDB collection unavailable", file=sys.stderr
         )
 
 if not MEMORY_SERVER_RUNNING and locals().get("_hl_col") is not None:
@@ -2528,7 +2534,7 @@ if os.path.exists(_fix_ctx_queue):
 
 # Test 8-10: Lever 2 scoped — promotion criteria (unit tests on promotion logic)
 # These test the criteria logic in memory_server._compact_observations
-# We test the data structures and filtering rather than full LanceDB integration
+# We test the data structures and filtering rather than full SurrealDB integration
 
 # Test 8: Standalone error criterion — error with no follow-up success should be promotable
 _exp_docs_l2 = [

@@ -13234,8 +13234,8 @@ try:
 
     # --- check_memory_consensus ---
     _cv_mem_novel = check_memory_consensus(
-        "LanceDB uses flat scan below 50K rows for better relevance",
-        ["LanceDB is the primary database", "Redis is used for caching"],
+        "SurrealDB uses flat scan below 50K rows for better relevance",
+        ["SurrealDB is the primary database", "Redis is used for caching"],
     )
     test(
         "CV: check_memory_consensus novel content -> verdict='novel'",
@@ -13247,7 +13247,7 @@ try:
         isinstance(_cv_mem_novel["top_match"], float),
     )
 
-    _cv_dup_text = "LanceDB uses flat scan for better relevance at small scale"
+    _cv_dup_text = "SurrealDB uses flat scan for better relevance at small scale"
     _cv_mem_dup = check_memory_consensus(_cv_dup_text, [_cv_dup_text])
     test(
         "CV: check_memory_consensus identical -> verdict='duplicate'",
@@ -13267,8 +13267,8 @@ try:
     )
 
     _cv_mem_conflict = check_memory_consensus(
-        "LanceDB is not broken and works correctly",
-        ["LanceDB is broken and does not work correctly"],
+        "SurrealDB is not broken and works correctly",
+        ["SurrealDB is broken and does not work correctly"],
     )
     test(
         "CV: check_memory_consensus negation conflict -> verdict='conflict' or 'novel'",
@@ -14043,7 +14043,7 @@ try:
         _cr_eof_std.get("chain_id") == "c1",
     )
 
-    # _extract_outcome_fields — with alternate keys (LanceDB format)
+    # _extract_outcome_fields — with alternate keys (SurrealDB format)
     _cr_eof_alt = _extract_outcome_fields(
         {"error_text": "alt error", "strategy_name": "strat_b", "outcome": "failure"}
     )

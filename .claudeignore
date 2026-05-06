@@ -1,5 +1,6 @@
-# Dormant skills (explicitly shelved)
+# Dormant (explicitly shelved)
 dormant/
+agents/.dormant/
 
 # Python bytecode
 __pycache__/
@@ -8,11 +9,19 @@ __pycache__/
 # Raw transcript logs (accessed via MCP, not file scanning)
 *.jsonl
 
+# Gate runtime data (per-session effectiveness files)
+hooks/.gate_data/
+
 # Gate audit logs (accessed via analytics MCP server)
 hooks/audit/
 
+# Archived scripts (old LanceDB/memory migration code)
+hooks/scripts/archived/
+
 # Standalone integrations (accessed via their own servers, not file scanning)
 integrations/telegram-bot/
+integrations/terminal-history/
+integrations/tts-voices/
 integrations/voice-web/
 
 # Test cache
