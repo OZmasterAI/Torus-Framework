@@ -313,7 +313,7 @@
   "awaySummaryEnabled": false,
   "autoUpdatesChannel": "stable",
   "minimumVersion": "2.1.112",
-  "tui": "default",
+  "tui": "fullscreen",
   "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "teammateMode": "in-process",
