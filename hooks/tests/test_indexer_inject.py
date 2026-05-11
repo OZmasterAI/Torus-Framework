@@ -51,10 +51,10 @@ def db_name(db):
     return _TEST_DB_NAME[0]
 
 
-def _run_hook(tool_input, env_extra=None):
+def _run_hook(tool_input, env_extra=None, tool_name="Edit"):
     """Run the indexer_inject.py hook as a subprocess, returning (exit_code, stdout, stderr)."""
     event = {
-        "tool_name": "Edit",
+        "tool_name": tool_name,
         "tool_input": tool_input,
     }
     env = {**os.environ}
@@ -399,3 +399,74 @@ class TestAiEdgesMarkedWithTilde:
             assert "sure_fn" in ctx
             # Make sure sure_fn is NOT prefixed with ~
             assert "~sure_fn" not in ctx
+
+
+class TestAgentContextInjection:
+    """Agent tool calls get graph context injected (non-blocking)."""
+
+    def test_injects_context_for_explore_agent(self, db, db_name):
+        """Explore agent with matching identifiers gets context injected, not blocked."""
+        upsert_node(db, "proj", "svc.py", "HandleRequest", "function", 10)
+
+        session_id = f"test_explore_{uuid.uuid4().hex[:8]}"
+        env = {
+            "TORUS_SESSION_ID": session_id,
+            "INDEXER_DB": db_name,
+            "INDEXER_PROJECT": "proj",
+        }
+        code, stdout, stderr = _run_hook(
+            {
+                "prompt": "Find where HandleRequest is defined and trace its callers",
+                "subagent_type": "explore",
+            },
+            env_extra=env,
+            tool_name="Agent",
+        )
+        assert code == 0
+        if stdout:
+            data = json.loads(stdout)
+            ctx = data["hookSpecificOutput"]["additionalContext"]
+            assert "HandleRequest" in ctx
+
+    def test_no_output_without_hits(self, db, db_name):
+        """Agent with no matching identifiers produces no output."""
+        session_id = f"test_nohits_{uuid.uuid4().hex[:8]}"
+        env = {
+            "TORUS_SESSION_ID": session_id,
+            "INDEXER_DB": db_name,
+            "INDEXER_PROJECT": "proj",
+        }
+        code, stdout, stderr = _run_hook(
+            {
+                "prompt": "Investigate the ZzNonexistentSymbolZz in detail",
+                "subagent_type": "explore",
+            },
+            env_extra=env,
+            tool_name="Agent",
+        )
+        assert code == 0
+        assert stdout == ""
+
+    def test_injects_context_for_builder_agent(self, db, db_name):
+        """Non-explore agent types also get context injected."""
+        upsert_node(db, "proj", "builder.py", "BuildPipeline", "function", 5)
+
+        session_id = f"test_builder_{uuid.uuid4().hex[:8]}"
+        env = {
+            "TORUS_SESSION_ID": session_id,
+            "INDEXER_DB": db_name,
+            "INDEXER_PROJECT": "proj",
+        }
+        code, stdout, stderr = _run_hook(
+            {
+                "prompt": "Implement changes to BuildPipeline for the new feature",
+                "subagent_type": "builder",
+            },
+            env_extra=env,
+            tool_name="Agent",
+        )
+        assert code == 0
+        if stdout:
+            data = json.loads(stdout)
+            ctx = data["hookSpecificOutput"]["additionalContext"]
+            assert "BuildPipeline" in ctx

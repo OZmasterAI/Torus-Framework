@@ -710,6 +710,17 @@ def main():
             context_parts.append(
                 f'<domain-behavior domain="{_domain_name}">\n{_domain_behavior}\n</domain-behavior>'
             )
+    # Code graph summary from toroidal-indexer
+    try:
+        from boot_pkg.graph_context import extract_graph_context
+
+        _graph_project = _effective_name or project_name
+        _graph_ctx = extract_graph_context(_graph_project)
+        if _graph_ctx:
+            context_parts.append(f"<code-graph>\n{_graph_ctx}\n</code-graph>")
+    except Exception:
+        pass
+
     context_parts.append(
         "PROTOCOL: Present session number, brief summary, completed list (what was done last session), "
         "and remaining list (what's next) in ONE message. "

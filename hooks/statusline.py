@@ -961,6 +961,31 @@ def main():
     # Model name from session data
     model_data = data.get("model", {}) or {}
     model_name = model_data.get("display_name", "Claude")
+
+    # ── TRACKING: synchronous POST to local Torus MCP server ──
+    # Runs early (before prints) so BrokenPipeError on stdout doesn't kill tracking.
+    # Synchronous (not daemon thread) so it completes before process exits.
+    try:
+        _track_body = json.dumps(
+            {
+                "session_id": session_id or "unknown",
+                "model": model_name or "unknown",
+                "total_input_tokens": total_in_tok,
+                "total_output_tokens": total_out_tok,
+                "cost_usd": cost if isinstance(cost, (int, float)) else 0,
+            }
+        ).encode()
+        _track_port = int(os.environ.get("TORUS_MCP_PORT", "8751"))
+        _track_req = urllib.request.Request(
+            f"http://127.0.0.1:{_track_port}/usage-report",
+            data=_track_body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(_track_req, timeout=2)
+    except (OSError, ValueError, TimeoutError):
+        pass
+
     # Detect model family from display name (case-insensitive substring match)
     model_lower = (model_name or "").lower()
     if "opus" in model_lower:
@@ -1215,31 +1240,6 @@ def main():
 
     # Ensure all display lines are flushed before slow snapshot I/O
     sys.stdout.flush()
-
-    # ── TRACKING: fire-and-forget POST to local Torus MCP server ──
-    def _post_tracking():
-        try:
-            body = json.dumps(
-                {
-                    "session_id": session_id or "unknown",
-                    "model": model_name or "unknown",
-                    "total_input_tokens": total_in_tok,
-                    "total_output_tokens": total_out_tok,
-                    "cost_usd": cost if isinstance(cost, (int, float)) else 0,
-                }
-            ).encode()
-            port = int(os.environ.get("TORUS_MCP_PORT", "8751"))
-            req = urllib.request.Request(
-                f"http://127.0.0.1:{port}/usage-report",
-                data=body,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=2)
-        except (OSError, ValueError, TimeoutError):
-            pass
-
-    threading.Thread(target=_post_tracking, daemon=True).start()
 
     # ── SNAPSHOT: write bridge file for TUI ──
     # Check UDS socket health
