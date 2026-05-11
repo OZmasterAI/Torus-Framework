@@ -20,7 +20,9 @@ Claude Code sends nested JSON via stdin:
 import json
 import os
 import sys
+import threading
 import time
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(__file__))
 from shared.memory_socket import is_worker_available
@@ -1213,6 +1215,31 @@ def main():
 
     # Ensure all display lines are flushed before slow snapshot I/O
     sys.stdout.flush()
+
+    # ── TRACKING: fire-and-forget POST to local Torus MCP server ──
+    def _post_tracking():
+        try:
+            body = json.dumps(
+                {
+                    "session_id": session_id or "unknown",
+                    "model": model_name or "unknown",
+                    "total_input_tokens": total_in_tok,
+                    "total_output_tokens": total_out_tok,
+                    "cost_usd": cost if isinstance(cost, (int, float)) else 0,
+                }
+            ).encode()
+            port = int(os.environ.get("TORUS_MCP_PORT", "8751"))
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/usage-report",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=2)
+        except (OSError, ValueError, TimeoutError):
+            pass
+
+    threading.Thread(target=_post_tracking, daemon=True).start()
 
     # ── SNAPSHOT: write bridge file for TUI ──
     # Check UDS socket health

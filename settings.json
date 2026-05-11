@@ -295,7 +295,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "node \"$HOME/.torus/chain-wrapper.mjs\""
+    "command": "python3 \"$HOME/.claude/hooks/statusline.py\""
   },
   "enabledPlugins": {
     "pyright-lsp@claude-plugins-official": true,
