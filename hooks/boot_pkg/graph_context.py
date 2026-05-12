@@ -89,8 +89,18 @@ def extract_graph_context(project_name: str | None) -> str | None:
         if hub_lines:
             parts.append("Key hubs: " + " | ".join(hub_lines))
 
+        clusters = _query_rows(
+            db,
+            "SELECT label, node_count FROM code_cluster WHERE project=$proj ORDER BY node_count DESC LIMIT 8",
+            {"proj": project_name},
+        )
+        if clusters:
+            cluster_strs = [f"{c['label']}({c['node_count']})" for c in clusters]
+            parts.append("Clusters: " + " | ".join(cluster_strs))
+
         parts.append(
-            "Use run_tool('indexer', 'code_callers'|'code_hubs'|'code_path'|'code_blast_radius', ...) to query the graph"
+            "BEFORE exploring/grepping, use run_tool('indexer', 'code_search', {project, query}) for fuzzy natural-language search. "
+            "Also: 'code_callers'|'code_hubs'|'code_path'|'code_blast_radius'|'code_clusters'|'code_cluster_members' for structural queries."
         )
 
         return "\n".join(parts)

@@ -6,7 +6,14 @@ All tools route through toolshed: `run_tool(server, tool, args)`
 - **torus-skills**: list_skills, invoke_skill, search_skills, self_improve, skill_usage, skill_health, record_outcome, trigger_evolution, capture_skill, skill_lineage
 - **search**: terminal_history_search, transcript_context
 - **web-search**: web_search
+- **indexer**: code_search, code_callers, code_readers, code_path, code_blast_radius, code_hubs, code_clusters, code_cluster_detail
 - Discovery: `list_tools(group="memory")` to see tools in a group
+
+## INDEX FIRST (for code searches)
+  BEFORE grep/glob: `run_tool("indexer", "code_search", {"project": "<dir-name>", "query": "..."})`
+  - `code_callers`/`code_readers` for call chains, `code_blast_radius` for impact
+  - Project name = directory name (e.g. "torus-web-design", "toroidal-indexer")
+  - Fall back to grep only if index returns nothing
 
 ## MEMORY FIRST (Non-Negotiable)
 BEFORE building/fixing ANYTHING: `run_tool("memory", "search_knowledge", {"query": "..."})`
