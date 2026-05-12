@@ -10,10 +10,10 @@ All tools route through toolshed: `run_tool(server, tool, args)`
 - Discovery: `list_tools(group="memory")` to see tools in a group
 
 ## INDEX FIRST (for code searches)
-  BEFORE grep/glob: `run_tool("indexer", "code_search", {"project": "<dir-name>", "query": "..."})`
+  BEFORE exploring code: Read `.claude/GRAPH_REPORT.md` in the project root for hubs, clusters, and file map.
+  - For targeted lookups: `run_tool("indexer", "code_search", {"project": "<dir-name>", "query": "..."})`
   - `code_callers`/`code_readers` for call chains, `code_blast_radius` for impact
-  - Project name = directory name (e.g. "torus-web-design", "toroidal-indexer")
-  - Fall back to grep only if index returns nothing
+  - If index returns hits, Read those files directly — do NOT grep/find/glob
 
 ## MEMORY FIRST (Non-Negotiable)
 BEFORE building/fixing ANYTHING: `run_tool("memory", "search_knowledge", {"query": "..."})`
