@@ -305,7 +305,7 @@
     "pr-review-toolkit@claude-plugins-official": false,
     "code-review@claude-plugins-official": false,
     "hookify@claude-plugins-official": false,
-    "skill-creator@claude-plugins-official": false,
+    "skill-creator@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": false,
     "telegram@claude-plugins-official": false
   },
